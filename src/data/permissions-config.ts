@@ -1,0 +1,2236 @@
+/**
+ * CONFIGURACIÓN COMPLETA DE PERMISOS - BACKOFFICE ESAP
+ * 
+ * Este archivo centraliza TODOS los permisos del sistema
+ * Actualizado: 30 de Noviembre, 2025
+ * 
+ * IMPORTANTE: Mantener sincronizado con módulos activos en SidebarPremium.tsx
+ */
+
+import {
+  Users,
+  GraduationCap,
+  Award,
+  FileText,
+  MessageSquare,
+  Briefcase,
+  ClipboardList,
+  FolderOpen,
+  BarChart3,
+  ScrollText,
+  Cog,
+  Shield,
+  TrendingUp,
+  Building2,
+  BookOpen,
+  CalendarDays,
+  FileCheck,
+  UserPlus,
+  Activity,
+  Database,
+  Settings,
+  Bell
+} from 'lucide-react';
+
+export interface Permission {
+  id: string;
+  name: string;
+  description: string;
+  module: string;
+}
+
+export interface PermissionModule {
+  id: string;
+  name: string;
+  icon: any;
+  color: string;
+  bgColor: string;
+  permissions: Permission[];
+}
+
+// ============================================================================
+// CONFIGURACIÓN COMPLETA DE MÓDULOS Y PERMISOS
+// ============================================================================
+
+export const PERMISSION_MODULES: PermissionModule[] = [
+  // ==========================================================================
+  // 0. ACCESO A SISTEMAS (3 permisos) - CATEGORÍA ESPECIAL
+  // ==========================================================================
+  {
+    id: 'system_access',
+    name: '🔐 Acceso a Sistemas',
+    icon: Database,
+    color: 'text-indigo-700',
+    bgColor: 'bg-indigo-100',
+    permissions: [
+      { 
+        id: 'system.access_backoffice', 
+        name: '🏢 Acceso al Backoffice', 
+        description: 'Permite ingresar al sistema administrativo ESAP (gestión interna)', 
+        module: 'system_access' 
+      },
+      { 
+        id: 'system.access_portal', 
+        name: '📱 Acceso al Portal Transaccional', 
+        description: 'Permite ingresar a la red social universitaria ESAP', 
+        module: 'system_access' 
+      },
+      { 
+        id: 'system.access_both', 
+        name: '🔄 Acceso a Ambos Sistemas', 
+        description: 'Acceso completo tanto a Backoffice como Portal Transaccional', 
+        module: 'system_access' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 1. USUARIOS Y PERSONAS (12 permisos)
+  // ==========================================================================
+  {
+    id: 'users',
+    name: 'Usuarios y Personas',
+    icon: Users,
+    color: 'text-blue-600',
+    bgColor: 'bg-blue-50',
+    permissions: [
+      { 
+        id: 'users.view', 
+        name: 'Ver Usuarios', 
+        description: 'Consultar lista de usuarios del sistema', 
+        module: 'users' 
+      },
+      { 
+        id: 'users.create', 
+        name: 'Crear Usuarios', 
+        description: 'Registrar nuevos usuarios en el sistema', 
+        module: 'users' 
+      },
+      { 
+        id: 'users.edit', 
+        name: 'Editar Usuarios', 
+        description: 'Modificar datos de usuarios existentes', 
+        module: 'users' 
+      },
+      { 
+        id: 'users.delete', 
+        name: 'Eliminar Usuarios', 
+        description: 'Dar de baja usuarios del sistema', 
+        module: 'users' 
+      },
+      { 
+        id: 'users.export', 
+        name: 'Exportar Usuarios', 
+        description: 'Descargar datos de usuarios en Excel/CSV', 
+        module: 'users' 
+      },
+      { 
+        id: 'users.assign_roles', 
+        name: 'Asignar Roles', 
+        description: 'Gestionar roles de usuarios (modelo Usuario Persona)', 
+        module: 'users' 
+      },
+      { 
+        id: 'users.assign_territorial', 
+        name: 'Asignar Territorial', 
+        description: 'Vincular usuario a dirección territorial', 
+        module: 'users' 
+      },
+      { 
+        id: 'users.assign_sede', 
+        name: 'Asignar Sede', 
+        description: 'Vincular usuario a sede específica', 
+        module: 'users' 
+      },
+      { 
+        id: 'users.manage_persona', 
+        name: 'Gestionar Persona', 
+        description: 'Administrar modelo Usuario Persona (múltiples roles)', 
+        module: 'users' 
+      },
+      { 
+        id: 'users.view_enrollment', 
+        name: 'Ver Vinculaciones', 
+        description: 'Consultar vinculaciones académicas', 
+        module: 'users' 
+      },
+      { 
+        id: 'users.activate_deactivate', 
+        name: 'Activar/Desactivar', 
+        description: 'Cambiar estado de usuarios', 
+        module: 'users' 
+      },
+      { 
+        id: 'users.import', 
+        name: 'Importar Usuarios', 
+        description: 'Carga masiva de usuarios', 
+        module: 'users' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 2. ESTRUCTURA ORGANIZACIONAL (10 permisos)
+  // ==========================================================================
+  {
+    id: 'organization',
+    name: 'Estructura Organizacional',
+    icon: Building2,
+    color: 'text-green-600',
+    bgColor: 'bg-green-50',
+    permissions: [
+      { 
+        id: 'org.view_territorial', 
+        name: 'Ver Territoriales', 
+        description: 'Consultar 17 direcciones territoriales de Colombia', 
+        module: 'organization' 
+      },
+      { 
+        id: 'org.view_sedes', 
+        name: 'Ver Sedes', 
+        description: 'Consultar 71+ sedes y puntos de atención', 
+        module: 'organization' 
+      },
+      { 
+        id: 'org.create_sede', 
+        name: 'Crear Sede', 
+        description: 'Registrar nuevas sedes en el sistema', 
+        module: 'organization' 
+      },
+      { 
+        id: 'org.edit_sede', 
+        name: 'Editar Sede', 
+        description: 'Modificar información de sedes existentes', 
+        module: 'organization' 
+      },
+      { 
+        id: 'org.delete_sede', 
+        name: 'Eliminar Sede', 
+        description: 'Dar de baja sedes del sistema', 
+        module: 'organization' 
+      },
+      { 
+        id: 'org.assign_users', 
+        name: 'Asignar Usuarios a Sede', 
+        description: 'Vincular personal a sedes específicas', 
+        module: 'organization' 
+      },
+      { 
+        id: 'org.view_hierarchy', 
+        name: 'Ver Jerarquía', 
+        description: 'Visualizar estructura Nacional > Territorial > Sede', 
+        module: 'organization' 
+      },
+      { 
+        id: 'org.export_structure', 
+        name: 'Exportar Estructura', 
+        description: 'Descargar organigrama completo', 
+        module: 'organization' 
+      },
+      { 
+        id: 'org.manage_territorial', 
+        name: 'Gestionar Territoriales', 
+        description: 'Administrar direcciones territoriales', 
+        module: 'organization' 
+      },
+      { 
+        id: 'org.view_map', 
+        name: 'Ver Mapa', 
+        description: 'Visualizar sedes en mapa geográfico de Colombia', 
+        module: 'organization' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 3. PROGRAMAS ACADÉMICOS (10 permisos)
+  // ==========================================================================
+  {
+    id: 'programs',
+    name: 'Programas Académicos',
+    icon: GraduationCap,
+    color: 'text-indigo-600',
+    bgColor: 'bg-indigo-50',
+    permissions: [
+      { 
+        id: 'programs.view', 
+        name: 'Ver Programas', 
+        description: 'Consultar programas académicos', 
+        module: 'programs' 
+      },
+      { 
+        id: 'programs.create', 
+        name: 'Crear Programa', 
+        description: 'Registrar nuevo programa académico', 
+        module: 'programs' 
+      },
+      { 
+        id: 'programs.edit', 
+        name: 'Editar Programa', 
+        description: 'Modificar programa existente', 
+        module: 'programs' 
+      },
+      { 
+        id: 'programs.delete', 
+        name: 'Eliminar Programa', 
+        description: 'Dar de baja programa académico', 
+        module: 'programs' 
+      },
+      { 
+        id: 'programs.view_students', 
+        name: 'Ver Estudiantes', 
+        description: 'Ver estudiantes matriculados por programa', 
+        module: 'programs' 
+      },
+      { 
+        id: 'programs.assign_sede', 
+        name: 'Asignar Sede', 
+        description: 'Vincular programa a sede específica', 
+        module: 'programs' 
+      },
+      { 
+        id: 'programs.view_curriculum', 
+        name: 'Ver Pensum', 
+        description: 'Consultar plan de estudios', 
+        module: 'programs' 
+      },
+      { 
+        id: 'programs.edit_curriculum', 
+        name: 'Editar Pensum', 
+        description: 'Modificar plan de estudios', 
+        module: 'programs' 
+      },
+      { 
+        id: 'programs.export', 
+        name: 'Exportar Programas', 
+        description: 'Descargar datos de programas', 
+        module: 'programs' 
+      },
+      { 
+        id: 'programs.view_stats', 
+        name: 'Ver Estadísticas', 
+        description: 'Consultar métricas por programa', 
+        module: 'programs' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 4. ESTUDIANTES (8 permisos)
+  // ==========================================================================
+  {
+    id: 'students',
+    name: 'Estudiantes',
+    icon: GraduationCap,
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50',
+    permissions: [
+      { 
+        id: 'students.view', 
+        name: 'Ver Estudiantes', 
+        description: 'Consultar información estudiantil', 
+        module: 'students' 
+      },
+      { 
+        id: 'students.enroll', 
+        name: 'Matricular', 
+        description: 'Gestionar matrículas de estudiantes', 
+        module: 'students' 
+      },
+      { 
+        id: 'students.grades', 
+        name: 'Calificaciones', 
+        description: 'Gestionar calificaciones y notas', 
+        module: 'students' 
+      },
+      { 
+        id: 'students.attendance', 
+        name: 'Asistencia', 
+        description: 'Registrar y consultar asistencia', 
+        module: 'students' 
+      },
+      { 
+        id: 'students.export', 
+        name: 'Exportar Estudiantes', 
+        description: 'Descargar datos de estudiantes', 
+        module: 'students' 
+      },
+      { 
+        id: 'students.academic_programs', 
+        name: 'Ver Programas', 
+        description: 'Consultar programas académicos vinculados', 
+        module: 'students' 
+      },
+      { 
+        id: 'students.financial_status', 
+        name: 'Estado Financiero', 
+        description: 'Ver estado de pagos y cartera', 
+        module: 'students' 
+      },
+      { 
+        id: 'students.disciplinary', 
+        name: 'Registro Disciplinario', 
+        description: 'Ver y crear anotaciones disciplinarias', 
+        module: 'students' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 5. GRADUADOS (7 permisos)
+  // ==========================================================================
+  {
+    id: 'graduates',
+    name: 'Graduados',
+    icon: Award,
+    color: 'text-emerald-600',
+    bgColor: 'bg-emerald-50',
+    permissions: [
+      { 
+        id: 'graduates.view', 
+        name: 'Ver Graduados', 
+        description: 'Consultar base de datos de graduados', 
+        module: 'graduates' 
+      },
+      { 
+        id: 'graduates.manage', 
+        name: 'Gestionar Graduados', 
+        description: 'Administrar registros de graduados', 
+        module: 'graduates' 
+      },
+      { 
+        id: 'graduates.verify', 
+        name: 'Verificar Títulos', 
+        description: 'Generar certificados de verificación de títulos', 
+        module: 'graduates' 
+      },
+      { 
+        id: 'graduates.export', 
+        name: 'Exportar Graduados', 
+        description: 'Descargar datos de graduados', 
+        module: 'graduates' 
+      },
+      { 
+        id: 'graduates.certificates', 
+        name: 'Certificados de Título', 
+        description: 'Emitir certificados de graduación', 
+        module: 'graduates' 
+      },
+      { 
+        id: 'graduates.view_stats', 
+        name: 'Ver Estadísticas', 
+        description: 'Consultar métricas de graduados', 
+        module: 'graduates' 
+      },
+      { 
+        id: 'graduates.verify_qr', 
+        name: 'Verificar con QR', 
+        description: 'Validar títulos mediante código QR', 
+        module: 'graduates' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 6. GESTIÓN PROFESORAL (12 permisos)
+  // ==========================================================================
+  {
+    id: 'professors',
+    name: 'Gestión Profesoral',
+    icon: BookOpen,
+    color: 'text-violet-600',
+    bgColor: 'bg-violet-50',
+    permissions: [
+      { 
+        id: 'professors.view', 
+        name: 'Ver Profesores', 
+        description: 'Consultar información de docentes', 
+        module: 'professors' 
+      },
+      { 
+        id: 'professors.create', 
+        name: 'Crear Profesor', 
+        description: 'Registrar nuevos docentes en el sistema', 
+        module: 'professors' 
+      },
+      { 
+        id: 'professors.edit', 
+        name: 'Editar Profesor', 
+        description: 'Modificar información de docentes', 
+        module: 'professors' 
+      },
+      { 
+        id: 'professors.delete', 
+        name: 'Eliminar Profesor', 
+        description: 'Dar de baja docentes', 
+        module: 'professors' 
+      },
+      { 
+        id: 'professors.assign_load', 
+        name: 'Asignar Carga Académica', 
+        description: 'Gestionar horas y materias de docentes', 
+        module: 'professors' 
+      },
+      { 
+        id: 'professors.view_schedule', 
+        name: 'Ver Horarios', 
+        description: 'Consultar horarios de profesores', 
+        module: 'professors' 
+      },
+      { 
+        id: 'professors.create_schedule', 
+        name: 'Crear Horarios', 
+        description: 'Generar horarios académicos', 
+        module: 'professors' 
+      },
+      { 
+        id: 'professors.view_evaluation', 
+        name: 'Ver Evaluaciones', 
+        description: 'Consultar evaluaciones docentes', 
+        module: 'professors' 
+      },
+      { 
+        id: 'professors.manage_contracts', 
+        name: 'Gestionar Contratos', 
+        description: 'Administrar contratos laborales', 
+        module: 'professors' 
+      },
+      { 
+        id: 'professors.export', 
+        name: 'Exportar Profesores', 
+        description: 'Descargar datos de docentes', 
+        module: 'professors' 
+      },
+      { 
+        id: 'professors.view_performance', 
+        name: 'Ver Desempeño', 
+        description: 'Consultar métricas de desempeño', 
+        module: 'professors' 
+      },
+      { 
+        id: 'professors.assign_sede', 
+        name: 'Asignar Sede', 
+        description: 'Vincular docente a sede específica', 
+        module: 'professors' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 7. CALENDARIO ACADÉMICO ESAP 2026 (8 permisos)
+  // ==========================================================================
+  {
+    id: 'calendar',
+    name: 'Calendario Académico',
+    icon: CalendarDays,
+    color: 'text-sky-600',
+    bgColor: 'bg-sky-50',
+    permissions: [
+      { 
+        id: 'calendar.view', 
+        name: 'Ver Calendario', 
+        description: 'Consultar calendario académico ESAP 2026', 
+        module: 'calendar' 
+      },
+      { 
+        id: 'calendar.edit', 
+        name: 'Editar Calendario', 
+        description: 'Modificar eventos del calendario académico', 
+        module: 'calendar' 
+      },
+      { 
+        id: 'calendar.create_events', 
+        name: 'Crear Eventos', 
+        description: 'Agregar nuevos eventos académicos', 
+        module: 'calendar' 
+      },
+      { 
+        id: 'calendar.delete_events', 
+        name: 'Eliminar Eventos', 
+        description: 'Quitar eventos del calendario', 
+        module: 'calendar' 
+      },
+      { 
+        id: 'calendar.manage_periods', 
+        name: 'Gestionar Periodos', 
+        description: 'Administrar periodos 2026-1, 2026-2, 2026-3', 
+        module: 'calendar' 
+      },
+      { 
+        id: 'calendar.export', 
+        name: 'Exportar Calendario', 
+        description: 'Descargar calendario en diferentes formatos', 
+        module: 'calendar' 
+      },
+      { 
+        id: 'calendar.notifications', 
+        name: 'Gestionar Notificaciones', 
+        description: 'Configurar alertas y recordatorios', 
+        module: 'calendar' 
+      },
+      { 
+        id: 'calendar.view_by_sede', 
+        name: 'Ver por Sede', 
+        description: 'Filtrar eventos académicos por sede', 
+        module: 'calendar' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 8. CERTIFICADOS LABORALES (10 permisos)
+  // ==========================================================================
+  {
+    id: 'certificates_labor',
+    name: 'Certificados Laborales',
+    icon: FileCheck,
+    color: 'text-rose-600',
+    bgColor: 'bg-rose-50',
+    permissions: [
+      { 
+        id: 'cert_labor.view', 
+        name: 'Ver Solicitudes', 
+        description: 'Consultar solicitudes de certificados laborales', 
+        module: 'certificates_labor' 
+      },
+      { 
+        id: 'cert_labor.create', 
+        name: 'Crear Solicitud', 
+        description: 'Generar nueva solicitud de certificado', 
+        module: 'certificates_labor' 
+      },
+      { 
+        id: 'cert_labor.generate', 
+        name: 'Generar Certificado', 
+        description: 'Emitir certificado laboral firmado', 
+        module: 'certificates_labor' 
+      },
+      { 
+        id: 'cert_labor.approve', 
+        name: 'Aprobar Solicitud', 
+        description: 'Aprobar o rechazar solicitudes', 
+        module: 'certificates_labor' 
+      },
+      { 
+        id: 'cert_labor.verify', 
+        name: 'Verificar Certificado', 
+        description: 'Validar autenticidad mediante código QR', 
+        module: 'certificates_labor' 
+      },
+      { 
+        id: 'cert_labor.export', 
+        name: 'Exportar Certificados', 
+        description: 'Descargar registros de certificados', 
+        module: 'certificates_labor' 
+      },
+      { 
+        id: 'cert_labor.manage_templates', 
+        name: 'Gestionar Plantillas', 
+        description: 'Administrar plantillas de certificados', 
+        module: 'certificates_labor' 
+      },
+      { 
+        id: 'cert_labor.view_stats', 
+        name: 'Ver Estadísticas', 
+        description: 'Consultar métricas de certificados emitidos', 
+        module: 'certificates_labor' 
+      },
+      { 
+        id: 'cert_labor.send_notification', 
+        name: 'Enviar Notificación', 
+        description: 'Notificar al solicitante', 
+        module: 'certificates_labor' 
+      },
+      { 
+        id: 'cert_labor.download_pdf', 
+        name: 'Descargar PDF', 
+        description: 'Descargar certificado en PDF', 
+        module: 'certificates_labor' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 9. ASPIRANTES (9 permisos)
+  // ==========================================================================
+  {
+    id: 'aspirants',
+    name: 'Aspirantes',
+    icon: UserPlus,
+    color: 'text-cyan-600',
+    bgColor: 'bg-cyan-50',
+    permissions: [
+      { 
+        id: 'aspirants.view', 
+        name: 'Ver Aspirantes', 
+        description: 'Consultar lista de aspirantes', 
+        module: 'aspirants' 
+      },
+      { 
+        id: 'aspirants.create', 
+        name: 'Crear Aspirante', 
+        description: 'Registrar nuevo aspirante', 
+        module: 'aspirants' 
+      },
+      { 
+        id: 'aspirants.edit', 
+        name: 'Editar Aspirante', 
+        description: 'Modificar datos de aspirante', 
+        module: 'aspirants' 
+      },
+      { 
+        id: 'aspirants.delete', 
+        name: 'Eliminar Aspirante', 
+        description: 'Dar de baja aspirante', 
+        module: 'aspirants' 
+      },
+      { 
+        id: 'aspirants.approve', 
+        name: 'Aprobar Aspirante', 
+        description: 'Aprobar ingreso de aspirante', 
+        module: 'aspirants' 
+      },
+      { 
+        id: 'aspirants.reject', 
+        name: 'Rechazar Aspirante', 
+        description: 'Rechazar solicitud de ingreso', 
+        module: 'aspirants' 
+      },
+      { 
+        id: 'aspirants.export', 
+        name: 'Exportar Aspirantes', 
+        description: 'Descargar datos de aspirantes', 
+        module: 'aspirants' 
+      },
+      { 
+        id: 'aspirants.view_documents', 
+        name: 'Ver Documentos', 
+        description: 'Consultar carpeta digital de aspirante', 
+        module: 'aspirants' 
+      },
+      { 
+        id: 'aspirants.convert_to_student', 
+        name: 'Convertir a Estudiante', 
+        description: 'Matricular aspirante como estudiante', 
+        module: 'aspirants' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 10. CONTROL INTERNO (11 permisos)
+  // ==========================================================================
+  {
+    id: 'control',
+    name: 'Control Interno',
+    icon: ClipboardList,
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-50',
+    permissions: [
+      { 
+        id: 'control.view_audits', 
+        name: 'Ver Auditorías', 
+        description: 'Consultar auditorías registradas', 
+        module: 'control' 
+      },
+      { 
+        id: 'control.create_audit', 
+        name: 'Crear Auditoría', 
+        description: 'Registrar nueva auditoría', 
+        module: 'control' 
+      },
+      { 
+        id: 'control.edit_audit', 
+        name: 'Editar Auditoría', 
+        description: 'Modificar auditoría existente', 
+        module: 'control' 
+      },
+      { 
+        id: 'control.view_findings', 
+        name: 'Ver Hallazgos', 
+        description: 'Consultar hallazgos de auditoría', 
+        module: 'control' 
+      },
+      { 
+        id: 'control.create_finding', 
+        name: 'Crear Hallazgo', 
+        description: 'Registrar nuevo hallazgo', 
+        module: 'control' 
+      },
+      { 
+        id: 'control.assign_finding', 
+        name: 'Asignar Hallazgo', 
+        description: 'Asignar responsable de hallazgo', 
+        module: 'control' 
+      },
+      { 
+        id: 'control.close_finding', 
+        name: 'Cerrar Hallazgo', 
+        description: 'Cerrar hallazgo corregido', 
+        module: 'control' 
+      },
+      { 
+        id: 'control.view_action_plans', 
+        name: 'Ver Planes de Acción', 
+        description: 'Consultar planes de mejora', 
+        module: 'control' 
+      },
+      { 
+        id: 'control.create_action_plan', 
+        name: 'Crear Plan de Acción', 
+        description: 'Generar nuevo plan de mejora', 
+        module: 'control' 
+      },
+      { 
+        id: 'control.export', 
+        name: 'Exportar Datos', 
+        description: 'Descargar reportes de control', 
+        module: 'control' 
+      },
+      { 
+        id: 'control.view_dashboard', 
+        name: 'Ver Dashboard', 
+        description: 'Consultar métricas de control interno', 
+        module: 'control' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 11. DASHBOARD EJECUTIVO (8 permisos)
+  // ==========================================================================
+  {
+    id: 'dashboard',
+    name: 'Dashboard Ejecutivo',
+    icon: TrendingUp,
+    color: 'text-pink-600',
+    bgColor: 'bg-pink-50',
+    permissions: [
+      // VISTAS GENERALES
+      { 
+        id: 'dashboard.view', 
+        name: 'Ver Dashboard', 
+        description: 'Acceso al dashboard ejecutivo general', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.view_kpis', 
+        name: 'Ver KPIs', 
+        description: 'Consultar indicadores clave de rendimiento', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.export', 
+        name: 'Exportar Dashboard', 
+        description: 'Descargar reportes ejecutivos en Excel/PDF', 
+        module: 'dashboard' 
+      },
+      
+      // MÉTRICAS DE USUARIOS
+      { 
+        id: 'dashboard.users_total', 
+        name: 'Total Usuarios', 
+        description: 'Ver cantidad total de usuarios del sistema', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.users_active', 
+        name: 'Usuarios Activos', 
+        description: 'Ver usuarios activos en el sistema', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.users_growth', 
+        name: 'Crecimiento Usuarios', 
+        description: 'Ver tendencia de crecimiento de usuarios', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.users_retention', 
+        name: 'Retención Usuarios', 
+        description: 'Ver tasa de retención de usuarios', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.users_by_role', 
+        name: 'Usuarios por Rol', 
+        description: 'Ver distribución de usuarios por roles', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.users_by_location', 
+        name: 'Usuarios por Ubicación', 
+        description: 'Ver distribución de usuarios por ciudad/región', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.users_by_device', 
+        name: 'Usuarios por Dispositivo', 
+        description: 'Ver dispositivos utilizados por usuarios', 
+        module: 'dashboard' 
+      },
+      
+      // MÉTRICAS DE SEDE/TERRITORIAL
+      { 
+        id: 'dashboard.view_by_sede', 
+        name: 'Métricas por Sede', 
+        description: 'Filtrar dashboard por sede específica', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.view_by_territorial', 
+        name: 'Métricas por Territorial', 
+        description: 'Filtrar dashboard por dirección territorial', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.view_by_nacional', 
+        name: 'Métricas Nacionales', 
+        description: 'Ver consolidado nacional de todas las territoriales', 
+        module: 'dashboard' 
+      },
+      
+      // MÉTRICAS ACADÉMICAS
+      { 
+        id: 'dashboard.academic_programs', 
+        name: 'Programas Académicos', 
+        description: 'Ver métricas de programas académicos', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.students_metrics', 
+        name: 'Métricas Estudiantes', 
+        description: 'Ver estadísticas de estudiantes activos', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.professors_metrics', 
+        name: 'Métricas Profesores', 
+        description: 'Ver estadísticas de docentes', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.enrollment_metrics', 
+        name: 'Métricas Matrículas', 
+        description: 'Ver datos de proceso de matrículas', 
+        module: 'dashboard' 
+      },
+      
+      // MÉTRICAS DE SISTEMA
+      { 
+        id: 'dashboard.system_health', 
+        name: 'Salud del Sistema', 
+        description: 'Ver uptime, performance y estabilidad', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.api_metrics', 
+        name: 'Métricas API', 
+        description: 'Ver llamadas API, latencia y errores', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.security_metrics', 
+        name: 'Métricas Seguridad', 
+        description: 'Ver alertas de seguridad y cumplimiento', 
+        module: 'dashboard' 
+      },
+      
+      // MÉTRICAS DE CERTIFICADOS
+      { 
+        id: 'dashboard.certificates_labor', 
+        name: 'Certificados Laborales', 
+        description: 'Ver métricas de certificados laborales emitidos', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.certificates_academic', 
+        name: 'Certificados Académicos', 
+        description: 'Ver métricas de certificados académicos', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.certificates_graduates', 
+        name: 'Certificados Graduados', 
+        description: 'Ver verificación de títulos y grados', 
+        module: 'dashboard' 
+      },
+      
+      // ANÁLISIS AVANZADO
+      { 
+        id: 'dashboard.real_time', 
+        name: 'Datos Tiempo Real', 
+        description: 'Acceso a métricas en tiempo real (actualización automática)', 
+        module: 'dashboard' 
+      },
+      { 
+        id: 'dashboard.custom_reports', 
+        name: 'Reportes Personalizados', 
+        description: 'Crear y guardar reportes ejecutivos personalizados', 
+        module: 'dashboard' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 12. COMUNIDAD ESAP (9 permisos)
+  // ==========================================================================
+  {
+    id: 'community',
+    name: 'Comunidad ESAP',
+    icon: MessageSquare,
+    color: 'text-teal-600',
+    bgColor: 'bg-teal-50',
+    permissions: [
+      { 
+        id: 'community.view', 
+        name: 'Ver Comunidad', 
+        description: 'Acceso a la red social universitaria', 
+        module: 'community' 
+      },
+      { 
+        id: 'community.post', 
+        name: 'Crear Publicaciones', 
+        description: 'Publicar contenido en la comunidad', 
+        module: 'community' 
+      },
+      { 
+        id: 'community.moderate', 
+        name: 'Moderar Contenido', 
+        description: 'Moderar y eliminar publicaciones', 
+        module: 'community' 
+      },
+      { 
+        id: 'community.events', 
+        name: 'Gestionar Eventos', 
+        description: 'Crear y administrar eventos comunitarios', 
+        module: 'community' 
+      },
+      { 
+        id: 'community.announcements', 
+        name: 'Anuncios Oficiales', 
+        description: 'Publicar anuncios institucionales', 
+        module: 'community' 
+      },
+      { 
+        id: 'community.groups', 
+        name: 'Gestionar Grupos', 
+        description: 'Crear y administrar grupos de interés', 
+        module: 'community' 
+      },
+      { 
+        id: 'community.analytics', 
+        name: 'Ver Analíticas', 
+        description: 'Consultar métricas de engagement', 
+        module: 'community' 
+      },
+      { 
+        id: 'community.delete', 
+        name: 'Eliminar Contenido', 
+        description: 'Eliminar publicaciones y comentarios', 
+        module: 'community' 
+      },
+      { 
+        id: 'community.reports', 
+        name: 'Ver Reportes', 
+        description: 'Consultar reportes de usuarios', 
+        module: 'community' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 13. BOLSA DE EMPLEO (7 permisos)
+  // ==========================================================================
+  {
+    id: 'jobs',
+    name: 'Bolsa de Empleo',
+    icon: Briefcase,
+    color: 'text-orange-600',
+    bgColor: 'bg-orange-50',
+    permissions: [
+      { 
+        id: 'jobs.view', 
+        name: 'Ver Ofertas', 
+        description: 'Consultar ofertas laborales publicadas', 
+        module: 'jobs' 
+      },
+      { 
+        id: 'jobs.create', 
+        name: 'Publicar Ofertas', 
+        description: 'Crear nuevas ofertas de empleo', 
+        module: 'jobs' 
+      },
+      { 
+        id: 'jobs.edit', 
+        name: 'Editar Ofertas', 
+        description: 'Modificar ofertas existentes', 
+        module: 'jobs' 
+      },
+      { 
+        id: 'jobs.delete', 
+        name: 'Eliminar Ofertas', 
+        description: 'Dar de baja ofertas laborales', 
+        module: 'jobs' 
+      },
+      { 
+        id: 'jobs.manage', 
+        name: 'Gestionar Ofertas', 
+        description: 'Administrar bolsa de trabajo completa', 
+        module: 'jobs' 
+      },
+      { 
+        id: 'jobs.applications', 
+        name: 'Ver Aplicaciones', 
+        description: 'Revisar postulaciones de candidatos', 
+        module: 'jobs' 
+      },
+      { 
+        id: 'jobs.analytics', 
+        name: 'Analíticas de Empleo', 
+        description: 'Ver estadísticas de empleabilidad', 
+        module: 'jobs' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 14. CERTIFICADOS ACADÉMICOS (6 permisos)
+  // ==========================================================================
+  {
+    id: 'certificates',
+    name: 'Certificados Académicos',
+    icon: FileText,
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50',
+    permissions: [
+      { 
+        id: 'certificates.view', 
+        name: 'Ver Solicitudes', 
+        description: 'Consultar solicitudes de certificados', 
+        module: 'certificates' 
+      },
+      { 
+        id: 'certificates.generate', 
+        name: 'Generar Certificados', 
+        description: 'Emitir certificados académicos', 
+        module: 'certificates' 
+      },
+      { 
+        id: 'certificates.approve', 
+        name: 'Aprobar Solicitudes', 
+        description: 'Aprobar/rechazar solicitudes', 
+        module: 'certificates' 
+      },
+      { 
+        id: 'certificates.verify', 
+        name: 'Verificar Certificados', 
+        description: 'Validar autenticidad de certificados', 
+        module: 'certificates' 
+      },
+      { 
+        id: 'certificates.export', 
+        name: 'Exportar Certificados', 
+        description: 'Descargar registros', 
+        module: 'certificates' 
+      },
+      { 
+        id: 'certificates.manage_templates', 
+        name: 'Gestionar Plantillas', 
+        description: 'Administrar plantillas de certificados', 
+        module: 'certificates' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 15. CARPETA DIGITAL (5 permisos)
+  // ==========================================================================
+  {
+    id: 'documents',
+    name: 'Carpeta Digital',
+    icon: FolderOpen,
+    color: 'text-blue-600',
+    bgColor: 'bg-blue-50',
+    permissions: [
+      { 
+        id: 'documents.view', 
+        name: 'Ver Documentos', 
+        description: 'Consultar documentos de estudiantes', 
+        module: 'documents' 
+      },
+      { 
+        id: 'documents.upload', 
+        name: 'Cargar Documentos', 
+        description: 'Subir archivos a carpeta digital', 
+        module: 'documents' 
+      },
+      { 
+        id: 'documents.manage', 
+        name: 'Gestionar Documentos', 
+        description: 'Administrar carpeta digital completa', 
+        module: 'documents' 
+      },
+      { 
+        id: 'documents.validate', 
+        name: 'Validar Documentos', 
+        description: 'Aprobar/rechazar documentos cargados', 
+        module: 'documents' 
+      },
+      { 
+        id: 'documents.download', 
+        name: 'Descargar Documentos', 
+        description: 'Descargar archivos de carpeta digital', 
+        module: 'documents' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 16. REPORTES (7 permisos)
+  // ==========================================================================
+  {
+    id: 'reports',
+    name: 'Reportes',
+    icon: BarChart3,
+    color: 'text-indigo-600',
+    bgColor: 'bg-indigo-50',
+    permissions: [
+      { 
+        id: 'reports.view', 
+        name: 'Ver Reportes', 
+        description: 'Consultar reportes del sistema', 
+        module: 'reports' 
+      },
+      { 
+        id: 'reports.create', 
+        name: 'Crear Reportes', 
+        description: 'Generar nuevos reportes', 
+        module: 'reports' 
+      },
+      { 
+        id: 'reports.export', 
+        name: 'Exportar Reportes', 
+        description: 'Descargar reportes en Excel/PDF', 
+        module: 'reports' 
+      },
+      { 
+        id: 'reports.schedule', 
+        name: 'Programar Reportes', 
+        description: 'Automatizar generación de reportes', 
+        module: 'reports' 
+      },
+      { 
+        id: 'reports.analytics', 
+        name: 'Analíticas Avanzadas', 
+        description: 'Acceso a herramientas de análisis', 
+        module: 'reports' 
+      },
+      { 
+        id: 'reports.custom', 
+        name: 'Reportes Personalizados', 
+        description: 'Crear reportes con filtros personalizados', 
+        module: 'reports' 
+      },
+      { 
+        id: 'reports.share', 
+        name: 'Compartir Reportes', 
+        description: 'Compartir reportes con otros usuarios', 
+        module: 'reports' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 17. AUDITORÍA (7 permisos)
+  // ==========================================================================
+  {
+    id: 'audit',
+    name: 'Auditoría',
+    icon: ScrollText,
+    color: 'text-red-600',
+    bgColor: 'bg-red-50',
+    permissions: [
+      { 
+        id: 'audit.view', 
+        name: 'Ver Logs', 
+        description: 'Consultar logs de auditoría del sistema', 
+        module: 'audit' 
+      },
+      { 
+        id: 'audit.export', 
+        name: 'Exportar Logs', 
+        description: 'Descargar registros de auditoría', 
+        module: 'audit' 
+      },
+      { 
+        id: 'audit.analyze', 
+        name: 'Analizar Actividad', 
+        description: 'Análisis de seguridad y comportamiento', 
+        module: 'audit' 
+      },
+      { 
+        id: 'audit.security', 
+        name: 'Gestión de Seguridad', 
+        description: 'Administrar políticas de seguridad', 
+        module: 'audit' 
+      },
+      { 
+        id: 'audit.compliance', 
+        name: 'Cumplimiento Normativo', 
+        description: 'Verificar cumplimiento de normativas', 
+        module: 'audit' 
+      },
+      { 
+        id: 'audit.alerts', 
+        name: 'Alertas de Seguridad', 
+        description: 'Configurar alertas de eventos críticos', 
+        module: 'audit' 
+      },
+      { 
+        id: 'audit.user_activity', 
+        name: 'Actividad de Usuarios', 
+        description: 'Rastrear actividad de usuarios específicos', 
+        module: 'audit' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 18. ROLES Y PERMISOS (8 permisos)
+  // ==========================================================================
+  {
+    id: 'roles',
+    name: 'Roles y Permisos',
+    icon: Shield,
+    color: 'text-slate-600',
+    bgColor: 'bg-slate-50',
+    permissions: [
+      { 
+        id: 'roles.view', 
+        name: 'Ver Roles', 
+        description: 'Consultar roles del sistema', 
+        module: 'roles' 
+      },
+      { 
+        id: 'roles.create', 
+        name: 'Crear Roles', 
+        description: 'Crear nuevos roles personalizados', 
+        module: 'roles' 
+      },
+      { 
+        id: 'roles.edit', 
+        name: 'Editar Roles', 
+        description: 'Modificar roles existentes', 
+        module: 'roles' 
+      },
+      { 
+        id: 'roles.delete', 
+        name: 'Eliminar Roles', 
+        description: 'Eliminar roles del sistema', 
+        module: 'roles' 
+      },
+      { 
+        id: 'roles.assign_permissions', 
+        name: 'Asignar Permisos', 
+        description: 'Configurar permisos de roles', 
+        module: 'roles' 
+      },
+      { 
+        id: 'roles.manage_access', 
+        name: 'Gestionar Accesos', 
+        description: 'Administrar control de acceso', 
+        module: 'roles' 
+      },
+      { 
+        id: 'roles.generate_qr', 
+        name: 'Generar QR de Roles', 
+        description: 'Generar códigos QR para asignación de roles', 
+        module: 'roles' 
+      },
+      { 
+        id: 'roles.audit', 
+        name: 'Auditar Roles', 
+        description: 'Ver historial de cambios en roles', 
+        module: 'roles' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 19. ADMINISTRACIÓN (8 permisos)
+  // ==========================================================================
+  {
+    id: 'admin',
+    name: 'Administración del Sistema',
+    icon: Settings,
+    color: 'text-gray-600',
+    bgColor: 'bg-gray-50',
+    permissions: [
+      { 
+        id: 'admin.settings', 
+        name: 'Configuración General', 
+        description: 'Ajustes generales del sistema', 
+        module: 'admin' 
+      },
+      { 
+        id: 'admin.backup', 
+        name: 'Respaldos', 
+        description: 'Gestionar backups del sistema', 
+        module: 'admin' 
+      },
+      { 
+        id: 'admin.maintenance', 
+        name: 'Mantenimiento', 
+        description: 'Modo de mantenimiento y actualizaciones', 
+        module: 'admin' 
+      },
+      { 
+        id: 'admin.integrations', 
+        name: 'Integraciones', 
+        description: 'Configurar integraciones externas', 
+        module: 'admin' 
+      },
+      { 
+        id: 'admin.notifications', 
+        name: 'Notificaciones Sistema', 
+        description: 'Gestionar notificaciones globales', 
+        module: 'admin' 
+      },
+      { 
+        id: 'admin.database', 
+        name: 'Gestión de Base de Datos', 
+        description: 'Administración avanzada de BD', 
+        module: 'admin' 
+      },
+      { 
+        id: 'admin.logs', 
+        name: 'Logs del Sistema', 
+        description: 'Consultar logs técnicos del sistema', 
+        module: 'admin' 
+      },
+      { 
+        id: 'admin.performance', 
+        name: 'Monitoreo de Rendimiento', 
+        description: 'Monitorear performance del sistema', 
+        module: 'admin' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // ========== PORTAL TRANSACCIONAL - PERMISOS DE USUARIOS FINALES ==========
+  // ==========================================================================
+
+  // ==========================================================================
+  // 20. PERFIL Y CUENTA - PORTAL (12 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_profile',
+    name: '👤 Portal: Perfil y Cuenta',
+    icon: Users,
+    color: 'text-blue-600',
+    bgColor: 'bg-blue-50',
+    permissions: [
+      { 
+        id: 'portal.profile.view', 
+        name: 'Ver Perfil', 
+        description: 'Visualizar perfil propio y de otros usuarios', 
+        module: 'portal_profile' 
+      },
+      { 
+        id: 'portal.profile.edit', 
+        name: 'Editar Perfil', 
+        description: 'Modificar información personal del perfil', 
+        module: 'portal_profile' 
+      },
+      { 
+        id: 'portal.profile.upload_photo', 
+        name: 'Subir Foto de Perfil', 
+        description: 'Cambiar foto de perfil', 
+        module: 'portal_profile' 
+      },
+      { 
+        id: 'portal.profile.privacy', 
+        name: 'Configurar Privacidad', 
+        description: 'Ajustar configuración de privacidad del perfil', 
+        module: 'portal_profile' 
+      },
+      { 
+        id: 'portal.profile.change_password', 
+        name: 'Cambiar Contraseña', 
+        description: 'Modificar contraseña de acceso', 
+        module: 'portal_profile' 
+      },
+      { 
+        id: 'portal.profile.enable_2fa', 
+        name: 'Activar 2FA', 
+        description: 'Habilitar autenticación de dos factores', 
+        module: 'portal_profile' 
+      },
+      { 
+        id: 'portal.profile.view_activity', 
+        name: 'Ver Historial de Actividad', 
+        description: 'Consultar historial de acciones', 
+        module: 'portal_profile' 
+      },
+      { 
+        id: 'portal.profile.export_data', 
+        name: 'Exportar Datos Personales', 
+        description: 'Descargar información personal (GDPR)', 
+        module: 'portal_profile' 
+      },
+      { 
+        id: 'portal.profile.delete_account', 
+        name: 'Eliminar Cuenta', 
+        description: 'Solicitar eliminación permanente de cuenta', 
+        module: 'portal_profile' 
+      },
+      { 
+        id: 'portal.profile.verify_identity', 
+        name: 'Verificar Identidad', 
+        description: 'Proceso de verificación de identidad', 
+        module: 'portal_profile' 
+      },
+      { 
+        id: 'portal.profile.view_stats', 
+        name: 'Ver Estadísticas', 
+        description: 'Ver estadísticas y métricas de perfil', 
+        module: 'portal_profile' 
+      },
+      { 
+        id: 'portal.profile.customize_theme', 
+        name: 'Personalizar Tema', 
+        description: 'Cambiar apariencia y tema del portal', 
+        module: 'portal_profile' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 21. PUBLICACIONES Y FEED - PORTAL (15 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_posts',
+    name: '📱 Portal: Publicaciones y Feed',
+    icon: MessageSquare,
+    color: 'text-green-600',
+    bgColor: 'bg-green-50',
+    permissions: [
+      { 
+        id: 'portal.posts.view_feed', 
+        name: 'Ver Feed', 
+        description: 'Visualizar feed de publicaciones de la comunidad', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.create', 
+        name: 'Crear Publicación', 
+        description: 'Publicar contenido en el feed', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.edit_own', 
+        name: 'Editar Publicaciones Propias', 
+        description: 'Modificar publicaciones creadas por uno mismo', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.delete_own', 
+        name: 'Eliminar Publicaciones Propias', 
+        description: 'Borrar publicaciones creadas por uno mismo', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.like', 
+        name: 'Dar Like', 
+        description: 'Reaccionar con "me gusta" a publicaciones', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.unlike', 
+        name: 'Quitar Like', 
+        description: 'Quitar "me gusta" de publicaciones', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.comment', 
+        name: 'Comentar', 
+        description: 'Escribir comentarios en publicaciones', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.edit_comment', 
+        name: 'Editar Comentarios', 
+        description: 'Modificar comentarios propios', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.delete_comment', 
+        name: 'Eliminar Comentarios', 
+        description: 'Borrar comentarios propios', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.share', 
+        name: 'Compartir Publicaciones', 
+        description: 'Compartir publicaciones en el feed', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.save', 
+        name: 'Guardar Publicaciones', 
+        description: 'Guardar publicaciones en favoritos', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.unsave', 
+        name: 'Quitar de Guardadas', 
+        description: 'Remover publicaciones de favoritos', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.report', 
+        name: 'Reportar Contenido', 
+        description: 'Reportar contenido inapropiado', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.view_saved', 
+        name: 'Ver Publicaciones Guardadas', 
+        description: 'Acceder a publicaciones guardadas', 
+        module: 'portal_posts' 
+      },
+      { 
+        id: 'portal.posts.upload_media', 
+        name: 'Subir Multimedia', 
+        description: 'Adjuntar imágenes y videos a publicaciones', 
+        module: 'portal_posts' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 22. GRUPOS Y COMUNIDADES - PORTAL (10 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_groups',
+    name: '👥 Portal: Grupos y Comunidades',
+    icon: Users,
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50',
+    permissions: [
+      { 
+        id: 'portal.groups.view', 
+        name: 'Ver Grupos', 
+        description: 'Visualizar grupos y comunidades disponibles', 
+        module: 'portal_groups' 
+      },
+      { 
+        id: 'portal.groups.create', 
+        name: 'Crear Grupo', 
+        description: 'Crear nuevos grupos de interés', 
+        module: 'portal_groups' 
+      },
+      { 
+        id: 'portal.groups.join', 
+        name: 'Unirse a Grupo', 
+        description: 'Unirse a grupos públicos o por invitación', 
+        module: 'portal_groups' 
+      },
+      { 
+        id: 'portal.groups.leave', 
+        name: 'Salir de Grupo', 
+        description: 'Abandonar grupos', 
+        module: 'portal_groups' 
+      },
+      { 
+        id: 'portal.groups.admin_own', 
+        name: 'Administrar Grupos Propios', 
+        description: 'Gestionar grupos creados por uno mismo', 
+        module: 'portal_groups' 
+      },
+      { 
+        id: 'portal.groups.invite', 
+        name: 'Invitar Miembros', 
+        description: 'Invitar usuarios a grupos', 
+        module: 'portal_groups' 
+      },
+      { 
+        id: 'portal.groups.remove_member', 
+        name: 'Remover Miembros', 
+        description: 'Expulsar miembros del grupo (administradores)', 
+        module: 'portal_groups' 
+      },
+      { 
+        id: 'portal.groups.edit', 
+        name: 'Editar Grupo', 
+        description: 'Modificar información del grupo', 
+        module: 'portal_groups' 
+      },
+      { 
+        id: 'portal.groups.delete', 
+        name: 'Eliminar Grupo', 
+        description: 'Borrar grupos propios', 
+        module: 'portal_groups' 
+      },
+      { 
+        id: 'portal.groups.post', 
+        name: 'Publicar en Grupo', 
+        description: 'Crear publicaciones dentro del grupo', 
+        module: 'portal_groups' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 23. EVENTOS - PORTAL (9 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_events',
+    name: '📅 Portal: Eventos',
+    icon: CalendarDays,
+    color: 'text-indigo-600',
+    bgColor: 'bg-indigo-50',
+    permissions: [
+      { 
+        id: 'portal.events.view', 
+        name: 'Ver Eventos', 
+        description: 'Visualizar eventos disponibles', 
+        module: 'portal_events' 
+      },
+      { 
+        id: 'portal.events.create', 
+        name: 'Crear Evento', 
+        description: 'Crear nuevos eventos (roles autorizados)', 
+        module: 'portal_events' 
+      },
+      { 
+        id: 'portal.events.edit_own', 
+        name: 'Editar Eventos Propios', 
+        description: 'Modificar eventos creados', 
+        module: 'portal_events' 
+      },
+      { 
+        id: 'portal.events.delete_own', 
+        name: 'Eliminar Eventos Propios', 
+        description: 'Borrar eventos creados', 
+        module: 'portal_events' 
+      },
+      { 
+        id: 'portal.events.register', 
+        name: 'Registrarse a Evento', 
+        description: 'Inscribirse en eventos', 
+        module: 'portal_events' 
+      },
+      { 
+        id: 'portal.events.cancel_registration', 
+        name: 'Cancelar Registro', 
+        description: 'Cancelar inscripción en evento', 
+        module: 'portal_events' 
+      },
+      { 
+        id: 'portal.events.view_my_events', 
+        name: 'Ver Mis Eventos', 
+        description: 'Ver eventos a los que estoy inscrito', 
+        module: 'portal_events' 
+      },
+      { 
+        id: 'portal.events.comment', 
+        name: 'Comentar en Eventos', 
+        description: 'Escribir comentarios en eventos', 
+        module: 'portal_events' 
+      },
+      { 
+        id: 'portal.events.rate', 
+        name: 'Calificar Eventos', 
+        description: 'Calificar eventos asistidos', 
+        module: 'portal_events' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 24. NOTICIAS Y ANUNCIOS - PORTAL (6 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_news',
+    name: '📰 Portal: Noticias y Anuncios',
+    icon: FileText,
+    color: 'text-orange-600',
+    bgColor: 'bg-orange-50',
+    permissions: [
+      { 
+        id: 'portal.news.view', 
+        name: 'Ver Noticias', 
+        description: 'Leer noticias y anuncios institucionales', 
+        module: 'portal_news' 
+      },
+      { 
+        id: 'portal.news.comment', 
+        name: 'Comentar Noticias', 
+        description: 'Escribir comentarios en noticias', 
+        module: 'portal_news' 
+      },
+      { 
+        id: 'portal.news.like', 
+        name: 'Dar Like a Noticias', 
+        description: 'Reaccionar a noticias institucionales', 
+        module: 'portal_news' 
+      },
+      { 
+        id: 'portal.news.share', 
+        name: 'Compartir Noticias', 
+        description: 'Compartir noticias en el feed', 
+        module: 'portal_news' 
+      },
+      { 
+        id: 'portal.news.save', 
+        name: 'Guardar Noticias', 
+        description: 'Guardar noticias en favoritos', 
+        module: 'portal_news' 
+      },
+      { 
+        id: 'portal.news.view_saved', 
+        name: 'Ver Noticias Guardadas', 
+        description: 'Acceder a noticias guardadas', 
+        module: 'portal_news' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 25. BOLSA DE EMPLEO - PORTAL (8 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_jobs',
+    name: '💼 Portal: Bolsa de Empleo',
+    icon: Briefcase,
+    color: 'text-cyan-600',
+    bgColor: 'bg-cyan-50',
+    permissions: [
+      { 
+        id: 'portal.jobs.view', 
+        name: 'Ver Ofertas Laborales', 
+        description: 'Visualizar ofertas de empleo disponibles', 
+        module: 'portal_jobs' 
+      },
+      { 
+        id: 'portal.jobs.apply', 
+        name: 'Aplicar a Empleos', 
+        description: 'Postularse a ofertas laborales', 
+        module: 'portal_jobs' 
+      },
+      { 
+        id: 'portal.jobs.save', 
+        name: 'Guardar Ofertas', 
+        description: 'Marcar ofertas como favoritas', 
+        module: 'portal_jobs' 
+      },
+      { 
+        id: 'portal.jobs.view_applications', 
+        name: 'Ver Mis Aplicaciones', 
+        description: 'Ver postulaciones enviadas', 
+        module: 'portal_jobs' 
+      },
+      { 
+        id: 'portal.jobs.withdraw_application', 
+        name: 'Retirar Aplicación', 
+        description: 'Cancelar postulación enviada', 
+        module: 'portal_jobs' 
+      },
+      { 
+        id: 'portal.jobs.upload_cv', 
+        name: 'Subir Hoja de Vida', 
+        description: 'Cargar CV al perfil', 
+        module: 'portal_jobs' 
+      },
+      { 
+        id: 'portal.jobs.update_cv', 
+        name: 'Actualizar CV', 
+        description: 'Modificar hoja de vida', 
+        module: 'portal_jobs' 
+      },
+      { 
+        id: 'portal.jobs.create_offer', 
+        name: 'Publicar Oferta Laboral', 
+        description: 'Crear ofertas de empleo (graduados/empresas)', 
+        module: 'portal_jobs' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 26. MENSAJERÍA - PORTAL (10 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_messages',
+    name: '💬 Portal: Mensajería',
+    icon: MessageSquare,
+    color: 'text-teal-600',
+    bgColor: 'bg-teal-50',
+    permissions: [
+      { 
+        id: 'portal.messages.view', 
+        name: 'Ver Mensajes', 
+        description: 'Acceder a bandeja de mensajes privados', 
+        module: 'portal_messages' 
+      },
+      { 
+        id: 'portal.messages.send', 
+        name: 'Enviar Mensajes', 
+        description: 'Enviar mensajes privados a usuarios', 
+        module: 'portal_messages' 
+      },
+      { 
+        id: 'portal.messages.reply', 
+        name: 'Responder Mensajes', 
+        description: 'Responder mensajes recibidos', 
+        module: 'portal_messages' 
+      },
+      { 
+        id: 'portal.messages.delete', 
+        name: 'Eliminar Mensajes', 
+        description: 'Borrar mensajes de conversaciones', 
+        module: 'portal_messages' 
+      },
+      { 
+        id: 'portal.messages.view_conversations', 
+        name: 'Ver Conversaciones', 
+        description: 'Ver historial de conversaciones', 
+        module: 'portal_messages' 
+      },
+      { 
+        id: 'portal.messages.create_group_chat', 
+        name: 'Crear Chat Grupal', 
+        description: 'Iniciar conversaciones grupales', 
+        module: 'portal_messages' 
+      },
+      { 
+        id: 'portal.messages.leave_group_chat', 
+        name: 'Salir de Chat Grupal', 
+        description: 'Abandonar chats grupales', 
+        module: 'portal_messages' 
+      },
+      { 
+        id: 'portal.messages.block_user', 
+        name: 'Bloquear Usuario', 
+        description: 'Bloquear usuarios en mensajería', 
+        module: 'portal_messages' 
+      },
+      { 
+        id: 'portal.messages.unblock_user', 
+        name: 'Desbloquear Usuario', 
+        description: 'Desbloquear usuarios bloqueados', 
+        module: 'portal_messages' 
+      },
+      { 
+        id: 'portal.messages.attach_files', 
+        name: 'Adjuntar Archivos', 
+        description: 'Enviar archivos en mensajes', 
+        module: 'portal_messages' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 27. NOTIFICACIONES - PORTAL (7 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_notifications',
+    name: '🔔 Portal: Notificaciones',
+    icon: Bell,
+    color: 'text-red-600',
+    bgColor: 'bg-red-50',
+    permissions: [
+      { 
+        id: 'portal.notifications.view', 
+        name: 'Ver Notificaciones', 
+        description: 'Acceder al centro de notificaciones', 
+        module: 'portal_notifications' 
+      },
+      { 
+        id: 'portal.notifications.mark_read', 
+        name: 'Marcar como Leída', 
+        description: 'Marcar notificaciones individuales como leídas', 
+        module: 'portal_notifications' 
+      },
+      { 
+        id: 'portal.notifications.mark_all_read', 
+        name: 'Marcar Todas Leídas', 
+        description: 'Marcar todas las notificaciones como leídas', 
+        module: 'portal_notifications' 
+      },
+      { 
+        id: 'portal.notifications.delete', 
+        name: 'Eliminar Notificaciones', 
+        description: 'Borrar notificaciones', 
+        module: 'portal_notifications' 
+      },
+      { 
+        id: 'portal.notifications.configure', 
+        name: 'Configurar Notificaciones', 
+        description: 'Ajustar preferencias de notificaciones', 
+        module: 'portal_notifications' 
+      },
+      { 
+        id: 'portal.notifications.email_alerts', 
+        name: 'Alertas por Email', 
+        description: 'Recibir notificaciones por correo electrónico', 
+        module: 'portal_notifications' 
+      },
+      { 
+        id: 'portal.notifications.push_alerts', 
+        name: 'Alertas Push', 
+        description: 'Recibir notificaciones push en dispositivos', 
+        module: 'portal_notifications' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 28. BÚSQUEDA Y DESCUBRIMIENTO - PORTAL (6 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_search',
+    name: '🔍 Portal: Búsqueda',
+    icon: Users,
+    color: 'text-gray-600',
+    bgColor: 'bg-gray-50',
+    permissions: [
+      { 
+        id: 'portal.search.users', 
+        name: 'Buscar Usuarios', 
+        description: 'Buscar y encontrar otros usuarios', 
+        module: 'portal_search' 
+      },
+      { 
+        id: 'portal.search.posts', 
+        name: 'Buscar Publicaciones', 
+        description: 'Buscar contenido en el feed', 
+        module: 'portal_search' 
+      },
+      { 
+        id: 'portal.search.events', 
+        name: 'Buscar Eventos', 
+        description: 'Buscar eventos académicos y sociales', 
+        module: 'portal_search' 
+      },
+      { 
+        id: 'portal.search.groups', 
+        name: 'Buscar Grupos', 
+        description: 'Buscar grupos y comunidades', 
+        module: 'portal_search' 
+      },
+      { 
+        id: 'portal.search.jobs', 
+        name: 'Buscar Empleos', 
+        description: 'Buscar ofertas laborales', 
+        module: 'portal_search' 
+      },
+      { 
+        id: 'portal.search.advanced_filters', 
+        name: 'Filtros Avanzados', 
+        description: 'Usar filtros avanzados de búsqueda', 
+        module: 'portal_search' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 29. CONEXIONES Y RED - PORTAL (8 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_connections',
+    name: '🤝 Portal: Conexiones',
+    icon: UserPlus,
+    color: 'text-pink-600',
+    bgColor: 'bg-pink-50',
+    permissions: [
+      { 
+        id: 'portal.connections.view', 
+        name: 'Ver Conexiones', 
+        description: 'Ver lista de conexiones y amigos', 
+        module: 'portal_connections' 
+      },
+      { 
+        id: 'portal.connections.send_request', 
+        name: 'Enviar Solicitud', 
+        description: 'Enviar solicitud de conexión a usuarios', 
+        module: 'portal_connections' 
+      },
+      { 
+        id: 'portal.connections.accept_request', 
+        name: 'Aceptar Solicitud', 
+        description: 'Aceptar solicitudes de conexión recibidas', 
+        module: 'portal_connections' 
+      },
+      { 
+        id: 'portal.connections.reject_request', 
+        name: 'Rechazar Solicitud', 
+        description: 'Rechazar solicitudes de conexión', 
+        module: 'portal_connections' 
+      },
+      { 
+        id: 'portal.connections.remove', 
+        name: 'Eliminar Conexión', 
+        description: 'Quitar conexión establecida', 
+        module: 'portal_connections' 
+      },
+      { 
+        id: 'portal.connections.view_suggestions', 
+        name: 'Ver Sugerencias', 
+        description: 'Ver usuarios sugeridos para conectar', 
+        module: 'portal_connections' 
+      },
+      { 
+        id: 'portal.connections.follow', 
+        name: 'Seguir Usuario', 
+        description: 'Seguir usuarios públicos', 
+        module: 'portal_connections' 
+      },
+      { 
+        id: 'portal.connections.unfollow', 
+        name: 'Dejar de Seguir', 
+        description: 'Dejar de seguir usuarios', 
+        module: 'portal_connections' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 30. ACADÉMICO PORTAL (7 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_academic',
+    name: '📚 Portal: Servicios Académicos',
+    icon: BookOpen,
+    color: 'text-violet-600',
+    bgColor: 'bg-violet-50',
+    permissions: [
+      { 
+        id: 'portal.academic.view_grades', 
+        name: 'Ver Calificaciones', 
+        description: 'Consultar calificaciones y notas', 
+        module: 'portal_academic' 
+      },
+      { 
+        id: 'portal.academic.view_schedule', 
+        name: 'Ver Horario', 
+        description: 'Ver horario de clases y actividades', 
+        module: 'portal_academic' 
+      },
+      { 
+        id: 'portal.academic.view_calendar', 
+        name: 'Ver Calendario Académico', 
+        description: 'Consultar calendario académico institucional', 
+        module: 'portal_academic' 
+      },
+      { 
+        id: 'portal.academic.view_program', 
+        name: 'Ver Programa Académico', 
+        description: 'Consultar plan de estudios y pensum', 
+        module: 'portal_academic' 
+      },
+      { 
+        id: 'portal.academic.request_certificate', 
+        name: 'Solicitar Certificados', 
+        description: 'Pedir certificados académicos', 
+        module: 'portal_academic' 
+      },
+      { 
+        id: 'portal.academic.view_documents', 
+        name: 'Ver Carpeta Digital', 
+        description: 'Acceder a documentos académicos', 
+        module: 'portal_academic' 
+      },
+      { 
+        id: 'portal.academic.upload_documents', 
+        name: 'Subir Documentos', 
+        description: 'Cargar documentos a carpeta digital', 
+        module: 'portal_academic' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 31. MODERACIÓN PORTAL (8 permisos)
+  // ==========================================================================
+  {
+    id: 'portal_moderation',
+    name: '🛡️ Portal: Moderación',
+    icon: Shield,
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-50',
+    permissions: [
+      { 
+        id: 'portal.moderate.view_reports', 
+        name: 'Ver Reportes', 
+        description: 'Ver contenido reportado por usuarios', 
+        module: 'portal_moderation' 
+      },
+      { 
+        id: 'portal.moderate.delete_content', 
+        name: 'Eliminar Contenido', 
+        description: 'Borrar publicaciones de otros usuarios', 
+        module: 'portal_moderation' 
+      },
+      { 
+        id: 'portal.moderate.block_user', 
+        name: 'Bloquear Usuario', 
+        description: 'Bloquear usuarios del portal', 
+        module: 'portal_moderation' 
+      },
+      { 
+        id: 'portal.moderate.unblock_user', 
+        name: 'Desbloquear Usuario', 
+        description: 'Desbloquear usuarios bloqueados', 
+        module: 'portal_moderation' 
+      },
+      { 
+        id: 'portal.moderate.warn_user', 
+        name: 'Advertir Usuario', 
+        description: 'Enviar advertencia a usuarios', 
+        module: 'portal_moderation' 
+      },
+      { 
+        id: 'portal.moderate.close_report', 
+        name: 'Cerrar Reporte', 
+        description: 'Cerrar reportes resueltos', 
+        module: 'portal_moderation' 
+      },
+      { 
+        id: 'portal.moderate.ban_user', 
+        name: 'Expulsar Usuario', 
+        description: 'Expulsar usuarios permanentemente del portal', 
+        module: 'portal_moderation' 
+      },
+      { 
+        id: 'portal.moderate.view_analytics', 
+        name: 'Ver Analíticas de Moderación', 
+        description: 'Ver métricas y estadísticas de moderación', 
+        module: 'portal_moderation' 
+      },
+    ]
+  },
+];
+
+// ============================================================================
+// ESTADÍSTICAS
+// ============================================================================
+
+export const PERMISSIONS_STATS = {
+  totalModules: PERMISSION_MODULES.length,
+  totalPermissions: PERMISSION_MODULES.reduce((acc, m) => acc + m.permissions.length, 0),
+  backofficeModules: 19,
+  portalModules: 12,
+  systemModules: 1,
+  lastUpdated: '2025-11-30',
+  version: '3.0.0'
+};
+
+// ============================================================================
+// EXPORT DEFAULT
+// ============================================================================
+
+export default PERMISSION_MODULES;
