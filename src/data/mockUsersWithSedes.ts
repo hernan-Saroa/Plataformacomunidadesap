@@ -36,6 +36,7 @@ export interface UserWithSedes {
   avatar?: string;
   documentType: string;
   documentNumber: string;
+  documentIssueDate?: string;  // ✅ NUEVO: Fecha de expedición del documento
   birthDate?: string;
   address?: string;
   program?: string;  // ✅ NUEVO: Programa académico para graduados
@@ -515,6 +516,7 @@ export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
     lastLogin: '2024-12-01T14:30:00',
     documentType: 'CC',
     documentNumber: '52987654',
+    documentIssueDate: '2013-04-15',  // ✅ Fecha expedición documento
     birthDate: '1995-04-15',
     program: 'Administración Pública Territorial',
     address: 'Calle 50 # 15-30, Bogotá'
@@ -545,6 +547,7 @@ export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
     lastLogin: '2024-11-28T09:15:00',
     documentType: 'CC',
     documentNumber: '1098234567',
+    documentIssueDate: '2011-11-22',  // ✅ Fecha expedición documento
     birthDate: '1993-11-22',
     program: 'Especialización en Gestión Pública',
     address: 'Carrera 45 # 78-20, Medellín'
@@ -575,6 +578,7 @@ export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
     lastLogin: '2024-12-03T16:45:00',
     documentType: 'CC',
     documentNumber: '31876543',
+    documentIssueDate: '2014-07-08',  // ✅ Fecha expedición documento
     birthDate: '1996-07-08',
     program: 'Administración Pública Territorial',
     address: 'Avenida 6N # 25-40, Cali'
@@ -605,6 +609,7 @@ export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
     lastLogin: '2024-11-30T11:20:00',
     documentType: 'CC',
     documentNumber: '72456789',
+    documentIssueDate: '2012-03-12',  // ✅ Fecha expedición documento
     birthDate: '1994-03-12',
     program: 'Tecnología en Gestión Pública',
     address: 'Calle 84 # 52-10, Barranquilla'
@@ -630,14 +635,15 @@ export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
         esPrincipal: true
       }
     ],
-    enrollmentMethod: 'massive',
-    enrollmentDate: '2019-02-28',
-    lastLogin: '2024-12-04T08:30:00',
+    enrollmentMethod: 'manual',
+    enrollmentDate: '2019-03-10',
+    lastLogin: '2024-12-02T13:45:00',
     documentType: 'CC',
     documentNumber: '63234567',
-    birthDate: '1992-09-25',
-    program: 'Especialización en Alta Gerencia',
-    address: 'Carrera 27 # 40-55, Bucaramanga'
+    documentIssueDate: '2010-09-18',  // ✅ Fecha expedición documento
+    birthDate: '1992-09-18',
+    program: 'Administración Pública',
+    address: 'Carrera 27 # 40-15, Bucaramanga'
   },
   {
     id: 'user-021',
@@ -665,6 +671,7 @@ export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
     lastLogin: '2024-12-02T13:15:00',
     documentType: 'CC',
     documentNumber: '1134567890',
+    documentIssueDate: '2015-01-30',  // ✅ Fecha expedición documento
     birthDate: '1997-01-30',
     program: 'Administración Pública Territorial',
     address: 'Manga, Calle 25 # 20-15, Cartagena'
@@ -695,6 +702,7 @@ export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
     lastLogin: '2024-12-05T10:45:00',
     documentType: 'CC',
     documentNumber: '42789012',
+    documentIssueDate: '2013-12-05',  // ✅ Fecha expedición documento
     birthDate: '1995-12-05',
     program: 'Administración Municipal',
     address: 'Avenida Santander # 56-30, Manizales'
@@ -725,6 +733,7 @@ export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
     lastLogin: '2024-11-29T15:30:00',
     documentType: 'CC',
     documentNumber: '10567890',
+    documentIssueDate: '2011-05-18',  // ✅ Fecha expedición documento
     birthDate: '1993-05-18',
     program: 'Especialización en Gestión Pública',
     address: 'Calle 14 # 22-45, Pereira'
@@ -755,6 +764,7 @@ export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
     lastLogin: '2024-12-04T12:00:00',
     documentType: 'CC',
     documentNumber: '59345678',
+    documentIssueDate: '2014-10-22',  // ✅ Fecha expedición documento
     birthDate: '1996-10-22',
     program: 'Tecnología en Gestión Pública',
     address: 'Carrera 26 # 18-70, Pasto'
@@ -785,8 +795,43 @@ export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
     lastLogin: '2024-12-01T09:40:00',
     documentType: 'CC',
     documentNumber: '88456789',
+    documentIssueDate: '2012-08-14',  // ✅ Fecha expedición documento
     birthDate: '1994-08-14',
     program: 'Administración Pública Territorial',
     address: 'Avenida 0 # 11-56, Cúcuta'
+  },
+  // ============================================================================
+  // GRADUADO DE PRUEBA - VERIFICACIÓN EXITOSA
+  // ============================================================================
+  {
+    id: 'user-test-001',
+    personId: 'person-test-001',
+    firstName: 'María Alejandra',
+    lastName: 'González Pérez',
+    email: 'ma.gonzalez@esap.edu.co',
+    phone: '+57 300 555 1234',
+    status: 'active',
+    roles: [
+      { id: 'role-09', name: 'Graduado', code: 'GRADUADO' }
+    ],
+    location: 'Bogotá D.C.',
+    sedes: [
+      {
+        id: 'sede-nacional',
+        codigo: 'ESAP-NAC',
+        nombre: 'Sede Nacional',
+        nivel: 'sede-central',
+        esPrincipal: true
+      }
+    ],
+    enrollmentMethod: 'manual',
+    enrollmentDate: '2002-02-01',
+    lastLogin: '2024-11-15T10:30:00',
+    documentType: 'CC',
+    documentNumber: '1012345678',  // ✅ CÉDULA DE PRUEBA EXITOSA
+    documentIssueDate: '2002-03-15',  // ✅ FECHA EXPEDICIÓN DE PRUEBA EXITOSA
+    birthDate: '1984-03-15',
+    program: 'Administración Pública',
+    address: 'Calle 72 # 10-34, Bogotá D.C.'
   }
 ];

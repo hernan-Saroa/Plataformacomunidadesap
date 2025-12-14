@@ -231,11 +231,11 @@ export function NotificationsPanelV2({
 
           {/* Drawer/Slide-over Container - Desde la derecha */}
           <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
+            initial={{ x: 500, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 500, opacity: 0 }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="relative w-full md:w-[400px] lg:w-[450px] bg-white shadow-2xl overflow-hidden flex flex-col h-[85vh] md:h-full rounded-t-3xl md:rounded-none"
+            className="relative w-full sm:w-[95vw] md:w-[80vw] lg:w-[500px] xl:w-[550px] bg-white shadow-2xl overflow-hidden flex flex-col h-full rounded-none sm:rounded-l-2xl"
           >
             {/* Handle Visual (Mobile) */}
             <div className="md:hidden flex justify-center pt-2 pb-1 bg-white">

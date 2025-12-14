@@ -135,7 +135,7 @@ export function AIAssistantButton({ className = '' }: AIAssistantButtonProps) {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: 'spring', duration: 0.3 }}
-              className="fixed right-4 top-20 w-[400px] max-h-[600px] z-50"
+              className="fixed right-2 sm:right-4 top-16 sm:top-20 w-[calc(100vw-1rem)] sm:w-[90vw] md:w-[400px] lg:w-[420px] xl:w-[450px] max-h-[calc(100vh-5rem)] sm:max-h-[600px] z-50"
             >
               <Card className="flex flex-col h-full shadow-2xl border-2 border-gray-200">
                 {/* Header */}

@@ -957,7 +957,7 @@ export function SidebarPremium({ isOpen, currentModule, onModuleChange, onClose,
                       'graduates',
                       'graduates-verification',
                       <GraduationCap className="w-5 h-5" strokeWidth={2} />,
-                      'Registro y Control',
+                      'Registro Académico',
                       '2 submódulos',
                       [
                         {

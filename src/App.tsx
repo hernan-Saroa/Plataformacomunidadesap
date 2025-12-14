@@ -14,6 +14,7 @@ import { AuthenticatedPortalNavbar } from "./components/portal/AuthenticatedPort
 import { LoginPage } from "./components/esap/LoginPage";
 import { SystemSelector } from "./components/esap/SystemSelector";
 import { Toaster } from "sonner";
+import { ErrorBoundary } from "./components/shared";
 
 // Importar componentes de servicios públicos
 import { EnrollmentQRLandingUnified } from "./components/portal/EnrollmentQRLandingUnified";
@@ -483,7 +484,7 @@ export default function App() {
   };
 
   return (
-    <>
+    <ErrorBoundary>
       {/* Landing Page - Vista Pública */}
       {currentView === "landing" && (
         <LandingPage
@@ -635,6 +636,6 @@ export default function App() {
         closeButton
         duration={4000}
       />
-    </>
+    </ErrorBoundary>
   );
 }

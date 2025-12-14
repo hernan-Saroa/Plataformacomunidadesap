@@ -1,6 +1,7 @@
 /**
  * GESTIÓN DE PROFESIONALES - Control Disciplinario
- * CRUD Completo de Profesionales del equipo disciplinario
+ * Asignación y gestión de profesionales al equipo disciplinario
+ * NOTA: Los usuarios se crean ÚNICAMENTE desde Administración de Personas
  */
 
 import { useState } from 'react';
@@ -398,23 +399,41 @@ function ModalDetalleProfesional({ profesional, onClose }: { profesional: Profes
   );
 }
 
-// ==================== MODAL CREAR/EDITAR ====================
+// ==================== MODAL ASIGNAR PROFESIONAL ====================
+// Mock de usuarios disponibles desde Administración de Personas
+const USUARIOS_DISPONIBLES = [
+  { id: 'u1', nombre: 'Roberto García Martínez', cargo: 'Profesional Especializado', email: 'roberto.garcia@esap.edu.co', telefono: '3001234567' },
+  { id: 'u2', nombre: 'Laura Sánchez Díaz', cargo: 'Profesional Universitario', email: 'laura.sanchez@esap.edu.co', telefono: '3109876543' },
+  { id: 'u3', nombre: 'Pedro Ramírez Castro', cargo: 'Profesional Senior', email: 'pedro.ramirez@esap.edu.co', telefono: '3205551234' },
+  { id: 'u4', nombre: 'Sandra Moreno León', cargo: 'Coordinador', email: 'sandra.moreno@esap.edu.co', telefono: '3157778899' }
+];
+
 function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => void; profesional?: Profesional }) {
-  const [formData, setFormData] = useState({
-    nombre: profesional?.nombre || '',
-    cargo: profesional?.cargo || '',
-    especialidad: profesional?.especialidad || '',
-    email: profesional?.email || '',
-    telefono: profesional?.telefono || '',
-    capacidadMaxima: profesional?.capacidadMaxima || 10,
-    tipoContrato: profesional?.tipoContrato || 'Contratista',
-    territorial: profesional?.territorial || '',
-    estado: profesional?.estado || 'activo'
-  });
+  const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<typeof USUARIOS_DISPONIBLES[0] | null>(null);
+  const [searchUsuario, setSearchUsuario] = useState('');
+  const [capacidadMaxima, setCapacidadMaxima] = useState(profesional?.capacidadMaxima || 10);
+  const [especialidad, setEspecialidad] = useState(profesional?.especialidad || '');
+  const [territorial, setTerritorial] = useState(profesional?.territorial || '');
+
+  const usuariosFiltrados = USUARIOS_DISPONIBLES.filter(u =>
+    u.nombre.toLowerCase().includes(searchUsuario.toLowerCase()) ||
+    u.email.toLowerCase().includes(searchUsuario.toLowerCase()) ||
+    u.cargo.toLowerCase().includes(searchUsuario.toLowerCase())
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success(profesional ? 'Profesional actualizado exitosamente' : 'Profesional creado exitosamente');
+    if (profesional) {
+      toast.success('Configuración actualizada exitosamente');
+    } else {
+      if (!usuarioSeleccionado) {
+        toast.error('Debe seleccionar un usuario');
+        return;
+      }
+      toast.success('Profesional asignado al equipo disciplinario exitosamente', {
+        description: `${usuarioSeleccionado.nombre} ha sido agregado al equipo`
+      });
+    }
     onClose();
   };
 
@@ -435,102 +454,179 @@ function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => v
         style={{ background: '#FFFFFF' }}
       >
         <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-extrabold" style={{ color: '#003DA5' }}>
-              {profesional ? 'Editar Profesional' : 'Nuevo Profesional'}
-            </h2>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-2xl font-extrabold" style={{ color: '#003DA5' }}>
+                {profesional ? 'Editar Configuración de Profesional' : 'Asignar Profesional al Equipo'}
+              </h2>
+              <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
+                {profesional ? 'Modifica la capacidad y configuración del profesional' : 'Selecciona un usuario existente desde Administración de Personas'}
+              </p>
+            </div>
             <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
               <X className="w-5 h-5" style={{ color: '#6B7280' }} />
             </button>
           </div>
+          
+          {/* Alerta informativa */}
+          {!profesional && (
+            <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: '#E0EDFF' }}>
+              <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#003DA5' }} />
+              <p className="text-sm" style={{ color: '#003DA5' }}>
+                <span className="font-bold">Recordatorio:</span> Los usuarios se gestionan desde <span className="font-bold">Administración de Personas</span>. Aquí solo asignas profesionales existentes al equipo disciplinario.
+              </p>
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Información Personal */}
-          <div>
-            <h3 className="text-lg font-bold mb-4" style={{ color: '#1F2937' }}>
-              Información Personal
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Nombre Completo *
-                </label>
-                <input
-                  type="text"
-                  required
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formData.nombre}
-                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                  placeholder="Ej: Juan Carlos Pérez López"
-                />
+          {/* Selección de Usuario - Solo si es nuevo */}
+          {!profesional && (
+            <div>
+              <h3 className="text-lg font-bold mb-4" style={{ color: '#1F2937' }}>
+                1. Seleccionar Usuario desde Administración de Personas
+              </h3>
+              
+              <div className="mb-4">
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5" style={{ color: '#9CA3AF' }} />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nombre, email o cargo..."
+                    className="w-full pl-12 pr-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                    style={{ borderColor: '#E5E7EB' }}
+                    value={searchUsuario}
+                    onChange={(e) => setSearchUsuario(e.target.value)}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Email *
-                </label>
-                <input
-                  type="email"
-                  required
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="ejemplo@esap.edu.co"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Teléfono *
-                </label>
-                <input
-                  type="tel"
-                  required
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formData.telefono}
-                  onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                  placeholder="3001234567"
-                />
-              </div>
-            </div>
-          </div>
 
-          {/* Información Laboral */}
+              {/* Lista de usuarios en formato tabla */}
+              <div className="border-2 rounded-xl overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
+                <div className="max-h-96 overflow-y-auto">
+                  <table className="w-full">
+                    <thead className="sticky top-0" style={{ background: '#F9FAFB' }}>
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                          Profesional
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                          Cargo
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                          Contacto
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                          Seleccionar
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usuariosFiltrados.map((usuario, index) => (
+                        <tr
+                          key={usuario.id}
+                          onClick={() => setUsuarioSeleccionado(usuario)}
+                          className={`cursor-pointer transition-colors ${
+                            usuarioSeleccionado?.id === usuario.id 
+                              ? 'bg-blue-50' 
+                              : 'hover:bg-gray-50'
+                          }`}
+                          style={{ borderTop: index > 0 ? '1px solid #E5E7EB' : 'none' }}
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <Avatar>
+                                <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                                  {usuario.nombre.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-bold text-sm" style={{ color: '#1F2937' }}>
+                                  {usuario.nombre}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-sm" style={{ color: '#6B7280' }}>
+                              {usuario.cargo}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <Mail className="w-4 h-4" style={{ color: '#9CA3AF' }} />
+                              <p className="text-sm" style={{ color: '#6B7280' }}>
+                                {usuario.email}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Phone className="w-4 h-4" style={{ color: '#9CA3AF' }} />
+                              <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                                {usuario.telefono}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center">
+                              {usuarioSeleccionado?.id === usuario.id ? (
+                                <div className="p-2 rounded-full" style={{ background: '#003DA5' }}>
+                                  <CheckCircle className="w-5 h-5" style={{ color: '#FFFFFF' }} />
+                                </div>
+                              ) : (
+                                <div className="w-9 h-9 rounded-full border-2 flex items-center justify-center" style={{ borderColor: '#D1D5DB' }}>
+                                  <div className="w-3 h-3 rounded-full" style={{ background: '#E5E7EB' }}></div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  
+                  {usuariosFiltrados.length === 0 && (
+                    <div className="p-12 text-center">
+                      <Users className="w-12 h-12 mx-auto mb-3" style={{ color: '#D1D5DB' }} />
+                      <p className="text-sm font-bold" style={{ color: '#6B7280' }}>
+                        No se encontraron usuarios
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                        Intenta con otro término de búsqueda
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {usuarioSeleccionado && (
+                <div className="mt-4 p-4 rounded-xl" style={{ background: '#D1FAE5' }}>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5" style={{ color: '#10B981' }} />
+                    <span className="text-sm font-bold" style={{ color: '#10B981' }}>
+                      Usuario seleccionado: {usuarioSeleccionado.nombre}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Configuración Disciplinaria */}
           <div>
             <h3 className="text-lg font-bold mb-4" style={{ color: '#1F2937' }}>
-              Información Laboral
+              {profesional ? 'Configuración del Profesional' : '2. Configuración para el Equipo Disciplinario'}
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Cargo *
+                  Especialidad en Derecho *
                 </label>
                 <select
                   required
                   className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
                   style={{ borderColor: '#E5E7EB' }}
-                  value={formData.cargo}
-                  onChange={(e) => setFormData({ ...formData, cargo: e.target.value })}
-                >
-                  <option value="">Seleccione...</option>
-                  <option value="Profesional Especializado">Profesional Especializado</option>
-                  <option value="Profesional Universitario">Profesional Universitario</option>
-                  <option value="Profesional Senior">Profesional Senior</option>
-                  <option value="Coordinador">Coordinador</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Especialidad *
-                </label>
-                <select
-                  required
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formData.especialidad}
-                  onChange={(e) => setFormData({ ...formData, especialidad: e.target.value })}
+                  value={especialidad}
+                  onChange={(e) => setEspecialidad(e.target.value)}
                 >
                   <option value="">Seleccione...</option>
                   <option value="Derecho Disciplinario">Derecho Disciplinario</option>
@@ -541,70 +637,43 @@ function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => v
               </div>
               <div>
                 <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Tipo de Contrato *
+                  Territorial Asignada *
                 </label>
                 <select
                   required
                   className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
                   style={{ borderColor: '#E5E7EB' }}
-                  value={formData.tipoContrato}
-                  onChange={(e) => setFormData({ ...formData, tipoContrato: e.target.value as 'Planta' | 'Contratista' })}
-                >
-                  <option value="Planta">Planta</option>
-                  <option value="Contratista">Contratista</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Territorial *
-                </label>
-                <select
-                  required
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formData.territorial}
-                  onChange={(e) => setFormData({ ...formData, territorial: e.target.value })}
+                  value={territorial}
+                  onChange={(e) => setTerritorial(e.target.value)}
                 >
                   <option value="">Seleccione...</option>
                   <option value="Dirección Nacional">Dirección Nacional</option>
                   <option value="Territorial Bogotá">Territorial Bogotá</option>
                   <option value="Territorial Antioquia">Territorial Antioquia</option>
                   <option value="Territorial Valle">Territorial Valle</option>
+                  <option value="Territorial Atlántico">Territorial Atlántico</option>
                 </select>
               </div>
-              <div>
+              <div className="md:col-span-2">
                 <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Capacidad Máxima *
+                  Capacidad Máxima de Procesos *
                 </label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  max="20"
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formData.capacidadMaxima}
-                  onChange={(e) => setFormData({ ...formData, capacidadMaxima: parseInt(e.target.value) })}
-                />
-                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                  Número máximo de procesos que puede gestionar
+                <div className="flex items-center gap-4">
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max="30"
+                    className="w-32 px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5] text-center text-xl font-bold"
+                    style={{ borderColor: '#E5E7EB', color: '#003DA5' }}
+                    value={capacidadMaxima}
+                    onChange={(e) => setCapacidadMaxima(parseInt(e.target.value) || 0)}
+                  />
+                  <span className="text-sm" style={{ color: '#6B7280' }}>procesos simultáneos</span>
+                </div>
+                <p className="text-xs mt-2" style={{ color: '#9CA3AF' }}>
+                  Basado en el cargo del usuario y la configuración establecida en el módulo de Configuración
                 </p>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Estado *
-                </label>
-                <select
-                  required
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formData.estado}
-                  onChange={(e) => setFormData({ ...formData, estado: e.target.value as 'activo' | 'inactivo' | 'vacaciones' })}
-                >
-                  <option value="activo">Activo</option>
-                  <option value="vacaciones">Vacaciones</option>
-                  <option value="inactivo">Inactivo</option>
-                </select>
               </div>
             </div>
           </div>
@@ -613,11 +682,11 @@ function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => v
           <div className="flex items-center gap-3 pt-4 border-t" style={{ borderColor: '#E5E7EB' }}>
             <button
               type="submit"
-              className="flex-1 px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+              className="flex-1 px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 hover:opacity-90"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
               <Save className="w-4 h-4" />
-              {profesional ? 'Actualizar Profesional' : 'Crear Profesional'}
+              {profesional ? 'Guardar Configuración' : 'Asignar al Equipo Disciplinario'}
             </button>
             <button
               type="button"
@@ -652,10 +721,13 @@ export function GestionProfesionales() {
     return matchSearch && matchEstado;
   });
 
-  const handleEliminar = (id: string) => {
-    if (confirm('¿Está seguro de eliminar este profesional?')) {
+  const handleDesasignar = (id: string) => {
+    const profesional = profesionales.find(p => p.id === id);
+    if (confirm(`¿Está seguro de desasignar a ${profesional?.nombre} del equipo disciplinario?`)) {
       setProfesionales(profesionales.filter(p => p.id !== id));
-      toast.success('Profesional eliminado exitosamente');
+      toast.info('Profesional desasignado del equipo disciplinario', {
+        description: 'El usuario sigue existiendo en Administración de Personas'
+      });
     }
   };
 
@@ -670,85 +742,40 @@ export function GestionProfesionales() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold mb-2" style={{ color: '#003DA5' }}>
-            Gestión de Profesionales
-          </h1>
-          <p className="text-sm" style={{ color: '#6B7280' }}>
-            Equipo disciplinario y asignación de carga
-          </p>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-extrabold mb-2" style={{ color: '#003DA5' }}>
+              Gestión de Profesionales - Vista Lista
+            </h1>
+            <p className="text-sm" style={{ color: '#6B7280' }}>
+              Equipo disciplinario y asignación de carga de trabajo
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setProfesionalEditar(undefined);
+              setShowModal('formulario');
+            }}
+            className="px-5 py-2.5 rounded-xl font-semibold flex items-center gap-2 hover:opacity-90"
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
+          >
+            <Plus className="w-4 h-4" />
+            Asignar Profesional
+          </button>
         </div>
-        <button
-          onClick={() => {
-            setProfesionalEditar(undefined);
-            setShowModal('formulario');
-          }}
-          className="px-5 py-2.5 rounded-xl font-semibold flex items-center gap-2 hover:opacity-90"
-          style={{ background: '#003DA5', color: '#FFFFFF' }}
-        >
-          <Plus className="w-4 h-4" />
-          Nuevo Profesional
-        </button>
-      </div>
-
-      {/* Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="p-5 border-2" style={{ borderColor: '#E5E7EB' }}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 rounded-lg" style={{ background: '#E0EDFF' }}>
-              <Users className="w-6 h-6" style={{ color: '#003DA5' }} />
-            </div>
+        
+        {/* Alerta informativa */}
+        <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: '#E0EDFF' }}>
+          <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#003DA5' }} />
+          <div>
+            <p className="text-sm" style={{ color: '#003DA5' }}>
+              <span className="font-bold">Importante:</span> Los usuarios se crean únicamente desde{' '}
+              <span className="font-bold">Administración de Personas</span>. 
+              Aquí solo se asignan profesionales existentes al equipo disciplinario y se configura su capacidad de trabajo.
+            </p>
           </div>
-          <p className="text-3xl font-extrabold mb-1" style={{ color: '#003DA5' }}>
-            {stats.total}
-          </p>
-          <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-            Total Profesionales
-          </p>
-        </Card>
-
-        <Card className="p-5 border-2" style={{ borderColor: '#E5E7EB' }}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 rounded-lg" style={{ background: '#D1FAE5' }}>
-              <CheckCircle className="w-6 h-6" style={{ color: '#10B981' }} />
-            </div>
-          </div>
-          <p className="text-3xl font-extrabold mb-1" style={{ color: '#10B981' }}>
-            {stats.activos}
-          </p>
-          <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-            Activos
-          </p>
-        </Card>
-
-        <Card className="p-5 border-2" style={{ borderColor: '#E5E7EB' }}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 rounded-lg" style={{ background: '#E0EDFF' }}>
-              <Target className="w-6 h-6" style={{ color: '#003DA5' }} />
-            </div>
-          </div>
-          <p className="text-3xl font-extrabold mb-1" style={{ color: '#003DA5' }}>
-            {stats.capacidadTotal}
-          </p>
-          <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-            Capacidad Total
-          </p>
-        </Card>
-
-        <Card className="p-5 border-2" style={{ borderColor: '#E5E7EB' }}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 rounded-lg" style={{ background: '#FEF3C7' }}>
-              <FolderOpen className="w-6 h-6" style={{ color: '#F59E0B' }} />
-            </div>
-          </div>
-          <p className="text-3xl font-extrabold mb-1" style={{ color: '#F59E0B' }}>
-            {stats.procesosAsignados}
-          </p>
-          <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-            Procesos Asignados
-          </p>
-        </Card>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -790,134 +817,219 @@ export function GestionProfesionales() {
       </Card>
 
       {/* Lista de Profesionales */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {profesionalesFiltrados.map((profesional) => {
-          const porcentajeCarga = (profesional.procesosAsignados / profesional.capacidadMaxima) * 100;
-          
-          return (
-            <Card key={profesional.id} className="p-5 border-2 hover:shadow-lg transition-all" style={{ borderColor: '#E5E7EB' }}>
-              {/* Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <Avatar className="w-12 h-12">
-                    <AvatarFallback style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                      {profesional.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h3 className="font-bold text-sm mb-1" style={{ color: '#1F2937' }}>
-                      {profesional.nombre}
-                    </h3>
-                    <p className="text-xs" style={{ color: '#6B7280' }}>
-                      {profesional.cargo}
-                    </p>
+      <Card className="border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
+        <div className="overflow-x-auto">
+          <div className="min-w-[1200px]">
+            {/* Header de la tabla */}
+            <div className="grid grid-cols-12 gap-4 p-4 border-b-2" style={{ background: '#F9FAFB', borderColor: '#E5E7EB' }}>
+              <div className="col-span-3">
+                <p className="text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                  Profesional
+                </p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                  Carga de Trabajo
+                </p>
+              </div>
+              <div className="col-span-3">
+                <p className="text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                  Distribución de Procesos
+                </p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                  Desempeño
+                </p>
+              </div>
+              <div className="col-span-2 text-right">
+                <p className="text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                  Acciones
+                </p>
+              </div>
+            </div>
+
+            {/* Filas de profesionales */}
+            <div className="divide-y" style={{ borderColor: '#E5E7EB' }}>
+              {profesionalesFiltrados.map((profesional) => {
+                const porcentajeCarga = (profesional.procesosAsignados / profesional.capacidadMaxima) * 100;
+                const tasaEfectividad = profesional.procesosAsignados > 0 
+                  ? ((profesional.procesosAlDia / profesional.procesosAsignados) * 100).toFixed(0)
+                  : '100';
+                
+                return (
+                  <div 
+                    key={profesional.id} 
+                    className="grid grid-cols-12 gap-4 p-4 hover:bg-gray-50 transition-colors"
+                  >
+                    {/* Columna 1: Profesional */}
+                    <div className="col-span-3 flex items-center gap-3">
+                      <Avatar className="w-12 h-12">
+                        <AvatarFallback style={{ background: '#003DA5', color: '#FFFFFF' }}>
+                          {profesional.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-sm truncate mb-1" style={{ color: '#1F2937' }}>
+                          {profesional.nombre}
+                        </h3>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge
+                            className="text-xs"
+                            style={{
+                              background: profesional.estado === 'activo' ? '#D1FAE5' : profesional.estado === 'vacaciones' ? '#FEF3C7' : '#FEE2E2',
+                              color: profesional.estado === 'activo' ? '#059669' : profesional.estado === 'vacaciones' ? '#D97706' : '#DC2626'
+                            }}
+                          >
+                            {profesional.estado.toUpperCase()}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Award className="w-3 h-3 flex-shrink-0" style={{ color: '#9CA3AF' }} />
+                          <p className="text-xs truncate" style={{ color: '#6B7280' }}>
+                            {profesional.especialidad}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Columna 2: Carga de Trabajo */}
+                    <div className="col-span-2 flex flex-col justify-center">
+                      <div className="mb-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-xs font-semibold" style={{ color: '#6B7280' }}>
+                            Capacidad
+                          </p>
+                          <p className="text-sm font-bold" style={{ color: '#003DA5' }}>
+                            {profesional.procesosAsignados}/{profesional.capacidadMaxima}
+                          </p>
+                        </div>
+                        <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${porcentajeCarga}%`,
+                              background: porcentajeCarga >= 90 
+                                ? '#DC2626'
+                                : porcentajeCarga >= 70
+                                ? '#F59E0B'
+                                : '#10B981'
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                        {porcentajeCarga.toFixed(0)}% de capacidad utilizada
+                      </p>
+                    </div>
+
+                    {/* Columna 3: Distribución de Procesos */}
+                    <div className="col-span-3 flex items-center gap-2">
+                      {/* Al día */}
+                      <div className="flex-1 p-2 rounded-lg border" style={{ background: '#F0FDF4', borderColor: '#D1FAE5' }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <CheckCircle className="w-4 h-4" style={{ color: '#10B981' }} />
+                          <p className="text-xs font-semibold" style={{ color: '#059669' }}>
+                            Al día
+                          </p>
+                        </div>
+                        <p className="text-xl font-bold" style={{ color: '#10B981' }}>
+                          {profesional.procesosAlDia}
+                        </p>
+                      </div>
+
+                      {/* En riesgo */}
+                      <div className="flex-1 p-2 rounded-lg border" style={{ background: '#FFFBEB', borderColor: '#FEF3C7' }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Clock className="w-4 h-4" style={{ color: '#F59E0B' }} />
+                          <p className="text-xs font-semibold" style={{ color: '#D97706' }}>
+                            Riesgo
+                          </p>
+                        </div>
+                        <p className="text-xl font-bold" style={{ color: '#F59E0B' }}>
+                          {profesional.procesosEnRiesgo}
+                        </p>
+                      </div>
+
+                      {/* Vencidos */}
+                      <div className="flex-1 p-2 rounded-lg border" style={{ background: '#FEF2F2', borderColor: '#FEE2E2' }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <AlertTriangle className="w-4 h-4" style={{ color: '#DC2626' }} />
+                          <p className="text-xs font-semibold" style={{ color: '#DC2626' }}>
+                            Vencidos
+                          </p>
+                        </div>
+                        <p className="text-xl font-bold" style={{ color: '#DC2626' }}>
+                          {profesional.procesosVencidos}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Columna 4: Desempeño */}
+                    <div className="col-span-2 flex flex-col justify-center gap-2">
+                      <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: '#F9FAFB' }}>
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4" style={{ color: '#10B981' }} />
+                          <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
+                            Efectividad
+                          </span>
+                        </div>
+                        <span className="text-lg font-bold" style={{ color: '#003DA5' }}>
+                          {tasaEfectividad}%
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: '#F9FAFB' }}>
+                        <div className="flex items-center gap-2">
+                          <Target className="w-4 h-4" style={{ color: '#003DA5' }} />
+                          <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
+                            Disponible
+                          </span>
+                        </div>
+                        <span className="text-lg font-bold" style={{ color: '#003DA5' }}>
+                          {profesional.capacidadMaxima - profesional.procesosAsignados}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Columna 5: Acciones */}
+                    <div className="col-span-2 flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => {
+                          setProfesionalSeleccionado(profesional);
+                          setShowModal('detalle');
+                        }}
+                        className="px-3 py-2 rounded-lg font-semibold text-xs flex items-center gap-2 hover:opacity-90 transition-opacity"
+                        style={{ background: '#003DA5', color: '#FFFFFF' }}
+                        title="Ver detalles completos"
+                      >
+                        <Eye className="w-4 h-4" />
+                        Ver
+                      </button>
+                      <button
+                        onClick={() => {
+                          setProfesionalEditar(profesional);
+                          setShowModal('formulario');
+                        }}
+                        className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                        title="Editar configuración"
+                      >
+                        <Edit className="w-4 h-4" style={{ color: '#6B7280' }} />
+                      </button>
+                      <button
+                        onClick={() => handleDesasignar(profesional.id)}
+                        className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                        title="Desasignar del equipo"
+                      >
+                        <Trash2 className="w-4 h-4" style={{ color: '#DC2626' }} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <Badge
-                  className="text-xs"
-                  style={{
-                    background: profesional.estado === 'activo' ? '#D1FAE5' : profesional.estado === 'vacaciones' ? '#FEF3C7' : '#FEE2E2',
-                    color: profesional.estado === 'activo' ? '#059669' : profesional.estado === 'vacaciones' ? '#D97706' : '#DC2626'
-                  }}
-                >
-                  {profesional.estado}
-                </Badge>
-              </div>
-
-              {/* Carga */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold" style={{ color: '#9CA3AF' }}>
-                    CARGA DE TRABAJO
-                  </p>
-                  <p className="text-xs font-bold" style={{ color: '#003DA5' }}>
-                    {profesional.procesosAsignados}/{profesional.capacidadMaxima}
-                  </p>
-                </div>
-                <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${porcentajeCarga}%`,
-                      background: porcentajeCarga >= 90 
-                        ? '#DC2626'
-                        : porcentajeCarga >= 70
-                        ? '#F59E0B'
-                        : '#10B981'
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Distribución */}
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                <div className="text-center p-2 rounded-lg" style={{ background: '#F0FDF4' }}>
-                  <p className="text-lg font-bold" style={{ color: '#10B981' }}>
-                    {profesional.procesosAlDia}
-                  </p>
-                  <p className="text-xs" style={{ color: '#059669' }}>Al día</p>
-                </div>
-                <div className="text-center p-2 rounded-lg" style={{ background: '#FFFBEB' }}>
-                  <p className="text-lg font-bold" style={{ color: '#F59E0B' }}>
-                    {profesional.procesosEnRiesgo}
-                  </p>
-                  <p className="text-xs" style={{ color: '#D97706' }}>Riesgo</p>
-                </div>
-                <div className="text-center p-2 rounded-lg" style={{ background: '#FEF2F2' }}>
-                  <p className="text-lg font-bold" style={{ color: '#DC2626' }}>
-                    {profesional.procesosVencidos}
-                  </p>
-                  <p className="text-xs" style={{ color: '#DC2626' }}>Vencidos</p>
-                </div>
-              </div>
-
-              {/* Info adicional */}
-              <div className="mb-4 space-y-2">
-                <div className="flex items-center gap-2 text-xs" style={{ color: '#6B7280' }}>
-                  <Award className="w-4 h-4" />
-                  {profesional.especialidad}
-                </div>
-                <div className="flex items-center gap-2 text-xs" style={{ color: '#6B7280' }}>
-                  <Briefcase className="w-4 h-4" />
-                  {profesional.tipoContrato}
-                </div>
-              </div>
-
-              {/* Acciones */}
-              <div className="pt-4 border-t flex items-center gap-2" style={{ borderColor: '#E5E7EB' }}>
-                <button
-                  onClick={() => {
-                    setProfesionalSeleccionado(profesional);
-                    setShowModal('detalle');
-                  }}
-                  className="flex-1 px-3 py-2 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 hover:opacity-90"
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                >
-                  <Eye className="w-4 h-4" />
-                  Ver
-                </button>
-                <button
-                  onClick={() => {
-                    setProfesionalEditar(profesional);
-                    setShowModal('formulario');
-                  }}
-                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                  title="Editar"
-                >
-                  <Edit className="w-4 h-4" style={{ color: '#6B7280' }} />
-                </button>
-                <button
-                  onClick={() => handleEliminar(profesional.id)}
-                  className="p-2 rounded-lg hover:bg-red-50 transition-colors"
-                  title="Eliminar"
-                >
-                  <Trash2 className="w-4 h-4" style={{ color: '#DC2626' }} />
-                </button>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {profesionalesFiltrados.length === 0 && (
         <Card className="p-12 text-center border-2" style={{ borderColor: '#E5E7EB' }}>
@@ -926,7 +1038,7 @@ export function GestionProfesionales() {
             No se encontraron profesionales
           </h3>
           <p style={{ color: '#6B7280' }}>
-            Intenta ajustar los filtros o crear un nuevo profesional
+            Intenta ajustar los filtros o asignar profesionales existentes desde Administración de Personas
           </p>
         </Card>
       )}

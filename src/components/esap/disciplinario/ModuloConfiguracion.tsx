@@ -296,7 +296,7 @@ export function ModuloConfiguracion() {
 
       {/* Capacidades por Cargo */}
       <Card className="p-6 border-2" style={{ borderColor: '#E5E7EB' }}>
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-4">
           <div className="p-3 rounded-xl" style={{ background: '#D1FAE5' }}>
             <Users className="w-6 h-6" style={{ color: '#10B981' }} />
           </div>
@@ -308,6 +308,14 @@ export function ModuloConfiguracion() {
               Número máximo de procesos que puede gestionar cada tipo de profesional
             </p>
           </div>
+        </div>
+
+        <div className="mb-6 p-4 rounded-xl flex items-start gap-3" style={{ background: '#E0EDFF' }}>
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: '#003DA5' }} />
+          <p className="text-sm" style={{ color: '#003DA5' }}>
+            <span className="font-bold">Recordatorio:</span> Estas son configuraciones de capacidad. Los usuarios se crean únicamente desde{' '}
+            <span className="font-bold">Administración de Personas → Roles y Permisos</span>. En la sección "Profesionales" solo se asignan usuarios existentes al equipo disciplinario.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

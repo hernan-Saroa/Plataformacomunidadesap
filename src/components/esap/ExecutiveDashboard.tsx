@@ -20,6 +20,7 @@ import { CountUpAnimation } from './CountUpAnimation';
 import { DateRangePicker } from './DateRangePicker';
 import { CategoryFilter } from './CategoryFilter';
 import { toast } from 'sonner';
+import { getSyncedGraduates } from '../../data/graduatesSync';
 
 interface ExecutiveDashboardProps {
   userRole: 'super-admin' | 'director' | 'coordinador' | 'docente' | 'auxiliar';
@@ -151,7 +152,7 @@ const CompactKPI = ({ label, value, icon: Icon, color, delay = 0 }: CompactKPIPr
 
 export function ExecutiveDashboard({ userRole, restrictedMode }: ExecutiveDashboardProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
-  const [selectedModule, setSelectedModule] = useState<'all' | 'users' | 'roles' | 'personas' | 'audit' | 'aspirants' | 'verification' | 'profesoral'>('all');
+  const [selectedModule, setSelectedModule] = useState<'all' | 'users' | 'roles' | 'personas' | 'audit' | 'aspirants' | 'verification' | 'profesoral' | 'academic-registry'>('all');
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined } | undefined>();
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['all']);
 
@@ -501,6 +502,69 @@ export function ExecutiveDashboard({ userRole, restrictedMode }: ExecutiveDashbo
     { status: 'Rechazado', cantidad: 34, color: COLORS.danger[1] },
     { status: 'Inscrito', cantidad: 12, color: COLORS.purple[1] },
   ];
+
+  // =====================================================================
+  // MÓDULO DE REGISTRO ACADÉMICO - Métricas
+  // =====================================================================
+  const syncedGraduates = getSyncedGraduates();
+  
+  const registroAcademicoMetrics = {
+    totalGraduados: syncedGraduates.length,
+    graduadosActivos: syncedGraduates.filter(g => g.estado === 'Graduado').length,
+    certificadosEmitidos: 247,
+    certificadosPendientes: 18,
+    verificacionesExitosas: 189,
+    verificacionesPendientes: 12,
+    verificacionesFallidas: 3,
+    tasaVerificacion: 94.5,
+    promedioAcademico: 4.3,
+    certificadosDescargados: 234,
+  };
+
+  const graduadosPorPrograma = (() => {
+    const programas: Record<string, number> = {};
+    syncedGraduates.forEach(g => {
+      const programa = g.programa || 'Otros';
+      programas[programa] = (programas[programa] || 0) + 1;
+    });
+    
+    const colors = [COLORS.primary[2], COLORS.success[1], COLORS.warning[1], COLORS.purple[1], COLORS.cyan[1]];
+    return Object.entries(programas)
+      .map(([programa, cantidad], index) => ({
+        programa,
+        cantidad,
+        color: colors[index % colors.length]
+      }))
+      .sort((a, b) => b.cantidad - a.cantidad);
+  })();
+
+  const graduadosPorMes = [
+    { mes: 'Ene', graduados: 15, certificados: 12 },
+    { mes: 'Feb', graduados: 18, certificados: 16 },
+    { mes: 'Mar', graduados: 22, certificados: 20 },
+    { mes: 'Abr', graduados: 19, certificados: 18 },
+    { mes: 'May', graduados: 24, certificados: 22 },
+    { mes: 'Jun', graduados: 21, certificados: 19 },
+  ];
+
+  const verificacionesPorEstado = [
+    { estado: 'Exitosas', cantidad: 189, color: COLORS.success[1] },
+    { estado: 'Pendientes', cantidad: 12, color: COLORS.warning[1] },
+    { estado: 'Fallidas', cantidad: 3, color: COLORS.danger[1] },
+  ];
+
+  const certificadosPorCiudad = (() => {
+    const ciudades: Record<string, number> = {};
+    syncedGraduates.forEach(g => {
+      const ciudad = g.ciudad || 'Otras';
+      ciudades[ciudad] = (ciudades[ciudad] || 0) + 1;
+    });
+    
+    return Object.entries(ciudades)
+      .map(([ciudad, cantidad]) => ({ ciudad, cantidad }))
+      .sort((a, b) => b.cantidad - a.cantidad)
+      .slice(0, 6);
+  })();
 
   // Métricas de Verificación de Títulos
   const verificationMetrics = {
@@ -2386,6 +2450,157 @@ export function ExecutiveDashboard({ userRole, restrictedMode }: ExecutiveDashbo
                   ))}
                 </div>
               </motion.div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* MÓDULO REGISTRO ACADÉMICO */}
+      {(selectedModule === 'all' || selectedModule === 'academic-registry') && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <div className="border-t-4 border-gray-200 pt-8">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br from-emerald-500 to-green-600 shadow-lg flex-shrink-0">
+                <GraduationCap className="w-6 h-6 text-white" strokeWidth={2} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-extrabold text-gray-900">Módulo de Registro Académico</h2>
+                <p className="text-sm text-gray-600 mt-1">Gestión de graduados, certificados y verificaciones de títulos</p>
+              </div>
+            </div>
+
+            {/* KPIs Principales */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              <CompactKPI label="Total Graduados" value={registroAcademicoMetrics.totalGraduados} icon={GraduationCap} color={COLORS.solid.green} delay={0} />
+              <CompactKPI label="Certificados Emitidos" value={registroAcademicoMetrics.certificadosEmitidos} icon={FileCheck} color={COLORS.solid.blue} delay={0.1} />
+              <CompactKPI label="Verificaciones Exitosas" value={registroAcademicoMetrics.verificacionesExitosas} icon={CheckCircle} color={COLORS.solid.green} delay={0.2} />
+              <CompactKPI label="Tasa Verificación" value={`${registroAcademicoMetrics.tasaVerificacion}%`} icon={Award} color={COLORS.solid.purple} delay={0.3} />
+            </div>
+
+            {/* Gráficos Principales */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              {/* Graduados por Programa */}
+              <motion.div 
+                className="bg-white rounded-2xl p-6 border-2 border-gray-200 shadow-lg"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+              >
+                <div className="mb-6">
+                  <h3 className="font-bold text-lg text-gray-900 mb-1">Graduados por Programa</h3>
+                  <p className="text-xs text-gray-600">Distribución de graduados según programa académico</p>
+                </div>
+                <ResponsiveContainer width="100%" height={300}>
+                  <RechartPie>
+                    <Pie
+                      data={graduadosPorPrograma}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ programa, cantidad }) => `${programa}: ${cantidad}`}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="cantidad"
+                    >
+                      {graduadosPorPrograma.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip content={<CustomTooltip />} />
+                    <Legend content={<CustomLegend />} />
+                  </RechartPie>
+                </ResponsiveContainer>
+              </motion.div>
+
+              {/* Tendencia de Graduados y Certificados */}
+              <motion.div 
+                className="bg-white rounded-2xl p-6 border-2 border-gray-200 shadow-lg"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+              >
+                <div className="mb-6">
+                  <h3 className="font-bold text-lg text-gray-900 mb-1">Tendencia Mensual</h3>
+                  <p className="text-xs text-gray-600">Graduados y certificados emitidos por mes</p>
+                </div>
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart data={graduadosPorMes}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="mes" stroke="#6b7280" style={{ fontSize: '12px', fontWeight: 600 }} />
+                    <YAxis stroke="#6b7280" style={{ fontSize: '12px', fontWeight: 600 }} />
+                    <RechartsTooltip content={<CustomTooltip />} />
+                    <Legend content={<CustomLegend />} />
+                    <Bar dataKey="graduados" fill="#10b981" name="Graduados" radius={[8, 8, 0, 0]} />
+                    <Line type="monotone" dataKey="certificados" stroke="#3b82f6" strokeWidth={3} name="Certificados" />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </motion.div>
+            </div>
+
+            {/* Segunda fila de gráficos */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              {/* Verificaciones por Estado */}
+              <motion.div 
+                className="bg-white rounded-2xl p-6 border-2 border-gray-200 shadow-lg"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+              >
+                <div className="mb-6">
+                  <h3 className="font-bold text-lg text-gray-900 mb-1">Verificaciones por Estado</h3>
+                  <p className="text-xs text-gray-600">Distribución de solicitudes de verificación</p>
+                </div>
+                <ResponsiveContainer width="100%" height={300}>
+                  <RechartPie>
+                    <Pie
+                      data={verificacionesPorEstado}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ estado, cantidad }) => `${estado}: ${cantidad}`}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="cantidad"
+                    >
+                      {verificacionesPorEstado.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip content={<CustomTooltip />} />
+                    <Legend content={<CustomLegend />} />
+                  </RechartPie>
+                </ResponsiveContainer>
+              </motion.div>
+
+              {/* Certificados por Ciudad */}
+              <motion.div 
+                className="bg-white rounded-2xl p-6 border-2 border-gray-200 shadow-lg"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.7 }}
+              >
+                <div className="mb-6">
+                  <h3 className="font-bold text-lg text-gray-900 mb-1">Graduados por Ciudad</h3>
+                  <p className="text-xs text-gray-600">Top ciudades con más graduados</p>
+                </div>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={certificadosPorCiudad} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis type="number" stroke="#6b7280" />
+                    <YAxis dataKey="ciudad" type="category" stroke="#6b7280" width={90} />
+                    <RechartsTooltip content={<CustomTooltip />} />
+                    <Bar dataKey="cantidad" fill={COLORS.success[1]} radius={[0, 8, 8, 0]} name="Graduados" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </motion.div>
+            </div>
+
+            {/* KPIs Secundarios */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <CompactKPI label="Certificados Descargados" value={registroAcademicoMetrics.certificadosDescargados} icon={Download} color={COLORS.solid.cyan} delay={0.8} />
+              <CompactKPI label="Certificados Pendientes" value={registroAcademicoMetrics.certificadosPendientes} icon={Clock} color={COLORS.solid.orange} delay={0.85} />
+              <CompactKPI label="Verificaciones Pendientes" value={registroAcademicoMetrics.verificacionesPendientes} icon={AlertTriangle} color={COLORS.solid.orange} delay={0.9} />
+              <CompactKPI label="Promedio Académico" value={registroAcademicoMetrics.promedioAcademico} icon={Star} color={COLORS.solid.purple} delay={0.95} />
             </div>
           </div>
         </motion.div>

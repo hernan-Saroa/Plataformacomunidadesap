@@ -41,3 +41,8 @@ export { StickyNavbar } from './StickyNavbar';
 
 // Pagination
 export { PaginationPremium } from './PaginationPremium';
+
+// Error Handling
+export { ErrorBoundary } from './ErrorBoundary';
+export { ErrorFallbackUI } from './ErrorFallbackUI';
+export { LoadingErrorUI } from './LoadingErrorUI';

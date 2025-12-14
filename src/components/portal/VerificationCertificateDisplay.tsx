@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
-import { Download, Share2, Shield, Calendar, User, Award, Hash, CheckCircle, FileText, Building2, ShieldCheck, Lock, FileCheck, ArrowUp, X } from 'lucide-react';
+import { Download, Share2, Shield, Calendar, User, Award, Hash, CheckCircle, FileText, Building2, ShieldCheck, Lock, FileCheck, ArrowUp, X, Copy, Mail, MessageCircle, Loader2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { VerificationCertificate } from '../../types';
 import { toast } from 'sonner@2.0.3';
@@ -17,6 +17,8 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   const certificateRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
 
   // Scroll to top when certificate is displayed
   useEffect(() => {
@@ -70,16 +72,156 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     }
   };
 
-  const handleDownload = () => {
-    // En producción, esto generaría un PDF real del certificado
-    toast.success('Certificado descargado exitosamente');
-    toast.info('El certificado ha sido enviado a tu correo electrónico');
+  const handleDownload = async () => {
+    /**
+     * FUNCIONALIDAD DE DESCARGA DE CERTIFICADO PDF
+     * ============================================
+     * En producción, este botón generaría un PDF real con:
+     * - Logo de ESAP
+     * - Datos completos del graduado y certificado
+     * - Código QR embebido
+     * - Firma digital certificada por ONAC (con metadatos PAdES)
+     * - Diseño profesional con marca de agua de seguridad
+     * 
+     * Librerías sugeridas para producción:
+     * - jsPDF + html2canvas (para capturar el diseño visual)
+     * - pdfmake (para construcción programática del PDF)
+     * - PDF-LIB (para firma digital y metadatos avanzados)
+     * 
+     * Proceso de generación en producción:
+     * 1. Capturar el contenido visual del certificado
+     * 2. Generar PDF con diseño profesional
+     * 3. Agregar firma digital certificada (ONAC)
+     * 4. Agregar metadatos de seguridad (PAdES)
+     * 5. Enviar por email al solicitante
+     * 6. Guardar registro en base de datos
+     */
+    
+    setIsDownloading(true);
+    
+    // Simular proceso de generación de PDF (2 segundos)
+    toast.loading('Generando certificado PDF con firma digital...', { id: 'pdf-generation' });
+    
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Simulación de descarga exitosa
+    toast.success('¡Certificado descargado exitosamente!', { 
+      id: 'pdf-generation',
+      description: `Archivo: Certificado_${certificate.graduate.fullName.replace(/\s+/g, '_')}.pdf`
+    });
+    
+    // Notificación de envío por email
+    toast.info('📧 El certificado ha sido enviado a tu correo electrónico', {
+      description: `Enviado a: ${certificate.requester.email}`,
+      duration: 5000
+    });
+    
+    // Simulación de descarga del archivo
+    // En producción, aquí se descargaría el PDF real
+    const pdfUrl = `data:application/pdf;base64,JVBERi0xLjcKCjEgMCBvYmo...`; // Mock base64
+    const link = document.createElement('a');
+    link.href = pdfUrl;
+    link.download = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+    // link.click(); // Descomentar en producción
+    
+    setIsDownloading(false);
+    
+    // Analytics o tracking (opcional)
+    console.log('📊 Certificado descargado:', {
+      certificateNumber: certificate.certificateNumber,
+      graduateName: certificate.graduate.fullName,
+      requesterEmail: certificate.requester.email,
+      timestamp: new Date().toISOString()
+    });
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
+    /**
+     * FUNCIONALIDAD DE COMPARTIR CERTIFICADO
+     * =======================================
+     * Este botón permite compartir el enlace de verificación mediante:
+     * 1. Web Share API (nativo en dispositivos móviles)
+     * 2. Copiar al portapapeles (fallback)
+     * 3. Opciones de compartir por email, WhatsApp, etc.
+     */
+    
     const shareUrl = `${window.location.origin}/verificar-certificado/${certificate.qrCode}`;
-    copyToClipboard(shareUrl);
-    toast.success('Enlace de verificación copiado al portapapeles');
+    const shareTitle = `Certificado de Verificación - ${certificate.graduate.fullName}`;
+    const shareText = `Certificado de Verificación de Título ESAP\n\nGraduado: ${certificate.graduate.fullName}\nPrograma: ${certificate.graduate.programName}\nTítulo: ${certificate.graduate.titleType}\n\nVerificar autenticidad en:`;
+    
+    // Intentar usar Web Share API (disponible en móviles modernos)
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl
+        });
+        
+        toast.success('¡Compartido exitosamente!', {
+          description: 'El enlace ha sido compartido'
+        });
+        
+        return;
+      } catch (error: any) {
+        // Usuario canceló o error en la compartición
+        if (error.name !== 'AbortError') {
+          console.error('Error al compartir:', error);
+        }
+      }
+    }
+    
+    // Fallback: Copiar al portapapeles
+    try {
+      await copyToClipboard(shareUrl);
+      
+      toast.success('✓ Enlace de verificación copiado al portapapeles', {
+        description: 'Pega el enlace donde quieras compartirlo',
+        duration: 4000,
+        action: {
+          label: 'Ver opciones',
+          onClick: () => {
+            // Mostrar opciones adicionales de compartir
+            toast.info('Opciones de compartir', {
+              description: (
+                <div className="space-y-2 mt-2">
+                  <a 
+                    href={`mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(shareText + '\n\n' + shareUrl)}`}
+                    className="block px-3 py-2 bg-blue-100 text-blue-900 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    📧 Compartir por Email
+                  </a>
+                  <a 
+                    href={`https://wa.me/?text=${encodeURIComponent(shareText + '\n\n' + shareUrl)}`}
+                    className="block px-3 py-2 bg-green-100 text-green-900 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    💬 Compartir por WhatsApp
+                  </a>
+                </div>
+              ),
+              duration: 10000
+            });
+          }
+        }
+      });
+      
+      // Analytics o tracking
+      console.log('📊 Enlace compartido:', {
+        certificateNumber: certificate.certificateNumber,
+        shareUrl: shareUrl,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('Error al copiar al portapapeles:', error);
+      toast.error('No se pudo copiar el enlace', {
+        description: 'Por favor, copia manualmente la URL de verificación'
+      });
+    }
   };
 
   const verificationUrl = `${window.location.origin}/verificar-certificado/${certificate.qrCode}`;
@@ -555,11 +697,21 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 onClick={handleDownload}
-                className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white shadow-lg"
+                disabled={isDownloading}
+                className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 size="lg"
               >
-                <Download className="w-5 h-5 mr-2" />
-                Descargar PDF con Firma Digital
+                {isDownloading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Generando PDF...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-5 h-5 mr-2" />
+                    Descargar PDF con Firma Digital
+                  </>
+                )}
               </Button>
               <Button
                 onClick={handleShare}

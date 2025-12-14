@@ -29,6 +29,7 @@ import { Badge } from '../ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { PaginationPremium } from '../shared/PaginationPremium';
+import { getSyncedGraduates, getGraduatesStats } from '../../data/graduatesSync';  // ✅ IMPORTAR SINCRONIZACIÓN
 
 interface Graduate {
   id: string;
@@ -42,6 +43,7 @@ interface Graduate {
   fechaIngreso: string;
   fechaGrado: string;
   documento: string;
+  fechaExpedicionDocumento?: string;  // ✅ NUEVO: Fecha de expedición del documento
   direccion: string;
   ciudad: string;
   promedio: number;
@@ -50,104 +52,9 @@ interface Graduate {
   certificateDownloads?: number;
 }
 
-// Mock data
-const mockGraduates: Graduate[] = [
-  {
-    id: 'GRAD-001',
-    nombre: 'María Fernanda',
-    apellido: 'Rodríguez Sánchez',
-    email: 'mf.rodriguez@esap.edu.co',
-    telefono: '+57 300 123 4567',
-    rol: 'Graduado',
-    programa: 'Administración Pública',
-    estado: 'Graduado',
-    fechaIngreso: '2021-02-01',
-    fechaGrado: '2024-06-15',
-    documento: '1052789456',
-    direccion: 'Calle 45 #23-67',
-    ciudad: 'Bogotá',
-    promedio: 4.7,
-    tituloObtenido: 'Profesional en Administración Pública',
-    modalidadGrado: 'Trabajo de Grado',
-    certificateDownloads: 12
-  },
-  {
-    id: 'GRAD-002',
-    nombre: 'Carlos Andrés',
-    apellido: 'Mendoza Pérez',
-    email: 'ca.mendoza@esap.edu.co',
-    telefono: '+57 310 987 6543',
-    rol: 'Graduado',
-    programa: 'Ciencia Política',
-    estado: 'Graduado',
-    fechaIngreso: '2020-08-01',
-    fechaGrado: '2024-05-20',
-    documento: '1098765432',
-    direccion: 'Carrera 12 #45-78',
-    ciudad: 'Medellín',
-    promedio: 4.5,
-    tituloObtenido: 'Profesional en Ciencia Política',
-    modalidadGrado: 'Práctica Profesional',
-    certificateDownloads: 8
-  },
-  {
-    id: 'GRAD-003',
-    nombre: 'Ana Cristina',
-    apellido: 'García López',
-    email: 'ac.garcia@esap.edu.co',
-    telefono: '+57 320 456 7890',
-    rol: 'Graduado',
-    programa: 'Gestión Pública',
-    estado: 'Graduado',
-    fechaIngreso: '2021-01-15',
-    fechaGrado: '2024-07-10',
-    documento: '1034567890',
-    direccion: 'Avenida 15 #89-23',
-    ciudad: 'Cali',
-    promedio: 4.8,
-    tituloObtenido: 'Profesional en Gestión Pública',
-    modalidadGrado: 'Monografía',
-    certificateDownloads: 15
-  },
-  {
-    id: 'GRAD-004',
-    nombre: 'Luis Fernando',
-    apellido: 'Torres Ramírez',
-    email: 'lf.torres@esap.edu.co',
-    telefono: '+57 315 234 5678',
-    rol: 'Graduado',
-    programa: 'Derecho Público',
-    estado: 'Graduado',
-    fechaIngreso: '2020-02-01',
-    fechaGrado: '2024-01-20',
-    documento: '1078901234',
-    direccion: 'Calle 78 #12-34',
-    ciudad: 'Barranquilla',
-    promedio: 4.6,
-    tituloObtenido: 'Profesional en Derecho Público',
-    modalidadGrado: 'Trabajo de Grado',
-    certificateDownloads: 10
-  },
-  {
-    id: 'GRAD-005',
-    nombre: 'Diana Carolina',
-    apellido: 'Martínez Silva',
-    email: 'dc.martinez@esap.edu.co',
-    telefono: '+57 318 765 4321',
-    rol: 'Graduado',
-    programa: 'Economía Pública',
-    estado: 'Graduado',
-    fechaIngreso: '2021-08-01',
-    fechaGrado: '2024-08-15',
-    documento: '1045678901',
-    direccion: 'Carrera 25 #67-89',
-    ciudad: 'Cartagena',
-    promedio: 4.9,
-    tituloObtenido: 'Profesional en Economía Pública',
-    modalidadGrado: 'Investigación',
-    certificateDownloads: 20
-  }
-];
+// ✅ OBTENER GRADUADOS SINCRONIZADOS DESDE GESTIÓN DE PERSONAS
+// Los datos ahora fluyen automáticamente desde Administración de Perfiles
+const mockGraduates: Graduate[] = getSyncedGraduates();
 
 export function GraduateVerificationModulePremium() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -163,12 +70,14 @@ export function GraduateVerificationModulePremium() {
   // Stats
   const stats = {
     totalGraduados: mockGraduates.length,
-    promedioGeneral: (mockGraduates.reduce((acc, g) => acc + g.promedio, 0) / mockGraduates.length).toFixed(1),
+    promedioGeneral: mockGraduates.length > 0 
+      ? (mockGraduates.reduce((acc, g) => acc + g.promedio, 0) / mockGraduates.length).toFixed(1)
+      : '0.0',
     certificadosDescargados: mockGraduates.reduce((acc, g) => acc + (g.certificateDownloads || 0), 0),
     graduadosRecientes: mockGraduates.filter(g => {
       const gradYear = new Date(g.fechaGrado).getFullYear();
       return gradYear === 2024;
-    }).length
+    }).length,
   };
 
   // Programas únicos

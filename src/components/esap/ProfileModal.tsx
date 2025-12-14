@@ -100,11 +100,11 @@ export function ProfileModal({
 
         {/* Drawer/Slide-over Container - MEJORADO Y ALINEADO ARRIBA */}
         <motion.div
-          initial={{ x: '100%' }}
-          animate={{ x: 0 }}
-          exit={{ x: '100%' }}
+          initial={{ x: 500, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: 500, opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 400, mass: 0.8 }}
-          className="relative w-full md:w-[340px] lg:w-[360px] xl:w-[380px] 2xl:w-[400px] bg-white shadow-2xl overflow-hidden flex flex-col h-full md:h-screen md:max-h-screen rounded-none md:rounded-l-2xl"
+          className="relative w-full sm:w-[95vw] md:w-[85vw] lg:w-[420px] xl:w-[450px] 2xl:w-[480px] bg-white shadow-2xl overflow-hidden flex flex-col h-full rounded-none sm:rounded-l-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Mobile Drag Handle */}

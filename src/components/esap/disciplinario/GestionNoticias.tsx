@@ -32,7 +32,8 @@ import {
   MessageSquare,
   Paperclip,
   History,
-  Bell
+  Bell,
+  HelpCircle
 } from 'lucide-react';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
@@ -40,6 +41,9 @@ import { Card } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
+import { FlujoNoticiasDisciplinarias } from './FlujoNoticiasDisciplinarias';
+import { ModalDetallesNoticia } from './ModalDetallesNoticia';
+import { ModalArchivarNoticia } from './ModalArchivarNoticia';
 
 // ==================== INTERFACES ====================
 interface Profesional {
@@ -747,6 +751,9 @@ export function GestionNoticias() {
   const [showDevolucionModal, setShowDevolucionModal] = useState(false);
   const [showAsignacionModal, setShowAsignacionModal] = useState(false);
   const [showHistorialModal, setShowHistorialModal] = useState(false);
+  const [showFlujoModal, setShowFlujoModal] = useState(false);
+  const [showDetallesModal, setShowDetallesModal] = useState(false);
+  const [showArchivarModal, setShowArchivarModal] = useState(false);
   const [noticiaSeleccionada, setNoticiaSeleccionada] = useState<NoticiaDisciplinaria | null>(null);
   const [noticias, setNoticias] = useState<NoticiaDisciplinaria[]>(MOCK_NOTICIAS);
 
@@ -942,20 +949,20 @@ export function GestionNoticias() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: '#003DA5' }}>
+          <h1 className="text-2xl sm:text-3xl font-bold" style={{ color: '#003DA5' }}>
             Noticias Disciplinarias
           </h1>
-          <p className="text-sm text-gray-600 mt-1">
+          <p className="text-xs sm:text-sm text-gray-600 mt-1">
             RF001 - Sistema de Radicación | RF002 - Revisión y Asignación
           </p>
         </div>
         <Button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 w-full sm:w-auto"
           style={{ background: '#003DA5', color: '#FFFFFF' }}
         >
           <Plus className="w-4 h-4" />
@@ -963,9 +970,82 @@ export function GestionNoticias() {
         </Button>
       </div>
 
-      {/* Búsqueda y Filtros */}
-      <Card className="p-4">
-        <div className="flex flex-col lg:flex-row gap-3">
+      {/* Estadísticas - RESPONSIVE */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <Card className="p-3 sm:p-4 bg-yellow-50 border-yellow-200">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-yellow-600 flex items-center justify-center flex-shrink-0">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gray-600 mb-0.5">Pendientes</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">
+                {noticias.filter(n => n.estado === 'pendiente').length}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-3 sm:p-4 bg-blue-50 border-blue-200">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
+              <Eye className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gray-600 mb-0.5">En Valoración</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">
+                {noticias.filter(n => n.estado === 'en-valoracion').length}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-3 sm:p-4 bg-red-50 border-red-200">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-red-600 flex items-center justify-center flex-shrink-0">
+              <CornerDownLeft className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gray-600 mb-0.5">Devueltos</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">
+                {noticias.filter(n => n.estado === 'devuelto').length}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-3 sm:p-4 bg-purple-50 border-purple-200">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-purple-600 flex items-center justify-center flex-shrink-0">
+              <UserCheck className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gray-600 mb-0.5">Asignados</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">
+                {noticias.filter(n => n.estado === 'asignado').length}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-3 sm:p-4 bg-green-50 border-green-200 col-span-2 sm:col-span-3 lg:col-span-1">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-green-600 flex items-center justify-center flex-shrink-0">
+              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gray-600 mb-0.5">Convertidos</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">
+                {noticias.filter(n => n.estado === 'convertido-proceso').length}
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Búsqueda y Filtros - RESPONSIVE */}
+      <Card className="p-3 sm:p-4">
+        <div className="flex flex-col gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -1128,10 +1208,26 @@ export function GestionNoticias() {
 
                   {/* Botón Ver Detalles */}
                   <button
+                    onClick={() => {
+                      setNoticiaSeleccionada(noticia);
+                      setShowDetallesModal(true);
+                    }}
                     className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
-                    title="Ver detalles"
+                    title="Ver detalles completos"
                   >
                     <Eye className="w-4 h-4 text-gray-600" />
+                  </button>
+
+                  {/* Botón Archivar */}
+                  <button
+                    onClick={() => {
+                      setNoticiaSeleccionada(noticia);
+                      setShowArchivarModal(true);
+                    }}
+                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 transition-colors"
+                    title="Archivar noticia"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-600" />
                   </button>
                   
                   {/* RF002: Botones de Revisión y Asignación */}
@@ -1243,7 +1339,82 @@ export function GestionNoticias() {
             }}
           />
         )}
+
+        {showFlujoModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowFlujoModal(false);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-6xl max-h-[90vh] overflow-auto rounded-2xl shadow-2xl"
+              style={{ background: '#FFFFFF' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 z-10 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">
+                  ¿Cómo funcionan las Noticias Disciplinarias?
+                </h2>
+                <button
+                  onClick={() => setShowFlujoModal(false)}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-600" />
+                </button>
+              </div>
+              <div className="p-6">
+                <FlujoNoticiasDisciplinarias />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {showDetallesModal && noticiaSeleccionada && (
+          <ModalDetallesNoticia
+            noticia={noticiaSeleccionada}
+            onClose={() => {
+              setShowDetallesModal(false);
+              setNoticiaSeleccionada(null);
+            }}
+          />
+        )}
+
+        {showArchivarModal && noticiaSeleccionada && (
+          <ModalArchivarNoticia
+            noticia={noticiaSeleccionada}
+            onClose={() => {
+              setShowArchivarModal(false);
+              setNoticiaSeleccionada(null);
+            }}
+            onConfirm={() => {
+              setNoticias(noticias.filter(n => n.id !== noticiaSeleccionada?.id));
+              toast.success('Noticia Archivada', {
+                description: `La noticia ${noticiaSeleccionada?.numeroRadicado} ha sido archivada exitosamente.`
+              });
+              setShowArchivarModal(false);
+              setNoticiaSeleccionada(null);
+            }}
+          />
+        )}
       </AnimatePresence>
+
+      {/* Botón Flotante de Ayuda */}
+      <motion.button
+        onClick={() => setShowFlujoModal(true)}
+        className="fixed bottom-8 right-8 p-4 rounded-full shadow-2xl hover:shadow-3xl transition-all z-40"
+        style={{ background: '#003DA5' }}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        <HelpCircle className="w-6 h-6 text-white" />
+      </motion.button>
     </div>
   );
 }

@@ -12,15 +12,12 @@ import {
   AlertCircle, File, FileCheck, Search, Filter, X,
   ChevronDown, ChevronRight, Trash2, Edit2, ExternalLink,
   Archive, Folder, Shield, Key, Copy, Share2, FileSignature,
-  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle
+  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { toast } from 'sonner@2.0.3';
-import { FlujoProcesoDisciplinario } from './FlujoProcesoDisciplinario';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 // Interfaces
 interface Documento {
@@ -86,38 +83,6 @@ const PROCESOS_MOCK: Proceso[] = [
     etapaActual: 'Valoración',
     fechaInicio: '2024-12-15',
     estado: 'Activo'
-  },
-  {
-    id: 'p3',
-    numero: 'P-156-2025',
-    denunciado: 'Carlos Andrés Rodríguez',
-    etapaActual: 'Investigación Formal',
-    fechaInicio: '2025-01-10',
-    estado: 'Activo'
-  },
-  {
-    id: 'p4',
-    numero: 'P-045-2024',
-    denunciado: 'Ana María López Hernández',
-    etapaActual: 'Descargos',
-    fechaInicio: '2024-11-20',
-    estado: 'Activo'
-  },
-  {
-    id: 'p5',
-    numero: 'P-198-2025',
-    denunciado: 'Jorge Luis Martínez Sánchez',
-    etapaActual: 'Noticia',
-    fechaInicio: '2025-01-15',
-    estado: 'Activo'
-  },
-  {
-    id: 'p6',
-    numero: 'P-023-2024',
-    denunciado: 'Diana Patricia Torres',
-    etapaActual: 'Cierre',
-    fechaInicio: '2024-10-05',
-    estado: 'Archivado'
   }
 ];
 
@@ -469,7 +434,6 @@ function ModalSubirDocumento({
   const [archivo, setArchivo] = useState<File | null>(null);
   const [usarEnlaceExterno, setUsarEnlaceExterno] = useState(false);
   const [urlExterna, setUrlExterna] = useState('');
-  const [dragActive, setDragActive] = useState(false);
 
   const handleConfirmar = () => {
     if (!nombreDocumento.trim()) {
@@ -614,38 +578,20 @@ function ModalSubirDocumento({
 
           {/* Archivo Local */}
           {!usarEnlaceExterno && (
-            <div
-              className={`relative w-full h-32 border-2 border-gray-300 rounded-lg flex items-center justify-center cursor-pointer ${
-                dragActive ? 'bg-gray-100' : ''
-              }`}
-              onDragEnter={() => setDragActive(true)}
-              onDragLeave={() => setDragActive(false)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragActive(false);
-                const files = e.dataTransfer.files;
-                if (files.length > 0) {
-                  setArchivo(files[0]);
-                }
-              }}
-            >
-              {archivo ? (
-                <p className="text-sm text-gray-600">
-                  Seleccionado: {archivo.name} ({(archivo.size / 1024).toFixed(0)} KB)
-                </p>
-              ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <Upload className="w-6 h-6 text-gray-600" />
-                  <p className="text-sm text-gray-600">Arrastre y suelte un archivo aquí</p>
-                  <p className="text-xs text-gray-500">o haga clic para seleccionar</p>
-                </div>
-              )}
+            <div>
+              <label className="block font-semibold text-gray-900 mb-2">
+                Archivo <span className="text-red-600">*</span>
+              </label>
               <input
                 type="file"
                 onChange={(e) => setArchivo(e.target.files?.[0] || null)}
-                className="absolute inset-0 opacity-0 cursor-pointer"
+                className="w-full"
               />
+              {archivo && (
+                <p className="text-sm text-gray-600 mt-2">
+                  Seleccionado: {archivo.name} ({(archivo.size / 1024).toFixed(0)} KB)
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -675,12 +621,6 @@ export function ExpedienteElectronico() {
   const [showModalSubir, setShowModalSubir] = useState(false);
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState<Documento | null>(null);
   const [vistaActual, setVistaActual] = useState<'documentos' | 'indice' | 'auditoria'>('documentos');
-  const [showModalFlujo, setShowModalFlujo] = useState(false);
-  
-  // Estados para el buscador de procesos
-  const [procesoSearchQuery, setProcesoSearchQuery] = useState('');
-  const [showProcesoDropdown, setShowProcesoDropdown] = useState(false);
-  const [procesosRecientes, setProcesosRecientes] = useState<Proceso[]>([PROCESOS_MOCK[0], PROCESOS_MOCK[1]]);
 
   const handleVerDocumento = (doc: Documento) => {
     setDocumentoSeleccionado(doc);
@@ -700,280 +640,10 @@ export function ExpedienteElectronico() {
   };
 
   const handleExportarExpediente = () => {
-    toast.info('Generando Expediente PDF...', {
-      description: 'Por favor espere mientras se genera el documento'
-    });
-
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-
-    // PORTADA DEL EXPEDIENTE
-    doc.setFillColor(0, 61, 165);
-    doc.rect(0, 0, pageWidth, 80, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.setFont('helvetica', 'bold');
-    doc.text('EXPEDIENTE ELECTRÓNICO', pageWidth / 2, 30, { align: 'center' });
-    
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Oficina de Control Interno Disciplinario - OCID', pageWidth / 2, 45, { align: 'center' });
-    doc.text('ESAP - Escuela Superior de Administración Pública', pageWidth / 2, 55, { align: 'center' });
-
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('INFORMACIÓN DEL PROCESO', 14, 95);
-    
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.text(`Número de Proceso: ${procesoSeleccionado?.numero || 'N/A'}`, 14, 105);
-    doc.text(`Denunciado: ${procesoSeleccionado?.denunciado || 'N/A'}`, 14, 113);
-    doc.text(`Etapa Actual: ${procesoSeleccionado?.etapaActual || 'N/A'}`, 14, 121);
-    doc.text(`Estado: ${procesoSeleccionado?.estado || 'N/A'}`, 14, 129);
-    doc.text(`Fecha de Inicio: ${procesoSeleccionado?.fechaInicio || 'N/A'}`, 14, 137);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('ESTADÍSTICAS DEL EXPEDIENTE', 14, 150);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Total de Documentos: ${metrics.totalDocumentos}`, 14, 160);
-    doc.text(`Autos: ${metrics.autos} | Evidencias: ${metrics.evidencias}`, 14, 168);
-    doc.text(`Firmados: ${metrics.firmados} | Notificados: ${metrics.notificados}`, 14, 176);
-
-    doc.setFontSize(8);
-    doc.setTextColor(128, 128, 128);
-    doc.text(`Generado el: ${new Date().toLocaleString('es-CO')}`, 14, 280);
-
-    // PÁGINA 2: ÍNDICE
-    doc.addPage();
-    doc.setFillColor(0, 61, 165);
-    doc.rect(0, 0, pageWidth, 15, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`EXPEDIENTE ${procesoSeleccionado?.numero || ''}`, 14, 10);
-
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.text('ÍNDICE ELECTRÓNICO', 14, 25);
-
-    autoTable(doc, {
-      startY: 35,
-      head: [['Folio', 'Documento', 'Tipo', 'Etapa', 'Fecha', 'Usuario']],
-      body: documentos.map((d, index) => [
-        String(index + 1).padStart(3, '0'),
-        d.nombre,
-        d.tipo.toUpperCase(),
-        d.etapa,
-        new Date(d.fechaCarga).toLocaleDateString('es-CO'),
-        d.usuarioCarga
-      ]),
-      theme: 'grid',
-      headStyles: { fillColor: [0, 61, 165], textColor: [255, 255, 255], fontSize: 9 },
-      bodyStyles: { fontSize: 8 },
-      alternateRowStyles: { fillColor: [240, 240, 240] },
-      margin: { left: 14, right: 14 }
-    });
-
-    // PÁGINA 3: DETALLES
-    doc.addPage();
-    doc.setFillColor(0, 61, 165);
-    doc.rect(0, 0, pageWidth, 15, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.text(`EXPEDIENTE ${procesoSeleccionado?.numero || ''}`, 14, 10);
-
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('DETALLE DE DOCUMENTOS', 14, 25);
-
-    let yPos = 35;
-    documentos.forEach((d, i) => {
-      if (yPos > 240) {
-        doc.addPage();
-        doc.setFillColor(0, 61, 165);
-        doc.rect(0, 0, pageWidth, 15, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(10);
-        doc.text(`EXPEDIENTE ${procesoSeleccionado?.numero || ''}`, 14, 10);
-        yPos = 25;
-      }
-
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(0, 61, 165);
-      doc.text(`${String(i + 1).padStart(3, '0')} - ${d.nombre}`, 14, yPos);
-      yPos += 7;
-      
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Tipo: ${d.tipo.toUpperCase()} | Etapa: ${d.etapa} | V${d.version}`, 14, yPos);
-      yPos += 5;
-      doc.text(`Usuario: ${d.usuarioCarga} | ${new Date(d.fechaCarga).toLocaleString('es-CO')}`, 14, yPos);
-      yPos += 5;
-      
-      let estado = [];
-      if (d.metadatos.firmado) estado.push('✓ FIRMADO');
-      if (d.metadatos.notificado) estado.push('✓ NOTIFICADO');
-      if (estado.length > 0) {
-        doc.setTextColor(0, 128, 0);
-        doc.text(estado.join(' | '), 14, yPos);
-        yPos += 5;
-      }
-      
-      if (d.descripcion) {
-        doc.setTextColor(60, 60, 60);
-        const lines = doc.splitTextToSize(`Descripción: ${d.descripcion}`, pageWidth - 28);
-        doc.text(lines, 14, yPos);
-        yPos += (lines.length * 5);
-      }
-      
-      doc.setDrawColor(200, 200, 200);
-      doc.line(14, yPos + 2, pageWidth - 14, yPos + 2);
-      yPos += 8;
-    });
-
-    const totalPages = doc.getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(128, 128, 128);
-      doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, 14, 285);
-      doc.text(`Pág. ${i} de ${totalPages}`, pageWidth - 20, 285, { align: 'right' });
-    }
-
-    const nombreArchivo = `Expediente_${procesoSeleccionado?.numero || 'Completo'}_${new Date().toISOString().split('T')[0]}.pdf`;
-    doc.save(nombreArchivo);
-
-    toast.success('¡Expediente Exportado!', {
-      description: `${nombreArchivo} - ${documentos.length} documentos`
+    toast.success('Expediente Exportado', {
+      description: 'Generando PDF con índice electrónico y 15 documentos'
     });
   };
-
-  const handleImprimirIndice = () => {
-    toast.info('Generando Índice PDF...', {
-      description: 'Generando documento'
-    });
-
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-
-    doc.setFillColor(0, 61, 165);
-    doc.rect(0, 0, pageWidth, 90, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(26);
-    doc.setFont('helvetica', 'bold');
-    doc.text('ÍNDICE ELECTRÓNICO', pageWidth / 2, 35, { align: 'center' });
-    
-    doc.setFontSize(16);
-    doc.text('DEL EXPEDIENTE', pageWidth / 2, 48, { align: 'center' });
-    
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
-    doc.text('OCID - ESAP', pageWidth / 2, 63, { align: 'center' });
-
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('PROCESO DISCIPLINARIO', 14, 105);
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Número: ${procesoSeleccionado?.numero || 'N/A'}`, 14, 115);
-    doc.text(`Denunciado: ${procesoSeleccionado?.denunciado || 'N/A'}`, 14, 123);
-    doc.text(`Etapa: ${procesoSeleccionado?.etapaActual || 'N/A'}`, 14, 131);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('RESUMEN', 14, 145);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Total: ${metrics.totalDocumentos} documentos`, 14, 155);
-    doc.text(`Autos: ${metrics.autos} | Evidencias: ${metrics.evidencias}`, 14, 163);
-
-    autoTable(doc, {
-      startY: 175,
-      head: [['Folio', 'Documento', 'Tipo', 'Etapa', 'Fecha', 'Usuario', 'Estado']],
-      body: documentos.map((d, i) => {
-        let estado = [];
-        if (d.metadatos.firmado) estado.push('✓F');
-        if (d.metadatos.notificado) estado.push('✓N');
-        return [
-          String(i + 1).padStart(3, '0'),
-          d.nombre,
-          d.tipo.toUpperCase(),
-          d.etapa,
-          new Date(d.fechaCarga).toLocaleDateString('es-CO'),
-          d.usuarioCarga,
-          estado.join(' ')
-        ];
-      }),
-      theme: 'grid',
-      headStyles: { fillColor: [0, 61, 165], fontSize: 8 },
-      bodyStyles: { fontSize: 7 },
-      columnStyles: {
-        0: { cellWidth: 12, halign: 'center' },
-        1: { cellWidth: 60 },
-        2: { cellWidth: 18, halign: 'center' },
-        3: { cellWidth: 30 },
-        4: { cellWidth: 22 },
-        5: { cellWidth: 28 },
-        6: { cellWidth: 15, halign: 'center' }
-      },
-      margin: { left: 10, right: 10 }
-    });
-
-    const finalY = (doc as any).lastAutoTable.finalY + 10;
-    doc.setFontSize(7);
-    doc.setTextColor(100, 100, 100);
-    doc.text('✓F = Firmado | ✓N = Notificado', 14, finalY);
-
-    const totalPages = doc.getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i);
-      doc.setFontSize(7);
-      doc.setTextColor(128, 128, 128);
-      doc.text(`${new Date().toLocaleString('es-CO')}`, 14, pageHeight - 10);
-      doc.text(`Pág. ${i}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
-    }
-
-    const nombreArchivo = `Indice_${procesoSeleccionado?.numero || 'Exp'}_${new Date().toISOString().split('T')[0]}.pdf`;
-    doc.save(nombreArchivo);
-
-    toast.success('¡Índice Generado!', {
-      description: `${nombreArchivo}`
-    });
-  };
-  
-  const handleSeleccionarProceso = (proceso: Proceso) => {
-    setProcesoSeleccionado(proceso);
-    setProcesoSearchQuery('');
-    setShowProcesoDropdown(false);
-    
-    // Agregar a recientes si no está
-    if (!procesosRecientes.find(p => p.id === proceso.id)) {
-      setProcesosRecientes([proceso, ...procesosRecientes.slice(0, 4)]);
-    }
-    
-    toast.success('Proceso Seleccionado', {
-      description: `${proceso.numero} - ${proceso.denunciado}`
-    });
-  };
-
-  // Filtrar procesos según búsqueda
-  const procesosFiltrados = PROCESOS_MOCK.filter(p => {
-    const query = procesoSearchQuery.toLowerCase();
-    return (
-      p.numero.toLowerCase().includes(query) ||
-      p.denunciado.toLowerCase().includes(query) ||
-      p.etapaActual.toLowerCase().includes(query) ||
-      p.estado.toLowerCase().includes(query)
-    );
-  });
 
   const filteredDocumentos = documentos.filter(d => {
     const matchesSearch = 
@@ -997,15 +667,6 @@ export function ExpedienteElectronico() {
 
   return (
     <div className="w-full max-w-full">
-      {/* Breadcrumb */}
-      <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
-        <button className="hover:text-blue-600">Backoffice</button>
-        <ChevronRight className="w-4 h-4" />
-        <button className="hover:text-blue-600">Control Interno Disciplinario</button>
-        <ChevronRight className="w-4 h-4" />
-        <span className="text-gray-900 font-medium">Expediente Electrónico</span>
-      </div>
-
       {/* Header */}
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-6">
@@ -1019,57 +680,15 @@ export function ExpedienteElectronico() {
 
           <button
             onClick={handleExportarExpediente}
-            className="px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
+            className="px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity"
             style={{ background: '#DC2626' }}
           >
-            <Package className="w-4 h-4" />
+            <Package className="w-4 h-4 inline mr-2" />
             Exportar Expediente PDF
           </button>
         </div>
 
-        {/* Selector de Proceso - DESTACADO CON CARD NARANJA */}
-        <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-300 rounded-lg p-5 mb-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-500 flex items-center justify-center">
-              <FolderOpen className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-gray-900">
-                Proceso Disciplinario
-              </label>
-              <p className="text-xs text-gray-600">Seleccione el proceso para ver su expediente electrónico</p>
-            </div>
-          </div>
-          <div className="relative">
-            <input
-              type="text"
-              value={procesoSearchQuery}
-              onChange={(e) => setProcesoSearchQuery(e.target.value)}
-              placeholder="Buscar proceso..."
-              className="w-full px-4 py-3 border-2 border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white font-medium text-gray-900"
-              onFocus={() => setShowProcesoDropdown(true)}
-              onBlur={() => setTimeout(() => setShowProcesoDropdown(false), 200)}
-            />
-            {showProcesoDropdown && (
-              <div className="absolute left-0 right-0 top-full z-10 bg-white border border-gray-300 rounded-b-lg shadow-lg max-h-40 overflow-y-auto">
-                {procesosFiltrados.map(proceso => (
-                  <div
-                    key={proceso.id}
-                    className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSeleccionarProceso(proceso)}
-                  >
-                    {proceso.numero} - {proceso.denunciado} ({proceso.etapaActual})
-                  </div>
-                ))}
-                {procesosFiltrados.length === 0 && (
-                  <div className="px-4 py-2 text-gray-500">No se encontraron procesos</div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Métricas del Proceso Seleccionado */}
+        {/* Métricas Globales */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <p className="text-sm text-gray-600">Total Documentos</p>
@@ -1097,53 +716,69 @@ export function ExpedienteElectronico() {
           </div>
         </div>
 
-        {/* Pestañas con Íconos destacados */}
-        <div className="bg-white border border-gray-200 rounded-lg mb-6">
-          <div className="flex gap-1 p-2">
-            <button
-              onClick={() => setVistaActual('documentos')}
-              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-                vistaActual === 'documentos'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              Documentos ({filteredDocumentos.length})
-            </button>
-            <button
-              onClick={() => setVistaActual('indice')}
-              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-                vistaActual === 'indice'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Archive className="w-4 h-4" />
-              Índice Electrónico
-            </button>
-            <button
-              onClick={() => setVistaActual('auditoria')}
-              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-                vistaActual === 'auditoria'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Shield className="w-4 h-4" />
-              Auditoría ({AUDITORIA_MOCK.length})
-            </button>
-          </div>
+        {/* Selector de Proceso */}
+        <div className="mb-6">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Proceso Disciplinario
+          </label>
+          <select
+            value={procesoSeleccionado?.id}
+            onChange={(e) => setProcesoSeleccionado(PROCESOS_MOCK.find(p => p.id === e.target.value) || null)}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            {PROCESOS_MOCK.map(proceso => (
+              <option key={proceso.id} value={proceso.id}>
+                {proceso.numero} - {proceso.denunciado} ({proceso.etapaActual})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Pestañas */}
+        <div className="flex gap-2 border-b border-gray-200 mb-6">
+          <button
+            onClick={() => setVistaActual('documentos')}
+            className={`px-6 py-3 font-semibold border-b-2 transition-colors ${
+              vistaActual === 'documentos'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-blue-600'
+            }`}
+          >
+            <FileText className="w-4 h-4 inline mr-2" />
+            Documentos ({filteredDocumentos.length})
+          </button>
+          <button
+            onClick={() => setVistaActual('indice')}
+            className={`px-6 py-3 font-semibold border-b-2 transition-colors ${
+              vistaActual === 'indice'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-blue-600'
+            }`}
+          >
+            <Archive className="w-4 h-4 inline mr-2" />
+            Índice Electrónico
+          </button>
+          <button
+            onClick={() => setVistaActual('auditoria')}
+            className={`px-6 py-3 font-semibold border-b-2 transition-colors ${
+              vistaActual === 'auditoria'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-blue-600'
+            }`}
+          >
+            <Shield className="w-4 h-4 inline mr-2" />
+            Auditoría ({AUDITORIA_MOCK.length})
+          </button>
         </div>
 
         {/* Filtros - Solo para vista Documentos */}
         {vistaActual === 'documentos' && (
-          <div className="flex flex-col sm:flex-row gap-3 mb-6">
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Buscar documentos en este proceso..."
+                placeholder="Buscar documentos..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1287,7 +922,6 @@ export function ExpedienteElectronico() {
               Índice Electrónico del Expediente
             </h2>
             <button
-              onClick={handleImprimirIndice}
               className="px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity"
               style={{ background: '#DC2626' }}
             >
@@ -1398,53 +1032,7 @@ export function ExpedienteElectronico() {
             onConfirm={handleSubirDocumento}
           />
         )}
-        
-        {showModalFlujo && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={() => setShowModalFlujo(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden"
-            >
-              <div className="flex items-center justify-between p-6 border-b">
-                <h2 className="text-2xl font-bold" style={{ color: '#003DA5' }}>
-                  ¿Cómo funciona el Expediente Electrónico?
-                </h2>
-                <button
-                  onClick={() => setShowModalFlujo(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <X className="w-6 h-6 text-gray-600" />
-                </button>
-              </div>
-              <div className="overflow-y-auto" style={{ maxHeight: 'calc(90vh - 80px)' }}>
-                <FlujoProcesoDisciplinario />
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
       </AnimatePresence>
-      
-      {/* Botón Flotante de Ayuda */}
-      <button
-        onClick={() => setShowModalFlujo(true)}
-        className="fixed bottom-8 right-8 w-14 h-14 rounded-full shadow-2xl hover:shadow-xl transition-all flex items-center justify-center z-40 group"
-        style={{ background: '#003DA5' }}
-        title="¿Cómo funciona el Expediente Electrónico?"
-      >
-        <HelpCircle className="w-7 h-7 text-white" />
-        <span className="absolute right-full mr-3 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-          ¿Cómo funciona?
-        </span>
-      </button>
     </div>
   );
 }

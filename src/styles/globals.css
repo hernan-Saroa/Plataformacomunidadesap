@@ -168,6 +168,68 @@
   body:has([data-state="open"][data-slot="dialog-content"]) {
     overflow: hidden;
   }
+
+  /* ===================== OPTIMIZACIÓN DE ANIMACIONES - ANTI-PARPADEO ===================== */
+  /* Estas reglas previenen el parpadeo/flickering en animaciones */
+  
+  /* 1. Forzar GPU acceleration en elementos animados */
+  [data-motion-id],
+  [data-framer-motion],
+  .motion-div {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    perspective: 1000px;
+    -webkit-perspective: 1000px;
+  }
+
+  /* 2. Optimizar transiciones y animaciones */
+  @media (prefers-reduced-motion: no-preference) {
+    * {
+      scroll-behavior: smooth;
+    }
+  }
+
+  /* 3. Prevenir layout shift en imágenes */
+  img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  /* 4. Suavizar animaciones de scroll */
+  @supports (scrollbar-width: thin) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+    }
+  }
+
+  /* 5. Reducir parpadeo en transiciones de color */
+  *,
+  *::before,
+  *::after {
+    transition-property: transform, opacity;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* 6. Optimizar will-change para elementos que se animan frecuentemente */
+  [data-animate="true"] {
+    will-change: transform, opacity;
+  }
+
+  /* 7. Remover will-change después de la animación (performance) */
+  [data-animate="false"] {
+    will-change: auto;
+  }
+
+  /* 8. Reducir re-paints en animaciones de blur */
+  .blur-3xl,
+  .backdrop-blur-xl,
+  .backdrop-blur-md {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+  }
   
   /* ===================== CURSOR POINTER - UX IMPROVEMENTS ===================== */
   /* Aplicar cursor pointer a TODOS los elementos interactivos */

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import esapStudentsReal from 'figma:asset/9366aaa7d27856d9aef10bd134f20dbe9d256906.png';
 import { 
@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
-import { motion, useScroll, useTransform } from 'motion/react';
+import { motion, useScroll, useTransform, useReducedMotion } from 'motion/react';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { DemoVideoModal } from './DemoVideoModal';
 import { ContactForm, MicrointeractionWrapper } from '../shared';
@@ -20,11 +20,28 @@ interface LandingPageProps {
   onNavigate: (section: string) => void;
 }
 
+// Utility: Throttle function para optimizar eventos de alta frecuencia
+function throttle<T extends (...args: any[]) => any>(func: T, limit: number): T {
+  let inThrottle: boolean;
+  return ((...args: any[]) => {
+    if (!inThrottle) {
+      func(...args);
+      inThrottle = true;
+      setTimeout(() => (inThrottle = false), limit);
+    }
+  }) as T;
+}
+
 export function LandingPage({ onLoginClick, onNavigate }: LandingPageProps) {
   const [selectedTestimonial, setSelectedTestimonial] = useState(0);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  
+  // Detectar preferencia de movimiento reducido
+  const prefersReducedMotion = useReducedMotion();
+  
   const { scrollY } = useScroll();
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
@@ -33,13 +50,34 @@ export function LandingPage({ onLoginClick, onNavigate }: LandingPageProps) {
   const { triggerFeedback } = useMicrointeractions();
   const { ariaProps } = useAccessibility();
 
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+  // Throttled mouse move handler - reduce de cientos a ~16 updates/segundo
+  const handleMouseMove = useCallback(
+    throttle((e: MouseEvent) => {
       setMousePosition({ x: e.clientX, y: e.clientY });
+    }, 60), // 60ms = ~16fps, suficiente para parallax suave
+    []
+  );
+
+  // Throttled scroll handler
+  const handleScroll = useCallback(
+    throttle(() => {
+      setIsScrolled(window.scrollY > 50);
+    }, 100),
+    []
+  );
+
+  useEffect(() => {
+    // Solo agregar listener si no prefiere movimiento reducido
+    if (!prefersReducedMotion) {
+      window.addEventListener('mousemove', handleMouseMove);
+    }
+    window.addEventListener('scroll', handleScroll);
+    
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('scroll', handleScroll);
     };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+  }, [handleMouseMove, handleScroll, prefersReducedMotion]);
 
   const features = [
     {
@@ -233,29 +271,33 @@ export function LandingPage({ onLoginClick, onNavigate }: LandingPageProps) {
 
       {/* Hero Section - World Class */}
       <section id="hero" className="relative min-h-[85vh] sm:min-h-[80vh] lg:min-h-screen flex items-center justify-center overflow-hidden pt-20 sm:pt-24 lg:pt-16">
-        {/* Animated Background */}
-        <div className="absolute inset-0 z-0">
+        {/* Animated Background - OPTIMIZADO */}
+        <div className="absolute inset-0 z-0" style={{ willChange: 'transform' }}>
           {/* Gradient Base */}
           <div 
             className="absolute inset-0"
             style={{
               background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 25%, #1e5da8 50%, #2563eb 75%, #3b82f6 100%)',
+              transform: 'translateZ(0)', // Forzar GPU acceleration
             }}
           />
           
-          {/* Animated Gradient Overlay */}
-          <motion.div 
-            className="absolute inset-0 opacity-30"
-            animate={{
-              background: [
-                'radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.3) 0%, transparent 50%)',
-                'radial-gradient(circle at 80% 50%, rgba(168, 85, 247, 0.3) 0%, transparent 50%)',
-                'radial-gradient(circle at 50% 80%, rgba(34, 211, 238, 0.3) 0%, transparent 50%)',
-                'radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.3) 0%, transparent 50%)',
-              ]
-            }}
-            transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-          />
+          {/* Animated Gradient Overlay - OPTIMIZADO: Reducida duración y solo si no prefiere movimiento reducido */}
+          {!prefersReducedMotion && (
+            <motion.div 
+              className="absolute inset-0 opacity-30"
+              style={{ willChange: 'opacity, transform' }}
+              animate={{
+                background: [
+                  'radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.3) 0%, transparent 50%)',
+                  'radial-gradient(circle at 80% 50%, rgba(168, 85, 247, 0.3) 0%, transparent 50%)',
+                  'radial-gradient(circle at 50% 80%, rgba(34, 211, 238, 0.3) 0%, transparent 50%)',
+                  'radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.3) 0%, transparent 50%)',
+                ]
+              }}
+              transition={{ duration: 20, repeat: Infinity, ease: "linear" }} // Aumentado a 20s para reducir re-renders
+            />
+          )}
           
           {/* Grid Pattern */}
           <div 
@@ -269,31 +311,42 @@ export function LandingPage({ onLoginClick, onNavigate }: LandingPageProps) {
             }}
           />
           
-          {/* Floating Elements */}
-          <motion.div
-            className="absolute top-20 left-20 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl hidden sm:block"
-            animate={{
-              x: [0, 50, 0],
-              y: [0, 30, 0],
-              scale: [1, 1.1, 1],
-            }}
-            transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-          />
-          <motion.div
-            className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl hidden sm:block"
-            animate={{
-              x: [0, -50, 0],
-              y: [0, -30, 0],
-              scale: [1, 1.2, 1],
-            }}
-            transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-          />
+          {/* Floating Elements - OPTIMIZADO: Solo si no prefiere movimiento reducido */}
+          {!prefersReducedMotion && (
+            <>
+              <motion.div
+                className="absolute top-20 left-20 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl hidden sm:block"
+                style={{ willChange: 'transform' }}
+                animate={{
+                  x: [0, 50, 0],
+                  y: [0, 30, 0],
+                  scale: [1, 1.1, 1],
+                }}
+                transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }} // Aumentado a 12s
+              />
+              <motion.div
+                className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl hidden sm:block"
+                style={{ willChange: 'transform' }}
+                animate={{
+                  x: [0, -50, 0],
+                  y: [0, -30, 0],
+                  scale: [1, 1.2, 1],
+                }}
+                transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }} // Aumentado a 15s
+              />
+            </>
+          )}
         </div>
 
-        {/* Hero Content */}
+        {/* Hero Content - OPTIMIZADO */}
         <motion.div 
           className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 xl:py-16 max-w-7xl"
-          style={{ opacity: heroOpacity, scale: heroScale }}
+          style={{ 
+            opacity: heroOpacity, 
+            scale: heroScale,
+            willChange: 'transform, opacity',
+            transform: 'translateZ(0)', // GPU acceleration
+          }}
         >
           <div className="grid md:grid-cols-2 gap-8 sm:gap-8 lg:gap-10 items-center pb-4 sm:pb-4 lg:pb-8">
             

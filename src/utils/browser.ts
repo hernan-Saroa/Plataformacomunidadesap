@@ -16,7 +16,13 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     } catch (err) {
-      console.warn('Clipboard API falló, usando fallback:', err);
+      // Silenciar el warning si es NotAllowedError (políticas de permisos)
+      // El fallback se encargará de copiar el texto
+      if (err instanceof DOMException && err.name === 'NotAllowedError') {
+        // No mostrar warning - es comportamiento esperado en algunos navegadores
+      } else {
+        console.warn('Clipboard API falló, usando fallback:', err);
+      }
       // Continuar al fallback
     }
   }

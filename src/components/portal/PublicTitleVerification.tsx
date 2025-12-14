@@ -35,7 +35,7 @@ interface PublicTitleVerificationProps {
 
 // Base de datos completa de graduados ESAP (Mock data)
 const ESAP_GRADUATES_DATABASE = [
-  { documentNumber: '1012345678', documentIssueDate: '2005-03-15', fullName: 'María Alejandra González Pérez', titleType: 'Pregrado', programName: 'Administración Pública', diplomaNumber: 'ESAP-2023-001234', graduationDate: '2023-06-15', honors: 'Cum Laude', gpa: 4.5 },
+  { documentNumber: '1012345678', documentIssueDate: '2002-03-15', fullName: 'María Alejandra González Pérez', titleType: 'Pregrado', programName: 'Administración Pública', diplomaNumber: 'ESAP-2023-001234', graduationDate: '2023-06-15', honors: 'Cum Laude', gpa: 4.5 },
   { documentNumber: '1023456789', documentIssueDate: '2004-07-22', fullName: 'Carlos Eduardo Ramírez Moreno', titleType: 'Pregrado', programName: 'Ciencia Política', diplomaNumber: 'ESAP-2022-005678', graduationDate: '2022-12-10', honors: 'Magna Cum Laude', gpa: 4.7 },
   { documentNumber: '1034567890', documentIssueDate: '2006-01-10', fullName: 'Ana María Rodríguez Silva', titleType: 'Especialización', programName: 'Gestión Pública', diplomaNumber: 'ESAP-2024-002341', graduationDate: '2024-08-20', honors: 'Summa Cum Laude', gpa: 4.9 },
   { documentNumber: '1045678901', documentIssueDate: '2003-11-05', fullName: 'Juan Pablo Martínez López', titleType: 'Maestría', programName: 'Gobierno y Políticas Públicas', diplomaNumber: 'ESAP-2023-009876', graduationDate: '2023-11-30', honors: 'Cum Laude', gpa: 4.6 },
@@ -730,25 +730,50 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                 transition={{ delay: 0.7 }}
                 className="mt-12 pt-8 border-t-2 border-gray-200"
               >
-                <div className="bg-gradient-to-r from-emerald-50 to-green-50 border-2 border-emerald-200 rounded-2xl p-6">
-                  <h4 className="font-bold mb-4 text-lg flex items-center gap-2 text-gray-900">
-                    <Sparkles className="w-5 h-5 text-emerald-600" />
-                    Prueba con estos datos de ejemplo
-                  </h4>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-emerald-200">
-                      <p className="text-sm font-semibold text-gray-600 mb-2">Cédula</p>
-                      <p className="font-mono font-bold text-lg text-gray-900">1012345678</p>
+                <div className="space-y-4">
+                  {/* EJEMPLO EXITOSO */}
+                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 border-2 border-emerald-300 rounded-2xl p-6">
+                    <h4 className="font-bold mb-3 text-lg flex items-center gap-2 text-emerald-800">
+                      <Sparkles className="w-5 h-5 text-emerald-600" />
+                      ✅ Prueba con estos datos de ejemplo (CASO EXITOSO)
+                    </h4>
+                    <div className="grid sm:grid-cols-2 gap-4 mb-3">
+                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-emerald-300">
+                        <p className="text-sm font-semibold text-gray-600 mb-2">Cédula</p>
+                        <p className="font-mono font-bold text-lg text-gray-900">1012345678</p>
+                      </div>
+                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-emerald-300">
+                        <p className="text-sm font-semibold text-gray-600 mb-2">Fecha de Expedición</p>
+                        <p className="font-bold text-lg text-gray-900">2002-03-15</p>
+                      </div>
                     </div>
-                    <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-emerald-200">
-                      <p className="text-sm font-semibold text-gray-600 mb-2">Fecha de Expedición</p>
-                      <p className="font-bold text-lg text-gray-900">2005-03-15</p>
-                    </div>
+                    <p className="text-sm text-emerald-700 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      María Alejandra González Pérez - Pregrado en Administración Pública
+                    </p>
                   </div>
-                  <p className="text-sm text-gray-600 mt-3 flex items-center gap-2">
-                    <Award className="w-4 h-4 text-emerald-600" />
-                    María Alejandra González Pérez - Pregrado en Administración Pública
-                  </p>
+
+                  {/* EJEMPLO NO EXITOSO */}
+                  <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-300 rounded-2xl p-6">
+                    <h4 className="font-bold mb-3 text-lg flex items-center gap-2 text-orange-800">
+                      <AlertCircle className="w-5 h-5 text-orange-600" />
+                      ❌ Prueba con estos datos (CASO NO EXITOSO)
+                    </h4>
+                    <div className="grid sm:grid-cols-2 gap-4 mb-3">
+                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-orange-300">
+                        <p className="text-sm font-semibold text-gray-600 mb-2">Cédula</p>
+                        <p className="font-mono font-bold text-lg text-gray-900">9876543210</p>
+                      </div>
+                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-orange-300">
+                        <p className="text-sm font-semibold text-gray-600 mb-2">Fecha de Expedición</p>
+                        <p className="font-bold text-lg text-gray-900">2010-06-20</p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-orange-700 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4" />
+                      Este graduado NO está registrado - Se creará solicitud de revisión manual (48-72h)
+                    </p>
+                  </div>
                 </div>
               </motion.div>
             </CardContent>
