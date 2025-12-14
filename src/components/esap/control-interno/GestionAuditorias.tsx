@@ -17,6 +17,7 @@ import { MetricCard } from '../shared/MetricCard';
 import { ToolbarActions } from '../shared/ToolbarActions';
 import { ResponsiveModal } from '../shared/ResponsiveModal';
 import { DetalleAuditoriaEtapas } from './etapas/DetalleAuditoriaEtapas';
+import { ModalCrearAuditoria } from './ModalCrearAuditoria';
 import { toast } from 'sonner@2.0.3';
 
 type VistaActiva = 'kanban' | 'lista' | 'calendario' | 'detalle-etapas';

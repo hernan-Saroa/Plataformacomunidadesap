@@ -6,7 +6,7 @@
  * - Backoffice Administrativo
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BackofficeApp } from "./components/esap/BackofficeApp";
 import { LandingPage } from "./components/portal/LandingPage";
 import { PortalDashboard } from "./components/portal/PortalDashboard";
@@ -21,6 +21,52 @@ import { EnrollmentQRLandingUnified } from "./components/portal/EnrollmentQRLand
 import { VinculacionForm } from "./components/portal/VinculacionForm";
 import { PublicTitleVerification } from "./components/portal/PublicTitleVerification";
 import { SolicitarCertificadoLaboral } from "./components/portal/SolicitarCertificadoLaboral";
+
+// ============ UTILIDADES DE PERSISTENCIA DE SESIÓN ============
+
+const SESSION_KEY = "esap-active-session";
+
+interface SessionData {
+  isAuthenticated: boolean;
+  userData: any;
+  userRoles: string[];
+  userType: "portal" | "administrativo";
+  activeRole: string;
+  currentView: AppView;
+}
+
+// Guardar sesión en localStorage
+const saveSession = (sessionData: SessionData) => {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+  } catch (error) {
+    console.error("Error al guardar sesión:", error);
+  }
+};
+
+// Recuperar sesión desde localStorage
+const loadSession = (): SessionData | null => {
+  try {
+    const sessionJson = localStorage.getItem(SESSION_KEY);
+    if (!sessionJson) return null;
+    return JSON.parse(sessionJson);
+  } catch (error) {
+    console.error("Error al cargar sesión:", error);
+    return null;
+  }
+};
+
+// Limpiar sesión del localStorage
+const clearSession = () => {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem("esap-remember-session");
+  } catch (error) {
+    console.error("Error al limpiar sesión:", error);
+  }
+};
+
+// ============================================================
 
 type AppView =
   | "landing"
@@ -56,6 +102,46 @@ export default function App() {
   >("portal");
   const [activeRole, setActiveRole] =
     useState<string>("Estudiante");
+
+  // ========== PERSISTENCIA DE SESIÓN ==========
+  
+  // Cargar sesión al montar el componente
+  useEffect(() => {
+    const savedSession = loadSession();
+    
+    if (savedSession && savedSession.isAuthenticated) {
+      console.log('📂 Cargando sesión guardada...');
+      setIsAuthenticated(savedSession.isAuthenticated);
+      setUserData(savedSession.userData);
+      setUserRoles(savedSession.userRoles);
+      setUserType(savedSession.userType);
+      setActiveRole(savedSession.activeRole);
+      setCurrentView(savedSession.currentView);
+      console.log('✅ Sesión restaurada exitosamente');
+    }
+  }, []);
+
+  // Guardar sesión cada vez que cambia el estado de autenticación
+  useEffect(() => {
+    if (isAuthenticated) {
+      const sessionData: SessionData = {
+        isAuthenticated,
+        userData,
+        userRoles,
+        userType,
+        activeRole,
+        currentView
+      };
+      
+      saveSession(sessionData);
+      console.log('💾 Sesión guardada en localStorage');
+    } else {
+      // Si el usuario no está autenticado, limpiar la sesión
+      clearSession();
+    }
+  }, [isAuthenticated, userData, userRoles, userType, activeRole, currentView]);
+
+  // ============================================
 
   // Handler para mostrar pantalla de login
   const handleLoginClick = () => {

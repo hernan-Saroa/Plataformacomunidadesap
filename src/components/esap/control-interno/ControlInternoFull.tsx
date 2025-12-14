@@ -6,12 +6,14 @@
 
 import { useState } from 'react';
 import {
-  Shield, ClipboardCheck, AlertTriangle, CheckCircle, FileText, Settings, Target, ListChecks
+  Shield, ClipboardCheck, AlertTriangle, CheckCircle, FileText, Settings, Target, ListChecks, Database, CalendarDays
 } from 'lucide-react';
 import { ModuleLayout, MenuItem } from '../shared/ModuleLayout';
 import { GestionAuditorias } from './GestionAuditorias';
 import { GestionHallazgos } from './GestionHallazgos';
 import { PlanAnual5Roles } from './PlanAnual5Roles';
+import { UniversoAuditorias } from './UniversoAuditorias';
+import { ProgramaAnualAuditorias } from './ProgramaAnualAuditorias';
 import { GestionPlanesMejoramiento } from './planes-mejoramiento';
 import { AprobacionesPendientes } from './AprobacionesPendientes';
 import { DocumentosReportes } from './DocumentosReportes';
@@ -19,6 +21,8 @@ import { ConfiguracionControlInterno } from './ConfiguracionControlInterno';
 
 type SeccionActiva = 
   | 'plan-anual'
+  | 'universo-auditorias'
+  | 'programa-anual'
   | 'auditorias'
   | 'hallazgos'
   | 'planes-mejoramiento'
@@ -35,6 +39,18 @@ export function ControlInternoFull() {
       label: 'Plan Anual (5 Roles)', 
       icon: <Target className="w-5 h-5" />,
       color: '#3B82F6'
+    },
+    { 
+      id: 'universo-auditorias', 
+      label: 'Universo de Auditorías', 
+      icon: <Database className="w-5 h-5" />,
+      color: '#F97316'
+    },
+    { 
+      id: 'programa-anual', 
+      label: 'Programa Anual de Auditorías', 
+      icon: <CalendarDays className="w-5 h-5" />,
+      color: '#10B981'
     },
     { 
       id: 'auditorias', 
@@ -80,6 +96,10 @@ export function ControlInternoFull() {
     switch (seccionActiva) {
       case 'plan-anual':
         return <PlanAnual5Roles />;
+      case 'universo-auditorias':
+        return <UniversoAuditorias />;
+      case 'programa-anual':
+        return <ProgramaAnualAuditorias />;
       case 'auditorias':
         return <GestionAuditorias />;
       case 'hallazgos':

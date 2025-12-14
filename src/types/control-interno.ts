@@ -143,7 +143,7 @@ export interface Auditoria {
   fechaFin?: string;
   fechaLimite: string;
   progreso: number;
-  metodologia: 'DAF' | 'P-E-C' | 'Decreto_648' | 'Otra';
+  metodologia: 'DAFP' | 'P-E-C' | 'Decreto_648' | 'Otra';
   riesgoInherente: 'alto' | 'medio' | 'bajo';
   prioridad: 'alta' | 'media' | 'baja';
   hallazgosCount: number;

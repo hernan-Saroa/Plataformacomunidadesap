@@ -50,7 +50,7 @@ export function ResponsiveModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 flex items-center justify-center p-2 sm:p-4"
+          className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center p-2 sm:p-4 pt-16 sm:pt-4 overflow-y-auto"
           style={{ zIndex }}
           onClick={(e) => {
             if (e.target === e.currentTarget) onClose();
@@ -60,7 +60,7 @@ export function ResponsiveModal({
             initial={{ scale: 0.9, y: 20 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.9, y: 20 }}
-            className={`w-full ${maxWidthClass[maxWidth]} rounded-xl sm:rounded-2xl shadow-2xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col`}
+            className={`w-full ${maxWidthClass[maxWidth]} rounded-xl sm:rounded-2xl shadow-2xl max-h-[85vh] sm:max-h-[90vh] overflow-hidden flex flex-col my-4`}
             style={{ background: '#FFFFFF' }}
             onClick={(e) => e.stopPropagation()}
           >

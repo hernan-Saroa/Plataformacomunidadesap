@@ -17,12 +17,15 @@ import {
   DollarSign,
   Settings,
   TrendingUp,
-  ChevronRight
+  ChevronRight,
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { toast } from 'react-toastify';
+import { useNotifications } from './NotificationsContext';
 
 // Types basados en tabla notificaciones
 interface Notification {
@@ -62,87 +65,14 @@ export function NotificationsPanelV2({
   const [filter, setFilter] = useState<'all' | 'unread' | 'important'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
-  // Mock data - En producción vendría de la API
-  const notifications: Notification[] = [
-    {
-      id_notificacion: '1',
-      tipo_notificacion: 'perfil_incompleto',
-      titulo: 'Completa tu perfil',
-      mensaje: 'Tu perfil está al 65%. Completa los campos faltantes para acceder a todos los servicios.',
-      descripcion_corta: 'Faltan documentos por subir',
-      icono: 'AlertCircle',
-      color: '#f59e0b',
-      prioridad: 'Alta',
-      categoria: 'perfil',
-      leida: false,
-      archivada: false,
-      fecha_creacion: '2025-11-17T10:30:00',
-      tiene_accion: true,
-      texto_boton_accion: 'Completar Perfil',
-      url_accion: '/profile/complete',
-      email_enviado: true,
-      email_abierto: false
-    },
-    {
-      id_notificacion: '2',
-      tipo_notificacion: 'nueva_calificacion',
-      titulo: 'Nueva calificación publicada',
-      mensaje: 'Se ha publicado la calificación de Administración Pública I: 4.5',
-      descripcion_corta: 'Administración Pública I',
-      icono: 'TrendingUp',
-      color: '#10b981',
-      prioridad: 'Media',
-      categoria: 'academico',
-      leida: false,
-      archivada: false,
-      fecha_creacion: '2025-11-17T09:15:00',
-      tiene_accion: true,
-      texto_boton_accion: 'Ver Calificación',
-      url_accion: '/grades',
-      email_enviado: true,
-      email_abierto: true
-    },
-    {
-      id_notificacion: '3',
-      tipo_notificacion: 'certificado_listo',
-      titulo: 'Certificado listo para descarga',
-      mensaje: 'Tu certificado de notas está disponible para descargar',
-      descripcion_corta: 'Certificado de Notas',
-      icono: 'FileText',
-      color: '#1e5da8',
-      prioridad: 'Media',
-      categoria: 'academico',
-      leida: true,
-      archivada: false,
-      fecha_creacion: '2025-11-16T14:20:00',
-      fecha_lectura: '2025-11-16T15:00:00',
-      tiene_accion: true,
-      texto_boton_accion: 'Descargar',
-      url_accion: '/certificates/download/123',
-      email_enviado: true,
-      email_abierto: true
-    },
-    {
-      id_notificacion: '4',
-      tipo_notificacion: 'pago_procesado',
-      titulo: 'Pago procesado exitosamente',
-      mensaje: 'Se ha procesado tu pago de matrícula por $1.500.000',
-      descripcion_corta: 'Matrícula Semestre 2025-2',
-      icono: 'DollarSign',
-      color: '#10b981',
-      prioridad: 'Alta',
-      categoria: 'financiero',
-      leida: true,
-      archivada: false,
-      fecha_creacion: '2025-11-15T11:00:00',
-      fecha_lectura: '2025-11-15T11:05:00',
-      tiene_accion: true,
-      texto_boton_accion: 'Ver Comprobante',
-      url_accion: '/payments/receipt/456',
-      email_enviado: true,
-      email_abierto: true
-    }
-  ];
+  // Usar el contexto global de notificaciones
+  const { 
+    notifications, 
+    markAsRead, 
+    markAllAsRead, 
+    archiveNotification,
+    unreadCount 
+  } = useNotifications();
 
   const getIconComponent = (iconName: string) => {
     const icons: Record<string, any> = {
@@ -156,7 +86,9 @@ export function NotificationsPanelV2({
       Award,
       Clock,
       Settings,
-      Bell
+      Bell,
+      AlertTriangle,
+      Info
     };
     return icons[iconName] || Bell;
   };
@@ -178,23 +110,7 @@ export function NotificationsPanelV2({
     return true;
   });
 
-  const unreadCount = notifications.filter(n => !n.leida).length;
   const categories = Array.from(new Set(notifications.map(n => n.categoria)));
-
-  const handleMarkAsRead = (id: string) => {
-    // API call aquí
-    toast.success('Notificación marcada como leída');
-  };
-
-  const handleMarkAllAsRead = () => {
-    // API call aquí
-    toast.success('Todas las notificaciones marcadas como leídas');
-  };
-
-  const handleArchive = (id: string) => {
-    // API call aquí
-    toast.success('Notificación archivada');
-  };
 
   const handleAction = (url: string) => {
     // Navegación aquí
@@ -271,7 +187,7 @@ export function NotificationsPanelV2({
                   size="sm"
                   variant="ghost"
                   className="text-white hover:bg-white/20 flex-1 text-xs"
-                  onClick={handleMarkAllAsRead}
+                  onClick={markAllAsRead}
                 >
                   <CheckCheck className="w-4 h-4 mr-2" />
                   Marcar todas
@@ -421,7 +337,7 @@ export function NotificationsPanelV2({
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   {!notif.leida && (
                                     <button
-                                      onClick={() => handleMarkAsRead(notif.id_notificacion)}
+                                      onClick={() => markAsRead(notif.id_notificacion)}
                                       className="p-1 hover:bg-gray-100 rounded transition-colors"
                                       title="Marcar como leída"
                                     >
@@ -429,7 +345,7 @@ export function NotificationsPanelV2({
                                     </button>
                                   )}
                                   <button
-                                    onClick={() => handleArchive(notif.id_notificacion)}
+                                    onClick={() => archiveNotification(notif.id_notificacion)}
                                     className="p-1 hover:bg-gray-100 rounded transition-colors"
                                     title="Archivar"
                                   >

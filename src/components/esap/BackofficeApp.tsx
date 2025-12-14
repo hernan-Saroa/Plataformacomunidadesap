@@ -56,6 +56,9 @@ import { ProfileModal } from './ProfileModal';
 // Importar módulo de Arquitectura Empresarial
 import { ArquitecturaEmpresarialModule } from '../arquitectura-empresarial/ArquitecturaEmpresarialModule';
 
+// Importar Provider de Notificaciones
+import { NotificationsProvider } from './NotificationsContext';
+
 type ModuleView = 
   | 'dashboard'
   | 'users-persons'
@@ -261,81 +264,83 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Sidebar */}
-      <SidebarPremium
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        isCollapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        currentModule={currentModule}
-        onModuleChange={(sidebarModule) => {
-          const mappedModule = mapSidebarToModule(sidebarModule);
-          setCurrentModule(mappedModule);
-          setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
-        }}
-        certificatesPendingCount={certificatesPendingCount}
-        restrictedMode={
-          userData?.module === 'certificados-laborales' 
-            ? 'certificados-laborales' 
-            : userData?.module === 'arquitectura-empresarial'
-            ? 'arquitectura-empresarial'
-            : userData?.module === 'gestion-legal'
-            ? 'gestion-legal'
-            : undefined
-        }
-      />
-
-      {/* Main Content */}
-      <div
-        className="transition-all duration-300 md:ml-20 lg:ml-20"
-        style={{
-          marginLeft: typeof window !== 'undefined' && window.innerWidth >= 768 
-            ? (sidebarCollapsed ? '80px' : '260px')
-            : '0px',
-        }}
-      >
-        {/* Top Bar */}
-        <TopBar
-          onToggleSidebar={() => {
-            // En mobile abre el sidebar, en desktop colapsa/expande
-            if (typeof window !== 'undefined' && window.innerWidth < 768) {
-              setSidebarOpen(!sidebarOpen);
-            } else {
-              setSidebarCollapsed(!sidebarCollapsed);
-            }
+    <NotificationsProvider>
+      <div className="min-h-screen bg-gray-50">
+        {/* Sidebar */}
+        <SidebarPremium
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          currentModule={currentModule}
+          onModuleChange={(sidebarModule) => {
+            const mappedModule = mapSidebarToModule(sidebarModule);
+            setCurrentModule(mappedModule);
+            setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
           }}
-          density={density}
-          onDensityChange={setDensity}
-          onLogout={handleLogout}
-          onViewProfile={handleViewProfile}
-          userName={mockUser.name}
-          userEmail={mockUser.email}
-          userInitials={mockUser.initials}
-          onBackToSystemSelector={onBackToSystemSelector}
-          hasBothSystemsAccess={userData?.hasBothSystemsAccess}
-          onSystemChange={onSystemChange}
-          currentSystem="backoffice"
+          certificatesPendingCount={certificatesPendingCount}
+          restrictedMode={
+            userData?.module === 'certificados-laborales' 
+              ? 'certificados-laborales' 
+              : userData?.module === 'arquitectura-empresarial'
+              ? 'arquitectura-empresarial'
+              : userData?.module === 'gestion-legal'
+              ? 'gestion-legal'
+              : undefined
+          }
         />
 
-        {/* Module Content - Con espacio superior para evitar superposición */}
-        <main className="p-4 md:p-6 lg:p-8 min-h-screen">
-          {renderModule()}
-        </main>
+        {/* Main Content */}
+        <div
+          className="transition-all duration-300 md:ml-20 lg:ml-20"
+          style={{
+            marginLeft: typeof window !== 'undefined' && window.innerWidth >= 768 
+              ? (sidebarCollapsed ? '80px' : '260px')
+              : '0px',
+          }}
+        >
+          {/* Top Bar */}
+          <TopBar
+            onToggleSidebar={() => {
+              // En mobile abre el sidebar, en desktop colapsa/expande
+              if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                setSidebarOpen(!sidebarOpen);
+              } else {
+                setSidebarCollapsed(!sidebarCollapsed);
+              }
+            }}
+            density={density}
+            onDensityChange={setDensity}
+            onLogout={handleLogout}
+            onViewProfile={handleViewProfile}
+            userName={mockUser.name}
+            userEmail={mockUser.email}
+            userInitials={mockUser.initials}
+            onBackToSystemSelector={onBackToSystemSelector}
+            hasBothSystemsAccess={userData?.hasBothSystemsAccess}
+            onSystemChange={onSystemChange}
+            currentSystem="backoffice"
+          />
+
+          {/* Module Content - Con espacio superior para evitar superposición */}
+          <main className="p-4 md:p-6 lg:p-8 min-h-screen">
+            {renderModule()}
+          </main>
+        </div>
+
+        {/* Profile Modal */}
+        {showProfile && (
+          <ProfileModal
+            isOpen={showProfile}
+            onClose={() => setShowProfile(false)}
+            userName={mockUser.name}
+            userEmail={mockUser.email}
+            userRole="Super Administrador"
+            userInitials={mockUser.initials}
+            onLogout={handleLogout}
+          />
+        )}
       </div>
-
-      {/* Profile Modal */}
-      {showProfile && (
-        <ProfileModal
-          isOpen={showProfile}
-          onClose={() => setShowProfile(false)}
-          userName={mockUser.name}
-          userEmail={mockUser.email}
-          userRole="Super Administrador"
-          userInitials={mockUser.initials}
-          onLogout={handleLogout}
-        />
-      )}
-    </div>
+    </NotificationsProvider>
   );
 }

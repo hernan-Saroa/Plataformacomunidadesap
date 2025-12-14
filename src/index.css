@@ -774,6 +774,10 @@
     top: calc(var(--spacing) * 0);
   }
 
+  .top-1 {
+    top: calc(var(--spacing) * 1);
+  }
+
   .top-1\.5 {
     top: calc(var(--spacing) * 1.5);
   }
@@ -1770,6 +1774,10 @@
     max-height: 80vh;
   }
 
+  .max-h-\[85vh\] {
+    max-height: 85vh;
+  }
+
   .max-h-\[90vh\] {
     max-height: 90vh;
   }
@@ -1792,6 +1800,10 @@
 
   .max-h-\[500px\] {
     max-height: 500px;
+  }
+
+  .max-h-\[600px\] {
+    max-height: 600px;
   }
 
   .max-h-\[calc\(90vh-180px\)\] {
@@ -2170,12 +2182,20 @@
     min-width: 40px;
   }
 
+  .min-w-\[100px\] {
+    min-width: 100px;
+  }
+
   .min-w-\[200px\] {
     min-width: 200px;
   }
 
   .min-w-\[250px\] {
     min-width: 250px;
+  }
+
+  .min-w-\[600px\] {
+    min-width: 600px;
   }
 
   .min-w-\[800px\] {
@@ -3360,6 +3380,10 @@
 
   .border-l-blue-500 {
     border-left-color: var(--color-blue-500);
+  }
+
+  .border-l-blue-600 {
+    border-left-color: var(--color-blue-600);
   }
 
   .border-l-green-500 {
@@ -7758,6 +7782,30 @@
   }
 
   @media (hover: hover) {
+    .hover\:bg-black\/5:hover {
+      background-color: #0000000d;
+    }
+
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-black\/5:hover {
+        background-color: color-mix(in oklab, var(--color-black) 5%, transparent);
+      }
+    }
+  }
+
+  @media (hover: hover) {
+    .hover\:bg-black\/10:hover {
+      background-color: #0000001a;
+    }
+
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-black\/10:hover {
+        background-color: color-mix(in oklab, var(--color-black) 10%, transparent);
+      }
+    }
+  }
+
+  @media (hover: hover) {
     .hover\:bg-black\/80:hover {
       background-color: #000c;
     }
@@ -9191,8 +9239,20 @@
   }
 
   @media (width >= 40rem) {
+    .sm\:left-2 {
+      left: calc(var(--spacing) * 2);
+    }
+  }
+
+  @media (width >= 40rem) {
     .sm\:left-4 {
       left: calc(var(--spacing) * 4);
+    }
+  }
+
+  @media (width >= 40rem) {
+    .sm\:left-6 {
+      left: calc(var(--spacing) * 6);
     }
   }
 
@@ -9251,6 +9311,12 @@
   }
 
   @media (width >= 40rem) {
+    .sm\:mt-0 {
+      margin-top: calc(var(--spacing) * 0);
+    }
+  }
+
+  @media (width >= 40rem) {
     .sm\:mt-1 {
       margin-top: calc(var(--spacing) * 1);
     }
@@ -9283,6 +9349,12 @@
   @media (width >= 40rem) {
     .sm\:mt-12 {
       margin-top: calc(var(--spacing) * 12);
+    }
+  }
+
+  @media (width >= 40rem) {
+    .sm\:mr-1 {
+      margin-right: calc(var(--spacing) * 1);
     }
   }
 
@@ -9355,6 +9427,15 @@
   @media (width >= 40rem) {
     .sm\:ml-4 {
       margin-left: calc(var(--spacing) * 4);
+    }
+  }
+
+  @media (width >= 40rem) {
+    .sm\:line-clamp-none {
+      -webkit-line-clamp: unset;
+      -webkit-box-orient: horizontal;
+      display: block;
+      overflow: visible;
     }
   }
 
@@ -9782,6 +9863,12 @@
   }
 
   @media (width >= 40rem) {
+    .sm\:flex-col {
+      flex-direction: column;
+    }
+  }
+
+  @media (width >= 40rem) {
     .sm\:flex-row {
       flex-direction: row;
     }
@@ -9790,6 +9877,12 @@
   @media (width >= 40rem) {
     .sm\:flex-nowrap {
       flex-wrap: nowrap;
+    }
+  }
+
+  @media (width >= 40rem) {
+    .sm\:flex-wrap {
+      flex-wrap: wrap;
     }
   }
 
@@ -9884,6 +9977,14 @@
   }
 
   @media (width >= 40rem) {
+    :where(.sm\:space-y-2 > :not(:last-child)) {
+      --tw-space-y-reverse: 0;
+      margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));
+      margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));
+    }
+  }
+
+  @media (width >= 40rem) {
     :where(.sm\:space-y-3 > :not(:last-child)) {
       --tw-space-y-reverse: 0;
       margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));
@@ -9912,6 +10013,12 @@
       --tw-space-y-reverse: 0;
       margin-block-start: calc(calc(var(--spacing) * 6) * var(--tw-space-y-reverse));
       margin-block-end: calc(calc(var(--spacing) * 6) * calc(1 - var(--tw-space-y-reverse)));
+    }
+  }
+
+  @media (width >= 40rem) {
+    .sm\:self-auto {
+      align-self: auto;
     }
   }
 
@@ -10051,6 +10158,12 @@
   @media (width >= 40rem) {
     .sm\:py-3 {
       padding-block: calc(var(--spacing) * 3);
+    }
+  }
+
+  @media (width >= 40rem) {
+    .sm\:py-3\.5 {
+      padding-block: calc(var(--spacing) * 3.5);
     }
   }
 

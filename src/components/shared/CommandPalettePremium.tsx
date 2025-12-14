@@ -155,7 +155,7 @@ export function CommandPalettePremium({
       description: 'Auditorías y hallazgos',
       icon: <ClipboardList className="w-5 h-5" />,
       category: 'navigation',
-      keywords: ['control', 'interno', 'auditorías', 'hallazgos', 'daf', 'pec'],
+      keywords: ['control', 'interno', 'auditorías', 'hallazgos', 'dafp', 'pec'],
       shortcut: '⌘I',
       onExecute: () => onNavigate?.('control-interno'),
     },
