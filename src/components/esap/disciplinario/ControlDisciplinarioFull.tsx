@@ -1,10 +1,10 @@
 /**
  * SISTEMA COMPLETO - CONTROL INTERNO DISCIPLINARIO
  * Módulo funcional con todas las secciones:
- * - Dashboard Ejecutivo
+ * - Dashboard Operativo (Kanban)
+ * - Noticias Disciplinarias
  * - Gestión de Procesos
  * - Profesionales
- * - Reportes
  * - Configuración
  */
 
@@ -25,7 +25,6 @@ import { toast } from 'sonner@2.0.3';
 import { ModuleLayout, MenuItem } from '../shared/ModuleLayout';
 import { GestionProcesos } from './GestionProcesos';
 import { GestionProfesionales } from './GestionProfesionales';
-import { ModuloReportes } from './ModuloReportes';
 import { ModuloConfiguracion } from './ModuloConfiguracion';
 import { DashboardKanban } from './DashboardKanban';
 import { GestionNoticias } from './GestionNoticias'; // NUEVO: Módulo RF001
@@ -308,16 +307,15 @@ function EtapasStepper({ etapaActual, porcentajeTiempo, semaforo }: {
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ControlDisciplinarioFull() {
-  const [currentSection, setCurrentSection] = useState<'dashboard' | 'noticias' | 'aprobacion' | 'expediente' | 'terminos' | 'profesionales' | 'reportes' | 'config'>('dashboard');
+  const [currentSection, setCurrentSection] = useState<'dashboard' | 'noticias' | 'aprobacion' | 'expediente' | 'terminos' | 'profesionales' | 'config'>('dashboard');
 
   const menuItems: MenuItem[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5' },
+    { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5' },
     { id: 'noticias', label: 'Noticias Disciplinarias', icon: <FileText className="w-5 h-5" />, color: '#003DA5' },
     { id: 'aprobacion', label: 'Revisión y Aprobación', icon: <CheckCircle className="w-5 h-5" />, color: '#10B981' },
     { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6' },
     { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B' },
     { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5' },
-    { id: 'reportes', label: 'Reportes', icon: <BarChart3 className="w-5 h-5" />, color: '#003DA5' },
     { id: 'config', label: 'Configuración', icon: <Settings className="w-5 h-5" />, color: '#6B7280' }
   ];
 
@@ -344,7 +342,6 @@ export function ControlDisciplinarioFull() {
       {currentSection === 'expediente' && <ExpedienteElectronico />}
       {currentSection === 'terminos' && <GestionTerminosAlertas />}
       {currentSection === 'profesionales' && <GestionProfesionales />}
-      {currentSection === 'reportes' && <ModuloReportes />}
       {currentSection === 'config' && <ModuloConfiguracion />}
     </ModuleLayout>
   );

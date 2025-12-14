@@ -217,14 +217,6 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onArchivar, vistaCom
     })
   });
 
-  const priorityColors = {
-    alta: { bg: '#FEE2E2', text: '#DC2626', border: '#FCA5A5' },
-    media: { bg: '#FEF3C7', text: '#D97706', border: '#FCD34D' },
-    baja: { bg: '#D1FAE5', text: '#059669', border: '#6EE7B7' }
-  };
-
-  const colors = priorityColors[noticia.prioridad];
-
   return (
     <motion.div
       ref={drag}
@@ -233,37 +225,33 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onArchivar, vistaCom
       className="cursor-move touch-none"
     >
       <Card 
-        className="border-2 hover:shadow-lg transition-all overflow-hidden"
-        style={{ 
-          borderColor: colors.border,
-          background: `linear-gradient(135deg, #FFFFFF 0%, ${colors.bg} 100%)`
-        }}
+        className="bg-white border border-gray-200 hover:shadow-md transition-all overflow-hidden"
       >
+        {/* Barra superior azul ESAP */}
+        <div 
+          className="h-1"
+          style={{ background: '#003DA5' }}
+        />
+
         <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
           {/* Header */}
           <div className="flex items-start justify-between mb-2">
             <div className="flex items-center gap-2 flex-1">
               <div 
-                className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`}
-                style={{ background: colors.bg }}
+                className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0 bg-orange-50`}
               >
-                <FileText className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: colors.text }} />
+                <FileText className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-orange-600`} />
               </div>
               <div className="min-w-0 flex-1">
-                <h4 className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} truncate`} style={{ color: colors.text }}>
+                <h4 className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} truncate text-gray-900`}>
                   {noticia.numero}
                 </h4>
-                <p className={`${isMobile ? 'text-xs' : 'text-xs'} text-gray-600 truncate`}>{noticia.origen}</p>
+                <p className={`${isMobile ? 'text-xs' : 'text-xs'} text-gray-500 truncate`}>{noticia.origen}</p>
               </div>
             </div>
 
             <Badge
-              className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold flex-shrink-0 ml-2`}
-              style={{
-                background: colors.bg,
-                color: colors.text,
-                border: `1px solid ${colors.border}`
-              }}
+              className={`${isMobile ? 'text-xs px-2' : 'text-xs px-2'} font-semibold flex-shrink-0 ml-2 bg-gray-50 text-gray-700 border border-gray-200`}
             >
               NOTICIA
             </Badge>
@@ -288,10 +276,10 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onArchivar, vistaCom
 
           {/* Días Pendientes */}
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-1.5">
-              <Clock className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} style={{ color: colors.text }} />
-              <span className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold`} style={{ color: colors.text }}>
-                {noticia.diasPendientes}d
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-gray-50">
+              <Clock className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-gray-600`} />
+              <span className={`${isMobile ? 'text-xs' : 'text-xs'} font-semibold text-gray-700`}>
+                {noticia.diasPendientes} días
               </span>
             </div>
             {!isMobile && (
@@ -375,13 +363,13 @@ function TarjetaProceso({
 
   const [showActions, setShowActions] = useState(false);
 
-  const semaforoColors = {
-    verde: { bg: '#D1FAE5', text: '#059669', border: '#34D399' },
-    amarillo: { bg: '#FEF3C7', text: '#D97706', border: '#FCD34D' },
-    rojo: { bg: '#FEE2E2', text: '#DC2626', border: '#FCA5A5' }
+  const semaforoIndicator = {
+    verde: { color: '#10B981', label: 'En término' },
+    amarillo: { color: '#F59E0B', label: 'Próximo a vencer' },
+    rojo: { color: '#DC2626', label: 'Vencido' }
   };
 
-  const colors = semaforoColors[proceso.semaforo];
+  const semaforo = semaforoIndicator[proceso.semaforo];
 
   return (
     <motion.div
@@ -391,13 +379,12 @@ function TarjetaProceso({
       className="cursor-move touch-none"
     >
       <Card 
-        className="border-2 hover:shadow-lg transition-all overflow-hidden"
-        style={{ borderColor: colors.border }}
+        className="bg-white border border-gray-200 hover:shadow-md transition-all overflow-hidden"
       >
-        {/* Barra superior de color */}
+        {/* Barra superior azul ESAP */}
         <div 
-          className="h-1.5"
-          style={{ background: colors.text }}
+          className="h-1"
+          style={{ background: '#003DA5' }}
         />
 
         <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
@@ -419,13 +406,6 @@ function TarjetaProceso({
                 </p>
               </div>
             </div>
-
-            <button
-              onClick={() => setShowActions(!showActions)}
-              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 ml-2"
-            >
-              <MoreVertical className={`${isMobile ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-gray-600`} />
-            </button>
           </div>
 
           {/* Denunciado */}
@@ -439,17 +419,20 @@ function TarjetaProceso({
           {/* Badges */}
           <div className="flex items-center gap-1.5 mb-2.5 flex-wrap">
             {proceso.pendienteAprobacion && (
-              <Badge className={`${isMobile ? 'text-xs' : 'text-xs'} bg-red-100 text-red-700 border border-red-300 flex items-center gap-1`}>
+              <Badge className={`${isMobile ? 'text-xs' : 'text-xs'} bg-red-50 text-red-700 border border-red-200 flex items-center gap-1 font-semibold`}>
                 <AlertCircle className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'}`} />
                 {isMobile ? 'Pend.' : 'Pendiente'}
               </Badge>
             )}
             <Badge 
-              className={`${isMobile ? 'text-xs' : 'text-xs'} flex items-center gap-1`}
-              style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
+              className={`${isMobile ? 'text-xs' : 'text-xs'} flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200`}
+              style={{ color: semaforo.color }}
             >
-              <Clock className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'}`} />
-              {proceso.diasRestantes}d
+              <div 
+                className={`${isMobile ? 'w-1.5 h-1.5' : 'w-2 h-2'} rounded-full`}
+                style={{ background: semaforo.color }}
+              />
+              {proceso.diasRestantes} días
             </Badge>
           </div>
 
@@ -474,27 +457,24 @@ function TarjetaProceso({
           {/* Métricas */}
           <div className="grid grid-cols-3 gap-1.5 mb-2.5">
             <div 
-              className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg`}
-              style={{ background: '#F3E8FF' }}
+              className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}
             >
-              <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-purple-700`}>{proceso.borradores.length}</p>
-              <p className="text-xs text-gray-600">{isMobile ? 'B' : 'Borr.'}</p>
+              <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-gray-700`}>{proceso.borradores.length}</p>
+              <p className="text-xs text-gray-500">{isMobile ? 'B' : 'Borr.'}</p>
             </div>
             <div 
-              className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg`}
-              style={{ background: '#DBEAFE' }}
+              className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}
             >
-              <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-blue-700`}>{proceso.documentos.length}</p>
-              <p className="text-xs text-gray-600">Docs</p>
+              <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-gray-700`}>{proceso.documentos.length}</p>
+              <p className="text-xs text-gray-500">Docs</p>
             </div>
             <div 
-              className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg`}
-              style={{ background: colors.bg }}
+              className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}
             >
-              <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold`} style={{ color: colors.text }}>
+              <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-gray-700`}>
                 {proceso.porcentajeTiempo}%
               </p>
-              <p className="text-xs text-gray-600">{isMobile ? 'T' : 'Tiempo'}</p>
+              <p className="text-xs text-gray-500">{isMobile ? 'T' : 'Tiempo'}</p>
             </div>
           </div>
 
@@ -506,14 +486,150 @@ function TarjetaProceso({
             </div>
           )}
 
-          {/* Acciones Expandibles */}
+          {/* Acciones Principales - Siempre Visibles */}
+          <div className="space-y-1.5 pt-2.5 border-t border-gray-200">
+            {/* Acción Principal: Ver Expediente */}
+            <Button
+              onClick={() => onVerExpediente(proceso)}
+              size="sm"
+              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1.5`} />
+              {isMobile ? 'Expediente' : 'Ver Expediente'}
+            </Button>
+
+            {/* Acciones rápidas Mobile (Solo en Vista Detallada) */}
+            {!vistaCompacta && isMobile && (
+              <Button
+                onClick={() => onVerDetalles(proceso)}
+                size="sm"
+                variant="outline"
+                className="w-full text-xs py-1.5"
+              >
+                <Eye className="w-2.5 h-2.5 mr-1.5" />
+                Ver Detalles
+              </Button>
+            )}
+
+            {/* Gestión Documental - Grid compacto (Solo Desktop en Vista Detallada) */}
+            {!vistaCompacta && !isMobile && (
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button
+                  onClick={() => {
+                    if (onGestionAutos) {
+                      onGestionAutos(proceso);
+                    } else {
+                      toast.info('Autos y Providencias', {
+                        description: proceso.numeroProceso
+                      });
+                    }
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
+                >
+                  <Scale className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
+                  Autos
+                </Button>
+                
+                <Button
+                  onClick={() => {
+                    if (onGestionEvidencias) {
+                      onGestionEvidencias(proceso);
+                    } else {
+                      toast.info('Evidencias', {
+                        description: proceso.numeroProceso
+                      });
+                    }
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
+                >
+                  <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
+                  Evidencias
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    if (onGestionOficios) {
+                      onGestionOficios(proceso);
+                    } else {
+                      toast.info('Oficios', {
+                        description: proceso.numeroProceso
+                      });
+                    }
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
+                >
+                  <Mail className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
+                  Oficios
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    if (onGestionActas) {
+                      onGestionActas(proceso);
+                    } else {
+                      toast.info('Actas', {
+                        description: proceso.numeroProceso
+                      });
+                    }
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
+                >
+                  <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
+                  Actas
+                </Button>
+              </div>
+            )}
+
+            {/* Aprobación si está pendiente */}
+            {proceso.pendienteAprobacion && (
+              <Button
+                onClick={() => onAprobarBorrador(proceso)}
+                size="sm"
+                className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} bg-green-600 hover:bg-green-700 text-white font-bold`}
+              >
+                <CheckCircle className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1.5`} />
+                Aprobar Borrador
+              </Button>
+            )}
+
+            {/* Ver más opciones - Toggle (Solo Desktop en Vista Detallada) */}
+            {!vistaCompacta && !isMobile && (
+              <button
+                onClick={() => setShowActions(!showActions)}
+                className="w-full text-xs py-2 text-gray-600 hover:text-gray-900 font-semibold flex items-center justify-center gap-1 transition-colors"
+              >
+                {showActions ? (
+                  <>
+                    <ChevronDown className="w-3 h-3 rotate-180 transition-transform" />
+                    Menos opciones
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3 h-3 transition-transform" />
+                    Más opciones
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* Acciones Adicionales Expandibles - Solo Desktop */}
           <AnimatePresence>
-            {showActions && (
+            {showActions && !vistaCompacta && !isMobile && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="space-y-1.5 pt-2.5 border-t border-gray-200"
+                className="space-y-1.5 pt-1.5"
               >
                 <Button
                   onClick={() => onVerDetalles(proceso)}
@@ -524,102 +640,6 @@ function TarjetaProceso({
                 >
                   <Eye className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1.5`} />
                   {isMobile ? 'Detalles' : 'Ver Detalles Completos'}
-                </Button>
-
-                {/* Gestión Documental - Grid de acciones rápidas */}
-                <div className="grid grid-cols-2 gap-1.5">
-                  <Button
-                    onClick={() => {
-                      if (onGestionAutos) {
-                        onGestionAutos(proceso);
-                      } else {
-                        toast.info('Autos y Providencias', {
-                          description: proceso.numeroProceso
-                        });
-                      }
-                    }}
-                    size="sm"
-                    variant="outline"
-                    className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
-                  >
-                    <Scale className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-                    Autos
-                  </Button>
-                  
-                  <Button
-                    onClick={() => {
-                      if (onGestionEvidencias) {
-                        onGestionEvidencias(proceso);
-                      } else {
-                        toast.info('Evidencias', {
-                          description: proceso.numeroProceso
-                        });
-                      }
-                    }}
-                    size="sm"
-                    variant="outline"
-                    className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
-                  >
-                    <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-                    Evidencias
-                  </Button>
-
-                  <Button
-                    onClick={() => {
-                      if (onGestionOficios) {
-                        onGestionOficios(proceso);
-                      } else {
-                        toast.info('Oficios', {
-                          description: proceso.numeroProceso
-                        });
-                      }
-                    }}
-                    size="sm"
-                    variant="outline"
-                    className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
-                  >
-                    <Mail className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-                    Oficios
-                  </Button>
-
-                  <Button
-                    onClick={() => {
-                      if (onGestionActas) {
-                        onGestionActas(proceso);
-                      } else {
-                        toast.info('Actas', {
-                          description: proceso.numeroProceso
-                        });
-                      }
-                    }}
-                    size="sm"
-                    variant="outline"
-                    className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
-                  >
-                    <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-                    Actas
-                  </Button>
-                </div>
-
-                {proceso.pendienteAprobacion && (
-                  <Button
-                    onClick={() => onAprobarBorrador(proceso)}
-                    size="sm"
-                    className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} bg-green-600 hover:bg-green-700 text-white font-bold`}
-                  >
-                    <CheckCircle className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1.5`} />
-                    Aprobar Borrador
-                  </Button>
-                )}
-                
-                <Button
-                  onClick={() => onVerExpediente(proceso)}
-                  size="sm"
-                  className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-                  style={{ background: '#8B5CF6', color: '#FFFFFF' }}
-                >
-                  <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1.5`} />
-                  Expediente Completo
                 </Button>
               </motion.div>
             )}
@@ -703,36 +723,30 @@ function ColumnaKanban({
       className={`flex-shrink-0 ${isMobile ? 'w-72' : 'w-80'}`}
     >
       <Card 
-        className="h-full border-2 transition-all"
+        className="h-full border transition-all"
         style={{
           borderColor: isOver && canDrop ? color : '#E5E7EB',
-          background: isOver && canDrop ? `${color}08` : '#FFFFFF',
+          background: isOver && canDrop ? '#F9FAFB' : '#FFFFFF',
           opacity: isOver && !canDrop ? 0.5 : 1
         }}
       >
         {/* Header de Columna */}
         <div 
-          className={`${isMobile ? 'p-3' : 'p-4'} border-b-2 sticky top-0 z-10`}
-          style={{ 
-            borderColor: color, 
-            background: `linear-gradient(135deg, ${color}15 0%, ${color}05 100%)`
-          }}
+          className={`${isMobile ? 'p-3' : 'p-4'} border-b sticky top-0 z-10 bg-gray-50`}
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <div 
-                className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg`}
-                style={{ background: `${color}20` }}
+                className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg bg-white border border-gray-200`}
               >
                 {icono}
               </div>
-              <h3 className={`font-black ${isMobile ? 'text-xs' : 'text-sm'}`} style={{ color }}>
+              <h3 className={`font-black ${isMobile ? 'text-xs' : 'text-sm'} text-gray-800`}>
                 {etapa}
               </h3>
             </div>
             <Badge
-              className={`font-bold ${isMobile ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'}`}
-              style={{ background: color, color: '#FFFFFF' }}
+              className={`font-semibold ${isMobile ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'} bg-white border border-gray-200 text-gray-700`}
             >
               {itemsFiltrados.length}
             </Badge>
@@ -847,12 +861,12 @@ export function DashboardKanbanOperativo() {
   };
 
   const etapas = [
-    { nombre: 'Recepción', color: '#8B5CF6', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#8B5CF6' }} /> },
-    { nombre: 'Valoración', color: '#F59E0B', icono: <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#F59E0B' }} /> },
-    { nombre: 'Indagación', color: '#06B6D4', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#06B6D4' }} /> },
+    { nombre: 'Recepción', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
+    { nombre: 'Valoración', color: '#6B7280', icono: <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
+    { nombre: 'Indagación', color: '#6B7280', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
     { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} /> },
-    { nombre: 'Juzgamiento', color: '#DC2626', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#DC2626' }} /> },
-    { nombre: 'Fallo', color: '#10B981', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#10B981' }} /> }
+    { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
+    { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> }
   ];
 
   // ==================== HANDLERS ====================
@@ -1048,13 +1062,36 @@ export function DashboardKanbanOperativo() {
 
           <div className="flex items-center gap-2">
             {!isMobile && (
-              <Button
-                onClick={() => setVistaCompacta(!vistaCompacta)}
-                variant="outline"
-                size="sm"
-              >
-                {vistaCompacta ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
-              </Button>
+              <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
+                <button
+                  onClick={() => setVistaCompacta(true)}
+                  className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                    vistaCompacta 
+                      ? 'bg-white shadow-sm' 
+                      : 'hover:bg-gray-200'
+                  }`}
+                  style={{ 
+                    color: vistaCompacta ? '#003DA5' : '#6B7280'
+                  }}
+                >
+                  <List className="w-4 h-4" />
+                  Compacta
+                </button>
+                <button
+                  onClick={() => setVistaCompacta(false)}
+                  className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                    !vistaCompacta 
+                      ? 'bg-white shadow-sm' 
+                      : 'hover:bg-gray-200'
+                  }`}
+                  style={{ 
+                    color: !vistaCompacta ? '#003DA5' : '#6B7280'
+                  }}
+                >
+                  <Columns3 className="w-4 h-4" />
+                  Detallada
+                </button>
+              </div>
             )}
             <Button
               onClick={() => setModalActivo('crear-noticia')}
@@ -1069,50 +1106,50 @@ export function DashboardKanbanOperativo() {
 
         {/* Estadísticas Responsive */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-          <Card className={`${isMobile ? 'p-2' : 'p-3'} border-2 border-orange-300 bg-gradient-to-br from-orange-50 to-white`}>
+          <Card className={`${isMobile ? 'p-2' : 'p-3'} bg-white border border-gray-200`}>
             <div className="flex items-center gap-2">
-              <div className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-xl bg-orange-100`}>
+              <div className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg bg-orange-50`}>
                 <FileText className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-orange-600`} />
               </div>
               <div>
-                <p className={`${isMobile ? 'text-xl' : 'text-2xl'} font-black text-orange-600`}>{noticias.length}</p>
-                <p className="text-xs text-gray-600">Noticias</p>
+                <p className={`${isMobile ? 'text-xl' : 'text-2xl'} font-black text-gray-900`}>{noticias.length}</p>
+                <p className="text-xs text-gray-500">Noticias</p>
               </div>
             </div>
           </Card>
 
-          <Card className={`${isMobile ? 'p-2' : 'p-3'} border-2 border-blue-300 bg-gradient-to-br from-blue-50 to-white`}>
+          <Card className={`${isMobile ? 'p-2' : 'p-3'} bg-white border border-gray-200`}>
             <div className="flex items-center gap-2">
-              <div className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-xl bg-blue-100`}>
-                <FolderOpen className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-blue-600`} />
+              <div className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg`} style={{ background: '#E0EDFF' }}>
+                <FolderOpen className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'}`} style={{ color: '#003DA5' }} />
               </div>
               <div>
-                <p className={`${isMobile ? 'text-xl' : 'text-2xl'} font-black text-blue-600`}>{procesos.length}</p>
-                <p className="text-xs text-gray-600">Procesos</p>
+                <p className={`${isMobile ? 'text-xl' : 'text-2xl'} font-black text-gray-900`}>{procesos.length}</p>
+                <p className="text-xs text-gray-500">Procesos</p>
               </div>
             </div>
           </Card>
 
-          <Card className={`${isMobile ? 'p-2' : 'p-3'} border-2 border-red-300 bg-gradient-to-br from-red-50 to-white`}>
+          <Card className={`${isMobile ? 'p-2' : 'p-3'} bg-white border border-gray-200`}>
             <div className="flex items-center gap-2">
-              <div className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-xl bg-red-100`}>
+              <div className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg bg-red-50`}>
                 <AlertCircle className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-red-600`} />
               </div>
               <div>
-                <p className={`${isMobile ? 'text-xl' : 'text-2xl'} font-black text-red-600`}>{procesosPendientesAprobacion}</p>
-                <p className="text-xs text-gray-600">{isMobile ? 'Pend.' : 'Pendientes'}</p>
+                <p className={`${isMobile ? 'text-xl' : 'text-2xl'} font-black text-gray-900`}>{procesosPendientesAprobacion}</p>
+                <p className="text-xs text-gray-500">{isMobile ? 'Pend.' : 'Pendientes'}</p>
               </div>
             </div>
           </Card>
 
-          <Card className={`${isMobile ? 'p-2' : 'p-3'} border-2 border-green-300 bg-gradient-to-br from-green-50 to-white`}>
+          <Card className={`${isMobile ? 'p-2' : 'p-3'} bg-white border border-gray-200`}>
             <div className="flex items-center gap-2">
-              <div className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-xl bg-green-100`}>
+              <div className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg bg-green-50`}>
                 <CheckCircle className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-green-600`} />
               </div>
               <div>
-                <p className={`${isMobile ? 'text-xl' : 'text-2xl'} font-black text-green-600`}>{procesosEnTermino}</p>
-                <p className="text-xs text-gray-600">{isMobile ? 'OK' : 'En Término'}</p>
+                <p className={`${isMobile ? 'text-xl' : 'text-2xl'} font-black text-gray-900`}>{procesosEnTermino}</p>
+                <p className="text-xs text-gray-500">{isMobile ? 'OK' : 'En Término'}</p>
               </div>
             </div>
           </Card>

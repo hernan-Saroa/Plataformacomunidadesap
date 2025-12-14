@@ -4,32 +4,59 @@
  */
 
 import { useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Save, Settings, Clock, Users, Bell, FileText, Shield,
-  AlertTriangle, CheckCircle, Mail, Calendar, Target, Zap
+  AlertTriangle, CheckCircle, Mail, Calendar, Target, Zap,
+  Plus, Trash2, Edit2, GripVertical, X
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner@2.0.3';
 
-export function ModuloConfiguracion() {
-  // Estados de configuración
-  const [tiemposEtapas, setTiemposEtapas] = useState({
-    recepcion: 3,
-    valoracion: 10,
-    indagacion: 40,
-    investigacion: 80,
-    juzgamiento: 50,
-    fallo: 10
-  });
+// Tipo para etapa dinámica
+interface Etapa {
+  id: string;
+  nombre: string;
+  dias: number;
+  orden: number;
+}
 
-  const [capacidades, setCapacidades] = useState({
-    especializado: 12,
-    universitario: 10,
-    senior: 15,
-    coordinador: 8
-  });
+// Tipo para cargo/perfil dinámico
+interface Cargo {
+  id: string;
+  nombre: string;
+  capacidad: number;
+  rolId?: string; // Referencia al rol del módulo de Roles y Permisos
+}
+
+export function ModuloConfiguracion() {
+  // Estados de configuración - Etapas ahora dinámicas
+  const [etapas, setEtapas] = useState<Etapa[]>([
+    { id: '1', nombre: 'RECEPCIÓN', dias: 3, orden: 1 },
+    { id: '2', nombre: 'VALORACIÓN', dias: 10, orden: 2 },
+    { id: '3', nombre: 'INDAGACIÓN', dias: 40, orden: 3 },
+    { id: '4', nombre: 'INVESTIGACIÓN', dias: 80, orden: 4 },
+    { id: '5', nombre: 'JUZGAMIENTO', dias: 50, orden: 5 },
+    { id: '6', nombre: 'FALLO', dias: 10, orden: 6 }
+  ]);
+
+  const [editandoEtapa, setEditandoEtapa] = useState<string | null>(null);
+  const [nombreEditando, setNombreEditando] = useState('');
+
+  // Capacidades ahora son dinámicas - pueden agregarse/quitarse
+  const [cargos, setCargos] = useState<Cargo[]>([
+    { id: '1', nombre: 'ESPECIALIZADO', capacidad: 12, rolId: 'rol-especializado' },
+    { id: '2', nombre: 'UNIVERSITARIO', capacidad: 10, rolId: 'rol-universitario' },
+    { id: '3', nombre: 'SENIOR', capacidad: 15, rolId: 'rol-senior' },
+    { id: '4', nombre: 'COORDINADOR', capacidad: 8, rolId: 'rol-coordinador' }
+  ]);
+
+  const [editandoCargo, setEditandoCargo] = useState<string | null>(null);
+  const [nombreCargoEditando, setNombreCargoEditando] = useState('');
+  const [mostrarModalAgregarCargo, setMostrarModalAgregarCargo] = useState(false);
+  const [nuevoCargoNombre, setNuevoCargoNombre] = useState('');
+  const [nuevoCargoCapacidad, setNuevoCargoCapacidad] = useState(10);
 
   const [notificaciones, setNotificaciones] = useState({
     vencimiento7dias: true,
@@ -60,6 +87,73 @@ export function ModuloConfiguracion() {
     if (confirm('¿Está seguro de restablecer la configuración a valores por defecto?')) {
       toast.info('Configuración restablecida');
     }
+  };
+
+  const handleAgregarEtapa = () => {
+    const nuevaEtapa: Etapa = {
+      id: (etapas.length + 1).toString(),
+      nombre: 'NUEVA ETAPA',
+      dias: 10,
+      orden: etapas.length + 1
+    };
+    setEtapas([...etapas, nuevaEtapa]);
+  };
+
+  const handleEliminarEtapa = (id: string) => {
+    setEtapas(etapas.filter(etapa => etapa.id !== id));
+  };
+
+  const handleEditarEtapa = (id: string) => {
+    const etapa = etapas.find(etapa => etapa.id === id);
+    if (etapa) {
+      setEditandoEtapa(id);
+      setNombreEditando(etapa.nombre);
+    }
+  };
+
+  const handleGuardarEdicionEtapa = (id: string) => {
+    setEtapas(etapas.map(etapa => etapa.id === id ? { ...etapa, nombre: nombreEditando } : etapa));
+    setEditandoEtapa(null);
+    setNombreEditando('');
+  };
+
+  const handleAgregarCargo = () => {
+    const nuevoCargo: Cargo = {
+      id: (cargos.length + 1).toString(),
+      nombre: nuevoCargoNombre,
+      capacidad: nuevoCargoCapacidad
+    };
+    setCargos([...cargos, nuevoCargo]);
+    setMostrarModalAgregarCargo(false);
+    setNuevoCargoNombre('');
+    setNuevoCargoCapacidad(10);
+    toast.success('Cargo agregado exitosamente', {
+      description: `${nuevoCargoNombre} con capacidad de ${nuevoCargoCapacidad} procesos`
+    });
+  };
+
+  const handleEliminarCargo = (id: string) => {
+    const cargo = cargos.find(c => c.id === id);
+    setCargos(cargos.filter(cargo => cargo.id !== id));
+    if (cargo) {
+      toast.info('Cargo eliminado', {
+        description: `${cargo.nombre} ha sido removido`
+      });
+    }
+  };
+
+  const handleEditarCargo = (id: string) => {
+    const cargo = cargos.find(cargo => cargo.id === id);
+    if (cargo) {
+      setEditandoCargo(id);
+      setNombreCargoEditando(cargo.nombre);
+    }
+  };
+
+  const handleGuardarEdicionCargo = (id: string) => {
+    setCargos(cargos.map(cargo => cargo.id === id ? { ...cargo, nombre: nombreCargoEditando } : cargo));
+    setEditandoCargo(null);
+    setNombreCargoEditando('');
   };
 
   return (
@@ -110,22 +204,29 @@ export function ModuloConfiguracion() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Object.entries(tiemposEtapas).map(([etapa, dias]) => (
-            <div key={etapa} className="p-5 rounded-xl" style={{ background: '#F9FAFB' }}>
+          {etapas.map(etapa => (
+            <div key={etapa.id} className="p-5 rounded-xl" style={{ background: '#F9FAFB' }}>
               <label className="block mb-3">
                 <span className="text-sm font-bold uppercase mb-2 block" style={{ color: '#4B5563' }}>
-                  {etapa}
+                  {editandoEtapa === etapa.id ? (
+                    <input
+                      type="text"
+                      value={nombreEditando}
+                      onChange={(e) => setNombreEditando(e.target.value)}
+                      className="flex-1 px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                      style={{ borderColor: '#E5E7EB' }}
+                    />
+                  ) : (
+                    etapa.nombre
+                  )}
                 </span>
                 <div className="flex items-center gap-3">
                   <input
                     type="number"
                     min="1"
                     max="365"
-                    value={dias}
-                    onChange={(e) => setTiemposEtapas({
-                      ...tiemposEtapas,
-                      [etapa]: parseInt(e.target.value) || 0
-                    })}
+                    value={etapa.dias}
+                    onChange={(e) => setEtapas(etapas.map(e => e.id === etapa.id ? { ...e, dias: parseInt(e.target.value) || 0 } : e))}
                     className="flex-1 px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
                     style={{ borderColor: '#E5E7EB' }}
                   />
@@ -140,8 +241,49 @@ export function ModuloConfiguracion() {
                   Tiempo estándar estimado
                 </span>
               </div>
+              <div className="flex items-center gap-2 mt-2">
+                {editandoEtapa === etapa.id ? (
+                  <button
+                    onClick={() => handleGuardarEdicionEtapa(etapa.id)}
+                    className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
+                    style={{ background: '#003DA5', color: '#FFFFFF' }}
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Guardar
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleEditarEtapa(etapa.id)}
+                      className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
+                      style={{ background: '#F3F4F6', color: '#4B5563' }}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleEliminarEtapa(etapa.id)}
+                      className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
+                      style={{ background: '#F3F4F6', color: '#4B5563' }}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Eliminar
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ))}
+          <div className="p-5 rounded-xl" style={{ background: '#F9FAFB' }}>
+            <button
+              onClick={handleAgregarEtapa}
+              className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              <Plus className="w-4 h-4" />
+              Agregar Etapa
+            </button>
+          </div>
         </div>
 
         <div className="mt-6 p-4 rounded-xl flex items-start gap-3" style={{ background: '#E0EDFF' }}>
@@ -169,12 +311,12 @@ export function ModuloConfiguracion() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {Object.entries(capacidades).map(([cargo, cantidad]) => (
-            <div key={cargo} className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB' }}>
+          {cargos.map(cargo => (
+            <div key={cargo.id} className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB' }}>
               <div className="flex items-center gap-2 mb-3">
                 <Target className="w-5 h-5" style={{ color: '#003DA5' }} />
                 <span className="text-sm font-bold uppercase" style={{ color: '#1F2937' }}>
-                  {cargo}
+                  {cargo.nombre}
                 </span>
               </div>
               <div className="flex items-center gap-3">
@@ -182,11 +324,8 @@ export function ModuloConfiguracion() {
                   type="number"
                   min="1"
                   max="30"
-                  value={cantidad}
-                  onChange={(e) => setCapacidades({
-                    ...capacidades,
-                    [cargo]: parseInt(e.target.value) || 0
-                  })}
+                  value={cargo.capacidad}
+                  onChange={(e) => setCargos(cargos.map(c => c.id === cargo.id ? { ...c, capacidad: parseInt(e.target.value) || 0 } : c))}
                   className="flex-1 px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5] text-center text-xl font-bold"
                   style={{ borderColor: '#E5E7EB', color: '#003DA5' }}
                 />
@@ -194,9 +333,152 @@ export function ModuloConfiguracion() {
               <p className="text-xs text-center mt-2" style={{ color: '#9CA3AF' }}>
                 procesos máximo
               </p>
+              <div className="flex items-center gap-2 mt-2">
+                {editandoCargo === cargo.id ? (
+                  <button
+                    onClick={() => handleGuardarEdicionCargo(cargo.id)}
+                    className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
+                    style={{ background: '#003DA5', color: '#FFFFFF' }}
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Guardar
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleEditarCargo(cargo.id)}
+                      className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
+                      style={{ background: '#F3F4F6', color: '#4B5563' }}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleEliminarCargo(cargo.id)}
+                      className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
+                      style={{ background: '#F3F4F6', color: '#4B5563' }}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Eliminar
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ))}
+          <div className="p-5 rounded-xl" style={{ background: '#F9FAFB' }}>
+            <button
+              onClick={() => setMostrarModalAgregarCargo(true)}
+              className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              <Plus className="w-4 h-4" />
+              Agregar Cargo
+            </button>
+          </div>
         </div>
+
+        {/* Modal para agregar cargo */}
+        <AnimatePresence>
+          {mostrarModalAgregarCargo && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black bg-opacity-50 z-50"
+                onClick={() => setMostrarModalAgregarCargo(false)}
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none"
+              >
+                <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto border-2" style={{ borderColor: '#003DA5' }}>
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 rounded-xl" style={{ background: '#E0EDFF' }}>
+                        <Plus className="w-6 h-6" style={{ color: '#003DA5' }} />
+                      </div>
+                      <h3 className="text-xl font-extrabold" style={{ color: '#003DA5' }}>
+                        Agregar Nuevo Cargo
+                      </h3>
+                    </div>
+                    <button
+                      onClick={() => setMostrarModalAgregarCargo(false)}
+                      className="p-2 rounded-xl hover:bg-gray-100"
+                    >
+                      <X className="w-5 h-5" style={{ color: '#6B7280' }} />
+                    </button>
+                  </div>
+
+                  <div className="p-4 rounded-xl mb-6 flex items-start gap-3" style={{ background: '#E0EDFF' }}>
+                    <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: '#003DA5' }} />
+                    <p className="text-sm" style={{ color: '#003DA5' }}>
+                      <span className="font-bold">Importante:</span> Los cargos deben estar creados en la sección de Gestión de Personas - Roles y Permisos.
+                    </p>
+                  </div>
+
+                  <div className="space-y-5">
+                    <div>
+                      <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+                        Nombre del Cargo / Perfil
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoCargoNombre}
+                        onChange={(e) => setNuevoCargoNombre(e.target.value)}
+                        placeholder="Ej: Profesional Especializado"
+                        className="w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                        style={{ borderColor: '#E5E7EB' }}
+                      />
+                      <p className="text-xs mt-2" style={{ color: '#9CA3AF' }}>
+                        Ingresa el nombre del cargo o perfil desde Roles y Permisos
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+                        Capacidad Máxima de Procesos
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="30"
+                        value={nuevoCargoCapacidad}
+                        onChange={(e) => setNuevoCargoCapacidad(parseInt(e.target.value) || 0)}
+                        className="w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5] text-center text-2xl font-bold"
+                        style={{ borderColor: '#E5E7EB', color: '#003DA5' }}
+                      />
+                      <p className="text-xs mt-2" style={{ color: '#9CA3AF' }}>
+                        Número máximo de procesos disciplinarios asignables
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 mt-8">
+                    <button
+                      onClick={() => setMostrarModalAgregarCargo(false)}
+                      className="px-6 py-3 rounded-xl font-semibold"
+                      style={{ background: '#F3F4F6', color: '#4B5563' }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleAgregarCargo}
+                      disabled={!nuevoCargoNombre || nuevoCargoCapacidad <= 0}
+                      className="px-6 py-3 rounded-xl font-semibold flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
+                      style={{ background: '#003DA5', color: '#FFFFFF' }}
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      Agregar Cargo
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
       </Card>
 
       {/* Notificaciones */}
