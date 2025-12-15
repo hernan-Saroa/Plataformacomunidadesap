@@ -1,9 +1,10 @@
 /**
- * GESTIÓN DE HALLAZGOS - Todo en Uno
+ * RF010 - GESTIÓN DE HALLAZGOS
+ * Integración Fase 2 COMPLETA: Contexto global + Notificaciones automáticas
  * Dashboard Ejecutivo + Kanban + Lista integrado
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertTriangle, TrendingUp, Clock, CheckCircle2,
@@ -17,6 +18,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/dialo
 import { ResponsiveModal } from '../shared/ResponsiveModal';
 import { toast } from 'sonner@2.0.3';
 
+// ============ INTEGRACIÓN FASE 2 ============
+import { useIntegracionControlInterno } from '../../../hooks/useIntegracionControlInterno';
+import { useControlInterno } from './ControlInternoContext';
+
 type VistaActiva = 'kanban' | 'lista';
 type EstadoHallazgo = 'identificado' | 'analisis' | 'plan-mejora' | 'verificacion' | 'cerrado';
 
@@ -28,6 +33,7 @@ interface Hallazgo {
   estado: EstadoHallazgo;
   gravedad: 'Crítica' | 'Alta' | 'Media' | 'Baja';
   auditoria: string;
+  auditoriaId?: string; // ← ID de la auditoría en contexto global
   territorial: string;
   sede: string;
   responsable: string;
@@ -162,12 +168,30 @@ export function GestionHallazgos() {
   const [modoEdicion, setModoEdicion] = useState(false);
   const [busqueda, setBusqueda] = useState('');
 
+  // ============ INTEGRACIÓN FASE 2 ============
+  const { auditoria, guardarDocumento, notificarCambio } = useIntegracionControlInterno();
+  const controlContext = useControlInterno();
+
+  // ✅ PRE-CARGAR datos de auditoría activa si existe
+  useEffect(() => {
+    if (auditoria && modalNuevoHallazgo && !modoEdicion) {
+      setFormData(prev => ({
+        ...prev,
+        auditoria: auditoria.codigo,
+        auditoriaId: auditoria.id,
+        territorial: auditoria.proceso.territorial || prev.territorial,
+        sede: auditoria.proceso.sede || prev.sede
+      }));
+    }
+  }, [auditoria, modalNuevoHallazgo, modoEdicion]);
+
   // Form state
   const [formData, setFormData] = useState({
     titulo: '',
     descripcion: '',
     gravedad: 'Media' as 'Crítica' | 'Alta' | 'Media' | 'Baja',
     auditoria: '',
+    auditoriaId: '',
     territorial: '',
     sede: '',
     responsable: '',
@@ -182,6 +206,7 @@ export function GestionHallazgos() {
       descripcion: '',
       gravedad: 'Media',
       auditoria: '',
+      auditoriaId: '',
       territorial: '',
       sede: '',
       responsable: '',
@@ -214,6 +239,7 @@ export function GestionHallazgos() {
       estado: formData.estado,
       gravedad: formData.gravedad,
       auditoria: formData.auditoria,
+      auditoriaId: formData.auditoriaId,
       territorial: formData.territorial,
       sede: formData.sede,
       responsable: formData.responsable,

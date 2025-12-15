@@ -1,9 +1,10 @@
 /**
  * WIZARD DE CREACIÓN DE PLAN INDIVIDUAL
+ * Integración Fase 2 COMPLETA: Pre-carga datos desde contexto global
  * Proceso paso a paso para definir alcance, objetivos, riesgos, criterios y confirmar
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText,
@@ -29,6 +30,9 @@ import { Badge } from '../../ui/badge';
 import { ResponsiveModal } from '../shared/ResponsiveModal';
 import { toast } from 'sonner@2.0.3';
 import { PlanIndividualAuditoria, CriterioAuditoria, MiembroEquipo, DocumentoOCI } from './PlanIndividualAuditoria';
+
+// ============ INTEGRACIÓN FASE 2 ============
+import { useIntegracionControlInterno } from '../../../hooks/useIntegracionControlInterno';
 
 interface ModalPlanIndividualWizardProps {
   isOpen: boolean;
@@ -198,8 +202,40 @@ export function ModalPlanIndividualWizard({
   const [equipoRevisado, setEquipoRevisado] = useState(true);
   const [observaciones, setObservaciones] = useState('');
 
-  // Mock de datos base de la auditoría
-  const datosBase = {
+  // ============ INTEGRACIÓN FASE 2 ============
+  const { auditoria } = useIntegracionControlInterno();
+
+  // ✅ DATOS BASE: Pre-cargados desde contexto global o mock
+  const datosBase = auditoria ? {
+    codigo: auditoria.codigo,
+    procesoAuditable: auditoria.proceso.nombre,
+    tipoProceso: auditoria.proceso.tipo as 'Misional' | 'Apoyo' | 'Estratégico' | 'Evaluación',
+    tipoSede: 'Sede Principal' as const,
+    nivelRiesgo: auditoria.nivelesRiesgo.inherente as 'BAJO' | 'MEDIO' | 'ALTO' | 'CRÍTICO',
+    auditorLider: auditoria.auditorLider.nombre,
+    equipoAuditor: auditoria.equipoAuditor.map(m => ({
+      nombre: m.nombre,
+      rol: m.rol as 'Auditor Líder' | 'Auditor' | 'Apoyo',
+      cargaTrabajo: 100
+    })),
+    fechas: {
+      planeacion: {
+        inicio: auditoria.cronograma.fechaInicio,
+        fin: auditoria.cronograma.hitos.find(h => h.nombre === 'Planeación')?.fecha || auditoria.cronograma.fechaInicio
+      },
+      ejecucion: {
+        inicio: auditoria.cronograma.hitos.find(h => h.nombre === 'Ejecución')?.fecha || auditoria.cronograma.fechaInicio,
+        fin: auditoria.cronograma.hitos.find(h => h.nombre === 'Fin Ejecución')?.fecha || auditoria.cronograma.fechaFin
+      },
+      comunicacion: {
+        inicio: auditoria.cronograma.hitos.find(h => h.nombre === 'Comunicación')?.fecha || auditoria.cronograma.fechaFin,
+        fin: auditoria.cronograma.fechaFin
+      }
+    },
+    responsableArea: auditoria.proceso.responsable,
+    emailResponsable: auditoria.proceso.emailResponsable || 'responsable@esap.edu.co'
+  } : {
+    // Mock de datos base si no hay auditoría seleccionada
     codigo: 'AUD-2025-001',
     procesoAuditable: 'Gestión Financiera',
     tipoProceso: 'Apoyo' as const,
@@ -218,6 +254,43 @@ export function ModalPlanIndividualWizard({
     responsableArea: 'Sandra Montero',
     emailResponsable: 'smontero@esap.edu.co'
   };
+
+  // ✅ PRE-CARGAR datos si vienen del contexto
+  useEffect(() => {
+    if (auditoria) {
+      // Pre-cargar alcance si existe
+      if (auditoria.alcance) {
+        setAlcance(auditoria.alcance);
+      }
+      
+      // Pre-cargar objetivos si existen
+      if (auditoria.objetivos && auditoria.objetivos.length > 0) {
+        setObjetivos(auditoria.objetivos.map(obj => obj.descripcion));
+      }
+      
+      // Pre-cargar riesgos si existen
+      if (auditoria.riesgosIdentificados && auditoria.riesgosIdentificados.length > 0) {
+        setRiesgos(auditoria.riesgosIdentificados);
+      }
+      
+      // Pre-cargar criterios si existen
+      if (auditoria.criterios && auditoria.criterios.length > 0) {
+        const criteriosFormateados: CriterioAuditoria[] = auditoria.criterios.map(crit => ({
+          id: crit.id,
+          descripcion: crit.descripcion,
+          normativaBase: crit.norma,
+          obligatorio: true,
+          metodologia: crit.referencia || 'Revisión documental'
+        }));
+        setCriterios(criteriosFormateados);
+      }
+      
+      // Pre-cargar observaciones si existen
+      if (auditoria.observaciones) {
+        setObservaciones(auditoria.observaciones);
+      }
+    }
+  }, [auditoria]);
 
   const aplicarTemplate = () => {
     const proceso = datosBase.procesoAuditable;

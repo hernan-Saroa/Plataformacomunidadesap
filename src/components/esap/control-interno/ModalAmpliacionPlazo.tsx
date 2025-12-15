@@ -65,14 +65,19 @@ export function ModalAmpliacionPlazo({
   const [nuevaFecha, setNuevaFecha] = useState('');
   const [justificacion, setJustificacion] = useState('');
 
+  // Validar que auditoria existe
+  if (!auditoria) {
+    return null;
+  }
+
   // Validar permisos
   const tienePermiso = usuarioActual.rol === 'Admin' || usuarioActual.rol === 'Jefe';
 
   // Calcular fecha inicio original (si no existe, usar fecha inicio de planeación)
-  const fechaInicioOriginal = auditoria.fechaInicioOriginal || auditoria.fechas.planeacion.inicio;
+  const fechaInicioOriginal = auditoria.fechaInicioOriginal || auditoria.fechas?.planeacion?.inicio || '';
 
   // Obtener fecha actual de la etapa seleccionada
-  const fechaActualEtapa = auditoria.fechas[etapaSeleccionada].fin;
+  const fechaActualEtapa = auditoria.fechas?.[etapaSeleccionada]?.fin || '';
 
   // Calcular días de diferencia
   const calcularDiasAmpliacin = () => {

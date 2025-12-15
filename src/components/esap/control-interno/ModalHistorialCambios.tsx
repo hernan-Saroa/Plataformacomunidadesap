@@ -75,6 +75,11 @@ export function ModalHistorialCambios({
   historial = []
 }: ModalHistorialCambiosProps) {
   
+  // Validar que auditoria existe
+  if (!auditoria) {
+    return null;
+  }
+  
   // Combinar ampliaciones con historial general
   const historialCompleto: HistorialCambio[] = [
     ...historial,

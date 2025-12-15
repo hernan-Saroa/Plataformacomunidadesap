@@ -22,6 +22,9 @@ import { VinculacionForm } from "./components/portal/VinculacionForm";
 import { PublicTitleVerification } from "./components/portal/PublicTitleVerification";
 import { SolicitarCertificadoLaboral } from "./components/portal/SolicitarCertificadoLaboral";
 
+// ============ INTEGRACIÓN FASE 1: Contexto Global de Auditoría ============
+import { AuditoriaGlobalProvider } from "./context/AuditoriaGlobalContext";
+
 // ============ UTILIDADES DE PERSISTENCIA DE SESIÓN ============
 
 const SESSION_KEY = "esap-active-session";
@@ -570,158 +573,160 @@ export default function App() {
   };
 
   return (
-    <ErrorBoundary>
-      {/* Landing Page - Vista Pública */}
-      {currentView === "landing" && (
-        <LandingPage
-          onLoginClick={handleLoginClick}
-          onNavigate={handleNavigate}
-        />
-      )}
-
-      {/* Login Page - Sistema de Login Dual con Discriminación Automática */}
-      {currentView === "login" && (
-        <LoginPage
-          onLogin={handleLogin}
-          onBackToHome={handleBackToHome}
-        />
-      )}
-
-      {/* System Selector - Para Super Users con Acceso a Ambos Sistemas */}
-      {currentView === "system-selector" && isAuthenticated && (
-        <SystemSelector
-          userName={userData.name}
-          userEmail={userData.email}
-          userRoles={userRoles}
-          onSelectSystem={handleSelectSystem}
-          onLogout={handleLogout}
-        />
-      )}
-
-      {/* Portal Transaccional - Estudiantes/Graduados/Docentes */}
-      {currentView === "portal-transaccional" &&
-        isAuthenticated && (
-          <div className="min-h-screen bg-gray-50">
-            {/* Navbar Autenticado con Logout */}
-            <AuthenticatedPortalNavbar
-              userName={userData.name}
-              userEmail={userData.email}
-              userRoles={userRoles}
-              activeRole={activeRole}
-              onLogout={handleLogout}
-              onSystemChange={handleSystemChange}
-              hasBothSystemsAccess={
-                userData.hasBothSystemsAccess
-              }
-            />
-
-            {/* Portal Dashboard con Sistema de Roles */}
-            <PortalDashboard
-              userName={userData.name}
-              userEmail={userData.email}
-              userPersonId={userData.personId}
-              userRoles={userRoles}
-              userData={userData}
-              onActiveRoleChange={setActiveRole}
-            />
-          </div>
-        )}
-
-      {/* Backoffice Administrativo - Personal Administrativo */}
-      {currentView === "backoffice" &&
-        isAuthenticated &&
-        userType === "administrativo" && (
-          <BackofficeApp
-            onLogout={handleLogout}
-            onBackToSystemSelector={handleBackToSystemSelector}
-            onSystemChange={handleSystemChange}
-            userData={userData}
-            userRoles={userRoles}
+    <AuditoriaGlobalProvider>
+      <ErrorBoundary>
+        {/* Landing Page - Vista Pública */}
+        {currentView === "landing" && (
+          <LandingPage
+            onLoginClick={handleLoginClick}
+            onNavigate={handleNavigate}
           />
         )}
 
-      {/* SERVICIOS PÚBLICOS - Sin autenticación requerida */}
+        {/* Login Page - Sistema de Login Dual con Discriminación Automática */}
+        {currentView === "login" && (
+          <LoginPage
+            onLogin={handleLogin}
+            onBackToHome={handleBackToHome}
+          />
+        )}
 
-      {/* 1. Enrolamiento QR - Proceso de auto-enrolamiento */}
-      {currentView === "enrollment-qr" && (
-        <EnrollmentQRLandingUnified
-          onBeginActivation={() => {
-            // En producción iniciaría el flujo de activación
-            console.log("Iniciando proceso de enrolamiento");
-          }}
-          onBackToHome={handleBackToHome}
-          onLoginClick={handleLoginClick}
-        />
-      )}
+        {/* System Selector - Para Super Users con Acceso a Ambos Sistemas */}
+        {currentView === "system-selector" && isAuthenticated && (
+          <SystemSelector
+            userName={userData.name}
+            userEmail={userData.email}
+            userRoles={userRoles}
+            onSelectSystem={handleSelectSystem}
+            onLogout={handleLogout}
+          />
+        )}
 
-      {/* 2. Formulario de Vinculaciones - Formulario de interés (alimenta módulo Aspirantes) */}
-      {currentView === "vinculaciones" && (
-        <VinculacionForm
-          onBack={handleBackToHome}
-          onLoginClick={handleLoginClick}
-        />
-      )}
+        {/* Portal Transaccional - Estudiantes/Graduados/Docentes */}
+        {currentView === "portal-transaccional" &&
+          isAuthenticated && (
+            <div className="min-h-screen bg-gray-50">
+              {/* Navbar Autenticado con Logout */}
+              <AuthenticatedPortalNavbar
+                userName={userData.name}
+                userEmail={userData.email}
+                userRoles={userRoles}
+                activeRole={activeRole}
+                onLogout={handleLogout}
+                onSystemChange={handleSystemChange}
+                hasBothSystemsAccess={
+                  userData.hasBothSystemsAccess
+                }
+              />
 
-      {/* 3. Verificación de Títulos - Certificados públicos de verificación con QR */}
-      {currentView === "verificacion" && (
-        <PublicTitleVerification
-          onBack={handleBackToHome}
-          onLoginClick={handleLoginClick}
-        />
-      )}
-
-      {/* 4. Solicitar Certificados Laborales - Sistema de solicitud con validación 2FA */}
-      {currentView === "solicitar-certificados-laborales" && (
-        <SolicitarCertificadoLaboral
-          onBack={handleBackToHome}
-          onLoginClick={handleLoginClick}
-        />
-      )}
-
-      {/* 5. Convocatorias Docentes - Pendiente de implementar */}
-      {currentView === "convocatorias-docentes" && (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-          <div className="max-w-2xl w-full bg-white rounded-2xl shadow-lg p-8 text-center">
-            <div className="w-20 h-20 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg
-                className="w-10 h-10 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"
-                />
-              </svg>
+              {/* Portal Dashboard con Sistema de Roles */}
+              <PortalDashboard
+                userName={userData.name}
+                userEmail={userData.email}
+                userPersonId={userData.personId}
+                userRoles={userRoles}
+                userData={userData}
+                onActiveRoleChange={setActiveRole}
+              />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Convocatorias Docentes
-            </h2>
-            <p className="text-lg text-gray-600 mb-8">
-              El módulo de Convocatorias Docentes estará
-              disponible próximamente. Aquí podrás aplicar a
-              convocatorias abiertas para docentes de ESAP.
-            </p>
-            <button
-              onClick={handleBackToHome}
-              className="px-6 py-3 bg-gradient-to-r from-[#003DA5] to-[#0052CC] text-white rounded-lg font-semibold hover:shadow-lg transition-all"
-            >
-              Volver al Inicio
-            </button>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* Toast Global */}
-      <Toaster
-        position="top-right"
-        richColors
-        closeButton
-        duration={4000}
-      />
-    </ErrorBoundary>
+        {/* Backoffice Administrativo - Personal Administrativo */}
+        {currentView === "backoffice" &&
+          isAuthenticated &&
+          userType === "administrativo" && (
+            <BackofficeApp
+              onLogout={handleLogout}
+              onBackToSystemSelector={handleBackToSystemSelector}
+              onSystemChange={handleSystemChange}
+              userData={userData}
+              userRoles={userRoles}
+            />
+          )}
+
+        {/* SERVICIOS PÚBLICOS - Sin autenticación requerida */}
+
+        {/* 1. Enrolamiento QR - Proceso de auto-enrolamiento */}
+        {currentView === "enrollment-qr" && (
+          <EnrollmentQRLandingUnified
+            onBeginActivation={() => {
+              // En producción iniciaría el flujo de activación
+              console.log("Iniciando proceso de enrolamiento");
+            }}
+            onBackToHome={handleBackToHome}
+            onLoginClick={handleLoginClick}
+          />
+        )}
+
+        {/* 2. Formulario de Vinculaciones - Formulario de interés (alimenta módulo Aspirantes) */}
+        {currentView === "vinculaciones" && (
+          <VinculacionForm
+            onBack={handleBackToHome}
+            onLoginClick={handleLoginClick}
+          />
+        )}
+
+        {/* 3. Verificación de Títulos - Certificados públicos de verificación con QR */}
+        {currentView === "verificacion" && (
+          <PublicTitleVerification
+            onBack={handleBackToHome}
+            onLoginClick={handleLoginClick}
+          />
+        )}
+
+        {/* 4. Solicitar Certificados Laborales - Sistema de solicitud con validación 2FA */}
+        {currentView === "solicitar-certificados-laborales" && (
+          <SolicitarCertificadoLaboral
+            onBack={handleBackToHome}
+            onLoginClick={handleLoginClick}
+          />
+        )}
+
+        {/* 5. Convocatorias Docentes - Pendiente de implementar */}
+        {currentView === "convocatorias-docentes" && (
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+            <div className="max-w-2xl w-full bg-white rounded-2xl shadow-lg p-8 text-center">
+              <div className="w-20 h-20 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg
+                  className="w-10 h-10 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"
+                  />
+                </svg>
+              </div>
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                Convocatorias Docentes
+              </h2>
+              <p className="text-lg text-gray-600 mb-8">
+                El módulo de Convocatorias Docentes estará
+                disponible próximamente. Aquí podrás aplicar a
+                convocatorias abiertas para docentes de ESAP.
+              </p>
+              <button
+                onClick={handleBackToHome}
+                className="px-6 py-3 bg-gradient-to-r from-[#003DA5] to-[#0052CC] text-white rounded-lg font-semibold hover:shadow-lg transition-all"
+              >
+                Volver al Inicio
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Toast Global */}
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+          duration={4000}
+        />
+      </ErrorBoundary>
+    </AuditoriaGlobalProvider>
   );
 }

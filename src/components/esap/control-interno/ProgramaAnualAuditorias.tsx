@@ -1,5 +1,6 @@
 /**
  * RF003 - PROGRAMA ANUAL DE AUDITORÍAS
+ * Integración Fase 2 COMPLETA: Contexto global + Notificaciones automáticas
  * Componente para importar auditorías del Universo, asignar equipos, 
  * programar fechas y generar el calendario anual oficial
  */
@@ -41,6 +42,9 @@ import { MOCK_UNIVERSO_AUDITORIAS } from './data/mockUniversoAuditorias';
 import { PanelExportacion } from './PanelExportacion';
 import { ModalAmpliacionPlazo, AmpliacionPlazo, AuditoriaProgramadaConAmpliaciones } from './ModalAmpliacionPlazo';
 import { ModalHistorialCambios, HistorialCambio } from './ModalHistorialCambios';
+
+// ============ INTEGRACIÓN FASE 2 ============
+import { useIntegracionControlInterno } from '../../../hooks/useIntegracionControlInterno';
 
 // ============ TIPOS ============
 
@@ -208,6 +212,10 @@ export function ProgramaAnualAuditorias() {
     rol: 'Jefe' as const  // 'Admin' | 'Jefe' | 'Auditor' | 'Consulta'
   };
 
+  // ============ INTEGRACIÓN FASE 2 ============
+
+  const { notificarCambio } = useIntegracionControlInterno();
+
   // ============ MÉTRICAS ============
 
   const metricas = {
@@ -291,6 +299,17 @@ export function ProgramaAnualAuditorias() {
         cambio
       ]
     }));
+
+    // Notificar cambio
+    notificarCambio({
+      tipo: 'ampliacion',
+      auditoriaId: ampliacion.auditoriaId,
+      etapa: ampliacion.etapaAfectada,
+      fechaOriginal: ampliacion.fechaOriginal,
+      fechaNueva: ampliacion.nuevaFechaLimite,
+      diasAmpliados: ampliacion.diasAmpliados,
+      usuario: ampliacion.usuarioAutorizo
+    });
   };
 
   // NUEVO: Abrir modal de ampliación
@@ -738,26 +757,30 @@ export function ProgramaAnualAuditorias() {
       />
 
       {/* Modal de Ampliación */}
-      <ModalAmpliacionPlazo
-        isOpen={mostrarModalAmpliacion}
-        onClose={() => setMostrarModalAmpliacion(false)}
-        auditoria={auditoriaSeleccionada as AuditoriaProgramadaConAmpliaciones}
-        usuarioActual={usuarioActual}
-        onAprobar={handleAprobarAmpliacion}
-      />
+      {auditoriaSeleccionada && (
+        <ModalAmpliacionPlazo
+          isOpen={mostrarModalAmpliacion}
+          onClose={() => setMostrarModalAmpliacion(false)}
+          auditoria={auditoriaSeleccionada as AuditoriaProgramadaConAmpliaciones}
+          usuarioActual={usuarioActual}
+          onAprobar={handleAprobarAmpliacion}
+        />
+      )}
 
       {/* Modal de Historial */}
-      <ModalHistorialCambios
-        isOpen={mostrarModalHistorial}
-        onClose={() => setMostrarModalHistorial(false)}
-        auditoria={auditoriaSeleccionada ? {
-          id: auditoriaSeleccionada.id,
-          codigo: auditoriaSeleccionada.codigo,
-          procesoAuditable: auditoriaSeleccionada.procesoAuditable
-        } : { id: '', codigo: '', procesoAuditable: '' }}
-        ampliaciones={ampliaciones[auditoriaSeleccionada?.id || ''] || []}
-        historial={historialCambios[auditoriaSeleccionada?.id || ''] || []}
-      />
+      {auditoriaSeleccionada && (
+        <ModalHistorialCambios
+          isOpen={mostrarModalHistorial}
+          onClose={() => setMostrarModalHistorial(false)}
+          auditoria={{
+            id: auditoriaSeleccionada.id,
+            codigo: auditoriaSeleccionada.codigo,
+            procesoAuditable: auditoriaSeleccionada.procesoAuditable
+          }}
+          ampliaciones={ampliaciones[auditoriaSeleccionada.id] || []}
+          historial={historialCambios[auditoriaSeleccionada.id] || []}
+        />
+      )}
     </div>
   );
 }
