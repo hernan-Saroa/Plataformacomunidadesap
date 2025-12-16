@@ -1,841 +1,735 @@
 /**
- * DASHBOARD EJECUTIVO - CONTROL INTERNO DE GESTIÓN
- * Vista centralizada de todas las estadísticas y métricas del módulo
- * RF001 - Gráficos de cumplimiento del Plan Anual
+ * RF009 - DASHBOARD EJECUTIVO
+ * Centro de control visual con métricas en tiempo real de Control Interno
+ * Integra todos los módulos: RF003-RF008, RF010, RF012, RF013
+ * Oficina de Control Interno - ESAP
  */
 
-'use client';
-
-import React, { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import {
-  BarChart3,
-  PieChart,
-  TrendingUp,
-  Calendar,
-  Activity,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  ArrowUpRight,
-  Download,
-  Filter,
-  RefreshCw
+  TrendingUp, TrendingDown, Target, AlertTriangle, CheckCircle,
+  Clock, Users, FileText, Activity, BarChart3, PieChart,
+  Calendar, Shield, Bell, ArrowRight, Download, Filter,
+  Eye, Edit, Flag, AlertCircle, CheckCircle2, XCircle
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
+import { Card } from '../../ui/card';
+import { useControlInterno } from './ControlInternoContext';
+import { useIntegracionControlInterno } from '../../../hooks/useIntegracionControlInterno';
 import {
-  BarChart,
-  Bar,
-  PieChart as RechartsPieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
+  BarChart, Bar, LineChart, Line, PieChart as RechartsPie, Pie,
+  Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, AreaChart, Area
 } from 'recharts';
-
-// ============ COLORES ============
-
-const COLORES_ROL = ['#003DA5', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444'];
-const COLORES_ESTADO = ['#3B82F6', '#6B7280'];
-const COLORES_DETALLE = {
-  completadas: '#10B981',
-  enProgreso: '#3B82F6',
-  pendientes: '#6B7280',
-  retrasadas: '#EF4444',
-};
 
 // ============ TIPOS ============
 
-interface Actividad {
+interface MetricaKPI {
   id: string;
-  nombre: string;
-  descripcion: string;
-  responsable: string;
-  fechaInicio: string;
-  fechaFin: string;
-  estado: 'pendiente' | 'en-progreso' | 'completada' | 'retrasada';
-  porcentajeAvance: number;
-  observaciones: string;
-  prioridad: 'Alta' | 'Media' | 'Baja';
+  titulo: string;
+  valor: number;
+  total: number;
+  porcentaje: number;
+  tendencia: 'up' | 'down' | 'stable';
+  cambio: number;
+  color: string;
+  icono: any;
 }
 
 interface Rol {
-  id: number;
+  id: string;
   nombre: string;
-  descripcion: string;
+  cumplimiento: number;
+  actividades: number;
+  completadas: number;
+  enProgreso: number;
   color: string;
-  icono: any;
-  actividades: Actividad[];
-  porcentajeCumplimiento: number;
 }
 
-interface PlanAnual {
-  añoFiscal: number;
-  fechaCreacion: string;
+interface Actividad {
+  id: string;
+  titulo: string;
   responsable: string;
-  estado: 'borrador' | 'aprobado' | 'en-ejecucion' | 'completado';
-  roles: Rol[];
+  fechaInicio: string;
+  fechaFin: string;
+  progreso: number;
+  estado: 'En Progreso' | 'Completada' | 'Alta' | 'Vencida';
+  prioridad: 'Alta' | 'Media' | 'Baja';
+  observaciones?: string;
 }
 
-// ============ DATOS MOCK DEL PLAN ANUAL ============
-// Importamos la misma estructura que usa PlanAnual5Roles
+interface Notificacion {
+  id: string;
+  tipo: 'alerta' | 'info' | 'exito' | 'advertencia';
+  titulo: string;
+  descripcion: string;
+  fecha: string;
+  leida: boolean;
+  prioridad: 'Alta' | 'Media' | 'Baja';
+}
 
-const MOCK_PLAN_ANUAL: PlanAnual = {
-  añoFiscal: 2025,
-  fechaCreacion: '2024-12-01',
-  responsable: 'Mario Oswaldo Bernal Rodriguez',
-  estado: 'en-ejecucion',
-  roles: [
-    {
-      id: 1,
-      nombre: 'Liderazgo Estratégico',
-      descripcion: 'Asesorar y acompañar a la alta dirección en la gestión del riesgo y el control',
-      color: '#3B82F6',
-      icono: null,
-      porcentajeCumplimiento: 75,
-      actividades: [
-        {
-          id: '1-1',
-          nombre: 'Asesoría en Política de Gestión de Riesgos',
-          descripcion: 'Asesorar a la Dirección Nacional en la actualización de la política de riesgos institucional',
-          responsable: 'Mario Oswaldo Bernal Rodriguez',
-          fechaInicio: '2025-01-15',
-          fechaFin: '2025-03-31',
-          estado: 'en-progreso',
-          porcentajeAvance: 60,
-          observaciones: 'Reuniones periódicas con subdirecciones',
-          prioridad: 'Alta'
-        },
-        {
-          id: '1-2',
-          nombre: 'Acompañamiento Plan Estratégico Institucional',
-          descripcion: 'Acompañar la formulación y seguimiento del Plan Estratégico 2025-2028',
-          responsable: 'Sandra Montero',
-          fechaInicio: '2025-02-01',
-          fechaFin: '2025-06-30',
-          estado: 'en-progreso',
-          porcentajeAvance: 40,
-          observaciones: '',
-          prioridad: 'Alta'
-        },
-        {
-          id: '1-3',
-          nombre: 'Comité de Gestión y Desempeño Institucional',
-          descripcion: 'Participación activa en el Comité de Gestión Institucional mensual',
-          responsable: 'Mario Oswaldo Bernal Rodriguez',
-          fechaInicio: '2025-01-10',
-          fechaFin: '2025-12-31',
-          estado: 'en-progreso',
-          porcentajeAvance: 90,
-          observaciones: 'Sesiones mensuales programadas',
-          prioridad: 'Alta'
-        },
-        {
-          id: '1-4',
-          nombre: 'Informe Ejecutivo Trimestral a Dirección',
-          descripcion: 'Presentación de informe trimestral de gestión a la Dirección Nacional',
-          responsable: 'Mario Oswaldo Bernal Rodriguez',
-          fechaInicio: '2024-12-01',
-          fechaFin: '2024-12-18',
-          estado: 'completada',
-          porcentajeAvance: 100,
-          observaciones: 'Entregado',
-          prioridad: 'Alta'
-        }
-      ]
-    },
-    {
-      id: 2,
-      nombre: 'Enfoque hacia la Prevención',
-      descripcion: 'Fomentar la cultura del autocontrol y promover acciones preventivas',
-      color: '#10B981',
-      icono: null,
-      porcentajeCumplimiento: 65,
-      actividades: [
-        {
-          id: '2-1',
-          nombre: 'Capacitación en Cultura de Control',
-          descripcion: 'Diseñar e implementar programa de capacitación en autocontrol para funcionarios',
-          responsable: 'Fernando Ávila',
-          fechaInicio: '2025-01-20',
-          fechaFin: '2025-04-30',
-          estado: 'en-progreso',
-          porcentajeAvance: 55,
-          observaciones: '3 talleres realizados, faltan 2',
-          prioridad: 'Media'
-        },
-        {
-          id: '2-2',
-          nombre: 'Seguimiento a Planes de Mejoramiento Internos',
-          descripcion: 'Realizar seguimiento trimestral a planes de mejoramiento de auditorías previas',
-          responsable: 'Nubia Pimiento',
-          fechaInicio: '2025-01-01',
-          fechaFin: '2025-12-31',
-          estado: 'en-progreso',
-          porcentajeAvance: 70,
-          observaciones: 'Primer seguimiento completado',
-          prioridad: 'Alta'
-        },
-        {
-          id: '2-3',
-          nombre: 'Programa de Transparencia y Ética Pública',
-          descripcion: 'Implementación del programa de transparencia según normativa vigente',
-          responsable: 'William Ramírez',
-          fechaInicio: '2025-02-01',
-          fechaFin: '2025-05-31',
-          estado: 'en-progreso',
-          porcentajeAvance: 50,
-          observaciones: '',
-          prioridad: 'Media'
-        }
-      ]
-    },
-    {
-      id: 3,
-      nombre: 'Relación con Entes de Control',
-      descripcion: 'Coordinar y facilitar las relaciones con organismos de control externo',
-      color: '#F59E0B',
-      icono: null,
-      porcentajeCumplimiento: 80,
-      actividades: [
-        {
-          id: '3-1',
-          nombre: 'Atención Requerimientos CGR',
-          descripcion: 'Coordinar respuesta a requerimientos de la Contraloría General de la República',
-          responsable: 'Alexandra Triviño',
-          fechaInicio: '2025-01-01',
-          fechaFin: '2025-12-31',
-          estado: 'en-progreso',
-          porcentajeAvance: 85,
-          observaciones: '12 requerimientos atendidos',
-          prioridad: 'Alta'
-        },
-        {
-          id: '3-2',
-          nombre: 'Seguimiento Plan de Mejoramiento CGR',
-          descripcion: 'Seguimiento mensual al plan de mejoramiento establecido con la CGR',
-          responsable: 'Fernando Ávila',
-          fechaInicio: '2025-01-01',
-          fechaFin: '2025-12-31',
-          estado: 'en-progreso',
-          porcentajeAvance: 75,
-          observaciones: 'Cumplimiento satisfactorio',
-          prioridad: 'Alta'
-        },
-        {
-          id: '3-3',
-          nombre: 'Informes a Entes de Control',
-          descripcion: 'Generación y envío de informes obligatorios a entes de control externos',
-          responsable: 'Catalina Rubio',
-          fechaInicio: '2025-01-01',
-          fechaFin: '2025-12-31',
-          estado: 'en-progreso',
-          porcentajeAvance: 80,
-          observaciones: 'Entregas al día',
-          prioridad: 'Alta'
-        }
-      ]
-    },
-    {
-      id: 4,
-      nombre: 'Evaluación y Gestión de Riesgos',
-      descripcion: 'Evaluar la gestión del riesgo institucional y la efectividad de los controles',
-      color: '#8B5CF6',
-      icono: null,
-      porcentajeCumplimiento: 55,
-      actividades: [
-        {
-          id: '4-1',
-          nombre: 'Evaluación Mapa de Riesgos de Corrupción',
-          descripcion: 'Evaluar cuatrimestralmente el mapa de riesgos de corrupción institucional',
-          responsable: 'Sandra Montero',
-          fechaInicio: '2025-01-15',
-          fechaFin: '2025-12-31',
-          estado: 'en-progreso',
-          porcentajeAvance: 40,
-          observaciones: 'Primera evaluación en curso',
-          prioridad: 'Alta'
-        },
-        {
-          id: '4-2',
-          nombre: 'Evaluación Mapa de Riesgos de Gestión',
-          descripcion: 'Evaluar cuatrimestralmente el mapa de riesgos de gestión y seguridad digital',
-          responsable: 'Sandra Montero',
-          fechaInicio: '2025-01-15',
-          fechaFin: '2025-12-31',
-          estado: 'en-progreso',
-          porcentajeAvance: 40,
-          observaciones: 'Primera evaluación en curso',
-          prioridad: 'Alta'
-        },
-        {
-          id: '4-3',
-          nombre: 'Auditoría a Gestión de Riesgos',
-          descripcion: 'Realizar auditoría a la gestión de riesgos en procesos críticos',
-          responsable: 'William Ramírez',
-          fechaInicio: '2025-03-01',
-          fechaFin: '2025-06-30',
-          estado: 'pendiente',
-          porcentajeAvance: 0,
-          observaciones: 'Programada para marzo',
-          prioridad: 'Media'
-        },
-        {
-          id: '4-4',
-          nombre: 'Auditoría a Gestión de Riesgos Adicional',
-          descripcion: 'Realizar auditoría a la gestión de riesgos en procesos críticos',
-          responsable: 'William Ramírez',
-          fechaInicio: '2025-03-01',
-          fechaFin: '2025-06-30',
-          estado: 'retrasada',
-          porcentajeAvance: 20,
-          observaciones: 'Atrasada',
-          prioridad: 'Media'
-        }
-      ]
-    },
-    {
-      id: 5,
-      nombre: 'Evaluación y Seguimiento',
-      descripcion: 'Evaluar y hacer seguimiento a la gestión institucional y los procesos',
-      color: '#EF4444',
-      icono: null,
-      porcentajeCumplimiento: 60,
-      actividades: [
-        {
-          id: '5-1',
-          nombre: 'Auditorías Internas Programadas',
-          descripcion: 'Ejecutar 33-35 auditorías internas según programa anual',
-          responsable: 'Mario Oswaldo Bernal Rodriguez',
-          fechaInicio: '2025-01-15',
-          fechaFin: '2025-11-30',
-          estado: 'en-progreso',
-          porcentajeAvance: 25,
-          observaciones: '8 de 33 auditorías completadas',
-          prioridad: 'Alta'
-        },
-        {
-          id: '5-2',
-          nombre: 'Evaluación Sistema de Control Interno',
-          descripcion: 'Evaluación anual del Sistema de Control Interno institucional',
-          responsable: 'Sandra Montero',
-          fechaInicio: '2025-08-01',
-          fechaFin: '2025-11-30',
-          estado: 'pendiente',
-          porcentajeAvance: 0,
-          observaciones: 'Programada para agosto',
-          prioridad: 'Alta'
-        },
-        {
-          id: '5-3',
-          nombre: 'Medición MECI',
-          descripcion: 'Realizar medición anual del Modelo Estándar de Control Interno',
-          responsable: 'Fernando Ávila',
-          fechaInicio: '2025-09-01',
-          fechaFin: '2025-11-30',
-          estado: 'pendiente',
-          porcentajeAvance: 0,
-          observaciones: 'Programada para septiembre',
-          prioridad: 'Alta'
-        },
-        {
-          id: '5-4',
-          nombre: 'Evaluación Gestión por Dependencias',
-          descripcion: 'Evaluación semestral de gestión por dependencias',
-          responsable: 'Catalina Rubio',
-          fechaInicio: '2025-01-01',
-          fechaFin: '2025-12-31',
-          estado: 'retrasada',
-          porcentajeAvance: 30,
-          observaciones: 'Primera evaluación atrasada',
-          prioridad: 'Media'
-        },
-        {
-          id: '5-5',
-          nombre: 'Auditoría a DAFP',
-          descripcion: 'Auditoría al Departamento Administrativo de la Función Pública',
-          responsable: 'Catalina Rubio',
-          fechaInicio: '2025-01-01',
-          fechaFin: '2025-12-31',
-          estado: 'retrasada',
-          porcentajeAvance: 15,
-          observaciones: 'Evaluación atrasada',
-          prioridad: 'Media'
-        },
-        {
-          id: '5-6',
-          nombre: 'Auditoría Final',
-          descripcion: 'Auditoría final del periodo',
-          responsable: 'Catalina Rubio',
-          fechaInicio: '2025-01-01',
-          fechaFin: '2025-12-31',
-          estado: 'retrasada',
-          porcentajeAvance: 50,
-          observaciones: 'Evaluación atrasada',
-          prioridad: 'Media'
-        }
-      ]
-    }
-  ]
-};
+// ============ DATOS MOCK ============
+
+const METRICAS_KPI: MetricaKPI[] = [
+  {
+    id: 'kpi-1',
+    titulo: 'Auditorías Programadas',
+    valor: 18,
+    total: 25,
+    porcentaje: 72,
+    tendencia: 'up',
+    cambio: 12,
+    color: '#3B82F6',
+    icono: Target
+  },
+  {
+    id: 'kpi-2',
+    titulo: 'Auditorías Completadas',
+    valor: 12,
+    total: 18,
+    porcentaje: 67,
+    tendencia: 'up',
+    cambio: 8,
+    color: '#10B981',
+    icono: CheckCircle
+  },
+  {
+    id: 'kpi-3',
+    titulo: 'Hallazgos Abiertos',
+    valor: 24,
+    total: 45,
+    porcentaje: 53,
+    tendencia: 'down',
+    cambio: -15,
+    color: '#F97316',
+    icono: AlertTriangle
+  },
+  {
+    id: 'kpi-4',
+    titulo: 'Planes de Mejoramiento',
+    valor: 8,
+    total: 12,
+    porcentaje: 67,
+    tendencia: 'up',
+    cambio: 20,
+    color: '#8B5CF6',
+    icono: FileText
+  }
+];
+
+const ROLES_ESTRATEGICOS: Rol[] = [
+  {
+    id: 'rol-1',
+    nombre: 'Rol 1: Liderazgo Estratégico',
+    cumplimiento: 75,
+    actividades: 4,
+    completadas: 3,
+    enProgreso: 1,
+    color: '#3B82F6'
+  },
+  {
+    id: 'rol-2',
+    nombre: 'Rol 2: Gestión de Riesgos',
+    cumplimiento: 85,
+    actividades: 5,
+    completadas: 4,
+    enProgreso: 1,
+    color: '#10B981'
+  },
+  {
+    id: 'rol-3',
+    nombre: 'Rol 3: Control Interno',
+    cumplimiento: 60,
+    actividades: 6,
+    completadas: 3,
+    enProgreso: 3,
+    color: '#F59E0B'
+  },
+  {
+    id: 'rol-4',
+    nombre: 'Rol 4: Cultura de Control',
+    cumplimiento: 90,
+    actividades: 3,
+    completadas: 3,
+    enProgreso: 0,
+    color: '#8B5CF6'
+  },
+  {
+    id: 'rol-5',
+    nombre: 'Rol 5: Mejora Continua',
+    cumplimiento: 70,
+    actividades: 5,
+    completadas: 3,
+    enProgreso: 2,
+    color: '#EF4444'
+  }
+];
+
+const ACTIVIDADES_RECIENTES: Actividad[] = [
+  {
+    id: 'act-1',
+    titulo: 'Asesoría en Política de Gestión de Riesgos',
+    responsable: 'Mario Osvaldo Bernal Rodríguez',
+    fechaInicio: '14 de ene',
+    fechaFin: '30 de mar de 2025',
+    progreso: 60,
+    estado: 'En Progreso',
+    prioridad: 'Alta',
+    observaciones: 'Reuniones periódicas con subáreas'
+  },
+  {
+    id: 'act-2',
+    titulo: 'Acompañamiento Plan Estratégico Institucional',
+    responsable: 'Sandra Montero',
+    fechaInicio: '31 de ene',
+    fechaFin: '29 de jun de 2025',
+    progreso: 40,
+    estado: 'En Progreso',
+    prioridad: 'Alta'
+  },
+  {
+    id: 'act-3',
+    titulo: 'Comité de Gestión y Desempeño Institucional',
+    responsable: 'Mario Osvaldo Bernal Rodríguez',
+    fechaInicio: '9 de ene',
+    fechaFin: '30 de dic de 2025',
+    progreso: 90,
+    estado: 'En Progreso',
+    prioridad: 'Alta',
+    observaciones: 'Sesiones mensuales programadas'
+  }
+];
+
+const NOTIFICACIONES_ALERTAS: Notificacion[] = [
+  {
+    id: 'not-1',
+    tipo: 'alerta',
+    titulo: 'Auditoría AUD-2025-003 próxima a vencer',
+    descripcion: 'Vence en 3 días - Gestión de Talento Humano',
+    fecha: '2025-12-14',
+    leida: false,
+    prioridad: 'Alta'
+  },
+  {
+    id: 'not-2',
+    tipo: 'advertencia',
+    titulo: '5 hallazgos pendientes de respuesta',
+    descripcion: 'Área Jurídica debe presentar plan de mejoramiento',
+    fecha: '2025-12-13',
+    leida: false,
+    prioridad: 'Media'
+  },
+  {
+    id: 'not-3',
+    tipo: 'info',
+    titulo: 'Nuevo informe de ley generado',
+    descripcion: 'Informe trimestral Octubre-Diciembre 2025',
+    fecha: '2025-12-12',
+    leida: true,
+    prioridad: 'Baja'
+  },
+  {
+    id: 'not-4',
+    tipo: 'exito',
+    titulo: 'Plan de mejoramiento aprobado',
+    descripción: 'Plan PM-2025-005 - Gestión Financiera',
+    fecha: '2025-12-11',
+    leida: true,
+    prioridad: 'Media'
+  },
+  {
+    id: 'not-5',
+    tipo: 'alerta',
+    titulo: '2 aprobaciones pendientes',
+    descripcion: 'Planes individuales requieren autorización',
+    fecha: '2025-12-10',
+    leida: false,
+    prioridad: 'Alta'
+  }
+];
+
+// Datos para gráficas
+const DATOS_CUMPLIMIENTO_MENSUAL = [
+  { mes: 'Ene', cumplimiento: 65, planificado: 80 },
+  { mes: 'Feb', cumplimiento: 70, planificado: 80 },
+  { mes: 'Mar', cumplimiento: 75, planificado: 85 },
+  { mes: 'Abr', cumplimiento: 72, planificado: 85 },
+  { mes: 'May', cumplimiento: 78, planificado: 85 },
+  { mes: 'Jun', cumplimiento: 82, planificado: 90 },
+  { mes: 'Jul', cumplimiento: 85, planificado: 90 },
+  { mes: 'Ago', cumplimiento: 80, planificado: 90 },
+  { mes: 'Sep', cumplimiento: 88, planificado: 90 },
+  { mes: 'Oct', cumplimiento: 85, planificado: 95 },
+  { mes: 'Nov', cumplimiento: 90, planificado: 95 },
+  { mes: 'Dic', cumplimiento: 87, planificado: 95 }
+];
+
+const DATOS_HALLAZGOS_POR_TIPO = [
+  { nombre: 'No Conformidad', valor: 12, color: '#EF4444' },
+  { nombre: 'Observación', valor: 18, color: '#F59E0B' },
+  { nombre: 'Oportunidad de Mejora', valor: 15, color: '#10B981' }
+];
+
+const DATOS_AUDITORIAS_POR_PROCESO = [
+  { proceso: 'Gestión Contractual', completadas: 8, pendientes: 3 },
+  { proceso: 'Talento Humano', completadas: 5, pendientes: 2 },
+  { proceso: 'Gestión Financiera', completadas: 6, pendientes: 1 },
+  { proceso: 'Gestión de TIC', completadas: 3, pendientes: 4 },
+  { proceso: 'Gestión Documental', completadas: 4, pendientes: 2 }
+];
 
 // ============ COMPONENTE PRINCIPAL ============
 
 export function DashboardEjecutivo() {
-  const [periodoSeleccionado, setPeriodoSeleccionado] = useState('2025');
-
-  // ============ CÁLCULOS DINÁMICOS DEL PLAN ANUAL ============
-
-  const datosCalculados = useMemo(() => {
-    // Calcular métricas generales
-    const totalActividades = MOCK_PLAN_ANUAL.roles.reduce((sum, rol) => sum + rol.actividades.length, 0);
-    const actividadesCompletadas = MOCK_PLAN_ANUAL.roles.reduce(
-      (sum, rol) => sum + rol.actividades.filter(a => a.estado === 'completada').length, 0
-    );
-    const actividadesEnProgreso = MOCK_PLAN_ANUAL.roles.reduce(
-      (sum, rol) => sum + rol.actividades.filter(a => a.estado === 'en-progreso').length, 0
-    );
-    const actividadesPendientes = MOCK_PLAN_ANUAL.roles.reduce(
-      (sum, rol) => sum + rol.actividades.filter(a => a.estado === 'pendiente').length, 0
-    );
-    const actividadesRetrasadas = MOCK_PLAN_ANUAL.roles.reduce(
-      (sum, rol) => sum + rol.actividades.filter(a => a.estado === 'retrasada').length, 0
-    );
-
-    const cumplimientoGeneral = Math.round(
-      MOCK_PLAN_ANUAL.roles.reduce((sum, rol) => sum + rol.porcentajeCumplimiento, 0) / MOCK_PLAN_ANUAL.roles.length
-    );
-
-    // Datos para el gráfico de actividades por estado (Dona)
-    const dataActividadesPorEstado = [
-      { 
-        estado: 'En Progreso', 
-        cantidad: actividadesEnProgreso,
-        porcentaje: Math.round((actividadesEnProgreso / totalActividades) * 100)
-      },
-      { 
-        estado: 'Pendientes', 
-        cantidad: actividadesPendientes + actividadesRetrasadas,
-        porcentaje: Math.round(((actividadesPendientes + actividadesRetrasadas) / totalActividades) * 100)
-      },
-    ];
-
-    // Datos para el gráfico de detalle por rol y estado (Barras apiladas)
-    const dataDetallePorRolYEstado = MOCK_PLAN_ANUAL.roles.map(rol => ({
-      rol: rol.nombre,
-      completadas: rol.actividades.filter(a => a.estado === 'completada').length,
-      enProgreso: rol.actividades.filter(a => a.estado === 'en-progreso').length,
-      pendientes: rol.actividades.filter(a => a.estado === 'pendiente').length,
-      retrasadas: rol.actividades.filter(a => a.estado === 'retrasada').length,
-    }));
-
-    return {
-      cumplimientoGeneral,
-      totalActividades,
-      actividadesCompletadas,
-      actividadesEnProgreso,
-      actividadesPendientes,
-      actividadesRetrasadas,
-      dataActividadesPorEstado,
-      dataDetallePorRolYEstado,
-    };
-  }, []);
-
-  // ============ DATOS MOCK PARA OTRAS SECCIONES ============
-
-  const dataHallazgosPorTipo = [
-    { tipo: 'No Conformidad Mayor', cantidad: 8 },
-    { tipo: 'No Conformidad Menor', cantidad: 15 },
-    { tipo: 'Observación', cantidad: 23 },
-    { tipo: 'Oportunidad de Mejora', cantidad: 12 },
-  ];
-
-  const dataPlanesPorEstado = [
-    { estado: 'En Ejecución', cantidad: 18, porcentaje: 45 },
-    { estado: 'Completados', cantidad: 15, porcentaje: 37.5 },
-    { estado: 'Vencidos', cantidad: 5, porcentaje: 12.5 },
-    { estado: 'En Revisión', cantidad: 2, porcentaje: 5 },
-  ];
-
-  const dataAuditoriasPorTerritorial = [
-    { territorial: 'Sede Principal', cantidad: 12 },
-    { territorial: 'Antioquia', cantidad: 8 },
-    { territorial: 'Valle', cantidad: 7 },
-    { territorial: 'Atlántico', cantidad: 6 },
-    { territorial: 'Santander', cantidad: 5 },
-    { territorial: 'Otros', cantidad: 15 },
-  ];
-
-  // ============ MÉTRICAS GENERALES ============
-
-  const metricas = {
-    cumplimientoGeneral: datosCalculados.cumplimientoGeneral,
-    totalActividades: datosCalculados.totalActividades,
-    actividadesCompletadas: datosCalculados.actividadesCompletadas,
-    totalAuditorias: 24,
-    auditoriasEnCurso: 8,
-    totalHallazgos: 58,
-    hallazgosCriticos: 8,
-    planesActivos: 40,
-    planesCumplidos: 15,
-  };
-
-  // ============ RENDER ============
+  const [filtroTiempo, setFiltroTiempo] = useState<'mes' | 'trimestre' | 'año'>('mes');
+  const [notificacionesVisibles, setNotificacionesVisibles] = useState(true);
+  
+  const controlContext = useControlInterno();
+  const { auditoria } = useIntegracionControlInterno();
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6">
+      {/* HEADER */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <div className="p-2 rounded-lg" style={{ backgroundColor: '#E0EFFF' }}>
-              <BarChart3 className="w-7 h-7" style={{ color: '#003DA5' }} />
-            </div>
-            Dashboard Ejecutivo - Control Interno
+          <h1 className="text-2xl font-black text-gray-900">
+            Dashboard Ejecutivo
           </h1>
           <p className="text-sm text-gray-600 mt-1">
-            Métricas y estadísticas consolidadas del año {periodoSeleccionado}
+            RF009 - Centro de control visual con métricas en tiempo real
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Selector de período */}
-          <select
-            value={periodoSeleccionado}
-            onChange={(e) => setPeriodoSeleccionado(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-sm bg-white"
+          <Button
+            onClick={() => setFiltroTiempo('mes')}
+            variant={filtroTiempo === 'mes' ? 'default' : 'outline'}
+            size="sm"
           >
-            <option value="2025">2025</option>
-            <option value="2024">2024</option>
-            <option value="2023">2023</option>
-          </select>
-
-          <Button variant="outline" size="sm">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Actualizar
+            Mes
           </Button>
-
-          <Button size="sm" style={{ backgroundColor: '#003DA5' }}>
+          <Button
+            onClick={() => setFiltroTiempo('trimestre')}
+            variant={filtroTiempo === 'trimestre' ? 'default' : 'outline'}
+            size="sm"
+          >
+            Trimestre
+          </Button>
+          <Button
+            onClick={() => setFiltroTiempo('año')}
+            variant={filtroTiempo === 'año' ? 'default' : 'outline'}
+            size="sm"
+          >
+            Año
+          </Button>
+          <Button variant="outline" size="sm">
             <Download className="w-4 h-4 mr-2" />
             Exportar
           </Button>
         </div>
       </div>
 
-      {/* Métricas Principales */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {/* Cumplimiento General */}
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-4 text-white shadow-lg">
-          <div className="flex items-center justify-between mb-2">
-            <TrendingUp className="w-5 h-5 opacity-80" />
-            <ArrowUpRight className="w-4 h-4 opacity-60" />
+      {/* NOTIFICACIONES Y ALERTAS */}
+      {notificacionesVisibles && (
+        <Card className="p-4 border-l-4" style={{ borderLeftColor: '#EF4444', background: '#FEF2F2' }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 flex-1">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: '#EF4444' }}>
+                <Bell className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-black text-gray-900 mb-1">Notificaciones y Alertas</p>
+                <p className="text-sm text-gray-700 mb-2">
+                  Tienes <strong>{NOTIFICACIONES_ALERTAS.filter(n => !n.leida).length} notificaciones</strong> sin leer
+                </p>
+                <div className="space-y-2">
+                  {NOTIFICACIONES_ALERTAS.slice(0, 3).map(notificacion => (
+                    <div key={notificacion.id} className="p-2 bg-white rounded-lg border">
+                      <div className="flex items-start gap-2">
+                        {notificacion.tipo === 'alerta' && <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />}
+                        {notificacion.tipo === 'advertencia' && <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />}
+                        {notificacion.tipo === 'info' && <Activity className="w-4 h-4 text-blue-600 mt-0.5" />}
+                        {notificacion.tipo === 'exito' && <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-gray-900">{notificacion.titulo}</p>
+                          <p className="text-xs text-gray-600">{notificacion.descripcion}</p>
+                        </div>
+                        <Badge
+                          style={{
+                            background: notificacion.prioridad === 'Alta' ? '#EF4444' :
+                              notificacion.prioridad === 'Media' ? '#F59E0B' : '#6B7280',
+                            color: '#FFF'
+                          }}
+                        >
+                          {notificacion.prioridad}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Button variant="link" size="sm" className="mt-2 p-0 h-auto">
+                  Ver todas las notificaciones ({NOTIFICACIONES_ALERTAS.length})
+                </Button>
+              </div>
+            </div>
+            <button
+              onClick={() => setNotificacionesVisibles(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <XCircle className="w-5 h-5" />
+            </button>
           </div>
-          <p className="text-3xl font-bold mb-1">{metricas.cumplimientoGeneral}%</p>
-          <p className="text-sm opacity-90">Cumplimiento General</p>
-        </div>
+        </Card>
+      )}
 
-        {/* Actividades */}
-        <div className="bg-white rounded-xl border p-4">
-          <div className="flex items-center justify-between mb-2">
-            <Activity className="w-5 h-5 text-green-600" />
-            <Badge variant="secondary">{metricas.totalActividades}</Badge>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{metricas.actividadesCompletadas}</p>
-          <p className="text-sm text-gray-600">Actividades Completadas</p>
-        </div>
-
-        {/* Auditorías */}
-        <div className="bg-white rounded-xl border p-4">
-          <div className="flex items-center justify-between mb-2">
-            <Calendar className="w-5 h-5 text-purple-600" />
-            <Badge variant="secondary">{metricas.totalAuditorias}</Badge>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{metricas.auditoriasEnCurso}</p>
-          <p className="text-sm text-gray-600">Auditorías en Curso</p>
-        </div>
-
-        {/* Hallazgos Críticos */}
-        <div className="bg-white rounded-xl border p-4">
-          <div className="flex items-center justify-between mb-2">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
-            <Badge className="bg-red-100 text-red-800">{metricas.hallazgosCriticos}</Badge>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{metricas.totalHallazgos}</p>
-          <p className="text-sm text-gray-600">Total Hallazgos</p>
-        </div>
+      {/* MÉTRICAS KPI */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {METRICAS_KPI.map(metrica => (
+          <MetricaKPICard key={metrica.id} metrica={metrica} />
+        ))}
       </div>
 
-      {/* Sección: Análisis Visual del Plan Anual */}
-      <div className="bg-white rounded-xl border p-6">
+      {/* PLAN ANUAL - 5 ROLES ESTRATÉGICOS */}
+      <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <BarChart3 className="w-6 h-6" style={{ color: '#003DA5' }} />
-              Análisis Visual del Plan Anual
+            <h2 className="text-xl font-black text-gray-900">
+              Plan Anual de Auditoría 2025
             </h2>
             <p className="text-sm text-gray-600 mt-1">
-              Métricas y gráficos de cumplimiento
+              Basado en los 5 roles del Decreto 648 de 2017
             </p>
           </div>
-          <Button variant="outline" size="sm">
-            <Filter className="w-4 h-4 mr-2" />
-            Filtrar
-          </Button>
+          <Badge style={{ background: '#10B981', color: '#FFF' }} className="text-sm px-3 py-1">
+            Estado: En Ejecución
+          </Badge>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Cumplimiento por Rol */}
-          <div className="border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900">Cumplimiento por Rol</h3>
-              <Badge variant="outline">5 roles</Badge>
-            </div>
-            <p className="text-xs text-gray-500 mb-4">Porcentaje de avance de cada rol</p>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={MOCK_PLAN_ANUAL.roles.map((rol) => ({ rol: rol.nombre, cumplimiento: rol.porcentajeCumplimiento }))}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-                <XAxis dataKey="rol" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#FFF',
-                    border: '1px solid #E5E7EB',
-                    borderRadius: '8px',
-                  }}
-                />
-                <Bar dataKey="cumplimiento" fill="#003DA5" radius={[8, 8, 0, 0]}>
-                  {MOCK_PLAN_ANUAL.roles.map((rol, index) => (
-                    <Cell key={`cell-${index}`} fill={rol.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="flex flex-wrap gap-3 mt-4 justify-center">
-              {MOCK_PLAN_ANUAL.roles.map((item, index) => (
-                <div key={item.nombre} className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-xs text-gray-600">{item.nombre}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Actividades por Estado */}
-          <div className="border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900">Actividades por Estado</h3>
-              <Badge variant="outline">{metricas.totalActividades} total</Badge>
-            </div>
-            <p className="text-xs text-gray-500 mb-4">Distribución del total de actividades</p>
-            <ResponsiveContainer width="100%" height={250}>
-              <RechartsPieChart>
-                <Pie
-                  data={datosCalculados.dataActividadesPorEstado}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={90}
-                  dataKey="cantidad"
-                  label={({ porcentaje }) => `${porcentaje}%`}
-                >
-                  {datosCalculados.dataActividadesPorEstado.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORES_ESTADO[index]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </RechartsPieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-col gap-2 mt-4">
-              {datosCalculados.dataActividadesPorEstado.map((item, index) => (
-                <div key={item.estado} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-3 h-3 rounded"
-                      style={{ backgroundColor: COLORES_ESTADO[index] }}
-                    />
-                    <span className="text-sm text-gray-700">{item.estado}</span>
-                  </div>
-                  <span className="text-sm font-medium text-gray-900">
-                    {item.cantidad} ({item.porcentaje}%)
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Detalle por Rol y Estado */}
-          <div className="border rounded-lg p-4 lg:col-span-2">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900">Detalle por Rol y Estado</h3>
-              <Badge variant="outline">Composición de actividades</Badge>
-            </div>
-            <p className="text-xs text-gray-500 mb-4">
-              Composición de actividades por rol
-            </p>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={datosCalculados.dataDetallePorRolYEstado}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-                <XAxis dataKey="rol" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#FFF',
-                    border: '1px solid #E5E7EB',
-                    borderRadius: '8px',
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: '12px' }} />
-                <Bar
-                  dataKey="completadas"
-                  stackId="a"
-                  fill={COLORES_DETALLE.completadas}
-                  name="Completadas"
-                  radius={[0, 0, 0, 0]}
-                />
-                <Bar
-                  dataKey="enProgreso"
-                  stackId="a"
-                  fill={COLORES_DETALLE.enProgreso}
-                  name="En Progreso"
-                  radius={[0, 0, 0, 0]}
-                />
-                <Bar
-                  dataKey="pendientes"
-                  stackId="a"
-                  fill={COLORES_DETALLE.pendientes}
-                  name="Pendientes"
-                  radius={[0, 0, 0, 0]}
-                />
-                <Bar
-                  dataKey="retrasadas"
-                  stackId="a"
-                  fill={COLORES_DETALLE.retrasadas}
-                  name="Retrasadas"
-                  radius={[8, 8, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="space-y-4">
+          {ROLES_ESTRATEGICOS.map(rol => (
+            <RolEstrategicoCard key={rol.id} rol={rol} />
+          ))}
         </div>
-      </div>
+      </Card>
 
-      {/* Sección: Hallazgos y Planes de Mejoramiento */}
+      {/* GRÁFICAS Y ANÁLISIS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Hallazgos por Tipo */}
-        <div className="bg-white rounded-xl border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-orange-600" />
-              Hallazgos por Tipo
-            </h2>
-            <Badge variant="outline">{metricas.totalHallazgos} total</Badge>
-          </div>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={dataHallazgosPorTipo} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-              <XAxis type="number" tick={{ fontSize: 12 }} />
-              <YAxis dataKey="tipo" type="category" tick={{ fontSize: 11 }} width={150} />
+        {/* Gráfica: Cumplimiento Mensual */}
+        <Card className="p-6">
+          <h3 className="text-lg font-black text-gray-900 mb-4">
+            Cumplimiento del Plan Anual
+          </h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={DATOS_CUMPLIMIENTO_MENSUAL}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <XAxis dataKey="mes" stroke="#6B7280" style={{ fontSize: '12px' }} />
+              <YAxis stroke="#6B7280" style={{ fontSize: '12px' }} />
               <Tooltip />
-              <Bar dataKey="cantidad" fill="#F59E0B" radius={[0, 8, 8, 0]} />
-            </BarChart>
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="cumplimiento"
+                stroke="#10B981"
+                strokeWidth={3}
+                name="Cumplimiento Real"
+                dot={{ fill: '#10B981', r: 4 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="planificado"
+                stroke="#3B82F6"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                name="Meta Planificada"
+                dot={{ fill: '#3B82F6', r: 3 }}
+              />
+            </LineChart>
           </ResponsiveContainer>
-        </div>
+        </Card>
 
-        {/* Planes de Mejoramiento */}
-        <div className="bg-white rounded-xl border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-              Planes de Mejoramiento
-            </h2>
-            <Badge variant="outline">{metricas.planesActivos} activos</Badge>
-          </div>
-          <ResponsiveContainer width="100%" height={250}>
-            <RechartsPieChart>
+        {/* Gráfica: Hallazgos por Tipo */}
+        <Card className="p-6">
+          <h3 className="text-lg font-black text-gray-900 mb-4">
+            Distribución de Hallazgos
+          </h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <RechartsPie>
               <Pie
-                data={dataPlanesPorEstado}
+                data={DATOS_HALLAZGOS_POR_TIPO}
                 cx="50%"
                 cy="50%"
-                outerRadius={80}
-                dataKey="cantidad"
-                label={({ estado, porcentaje }) => `${estado}: ${porcentaje}%`}
+                labelLine={false}
+                label={(entry) => `${entry.nombre}: ${entry.valor}`}
+                outerRadius={100}
+                fill="#8884d8"
+                dataKey="valor"
               >
-                <Cell fill="#10B981" />
-                <Cell fill="#3B82F6" />
-                <Cell fill="#EF4444" />
-                <Cell fill="#F59E0B" />
+                {DATOS_HALLAZGOS_POR_TIPO.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
               </Pie>
               <Tooltip />
-            </RechartsPieChart>
+            </RechartsPie>
           </ResponsiveContainer>
-        </div>
+          <div className="grid grid-cols-3 gap-2 mt-4">
+            {DATOS_HALLAZGOS_POR_TIPO.map(tipo => (
+              <div key={tipo.nombre} className="text-center">
+                <div className="w-4 h-4 rounded-full mx-auto mb-1" style={{ background: tipo.color }} />
+                <p className="text-xs text-gray-600">{tipo.nombre}</p>
+                <p className="text-lg font-black text-gray-900">{tipo.valor}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Gráfica: Auditorías por Proceso */}
+        <Card className="p-6">
+          <h3 className="text-lg font-black text-gray-900 mb-4">
+            Auditorías por Proceso
+          </h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={DATOS_AUDITORIAS_POR_PROCESO}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <XAxis dataKey="proceso" stroke="#6B7280" style={{ fontSize: '10px' }} angle={-15} textAnchor="end" height={80} />
+              <YAxis stroke="#6B7280" style={{ fontSize: '12px' }} />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="completadas" fill="#10B981" name="Completadas" />
+              <Bar dataKey="pendientes" fill="#F59E0B" name="Pendientes" />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+
+        {/* Actividades Recientes */}
+        <Card className="p-6">
+          <h3 className="text-lg font-black text-gray-900 mb-4">
+            Actividades en Progreso
+          </h3>
+          <div className="space-y-3">
+            {ACTIVIDADES_RECIENTES.map(actividad => (
+              <ActividadCard key={actividad.id} actividad={actividad} />
+            ))}
+          </div>
+          <Button variant="outline" size="sm" className="w-full mt-4">
+            Ver todas las actividades
+            <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+        </Card>
       </div>
 
-      {/* Auditorías por Territorial */}
-      <div className="bg-white rounded-xl border p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <PieChart className="w-5 h-5" style={{ color: '#003DA5' }} />
-            Auditorías por Territorial
-          </h2>
-          <Badge variant="outline">16 territoriales</Badge>
+      {/* ACCESOS RÁPIDOS */}
+      <Card className="p-6">
+        <h3 className="text-lg font-black text-gray-900 mb-4">
+          Accesos Rápidos
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <AccesoRapido
+            titulo="Plan Anual"
+            icono={Target}
+            color="#3B82F6"
+          />
+          <AccesoRapido
+            titulo="Auditorías"
+            icono={CheckCircle}
+            color="#10B981"
+          />
+          <AccesoRapido
+            titulo="Hallazgos"
+            icono={AlertTriangle}
+            color="#F97316"
+            badge={24}
+          />
+          <AccesoRapido
+            titulo="Planes"
+            icono={FileText}
+            color="#8B5CF6"
+          />
+          <AccesoRapido
+            titulo="Informes"
+            icono={BarChart3}
+            color="#6B7280"
+          />
+          <AccesoRapido
+            titulo="Documentos"
+            icono={Shield}
+            color="#EC4899"
+          />
         </div>
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={dataAuditoriasPorTerritorial}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-            <XAxis dataKey="territorial" tick={{ fontSize: 11 }} angle={-45} textAnchor="end" height={80} />
-            <YAxis tick={{ fontSize: 12 }} />
-            <Tooltip />
-            <Bar dataKey="cantidad" fill="#003DA5" radius={[8, 8, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      </Card>
+    </div>
+  );
+}
 
-      {/* Indicadores Clave */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Clock className="w-5 h-5 text-blue-600" />
-            <span className="text-sm text-gray-600">Tiempo Promedio</span>
+// ============ COMPONENTES AUXILIARES ============
+
+function MetricaKPICard({ metrica }: { metrica: MetricaKPI }) {
+  const Icono = metrica.icono;
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ scale: 1.02 }}
+    >
+      <Card className="p-4 border-l-4" style={{ borderLeftColor: metrica.color }}>
+        <div className="flex items-start justify-between mb-3">
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: metrica.color }}>
+            <Icono className="w-5 h-5 text-white" />
           </div>
-          <p className="text-2xl font-bold text-gray-900">18 días</p>
-          <p className="text-xs text-gray-500 mt-1">Por auditoría</p>
+          <div className="flex items-center gap-1">
+            {metrica.tendencia === 'up' && <TrendingUp className="w-4 h-4 text-green-600" />}
+            {metrica.tendencia === 'down' && <TrendingDown className="w-4 h-4 text-red-600" />}
+            <span
+              className="text-xs font-bold"
+              style={{ color: metrica.tendencia === 'up' ? '#10B981' : '#EF4444' }}
+            >
+              {metrica.cambio > 0 ? '+' : ''}{metrica.cambio}%
+            </span>
+          </div>
+        </div>
+        
+        <p className="text-xs text-gray-600 mb-1">{metrica.titulo}</p>
+        <p className="text-2xl font-black text-gray-900 mb-2">
+          {metrica.valor}
+          <span className="text-sm text-gray-500 font-normal"> / {metrica.total}</span>
+        </p>
+        
+        {/* Barra de progreso */}
+        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${metrica.porcentaje}%`,
+              background: metrica.color
+            }}
+          />
+        </div>
+        <p className="text-xs text-gray-500 mt-1 text-right">{metrica.porcentaje}%</p>
+      </Card>
+    </motion.div>
+  );
+}
+
+function RolEstrategicoCard({ rol }: { rol: Rol }) {
+  return (
+    <div className="p-4 rounded-lg border hover:border-blue-500 transition-colors" style={{ background: '#F9FAFB' }}>
+      <div className="flex items-start gap-4">
+        <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: rol.color }}>
+          <Target className="w-6 h-6 text-white" />
+        </div>
+        
+        <div className="flex-1">
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex-1">
+              <p className="font-black text-gray-900">{rol.nombre}</p>
+              <p className="text-sm text-gray-600 mt-1">
+                {rol.completadas} de {rol.actividades} actividades completadas
+                {rol.enProgreso > 0 && ` • ${rol.enProgreso} en progreso`}
+              </p>
+            </div>
+            <Badge style={{ background: rol.color, color: '#FFF' }}>
+              {rol.cumplimiento}%
+            </Badge>
+          </div>
+          
+          {/* Barra de progreso */}
+          <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${rol.cumplimiento}%`,
+                background: rol.color
+              }}
+            />
+          </div>
         </div>
 
-        <div className="bg-white rounded-xl border p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle className="w-5 h-5 text-green-600" />
-            <span className="text-sm text-gray-600">Efectividad</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">92%</p>
-          <p className="text-xs text-gray-500 mt-1">Hallazgos resueltos</p>
-        </div>
-
-        <div className="bg-white rounded-xl border p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="w-5 h-5 text-purple-600" />
-            <span className="text-sm text-gray-600">Tendencia</span>
-          </div>
-          <p className="text-2xl font-bold text-green-600">+15%</p>
-          <p className="text-xs text-gray-500 mt-1">vs año anterior</p>
-        </div>
-
-        <div className="bg-white rounded-xl border p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Activity className="w-5 h-5 text-orange-600" />
-            <span className="text-sm text-gray-600">Cobertura</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">85%</p>
-          <p className="text-xs text-gray-500 mt-1">Procesos auditados</p>
-        </div>
+        <Button variant="outline" size="sm">
+          <Eye className="w-4 h-4 mr-2" />
+          Ver
+        </Button>
       </div>
     </div>
+  );
+}
+
+function ActividadCard({ actividad }: { actividad: Actividad }) {
+  return (
+    <div className="p-3 rounded-lg border" style={{ background: '#F9FAFB' }}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex-1">
+          <p className="font-bold text-gray-900 text-sm">{actividad.titulo}</p>
+          <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
+            <Users className="w-3 h-3" />
+            <span>{actividad.responsable}</span>
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
+            <Calendar className="w-3 h-3" />
+            <span>{actividad.fechaInicio} - {actividad.fechaFin}</span>
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <Badge
+            style={{
+              background: actividad.prioridad === 'Alta' ? '#EF4444' :
+                actividad.prioridad === 'Media' ? '#F59E0B' : '#6B7280',
+              color: '#FFF'
+            }}
+          >
+            {actividad.prioridad}
+          </Badge>
+          <Badge
+            variant="outline"
+            style={{
+              borderColor: actividad.estado === 'En Progreso' ? '#3B82F6' : '#10B981',
+              color: actividad.estado === 'En Progreso' ? '#3B82F6' : '#10B981'
+            }}
+          >
+            {actividad.estado}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Barra de progreso */}
+      <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full"
+          style={{
+            width: `${actividad.progreso}%`,
+            background: actividad.prioridad === 'Alta' ? '#3B82F6' : '#10B981'
+          }}
+        />
+      </div>
+      <p className="text-xs text-gray-500 mt-1 text-right">{actividad.progreso}%</p>
+
+      {actividad.observaciones && (
+        <p className="text-xs text-gray-600 italic mt-2">
+          Observaciones: {actividad.observaciones}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AccesoRapido({ titulo, icono: Icono, color, badge }: { titulo: string; icono: any; color: string; badge?: number }) {
+  return (
+    <button className="p-4 rounded-lg border hover:border-blue-500 hover:shadow-md transition-all" style={{ background: '#FFFFFF' }}>
+      <div className="relative">
+        <div className="w-12 h-12 rounded-lg flex items-center justify-center mx-auto mb-2" style={{ background: color }}>
+          <Icono className="w-6 h-6 text-white" />
+        </div>
+        {badge !== undefined && (
+          <div
+            className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
+            style={{ background: '#EF4444' }}
+          >
+            {badge}
+          </div>
+        )}
+      </div>
+      <p className="text-sm font-bold text-gray-900">{titulo}</p>
+    </button>
   );
 }

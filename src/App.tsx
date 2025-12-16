@@ -22,6 +22,15 @@ import { VinculacionForm } from "./components/portal/VinculacionForm";
 import { PublicTitleVerification } from "./components/portal/PublicTitleVerification";
 import { SolicitarCertificadoLaboral } from "./components/portal/SolicitarCertificadoLaboral";
 
+// ⭐ IMPORTAR COMPONENTE DE PRUEBA - HALLAZGOS Y MEJORAMIENTO
+import { TestHallazgosYMejoramiento } from "./components/esap/control-interno/TestHallazgosYMejoramiento";
+
+// ⭐ IMPORTAR DEMO DE COMPONENTES UX MEJORADOS
+import { DemoComponentesUXMejorados } from "./components/esap/DemoComponentesUXMejorados";
+
+// ⭐ IMPORTAR TEST DE GESTIÓN DE AUDITORÍAS
+import { TestGestionAuditorias } from "./components/esap/control-interno/TestGestionAuditorias";
+
 // ============ INTEGRACIÓN FASE 1: Contexto Global de Auditoría ============
 import { AuditoriaGlobalProvider } from "./context/AuditoriaGlobalContext";
 
@@ -81,7 +90,10 @@ type AppView =
   | "vinculaciones"
   | "verificacion"
   | "solicitar-certificados-laborales"
-  | "convocatorias-docentes";
+  | "convocatorias-docentes"
+  | "test-hallazgos"
+  | "demo-ux"
+  | "test-auditorias"; // ⭐ NUEVA VISTA DE PRUEBA
 
 type UserType =
   | "estudiante"
@@ -92,7 +104,7 @@ type UserType =
 
 export default function App() {
   const [currentView, setCurrentView] =
-    useState<AppView>("landing");
+    useState<AppView>("landing"); // ✅ Volver al flujo normal
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userData, setUserData] = useState<any>({
     name: "",
@@ -209,6 +221,31 @@ export default function App() {
 
       // Redirigir DIRECTAMENTE al BACKOFFICE
       // Desde ahí pueden cambiar al Portal usando el System Switcher
+      setCurrentView("backoffice");
+      return;
+    }
+
+    // ============================================
+    // USUARIO CONTROL INTERNO DE GESTIÓN
+    // Acceso exclusivo al módulo de Control Interno
+    // ============================================
+    if (emailLower === "c.internoge@esap.edu.co") {
+      // Validar contraseña específica
+      if (password !== "123456") {
+        // El LoginPage mostrará el error genérico
+        return;
+      }
+
+      setUserType("administrativo");
+      setIsAuthenticated(true);
+      setUserData({
+        name: "Jefe Oficina de Control Interno",
+        email,
+        personId: "control-interno-001",
+        module: "control-interno", // ⭐ Módulo específico de acceso
+        restrictedAccess: true, // ⭐ Flag para acceso restringido
+      });
+      setUserRoles(["Jefe de Control Interno"]);
       setCurrentView("backoffice");
       return;
     }
@@ -717,6 +754,27 @@ export default function App() {
               </button>
             </div>
           </div>
+        )}
+
+        {/* 6. Test Hallazgos y Mejoramiento - Componente de prueba */}
+        {currentView === "test-hallazgos" && (
+          <TestHallazgosYMejoramiento
+            onBack={handleBackToHome}
+          />
+        )}
+
+        {/* 7. Demo Componentes UX Mejorados - Componente de prueba */}
+        {currentView === "demo-ux" && (
+          <DemoComponentesUXMejorados
+            onBack={handleBackToHome}
+          />
+        )}
+
+        {/* 8. Test Gestion de Auditorias - Componente de prueba */}
+        {currentView === "test-auditorias" && (
+          <TestGestionAuditorias
+            onBack={handleBackToHome}
+          />
         )}
 
         {/* Toast Global */}

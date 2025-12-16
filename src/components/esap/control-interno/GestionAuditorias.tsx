@@ -8,7 +8,7 @@ import { motion } from 'motion/react';
 import {
   ClipboardCheck, TrendingUp, AlertCircle, Clock, Users, CheckCircle2,
   Eye, Edit, Trash2, GripVertical, MapPin, Building2, User, Download, Plus,
-  Search, LayoutGrid, List as ListIcon, Calendar as CalendarIcon, Filter, X, Save, Layers
+  Search, LayoutGrid, List as ListIcon, Calendar as CalendarIcon, Filter, X, Save, Layers, BarChart3
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
@@ -18,9 +18,12 @@ import { ToolbarActions } from '../shared/ToolbarActions';
 import { ResponsiveModal } from '../shared/ResponsiveModal';
 import { DetalleAuditoriaEtapas } from './etapas/DetalleAuditoriaEtapas';
 import { ModalCrearAuditoria } from './ModalCrearAuditoria';
+import { ModalDetalleAuditoriaCompleto } from './ModalDetalleAuditoriaCompleto';
+import { CalendarioAuditorias } from './CalendarioAuditorias';
+import { ModalNuevaAuditoriaSimple } from './ModalNuevaAuditoriaSimple';
 import { toast } from 'sonner@2.0.3';
 
-type VistaActiva = 'kanban' | 'lista' | 'calendario' | 'detalle-etapas';
+type VistaActiva = 'kanban' | 'lista' | 'calendario' | 'gantt' | 'detalle-etapas';
 type FaseAuditoria = 'planeacion' | 'en-curso' | 'revision' | 'completada';
 
 interface Auditoria {
@@ -216,6 +219,27 @@ export function GestionAuditorias() {
     toast.success(`Auditoría ${codigo} creada exitosamente`);
   };
 
+  // Handler para crear auditoría desde el nuevo modal
+  const handleCrearNuevaAuditoria = (auditoriaData: any) => {
+    const nuevaAuditoria: Auditoria = {
+      id: Date.now().toString(),
+      codigo: auditoriaData.codigo,
+      nombre: auditoriaData.nombre,
+      tipo: auditoriaData.tipo,
+      fase: 'planeacion', // Por defecto empieza en planeación
+      territorial: auditoriaData.territorial.split(' - ')[0], // Solo el nombre sin detalles
+      sede: auditoriaData.territorial, // El valor completo
+      responsable: auditoriaData.liderAuditoria,
+      fechaInicio: auditoriaData.fechaInicio,
+      fechaFin: auditoriaData.fechaFin,
+      progreso: 0,
+      prioridad: 'Media', // Prioridad por defecto
+      hallazgos: 0
+    };
+
+    setAuditorias([...auditorias, nuevaAuditoria]);
+  };
+
   // Métricas calculadas
   const totalAuditorias = auditorias.length;
   const enCurso = auditorias.filter(a => a.fase === 'en-curso').length;
@@ -232,6 +256,16 @@ export function GestionAuditorias() {
   const handleVerDetalles = (auditoria: Auditoria) => {
     setAuditoriaSeleccionada(auditoria);
     setModalDetalles(true);
+  };
+
+  const handleGuardarCambiosAuditoria = (datos: any) => {
+    // Actualizar la auditoría con los nuevos datos
+    const auditoriasActualizadas = auditorias.map(a => 
+      a.id === auditoriaSeleccionada?.id 
+        ? { ...a, ...datos }
+        : a
+    );
+    setAuditorias(auditoriasActualizadas);
   };
 
   const getPrioridadColor = (prioridad: string) => {
@@ -293,12 +327,15 @@ export function GestionAuditorias() {
         searchPlaceholder="Buscar auditorías..."
         searchValue={busqueda}
         onSearchChange={setBusqueda}
-        views={['kanban', 'lista', 'calendario']}
+        views={['kanban', 'lista', 'calendario', 'gantt']}
         activeView={vistaActiva}
         onViewChange={(view) => setVistaActiva(view as VistaActiva)}
         onFilter={() => toast.info('Filtros disponibles próximamente')}
         onExport={() => toast.success('Exportando auditorías...')}
-        onAdd={() => setModalNuevaAuditoria(true)}
+        onAdd={() => {
+          console.log('🚀 Botón Nueva Auditoría clickeado');
+          setModalNuevaAuditoria(true);
+        }}
         addButtonText="Nueva Auditoría"
         primaryColor="#F97316"
       />
@@ -492,256 +529,215 @@ export function GestionAuditorias() {
 
       {/* VISTA CALENDARIO */}
       {vistaActiva === 'calendario' && (
-        <div className="p-8 rounded-2xl border-2 text-center" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
-          <CalendarIcon className="w-16 h-16 mx-auto mb-4" style={{ color: '#F97316' }} />
-          <h3 className="font-black text-xl mb-2" style={{ color: '#1F2937' }}>Vista de Calendario</h3>
-          <p style={{ color: '#6B7280' }}>Visualiza auditorías en formato de calendario con fechas de inicio y fin</p>
-          <Button className="mt-4" style={{ background: '#F97316', color: '#FFFFFF' }}>
-            Próximamente
-          </Button>
+        <CalendarioAuditorias 
+          auditorias={auditorias} 
+          onVerDetalles={handleVerDetalles}
+        />
+      )}
+
+      {/* VISTA GANTT */}
+      {vistaActiva === 'gantt' && (
+        <div className="rounded-2xl border-2 overflow-hidden" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
+          {/* Header */}
+          <div className="p-4 border-b-2" style={{ background: '#F9FAFB', borderColor: '#E5E7EB' }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl" style={{ background: '#FFF7ED' }}>
+                  <BarChart3 className="w-5 h-5" style={{ color: '#F97316' }} />
+                </div>
+                <div>
+                  <h3 className="font-black" style={{ color: '#1F2937' }}>Diagrama de Gantt</h3>
+                  <p className="text-xs" style={{ color: '#6B7280' }}>Timeline de auditorías por fecha</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">
+                  <Clock className="w-3 h-3 mr-1" />
+                  {auditorias.length} Auditorías
+                </Badge>
+              </div>
+            </div>
+          </div>
+
+          {/* Gantt Content */}
+          <div className="p-6 overflow-x-auto">
+            <div className="min-w-[800px]">
+              {/* Timeline Header - Meses */}
+              <div className="grid grid-cols-12 gap-1 mb-6">
+                {['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'].map((mes, idx) => (
+                  <div key={idx} className="text-center">
+                    <span className="text-xs font-bold" style={{ color: '#6B7280' }}>{mes}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Gantt Bars */}
+              <div className="space-y-4">
+                {auditorias.map((auditoria) => {
+                  const fase = fases.find(f => f.id === auditoria.fase);
+                  const fechaInicio = new Date(auditoria.fechaInicio);
+                  const fechaFin = new Date(auditoria.fechaFin);
+                  
+                  // Calcular posición en el grid (0-100%)
+                  const mesInicio = fechaInicio.getMonth(); // 0-11
+                  const mesFin = fechaFin.getMonth(); // 0-11
+                  const diaInicio = fechaInicio.getDate();
+                  const diaFin = fechaFin.getDate();
+                  
+                  // Posición de inicio como % (mes + porcentaje del día en el mes)
+                  const posicionInicio = (mesInicio / 12) * 100 + (diaInicio / 30 / 12) * 100;
+                  // Ancho como % basado en la duración
+                  const duracionMeses = mesFin - mesInicio + (diaFin - diaInicio) / 30;
+                  const ancho = (duracionMeses / 12) * 100;
+
+                  return (
+                    <div key={auditoria.id} className="relative">
+                      {/* Nombre de la auditoría */}
+                      <div className="flex items-start gap-3 mb-2">
+                        <div className="w-64 flex-shrink-0">
+                          <div className="flex items-center gap-2">
+                            <Badge 
+                              style={{ 
+                                background: getPrioridadColor(auditoria.prioridad), 
+                                color: '#FFFFFF',
+                                fontSize: '9px',
+                                padding: '2px 6px'
+                              }}
+                            >
+                              {auditoria.prioridad}
+                            </Badge>
+                            <span className="text-xs font-bold truncate" style={{ color: '#1F2937' }}>
+                              {auditoria.codigo}
+                            </span>
+                          </div>
+                          <p className="text-xs truncate mt-1" style={{ color: '#6B7280' }}>
+                            {auditoria.nombre}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <User className="w-3 h-3" style={{ color: '#9CA3AF' }} />
+                            <span className="text-xs truncate" style={{ color: '#6B7280' }}>
+                              {auditoria.responsable}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Barra de timeline */}
+                        <div className="flex-1 relative" style={{ minHeight: '60px' }}>
+                          {/* Grid de fondo */}
+                          <div className="absolute inset-0 grid grid-cols-12 gap-1">
+                            {Array.from({ length: 12 }).map((_, idx) => (
+                              <div 
+                                key={idx} 
+                                className="border-l" 
+                                style={{ borderColor: '#E5E7EB' }}
+                              />
+                            ))}
+                          </div>
+
+                          {/* Barra de progreso */}
+                          <div 
+                            className="absolute top-4 h-8 rounded-lg cursor-pointer hover:shadow-lg transition-all group"
+                            style={{ 
+                              left: `${posicionInicio}%`,
+                              width: `${ancho}%`,
+                              background: `linear-gradient(90deg, ${fase?.color}E6 0%, ${fase?.color} 100%)`,
+                              minWidth: '60px'
+                            }}
+                            onClick={() => handleVerDetalles(auditoria)}
+                          >
+                            {/* Progreso interno */}
+                            <div 
+                              className="h-full rounded-lg opacity-30"
+                              style={{ 
+                                background: '#FFFFFF',
+                                width: `${100 - auditoria.progreso}%`,
+                                marginLeft: `${auditoria.progreso}%`
+                              }}
+                            />
+                            
+                            {/* Tooltip en hover */}
+                            <div className="absolute -top-20 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                              <div className="p-3 rounded-xl shadow-xl border-2" style={{ background: '#FFFFFF', borderColor: '#E5E7EB', minWidth: '200px' }}>
+                                <p className="font-bold text-xs mb-1" style={{ color: '#1F2937' }}>{auditoria.nombre}</p>
+                                <div className="flex items-center justify-between text-xs mb-1" style={{ color: '#6B7280' }}>
+                                  <span>Inicio:</span>
+                                  <span className="font-bold">{fechaInicio.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs mb-2" style={{ color: '#6B7280' }}>
+                                  <span>Fin:</span>
+                                  <span className="font-bold">{fechaFin.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs">
+                                  <span style={{ color: '#6B7280' }}>Progreso:</span>
+                                  <span className="font-black" style={{ color: fase?.color }}>{auditoria.progreso}%</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Etiqueta de progreso */}
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <span className="text-xs font-black" style={{ color: '#FFFFFF', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
+                                {auditoria.progreso}%
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Fechas debajo */}
+                          <div 
+                            className="absolute bottom-0 flex items-center justify-between text-xs"
+                            style={{ 
+                              left: `${posicionInicio}%`,
+                              width: `${ancho}%`,
+                              minWidth: '60px'
+                            }}
+                          >
+                            <span className="font-bold" style={{ color: fase?.color }}>
+                              {fechaInicio.getDate()}/{fechaInicio.getMonth() + 1}
+                            </span>
+                            <span className="font-bold" style={{ color: fase?.color }}>
+                              {fechaFin.getDate()}/{fechaFin.getMonth() + 1}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Leyenda */}
+          <div className="p-4 border-t-2" style={{ background: '#F9FAFB', borderColor: '#E5E7EB' }}>
+            <div className="flex items-center gap-4 flex-wrap">
+              <span className="text-xs font-bold" style={{ color: '#6B7280' }}>FASES:</span>
+              {fases.map((fase) => (
+                <div key={fase.id} className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded" style={{ background: fase.color }} />
+                  <span className="text-xs" style={{ color: '#6B7280' }}>{fase.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* MODAL DE DETALLES */}
-      <Dialog open={modalDetalles} onOpenChange={setModalDetalles}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-3">
-              <div className="p-2 rounded-xl" style={{ background: '#FFF7ED' }}>
-                <ClipboardCheck className="w-6 h-6" style={{ color: '#F97316' }} />
-              </div>
-              <div className="flex-1 text-left">
-                <h3 className="font-black" style={{ color: '#1F2937' }}>
-                  {auditoriaSeleccionada?.nombre}
-                </h3>
-                <p className="text-sm" style={{ color: '#6B7280' }}>
-                  {auditoriaSeleccionada?.codigo}
-                </p>
-              </div>
-              <Badge style={{ background: getPrioridadColor(auditoriaSeleccionada?.prioridad || 'Media'), color: '#FFFFFF' }}>
-                {auditoriaSeleccionada?.prioridad}
-              </Badge>
-            </DialogTitle>
-          </DialogHeader>
+      {/* MODAL DE DETALLES COMPLETO CON PESTAÑAS */}
+      {auditoriaSeleccionada && (
+        <ModalDetalleAuditoriaCompleto
+          auditoria={auditoriaSeleccionada}
+          open={modalDetalles}
+          onOpenChange={setModalDetalles}
+          onGuardarCambios={handleGuardarCambiosAuditoria}
+        />
+      )}
 
-          {auditoriaSeleccionada && (
-            <div className="space-y-6">
-              {/* Info General */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Tipo de Auditoría</label>
-                  <p className="font-bold" style={{ color: '#1F2937' }}>{auditoriaSeleccionada.tipo}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Fase Actual</label>
-                  <Badge style={{ background: `${fases.find(f => f.id === auditoriaSeleccionada.fase)?.color}20`, color: fases.find(f => f.id === auditoriaSeleccionada.fase)?.color }}>
-                    {fases.find(f => f.id === auditoriaSeleccionada.fase)?.label}
-                  </Badge>
-                </div>
-                <div>
-                  <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Territorial</label>
-                  <p className="font-bold" style={{ color: '#1F2937' }}>{auditoriaSeleccionada.territorial}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Sede</label>
-                  <p className="font-bold" style={{ color: '#1F2937' }}>{auditoriaSeleccionada.sede}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Responsable</label>
-                  <p className="font-bold" style={{ color: '#1F2937' }}>{auditoriaSeleccionada.responsable}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Hallazgos Identificados</label>
-                  <p className="font-bold" style={{ color: auditoriaSeleccionada.hallazgos > 0 ? '#F59E0B' : '#10B981' }}>
-                    {auditoriaSeleccionada.hallazgos}
-                  </p>
-                </div>
-              </div>
-
-              {/* Fechas y Progreso */}
-              <div className="p-4 rounded-xl" style={{ background: '#F9FAFB' }}>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Fecha de Inicio</label>
-                    <p className="font-bold" style={{ color: '#1F2937' }}>{new Date(auditoriaSeleccionada.fechaInicio).toLocaleDateString('es-CO')}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Fecha de Finalización</label>
-                    <p className="font-bold" style={{ color: '#1F2937' }}>{new Date(auditoriaSeleccionada.fechaFin).toLocaleDateString('es-CO')}</p>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-bold" style={{ color: '#6B7280' }}>Progreso General</label>
-                    <span className="font-black" style={{ color: '#F97316' }}>{auditoriaSeleccionada.progreso}%</span>
-                  </div>
-                  <div className="h-3 rounded-full" style={{ background: '#E5E7EB' }}>
-                    <div 
-                      className="h-full rounded-full transition-all" 
-                      style={{ background: '#F97316', width: `${auditoriaSeleccionada.progreso}%` }} 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Acciones */}
-              <div className="flex gap-3">
-                <Button className="flex-1" style={{ background: '#F97316', color: '#FFFFFF' }}>
-                  <Edit className="w-4 h-4 mr-2" />
-                  Editar Auditoría
-                </Button>
-                <Button variant="outline" className="border-2">
-                  <Download className="w-4 h-4 mr-2" />
-                  Descargar Informe
-                </Button>
-                <Button variant="outline" className="border-2" style={{ borderColor: '#EF4444', color: '#EF4444' }}>
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* MODAL DE NUEVA AUDITORÍA */}
-      <Dialog open={modalNuevaAuditoria} onOpenChange={setModalNuevaAuditoria}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-3">
-              <div className="p-2 rounded-xl" style={{ background: '#FFF7ED' }}>
-                <ClipboardCheck className="w-6 h-6" style={{ color: '#F97316' }} />
-              </div>
-              <div className="flex-1 text-left">
-                <h3 className="font-black" style={{ color: '#1F2937' }}>
-                  Crear Nueva Auditoría
-                </h3>
-              </div>
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-6">
-            {/* Info General */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Nombre de la Auditoría</label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={formData.nombre}
-                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Tipo de Auditoría</label>
-                <select
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={formData.tipo}
-                  onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
-                >
-                  <option value="">Selecciona un tipo</option>
-                  {TIPOS_AUDITORIA.map(tipo => (
-                    <option key={tipo} value={tipo}>{tipo}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Territorial</label>
-                <select
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={formData.territorial}
-                  onChange={(e) => setFormData({ ...formData, territorial: e.target.value })}
-                >
-                  <option value="">Selecciona un territorial</option>
-                  {TERRITORIALES.map(territorial => (
-                    <option key={territorial} value={territorial}>{territorial}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Sede</label>
-                <select
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={formData.sede}
-                  onChange={(e) => setFormData({ ...formData, sede: e.target.value })}
-                >
-                  <option value="">Selecciona una sede</option>
-                  {SEDES.map(sede => (
-                    <option key={sede} value={sede}>{sede}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Responsable</label>
-                <select
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={formData.responsable}
-                  onChange={(e) => setFormData({ ...formData, responsable: e.target.value })}
-                >
-                  <option value="">Selecciona un responsable</option>
-                  {RESPONSABLES.map(responsable => (
-                    <option key={responsable} value={responsable}>{responsable}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Prioridad</label>
-                <select
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={formData.prioridad}
-                  onChange={(e) => setFormData({ ...formData, prioridad: e.target.value as 'Alta' | 'Media' | 'Baja' })}
-                >
-                  <option value="Alta">Alta</option>
-                  <option value="Media">Media</option>
-                  <option value="Baja">Baja</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Fecha de Inicio</label>
-                <input
-                  type="date"
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={formData.fechaInicio}
-                  onChange={(e) => setFormData({ ...formData, fechaInicio: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Fecha de Finalización</label>
-                <input
-                  type="date"
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={formData.fechaFin}
-                  onChange={(e) => setFormData({ ...formData, fechaFin: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: '#6B7280' }}>Fase Actual</label>
-                <select
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={formData.fase}
-                  onChange={(e) => setFormData({ ...formData, fase: e.target.value as FaseAuditoria })}
-                >
-                  <option value="planeacion">Planeación</option>
-                  <option value="en-curso">En Curso</option>
-                  <option value="revision">Revisión</option>
-                  <option value="completada">Completada</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Acciones */}
-            <div className="flex gap-3">
-              <Button className="flex-1" style={{ background: '#F97316', color: '#FFFFFF' }} onClick={handleCrearAuditoria}>
-                <Plus className="w-4 h-4 mr-2" />
-                Crear Auditoría
-              </Button>
-              <Button variant="outline" className="border-2" onClick={() => setModalNuevaAuditoria(false)}>
-                <X className="w-4 h-4" />
-                Cancelar
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* MODAL DE NUEVA AUDITORÍA - ACTUALIZADO */}
+      <ModalNuevaAuditoriaSimple
+        open={modalNuevaAuditoria}
+        onOpenChange={setModalNuevaAuditoria}
+        onCrear={handleCrearNuevaAuditoria}
+      />
     </div>
   );
 }

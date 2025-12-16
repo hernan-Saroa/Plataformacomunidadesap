@@ -64,6 +64,7 @@ import { FiltroEstructuraOrganizacional } from '../estructura-organizacional/Fil
 import { DigitalFolderSection } from './DigitalFolderSection';  // ✅ CARPETA DIGITAL COMO SECCIÓN
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';  // ✅ TABS
 import { UserExpandedView } from './UserExpandedView';  // ✅ VISTA EXPANDIDA REDISEÑADA
+import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  // ✅ RF015 - ROLES Y PERMISOS ACTUALIZADO
 import React from 'react';
 
 export function UsersPersonsModulePremium() {
@@ -80,7 +81,7 @@ export function UsersPersonsModulePremium() {
   const [showEditModal, setShowEditModal] = useState(false);  // ✅ MODAL EDITAR
   const [showSedesMetrics, setShowSedesMetrics] = useState(false);  // ✅ DASHBOARD SEDES
   const [showExportModal, setShowExportModal] = useState(false);  // ✅ MODAL EXPORTAR
-  const [viewMode, setViewMode] = useState<'users' | 'digital-folder'>('users');  // ✅ NUEVO - Vista actual
+  const [viewMode, setViewMode] = useState<'users' | 'digital-folder' | 'roles-permisos'>('users');  // ✅ NUEVO - Vista actual con RF015
   const [selectedUser, setSelectedUser] = useState<any | null>(null);  // ✅ USUARIO SELECCIONADO
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);  // ✅ ESTADO MODAL CREAR
   const itemsPerPage = 10;
@@ -350,6 +351,24 @@ export function UsersPersonsModulePremium() {
     );
   }
 
+  // ✅ RF015 - Si estamos en la vista de Roles y Permisos
+  if (viewMode === 'roles-permisos') {
+    return (
+      <div className="space-y-4">
+        {/* Botón de Retorno */}
+        <button
+          onClick={() => setViewMode('users')}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          ← Volver a Gestión de Personas
+        </button>
+        
+        {/* Componente RF015 Actualizado */}
+        <RolesYPermisosActualizado />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header - Según especificaciones Figma */}
@@ -479,6 +498,35 @@ export function UsersPersonsModulePremium() {
           >
             <UserPlus className="w-5 h-5" strokeWidth={2} />
             <span>Crear Usuario</span>
+          </button>
+        </div>
+      </motion.div>
+
+      {/* ✅ RF015 - Banner de acceso a Roles y Permisos */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
+        className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border-2 border-blue-200 p-4"
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-600">
+              <Shield className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900">Roles y Permisos</h3>
+              <p className="text-sm text-gray-600">
+                Administra roles, permisos granulares y control de acceso con SSO
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setViewMode('roles-permisos')}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium"
+          >
+            <Shield className="w-5 h-5" />
+            Gestionar Roles
           </button>
         </div>
       </motion.div>

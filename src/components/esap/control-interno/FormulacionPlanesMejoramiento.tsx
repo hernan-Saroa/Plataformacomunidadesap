@@ -1,10 +1,11 @@
 /**
- * RF010 - FORMULACIÓN DE PLANES DE MEJORAMIENTO
+ * RF011 - FORMULACIÓN DE PLANES DE MEJORAMIENTO
+ * Integración Fase 2 COMPLETA: Creación desde hallazgos, workflow de aprobación, cronograma
  * Sistema de gestión de acciones correctivas por área auditada
  * Oficina de Control Interno - ESAP
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ClipboardList, Plus, Search, Eye, Edit, Send, CheckCircle2,
@@ -17,6 +18,9 @@ import {
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { Card } from '../../ui/card';
+import { useControlInterno } from './ControlInternoContext';
+import { useIntegracionControlInterno } from '../../../hooks/useIntegracionControlInterno';
+import { toast } from 'sonner@2.0.3';
 
 // ============ TIPOS ============
 

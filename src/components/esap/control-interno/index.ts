@@ -17,3 +17,8 @@ export { ConfiguracionControlInterno } from './ConfiguracionControlInterno';
 export { ControlInternoProvider, useControlInterno } from './ControlInternoContext';
 export { FlujoNavegacionVisual } from './FlujoNavegacionVisual';
 export { AccionesRapidaFlujo } from './AccionesRapidaFlujo';
+
+// ⭐ MÓDULOS AVANZADOS (Opción 3 - Funcionalidades Adicionales)
+export { DashboardEjecutivoConsolidado } from './DashboardEjecutivoConsolidado';
+export { SistemaExportacion } from './SistemaExportacion';
+export { PanelAnalyticsAvanzado } from './PanelAnalyticsAvanzado';

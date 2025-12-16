@@ -32,7 +32,11 @@ export function ConfiguracionControlInterno() {
               </p>
             </div>
           </div>
-          <Button className="w-full" variant="outline" className="border-2">
+          <Button
+            className="w-full"
+            variant="outline"
+            className="border-2"
+          >
             <Settings className="w-4 h-4 mr-2" />
             Configurar Usuarios
           </Button>

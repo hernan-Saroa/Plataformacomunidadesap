@@ -89,6 +89,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         { email: 'arqempresarial@esap.edu.co', password: '123456', type: 'arquitectura' },
         { email: 'planta@esap.edu.co', password: '123456', type: 'planta-profesoral' }, // ✅ NUEVO: Gestión Profesoral
         { email: 'gestion.legal@esap.edu.co', password: '123456', type: 'gestion-legal' }, // ✅ NUEVO: Gestión Legal
+        { email: 'c.internoge@esap.edu.co', password: '123456', type: 'control-interno' }, // ✅ NUEVO: Control Interno
       ];
 
       // Verificar si el email existe en las credenciales válidas
@@ -156,6 +157,11 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       } else if (emailLower === 'gestion.legal@esap.edu.co') {
         toast.success('⚖️ ¡Bienvenido Gestión Legal!', {
           description: 'Acceso a la Gestión Legal concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'c.internoge@esap.edu.co') {
+        toast.success('🔍 ¡Bienvenido Control Interno!', {
+          description: 'Acceso al Módulo de Control Interno concedido',
           duration: 3500,
         });
       }
@@ -457,6 +463,10 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   <div className="flex items-center justify-between">
                     <span className="font-medium">⚖️ Gestión Legal:</span>
                     <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">gestion.legal@esap.edu.co</code>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">🔍 Control Interno:</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">c.internoge@esap.edu.co</code>
                   </div>
                   <div className="flex items-center justify-between bg-gradient-to-r from-purple-50 to-purple-100 px-2 py-1 rounded border border-purple-300">
                     <span className="font-bold text-purple-900">⚖️ Funcionario (Procesos):</span>

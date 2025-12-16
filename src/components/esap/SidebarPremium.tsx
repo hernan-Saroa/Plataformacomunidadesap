@@ -18,7 +18,7 @@ interface SidebarProps {
   forceCollapse?: boolean; // Auto-colapsar cuando modal de perfil esté abierto
   userRole?: string; // Rol del usuario para permisos
   certificatesPendingCount?: number; // Número de solicitudes pendientes en Certificados
-  restrictedMode?: 'certificados-laborales' | 'arquitectura-empresarial' | 'gestion-legal'; // Modo restringido para usuarios especiales
+  restrictedMode?: 'certificados-laborales' | 'arquitectura-empresarial' | 'gestion-legal' | 'control-interno'; // Modo restringido para usuarios especiales
 }
 
 const STORAGE_KEY = 'esap-sidebar-collapsed';
@@ -828,6 +828,33 @@ export function SidebarPremium({ isOpen, currentModule, onModuleChange, onClose,
                     <Scale className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
                     'Gestión Legal',
                     'Juzgamiento Disciplinario'
+                  )}
+                </div>
+              </>
+            ) : restrictedMode === 'control-interno' ? (
+              <>
+                {/* Módulo de Control Interno - Único módulo visible */}
+                <div className="mb-8">
+                  <AnimatePresence mode="wait">
+                    {!effectiveCollapsed && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={contentTransition}
+                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
+                      >
+                        <ClipboardList className="w-3 h-3" />
+                        Control Interno
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  
+                  {renderMenuItem(
+                    'control-interno',
+                    <ClipboardList className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                    'Control Interno Gestión',
+                    'Auditorías y hallazgos'
                   )}
                 </div>
               </>

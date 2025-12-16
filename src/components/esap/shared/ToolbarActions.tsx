@@ -4,10 +4,10 @@
  * Usado en: Control Interno, Control Disciplinario, Gestión Legal
  */
 
-import { Search, Filter, Download, Plus, LayoutGrid, List as ListIcon, Calendar } from 'lucide-react';
+import { Search, Filter, Download, Plus, LayoutGrid, List as ListIcon, Calendar, BarChart3 } from 'lucide-react';
 import { Button } from '../../ui/button';
 
-type ViewType = 'kanban' | 'lista' | 'calendario';
+type ViewType = 'kanban' | 'lista' | 'calendario' | 'gantt';
 
 interface ToolbarActionsProps {
   // Búsqueda
@@ -50,13 +50,15 @@ export function ToolbarActions({
   const viewIcons = {
     kanban: <LayoutGrid className="w-4 h-4 mr-1" />,
     lista: <ListIcon className="w-4 h-4 mr-1" />,
-    calendario: <Calendar className="w-4 h-4 mr-1" />
+    calendario: <Calendar className="w-4 h-4 mr-1" />,
+    gantt: <BarChart3 className="w-4 h-4 mr-1" />
   };
 
   const viewLabels = {
     kanban: 'Kanban',
     lista: 'Lista',
-    calendario: 'Calendario'
+    calendario: 'Calendario',
+    gantt: 'Gantt'
   };
 
   return (

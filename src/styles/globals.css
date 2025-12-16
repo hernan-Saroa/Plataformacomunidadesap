@@ -1,5 +1,10 @@
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================
+   IMPORTAR SISTEMA DE TEMAS ESAP
+   ============================================ */
+@import './esap-theme.css';
+
 /* Utility classes */
 .scrollbar-hide {
   -ms-overflow-style: none;

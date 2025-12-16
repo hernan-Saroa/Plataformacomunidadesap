@@ -1,10 +1,11 @@
 /**
- * RF007 - LISTAS DE CHEQUEO ESTANDARIZADAS
+ * RF008 - LISTAS DE CHEQUEO ESTANDARIZADAS
+ * Integración Fase 2 COMPLETA: Catálogo maestro, versionamiento, integración con RF006 y RF010
  * Biblioteca de listas reutilizables para auditorías
  * Oficina de Control Interno - ESAP
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   CheckSquare, Plus, Search, Filter, Eye, Edit, Copy, Trash2,
@@ -15,6 +16,9 @@ import {
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { Card } from '../../ui/card';
+import { useControlInterno } from './ControlInternoContext';
+import { useIntegracionControlInterno } from '../../../hooks/useIntegracionControlInterno';
+import { toast } from 'sonner@2.0.3';
 
 // ============ TIPOS ============
 

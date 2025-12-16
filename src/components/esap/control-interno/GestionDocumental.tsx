@@ -1,10 +1,11 @@
 /**
- * RF013 - GESTIÓN DOCUMENTAL
- * Repositorio centralizado con versionamiento y búsqueda avanzada
+ * RF014 - GESTIÓN DOCUMENTAL Y REPOSITORIO
+ * Fase 2 COMPLETA: Integración total con RF003-RF013, clasificación automática, búsqueda avanzada
+ * Repositorio centralizado con versionamiento y control de acceso
  * Oficina de Control Interno - ESAP
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FolderOpen, File, Upload, Download, Eye, Search, Filter,
@@ -13,11 +14,15 @@ import {
   Lock, Unlock, Folder, CheckCircle, AlertCircle, MoreVertical,
   Edit, Trash2, Copy, Star, StarOff, RefreshCw, Database,
   HardDrive, Layers, Grid, List, Settings, SortAsc, Tag,
-  Shield, History, ZoomIn, ExternalLink, Package, Download as DownloadIcon
+  Shield, History, ZoomIn, ExternalLink, Package, Download as DownloadIcon,
+  Activity, Send
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { Card } from '../../ui/card';
+import { useControlInterno } from './ControlInternoContext';
+import { useIntegracionControlInterno } from '../../../hooks/useIntegracionControlInterno';
+import { toast } from 'sonner';
 
 // ============ TIPOS ============
 
