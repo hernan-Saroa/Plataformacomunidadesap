@@ -18,7 +18,7 @@ import { ErrorBoundary } from "./components/shared";
 
 // Importar componentes de servicios públicos
 import { EnrollmentQRLandingUnified } from "./components/portal/EnrollmentQRLandingUnified";
-import { VinculacionForm } from "./components/portal/VinculacionForm";
+import { VinculacionForm } from "./components/portal/VinculacionForm"
 import { PublicTitleVerification } from "./components/portal/PublicTitleVerification";
 import { SolicitarCertificadoLaboral } from "./components/portal/SolicitarCertificadoLaboral";
 
