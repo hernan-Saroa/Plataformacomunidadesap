@@ -1,0 +1,361 @@
+{
+  "info": {
+    "name": "Internal Disciplinary Control Service",
+    "description": "API para gestión de procesos disciplinarios de la ESAP",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health & Seed",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/health",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "Execute Seed",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/seed",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["seed"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Noticias Disciplinarias",
+      "item": [
+        {
+          "name": "Radicar Noticia (H1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origen\": \"QUEJOSO\",\n  \"territorial\": \"BOGOTA\",\n  \"dependenciaDenunciado\": \"RECURSOS HUMANOS\",\n  \"denunciante\": {\n    \"nombre\": \"Juan Carlos López\",\n    \"cedula\": \"1234567890\",\n    \"email\": \"juan@example.com\",\n    \"cargo\": \"Ciudadano\"\n  },\n  \"disciplinable\": {\n    \"nombre\": \"María González García\",\n    \"cedula\": \"9876543210\",\n    \"cargo\": \"Jefe de Departamento\"\n  },\n  \"hechos\": \"Se alega incumplimiento en los procedimientos administrativos y trato discriminatorio hacia el personal.\",\n  \"adjuntos\": []\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-news",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-news"]
+            }
+          }
+        },
+        {
+          "name": "Listar Noticias Pendientes (H2)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-news/pending-assignment",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-news", "pending-assignment"]
+            }
+          }
+        },
+        {
+          "name": "Listar Todas las Noticias",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-news",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-news"]
+            }
+          }
+        },
+        {
+          "name": "Obtener Noticia por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-news/{{noticia_id}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-news", "{{noticia_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Procesos Disciplinarios",
+      "item": [
+        {
+          "name": "Asignar Profesional (H2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newsId\": \"{{noticia_id}}\",\n  \"abogadoId\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"observaciones\": \"Proceder con indagación preliminar\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-processes/assign",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-processes", "assign"]
+            }
+          }
+        },
+        {
+          "name": "Cambiar Etapa del Proceso (H3, H7)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nuevaEtapa\": \"INDAGACION_PREVIA\",\n  \"justificacion\": \"Se encontraron méritos para abrir indagación preliminar\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-processes/{{process_id}}/stage",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-processes", "{{process_id}}", "stage"]
+            }
+          }
+        },
+        {
+          "name": "Mis Procesos - Abogado (H3)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-processes/my-processes?abogadoId=550e8400-e29b-41d4-a716-446655440000",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-processes", "my-processes"],
+              "query": [
+                {
+                  "key": "abogadoId",
+                  "value": "550e8400-e29b-41d4-a716-446655440000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener Todos los Procesos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-processes",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-processes"]
+            }
+          }
+        },
+        {
+          "name": "Obtener Proceso por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-processes/{{process_id}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-processes", "{{process_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Autos Legales",
+      "item": [
+        {
+          "name": "Crear Borrador de Auto (H9)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"processId\": \"{{process_id}}\",\n  \"tipoAuto\": \"AUTO_APERTURA_INDAGACION\",\n  \"contenidoHtml\": \"<p>Vistos los hechos y considerandos, se abre formalmente la etapa de indagación preliminar.</p>\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-autos",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-autos"]
+            }
+          }
+        },
+        {
+          "name": "Enviar a Revisión (H3)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-autos/{{auto_id}}/send-review",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-autos", "{{auto_id}}", "send-review"]
+            }
+          }
+        },
+        {
+          "name": "Aprobar/Firmar Auto (H4)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"APROBADO\",\n  \"comentarios\": \"Proceda con la firma\",\n  \"tipoFirma\": \"ELECTRONICA\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-autos/{{auto_id}}/approve?aprobadoPorId=550e8400-e29b-41d4-a716-446655440001",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-autos", "{{auto_id}}", "approve"],
+              "query": [
+                {
+                  "key": "aprobadoPorId",
+                  "value": "550e8400-e29b-41d4-a716-446655440001"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Actualizar Contenido",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contenidoHtml\": \"<p>Contenido actualizado con nueva justificación...</p>\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-autos/{{auto_id}}/content",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-autos", "{{auto_id}}", "content"]
+            }
+          }
+        },
+        {
+          "name": "Obtener Autos por Proceso",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-autos/by-process/{{process_id}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-autos", "by-process", "{{process_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Obtener Todos los Autos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-autos",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-autos"]
+            }
+          }
+        },
+        {
+          "name": "Obtener Auto por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3005/disciplinary-autos/{{auto_id}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3005",
+              "path": ["disciplinary-autos", "{{auto_id}}"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "noticia_id",
+      "value": ""
+    },
+    {
+      "key": "process_id",
+      "value": ""
+    },
+    {
+      "key": "auto_id",
+      "value": ""
+    }
+  ]
+}

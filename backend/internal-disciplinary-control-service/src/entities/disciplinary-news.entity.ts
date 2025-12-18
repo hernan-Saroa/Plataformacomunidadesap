@@ -1,0 +1,86 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
+import { DisciplinaryProcess } from './disciplinary-process.entity';
+
+export enum NewsOrigin {
+  ANONIMO = 'ANONIMO',
+  QUEJOSO = 'QUEJOSO',
+  OFICIO = 'OFICIO',
+  REMISION = 'REMISION',
+}
+
+export enum NewsStatus {
+  RADICADA = 'RADICADA',
+  EN_VALORACION = 'EN_VALORACION',
+  ASIGNADA = 'ASIGNADA',
+  DEVUELTA = 'DEVUELTA',
+}
+
+export interface PersonInfo {
+  nombre: string;
+  cedula?: string;
+  email?: string;
+  cargo?: string;
+}
+
+@Entity('disciplinary_news')
+export class DisciplinaryNews {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ unique: true })
+  radicado: string; // ND-2025-001
+
+  @CreateDateColumn()
+  fechaRecepcion: Date;
+
+  @Column({
+    type: 'enum',
+    enum: NewsOrigin,
+  })
+  origen: NewsOrigin;
+
+  @Column()
+  territorial: string;
+
+  @Column()
+  dependenciaDenunciado: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  denunciante: PersonInfo;
+
+  @Column({ type: 'jsonb', nullable: true })
+  disciplinable: PersonInfo;
+
+  @Column({ type: 'text' })
+  hechos: string;
+
+  @Column({
+    type: 'enum',
+    enum: NewsStatus,
+    default: NewsStatus.RADICADA,
+  })
+  estado: NewsStatus;
+
+  @Column({ type: 'text', array: true, nullable: true })
+  adjuntos: string[];
+
+  @Column({ type: 'text', nullable: true })
+  observaciones: string;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  // Relación con procesos disciplinarios
+  @OneToMany(
+    () => DisciplinaryProcess,
+    (process) => process.news,
+  )
+  processes: DisciplinaryProcess[];
+}

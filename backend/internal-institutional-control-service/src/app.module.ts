@@ -1,0 +1,110 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { EsapModule } from './esap/esap.module';
+
+// Entidades ESAP
+import { PlanAnual5Roles } from './esap/plan-anual-5-roles/entities/plan-anual-5-roles.entity';
+import { RolPlanAnual5 } from './esap/plan-anual-5-roles/entities/rol-plan-anual-5.entity';
+import { ActividadPlanAnual5 } from './esap/plan-anual-5-roles/entities/actividad-plan-anual-5.entity';
+import { InformeLey } from './esap/informes-ley/entities/informe-ley.entity';
+import { EntregaInformeLey } from './esap/informes-ley/entities/entrega-informe-ley.entity';
+import { Auditoria } from './esap/auditorias/entities/auditoria.entity';
+import { Hallazgo } from './esap/hallazgos/entities/hallazgo.entity';
+import { PlanMejoramiento } from './esap/planes-mejoramiento/entities/plan-mejoramiento.entity';
+import { AccionCorrectiva } from './esap/planes-mejoramiento/entities/accion-correctiva.entity';
+import { SeguimientoTrimestral } from './esap/planes-mejoramiento/entities/seguimiento-trimestral.entity';
+import { RegistroSeguimiento } from './esap/planes-mejoramiento/entities/registro-seguimiento.entity';
+import { Aprobacion } from './esap/aprobaciones/entities/aprobacion.entity';
+import { ProcesoAuditable } from './esap/universo-auditorias/entities/proceso-auditable.entity';
+import { Documento } from './esap/documentos/entities/documento.entity';
+import { ProgramaAnual } from './esap/programa-anual/entities/programa-anual.entity';
+import { AuditoriaProgramada } from './esap/programa-anual/entities/auditoria-programada.entity';
+import { PlanIndividual } from './esap/plan-individual/entities/plan-individual.entity';
+import { Notificacion } from './esap/notificaciones/entities/notificacion.entity';
+import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferencia-notificacion.entity';
+
+@Module({
+  imports: [
+    // Configuración global
+    ConfigModule.forRoot({ isGlobal: true }),
+    
+    // Configuración TypeORM
+    TypeOrmModule.forRootAsync({
+      useFactory: () => {
+        const dbConfig = {
+          host: process.env.DB_HOST || 'localhost',
+          port: parseInt(process.env.DB_PORT || '5432', 10),
+          username: process.env.DB_USER || 'postgres',
+          password: process.env.DB_PASS || 'postgres',
+          database: process.env.DB_NAME || 'esap_db',
+          schema: process.env.DB_SCHEMA || 'control_interno',
+        };
+
+        console.log('🔌 Configurando conexión a PostgreSQL...');
+        console.log(`   Host: ${dbConfig.host}`);
+        console.log(`   Port: ${dbConfig.port}`);
+        console.log(`   Database: ${dbConfig.database}`);
+        console.log(`   Schema: ${dbConfig.schema}`);
+        console.log(`   User: ${dbConfig.username}`);
+        console.log(`   Password: ${dbConfig.password ? '***' : 'NO CONFIGURADA'}`);
+
+        return {
+          type: 'postgres',
+          host: dbConfig.host,
+          port: dbConfig.port,
+          username: dbConfig.username,
+          password: dbConfig.password,
+          database: dbConfig.database,
+          schema: dbConfig.schema,
+          entities: [
+            // Entidades ESAP
+            PlanAnual5Roles,
+            RolPlanAnual5,
+            ActividadPlanAnual5,
+            InformeLey,
+            EntregaInformeLey,
+            Auditoria,
+            Hallazgo,
+            PlanMejoramiento,
+            AccionCorrectiva,
+            SeguimientoTrimestral,
+            RegistroSeguimiento,
+            Aprobacion,
+            ProcesoAuditable,
+            Documento,
+            ProgramaAnual,
+            AuditoriaProgramada,
+            PlanIndividual,
+            Notificacion,
+            PreferenciaNotificacion,
+          ],
+          synchronize: false, // Deshabilitado - usar migraciones manuales
+          // synchronize: process.env.NODE_ENV !== 'production', // Solo en desarrollo
+          logging: process.env.NODE_ENV === 'development',
+          ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+          // Configuración correcta para PostgreSQL
+          extra: {
+            connect_timeout: 10000, // 10 segundos en milisegundos
+            max: 20, // Máximo de conexiones en el pool
+            // Configurar encoding UTF-8 explícitamente
+            options: '-c client_encoding=UTF8',
+          },
+          // Retry logic
+          retryAttempts: 3,
+          retryDelay: 3000,
+          // Auto reconnect
+          autoLoadEntities: false, // Ya estamos cargando manualmente
+        };
+      },
+    }),
+    
+    // Módulos ESAP
+    EsapModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}

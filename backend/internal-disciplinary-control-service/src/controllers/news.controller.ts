@@ -1,0 +1,168 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  UseInterceptors,
+  UploadedFiles,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiConsumes,
+} from '@nestjs/swagger';
+import { NewsService } from '../services/news.service';
+import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto';
+import { ReturnNewsDto } from '../dtos/return-news.dto';
+import { DisciplinaryNews } from '../entities/disciplinary-news.entity';
+
+interface FileData {
+  buffer: Buffer;
+  originalname: string;
+}
+
+@ApiTags('Noticias Disciplinarias')
+@Controller('disciplinary-news')
+export class NewsController {
+  constructor(private newsService: NewsService) { }
+
+  /**
+   * H1: Radicar una nueva noticia disciplinaria con soportes
+   */
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(FilesInterceptor('files', 10))
+  @ApiOperation({
+    summary: 'Radicar Noticia Disciplinaria',
+    description: 'Crea una nueva noticia y genera automáticamente el radicado',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({
+    status: 201,
+    description: 'Noticia radicada exitosamente',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 400, description: 'Datos inválidos' })
+  async create(
+    @Body() createNewsDto: CreateDisciplinaryNewsDto,
+    @UploadedFiles() files?: FileData[],
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.create(createNewsDto, files);
+  }
+
+  /**
+   * H2: Listar noticias pendientes de asignación
+   */
+  @Get('pending-assignment')
+  @ApiOperation({
+    summary: 'Listar Noticias Pendientes',
+    description: 'Retorna las noticias en estado RADICADA para asignación',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de noticias pendientes',
+    type: [DisciplinaryNews],
+  })
+  async getPendingAssignment(): Promise<DisciplinaryNews[]> {
+    return await this.newsService.findPendingAssignment();
+  }
+
+  /**
+   * Obtener todas las noticias
+   */
+  @Get()
+  @ApiOperation({
+    summary: 'Listar todas las Noticias',
+    description: 'Retorna todas las noticias disciplinarias',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de todas las noticias',
+    type: [DisciplinaryNews],
+  })
+  async getAll(): Promise<DisciplinaryNews[]> {
+    return await this.newsService.findAll();
+  }
+
+  /**
+   * Obtener noticia por ID
+   */
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Obtener Noticia por ID',
+    description: 'Retorna una noticia específica',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Noticia encontrada',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async getById(@Param('id') id: string): Promise<DisciplinaryNews> {
+    return await this.newsService.findById(id);
+  }
+
+  /**
+   * Devolver Noticia
+   */
+  @Patch(':id/return')
+  @ApiOperation({
+    summary: 'Devolver Noticia',
+    description: 'Cambia el estado de la noticia a DEVUELTA y guarda observaciones',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Noticia devuelta',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async returnNews(
+    @Param('id') id: string,
+    @Body() returnNewsDto: ReturnNewsDto,
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.returnNews(id, returnNewsDto);
+  }
+
+  /**
+   * Cambiar Estado de Noticia
+   */
+  @Patch(':id/status')
+  @ApiOperation({
+    summary: 'Cambiar Estado de Noticia',
+    description: 'Actualiza el estado de una noticia (ej: RADICADA -> EN_VALORACION)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Estado actualizado',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() body: { status: string },
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.updateStatus(id, body.status as any);
+  }
+
+  /**
+   * Eliminar noticia
+   */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Eliminar Noticia',
+    description: 'Elimina una noticia y sus archivos asociados',
+  })
+  @ApiResponse({ status: 204, description: 'Noticia eliminada' })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async delete(@Param('id') id: string): Promise<void> {
+    await this.newsService.delete(id);
+  }
+}

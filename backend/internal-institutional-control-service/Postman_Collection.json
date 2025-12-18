@@ -1,0 +1,445 @@
+{
+	"info": {
+		"_postman_id": "internal-control-service",
+		"name": "Internal Institutional Control Service",
+		"description": "Collection para probar los servicios migrados a Base de Datos PostgreSQL",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Universo de Auditorías",
+			"item": [
+				{
+					"name": "Obtener Universo",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/universo-auditorias?year=2025",
+							"host": ["{{base_url}}"],
+							"path": ["universo-auditorias"],
+							"query": [
+								{
+									"key": "year",
+									"value": "2025",
+									"description": "Año del universo"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Obtener Procesos",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/universo-auditorias/procesos?tipo=misional",
+							"host": ["{{base_url}}"],
+							"path": ["universo-auditorias", "procesos"],
+							"query": [
+								{
+									"key": "tipo",
+									"value": "misional",
+									"description": "Filtro por tipo"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Crear Proceso",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"codigo\": \"PROC-GEST-ADMIN-001\",\n  \"nombre\": \"Gestión Administrativa\",\n  \"descripcion\": \"Proceso de gestión administrativa de la institución\",\n  \"tipo\": \"misional\",\n  \"macroproceso\": \"Gestión Institucional\",\n  \"responsable\": \"Director Administrativo\",\n  \"dependencia\": \"Dirección Administrativa\",\n  \"impacto\": 5,\n  \"probabilidad\": 4,\n  \"controles\": {\n    \"preventivos\": 8,\n    \"detectivos\": 6,\n    \"correctivos\": 4\n  },\n  \"madurezControl\": \"gestionado\",\n  \"factoresRiesgo\": [\"Alto volumen de transacciones\", \"Múltiples dependencias\"],\n  \"frecuenciaAuditoria\": \"1\",\n  \"evaluadoPor\": \"Auditor Líder\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/universo-auditorias/procesos",
+							"host": ["{{base_url}}"],
+							"path": ["universo-auditorias", "procesos"]
+						}
+					}
+				},
+				{
+					"name": "Obtener Proceso por ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/universo-auditorias/procesos/:id",
+							"host": ["{{base_url}}"],
+							"path": ["universo-auditorias", "procesos", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "",
+									"description": "UUID del proceso"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Evaluar Riesgo",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"impacto\": 5,\n  \"probabilidad\": 4,\n  \"controles\": {\n    \"preventivos\": 8,\n    \"detectivos\": 6,\n    \"correctivos\": 4\n  },\n  \"madurezControl\": \"gestionado\",\n  \"factoresRiesgo\": [\"Factor 1\", \"Factor 2\"],\n  \"evaluadoPor\": \"Auditor Líder\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/universo-auditorias/procesos/:id/riesgo",
+							"host": ["{{base_url}}"],
+							"path": ["universo-auditorias", "procesos", ":id", "riesgo"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "",
+									"description": "UUID del proceso"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Obtener Matriz de Riesgo",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/universo-auditorias/matriz-riesgo",
+							"host": ["{{base_url}}"],
+							"path": ["universo-auditorias", "matriz-riesgo"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "2. Programa Anual",
+			"item": [
+				{
+					"name": "Obtener Programas",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/programa-anual?year=2025",
+							"host": ["{{base_url}}"],
+							"path": ["programa-anual"],
+							"query": [
+								{
+									"key": "year",
+									"value": "2025"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Crear Programa",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"year\": 2025,\n  \"version\": \"1.0\",\n  \"creadoPor\": \"Jefe OCI\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/programa-anual",
+							"host": ["{{base_url}}"],
+							"path": ["programa-anual"]
+						}
+					}
+				},
+				{
+					"name": "Importar Auditorías",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"procesoIds\": [\n    \"proceso-id-1\",\n    \"proceso-id-2\"\n  ],\n  \"auditorLider\": \"Juan Pérez\",\n  \"equipoAuditor\": [\"María González\", \"Carlos Rodríguez\"],\n  \"tipo\": \"gestion\",\n  \"alcance\": \"Auditoría completa al proceso\",\n  \"fechaInicioBase\": \"2025-03-01\",\n  \"esTerritorial\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/programa-anual/:id/importar-auditorias",
+							"host": ["{{base_url}}"],
+							"path": ["programa-anual", ":id", "importar-auditorias"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "PROG-2025-001",
+									"description": "ID del programa (formato: PROG-YYYY-001)"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Obtener Cronograma",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/programa-anual/:id/cronograma",
+							"host": ["{{base_url}}"],
+							"path": ["programa-anual", ":id", "cronograma"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "PROG-2025-001"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "3. Plan Individual",
+			"item": [
+				{
+					"name": "Crear Plan Individual",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"auditoriaId\": \"auditoria-id-uuid\",\n  \"auditoriaCodigo\": \"AUD-2025-CTL-001\",\n  \"nombre\": \"Plan Individual - Auditoría Gestión Contractual\",\n  \"alcance\": \"Auditoría al proceso de gestión contractual\",\n  \"objetivo\": \"Verificar el cumplimiento de la normativa contractual\",\n  \"procesoAuditar\": \"Gestión Contractual\",\n  \"riesgos\": [\n    {\n      \"descripcion\": \"Falta de documentación\",\n      \"probabilidad\": \"alta\",\n      \"impacto\": \"alto\",\n      \"mitigacion\": \"Revisión exhaustiva\"\n    }\n  ],\n  \"criteriosAuditoria\": [\"Cumplimiento Ley 80\"],\n  \"normativaAplicable\": [\"Ley 80 de 1993\"],\n  \"auditorLider\": \"Juan Pérez\",\n  \"equipoAuditor\": [\"María González\"]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/plan-individual",
+							"host": ["{{base_url}}"],
+							"path": ["plan-individual"]
+						}
+					}
+				},
+				{
+					"name": "Obtener Plan por Auditoría",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/plan-individual/auditoria/:auditoriaId",
+							"host": ["{{base_url}}"],
+							"path": ["plan-individual", "auditoria", ":auditoriaId"],
+							"variable": [
+								{
+									"key": "auditoriaId",
+									"value": "",
+									"description": "UUID de la auditoría"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Generar Documentos",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/plan-individual/:id/generar-documentos",
+							"host": ["{{base_url}}"],
+							"path": ["plan-individual", ":id", "generar-documentos"],
+							"variable": [
+								{
+									"key": "id",
+									"value": ""
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "4. Listas de Chequeo",
+			"item": [
+				{
+					"name": "Crear Lista de Chequeo",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"codigo\": \"LIST-CUMPL-CONTRAT\",\n  \"nombre\": \"Lista de Chequeo - Cumplimiento Contractual\",\n  \"descripcion\": \"Lista para verificar cumplimiento en contratación\",\n  \"tipo\": \"cumplimiento\",\n  \"categoria\": \"Contratación\",\n  \"version\": \"1.0\",\n  \"aplicablePara\": [\"Gestión Contractual\"],\n  \"items\": [\n    {\n      \"pregunta\": \"¿Se realizó la evaluación de ofertas?\",\n      \"criterio\": \"Decreto 1082 de 2015\",\n      \"normativaReferencia\": \"Decreto 1082 de 2015\",\n      \"tipoRespuesta\": \"cumple_no_cumple\",\n      \"obligatorio\": true,\n      \"pesoCalificacion\": 10,\n      \"evidenciaRequerida\": true\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/listas-chequeo",
+							"host": ["{{base_url}}"],
+							"path": ["listas-chequeo"]
+						}
+					}
+				},
+				{
+					"name": "Obtener Listas",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/listas-chequeo?tipo=cumplimiento",
+							"host": ["{{base_url}}"],
+							"path": ["listas-chequeo"],
+							"query": [
+								{
+									"key": "tipo",
+									"value": "cumplimiento"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Aplicar Lista a Auditoría",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"listaChequeoId\": \"lista-id-uuid\",\n  \"auditoriaId\": \"auditoria-id-uuid\",\n  \"aplicadoPor\": \"Juan Pérez\",\n  \"respuestas\": [\n    {\n      \"itemId\": \"item-id\",\n      \"respuesta\": \"cumple\",\n      \"observaciones\": \"Cumple completamente\",\n      \"evidencias\": []\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/listas-chequeo/aplicar",
+							"host": ["{{base_url}}"],
+							"path": ["listas-chequeo", "aplicar"]
+						}
+					}
+				},
+				{
+					"name": "Obtener Resultados de Auditoría",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/listas-chequeo/auditoria/:auditoriaId/resultados",
+							"host": ["{{base_url}}"],
+							"path": ["listas-chequeo", "auditoria", ":auditoriaId", "resultados"],
+							"variable": [
+								{
+									"key": "auditoriaId",
+									"value": ""
+								}
+							]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3007/api/v1",
+			"type": "string"
+		}
+	]
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,77 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+  JoinColumn,
+} from 'typeorm';
+import { RolPlanAnual5 } from './rol-plan-anual-5.entity';
+import { PlanAnual5Roles } from './plan-anual-5-roles.entity';
+
+@Entity('actividad_plan_anual_5', { schema: 'control_interno' })
+export class ActividadPlanAnual5 {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'uuid', name: 'rol_id' })
+  @Index()
+  rolId: string;
+
+  @ManyToOne(() => RolPlanAnual5, (rol) => rol.actividades, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'rol_id' })
+  rol: RolPlanAnual5;
+
+  @Column({ type: 'uuid', name: 'plan_id' })
+  @Index()
+  planId: string;
+
+  @ManyToOne(() => PlanAnual5Roles, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'plan_id' })
+  plan: PlanAnual5Roles;
+
+  @Column({ type: 'varchar', length: 500, nullable: false })
+  nombre: string;
+
+  @Column({ type: 'text', nullable: true })
+  descripcion: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: false })
+  responsable: string;
+
+  @Column({ type: 'date', name: 'fecha_inicio' })
+  fecha_inicio: Date;
+
+  @Column({ type: 'date', name: 'fecha_fin' })
+  fecha_fin: Date;
+
+  @Column({
+    type: 'varchar',
+    length: 50,
+    default: 'pendiente',
+  })
+  @Index()
+  estado: 'pendiente' | 'en-progreso' | 'completada' | 'retrasada';
+
+  @Column({ type: 'integer', name: 'porcentaje_avance', default: 0 })
+  porcentaje_avance: number;
+
+  @Column({ type: 'text', nullable: true })
+  observaciones: string;
+
+  @Column({
+    type: 'varchar',
+    length: 20,
+    default: 'Media',
+  })
+  prioridad: 'Alta' | 'Media' | 'Baja';
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
+}
+

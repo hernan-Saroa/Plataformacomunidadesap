@@ -1,0 +1,62 @@
+import { IsString, IsEnum, IsOptional, IsObject } from 'class-validator';
+import { TipoProceso } from '../entities/proceso-auditable.entity';
+
+export class UpdateProcesoAuditableDto {
+  @IsOptional()
+  @IsString()
+  codigo?: string;
+
+  @IsOptional()
+  @IsString()
+  nombre?: string;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string;
+
+  @IsOptional()
+  @IsEnum(TipoProceso)
+  tipo?: TipoProceso;
+
+  @IsOptional()
+  @IsString()
+  macroproceso?: string;
+
+  @IsOptional()
+  @IsString()
+  responsable?: string;
+
+  @IsOptional()
+  @IsString()
+  dependencia?: string;
+
+  @IsOptional()
+  @IsString()
+  territorial?: string;
+
+  @IsOptional()
+  @IsObject()
+  evaluacionRiesgo?: {
+    probabilidad: number;
+    impacto: number;
+    nivelControl: number;
+    madurezControl?: string;
+    controles?: {
+      preventivos: number;
+      detectivos: number;
+      correctivos: number;
+    };
+    factoresRiesgo?: string[];
+  };
+
+  @IsOptional()
+  @IsString()
+  frecuenciaAuditoria?: string;
+
+  @IsOptional()
+  ultimaAuditoria?: string;
+
+  @IsOptional()
+  proximaAuditoria?: string;
+}
+

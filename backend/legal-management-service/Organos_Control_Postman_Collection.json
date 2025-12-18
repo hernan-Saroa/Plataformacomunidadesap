@@ -1,0 +1,369 @@
+{
+  "info": {
+    "name": "Órganos de Control - Legal Management",
+    "description": "Colección completa de endpoints para el módulo de Órganos de Control (Fase 1 + Fase 2)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "esap-legal-management"
+  },
+  "item": [
+    {
+      "name": "Requerimientos",
+      "item": [
+        {
+          "name": "1. Crear Requerimiento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"radicadoExterno\": \"CGR-2025-001234\",\n  \"entidadId\": 1,\n  \"asunto\": \"Solicitud de información sobre contratos de prestación de servicios año 2024\",\n  \"tipoRequerimiento\": \"INFORMACION\",\n  \"fechaRecepcion\": \"2025-01-15\",\n  \"diasPlazoOtorgado\": 15,\n  \"usuarioAsignadoId\": 123\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos"]
+            }
+          }
+        },
+        {
+          "name": "2. Listar Todos los Requerimientos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos"]
+            }
+          }
+        },
+        {
+          "name": "3. Obtener Requerimiento por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos/{{requerimiento_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos", "{{requerimiento_id}}"]
+            }
+          }
+        },
+        {
+          "name": "4. Actualizar Estado de Requerimiento",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"EN_REVISION\",\n  \"observaciones\": \"Documento recibido y en proceso de revisión jurídica\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos/{{requerimiento_id}}/estado",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos", "{{requerimiento_id}}", "estado"]
+            }
+          }
+        },
+        {
+          "name": "5. Búsqueda Avanzada con Filtros",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"EN_PREPARACION\",\n  \"prioridad\": \"ALTA\",\n  \"entidadId\": 1,\n  \"fechaDesde\": \"2025-01-01\",\n  \"fechaHasta\": \"2025-01-31\",\n  \"busqueda\": \"contratos\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos/search",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos", "search"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard y Estadísticas",
+      "item": [
+        {
+          "name": "1. Estadísticas Generales",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos/stats",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos", "stats"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Organismos de Control",
+      "item": [
+        {
+          "name": "1. Listar Organismos Activos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/oc/organismos",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "organismos"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tests de Integración",
+      "item": [
+        {
+          "name": "TEST 1: Crear Requerimiento con Contraloría",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"radicadoExterno\": \"CGR-2025-TEST001\",\n  \"entidadId\": 1,\n  \"asunto\": \"Test: Solicitud de informes financieros Q4 2024\",\n  \"tipoRequerimiento\": \"INFORMACION\",\n  \"fechaRecepcion\": \"2025-12-18\",\n  \"diasPlazoOtorgado\": 10\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos"]
+            }
+          }
+        },
+        {
+          "name": "TEST 2: Crear Requerimiento con Procuraduría",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"radicadoExterno\": \"PGN-2025-TEST002\",\n  \"entidadId\": 6,\n  \"asunto\": \"Test: Hallazgo disciplinario sobre proceso de contratación\",\n  \"tipoRequerimiento\": \"HALLAZGO\",\n  \"fechaRecepcion\": \"2025-12-18\",\n  \"diasPlazoOtorgado\": 5\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos"]
+            }
+          }
+        },
+        {
+          "name": "TEST 3: Crear Requerimiento con MEN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"radicadoExterno\": \"MEN-2025-TEST003\",\n  \"entidadId\": 8,\n  \"asunto\": \"Test: Auditoría a programas académicos ofertados\",\n  \"tipoRequerimiento\": \"AUDITORIA\",\n  \"fechaRecepcion\": \"2025-12-18\",\n  \"diasPlazoOtorgado\": 20\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos"]
+            }
+          }
+        },
+        {
+          "name": "TEST 4: Filtro por Estado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"EN_PREPARACION\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos/search",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos", "search"]
+            }
+          }
+        },
+        {
+          "name": "TEST 5: Filtro por Prioridad Crítica",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prioridad\": \"CRITICA\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos/search",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos", "search"]
+            }
+          }
+        },
+        {
+          "name": "TEST 6: Búsqueda por Texto",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"busqueda\": \"contratos\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos/search",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos", "search"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Actualización de Estados (Flujo Completo)",
+      "item": [
+        {
+          "name": "FLUJO 1: EN_PREPARACION → EN_REVISION",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"EN_REVISION\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos/{{requerimiento_id}}/estado",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos", "{{requerimiento_id}}", "estado"]
+            }
+          }
+        },
+        {
+          "name": "FLUJO 2: EN_REVISION → APROBADO",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"APROBADO\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos/{{requerimiento_id}}/estado",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos", "{{requerimiento_id}}", "estado"]
+            }
+          }
+        },
+        {
+          "name": "FLUJO 3: APROBADO → ENVIADO",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"ENVIADO\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos/{{requerimiento_id}}/estado",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos", "{{requerimiento_id}}", "estado"]
+            }
+          }
+        },
+        {
+          "name": "FLUJO 4: ENVIADO → CERRADO",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"CERRADO\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/oc/requerimientos/{{requerimiento_id}}/estado",
+              "host": ["{{base_url}}"],
+              "path": ["api", "oc", "requerimientos", "{{requerimiento_id}}", "estado"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3006",
+      "type": "string"
+    },
+    {
+      "key": "requerimiento_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
+
