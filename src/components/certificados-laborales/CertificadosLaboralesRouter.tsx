@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, 
@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   Settings
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { CertificadosLaboralesDashboard } from './CertificadosLaboralesDashboard';
 import { ValidarCertificadoQR } from './ValidarCertificadoQR';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
@@ -19,7 +20,6 @@ import { GeneradorReportes } from './GeneradorReportes';
 import { NotificacionesValidacion } from './NotificacionesValidacion';
 import { APIDocumentacion } from './APIDocumentacion';
 import { ConfiguracionPlantilla } from './ConfiguracionPlantilla';
-import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 
 type Vista = 
@@ -40,8 +40,34 @@ interface MenuOption {
   color: string;
 }
 
-export function CertificadosLaboralesRouter() {
+interface CertificadosLaboralesRouterProps {
+  userRoles?: string[];
+  userEmail?: string;
+}
+
+export function CertificadosLaboralesRouter({ userRoles = [], userEmail }: CertificadosLaboralesRouterProps) {
   const [vistaActual, setVistaActual] = useState<Vista>('dashboard');
+
+  const canManageTemplate = useMemo(() => {
+    const emailLower = (userEmail || '').toLowerCase();
+    return userRoles.includes('Coordinador de Certificados Laborales') || emailLower === 'cerlaboral@esap.edu.co';
+  }, [userEmail, userRoles]);
+
+  const handleNavigate = (vista: Vista) => {
+    setVistaActual(vista);
+  };
+
+  useEffect(() => {
+    const lastPublished = localStorage.getItem('cert-template-last-published');
+    if (!lastPublished) return;
+    const lastSeen = sessionStorage.getItem('cert-template-last-seen');
+    if (lastSeen === lastPublished) return;
+
+    toast.info('Plantilla de certificados actualizada', {
+      description: 'Se aplicó una nueva versión de la plantilla de certificados laborales.'
+    });
+    sessionStorage.setItem('cert-template-last-seen', lastPublished);
+  }, []);
 
   const menuOpciones: MenuOption[] = [
     {
@@ -133,7 +159,12 @@ export function CertificadosLaboralesRouter() {
             {vistaActual === 'reportes' && <GeneradorReportes />}
             {vistaActual === 'notificaciones' && <NotificacionesValidacion />}
             {vistaActual === 'api-docs' && <APIDocumentacion />}
-            {vistaActual === 'configuracion-plantilla' && <ConfiguracionPlantilla />}
+            {vistaActual === 'configuracion-plantilla' && (
+              <ConfiguracionPlantilla 
+                canEdit={canManageTemplate}
+                currentUserEmail={userEmail}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -142,6 +173,9 @@ export function CertificadosLaboralesRouter() {
 
   // Vista principal: Dashboard con las funcionalidades integradas
   return (
-    <CertificadosLaboralesDashboard onNavigate={setVistaActual} />
+    <CertificadosLaboralesDashboard 
+      onNavigate={handleNavigate} 
+      canManageTemplates={canManageTemplate}
+    />
   );
 }

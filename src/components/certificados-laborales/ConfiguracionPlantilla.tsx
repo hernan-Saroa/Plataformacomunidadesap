@@ -1,1938 +1,7966 @@
 /**
- * MÓDULO: CONFIGURACIÓN DE PLANTILLA DE CERTIFICADOS LABORALES
- * - Gestiona la plantilla base que asegura homogeneidad de todos los certificados
- * - Permite modificar: firmante, grafo/firma, tipografía y colores
- * - Vista previa antes de publicar
- * - Sistema de auditoría completo (log de cambios)
- * - Versionamiento de plantillas
+
+
+
+ * MÓDULO: Configuración de Plantilla DE CERTIFICADOS LABORALES
+
+
+
+ * - Gestiona firma del responsable y logo institucional
+
+
+
+ * - Carga datos reales desde la base de datos
+
+
+
+ * - Upload de imágenes al servidor
+
+
+
  */
 
-import React, { useState } from 'react';
+
+
+
+
+
+
+import React, { useState, useEffect } from 'react';
+
+
+
 import { motion } from 'motion/react';
+
+
+
+import { certificadosService } from '../../services/api/certificados.service';
+import { buildServiceAssetUrl } from '../../config/environment';
+
+
+
 import {
+
+
+
   FileText,
+
+
+
   Upload,
+
+
+
   Save,
+
+
+
   Eye,
+
+
+
   CheckCircle,
+
+
+
   AlertCircle,
+
+
+
   History,
+
+
+
   User,
+
+
+
   Edit3,
+
+
+
   Type,
+
+
+
   Palette,
+
+
+
   Image as ImageIcon,
+
+
+
   Calendar,
+
+
+
   Clock,
+
+
+
   Shield,
+
+
+
   RefreshCw,
+
+
+
   Download,
+
+
+
   X,
+
+
+
   PenTool,
+
+
+
   Info,
+
+
+
   CheckSquare,
+
+
+
   QrCode,
+
+
+
   Printer
+
+
+
 } from 'lucide-react';
+
+
+
 import { toast } from 'sonner@2.0.3';
+
+
+
 import { Card } from '../ui/card';
+
+
+
 import { Button } from '../ui/button';
+
+
+
 import { Input } from '../ui/input';
+
+
+
 import { Label } from '../ui/label';
+
+
+
 import { Badge } from '../ui/badge';
+
+
+
 import {
+
+
+
   Select,
+
+
+
   SelectContent,
+
+
+
   SelectItem,
+
+
+
   SelectTrigger,
+
+
+
   SelectValue,
+
+
+
 } from '../ui/select';
+
+
+
 import {
+
+
+
   Dialog,
+
+
+
   DialogContent,
+
+
+
   DialogDescription,
+
+
+
   DialogHeader,
+
+
+
   DialogTitle,
+
+
+
   DialogFooter,
+
+
+
 } from '../ui/dialog';
+
+
+
 import {
+
+
+
   Tabs,
+
+
+
   TabsContent,
+
+
+
   TabsList,
+
+
+
   TabsTrigger,
+
+
+
 } from '../ui/tabs';
 
+
+
+
+
+
+
 // Tipos
+
+
+
 interface PlantillaConfig {
+
+
+
   id: string;
+
+
+
   version: string;
+
+
+
   estado: 'borrador' | 'en_revision' | 'publicada' | 'archivada';
+
+
+
   firmante: {
+
+
+
     nombre: string;
+
+
+
     documento: string;
+
+
+
     cargo: string;
+
+
+
   };
+
+
+
   grafoFirma: {
+
+
+
     url: string;
+
+
+
     nombre: string;
+
+
+
     tamaño: string;
+
+
+
   } | null;
+
+
+
   logoEntidad: {
+
+
+
     url: string;
+
+
+
     nombre: string;
+
+
+
     tamaño: string;
+
+
+
   } | null;
+
+
+
   tipografia: {
+
+
+
     fuente: string;
+
+
+
     tamaño: number;
+
+
+
     color: string;
+
+
+
   };
+
+
+
+  tituloCargo: {
+
+
+
+    texto: string; // Ej: "LA DIRECTORA TÉCNICA DE TALENTO HUMANO DE LA\nESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA – ESAP"
+
+
+
+  };
+
+
+
+  contenidoCertificado: {
+
+
+
+    texto: string; // HTML string con formato enriquecido
+
+
+
+    estilosPersonalizados: {
+
+
+
+      palabrasClave: { texto: string; estilo: { bold?: boolean; italic?: boolean; color?: string } }[];
+
+
+
+    };
+
+
+
+  };
+
+
+
   fechaCreacion: string;
-  fechaModificacion: string;
+
+
+
+  fechaModificaciónn: string;
+
+
+
   creadoPor: string;
+
+
+
   modificadoPor: string;
+
+
+
 }
+
+
+
+
+
+
 
 interface LogCambio {
+
+
+
   id: string;
+
+
+
   fecha: string;
+
+
+
   usuario: string;
+
+
+
   accion: string;
+
+
+
   cambios: string[];
+
+
+
   versionAnterior: string;
+
+
+
   versionNueva: string;
+
+
+
   plantillaSnapshot?: PlantillaConfig; // Snapshot completo de la plantilla en ese momento
+
+
+
+  // Campos adicionales para Visualizaciónn mejorada
+
+
+
+  changeType?: string;
+
+
+
+  oldValue?: string;
+
+
+
+  newValue?: string;
+
+
+
+  fieldName?: string;
+
+
+
 }
+
+
+
+
+
+
 
 const fuentesDisponibles = [
+
+
+
   { value: 'Arial', label: 'Arial' },
+
+
+
   { value: 'Times New Roman', label: 'Times New Roman' },
+
+
+
   { value: 'Georgia', label: 'Georgia' },
+
+
+
   { value: 'Helvetica', label: 'Helvetica' },
+
+
+
   { value: 'Calibri', label: 'Calibri' },
+
+
+
   { value: 'Roboto', label: 'Roboto' },
+
+
+
+  { value: 'Montserrat', label: 'Montserrat' },
+
+
+
+  { value: 'Open Sans', label: 'Open Sans' },
+
+
+
+  { value: 'Lato', label: 'Lato' },
+
+
+
+  { value: 'Poppins', label: 'Poppins' },
+
+
+
 ];
 
-export function ConfiguracionPlantilla() {
-  const [activeTab, setActiveTab] = useState('configuracion');
-  
-  // Estado de la plantilla actual
-  const [plantilla, setPlantilla] = useState<PlantillaConfig>({
-    id: 'PLANT-001',
-    version: '2.1.0',
-    estado: 'publicada',
-    firmante: {
-      nombre: 'Dra. María Elena Bernal Torres',
-      documento: '52.789.456',
-      cargo: 'Directora de Talento Humano'
-    },
-    grafoFirma: {
-      url: '/firmas/maria-bernal-firma.png',
-      nombre: 'maria-bernal-firma.png',
-      tamaño: '125 KB'
-    },
-    logoEntidad: {
-      url: '/logos/esap-logo.png',
-      nombre: 'esap-logo.png',
-      tamaño: '150 KB'
-    },
-    tipografia: {
-      fuente: 'Arial',
-      tamaño: 12,
-      color: '#000000'
-    },
-    fechaCreacion: '2024-01-15T10:00:00Z',
-    fechaModificacion: '2025-01-10T14:30:00Z',
-    creadoPor: 'Admin Sistema',
-    modificadoPor: 'Coordinador TH'
-  });
 
-  // Estado de edición (borrador temporal)
-  const [borrador, setBorrador] = useState<PlantillaConfig>({...plantilla});
+
+
+
+
+
+const coloresDisponibles = [
+
+
+
+  { value: '#000000', label: 'Negro' },
+
+
+
+  { value: '#FF0000', label: 'Rojo' },
+
+
+
+  { value: '#0000FF', label: 'Azul' },
+
+
+
+  { value: '#008000', label: 'Verde' },
+
+
+
+  { value: '#800080', label: 'Morado' },
+
+
+
+  { value: '#FFA500', label: 'Naranja' },
+
+
+
+  { value: '#A52A2A', label: 'Café' },
+
+
+
+];
+
+
+
+
+
+
+
+// Variables disponibles para insertar en los certificados
+
+
+
+const variablesDisponibles = [
+
+
+
+  { codigo: '[NOMBRE_EMPLEADO]', descripcion: 'Nombre completo del empleado' },
+
+
+
+  { codigo: '[DOCUMENTO]', descripcion: 'Número de documento' },
+
+
+
+  { codigo: '[CARGO]', descripcion: 'Cargo del empleado' },
+
+
+
+  { codigo: '[DEPENDENCIA]', descripcion: 'Dependencia donde trabaja' },
+
+
+
+  { codigo: '[DATO6]', descripcion: 'Ubicación o dato adicional' },
+
+
+
+  { codigo: '[FECHA_INICIO]', descripcion: 'Fecha de inicio del contrato' },
+
+
+
+  { codigo: '[FECHA_FIN]', descripcion: 'Fecha de finalización' },
+
+
+
+  { codigo: '[SALARIO]', descripcion: 'Salario mensual (número)' },
+
+
+
+  { codigo: '[SALARIO_LETRAS]', descripcion: 'Salario en letras' },
+
+
+
+  { codigo: '[FECHA_EXPEDICION_COMPLETA]', descripcion: 'Fecha completa de expedición (ej: 11 de diciembre de 2025)' },
+
+
+
+];
+
+
+
+
+
+
+
+const defaultContenidoCertificado = '<p>Que <b>Ana Marelys López Rodríguez</b> identificado(a) con cédula de ciudadanía No. <b>557554210</b>, se desempeña como <b>Técnica</b> en <b>Vicedirección de Capacitación y Formación - Grupo de Posgrados</b> de la Escuela Superior de Administración Pública – ESAP, mediante contrato de prestación de servicios, desde el <b>02 de enero de 2023</b> hasta la actualidad.</p><p>Que <b>Ana Marelys López Rodríguez</b> percibe mensualmente la suma de <b>$5.000.000</b> (Cinco millones de pesos).</p><p>Se expide en la ciudad de <b>Bogotá D.C.</b>, a los <b>[FECHA_EXPEDICION]</b> días del mes de <b>[MES_EXPEDICION]</b> de <b>[AÑO_EXPEDICION]</b>.</p>';
+
+
+
+
+
+
+
+interface ConfiguracionPlantillaProps {
+
+
+
+  canEdit?: boolean;
+
+
+
+  currentUserEmail?: string;
+
+
+
+}
+
+
+
+
+
+
+
+export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: ConfiguracionPlantillaProps) {
+
+
+
+  // Estados de carga y datos
+
+
+
+  const [isLoading, setIsLoading] = useState(true);
+
+
+
+  const [plantilla, setPlantilla] = useState<PlantillaConfig | null>(null);
+
+
+
+  const [borrador, setBorrador] = useState<PlantillaConfig | null>(null);
+
+
+
+  const [templateType, setTemplateType] = useState<'docente' | 'administrador'>('docente');
+
+
+
   const [hasChanges, setHasChanges] = useState(false);
-  
-  // Estados de modales
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [isAutorizacionOpen, setIsAutorizacionOpen] = useState(false);
-  const [isHistorialOpen, setIsHistorialOpen] = useState(false);
-  const [isRestaurarOpen, setIsRestaurarOpen] = useState(false);
-  
-  // Estado de archivo de firma
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  
-  // Estado para la versión seleccionada a restaurar
-  const [versionARestaurar, setVersionARestaurar] = useState<LogCambio | null>(null);
 
-  // Mock log de cambios con snapshots (últimas 5 versiones restaurables)
-  const [logCambios, setLogCambios] = useState<LogCambio[]>([
-    {
-      id: 'LOG-005',
-      fecha: '2025-01-10T14:30:00Z',
-      usuario: 'Coordinador TH',
-      accion: 'Actualización de firmante',
-      cambios: [
-        'Firmante anterior: Dr. Carlos Rodríguez',
-        'Nuevo firmante: Dra. María Elena Bernal Torres',
-        'Cargo actualizado: Directora de Talento Humano',
-        'Imagen de firma actualizada'
-      ],
-      versionAnterior: '2.0.0',
-      versionNueva: '2.1.0',
-      plantillaSnapshot: {
-        id: 'PLANT-001',
-        version: '2.1.0',
-        estado: 'publicada',
-        firmante: {
-          nombre: 'Dra. María Elena Bernal Torres',
-          documento: '52.789.456',
-          cargo: 'Directora de Talento Humano'
-        },
-        grafoFirma: {
-          url: '/firmas/maria-bernal-firma.png',
-          nombre: 'maria-bernal-firma.png',
-          tamaño: '125 KB'
-        },
-        logoEntidad: {
-          url: '/logos/esap-logo.png',
-          nombre: 'esap-logo.png',
-          tamaño: '150 KB'
-        },
-        tipografia: {
-          fuente: 'Arial',
-          tamaño: 12,
-          color: '#000000'
-        },
-        fechaCreacion: '2024-01-15T10:00:00Z',
-        fechaModificacion: '2025-01-10T14:30:00Z',
-        creadoPor: 'Admin Sistema',
-        modificadoPor: 'Coordinador TH'
-      }
-    },
-    {
-      id: 'LOG-004',
-      fecha: '2024-12-15T11:20:00Z',
-      usuario: 'Coordinador TH',
-      accion: 'Actualización de logo institucional',
-      cambios: [
-        'Logo anterior: esap-logo-antiguo.png',
-        'Nuevo logo: esap-logo.png',
-        'Mejorada resolución del logo institucional'
-      ],
-      versionAnterior: '1.9.5',
-      versionNueva: '2.0.0',
-      plantillaSnapshot: {
-        id: 'PLANT-001',
-        version: '2.0.0',
-        estado: 'publicada',
-        firmante: {
-          nombre: 'Dr. Carlos Rodríguez',
-          documento: '79.123.456',
-          cargo: 'Director de Talento Humano'
-        },
-        grafoFirma: {
-          url: '/firmas/carlos-rodriguez-firma.png',
-          nombre: 'carlos-rodriguez-firma.png',
-          tamaño: '115 KB'
-        },
-        logoEntidad: {
-          url: '/logos/esap-logo.png',
-          nombre: 'esap-logo.png',
-          tamaño: '150 KB'
-        },
-        tipografia: {
-          fuente: 'Arial',
-          tamaño: 12,
-          color: '#000000'
-        },
-        fechaCreacion: '2024-01-15T10:00:00Z',
-        fechaModificacion: '2024-12-15T11:20:00Z',
-        creadoPor: 'Admin Sistema',
-        modificadoPor: 'Coordinador TH'
-      }
-    },
-    {
-      id: 'LOG-003',
-      fecha: '2024-11-05T09:15:00Z',
-      usuario: 'Admin Sistema',
-      accion: 'Cambio de tipografía',
-      cambios: [
-        'Fuente cambiada de Times New Roman a Arial',
-        'Tamaño de fuente: 11pt → 12pt'
-      ],
-      versionAnterior: '1.9.0',
-      versionNueva: '1.9.5',
-      plantillaSnapshot: {
-        id: 'PLANT-001',
-        version: '1.9.5',
-        estado: 'publicada',
-        firmante: {
-          nombre: 'Dr. Carlos Rodríguez',
-          documento: '79.123.456',
-          cargo: 'Director de Talento Humano'
-        },
-        grafoFirma: {
-          url: '/firmas/carlos-rodriguez-firma.png',
-          nombre: 'carlos-rodriguez-firma.png',
-          tamaño: '115 KB'
-        },
-        logoEntidad: {
-          url: '/logos/esap-logo-antiguo.png',
-          nombre: 'esap-logo-antiguo.png',
-          tamaño: '145 KB'
-        },
-        tipografia: {
-          fuente: 'Arial',
-          tamaño: 12,
-          color: '#000000'
-        },
-        fechaCreacion: '2024-01-15T10:00:00Z',
-        fechaModificacion: '2024-11-05T09:15:00Z',
-        creadoPor: 'Admin Sistema',
-        modificadoPor: 'Admin Sistema'
-      }
-    },
-    {
-      id: 'LOG-002',
-      fecha: '2024-08-20T16:45:00Z',
-      usuario: 'Director TH',
-      accion: 'Cambio de color de tipografía',
-      cambios: [
-        'Color actualizado: #333333 → #000000'
-      ],
-      versionAnterior: '1.8.5',
-      versionNueva: '1.9.0',
-      plantillaSnapshot: {
-        id: 'PLANT-001',
-        version: '1.9.0',
-        estado: 'publicada',
-        firmante: {
-          nombre: 'Dr. Carlos Rodríguez',
-          documento: '79.123.456',
-          cargo: 'Director de Talento Humano'
-        },
-        grafoFirma: {
-          url: '/firmas/carlos-rodriguez-firma.png',
-          nombre: 'carlos-rodriguez-firma.png',
-          tamaño: '115 KB'
-        },
-        logoEntidad: {
-          url: '/logos/esap-logo-antiguo.png',
-          nombre: 'esap-logo-antiguo.png',
-          tamaño: '145 KB'
-        },
-        tipografia: {
-          fuente: 'Times New Roman',
-          tamaño: 11,
-          color: '#000000'
-        },
-        fechaCreacion: '2024-01-15T10:00:00Z',
-        fechaModificacion: '2024-08-20T16:45:00Z',
-        creadoPor: 'Admin Sistema',
-        modificadoPor: 'Director TH'
-      }
-    },
-    {
-      id: 'LOG-001',
-      fecha: '2024-06-10T10:00:00Z',
-      usuario: 'Admin Sistema',
-      accion: 'Ajuste de márgenes y espaciado',
-      cambios: [
-        'Ajustado espaciado entre párrafos',
-        'Mejorado diseño general del documento'
-      ],
-      versionAnterior: '1.8.0',
-      versionNueva: '1.8.5',
-      plantillaSnapshot: {
-        id: 'PLANT-001',
-        version: '1.8.5',
-        estado: 'publicada',
-        firmante: {
-          nombre: 'Dr. Carlos Rodríguez',
-          documento: '79.123.456',
-          cargo: 'Director de Talento Humano'
-        },
-        grafoFirma: {
-          url: '/firmas/carlos-rodriguez-firma.png',
-          nombre: 'carlos-rodriguez-firma.png',
-          tamaño: '115 KB'
-        },
-        logoEntidad: {
-          url: '/logos/esap-logo-antiguo.png',
-          nombre: 'esap-logo-antiguo.png',
-          tamaño: '145 KB'
-        },
-        tipografia: {
-          fuente: 'Times New Roman',
-          tamaño: 11,
-          color: '#333333'
-        },
-        fechaCreacion: '2024-01-15T10:00:00Z',
-        fechaModificacion: '2024-06-10T10:00:00Z',
-        creadoPor: 'Admin Sistema',
-        modificadoPor: 'Admin Sistema'
-      }
+
+
+  const [isSaving, setIsSaving] = useState(false);
+
+
+
+  const [isPublishing, setIsPublishing] = useState(false);
+
+
+
+  const [isResettingLogo, setIsResettingLogo] = useState(false);
+
+
+
+  const [isResettingFirma, setIsResettingFirma] = useState(false);
+
+
+
+  const [logCambios, setLogCambios] = useState<LogCambio[]>([]);
+
+
+
+  const [editorRef, setEditorRef] = useState<HTMLDivElement | null>(null);
+
+
+
+  const publishingActor = currentUserEmail || 'cerlaboral@esap.edu.co';
+
+
+
+  const ensureEditable = () => {
+
+
+
+    if (!canEdit) {
+
+
+
+      toast.error('No tienes permiso para modificar la plantilla');
+
+
+
+      return false;
+
+
+
     }
-  ]);
+
+
+
+    return true;
+
+
+
+  };
+
+
+
+
+
+
+
+  /**
+
+
+
+   * Función helper para resaltar variables en el texto
+
+
+
+   * Convierte [VARIABLE] en <span class="variable-highlight">[VARIABLE]</span>
+
+
+
+   */
+
+
+
+  const resaltarVariables = (html: string): string => {
+
+
+
+    // Patrón para encontrar variables como [NOMBRE_EMPLEADO], [DOCUMENTO], [DATO6], etc.
+
+
+
+    const patron = /\[([A-Z0-9_ÁÉÍÓÚÑ]+)\]/g;
+
+
+
+    return html.replace(
+
+
+
+      patron,
+
+
+
+      '<span class="variable-token px-2 py-1 bg-yellow-200 text-black rounded" style="font-weight: inherit;" contenteditable="false">[$1]</span>'
+
+
+
+    );
+
+
+
+  };
+
+
+
+
+
+
+
+  /**
+
+
+
+   * Calcula diferencias token a token (palabras + espacios/puntuación) usando LCS y resalta solo los modificados.
+
+
+
+   * Ignora spans previos de resaltado y no pinta tokens que sean solo espacio.
+
+
+
+   */
+
+
+
+  const generarDiffResaltado = (oldHtml?: string, newHtml?: string) => {
+
+
+
+    const clean = (v?: string) => (v || '').replace(/<\/?span[^>]*>/g, '');
+
+
+
+    const tokenize = (text: string) => text.match(/\s+|[^\s]+/g) || [];
+
+
+
+    const oldTokens = tokenize(clean(oldHtml || ''));
+
+
+
+    const newTokens = tokenize(clean(newHtml || ''));
+
+
+
+
+
+
+
+    // LCS para marcar tokens iguales
+
+
+
+    const lcs = () => {
+
+
+
+      const m = oldTokens.length;
+
+
+
+      const n = newTokens.length;
+
+
+
+      const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+
+
+
+      for (let i = m - 1; i >= 0; i--) {
+
+
+
+        for (let j = n - 1; j >= 0; j--) {
+
+
+
+          if (oldTokens[i] === newTokens[j]) dp[i][j] = 1 + dp[i + 1][j + 1];
+
+
+
+          else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+
+
+
+        }
+
+
+
+      }
+
+
+
+      const keepOld = new Set<number>();
+
+
+
+      const keepNew = new Set<number>();
+
+
+
+      let i = 0, j = 0;
+
+
+
+      while (i < m && j < n) {
+
+
+
+        if (oldTokens[i] === newTokens[j]) {
+
+
+
+          keepOld.add(i);
+
+
+
+          keepNew.add(j);
+
+
+
+          i++; j++;
+
+
+
+        } else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+
+
+
+        else j++;
+
+
+
+      }
+
+
+
+      return { keepOld, keepNew };
+
+
+
+    };
+
+
+
+
+
+
+
+    const { keepOld, keepNew } = lcs();
+
+
+
+    const wrap = (tokens: string[], keep: Set<number>) =>
+
+
+
+      tokens
+
+
+
+        .map((t, idx) => {
+
+
+
+          const isSpace = /^\s+$/.test(t);
+
+
+
+          if (keep.has(idx) || isSpace) return t;
+
+
+
+          return `<span class="variable-token px-1 py-0.5 bg-yellow-200 text-black rounded" style="font-weight: inherit;">${t}</span>`;
+
+
+
+        })
+
+
+
+        .join('');
+
+
+
+
+
+
+
+    return {
+
+
+
+      oldHighlighted: wrap(oldTokens, keepOld),
+
+
+
+      newHighlighted: wrap(newTokens, keepNew),
+
+
+
+    };
+
+
+
+  };
+
+
+
+
+
+
+
+  const limpiarResaltado = (html?: string) => (html || '').replace(/<\/?span[^>]*>/g, '');
+
+
+
+
+
+
+
+  const mapConfigToPlantilla = (config: any, resaltar = false): PlantillaConfig => {
+
+
+
+    const contenidoHtml = config.certificateContentHtml || defaultContenidoCertificado;
+
+
+
+    const firmaUrl = config.firmante?.firmaUrl || config.firmante?.firmaDigitalUrl;
+
+
+
+    const logoConfig = config.logo;
+
+
+
+
+
+
+
+    return {
+
+
+
+      id: config.id?.toString() || 'CONFIG-1',
+
+
+
+      version: config.version || '1.0.0',
+
+
+
+      estado: config.status === 'published' ? 'publicada' : 'borrador',
+
+
+
+      firmante: {
+
+
+
+        nombre: config.firmante?.nombre || config.firmante?.nombreCompleto || '',
+
+
+
+        documento: '',
+
+
+
+        cargo: config.firmante?.cargo || ''
+
+
+
+      },
+
+
+
+      grafoFirma: firmaUrl ? {
+
+
+
+        url: buildServiceAssetUrl('certificados', firmaUrl),
+
+
+
+        nombre: 'firma.png',
+
+
+
+        tamaÇño: ''
+
+
+
+      } : null,
+
+
+
+      logoEntidad: logoConfig ? {
+
+
+
+        url: buildServiceAssetUrl('certificados', logoConfig.url),
+
+
+
+        nombre: logoConfig.filename || 'logo.png',
+
+
+
+        tamaÇño: logoConfig.size || ''
+
+
+
+      } : null,
+
+
+
+      tipografia: {
+
+
+
+        fuente: config.typography?.font || 'Times New Roman',
+
+
+
+        tamaÇño: 12,
+
+
+
+        color: '#000000'
+
+
+
+      },
+
+
+
+      tituloCargo: {
+
+
+
+        texto: config.cargoTitle || 'LA DIRECTORA TÉCNICA DE TALENTO HUMANO DE LA ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA – ESAP'
+
+
+
+      },
+
+
+
+      contenidoCertificado: {
+
+
+
+        texto: resaltar ? resaltarVariables(contenidoHtml) : contenidoHtml,
+
+
+
+        estilosPersonalizados: {
+
+
+
+          palabrasClave: []
+
+
+
+        }
+
+
+
+      },
+
+
+
+      fechaCreacion: config.createdAt || new Date().toISOString(),
+
+
+
+      fechaModificaciónn: config.updatedAt || new Date().toISOString(),
+
+
+
+      creadoPor: 'Sistema',
+
+
+
+      modificadoPor: config.updatedBy || 'Sistema'
+
+
+
+    };
+
+
+
+  };
+
+
+
+
+
+
+
+  /**
+
+
+
+   * Función para insertar una variable en la posición del cursor
+
+
+
+   */
+
+
+
+  const insertarVariable = (codigoVariable: string) => {
+
+
+
+    if (!editorRef) return;
+
+
+
+
+
+
+
+    const selection = window.getSelection();
+
+
+
+    if (!selection || !selection.rangeCount) return;
+
+
+
+
+
+
+
+    const range = selection.getRangeAt(0);
+
+
+
+    range.deleteContents();
+
+
+
+
+
+
+
+    // Crear el elemento de variable con estilo
+
+
+
+    const span = document.createElement('span');
+
+
+
+    span.className = 'variable-token px-2 py-1 bg-yellow-200 text-black rounded';
+
+
+
+    span.style.fontWeight = 'inherit';
+
+
+
+    span.contentEditable = 'false';
+
+
+
+    span.textContent = codigoVariable;
+
+
+
+
+
+
+
+    // Insertar el span y un espacio después
+
+
+
+    range.insertNode(span);
+
+
+
+    range.collapse(false);
+
+
+
+
+
+
+
+    // Agregar un espacio después de la variable
+
+
+
+    const space = document.createTextNode(' ');
+
+
+
+    range.insertNode(space);
+
+
+
+    range.setStartAfter(space);
+
+
+
+    range.collapse(true);
+
+
+
+
+
+
+
+    selection.removeAllRanges();
+
+
+
+    selection.addRange(range);
+
+
+
+
+
+
+
+    // Actualizar el contenido del borrador
+
+
+
+    if (borrador) {
+
+
+
+      setBorrador({
+
+
+
+        ...borrador,
+
+
+
+        contenidoCertificado: {
+
+
+
+          ...borrador.contenidoCertificado,
+
+
+
+          texto: editorRef.innerHTML
+
+
+
+        }
+
+
+
+      });
+
+
+
+      setHasChanges(true);
+
+
+
+    }
+
+
+
+  };
+
+
+
+
+
+
+
+  /**
+
+
+
+   * Aplica/quita negrita y la refleja en variables dentro de la selección
+
+
+
+   */
+
+
+
+  const toggleBold = () => {
+
+
+
+    const sel = window.getSelection();
+
+
+
+    if (!sel || !sel.rangeCount || !editorRef || !editorRef.contains(sel.anchorNode)) {
+
+
+
+      document.execCommand('bold', false, '');
+
+
+
+      return;
+
+
+
+    }
+
+
+
+    const range = sel.getRangeAt(0);
+
+
+
+    const tokens = Array.from(editorRef.querySelectorAll<HTMLElement>('.variable-token'));
+
+
+
+    const intersecting = tokens.filter(token => {
+
+
+
+      try {
+
+
+
+        return range.intersectsNode(token);
+
+
+
+      } catch {
+
+
+
+        return false;
+
+
+
+      }
+
+
+
+    });
+
+
+
+    const hasBold = intersecting.some(t => (t.style.fontWeight || '').toLowerCase() === 'bold' || t.classList.contains('font-bold'));
+
+
+
+    const nextWeight = hasBold ? 'inherit' : 'bold';
+
+
+
+    intersecting.forEach(t => {
+
+
+
+      t.style.fontWeight = nextWeight;
+
+
+
+      t.classList.toggle('font-bold', nextWeight === 'bold');
+
+
+
+    });
+
+
+
+    document.execCommand('bold', false, '');
+
+
+
+  };
+
+
+
+
+
+
+
+  // Cargar configuración real desde el backend al montar el componente
+
+
+
+  useEffect(() => {
+
+
+
+    const cargarConfiguracion = async () => {
+
+
+
+      try {
+
+
+
+        setIsLoading(true);
+
+
+
+        const config = await certificadosService.plantilla.obtenerConfiguracion(templateType);
+
+
+
+
+
+
+
+        // Transformar los datos del backend al formato del componente
+
+
+
+        const plantillaData = mapConfigToPlantilla(config, true);
+
+
+
+
+
+
+
+        setPlantilla(plantillaData);
+
+
+
+        setBorrador(plantillaData);
+
+
+
+      } catch (error) {
+
+
+
+        console.error('Error al cargar configuración:', error);
+
+
+
+        toast.error('Error al cargar configuración', {
+
+
+
+          description: 'No se pudo cargar la configuración de la plantilla'
+
+
+
+        });
+
+
+
+      } finally {
+
+
+
+        setIsLoading(false);
+
+
+
+      }
+
+
+
+    };
+
+
+
+
+
+
+
+    cargarConfiguracion();
+
+
+
+  }, [templateType]);
+
+
+
+
+
+
+
+  // Cargar historial de cambios
+
+
+
+  useEffect(() => {
+
+
+
+    const cargarHistorial = async () => {
+
+
+
+      try {
+
+
+
+        const historial = await certificadosService.plantilla.obtenerHistorialCambios(templateType);
+
+
+
+
+
+
+
+        // Transformar los datos del backend al formato del componente
+
+
+
+        const cambios: LogCambio[] = historial.map((cambio: any) => ({
+
+
+
+          id: cambio.id.toString(),
+
+
+
+          fecha: cambio.changedAt,
+
+
+
+          usuario: cambio.changedBy || 'Usuario',
+
+
+
+          accion: getAccionTexto(cambio.changeType),
+
+
+
+          cambios: [formatearCambio(cambio)],
+
+
+
+          versionAnterior: '1.0.0',
+
+
+
+          versionNueva: '1.0.0',
+
+
+
+          // Agregar datos raw para Visualizaciónn
+
+
+
+          changeType: cambio.changeType,
+
+
+
+          oldValue: cambio.oldValue,
+
+
+
+          newValue: cambio.newValue,
+
+
+
+          fieldName: cambio.fieldName,
+
+
+
+        }));
+
+
+
+
+
+
+
+        setLogCambios(cambios);
+
+
+
+      } catch (error) {
+
+
+
+        console.error('Error al cargar historial:', error);
+
+
+
+      }
+
+
+
+    };
+
+
+
+
+
+
+
+    cargarHistorial();
+
+
+
+  }, [templateType]);
+
+
+
+
+
+
+
+  // Función helper para obtener texto de acción
+
+
+
+  const getAccionTexto = (changeType: string): string => {
+
+
+
+    const acciones: Record<string, string> = {
+
+
+
+      'logo': 'Actualización de Logo Institucional',
+
+
+
+      'firma': 'Actualización de Firma Digital',
+
+
+
+      'nombre': 'Cambio de Nombre del Firmante',
+
+
+
+      'tipografia': 'Cambio de Tipografía',
+
+
+
+      'titulo_cargo': 'Actualización del Título del Cargo',
+
+
+
+      'contenido': 'Modificaciónn del Contenido del Certificado',
+
+
+
+      'multiple': 'Actualización Múltiple',
+
+
+
+    };
+
+
+
+    return acciones[changeType] || 'Modificaciónn de Plantilla';
+
+
+
+  };
+
+
+
+
+
+
+
+  // Función helper para formatear cambio
+
+
+
+  const formatearCambio = (cambio: any): string => {
+
+
+
+    // Traducir nombres de campos técnicos al español
+
+
+
+    const traduccionCampos: Record<string, string> = {
+
+
+
+      'entity_logo_url': 'Logo institucional',
+
+
+
+      'firma_digital_url': 'Firma digital',
+
+
+
+      'nombre_completo': 'Nombre del firmante',
+
+
+
+      'typography_font': 'Fuente tipográfica',
+
+
+
+      'cargo_title': 'Título del cargo',
+
+
+
+      'certificate_content_html': 'Contenido del certificado',
+
+
+
+      'typographyFont': 'Fuente tipográfica',
+
+
+
+      'cargoTitle': 'Título del cargo',
+
+
+
+      'certificateContentHtml': 'Contenido del certificado',
+
+
+
+    };
+
+
+
+
+
+
+
+    const nombreCampo = traduccionCampos[cambio.fieldName] || cambio.fieldName.replace(/_/g, ' ');
+
+
+
+
+
+
+
+    // Formatear valores para mejor legibilidad
+
+
+
+    const valorAnterior = cambio.oldValue === 'Sin logo' ? 'Sin logo' :
+
+
+
+                         cambio.oldValue === 'Sin firma' ? 'Sin firma' :
+
+
+
+                         cambio.oldValue?.includes('/uploads/') ? 'Imagen anterior' :
+
+
+
+                         cambio.oldValue;
+
+
+
+
+
+
+
+    const valorNuevo = cambio.newValue?.includes('/uploads/') ? 'Nueva imagen cargada' : cambio.newValue;
+
+
+
+
+
+
+
+    return `${nombreCampo}: "${valorAnterior}" ? "${valorNuevo}"`;
+
+
+
+  };
+
+
+
+
+
+
+
+  // Evitar errores si plantilla aún no está cargada
+
+
+
+  if (isLoading || !plantilla || !borrador) {
+
+
+
+    return (
+
+
+
+      <div className="flex items-center justify-center min-h-screen">
+
+
+
+        <div className="text-center">
+
+
+
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#003DA5] mx-auto mb-4"></div>
+
+
+
+          <p className="text-gray-600">Cargando configuración...</p>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+    );
+
+
+
+  }
+
+
+
+
+
+
 
   // Handlers
+
+
+
   const handleFirmanteChange = (field: string, value: string) => {
+
+
+
     setBorrador({
+
+
+
       ...borrador,
+
+
+
       firmante: {
+
+
+
         ...borrador.firmante,
+
+
+
         [field]: value
+
+
+
       }
+
+
+
     });
+
+
+
     setHasChanges(true);
+
+
+
   };
+
+
+
+
+
+
 
   const handleTipografiaChange = (field: string, value: string | number) => {
+
+
+
     setBorrador({
+
+
+
       ...borrador,
+
+
+
       tipografia: {
+
+
+
         ...borrador.tipografia,
+
+
+
         [field]: value
+
+
+
       }
+
+
+
     });
+
+
+
     setHasChanges(true);
+
+
+
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+
+
+
+
+
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+
+
+
     const file = event.target.files?.[0];
-    if (file) {
-      // Validar tipo de archivo
-      if (!file.type.startsWith('image/')) {
-        toast.error('Archivo inválido', {
-          description: 'Por favor selecciona una imagen válida (PNG, JPG, etc.)'
-        });
-        return;
-      }
 
-      // Validar tamaño (máximo 2MB)
-      if (file.size > 2 * 1024 * 1024) {
-        toast.error('Archivo muy grande', {
-          description: 'La imagen no debe superar los 2MB'
-        });
-        return;
-      }
 
-      setSelectedFile(file);
-      setBorrador({
-        ...borrador,
-        grafoFirma: {
-          url: URL.createObjectURL(file),
-          nombre: file.name,
-          tamaño: `${(file.size / 1024).toFixed(0)} KB`
-        }
+
+    if (!file) return;
+
+
+
+
+
+
+
+    // Validar tipo de archivo
+
+
+
+    if (!file.type.startsWith('image/')) {
+
+
+
+      toast.error('Archivo inválido', {
+
+
+
+        description: 'Por favor selecciona una imagen válida (PNG, JPG, etc.)'
+
+
+
       });
-      setHasChanges(true);
-      
-      toast.success('Imagen cargada', {
-        description: 'La imagen de la firma se actualizó correctamente'
-      });
+
+
+
+      return;
+
+
+
     }
+
+
+
+
+
+
+
+    // Validar tamaño (máximo 2MB)
+
+
+
+    if (file.size > 2 * 1024 * 1024) {
+
+
+
+      toast.error('Archivo muy grande', {
+
+
+
+        description: 'La imagen no debe superar los 2MB'
+
+
+
+      });
+
+
+
+      return;
+
+
+
+    }
+
+
+
+
+
+
+
+    try {
+
+
+
+      toast.loading('Subiendo firma...', { id: 'upload-signature' });
+
+
+
+
+
+
+
+      // Subir archivo al servidor
+
+
+
+      await certificadosService.plantilla.subirFirma(file, 'Admin', templateType);
+
+
+
+
+
+
+
+      // Recargar TODA la configuración desde el servidor para obtener datos frescos
+
+
+
+      const config = await certificadosService.plantilla.obtenerConfiguracion(templateType);
+
+
+
+
+
+
+
+      const plantillaActualizada = mapConfigToPlantilla(config, true);
+
+
+
+
+
+
+
+      setBorrador(plantillaActualizada);
+
+
+
+      setPlantilla(plantillaActualizada);
+
+
+
+      setHasChanges(false);
+
+
+
+
+
+
+
+      // Recargar historial después de subir firma
+
+
+
+      await recargarHistorial();
+
+
+
+
+
+
+
+      toast.success('Firma actualizada', {
+
+
+
+        id: 'upload-signature',
+
+
+
+        description: 'La imagen de la firma se subió correctamente'
+
+
+
+      });
+
+
+
+    } catch (error) {
+
+
+
+      console.error('Error al subir firma:', error);
+
+
+
+      toast.error('Error al subir firma', {
+
+
+
+        id: 'upload-signature',
+
+
+
+        description: error instanceof Error ? error.message : 'No se pudo subir la imagen'
+
+
+
+      });
+
+
+
+    }
+
+
+
   };
 
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+
+
+
+
+
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+
+
+
     const file = event.target.files?.[0];
-    if (file) {
-      // Validar tipo de archivo
-      if (!file.type.startsWith('image/')) {
-        toast.error('Archivo inválido', {
-          description: 'Por favor selecciona una imagen válida (PNG, JPG, etc.)'
-        });
-        return;
-      }
 
-      // Validar tamaño (máximo 2MB)
-      if (file.size > 2 * 1024 * 1024) {
-        toast.error('Archivo muy grande', {
-          description: 'La imagen no debe superar los 2MB'
-        });
-        return;
-      }
 
-      setBorrador({
-        ...borrador,
-        logoEntidad: {
-          url: URL.createObjectURL(file),
-          nombre: file.name,
-          tamaño: `${(file.size / 1024).toFixed(0)} KB`
-        }
+
+    if (!file) return;
+
+
+
+
+
+
+
+    // Validar tipo de archivo
+
+
+
+    if (!file.type.startsWith('image/')) {
+
+
+
+      toast.error('Archivo inválido', {
+
+
+
+        description: 'Por favor selecciona una imagen válida (PNG, JPG, etc.)'
+
+
+
       });
-      setHasChanges(true);
-      
+
+
+
+      return;
+
+
+
+    }
+
+
+
+
+
+
+
+    // Validar tamaño (máximo 2MB)
+
+
+
+    if (file.size > 2 * 1024 * 1024) {
+
+
+
+      toast.error('Archivo muy grande', {
+
+
+
+        description: 'La imagen no debe superar los 2MB'
+
+
+
+      });
+
+
+
+      return;
+
+
+
+    }
+
+
+
+
+
+
+
+    try {
+
+
+
+      toast.loading('Subiendo logo...', { id: 'upload-logo' });
+
+
+
+
+
+
+
+      // Subir archivo al servidor
+
+
+
+      await certificadosService.plantilla.subirLogo(file, 'Admin', templateType);
+
+
+
+
+
+
+
+      // Recargar TODA la configuración desde el servidor para obtener datos frescos
+
+
+
+      const config = await certificadosService.plantilla.obtenerConfiguracion(templateType);
+
+
+
+
+
+
+
+      const plantillaActualizada = mapConfigToPlantilla(config, true);
+
+
+
+
+
+
+
+      setBorrador(plantillaActualizada);
+
+
+
+      setPlantilla(plantillaActualizada);
+
+
+
+      setHasChanges(false);
+
+
+
+
+
+
+
+      // Recargar historial después de subir logo
+
+
+
+      await recargarHistorial();
+
+
+
+
+
+
+
       toast.success('Logo actualizado', {
-        description: 'El logo de la entidad se actualizó correctamente'
+
+
+
+        id: 'upload-logo',
+
+
+
+        description: 'El logo de la entidad se subió correctamente'
+
+
+
       });
+
+
+
+    } catch (error) {
+
+
+
+      console.error('Error al subir logo:', error);
+
+
+
+      toast.error('Error al subir logo', {
+
+
+
+        id: 'upload-logo',
+
+
+
+        description: error instanceof Error ? error.message : 'No se pudo subir la imagen'
+
+
+
+      });
+
+
+
     }
+
+
+
   };
 
-  const handleGuardarBorrador = () => {
-    toast.loading('Guardando borrador...', { id: 'save-draft' });
-    
-    setTimeout(() => {
-      toast.success('Borrador guardado', {
-        id: 'save-draft',
-        description: 'Los cambios se guardaron correctamente'
+
+
+
+
+
+
+  const handleResetLogo = async () => {
+
+
+
+    if (!ensureEditable()) return;
+
+
+
+    try {
+
+
+
+      setIsResettingLogo(true);
+
+
+
+      toast.loading('Restableciendo logo...', { id: 'reset-logo' });
+
+
+
+      const config = await certificadosService.plantilla.resetLogo(publishingActor, templateType);
+
+
+
+      const plantillaActualizada = mapConfigToPlantilla(config, true);
+
+
+
+      setBorrador(plantillaActualizada);
+
+
+
+      setPlantilla(plantillaActualizada);
+
+
+
+      setHasChanges(false);
+
+
+
+      await recargarHistorial();
+
+
+
+      toast.success('Logo restablecido', {
+
+
+
+        id: 'reset-logo',
+
+
+
+        description: 'Se volvió al logo oficial de la ESAP'
+
+
+
       });
-    }, 1000);
+
+
+
+    } catch (error) {
+
+
+
+      console.error('Error al restablecer logo:', error);
+
+
+
+      toast.error('Error al restablecer logo', {
+
+
+
+        id: 'reset-logo',
+
+
+
+        description: error instanceof Error ? error.message : 'Intenta nuevamente'
+
+
+
+      });
+
+
+
+    } finally {
+
+
+
+      setIsResettingLogo(false);
+
+
+
+    }
+
+
+
   };
+
+
+
+
+
+
+
+  const handleResetFirma = async () => {
+
+
+
+    if (!ensureEditable()) return;
+
+
+
+    try {
+
+
+
+      setIsResettingFirma(true);
+
+
+
+      toast.loading('Quitando firma...', { id: 'reset-firma' });
+
+
+
+      const config = await certificadosService.plantilla.resetFirma(publishingActor, templateType);
+
+
+
+      const plantillaActualizada = mapConfigToPlantilla(config, true);
+
+
+
+      setBorrador(plantillaActualizada);
+
+
+
+      setPlantilla(plantillaActualizada);
+
+
+
+      setHasChanges(false);
+
+
+
+      await recargarHistorial();
+
+
+
+      toast.success('Firma eliminada', {
+
+
+
+        id: 'reset-firma',
+
+
+
+        description: 'La plantilla quedó sin firma cargada'
+
+
+
+      });
+
+
+
+    } catch (error) {
+
+
+
+      console.error('Error al quitar firma:', error);
+
+
+
+      toast.error('No se pudo quitar la firma', {
+
+
+
+        id: 'reset-firma',
+
+
+
+        description: error instanceof Error ? error.message : 'Intenta nuevamente'
+
+
+
+      });
+
+
+
+    } finally {
+
+
+
+      setIsResettingFirma(false);
+
+
+
+    }
+
+
+
+  };
+
+
+
+
+
+
+
+  // Función helper para recargar historial
+
+
+
+  const recargarHistorial = async () => {
+
+
+
+    try {
+
+
+
+      const historial = await certificadosService.plantilla.obtenerHistorialCambios(templateType);
+
+
+
+      const cambios: LogCambio[] = historial.map((cambio: any) => ({
+
+
+
+        id: cambio.id.toString(),
+
+
+
+        fecha: cambio.changedAt,
+
+
+
+        usuario: cambio.changedBy || 'Usuario',
+
+
+
+        accion: getAccionTexto(cambio.changeType),
+
+
+
+        cambios: [formatearCambio(cambio)],
+
+
+
+        versionAnterior: '1.0.0',
+
+
+
+        versionNueva: '1.0.0',
+
+
+
+        // Agregar datos raw para Visualizaciónn mejorada
+
+
+
+        changeType: cambio.changeType,
+
+
+
+        oldValue: cambio.oldValue,
+
+
+
+        newValue: cambio.newValue,
+
+
+
+        fieldName: cambio.fieldName,
+
+
+
+      }));
+
+
+
+      setLogCambios(cambios);
+
+
+
+    } catch (error) {
+
+
+
+      console.error('Error al recargar historial:', error);
+
+
+
+    }
+
+
+
+  };
+
+
+
+
+
+
+
+  const handleGuardarBorrador = async () => {
+
+
+
+    if (!ensureEditable()) return;
+
+
+
+    if (!borrador || !plantilla) return;
+
+
+
+    if (!hasChanges) {
+
+
+
+      toast.info('Sin cambios', {
+
+
+
+        description: 'No hay cambios pendientes para guardar'
+
+
+
+      });
+
+
+
+      return;
+
+
+
+    }
+
+
+
+
+
+
+
+    try {
+
+
+
+      setIsSaving(true);
+
+
+
+      toast.loading('Guardando cambios...', { id: 'save-draft' });
+
+
+
+
+
+
+
+      let cambiosGuardados = [];
+
+
+
+
+
+
+
+      // Guardar el nombre del firmante si cambió
+
+
+
+      if (borrador.firmante.nombre !== plantilla.firmante.nombre) {
+
+
+
+        await certificadosService.plantilla.actualizarNombreFirmante(
+          borrador.firmante.nombre,
+          publishingActor,
+          templateType
+        );
+
+
+
+        cambiosGuardados.push('nombre del firmante');
+
+
+
+      }
+
+
+
+
+
+
+
+      // Guardar tipografía, título del cargo y contenido HTML si cambiaron
+
+
+
+      const contentChanges: any = {};
+
+
+
+      let hasContentChanges = false;
+
+
+
+
+
+
+
+      if (borrador.tipografia.fuente !== plantilla.tipografia.fuente) {
+
+
+
+        contentChanges.typographyFont = borrador.tipografia.fuente;
+
+
+
+        cambiosGuardados.push('tipografía');
+
+
+
+        hasContentChanges = true;
+
+
+
+      }
+
+
+
+
+
+
+
+      if (borrador.tituloCargo.texto !== plantilla.tituloCargo.texto) {
+
+
+
+        contentChanges.cargoTitle = borrador.tituloCargo.texto;
+
+
+
+        cambiosGuardados.push('título del cargo');
+
+
+
+        hasContentChanges = true;
+
+
+
+      }
+
+
+
+
+
+
+
+      if (borrador.contenidoCertificado.texto !== plantilla.contenidoCertificado.texto) {
+
+
+
+        contentChanges.certificateContentHtml = borrador.contenidoCertificado.texto;
+
+
+
+        cambiosGuardados.push('contenido del certificado');
+
+
+
+        hasContentChanges = true;
+
+
+
+      }
+
+
+
+
+
+
+
+      if (hasContentChanges) {
+
+
+
+        contentChanges.updatedBy = publishingActor;
+
+
+
+        await certificadosService.plantilla.actualizarContenidoPlantilla(contentChanges, templateType);
+
+
+
+      }
+
+
+
+
+
+
+
+      setPlantilla(borrador);
+
+
+
+      setHasChanges(false);
+
+
+
+
+
+
+
+      // Recargar historial después de guardar
+
+
+
+      await recargarHistorial();
+
+
+
+
+
+
+
+      toast.success('Cambios guardados', {
+
+
+
+        id: 'save-draft',
+
+
+
+        description: `Se guardaron los cambios: ${cambiosGuardados.join(', ')}`,
+
+
+
+        duration: 5000
+
+
+
+      });
+
+
+
+    } catch (error) {
+
+
+
+      console.error('Error al guardar:', error);
+
+
+
+      toast.error('Error al guardar', {
+
+
+
+        id: 'save-draft',
+
+
+
+        description: error instanceof Error ? error.message : 'No se pudo guardar los cambios'
+
+
+
+      });
+
+
+
+    } finally {
+
+
+
+      setIsSaving(false);
+
+
+
+    }
+
+
+
+  };
+
+
+
+
+
+
 
   const handleVistaPrevia = () => {
+
+
+
     if (hasChanges) {
+
+
+
       toast.info('Vista previa', {
+
+
+
         description: 'Mostrando cómo se verá el certificado con los cambios'
+
+
+
       });
+
+
+
     }
+
+
+
     setIsPreviewOpen(true);
+
+
+
   };
 
-  const handleSolicitarAutorizacion = () => {
-    if (!hasChanges) {
-      toast.warning('Sin cambios', {
-        description: 'No hay cambios pendientes para autorizar'
-      });
-      return;
-    }
-    setIsAutorizacionOpen(true);
-  };
 
-  const handleAutorizar = () => {
-    toast.loading('Publicando plantilla...', { id: 'publish' });
-    
-    setTimeout(() => {
+
+
+
+
+
+  const handleAutorizarPlantilla = async () => {
+
+
+
+    if (!ensureEditable()) return;
+
+
+
+    if (!borrador || !plantilla) return;
+
+
+
+
+
+
+
+    try {
+
+
+
+      setIsPublishing(true);
+
+
+
+      toast.loading('Autorizando plantilla...', { id: 'publish-template' });
+
+
+
+
+
+
+
+      if (borrador.firmante.nombre !== plantilla.firmante.nombre) {
+
+
+
+        await certificadosService.plantilla.actualizarNombreFirmante(
+
+
+
+          borrador.firmante.nombre,
+
+
+
+          publishingActor,
+
+
+
+          templateType
+
+
+
+        );
+
+
+
+      }
+
+
+
+
+
+
+
+      const contentChanges: any = {
+
+
+
+        typographyFont: borrador.tipografia.fuente,
+
+
+
+        cargoTitle: borrador.tituloCargo.texto,
+
+
+
+        certificateContentHtml: borrador.contenidoCertificado.texto,
+
+
+
+        updatedBy: publishingActor,
+
+
+
+        status: 'published'
+
+
+
+      };
+
+
+
+
+
+
+
+      await certificadosService.plantilla.actualizarContenidoPlantilla(contentChanges, templateType);
+
+
+
+
+
+
+
+      const nuevaVersion = incrementVersion(borrador.version);
+
+
+
+      const publishedAt = new Date().toISOString();
+
+
+
       setPlantilla({
+
+
+
         ...borrador,
-        version: incrementVersion(borrador.version),
+
+
+
+        version: nuevaVersion,
+
+
+
         estado: 'publicada',
-        fechaModificacion: new Date().toISOString(),
-        modificadoPor: 'Admin Sistema'
+
+
+
+        fechaModificaciónn: publishedAt,
+
+
+
+        modificadoPor: publishingActor
+
+
+
       });
+
+
+
       setHasChanges(false);
-      setIsAutorizacionOpen(false);
-      
-      toast.success('¡Plantilla publicada!', {
-        id: 'publish',
-        description: 'La nueva plantilla está activa y se aplicará a todos los certificados futuros'
+
+
+
+
+
+
+
+      localStorage.setItem('cert-template-last-published', publishedAt);
+
+
+
+
+
+
+
+      await recargarHistorial();
+
+
+
+
+
+
+
+      toast.success('Plantilla autorizada', {
+
+
+
+        id: 'publish-template',
+
+
+
+        description: 'La plantilla se activó para todos los certificados.'
+
+
+
       });
-    }, 2000);
+
+
+
+    } catch (error) {
+
+
+
+      console.error('Error al autorizar plantilla:', error);
+
+
+
+      toast.error('No se pudo autorizar la plantilla', {
+
+
+
+        id: 'publish-template',
+
+
+
+        description: error instanceof Error ? error.message : 'Intenta nuevamente'
+
+
+
+      });
+
+
+
+    } finally {
+
+
+
+      setIsPublishing(false);
+
+
+
+    }
+
+
+
   };
+
+
+
+
+
+
 
   const handleDescartarCambios = () => {
+
+
+
+    if (!ensureEditable()) return;
+
+
+
     setBorrador({...plantilla});
+
+
+
     setHasChanges(false);
+
+
+
     setSelectedFile(null);
+
+
+
     toast.info('Cambios descartados', {
+
+
+
       description: 'Se restauró la plantilla publicada'
+
+
+
     });
+
+
+
   };
+
+
+
+
+
+
 
   const handleAbrirRestaurar = (log: LogCambio) => {
+
+
+
     if (!log.plantillaSnapshot) {
+
+
+
       toast.error('Error', {
+
+
+
         description: 'Esta versión no tiene datos disponibles para restaurar'
+
+
+
       });
+
+
+
       return;
+
+
+
     }
+
+
+
     setVersionARestaurar(log);
+
+
+
     setIsRestaurarOpen(true);
+
+
+
   };
+
+
+
+
+
+
 
   const handleRestaurarVersion = () => {
+
+
+
     if (!versionARestaurar?.plantillaSnapshot) return;
 
+
+
+
+
+
+
     toast.loading('Restaurando versión...', { id: 'restaurar' });
+
+
+
     
+
+
+
     setTimeout(() => {
+
+
+
       // Crear un nuevo log de cambio para registrar la restauración
+
+
+
       const nuevoLog: LogCambio = {
+
+
+
         id: `LOG-${Date.now()}`,
+
+
+
         fecha: new Date().toISOString(),
+
+
+
         usuario: 'Admin Sistema',
+
+
+
         accion: `Restauración a versión ${versionARestaurar.versionNueva}`,
+
+
+
         cambios: [
+
+
+
           `Versión restaurada: ${versionARestaurar.versionNueva}`,
+
+
+
           `Fecha de la versión: ${new Date(versionARestaurar.fecha).toLocaleDateString('es-CO')}`,
+
+
+
           `Firmante restaurado: ${versionARestaurar.plantillaSnapshot.firmante.nombre}`,
+
+
+
           `Tipografía: ${versionARestaurar.plantillaSnapshot.tipografia.fuente} ${versionARestaurar.plantillaSnapshot.tipografia.tamaño}pt`
+
+
+
         ],
+
+
+
         versionAnterior: plantilla.version,
+
+
+
         versionNueva: incrementVersion(plantilla.version),
+
+
+
         plantillaSnapshot: {
+
+
+
           ...versionARestaurar.plantillaSnapshot,
+
+
+
           version: incrementVersion(plantilla.version),
-          fechaModificacion: new Date().toISOString(),
+
+
+
+          fechaModificaciónn: new Date().toISOString(),
+
+
+
           modificadoPor: 'Admin Sistema'
+
+
+
         }
+
+
+
       };
+
+
+
+
+
+
 
       // Actualizar log de cambios (mantener solo últimas 5)
+
+
+
       setLogCambios([nuevoLog, ...logCambios.slice(0, 4)]);
 
+
+
+
+
+
+
       // Actualizar plantilla y borrador
+
+
+
       const plantillaRestaurada = {
+
+
+
         ...versionARestaurar.plantillaSnapshot,
+
+
+
         version: incrementVersion(plantilla.version),
-        fechaModificacion: new Date().toISOString(),
+
+
+
+        fechaModificaciónn: new Date().toISOString(),
+
+
+
         modificadoPor: 'Admin Sistema'
+
+
+
       };
 
+
+
+
+
+
+
       setPlantilla(plantillaRestaurada);
+
+
+
       setBorrador(plantillaRestaurada);
+
+
+
       setHasChanges(false);
+
+
+
       setIsRestaurarOpen(false);
+
+
+
       setVersionARestaurar(null);
+
+
+
       
+
+
+
       toast.success('¡Versión restaurada!', {
+
+
+
         id: 'restaurar',
+
+
+
         description: `La plantilla ahora usa la configuración de la versión ${versionARestaurar.versionNueva}`
+
+
+
       });
+
+
+
     }, 2000);
+
+
+
   };
+
+
+
+
+
+
 
   const incrementVersion = (version: string): string => {
+
+
+
     const parts = version.split('.');
+
+
+
     parts[2] = String(Number(parts[2]) + 1);
+
+
+
     return parts.join('.');
+
+
+
   };
+
+
+
+
+
+
 
   const getEstadoBadge = (estado: string) => {
+
+
+
     const estilos = {
+
+
+
       borrador: { bg: 'bg-gray-100', text: 'text-gray-800', icon: Edit3, label: 'Borrador' },
+
+
+
       en_revision: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: Clock, label: 'En Revisión' },
+
+
+
       publicada: { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircle, label: 'Publicada' },
+
+
+
       archivada: { bg: 'bg-red-100', text: 'text-red-800', icon: X, label: 'Archivada' }
+
+
+
     };
+
+
+
     const estilo = estilos[estado as keyof typeof estilos] || estilos.borrador;
+
+
+
     const Icon = estilo.icon;
+
+
+
     return (
+
+
+
       <Badge className={`${estilo.bg} ${estilo.text} border-0 px-3 py-1 flex items-center gap-1.5 w-fit`}>
+
+
+
         <Icon className="w-4 h-4" />
+
+
+
         {estilo.label}
+
+
+
       </Badge>
+
+
+
     );
+
+
+
   };
 
+
+
+
+
+
+
   return (
+
+
+
     <div className="space-y-6">
+
+
+
+      <style>{`.variable-token{font-weight:inherit;}`}</style>
+
+
+
       {/* Header */}
+
+
+
       <motion.div
+
+
+
         initial={{ opacity: 0, y: -10 }}
+
+
+
         animate={{ opacity: 1, y: 0 }}
+
+
+
         transition={{ duration: 0.3 }}
+
+
+
       >
+
+
+
         <div className="flex items-center justify-between">
+
+
+
           <div>
+
+
+
             <div className="flex items-center gap-3 mb-2">
+
+
+
               <div 
+
+
+
                 className="w-12 h-12 rounded-xl flex items-center justify-center"
+
+
+
                 style={{
+
+
+
                   background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
+
+
+
                   boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
+
+
+
                 }}
+
+
+
               >
+
+
+
                 <FileText className="w-6 h-6 text-white" strokeWidth={2.5} />
+
+
+
               </div>
+
+
+
               <div>
+
+
+
                 <h1 
+
+
+
                   className="font-bold tracking-tight"
+
+
+
                   style={{
+
+
+
                     fontSize: '32px',
+
+
+
                     lineHeight: '40px',
+
+
+
                     letterSpacing: '-0.25px',
+
+
+
                     color: '#1F2937'
+
+
+
                   }}
+
+
+
                 >
+
+
+
                   Configuración de Plantilla
+
+
+
                 </h1>
+
+
+
               </div>
+
+
+
             </div>
-            <p 
+
+
+
+            <p
+
+
+
               className="font-normal"
+
+
+
               style={{
+
+
+
                 fontSize: '14px',
+
+
+
                 lineHeight: '20px',
+
+
+
                 color: '#6B7280'
+
+
+
               }}
+
+
+
             >
-              Gestiona la plantilla base de certificados laborales. Los cambios se aplican a todos los certificados futuros.
+
+
+
+              Configura los elementos visuales de los certificados laborales: firma del responsable y logo institucional.
+
+
+
             </p>
+
+
+
           </div>
+
+
+
+
+
+
 
           <div className="flex items-center gap-3">
+
+
+
             {getEstadoBadge(plantilla.estado)}
+
+
+
             <Badge variant="outline" className="px-3 py-1 text-sm">
+
+
+
               Versión {plantilla.version}
+
+
+
             </Badge>
+
+
+
           </div>
+
+
+
         </div>
+
+
+
       </motion.div>
 
+
+
+
+
+
+
       {/* Banner de Advertencia si hay cambios sin guardar */}
+
+
+
       {hasChanges && (
+
+
+
         <motion.div
+
+
+
           initial={{ opacity: 0, y: -10 }}
+
+
+
           animate={{ opacity: 1, y: 0 }}
+
+
+
           className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4"
+
+
+
         >
+
+
+
           <div className="flex items-start gap-3">
+
+
+
             <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+
+
+
             <div className="flex-1">
+
+
+
               <h3 className="font-semibold text-yellow-900 mb-1">
+
+
+
                 Cambios sin guardar
+
+
+
               </h3>
+
+
+
               <p className="text-sm text-yellow-800">
+
+
+
                 Has realizado cambios en la plantilla. Recuerda guardarlos y solicitar autorización antes de cerrar.
+
+
+
               </p>
+
+
+
             </div>
+
+
+
             <Button
+
+
+
               variant="ghost"
+
+
+
               size="sm"
+
+
+
               onClick={handleDescartarCambios}
+
+
+
               className="text-yellow-700 hover:text-yellow-900"
+
+
+
             >
+
+
+
               Descartar
+
+
+
             </Button>
+
+
+
           </div>
+
+
+
         </motion.div>
+
+
+
       )}
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
-          <TabsTrigger value="configuracion" className="gap-2">
-            <Edit3 className="w-4 h-4" />
-            Configuración
-          </TabsTrigger>
-          <TabsTrigger value="preview" className="gap-2">
-            <Eye className="w-4 h-4" />
-            Vista Previa
-          </TabsTrigger>
-          <TabsTrigger value="historial" className="gap-2">
-            <History className="w-4 h-4" />
-            Historial
-          </TabsTrigger>
-        </TabsList>
 
-        {/* Tab: Configuración */}
-        <TabsContent value="configuracion" className="space-y-6 mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Datos del Firmante */}
-            <Card className="p-6">
-              <h3 className="flex items-center gap-2 mb-5 text-lg font-semibold text-gray-900">
-                <User className="w-5 h-5 text-[#003DA5]" />
-                Datos del Firmante
-              </h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="firmante-nombre">Nombre Completo *</Label>
-                  <Input
-                    id="firmante-nombre"
-                    value={borrador.firmante.nombre}
-                    onChange={(e) => handleFirmanteChange('nombre', e.target.value)}
-                    placeholder="Ej: Dra. María Elena Bernal Torres"
-                    className="mt-2"
-                  />
-                </div>
 
-                <div>
-                  <Label htmlFor="firmante-documento">Número de Documento *</Label>
-                  <Input
-                    id="firmante-documento"
-                    value={borrador.firmante.documento}
-                    onChange={(e) => handleFirmanteChange('documento', e.target.value)}
-                    placeholder="Ej: 52.789.456"
-                    className="mt-2"
-                  />
-                </div>
 
-                <div>
-                  <Label htmlFor="firmante-cargo">Cargo *</Label>
-                  <Input
-                    id="firmante-cargo"
-                    value={borrador.firmante.cargo}
-                    onChange={(e) => handleFirmanteChange('cargo', e.target.value)}
-                    placeholder="Ej: Directora de Talento Humano"
-                    className="mt-2"
-                  />
-                </div>
-              </div>
 
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-800 flex items-start gap-2">
-                  <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>
-                    Este firmante aparecerá en todos los certificados laborales generados después de publicar esta plantilla.
-                  </span>
-                </p>
-              </div>
-            </Card>
 
-            {/* Grafo de Firma */}
-            <Card className="p-6">
-              <h3 className="flex items-center gap-2 mb-5 text-lg font-semibold text-gray-900">
-                <PenTool className="w-5 h-5 text-[#003DA5]" />
-                Grafo / Imagen de Firma
-              </h3>
 
-              <div className="space-y-4">
-                {/* Vista previa de la firma actual */}
-                {borrador.grafoFirma && (
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
-                    <div className="flex items-center justify-center mb-3">
-                      <img
-                        src={borrador.grafoFirma.url}
-                        alt="Firma actual"
-                        className="max-h-32 object-contain"
-                      />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-gray-700 font-medium">
-                        {borrador.grafoFirma.nombre}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {borrador.grafoFirma.tamaño}
-                      </p>
-                    </div>
-                  </div>
-                )}
+      {/* Tabs de Navegación */}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <p className="text-sm text-gray-600">Tipo de plantilla:</p>
+        <div className="flex gap-2">
+          <Button
+            variant={templateType === 'docente' ? 'default' : 'outline'}
+            className={templateType === 'docente' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+            onClick={() => setTemplateType('docente')}
+          >
+            Docente
+          </Button>
+          <Button
+            variant={templateType === 'administrador' ? 'default' : 'outline'}
+            className={templateType === 'administrador' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+            onClick={() => setTemplateType('administrador')}
+          >
+            Administrador
+          </Button>
+        </div>
+      </div>
 
-                {/* Botón de carga */}
-                <div>
-                  <Label htmlFor="firma-upload" className="mb-2 block">
-                    Cargar nueva firma
-                  </Label>
-                  <input
-                    id="firma-upload"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="firma-upload"
-                    className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-[#003DA5] hover:bg-blue-50 transition-all cursor-pointer"
-                  >
-                    <Upload className="w-5 h-5 text-gray-600" />
-                    <span className="text-sm text-gray-700">
-                      Seleccionar imagen
-                    </span>
-                  </label>
-                </div>
 
-                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <p className="text-xs text-gray-600">
-                    <strong>Requisitos:</strong>
-                  </p>
-                  <ul className="text-xs text-gray-600 mt-2 space-y-1">
-                    <li>• Formato: PNG, JPG o JPEG</li>
-                    <li>• Tamaño máximo: 2 MB</li>
-                    <li>• Fondo transparente recomendado</li>
-                    <li>• Resolución mínima: 300 DPI</li>
-                  </ul>
-                </div>
-              </div>
-            </Card>
-          </div>
 
-          {/* Logo de la Entidad */}
-          <Card className="p-6">
-            <h3 className="flex items-center gap-2 mb-5 text-lg font-semibold text-gray-900">
-              <ImageIcon className="w-5 h-5 text-[#003DA5]" />
-              Logo de la Entidad (ESAP)
-            </h3>
+      <Tabs defaultValue={canEdit ? "Modificaciónn" : "historial"} className="mt-6">
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Vista previa del logo actual */}
-              <div className="space-y-3">
-                <Label className="block">Logo actual</Label>
-                {borrador.logoEntidad ? (
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
-                    <div className="flex items-center justify-center mb-3">
-                      <img
-                        src={borrador.logoEntidad.url}
-                        alt="Logo ESAP actual"
-                        className="max-h-32 object-contain"
-                      />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-gray-700 font-medium">
-                        {borrador.logoEntidad.nombre}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {borrador.logoEntidad.tamaño}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
-                    <div className="flex items-center justify-center h-32">
-                      <p className="text-sm text-gray-500 text-center">
-                        No hay logo configurado
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
 
-              {/* Cargar nuevo logo */}
-              <div className="space-y-3">
-                <Label htmlFor="logo-upload" className="block">
-                  Cargar nuevo logo
-                </Label>
-                <input
-                  id="logo-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleLogoUpload}
-                  className="hidden"
-                />
-                <label
-                  htmlFor="logo-upload"
-                  className="flex items-center justify-center px-4 py-12 border-2 border-dashed border-gray-300 rounded-lg hover:border-[#003DA5] hover:bg-blue-50 transition-all cursor-pointer block"
-                >
-                  <div className="text-center">
-                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-3" />
-                    <p className="text-sm font-medium text-gray-700 mb-1">
-                      Seleccionar imagen
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Arrastra o haz clic para cargar
-                    </p>
-                  </div>
-                </label>
 
-                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <p className="text-xs text-gray-600 font-semibold mb-2">
-                    Requisitos del logo:
-                  </p>
-                  <ul className="text-xs text-gray-600 space-y-1">
-                    <li>• Formato: PNG, JPG o JPEG</li>
-                    <li>• Tamaño máximo: 2 MB</li>
-                    <li>• Fondo transparente recomendado</li>
-                    <li>• Resolución mínima: 300 DPI</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
+        <TabsList className={`grid w-full ${canEdit ? 'grid-cols-3' : 'grid-cols-1'}`}>
 
-            <div className="mt-6 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <p className="text-sm text-blue-800 flex items-start gap-2">
-                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>
-                  Este logo aparecerá en el encabezado de todos los certificados laborales. 
-                  Se recomienda usar el logo oficial de la ESAP con fondo transparente para mejor presentación.
-                </span>
-              </p>
-            </div>
-          </Card>
 
-          {/* Tipografía y Color */}
-          <Card className="p-6">
-            <h3 className="flex items-center gap-2 mb-5 text-lg font-semibold text-gray-900">
-              <Type className="w-5 h-5 text-[#003DA5]" />
-              Tipografía y Color
-            </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Fuente */}
-              <div>
-                <Label htmlFor="fuente">Fuente del documento *</Label>
-                <Select
-                  value={borrador.tipografia.fuente}
-                  onValueChange={(value) => handleTipografiaChange('fuente', value)}
-                >
-                  <SelectTrigger id="fuente" className="mt-2">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fuentesDisponibles.map((fuente) => (
-                      <SelectItem key={fuente.value} value={fuente.value}>
-                        <span style={{ fontFamily: fuente.value }}>
-                          {fuente.label}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+          {canEdit && (
 
-              {/* Tamaño */}
-              <div>
-                <Label htmlFor="tamano">Tamaño (pt) *</Label>
-                <Input
-                  id="tamano"
-                  type="number"
-                  min="8"
-                  max="16"
-                  value={borrador.tipografia.tamaño}
-                  onChange={(e) => handleTipografiaChange('tamaño', Number(e.target.value))}
-                  className="mt-2"
-                />
-              </div>
 
-              {/* Color */}
-              <div>
-                <Label htmlFor="color">Color del texto *</Label>
-                <div className="flex gap-2 mt-2">
-                  <Input
-                    id="color"
-                    type="color"
-                    value={borrador.tipografia.color}
-                    onChange={(e) => handleTipografiaChange('color', e.target.value)}
-                    className="w-16 h-11 p-1 cursor-pointer"
-                  />
-                  <Input
-                    type="text"
-                    value={borrador.tipografia.color}
-                    onChange={(e) => handleTipografiaChange('color', e.target.value)}
-                    placeholder="#000000"
-                    className="flex-1"
-                  />
-                </div>
-              </div>
-            </div>
 
-            {/* Ejemplo de texto */}
-            <div className="mt-6 p-6 bg-gray-50 border-2 border-gray-200 rounded-lg">
-              <p className="text-sm text-gray-600 mb-3 font-semibold">
-                Vista previa del texto:
-              </p>
-              <p
-                style={{
-                  fontFamily: borrador.tipografia.fuente,
-                  fontSize: `${borrador.tipografia.tamaño}pt`,
-                  color: borrador.tipografia.color,
-                  lineHeight: '1.6'
-                }}
-              >
-                LA ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP certifica que{' '}
-                <strong>MARÍA FERNANDA RODRÍGUEZ LÓPEZ</strong>, identificada con cédula de
-                ciudadanía No. <strong>52.345.678</strong>, labora en esta institución desde el{' '}
-                <strong>15 de marzo de 2018</strong> en el cargo de{' '}
-                <strong>Docente Tiempo Completo</strong> con grado de{' '}
-                <strong>Maestría en Educación</strong>, adscrita a la{' '}
-                <strong>Dirección Territorial Bogotá</strong>.
-              </p>
-            </div>
-          </Card>
+            <TabsTrigger value="Modificaciónn" className="flex items-center gap-2">
 
-          {/* Botones de Acción */}
-          <div className="flex items-center justify-between gap-4 pt-4">
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={handleDescartarCambios}
-                disabled={!hasChanges}
-              >
-                <X className="w-4 h-4 mr-2" />
-                Descartar Cambios
-              </Button>
-            </div>
 
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={handleGuardarBorrador}
-                disabled={!hasChanges}
-              >
-                <Save className="w-4 h-4 mr-2" />
-                Guardar Borrador
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleVistaPrevia}
-                className="border-[#003DA5] text-[#003DA5] hover:bg-blue-50"
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                Vista Previa
-              </Button>
-              <Button
-                onClick={handleSolicitarAutorizacion}
-                disabled={!hasChanges}
-                className="bg-[#003DA5] hover:bg-[#002873]"
-              >
-                <CheckSquare className="w-4 h-4 mr-2" />
-                Solicitar Autorización
-              </Button>
-            </div>
-          </div>
-        </TabsContent>
 
-        {/* Tab: Vista Previa - DISEÑO UNIFICADO MODERNO */}
-        <TabsContent value="preview" className="mt-6">
-          <Card className="p-8">
-            <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Vista Previa del Certificado
-              </h3>
-              <Badge variant="outline" className="text-sm">
-                Ejemplo con datos reales
-              </Badge>
-            </div>
+              <Edit3 className="w-4 h-4" /> Modificaciónn
 
-            {/* Certificado Preview - DISEÑO UNIFICADO MODERNO */}
-            <div 
-              className="bg-white shadow-2xl max-w-[800px] mx-auto p-12 relative overflow-hidden border-4 border-gray-200"
-              style={{ minHeight: '1100px' }}
-            >
-              {/* Marca de Agua */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-5">
-                <div className="text-9xl font-bold text-gray-400 rotate-[-45deg] select-none">
-                  ESAP
-                </div>
-              </div>
 
-              {/* Header Institucional */}
-              <div className="border-b-4 border-[#003DA5] pb-6 mb-8 relative z-10">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    {/* Logo de la entidad si existe */}
-                    {borrador.logoEntidad && (
-                      <div className="mb-4">
-                        <img
-                          src={borrador.logoEntidad.url}
-                          alt="Logo ESAP"
-                          className="h-12 object-contain"
-                        />
-                      </div>
-                    )}
-                    <h1 
-                      className="font-bold text-[#003DA5] mb-2"
-                      style={{ fontSize: `${borrador.tipografia.tamaño + 10}pt` }}
-                    >
-                      ESCUELA SUPERIOR DE<br />ADMINISTRACIÓN PÚBLICA
-                    </h1>
-                    <p className="text-sm text-gray-600 mb-1">ESAP</p>
-                    <p className="text-sm text-gray-600">NIT: 899.999.090-1</p>
-                    <p className="text-sm text-gray-600">Calle 44 No. 53-37 • Bogotá D.C., Colombia</p>
-                    <p className="text-sm text-gray-600">www.esap.edu.co</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="bg-[#003DA5] text-white px-4 py-2 rounded-lg inline-block">
-                      <p className="text-xs mb-1">Consecutivo</p>
-                      <p className="text-lg font-bold font-mono">ESAP-CERT-2025-51NXK</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* Título del Documento */}
-              <div className="text-center mb-8 relative z-10">
-                <h2 
-                  className="font-bold mb-2"
-                  style={{ 
-                    fontSize: `${borrador.tipografia.tamaño + 14}pt`,
-                    color: borrador.tipografia.color
-                  }}
-                >
-                  CERTIFICACIÓN LABORAL
-                </h2>
-                <div className="flex items-center justify-center gap-2 text-green-600">
-                  <CheckCircle className="w-5 h-5" />
-                  <span className="text-sm font-semibold">DOCUMENTO VÁLIDO Y VERIFICABLE</span>
-                </div>
-              </div>
+            </TabsTrigger>
 
-              {/* Contenido Principal */}
-              <div 
-                className="space-y-6 relative z-10"
-                style={{ 
-                  fontFamily: borrador.tipografia.fuente,
-                  fontSize: `${borrador.tipografia.tamaño}pt`,
-                  color: borrador.tipografia.color,
-                  lineHeight: '1.8'
-                }}
-              >
-                <p className="text-justify">
-                  La Dirección de Talento Humano de la <strong>Escuela Superior de Administración Pública - ESAP</strong>, certifica que:
-                </p>
 
-                {/* Datos del Empleado - TABLA MODERNA */}
-                <div className="bg-blue-50 border-l-4 border-[#003DA5] p-6 my-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Nombre Completo</p>
-                      <p className="font-bold text-lg text-gray-900">MARÍA FERNANDA RODRÍGUEZ LÓPEZ</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Documento de Identidad</p>
-                      <p className="font-bold text-lg text-gray-900">C.C. 52.345.678</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Cargo</p>
-                      <p className="font-semibold text-gray-900">Docente Tiempo Completo</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Tipo de Vinculación</p>
-                      <p className="font-semibold text-gray-900">Planta Permanente</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Dependencia</p>
-                      <p className="font-semibold text-gray-900">Dirección Territorial Bogotá</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Grado</p>
-                      <p className="font-semibold text-gray-900">Maestría en Educación</p>
-                    </div>
-                  </div>
-                </div>
 
-                <p className="text-justify">
-                  Labora con nosotros desde el <strong>15 de marzo de 2018</strong>, completando a la fecha{' '}
-                  <strong>6 años y 10 meses</strong> de servicio ininterrumpido.
-                </p>
-
-                <p className="text-justify">
-                  Durante su vinculación, María ha desempeñado sus funciones con responsabilidad, compromiso y profesionalismo, 
-                  contribuyendo significativamente al cumplimiento de la misión institucional de la ESAP.
-                </p>
-
-                <p className="text-justify">
-                  La presente certificación se expide a solicitud de la interesada el día{' '}
-                  <strong>
-                    {new Date().toLocaleDateString('es-CO', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric'
-                    })}
-                  </strong>, para los fines que la interesada estime conveniente.
-                </p>
-
-                {/* Validez */}
-                <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 my-6">
-                  <div className="flex items-start gap-3">
-                    <Calendar className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-1" />
-                    <div>
-                      <p className="font-semibold text-gray-900 text-sm mb-1">Validez del Documento</p>
-                      <p className="text-sm text-gray-700">
-                        Este certificado tiene una validez de <strong>3 meses</strong> a partir de su fecha de expedición. 
-                        Pasado este tiempo, deberá solicitarse uno nuevo.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Firma Digital */}
-              <div className="mt-12 pt-8 border-t-2 border-gray-300 relative z-10">
-                <div className="text-center">
-                  <div className="inline-block">
-                    {/* Imagen de firma si existe */}
-                    {borrador.grafoFirma && (
-                      <div className="mb-4">
-                        <div className="h-16 flex items-center justify-center">
-                          <img 
-                            src={borrador.grafoFirma.url}
-                            alt="Firma"
-                            className="max-h-16 object-contain"
-                          />
-                        </div>
-                      </div>
-                    )}
-                    <div className="border-t-2 border-gray-800 pt-2 px-8">
-                      <p className="font-bold text-gray-900">{borrador.firmante.nombre}</p>
-                      <p className="text-sm text-gray-600">{borrador.firmante.cargo}</p>
-                      <p className="text-xs text-gray-500 mt-1">C.C. {borrador.firmante.documento}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Pie de Página con QR */}
-              <div className="mt-12 pt-6 border-t border-gray-300 relative z-10">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-start gap-2 mb-3">
-                      <Shield className="w-4 h-4 text-[#003DA5] flex-shrink-0 mt-1" />
-                      <div>
-                        <p className="text-xs font-semibold text-gray-900 mb-1">Verificación de Autenticidad</p>
-                        <p className="text-xs text-gray-600 leading-relaxed">
-                          Este certificado puede ser verificado escaneando el código QR o ingresando 
-                          el consecutivo en: <span className="text-[#003DA5] font-semibold">www.esap.edu.co/verificar-certificado</span>
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-500 space-y-1">
-                      <p><strong>Documento electrónico:</strong> Generado automáticamente</p>
-                      <p><strong>Fecha de expedición:</strong> {new Date().toLocaleString('es-CO')}</p>
-                      <p><strong>Código de verificación:</strong> <span className="font-mono">ESAP-CERT-2025-51NXK</span></p>
-                    </div>
-                  </div>
-                  <div className="ml-6 text-center">
-                    <div className="bg-white border-2 border-gray-300 p-3 rounded-lg">
-                      <QrCode className="w-24 h-24 text-gray-400 mx-auto" />
-                      <p className="text-xs text-gray-600 mt-2 font-mono">51NXK</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer Legal */}
-              <div className="mt-6 pt-4 border-t border-gray-200 relative z-10">
-                <p className="text-xs text-gray-500 text-center">
-                  Documento generado electrónicamente por el Sistema de Gestión de Certificados Laborales - ESAP
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-center gap-3">
-              <Button variant="outline" onClick={() => toast.info('Descargando PDF de ejemplo')}>
-                <Download className="w-4 h-4 mr-2" />
-                Descargar Ejemplo
-              </Button>
-            </div>
-          </Card>
-        </TabsContent>
-
-        {/* Tab: Historial - CON RESTAURACIÓN DE VERSIONES */}
-        <TabsContent value="historial" className="space-y-4 mt-6">
-          <Card className="p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <History className="w-5 h-5 text-[#003DA5]" />
-                  Historial de Cambios de Plantilla
-                </h3>
-                <p className="text-sm text-gray-600 mt-2">
-                  Registro completo de todas las modificaciones. Puedes restaurar cualquiera de las últimas 5 versiones.
-                </p>
-              </div>
-              <Badge variant="outline" className="text-sm">
-                {logCambios.length} versiones guardadas
-              </Badge>
-            </div>
-
-            {/* Info de restauración */}
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start gap-3">
-                <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-blue-800">
-                  <p className="font-semibold mb-1">Sistema de Restauración Activo</p>
-                  <p>
-                    Mantenemos las <strong>últimas 5 versiones</strong> de la plantilla para que puedas 
-                    restaurar configuraciones anteriores en cualquier momento. Cada restauración crea un nuevo 
-                    registro en el historial.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {logCambios.map((log, index) => (
-                <div key={log.id} className="relative">
-                  {index !== logCambios.length - 1 && (
-                    <div className="absolute left-6 top-12 bottom-0 w-0.5 bg-gray-200" />
-                  )}
-                  <Card className={`p-4 hover:shadow-md transition-shadow ${index === 0 ? 'border-2 border-green-300' : ''}`}>
-                    <div className="flex gap-4">
-                      <div className="flex-shrink-0">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                          index === 0 ? 'bg-green-100' : 'bg-blue-100'
-                        }`}>
-                          <History className={`w-6 h-6 ${index === 0 ? 'text-green-600' : 'text-[#003DA5]'}`} />
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-semibold text-gray-900">{log.accion}</h4>
-                              {index === 0 && (
-                                <Badge className="bg-green-600 text-white text-xs">
-                                  Actual
-                                </Badge>
-                              )}
-                              {log.plantillaSnapshot && index > 0 && (
-                                <Badge variant="outline" className="text-xs border-blue-300 text-blue-700">
-                                  Restaurable
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-gray-600">
-                              Por: <strong>{log.usuario}</strong>
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm text-gray-600">
-                              {new Date(log.fecha).toLocaleDateString('es-CO', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric'
-                              })}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {new Date(log.fecha).toLocaleTimeString('es-CO', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="bg-gray-50 rounded-lg p-3 mt-3">
-                          <p className="text-xs font-semibold text-gray-700 mb-2">
-                            Cambios realizados:
-                          </p>
-                          <ul className="text-sm text-gray-700 space-y-1">
-                            {log.cambios.map((cambio, i) => (
-                              <li key={i} className="flex items-start gap-2">
-                                <span className="text-[#003DA5] mt-1">•</span>
-                                <span>{cambio}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        <div className="mt-3 flex items-center justify-between">
-                          <div className="flex items-center gap-4 text-xs text-gray-500">
-                            <span>
-                              Versión: <strong>{log.versionAnterior}</strong> → <strong>{log.versionNueva}</strong>
-                            </span>
-                          </div>
-
-                          {/* Botón de restaurar (solo si tiene snapshot y no es la versión actual) */}
-                          {log.plantillaSnapshot && index > 0 && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleAbrirRestaurar(log)}
-                              className="gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                              Restaurar versión
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-              ))}
-            </div>
-
-            {logCambios.length === 0 && (
-              <div className="text-center py-12">
-                <History className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">No hay cambios registrados aún</p>
-              </div>
-            )}
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* Modal de Autorización */}
-      <Dialog open={isAutorizacionOpen} onOpenChange={setIsAutorizacionOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckSquare className="w-5 h-5 text-[#003DA5]" />
-              Autorizar Publicación de Plantilla
-            </DialogTitle>
-            <DialogDescription>
-              Revisa los cambios antes de publicar la nueva plantilla. Esta acción afectará todos los certificados futuros.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            {/* Resumen de cambios */}
-            <Card className="p-4 bg-blue-50 border-blue-200">
-              <h4 className="font-semibold text-gray-900 mb-3">Cambios a aplicar:</h4>
-              <div className="space-y-2 text-sm">
-                {borrador.firmante.nombre !== plantilla.firmante.nombre && (
-                  <p className="text-gray-700">
-                    • Firmante: <strong>{plantilla.firmante.nombre}</strong> → <strong>{borrador.firmante.nombre}</strong>
-                  </p>
-                )}
-                {borrador.firmante.cargo !== plantilla.firmante.cargo && (
-                  <p className="text-gray-700">
-                    • Cargo: <strong>{plantilla.firmante.cargo}</strong> → <strong>{borrador.firmante.cargo}</strong>
-                  </p>
-                )}
-                {borrador.tipografia.fuente !== plantilla.tipografia.fuente && (
-                  <p className="text-gray-700">
-                    • Fuente: <strong>{plantilla.tipografia.fuente}</strong> → <strong>{borrador.tipografia.fuente}</strong>
-                  </p>
-                )}
-                {borrador.tipografia.tamaño !== plantilla.tipografia.tamaño && (
-                  <p className="text-gray-700">
-                    • Tamaño: <strong>{plantilla.tipografia.tamaño}pt</strong> → <strong>{borrador.tipografia.tamaño}pt</strong>
-                  </p>
-                )}
-                {borrador.tipografia.color !== plantilla.tipografia.color && (
-                  <p className="text-gray-700">
-                    • Color: <strong>{plantilla.tipografia.color}</strong> → <strong>{borrador.tipografia.color}</strong>
-                  </p>
-                )}
-                {selectedFile && (
-                  <p className="text-gray-700">
-                    • Imagen de firma actualizada
-                  </p>
-                )}
-              </div>
-            </Card>
-
-            {/* Advertencia */}
-            <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-semibold text-yellow-900 mb-1">
-                    Importante
-                  </h4>
-                  <ul className="text-sm text-yellow-800 space-y-1">
-                    <li>• Esta plantilla se aplicará a TODOS los certificados futuros</li>
-                    <li>• Los certificados ya generados NO se modificarán</li>
-                    <li>• El cambio quedará registrado en el log de auditoría</li>
-                    <li>• La versión actual pasará de <strong>{plantilla.version}</strong> a <strong>{incrementVersion(plantilla.version)}</strong></li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsAutorizacionOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleAutorizar}
-              className="bg-[#003DA5] hover:bg-[#002873]"
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Autorizar y Publicar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal de Vista Previa */}
-      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden p-0">
-          <DialogHeader className="px-6 py-4 border-b bg-gray-50">
-            <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle className="flex items-center gap-2">
-                  <Eye className="w-5 h-5 text-[#003DA5]" />
-                  Vista Previa del Certificado
-                </DialogTitle>
-                <DialogDescription className="mt-1 text-xs">
-                  Visualiza cómo se verá el certificado con la configuración {hasChanges ? 'actual (cambios sin guardar)' : 'publicada'}
-                </DialogDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                {hasChanges && (
-                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300 text-xs py-0.5 px-2">
-                    Sin guardar
-                  </Badge>
-                )}
-                <Badge variant="outline" className="text-xs py-0.5 px-2">
-                  v{borrador.version}
-                </Badge>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="overflow-y-auto bg-gray-100 p-8" style={{ maxHeight: 'calc(95vh - 130px)' }}>
-            {/* Certificado Preview - DISEÑO UNIFICADO MODERNO */}
-            <div 
-              id="certificado-preview"
-              className="bg-white shadow-2xl mx-auto p-12 relative overflow-hidden border-4 border-gray-200"
-              style={{
-                width: '100%',
-                maxWidth: '950px',
-                minHeight: '1100px'
-              }}
-            >
-              {/* Marca de Agua */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-5">
-                <div className="text-9xl font-bold text-gray-400 rotate-[-45deg] select-none">
-                  ESAP
-                </div>
-              </div>
-
-              {/* Header Institucional */}
-              <div className="border-b-4 border-[#003DA5] pb-6 mb-8 relative z-10">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    {/* Logo de la entidad si existe */}
-                    {borrador.logoEntidad && (
-                      <div className="mb-4">
-                        <img
-                          src={borrador.logoEntidad.url}
-                          alt="Logo ESAP"
-                          className="h-12 object-contain"
-                        />
-                      </div>
-                    )}
-                    <h1 
-                      className="font-bold text-[#003DA5] mb-2"
-                      style={{ fontSize: `${borrador.tipografia.tamaño + 10}pt` }}
-                    >
-                      ESCUELA SUPERIOR DE<br />ADMINISTRACIÓN PÚBLICA
-                    </h1>
-                    <p className="text-sm text-gray-600 mb-1">ESAP</p>
-                    <p className="text-sm text-gray-600">NIT: 899.999.090-1</p>
-                    <p className="text-sm text-gray-600">Calle 44 No. 53-37 • Bogotá D.C., Colombia</p>
-                    <p className="text-sm text-gray-600">www.esap.edu.co</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="bg-[#003DA5] text-white px-4 py-2 rounded-lg inline-block">
-                      <p className="text-xs mb-1">Consecutivo</p>
-                      <p className="text-lg font-bold font-mono">ESAP-CERT-2025-51NXK</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Título del Documento */}
-              <div className="text-center mb-8 relative z-10">
-                <h2 
-                  className="font-bold mb-2"
-                  style={{ 
-                    fontSize: `${borrador.tipografia.tamaño + 14}pt`,
-                    color: borrador.tipografia.color
-                  }}
-                >
-                  CERTIFICACIÓN LABORAL
-                </h2>
-                <div className="flex items-center justify-center gap-2 text-green-600">
-                  <CheckCircle className="w-5 h-5" />
-                  <span className="text-sm font-semibold">DOCUMENTO VÁLIDO Y VERIFICABLE</span>
-                </div>
-              </div>
-
-              {/* Contenido Principal */}
-              <div 
-                className="space-y-6 relative z-10"
-                style={{ 
-                  fontFamily: borrador.tipografia.fuente,
-                  fontSize: `${borrador.tipografia.tamaño}pt`,
-                  color: borrador.tipografia.color,
-                  lineHeight: '1.8'
-                }}
-              >
-                <p className="text-justify">
-                  La Dirección de Talento Humano de la <strong>Escuela Superior de Administración Pública - ESAP</strong>, certifica que:
-                </p>
-
-                {/* Datos del Empleado - TABLA MODERNA */}
-                <div className="bg-blue-50 border-l-4 border-[#003DA5] p-6 my-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Nombre Completo</p>
-                      <p className="font-bold text-lg text-gray-900">MARÍA FERNANDA RODRÍGUEZ LÓPEZ</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Documento de Identidad</p>
-                      <p className="font-bold text-lg text-gray-900">C.C. 52.345.678</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Cargo</p>
-                      <p className="font-semibold text-gray-900">Docente Tiempo Completo</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Tipo de Vinculación</p>
-                      <p className="font-semibold text-gray-900">Planta Permanente</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Dependencia</p>
-                      <p className="font-semibold text-gray-900">Dirección Territorial Bogotá</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase mb-1">Grado</p>
-                      <p className="font-semibold text-gray-900">Maestría en Educación</p>
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-justify">
-                  Labora con nosotros desde el <strong>15 de marzo de 2018</strong>, completando a la fecha{' '}
-                  <strong>6 años y 10 meses</strong> de servicio ininterrumpido.
-                </p>
-
-                <p className="text-justify">
-                  Durante su vinculación, María ha desempeñado sus funciones con responsabilidad, compromiso y profesionalismo, 
-                  contribuyendo significativamente al cumplimiento de la misión institucional de la ESAP.
-                </p>
-
-                <p className="text-justify">
-                  La presente certificación se expide a solicitud de la interesada el día{' '}
-                  <strong>
-                    {new Date().toLocaleDateString('es-CO', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric'
-                    })}
-                  </strong>, para los fines que la interesada estime conveniente.
-                </p>
-
-                {/* Validez */}
-                <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 my-6">
-                  <div className="flex items-start gap-3">
-                    <Calendar className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-1" />
-                    <div>
-                      <p className="font-semibold text-gray-900 text-sm mb-1">Validez del Documento</p>
-                      <p className="text-sm text-gray-700">
-                        Este certificado tiene una validez de <strong>3 meses</strong> a partir de su fecha de expedición. 
-                        Pasado este tiempo, deberá solicitarse uno nuevo.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Firma Digital */}
-              <div className="mt-12 pt-8 border-t-2 border-gray-300 relative z-10">
-                <div className="text-center">
-                  <div className="inline-block">
-                    {/* Imagen de firma si existe */}
-                    {borrador.grafoFirma && (
-                      <div className="mb-4">
-                        <div className="h-16 flex items-center justify-center">
-                          <img 
-                            src={borrador.grafoFirma.url}
-                            alt="Firma"
-                            className="max-h-16 object-contain"
-                          />
-                        </div>
-                      </div>
-                    )}
-                    <div className="border-t-2 border-gray-800 pt-2 px-8">
-                      <p className="font-bold text-gray-900">{borrador.firmante.nombre}</p>
-                      <p className="text-sm text-gray-600">{borrador.firmante.cargo}</p>
-                      <p className="text-xs text-gray-500 mt-1">C.C. {borrador.firmante.documento}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Pie de Página con QR */}
-              <div className="mt-12 pt-6 border-t border-gray-300 relative z-10">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-start gap-2 mb-3">
-                      <Shield className="w-4 h-4 text-[#003DA5] flex-shrink-0 mt-1" />
-                      <div>
-                        <p className="text-xs font-semibold text-gray-900 mb-1">Verificación de Autenticidad</p>
-                        <p className="text-xs text-gray-600 leading-relaxed">
-                          Este certificado puede ser verificado escaneando el código QR o ingresando 
-                          el consecutivo en: <span className="text-[#003DA5] font-semibold">www.esap.edu.co/verificar-certificado</span>
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-500 space-y-1">
-                      <p><strong>Documento electrónico:</strong> Generado automáticamente</p>
-                      <p><strong>Fecha de expedición:</strong> {new Date().toLocaleString('es-CO')}</p>
-                      <p><strong>Código de verificación:</strong> <span className="font-mono">ESAP-CERT-2025-51NXK</span></p>
-                    </div>
-                  </div>
-                  <div className="ml-6 text-center">
-                    <div className="bg-white border-2 border-gray-300 p-3 rounded-lg">
-                      <QrCode className="w-24 h-24 text-gray-400 mx-auto" />
-                      <p className="text-xs text-gray-600 mt-2 font-mono">51NXK</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer Legal */}
-              <div className="mt-6 pt-4 border-t border-gray-200 relative z-10">
-                <p className="text-xs text-gray-500 text-center">
-                  Documento generado electrónicamente por el Sistema de Gestión de Certificados Laborales - ESAP
-                </p>
-              </div>
-            </div>
-
-            {/* Nota informativa */}
-            <div className="mt-5 p-3 bg-blue-50 border border-blue-200 rounded-lg max-w-[950px] mx-auto">
-              <div className="flex items-start gap-2">
-                <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-blue-800">
-                  <strong>Nota:</strong> Este es un ejemplo con datos ficticios. Los certificados reales se generan con datos específicos de cada empleado.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter className="px-6 py-4 border-t bg-gray-50">
-            <div className="flex items-center justify-between w-full gap-4">
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    toast.info('Función de impresión', {
-                      description: 'Esta función estará disponible en la versión final'
-                    });
-                  }}
-                  className="gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Imprimir
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    toast.info('Descarga de PDF', {
-                      description: 'Esta función estará disponible en la versión final'
-                    });
-                  }}
-                  className="gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Descargar PDF
-                </Button>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => setIsPreviewOpen(false)}
-                className="bg-[#003DA5] hover:bg-[#002873]"
-              >
-                Cerrar
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal de Restauración de Versión */}
-      <Dialog open={isRestaurarOpen} onOpenChange={setIsRestaurarOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <RefreshCw className="w-5 h-5 text-blue-600" />
-              Restaurar Versión de Plantilla
-            </DialogTitle>
-            <DialogDescription>
-              Vas a restaurar la plantilla a una configuración anterior. Esta acción creará una nueva versión.
-            </DialogDescription>
-          </DialogHeader>
-
-          {versionARestaurar && (
-            <div className="space-y-4 py-4">
-              {/* Info de la versión */}
-              <Card className="p-4 bg-blue-50 border-blue-200">
-                <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <Info className="w-5 h-5 text-blue-600" />
-                  Información de la versión a restaurar:
-                </h4>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-gray-600">Versión:</p>
-                    <p className="font-semibold text-gray-900">{versionARestaurar.versionNueva}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Fecha:</p>
-                    <p className="font-semibold text-gray-900">
-                      {new Date(versionARestaurar.fecha).toLocaleString('es-CO', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Modificado por:</p>
-                    <p className="font-semibold text-gray-900">{versionARestaurar.usuario}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Acción:</p>
-                    <p className="font-semibold text-gray-900">{versionARestaurar.accion}</p>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Comparación de configuraciones */}
-              {versionARestaurar.plantillaSnapshot && (
-                <Card className="p-4">
-                  <h4 className="font-semibold text-gray-900 mb-3">
-                    Configuración que se restaurará:
-                  </h4>
-                  <div className="space-y-3 text-sm">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <p className="text-xs text-gray-600 mb-1">Firmante</p>
-                        <p className="font-medium text-gray-900">
-                          {versionARestaurar.plantillaSnapshot.firmante.nombre}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-1">
-                          {versionARestaurar.plantillaSnapshot.firmante.cargo}
-                        </p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <p className="text-xs text-gray-600 mb-1">Tipografía</p>
-                        <p className="font-medium text-gray-900">
-                          {versionARestaurar.plantillaSnapshot.tipografia.fuente}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-1">
-                          Tamaño: {versionARestaurar.plantillaSnapshot.tipografia.tamaño}pt
-                        </p>
-                      </div>
-                    </div>
-                    <div className="bg-gray-50 p-3 rounded-lg">
-                      <p className="text-xs text-gray-600 mb-2">Cambios que se aplicaron en esa versión:</p>
-                      <ul className="space-y-1">
-                        {versionARestaurar.cambios.map((cambio, i) => (
-                          <li key={i} className="flex items-start gap-2 text-gray-700">
-                            <span className="text-blue-600 mt-1">•</span>
-                            <span>{cambio}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </Card>
-              )}
-
-              {/* Advertencia */}
-              <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="font-semibold text-yellow-900 mb-1">
-                      Importante
-                    </h4>
-                    <ul className="text-sm text-yellow-800 space-y-1">
-                      <li>• Se restaurará la configuración completa de esta versión</li>
-                      <li>• Se creará una nueva versión ({incrementVersion(plantilla.version)})</li>
-                      <li>• Los cambios sin guardar en el borrador actual se perderán</li>
-                      <li>• Esta acción quedará registrada en el historial</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
           )}
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsRestaurarOpen(false);
-                setVersionARestaurar(null);
-              }}
+
+
+          {canEdit && (
+
+
+
+            <TabsTrigger value="Visualizaciónn" className="flex items-center gap-2">
+
+
+
+              <Eye className="w-4 h-4" /> Visualizaciónn
+
+
+
+            </TabsTrigger>
+
+
+
+          )}
+
+
+
+          <TabsTrigger value="historial" className="flex items-center gap-2">
+
+
+
+            <History className="w-4 h-4" />
+
+
+
+            Historial
+
+
+
+          </TabsTrigger>
+
+
+
+        </TabsList>
+
+
+
+
+
+
+
+        {/* TAB 1: Modificaciónn */}
+
+
+
+        {canEdit && (
+
+
+
+        <TabsContent value="Modificaciónn" className="space-y-6 mt-6">
+
+
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+
+
+            {/* Datos del Firmante */}
+
+
+
+            <Card className="p-6">
+
+
+
+              <h3 className="flex items-center gap-2 mb-5 text-lg font-semibold text-gray-900">
+
+
+
+                <User className="w-5 h-5 text-[#003DA5]" />
+
+
+
+                Datos del Firmante
+
+
+
+              </h3>
+
+
+
+              
+
+
+
+              <div className="space-y-4">
+
+
+
+                <div>
+
+
+
+                  <Label htmlFor="firmante-nombre">Nombre Completo del Firmante *</Label>
+
+
+
+                  <Input
+
+
+
+                    id="firmante-nombre"
+
+
+
+                    value={borrador.firmante.nombre}
+
+
+
+                    onChange={(e) => handleFirmanteChange('nombre', e.target.value)}
+
+
+
+                    placeholder="Ej: Dra. María Elena Bernal Torres"
+
+
+
+                    className="mt-2"
+
+
+
+                  />
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+
+
+
+                <p className="text-sm text-blue-800 flex items-start gap-2">
+
+
+
+                  <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+
+
+
+                  <span>
+
+
+
+                    Este es el nombre que aparecerá en la firma de los certificados. Solo modifica el nombre, sin cambiar el diseño de la plantilla.
+
+
+
+                  </span>
+
+
+
+                </p>
+
+
+
+              </div>
+
+
+
+            </Card>
+
+
+
+
+
+
+
+            {/* Grafo de Firma */}
+
+
+
+            <Card className="p-6">
+
+
+
+              <h3 className="flex items-center gap-2 mb-5 text-lg font-semibold text-gray-900">
+
+
+
+                <PenTool className="w-5 h-5 text-[#003DA5]" />
+
+
+
+                Grafo / Imagen de Firma
+
+
+
+              </h3>
+
+
+
+
+
+
+
+              <div className="space-y-4">
+
+
+
+                {/* Vista previa de la firma actual */}
+
+
+
+                {borrador.grafoFirma && (
+
+
+
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
+
+
+
+                    <div className="flex items-center justify-center mb-3">
+
+
+
+                      <img
+
+
+
+                        src={borrador.grafoFirma.url}
+
+
+
+                        alt="Firma actual"
+
+
+
+                        className="max-h-32 object-contain"
+
+
+
+                      />
+
+
+
+                    </div>
+
+
+
+                    <div className="text-center">
+
+
+
+                      <p className="text-sm text-gray-700 font-medium">
+
+
+
+                        {borrador.grafoFirma.nombre}
+
+
+
+                      </p>
+
+
+
+                      <p className="text-xs text-gray-500 mt-1">
+
+
+
+                        {borrador.grafoFirma.tamaño}
+
+
+
+                      </p>
+
+
+
+                    </div>
+
+
+
+                  </div>
+
+
+
+                )}
+
+
+
+
+
+
+
+                {/* Botón de carga */}
+
+
+
+                <div>
+
+
+
+                  <Label htmlFor="firma-upload" className="mb-2 block">
+
+
+
+                    Cargar nueva firma
+
+
+
+                  </Label>
+
+
+
+                  <input
+
+
+
+                    id="firma-upload"
+
+
+
+                    type="file"
+
+
+
+                    accept="image/*"
+
+
+
+                    onChange={handleFileUpload}
+
+
+
+                    className="hidden"
+
+
+
+                  />
+
+
+
+                  <label
+
+
+
+                    htmlFor="firma-upload"
+
+
+
+                    className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-[#003DA5] hover:bg-blue-50 transition-all cursor-pointer"
+
+
+
+                  >
+
+
+
+                    <Upload className="w-5 h-5 text-gray-600" />
+
+
+
+                    <span className="text-sm text-gray-700">
+
+
+
+                      Seleccionar imagen
+
+
+
+                    </span>
+
+
+
+                  </label>
+
+
+
+                </div>
+
+
+
+
+
+
+
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+
+
+
+                  <p className="text-xs text-gray-600">
+
+
+
+                    <strong>Requisitos:</strong>
+
+
+
+                  </p>
+
+
+
+                  <ul className="text-xs text-gray-600 mt-2 space-y-1">
+
+
+
+                    <li>• Formato: PNG, JPG o JPEG</li>
+
+
+
+                    <li>• Tamaño máximo: 2 MB</li>
+
+
+
+                    <li>• Fondo transparente recomendado</li>
+
+
+
+                    <li>• Resolución mínima: 300 DPI</li>
+
+
+                    <li>• Tamaño recomendado: 400px de ancho x 120px de alto para que quede nítida al mostrarse a 48px</li>
+
+
+
+                  </ul>
+
+
+
+                </div>
+
+
+
+
+
+
+
+                <Button
+
+
+
+                  variant="outline"
+
+
+
+                  onClick={handleResetFirma}
+
+
+
+                  disabled={isResettingFirma || !canEdit}
+
+
+
+                  className="w-full justify-center"
+
+
+
+                >
+
+
+
+                  <RefreshCw className="w-4 h-4 mr-2" />
+
+
+
+                  {isResettingFirma ? 'Restableciendo...' : 'Quitar firma (dejar vacía)'}
+
+
+
+                </Button>
+
+
+
+              </div>
+
+
+
+            </Card>
+
+
+
+          </div>
+
+
+
+
+
+
+
+          {/* Logo de la Entidad */}
+
+
+
+          <Card className="p-6">
+
+
+
+            <h3 className="flex items-center gap-2 mb-5 text-lg font-semibold text-gray-900">
+
+
+
+              <ImageIcon className="w-5 h-5 text-[#003DA5]" />
+
+
+
+              Logo de la Entidad (ESAP)
+
+
+
+            </h3>
+
+
+
+
+
+
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+
+
+              {/* Vista previa del logo actual */}
+
+
+
+              <div className="space-y-3">
+
+
+
+                <Label className="block">Logo actual</Label>
+
+
+
+                {borrador.logoEntidad ? (
+
+
+
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
+
+
+
+                    <div className="flex items-center justify-center mb-3">
+
+
+
+                      <img
+
+
+
+                        src={borrador.logoEntidad.url}
+
+
+
+                        alt="Logo ESAP actual"
+
+
+
+                        className="max-h-32 object-contain"
+
+
+
+                      />
+
+
+
+                    </div>
+
+
+
+                    <div className="text-center">
+
+
+
+                      <p className="text-sm text-gray-700 font-medium">
+
+
+
+                        {borrador.logoEntidad.nombre}
+
+
+
+                      </p>
+
+
+
+                      <p className="text-xs text-gray-500 mt-1">
+
+
+
+                        {borrador.logoEntidad.tamaño}
+
+
+
+                      </p>
+
+
+
+                    </div>
+
+
+
+                  </div>
+
+
+
+                ) : (
+
+
+
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
+
+
+
+                    <div className="flex items-center justify-center h-32">
+
+
+
+                      <p className="text-sm text-gray-500 text-center">
+
+
+
+                        No hay logo configurado
+
+
+
+                      </p>
+
+
+
+                    </div>
+
+
+
+                  </div>
+
+
+
+                )}
+
+
+
+              </div>
+
+
+
+
+
+
+
+              {/* Cargar nuevo logo */}
+
+
+
+              <div className="space-y-3">
+
+
+
+                <Label htmlFor="logo-upload" className="block">
+
+
+
+                  Cargar nuevo logo
+
+
+
+                </Label>
+
+
+
+                <input
+
+
+
+                  id="logo-upload"
+
+
+
+                  type="file"
+
+
+
+                  accept="image/*"
+
+
+
+                  onChange={handleLogoUpload}
+
+
+
+                  className="hidden"
+
+
+
+                />
+
+
+
+                <label
+
+
+
+                  htmlFor="logo-upload"
+
+
+
+                  className="flex items-center justify-center px-4 py-12 border-2 border-dashed border-gray-300 rounded-lg hover:border-[#003DA5] hover:bg-blue-50 transition-all cursor-pointer block"
+
+
+
+                >
+
+
+
+                  <div className="text-center">
+
+
+
+                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+
+
+
+                    <p className="text-sm font-medium text-gray-700 mb-1">
+
+
+
+                      Seleccionar imagen
+
+
+
+                    </p>
+
+
+
+                    <p className="text-xs text-gray-500">
+
+
+
+                      Arrastra o haz clic para cargar
+
+
+
+                    </p>
+
+
+
+                  </div>
+
+
+
+                </label>
+
+
+
+
+
+
+
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+
+
+
+                  <p className="text-xs text-gray-600 font-semibold mb-2">
+
+
+
+                    Requisitos del logo:
+
+
+
+                  </p>
+
+
+
+                  <ul className="text-xs text-gray-600 space-y-1">
+
+
+
+                    <li>• Formato: PNG, JPG o JPEG</li>
+
+
+
+                    <li>• Tamaño máximo: 2 MB</li>
+
+
+
+                    <li>• Fondo transparente recomendado</li>
+
+
+
+                    <li>• Resolución mínima: 300 DPI</li>
+                    <li>? Tama?o recomendado: 500px de ancho x 150px de alto para que se vea n?tido al mostrarse a ~100px de alto</li>
+
+
+
+                  </ul>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            <div className="mt-4 flex justify-end">
+
+
+
+              <Button
+
+
+
+                variant="outline"
+
+
+
+                onClick={handleResetLogo}
+
+
+
+                disabled={isResettingLogo || !canEdit}
+
+
+
+              >
+
+
+
+                <RefreshCw className="w-4 h-4 mr-2" />
+
+
+
+                {isResettingLogo ? 'Restableciendo...' : 'Volver al logo oficial ESAP'}
+
+
+
+              </Button>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            <div className="mt-6 p-3 bg-blue-50 rounded-lg border border-blue-200">
+
+
+
+              <p className="text-sm text-blue-800 flex items-start gap-2">
+
+
+
+                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+
+
+
+                <span>
+
+
+
+                  Este logo aparecerá en el encabezado de todos los certificados laborales. 
+
+
+
+                  Se recomienda usar el logo oficial de la ESAP con fondo transparente para mejor presentación.
+
+
+
+                </span>
+
+
+
+              </p>
+
+
+
+            </div>
+
+
+
+          </Card>
+
+
+
+
+
+
+
+          {/* Tipografía y Contenido del Certificado */}
+
+
+
+          <Card className="p-6">
+
+
+
+            <div className="space-y-6">
+
+
+
+              <div>
+
+
+
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+
+
+
+                  <Type className="w-5 h-5 text-[#003DA5]" />
+
+
+
+                  Tipografía y Contenido del Certificado
+
+
+
+                </h3>
+
+
+
+                <p className="text-sm text-gray-600 mb-6">
+
+
+
+                  Configura la tipografía general y el contenido del certificado con formato enriquecido
+
+
+
+                </p>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              {/* Tipografía General - Solo Fuente */}
+
+
+
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+
+
+
+                <Label htmlFor="fuente" className="text-sm font-medium text-gray-700">
+
+
+
+                  Fuente Tipográfica
+
+
+
+                </Label>
+
+
+
+                <Select
+
+
+
+                  value={borrador.tipografia.fuente}
+
+
+
+                  onValueChange={(value) => {
+
+
+
+                    setBorrador({
+
+
+
+                      ...borrador,
+
+
+
+                      tipografia: { ...borrador.tipografia, fuente: value }
+
+
+
+                    });
+
+
+
+                    setHasChanges(true);
+
+
+
+                  }}
+
+
+
+                >
+
+
+
+                  <SelectTrigger className="mt-1">
+
+
+
+                    <SelectValue />
+
+
+
+                  </SelectTrigger>
+
+
+
+                  <SelectContent>
+
+
+
+                    {fuentesDisponibles.map((fuente) => (
+
+
+
+                      <SelectItem key={fuente.value} value={fuente.value}>
+
+
+
+                        {fuente.label}
+
+
+
+                      </SelectItem>
+
+
+
+                    ))}
+
+
+
+                  </SelectContent>
+
+
+
+                </Select>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              {/* Editor de Título del Cargo */}
+
+
+
+              <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+
+
+
+                <Label className="text-sm font-medium text-gray-700">
+
+
+
+                  Título del Cargo (encabezado del certificado)
+
+
+
+                </Label>
+
+
+
+                <div className="flex justify-center">
+
+
+
+                  <textarea
+
+
+
+                    value={borrador.tituloCargo.texto}
+
+
+
+                    onChange={(e) => {
+
+
+
+                      setBorrador({
+
+
+
+                        ...borrador,
+
+
+
+                        tituloCargo: {
+
+
+
+                          texto: e.target.value
+
+
+
+                        }
+
+
+
+                      });
+
+
+
+                      setHasChanges(true);
+
+
+
+                    }}
+
+
+
+                    placeholder="Ej: LA DIRECTORA TÉCNICA DE TALENTO HUMANO DE LA&#10;ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA – ESAP"
+
+
+
+                    className="p-3 border border-blue-300 rounded-md font-bold text-center resize-none uppercase whitespace-pre-line"
+
+
+
+                    style={{
+
+
+
+                      fontFamily: borrador.tipografia.fuente,
+
+
+
+                      fontSize: `${borrador.tipografia.tamaño}pt`,
+
+
+
+                      lineHeight: '1.2',
+
+
+
+                      width: '600px',
+
+
+
+                      maxWidth: '100%'
+
+
+
+                    }}
+
+
+
+                    rows={3}
+
+
+
+                  />
+
+
+
+                </div>
+
+
+
+                <p className="text-xs text-blue-700">
+
+
+
+                  Este texto aparecerá en la parte superior del certificado, antes de "HACE CONSTAR". Usa Enter para crear saltos de línea.
+
+
+
+                </p>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              {/* Editor de Contenido con Formato Enriquecido */}
+
+
+
+              <div className="space-y-3">
+
+
+
+                <Label className="text-sm font-medium text-gray-700">
+
+
+
+                  Contenido del Certificado
+
+
+
+                </Label>
+
+
+
+
+
+
+
+                {/* Barra de herramientas de formato */}
+
+
+
+                <div className="flex flex-wrap items-center gap-2 p-3 bg-white border border-gray-300 rounded-t-lg">
+
+
+
+                  <div className="flex items-center gap-1 border-r border-gray-300 pr-2">
+
+
+
+                      <button
+
+
+
+                        type="button"
+
+
+
+                        className="p-2 hover:bg-gray-100 rounded transition-colors"
+
+
+
+                        title="Negrita"
+
+
+
+                        onClick={toggleBold}
+
+
+
+                      >
+
+
+
+                        <span className="font-bold text-sm">B</span>
+
+
+
+                      </button>
+
+
+
+                    <button
+
+
+
+                      type="button"
+
+
+
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+
+
+
+                      title="Cursiva"
+
+
+
+                      onClick={() => {
+
+
+
+                        document.execCommand('italic', false, '');
+
+
+
+                      }}
+
+
+
+                    >
+
+
+
+                      <span className="italic text-sm">I</span>
+
+
+
+                    </button>
+
+
+
+                    <button
+
+
+
+                      type="button"
+
+
+
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+
+
+
+                      title="Subrayado"
+
+
+
+                      onClick={() => {
+
+
+
+                        document.execCommand('underline', false, '');
+
+
+
+                      }}
+
+
+
+                    >
+
+
+
+                      <span className="underline text-sm">U</span>
+
+
+
+                    </button>
+
+
+
+                  </div>
+
+
+
+
+
+
+
+                  <div className="flex items-center gap-2 border-r border-gray-300 pr-2">
+
+
+
+                    <span className="text-xs text-gray-600">Color:</span>
+
+
+
+                    {coloresDisponibles.map((color) => (
+
+
+
+                      <button
+
+
+
+                        key={color.value}
+
+
+
+                        type="button"
+
+
+
+                        className="w-6 h-6 rounded border-2 border-gray-300 hover:border-gray-500 transition-colors"
+
+
+
+                        style={{ backgroundColor: color.value }}
+
+
+
+                        title={color.label}
+
+
+
+                        onClick={() => {
+
+
+
+                          document.execCommand('foreColor', false, color.value);
+
+
+
+                        }}
+
+
+
+                      />
+
+
+
+                    ))}
+
+
+
+                  </div>
+
+
+
+
+
+
+
+                  {/* Menú desplegable de variables */}
+
+
+
+                  <div className="flex items-center gap-2">
+
+
+
+                    <span className="text-xs text-gray-600 font-medium">Insertar Variable:</span>
+
+
+
+                    <select
+
+
+
+                      className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:bg-gray-50 cursor-pointer"
+
+
+
+                      onChange={(e) => {
+
+
+
+                        if (e.target.value) {
+
+
+
+                          insertarVariable(e.target.value);
+
+
+
+                          e.target.value = ''; // Reset
+
+
+
+                        }
+
+
+
+                      }}
+
+
+
+                      defaultValue=""
+
+
+
+                    >
+
+
+
+                      <option value="" disabled>Selecciona una variable...</option>
+
+
+
+                      {variablesDisponibles.map((variable) => (
+
+
+
+                        <option key={variable.codigo} value={variable.codigo}>
+
+
+
+                          {variable.codigo} - {variable.descripcion}
+
+
+
+                        </option>
+
+
+
+                      ))}
+
+
+
+                    </select>
+
+
+
+                  </div>
+
+
+
+                </div>
+
+
+
+
+
+
+
+                {/* Editor de texto */}
+
+
+
+                <div
+
+
+
+                  ref={(el) => setEditorRef(el)}
+
+
+
+                  contentEditable={canEdit}
+
+
+
+                  suppressContentEditableWarning
+
+
+
+                  className="min-h-[200px] p-4 border border-t-0 border-gray-300 rounded-b-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+
+
+
+                  style={{
+
+
+
+                    fontFamily: borrador.tipografia.fuente,
+
+
+
+                    fontSize: `${borrador.tipografia.tamaño}pt`,
+
+
+
+                    color: borrador.tipografia.color,
+
+
+
+                    lineHeight: '1.8'
+
+
+
+                  }}
+
+
+
+                  dangerouslySetInnerHTML={{ __html: borrador.contenidoCertificado.texto }}
+
+
+
+                  onInput={(e) => {
+
+
+
+                    setBorrador({
+
+
+
+                      ...borrador,
+
+
+
+                      contenidoCertificado: {
+
+
+
+                        ...borrador.contenidoCertificado,
+
+
+
+                        texto: e.currentTarget.innerHTML
+
+
+
+                      }
+
+
+
+                    });
+
+
+
+                    setHasChanges(true);
+
+
+
+                  }}
+
+
+
+                />
+
+
+
+
+
+
+
+                <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-300">
+
+
+
+                  <p className="text-sm text-yellow-900 flex items-start gap-2">
+
+
+
+                    <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+
+
+
+                    <span>
+
+
+
+                      <strong>Variables disponibles:</strong> Usa el menú desplegable "Insertar Variable" para agregar campos dinámicos como
+
+
+
+                      <span className="px-2 py-0.5 bg-yellow-200 text-black font-semibold rounded mx-1">[NOMBRE_EMPLEADO]</span>,
+
+
+
+                      <span className="px-2 py-0.5 bg-yellow-200 text-black font-semibold rounded mx-1">[DOCUMENTO]</span>,
+
+
+
+                      <span className="px-2 py-0.5 bg-yellow-200 text-black font-semibold rounded mx-1">[CARGO]</span>, etc.
+
+
+
+                      Las variables se mostrarán resaltadas en amarillo y serán reemplazadas automáticamente al generar cada certificado.
+
+
+
+                      Selecciona texto para aplicar negrita, cursiva o cambiar el color.
+
+
+
+                    </span>
+
+
+
+                  </p>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </Card>
+
+
+
+
+
+
+
+          {!canEdit && (
+
+
+
+            <div className="p-3 rounded-lg bg-gray-100 border border-gray-200 text-sm text-gray-700 flex items-center gap-2">
+
+
+
+              <Shield className="w-4 h-4" />
+
+
+
+              Solo la cuenta cerlaboral@esap.edu.co puede modificar y autorizar esta plantilla.
+
+
+
+            </div>
+
+
+
+          )}
+
+
+
+
+
+
+
+          {/* Botones de Acción */}
+
+
+
+          <div className="flex items-center justify-between gap-4 pt-4">
+
+
+
+            <div className="flex gap-3">
+
+
+
+              <Button
+
+
+
+                variant="outline"
+
+
+
+                onClick={handleDescartarCambios}
+
+
+
+                disabled={!hasChanges || !canEdit}
+
+
+
+              >
+
+
+
+                <X className="w-4 h-4 mr-2" />
+
+
+
+                Descartar Cambios
+
+
+
+              </Button>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            <div className="flex gap-3">
+
+
+
+              <Button
+
+
+
+                variant="outline"
+
+
+
+                onClick={handleGuardarBorrador}
+
+
+
+                disabled={!hasChanges || !canEdit || isSaving}
+
+
+
+              >
+
+
+
+                <Save className="w-4 h-4 mr-2" />
+
+
+
+                Guardar Borrador
+
+
+
+              </Button>
+
+
+
+              <Button
+
+
+
+                onClick={handleAutorizarPlantilla}
+
+
+
+                disabled={isPublishing || !canEdit}
+
+
+
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+
+
+
+              >
+
+
+
+                <CheckSquare className="w-4 h-4 mr-2" />
+
+
+
+                Autorizar Plantilla
+
+
+
+              </Button>
+
+
+
+            </div>
+
+
+
+          </div>
+
+
+
+        </TabsContent>
+
+
+
+        )}
+
+
+
+
+
+
+
+        {/* TAB 2: Visualizaciónn */}
+
+
+
+        {canEdit && (
+
+
+
+        <TabsContent value="Visualizaciónn" className="space-y-6 mt-6">
+
+
+
+          <Card className="p-8">
+
+
+
+            <div className="mb-6 text-center">
+
+
+
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+
+
+
+                Vista Previa del Certificado Laboral
+
+
+
+              </h3>
+
+
+
+              <p className="text-sm text-gray-600">
+
+
+
+                Así se verá el certificado con la configuración actual
+
+
+
+              </p>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            {/* Simulación de certificado - EXACTA A LA PLANTILLA REAL */}
+
+
+
+            <div
+
+
+
+              className="border-2 border-gray-300 rounded-lg bg-white shadow-lg max-w-[800px] mx-auto"
+
+
+
+              style={{ padding: '60px 80px', position: 'relative' }}
+
+
+
             >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleRestaurarVersion}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Restaurar Versión
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+
+
+              {/* Logo ESAP - Arriba a la izquierda */}
+
+
+
+              <div style={{ position: 'relative', height: '120px', marginBottom: '24px' }}>
+
+
+
+                {borrador.logoEntidad ? (
+
+
+
+                  <img
+
+
+
+                    src={borrador.logoEntidad.url}
+
+
+
+                    alt="Logo ESAP"
+
+
+
+                    crossOrigin="anonymous"
+
+
+
+                    style={{
+
+
+
+                      position: 'absolute',
+
+
+
+                      top: '20px',
+
+
+
+                      left: '-10px',
+
+
+
+                      width: 'auto',
+
+
+
+                      height: 'auto',
+
+
+
+                      maxHeight: '100px',
+
+
+
+                      objectFit: 'contain'
+
+
+
+                    }}
+
+
+
+                  />
+
+
+
+                ) : (
+
+
+
+                  <div className="text-xs text-gray-400">Logo ESAP</div>
+
+
+
+                )}
+
+
+
+              </div>
+
+
+
+
+
+
+
+              {/* Número de certificado */}
+
+
+
+              <div className="mb-8">
+
+
+
+                <p
+
+
+
+                  style={{
+
+
+
+                    fontFamily: borrador.tipografia.fuente,
+
+
+
+                    fontSize: `${borrador.tipografia.tamaño}pt`,
+
+
+
+                    color: borrador.tipografia.color
+
+
+
+                  }}
+
+
+
+                >
+
+
+
+                  12_620_700_20_CD 004
+
+
+
+                </p>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              {/* Título del cargo - editable */}
+
+
+
+              <div className="text-center mb-12 flex justify-center">
+
+
+
+                <p
+
+
+
+                  className="font-bold whitespace-pre-wrap"
+
+
+
+                  style={{
+
+
+
+                    fontFamily: borrador.tipografia.fuente,
+
+
+
+                    fontSize: `${borrador.tipografia.tamaño}pt`,
+
+
+
+                    color: borrador.tipografia.color,
+
+
+
+                    lineHeight: '1.2',
+
+
+
+                    wordBreak: 'keep-all',
+
+
+
+                    overflowWrap: 'normal',
+
+
+
+                    width: '600px',
+
+
+
+                    maxWidth: '100%'
+
+
+
+                  }}
+
+
+
+                >
+
+
+
+                  {borrador.tituloCargo.texto}
+
+
+
+                </p>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              {/* HACE CONSTAR - fijo, no editable */}
+
+
+
+              <div className="text-center mb-8">
+
+
+
+                <p
+
+
+
+                  className="font-bold"
+
+
+
+                  style={{
+
+
+
+                    fontFamily: borrador.tipografia.fuente,
+
+
+
+                    fontSize: `${borrador.tipografia.tamaño}pt`,
+
+
+
+                    color: borrador.tipografia.color
+
+
+
+                  }}
+
+
+
+                >
+
+
+
+                  HACE CONSTAR
+
+
+
+                </p>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              {/* Contenido del certificado con formato enriquecido */}
+
+
+
+              <div
+
+
+
+                className="space-y-2.5 text-justify"
+
+
+
+                style={{
+
+
+
+                  fontFamily: borrador.tipografia.fuente,
+
+
+
+                  fontSize: `${borrador.tipografia.tamaño}pt`,
+
+
+
+                  color: borrador.tipografia.color,
+
+
+
+                  lineHeight: '1.8'
+
+
+
+                }}
+
+
+
+                dangerouslySetInnerHTML={{ __html: borrador.contenidoCertificado.texto }}
+
+
+
+              />
+
+
+
+
+
+
+
+              {/* Espacio para firma (si hay imagen de firma, se muestra aquí) */}
+
+
+
+              <div className="mt-12 mb-3 flex justify-center items-center" style={{ height: '48px' }}>
+
+
+
+                {borrador.grafoFirma && (
+
+
+
+                  <img
+
+
+
+                    src={borrador.grafoFirma.url}
+
+
+
+                    alt="Firma"
+
+
+
+                    className="w-auto object-contain"
+
+
+
+                    style={{ maxHeight: '48px', height: '48px', maxWidth: '200px' }}
+
+
+
+                  />
+
+
+
+                )}
+
+
+
+              </div>
+
+
+
+
+
+
+
+              {/* Nombre del firmante - Centrado en negrita */}
+
+
+
+              <div className="text-center mb-10">
+
+
+
+                <p className="text-[11px] font-bold text-gray-900">{borrador.firmante.nombre}</p>
+
+
+
+              </div>
+
+
+
+
+
+
+
+              {/* Pie de página */}
+
+
+
+              <div className="mt-6 pt-2 border-t border-gray-400 text-[8.5px] text-gray-700 leading-tight">
+
+
+
+                <div className="grid grid-cols-2 gap-8">
+
+
+
+                  <div className="space-y-0.5">
+
+
+
+                    <p>Sede principal</p>
+
+
+
+                    <p>Calle #12 - 37, CAN, Bogotá D.C.</p>
+
+
+
+                    <p>Conmutador: (571) 2202790</p>
+
+
+
+                    <p>Línea centralizada PBX: 018000-422713</p>
+
+
+
+                    <p>Línea nacional gratuita (USA): 018000-422713</p>
+
+
+
+                  </div>
+
+
+
+                  <div className="text-right flex items-end justify-end">
+
+
+
+                    <p className="text-[#003DA5] font-semibold text-[10px]">www.esap.edu.co</p>
+
+
+
+                  </div>
+
+
+
+                </div>
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            {/* Información adicional */}
+
+
+
+            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+
+
+
+              <p className="text-sm text-blue-800 flex items-start gap-2">
+
+
+
+                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+
+
+
+                <span>
+
+
+
+                  Esta es una vista previa de cómo se verá el certificado. Los datos del funcionario
+
+
+
+                  se reemplazarán automáticamente al generar cada certificado individual.
+
+
+
+                </span>
+
+
+
+              </p>
+
+
+
+            </div>
+
+
+
+          </Card>
+
+
+
+        </TabsContent>
+
+
+
+        )}
+
+
+
+
+
+
+
+        {/* TAB 3: HISTORIAL */}
+
+
+
+        <TabsContent value="historial" className="space-y-6 mt-6">
+
+
+
+          <Card className="p-6">
+
+
+
+            <div className="mb-6">
+
+
+
+              <h3 className="text-xl font-bold text-gray-900 mb-2 flex items-center gap-2">
+
+
+
+                <History className="w-5 h-5 text-[#003DA5]" />
+
+
+
+                Historial de Cambios en la Plantilla
+
+
+
+              </h3>
+
+
+
+              <p className="text-sm text-gray-600">
+
+
+
+                Registro completo de todas las Modificaciónnes realizadas a la plantilla de certificados
+
+
+
+              </p>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            {logCambios.length === 0 ? (
+
+
+
+              <div className="text-center py-12 text-gray-500">
+
+
+
+                <History className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+
+
+
+                <p className="text-lg font-medium">No hay cambios registrados</p>
+
+
+
+                <p className="text-sm mt-2">
+
+
+
+                  Los cambios que realices aparecerán aquí para su seguimiento
+
+
+
+                </p>
+
+
+
+              </div>
+
+
+
+            ) : (
+
+
+
+              <div className="space-y-3">
+
+
+
+                {logCambios.map((log) => {
+
+
+
+                  // Determinar icono y color según el tipo de cambio
+
+
+
+                  const getChangeIcon = (tipo: string) => {
+
+
+
+                    switch (tipo) {
+
+
+
+                      case 'logo':
+
+
+
+                        return { icon: ImageIcon, color: 'bg-blue-50 text-blue-600 border-blue-200' };
+
+
+
+                      case 'firma':
+
+
+
+                        return { icon: PenTool, color: 'bg-purple-50 text-purple-600 border-purple-200' };
+
+
+
+                      case 'nombre':
+
+
+
+                        return { icon: User, color: 'bg-green-50 text-green-600 border-green-200' };
+
+
+
+                      default:
+
+
+
+                        return { icon: Edit3, color: 'bg-gray-50 text-gray-600 border-gray-200' };
+
+
+
+                    }
+
+
+
+                  };
+
+
+
+
+
+
+
+                  const changeConfig = getChangeIcon(log.accion.toLowerCase().includes('logo') ? 'logo' :
+
+
+
+                                                     log.accion.toLowerCase().includes('firma') ? 'firma' : 'nombre');
+
+
+
+                  const IconComponent = changeConfig.icon;
+
+
+
+
+
+
+
+                  return (
+
+
+
+                    <div
+
+
+
+                      key={log.id}
+
+
+
+                      className="border border-gray-200 rounded-lg hover:shadow-md transition-all duration-200 overflow-hidden"
+
+
+
+                    >
+
+
+
+                      {/* Barra de color superior según tipo de cambio */}
+
+
+
+                      <div className={`h-1 ${changeConfig.color.split(' ')[0].replace('bg-', 'bg-')}`}></div>
+
+
+
+
+
+
+
+                      <div className="p-4">
+
+
+
+                        <div className="flex items-start gap-3">
+
+
+
+                          {/* Icono distintivo según el tipo de cambio */}
+
+
+
+                          {log.changeType === 'logo' && (
+
+
+
+                            <div className="relative">
+
+
+
+                              <div className="p-3 rounded-xl border-2 border-blue-300 bg-gradient-to-br from-blue-50 to-blue-100 shadow-sm">
+
+
+
+                                <ImageIcon className="w-6 h-6 text-blue-600" strokeWidth={2.5} />
+
+
+
+                              </div>
+
+
+
+                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+
+
+
+                                <span className="text-[8px] font-bold text-white">L</span>
+
+
+
+                              </div>
+
+
+
+                            </div>
+
+
+
+                          )}
+
+
+
+
+
+
+
+                          {log.changeType === 'firma' && (
+
+
+
+                            <div className="relative">
+
+
+
+                              <div className="p-3 rounded-xl border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-purple-100 shadow-sm">
+
+
+
+                                <PenTool className="w-6 h-6 text-purple-600" strokeWidth={2.5} />
+
+
+
+                              </div>
+
+
+
+                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center">
+
+
+
+                                <span className="text-[8px] font-bold text-white">F</span>
+
+
+
+                              </div>
+
+
+
+                            </div>
+
+
+
+                          )}
+
+
+
+
+
+
+
+                          {log.changeType === 'nombre' && (
+
+
+
+                            <div className="relative">
+
+
+
+                              <div className="p-3 rounded-xl border-2 border-green-300 bg-gradient-to-br from-green-50 to-green-100 shadow-sm">
+
+
+
+                                <User className="w-6 h-6 text-green-600" strokeWidth={2.5} />
+
+
+
+                              </div>
+
+
+
+                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+
+
+
+                                <span className="text-[8px] font-bold text-white">N</span>
+
+
+
+                              </div>
+
+
+
+                            </div>
+
+
+
+                          )}
+
+
+
+
+
+
+
+                          {log.changeType === 'tipografia' && (
+
+
+
+                            <div className="relative">
+
+
+
+                              <div className="p-3 rounded-xl border-2 border-orange-300 bg-gradient-to-br from-orange-50 to-orange-100 shadow-sm">
+
+
+
+                                <Type className="w-6 h-6 text-orange-600" strokeWidth={2.5} />
+
+
+
+                              </div>
+
+
+
+                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center">
+
+
+
+                                <span className="text-[8px] font-bold text-white">T</span>
+
+
+
+                              </div>
+
+
+
+                            </div>
+
+
+
+                          )}
+
+
+
+
+
+
+
+                          {log.changeType === 'contenido' && (
+
+
+
+                            <div className="relative">
+
+
+
+                              <div className="p-3 rounded-xl border-2 border-teal-300 bg-gradient-to-br from-teal-50 to-teal-100 shadow-sm">
+
+
+
+                                <FileText className="w-6 h-6 text-teal-600" strokeWidth={2.5} />
+
+
+
+                              </div>
+
+
+
+                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-teal-500 rounded-full flex items-center justify-center">
+
+
+
+                                <span className="text-[8px] font-bold text-white">C</span>
+
+
+
+                              </div>
+
+
+
+                            </div>
+
+
+
+                          )}
+
+
+
+
+
+
+
+                          {!log.changeType && (
+
+
+
+                            <div className="p-3 rounded-xl border-2 border-gray-300 bg-gradient-to-br from-gray-50 to-gray-100 shadow-sm">
+
+
+
+                              <Edit3 className="w-6 h-6 text-gray-600" strokeWidth={2.5} />
+
+
+
+                            </div>
+
+
+
+                          )}
+
+
+
+
+
+
+
+                          {/* Contenido principal */}
+
+
+
+                          <div className="flex-1">
+
+
+
+                            <div className="flex items-start justify-between mb-2">
+
+
+
+                              <div>
+
+
+
+                                <h4 className="font-semibold text-gray-900 text-sm">{log.accion}</h4>
+
+
+
+                                <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+
+
+
+                                  <span className="flex items-center gap-1">
+
+
+
+                                    <User className="w-3 h-3" />
+
+
+
+                                    {log.usuario}
+
+
+
+                                  </span>
+
+
+
+                                  <span className="flex items-center gap-1">
+
+
+
+                                    <Calendar className="w-3 h-3" />
+
+
+
+                                    {new Date(log.fecha).toLocaleDateString('es-CO', {
+
+
+
+                                      day: '2-digit',
+
+
+
+                                      month: 'short',
+
+
+
+                                      year: 'numeric'
+
+
+
+                                    })}
+
+
+
+                                  </span>
+
+
+
+                                  <span className="flex items-center gap-1">
+
+
+
+                                    <Clock className="w-3 h-3" />
+
+
+
+                                    {new Date(log.fecha).toLocaleTimeString('es-CO', {
+
+
+
+                                      hour: '2-digit',
+
+
+
+                                      minute: '2-digit'
+
+
+
+                                    })}
+
+
+
+                                  </span>
+
+
+
+                                </div>
+
+
+
+                              </div>
+
+
+
+                            </div>
+
+
+
+
+
+
+
+                            {/* Detalle de cambios con Visualizaciónnes */}
+
+
+
+                            <div className="mt-3 bg-gray-50 rounded-md p-3 border border-gray-100">
+
+
+
+                              {/* Visualizaciónn según el tipo de cambio */}
+
+
+
+                              {log.changeType === 'logo' && log.newValue && log.newValue.includes('/uploads/') && (
+
+
+
+                                <div className="mb-3 flex items-center gap-4 p-3 bg-white rounded-md border border-blue-100">
+
+
+
+                                  <div className="flex flex-col items-center gap-2">
+
+
+
+                                    <span className="text-xs font-medium text-gray-600">Anterior</span>
+
+
+
+                                    {log.oldValue && log.oldValue.includes('/uploads/') ? (
+
+
+
+                                      <div className="w-20 h-20 border-2 border-gray-200 rounded-lg overflow-hidden flex items-center justify-center bg-white p-2">
+
+
+
+                                        <img
+
+
+
+                                          src={buildServiceAssetUrl('certificados', log.oldValue || '')}
+
+
+
+                                          alt="Logo anterior"
+
+
+
+                                          className="w-full h-full object-contain"
+
+
+
+                                        />
+
+
+
+                                      </div>
+
+
+
+                                    ) : (
+
+
+
+                                      <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50">
+
+
+
+                                        <ImageIcon className="w-8 h-8 text-gray-400" />
+
+
+
+                                      </div>
+
+
+
+                                    )}
+
+
+
+                                  </div>
+
+
+
+                                  <div className="flex items-center">
+
+
+
+                                    <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+
+
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+
+
+
+                                    </svg>
+
+
+
+                                  </div>
+
+
+
+                                  <div className="flex flex-col items-center gap-2">
+
+
+
+                                    <span className="text-xs font-medium text-blue-600">Nuevo</span>
+
+
+
+                                    <div className="w-20 h-20 border-2 border-blue-400 rounded-lg overflow-hidden flex items-center justify-center bg-white p-2 shadow-sm">
+
+
+
+                                      <img
+
+
+
+                                        src={buildServiceAssetUrl('certificados', log.newValue || '')}
+
+
+
+                                        alt="Logo nuevo"
+
+
+
+                                        className="w-full h-full object-contain"
+
+
+
+                                      />
+
+
+
+                                    </div>
+
+
+
+                                  </div>
+
+
+
+                                </div>
+
+
+
+                              )}
+
+
+
+
+
+
+
+                              {log.changeType === 'firma' && log.newValue && log.newValue.includes('/uploads/') && (
+
+
+
+                                <div className="mb-3 flex items-center gap-4 p-3 bg-white rounded-md border border-purple-100">
+
+
+
+                                  <div className="flex flex-col items-center gap-2">
+
+
+
+                                    <span className="text-xs font-medium text-gray-600">Anterior</span>
+
+
+
+                                    {log.oldValue && log.oldValue.includes('/uploads/') ? (
+
+
+
+                                      <div className="w-32 h-16 border-2 border-gray-200 rounded-lg overflow-hidden flex items-center justify-center bg-white p-2">
+
+
+
+                                        <img
+
+
+
+                                          src={buildServiceAssetUrl('certificados', log.oldValue || '')}
+
+
+
+                                          alt="Firma anterior"
+
+
+
+                                          className="w-full h-full object-contain"
+
+
+
+                                        />
+
+
+
+                                      </div>
+
+
+
+                                    ) : (
+
+
+
+                                      <div className="w-32 h-16 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50">
+
+
+
+                                        <PenTool className="w-6 h-6 text-gray-400" />
+
+
+
+                                      </div>
+
+
+
+                                    )}
+
+
+
+                                  </div>
+
+
+
+                                  <div className="flex items-center">
+
+
+
+                                    <svg className="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+
+
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+
+
+
+                                    </svg>
+
+
+
+                                  </div>
+
+
+
+                                  <div className="flex flex-col items-center gap-2">
+
+
+
+                                    <span className="text-xs font-medium text-purple-600">Nueva</span>
+
+
+
+                                    <div className="w-32 h-16 border-2 border-purple-400 rounded-lg overflow-hidden flex items-center justify-center bg-white p-2 shadow-sm">
+
+
+
+                                      <img
+
+
+
+                                        src={buildServiceAssetUrl('certificados', log.newValue || '')}
+
+
+
+                                        alt="Firma nueva"
+
+
+
+                                        className="w-full h-full object-contain"
+
+
+
+                                      />
+
+
+
+                                    </div>
+
+
+
+                                  </div>
+
+
+
+                                </div>
+
+
+
+                              )}
+
+
+
+
+
+
+
+                              {log.changeType === 'nombre' && log.oldValue && log.newValue && (
+
+
+
+                                <div className="mb-3 p-3 bg-white rounded-md border border-green-100">
+
+
+
+                                  <div className="flex items-center gap-3 justify-center">
+
+
+
+                                    <div className="flex flex-col items-center gap-1 flex-1">
+
+
+
+                                      <span className="text-xs font-medium text-gray-600">Anterior</span>
+
+
+
+                                      <div className="w-full p-3 bg-gray-50 rounded-md border border-gray-200 text-center">
+
+
+
+                                        <p className="text-sm font-semibold text-gray-700">{log.oldValue}</p>
+
+
+
+                                      </div>
+
+
+
+                                    </div>
+
+
+
+                                    <div className="flex items-center pt-6">
+
+
+
+                                      <svg className="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+
+
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+
+
+
+                                      </svg>
+
+
+
+                                    </div>
+
+
+
+                                    <div className="flex flex-col items-center gap-1 flex-1">
+
+
+
+                                      <span className="text-xs font-medium text-green-600">Nuevo</span>
+
+
+
+                                      <div className="w-full p-3 bg-green-50 rounded-md border border-green-300 text-center shadow-sm">
+
+
+
+                                        <p className="text-sm font-bold text-green-800">{log.newValue}</p>
+
+
+
+                                      </div>
+
+
+
+                                    </div>
+
+
+
+                                  </div>
+
+
+
+                                </div>
+
+
+
+                              )}
+
+
+
+
+
+
+
+                              {log.changeType === 'tipografia' && log.oldValue && log.newValue && (
+
+
+
+                                <div className="mb-3 p-3 bg-white rounded-md border border-orange-100">
+
+
+
+                                  <div className="flex items-center gap-3 justify-center">
+
+
+
+                                    <div className="flex flex-col items-center gap-1 flex-1">
+
+
+
+                                      <span className="text-xs font-medium text-gray-600">Anterior</span>
+
+
+
+                                      <div className="w-full p-3 bg-gray-50 rounded-md border border-gray-200 text-center">
+
+
+
+                                        <p className="text-sm font-semibold text-gray-700">
+
+
+
+                                          Aa
+
+
+
+                                        </p>
+
+
+
+                                        <p className="text-xs text-gray-600 mt-1">{log.oldValue}</p>
+
+
+
+                                      </div>
+
+
+
+                                    </div>
+
+
+
+                                    <div className="flex items-center pt-6">
+
+
+
+                                      <svg className="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+
+
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+
+
+
+                                      </svg>
+
+
+
+                                    </div>
+
+
+
+                                    <div className="flex flex-col items-center gap-1 flex-1">
+
+
+
+                                      <span className="text-xs font-medium text-orange-600">Nueva</span>
+
+
+
+                                      <div className="w-full p-3 bg-orange-50 rounded-md border border-orange-300 text-center shadow-sm">
+
+
+
+                                        <p className="text-sm font-bold text-orange-800" style={{ fontFamily: log.newValue }}>
+
+
+
+                                          Aa
+
+
+
+                                        </p>
+
+
+
+                                        <p className="text-xs text-orange-700 mt-1">{log.newValue}</p>
+
+
+
+                                      </div>
+
+
+
+                                    </div>
+
+
+
+                                  </div>
+
+
+
+                                </div>
+
+
+
+                              )}
+
+
+
+
+
+
+
+                              {log.changeType === 'contenido' && (
+
+
+
+                                <div className="mb-3 p-3 bg-white rounded-md border border-teal-100">
+
+
+
+                                  <div className="flex flex-col gap-3">
+
+
+
+                                    <div className="flex items-center justify-between">
+
+
+
+                                      <span className="text-xs font-medium text-gray-600">Cambios en el contenido:</span>
+
+
+
+                                      <span className="text-xs text-teal-600 font-medium">Contenido actualizado</span>
+
+
+
+                                    </div>
+
+
+
+
+
+
+
+                                    {/* Mostrar versión anterior */}
+
+
+
+                                      {log.oldValue && (
+
+
+
+                                      (() => {
+
+
+
+                                        const { oldHighlighted, newHighlighted } = generarDiffResaltado(log.oldValue, log.newValue);
+
+
+
+                                        return (
+
+
+
+                                          <div className="space-y-2">
+
+
+
+                                            <div className="flex items-center gap-2">
+
+
+
+                                              <div className="w-20 text-xs font-semibold text-gray-600">Anterior:</div>
+
+
+
+                                              <div className="flex-1 p-3 bg-red-50 rounded-md border border-red-200 max-h-32 overflow-y-auto">
+
+
+
+                                                <div
+
+
+
+                                                  className="text-xs text-red-900 whitespace-pre-wrap"
+
+
+
+                                                  dangerouslySetInnerHTML={{ __html: oldHighlighted }}
+
+
+
+                                                  style={{
+
+
+
+                                                    wordBreak: 'break-word',
+
+
+
+                                                    lineHeight: '1.6'
+
+
+
+                                                  }}
+
+
+
+                                                />
+
+
+
+                                              </div>
+
+
+
+                                            </div>
+
+
+
+
+
+
+
+                                            <div className="flex items-center justify-center">
+
+
+
+                                              <svg className="w-5 h-5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+
+
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+
+
+
+                                              </svg>
+
+
+
+                                            </div>
+
+
+
+
+
+
+
+                                            <div className="flex items-center gap-2">
+
+
+
+                                              <div className="w-20 text-xs font-semibold text-teal-700">Nuevo:</div>
+
+
+
+                                              <div className="flex-1 p-3 bg-teal-50 rounded-md border border-teal-200 max-h-32 overflow-y-auto">
+
+
+
+                                                <div
+
+
+
+                                                  className="text-xs text-teal-900 whitespace-pre-wrap"
+
+
+
+                                                  dangerouslySetInnerHTML={{ __html: newHighlighted }}
+
+
+
+                                                  style={{
+
+
+
+                                                    wordBreak: 'break-word',
+
+
+
+                                                    lineHeight: '1.6'
+
+
+
+                                                  }}
+
+
+
+                                                />
+
+
+
+                                              </div>
+
+
+
+                                            </div>
+
+
+
+                                          </div>
+
+
+
+                                        );
+
+
+
+                                      })()
+
+
+
+                                    )}
+
+
+
+
+
+
+
+                                    {/* Si no hay valor anterior, solo mostrar el nuevo */}
+
+
+
+                                    {!log.oldValue && log.newValue && (
+
+
+
+                                      <div className="p-3 bg-teal-50 rounded-md border border-teal-200 max-h-40 overflow-y-auto">
+
+
+
+                                        <p className="text-xs font-medium text-teal-700 mb-2">Contenido nuevo:</p>
+
+
+
+                                        <div
+
+
+
+                                          className="text-xs text-teal-900 whitespace-pre-wrap"
+
+
+
+                                          dangerouslySetInnerHTML={{ __html: log.newValue }}
+
+
+
+                                          style={{
+
+
+
+                                            wordBreak: 'break-word',
+
+
+
+                                            lineHeight: '1.6'
+
+
+
+                                          }}
+
+
+
+                                        />
+
+
+
+                                      </div>
+
+
+
+                                    )}
+
+
+
+                                  </div>
+
+
+
+                                </div>
+
+
+
+                              )}
+
+
+
+
+
+
+
+                              {/* Texto descriptivo del cambio - Solo mostrar para cambios que NO sean de contenido */}
+
+
+
+                              {log.changeType !== 'contenido' && (
+
+
+
+                                <div className="space-y-1.5">
+
+
+
+                                  {log.cambios.map((cambio, idx) => (
+
+
+
+                                    <div key={idx} className="text-xs text-gray-700 font-mono">
+
+
+
+                                      {cambio}
+
+
+
+                                    </div>
+
+
+
+                                  ))}
+
+
+
+                                </div>
+
+
+
+                              )}
+
+
+
+                            </div>
+
+
+
+                          </div>
+
+
+
+                        </div>
+
+
+
+                      </div>
+
+
+
+                    </div>
+
+
+
+                  );
+
+
+
+                })}
+
+
+
+              </div>
+
+
+
+            )}
+
+
+
+          </Card>
+
+
+
+        </TabsContent>
+
+
+
+      </Tabs>
+
+
+
+
+
+
+
     </div>
+
+
+
   );
+
+
+
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -75,6 +75,11 @@ export function HistorialVerificacionesQR({
     paises: new Set(verificaciones.map(v => v.ubicacion.pais)).size
   };
 
+  const totalVerificacionesReales = totalVerificaciones > 0 ? totalVerificaciones : verificaciones.length;
+  const tasaExito = totalVerificacionesReales > 0
+    ? Math.round((stats.exitosas / totalVerificacionesReales) * 100)
+    : 0;
+
   const getDispositivoIcon = (tipo: string) => {
     switch (tipo) {
       case 'mobile': return <Smartphone className="w-4 h-4" />;
@@ -182,7 +187,7 @@ export function HistorialVerificacionesQR({
             <Eye className="w-5 h-5 text-blue-600" />
             <TrendingUp className="w-4 h-4 text-blue-500" />
           </div>
-          <p className="text-3xl font-bold text-blue-900 mb-1">{totalVerificaciones}</p>
+          <p className="text-3xl font-bold text-blue-900 mb-1">{totalVerificacionesReales}</p>
           <p className="text-xs text-blue-700 font-medium">Total Verificaciones</p>
         </motion.div>
 
@@ -193,7 +198,7 @@ export function HistorialVerificacionesQR({
           <div className="flex items-center justify-between mb-2">
             <CheckCircle className="w-5 h-5 text-green-600" />
             <span className="text-xs font-semibold text-green-700">
-              {stats.exitosas > 0 ? Math.round((stats.exitosas / totalVerificaciones) * 100) : 0}%
+              {tasaExito}%
             </span>
           </div>
           <p className="text-3xl font-bold text-green-900 mb-1">{stats.exitosas}</p>

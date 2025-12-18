@@ -5,16 +5,16 @@
  * - Campos: Nombre, Identificación, Tipo vinculación, Fecha vinculación, Cargo, Grado, Dependencia, Salario, Fecha solicitud
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { 
-  Search, 
-  X, 
-  Download, 
-  FileText, 
-  Eye, 
-  CheckCircle, 
-  XCircle, 
+import {
+  Search,
+  X,
+  Download,
+  FileText,
+  Eye,
+  CheckCircle,
+  XCircle,
   QrCode,
   MoreVertical,
   RefreshCw,
@@ -25,13 +25,14 @@ import {
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
+
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CertificadoDetalleModal } from './CertificadoDetalleModal';
 import { GenerarCertificadoModal } from './GenerarCertificadoModal';
 import { CertificadoDetallePanel } from './CertificadoDetallePanel';
 import React from 'react';
 import { EMPLEADOS_ELEGIBLES, DATOS_LABORALES } from '../../data/empleadosElegiblesCertificados';
+import { certificadosService } from '../../services/api/certificados.service';
 
 // Tipo de certificado laboral - Solo autoservicio
 interface CertificadoLaboral {
@@ -55,6 +56,11 @@ interface CertificadoLaboral {
   fechaGeneracion: string;
   cantidadEscaneos: number;
   pdfUrl?: string;
+  firmante?: {
+    nombre: string;
+    cargo: string;
+    dependencia: string;
+  };
 }
 
 interface Stats {
@@ -64,7 +70,12 @@ interface Stats {
   solicitudesHoy: number;
 }
 
-export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (vista: string) => void }) {
+interface CertificadosLaboralesDashboardProps {
+  onNavigate?: (vista: string) => void;
+  canManageTemplates?: boolean;
+}
+
+export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false }: CertificadosLaboralesDashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [cargoFilter, setCargoFilter] = useState<string>('all');
@@ -78,49 +89,93 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
   const [isGenerarOpen, setIsGenerarOpen] = useState(false);
   const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
 
-  // Mock data: Certificados laborales - Solo autoservicio
-  // SINCRONIZADO con usuarios reales del módulo de usuarios
-  // Generamos certificados para TODOS los empleados elegibles
-  const mockCertificados: CertificadoLaboral[] = EMPLEADOS_ELEGIBLES
-    .filter(empleado => DATOS_LABORALES[empleado.id]) // Solo empleados con datos laborales
-    .map((empleado, index) => {
-      const datosLaborales = DATOS_LABORALES[empleado.id];
-      const fechaSolicitud = new Date(2025, 0, 8 + index); // Fechas escalonadas desde enero 8
-      const fechaGeneracion = new Date(fechaSolicitud.getTime() + 90 * 60000); // +90 minutos
-      
-      return {
-        id: `CERT-LAB-${String(index + 1).padStart(3, '0')}`,
-        consecutivo: `ESAP-CERT-2025-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-        certificateHash: `sha256:lab${String(index + 1).padStart(3, '0')}hash`,
-        qrCode: `QR-LAB-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+  // Estado para certificados y loading
+  const [certificados, setCertificados] = useState<CertificadoLaboral[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Función para cargar certificados (extraída para poder llamarla desde múltiples lugares)
+  const fetchCertificados = async (showRefreshToast = false) => {
+    try {
+      if (showRefreshToast) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setError(null);
+
+      console.log('🔄 Cargando certificados desde el backend...');
+      const data = await certificadosService.laborales.listar();
+      console.log(`✅ Se cargaron ${data.length} certificados`);
+
+      // Transformar datos del backend al formato del componente
+      const certificadosTransformados: CertificadoLaboral[] = data.map((cert: any) => ({
+        id: cert.id,
+        consecutivo: cert.certificate_number,
+        certificateHash: cert.verification_code,
+        qrCode: cert.verification_code,
         empleado: {
-          nombre: `${empleado.firstName} ${empleado.lastName}`,
-          documento: empleado.document,
-          cargo: datosLaborales.cargo,
-          dependencia: datosLaborales.dependencia,
-          tipoVinculacion: datosLaborales.tipoVinculacion,
-          fechaVinculacion: datosLaborales.fechaVinculacion,
-          grado: datosLaborales.grado,
-          salario: datosLaborales.salario,
-          email: empleado.email
+          nombre: cert.full_name,
+          documento: cert.id_number,
+          cargo: cert.position_category,
+          dependencia: cert.department || '',
+          tipoVinculacion: cert.career_category,
+          fechaVinculacion: cert.hiring_date,
+          grado: cert.position_location || '',
+          salario: Number(cert.monthly_salary),
+          email: 'email@esap.edu.co' // TODO: Obtener email real
         },
-        estado: (index % 15 === 0 ? 'revocado' : index % 10 === 0 ? 'expirado' : 'activo') as 'activo' | 'revocado' | 'expirado',
-        fechaSolicitud: fechaSolicitud.toISOString(),
-        fechaGeneracion: fechaGeneracion.toISOString(),
-        cantidadEscaneos: Math.floor(Math.random() * 20) + 1,
-        pdfUrl: `/certificados/${String(index + 1).padStart(3, '0')}-2025.pdf`
-      };
-    });
+        estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
+        fechaSolicitud: cert.created_at,
+        fechaGeneracion: cert.issuance_timestamp,
+        cantidadEscaneos: cert.validation_count || 0,
+        pdfUrl: cert.pdf_url,
+        firmante: {
+          nombre: cert.signer_name,
+          cargo: cert.signer_position,
+          dependencia: cert.signer_department
+        }
+      }));
+
+      console.log('📊 Contador de validaciones por certificado:',
+        certificadosTransformados.map(c => ({
+          consecutivo: c.consecutivo,
+          validaciones: c.cantidadEscaneos
+        }))
+      );
+
+      setCertificados(certificadosTransformados);
+
+      if (showRefreshToast) {
+        toast.success('Datos actualizados', {
+          description: `Se actualizaron ${certificadosTransformados.length} certificados`
+        });
+      }
+    } catch (err: any) {
+      console.error('❌ Error al cargar certificados:', err);
+      setError(err.message || 'Error al cargar los certificados');
+      toast.error('Error al cargar los certificados');
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  // Cargar certificados al montar el componente
+  useEffect(() => {
+    fetchCertificados();
+  }, []);
 
   const stats: Stats = {
-    certificadosEmitidos: mockCertificados.length,
-    certificadosActivos: mockCertificados.filter(cert => cert.estado === 'activo').length,
-    escaneosQR: mockCertificados.reduce((total, cert) => total + cert.cantidadEscaneos, 0),
+    certificadosEmitidos: certificados.length,
+    certificadosActivos: certificados.filter(cert => cert.estado === 'activo').length,
+    escaneosQR: certificados.reduce((total, cert) => total + cert.cantidadEscaneos, 0),
     solicitudesHoy: 1
   };
 
   // Filtros
-  const filteredCertificados = mockCertificados.filter(cert => {
+  const filteredCertificados = certificados.filter(cert => {
     const matchesSearch = 
       cert.empleado.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
       cert.empleado.documento.includes(searchQuery) ||
@@ -142,6 +197,7 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
   );
 
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || cargoFilter !== 'all' || tipoVinculacionFilter !== 'all';
+  const puedeConfigurarPlantilla = Boolean(canManageTemplates);
 
   const clearAllFilters = () => {
     setSearchQuery('');
@@ -253,13 +309,14 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
             className="inline-flex items-center justify-center gap-2 transition-all"
             style={{
               background: '#FFFFFF',
-              color: '#6B7280',
+              color: puedeConfigurarPlantilla ? '#6B7280' : '#9CA3AF',
               border: '2px solid #E5E7EB',
               borderRadius: '8px',
               padding: '12px 20px',
               fontSize: '14px',
               fontWeight: 500,
-              cursor: 'pointer'
+              cursor: 'pointer',
+              opacity: puedeConfigurarPlantilla ? 1 : 0.9
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = '#F9FAFB';
@@ -270,14 +327,49 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
             onMouseLeave={(e) => {
               e.currentTarget.style.background = '#FFFFFF';
               e.currentTarget.style.borderColor = '#E5E7EB';
-              e.currentTarget.style.color = '#6B7280';
+              e.currentTarget.style.color = puedeConfigurarPlantilla ? '#6B7280' : '#9CA3AF';
               e.currentTarget.style.transform = 'translateY(0)';
             }}
           >
             <Settings className="w-5 h-5" strokeWidth={2} />
-            <span>Configurar Plantilla</span>
+            <span>{puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}</span>
           </button>
           
+          <button
+            onClick={() => fetchCertificados(true)}
+            disabled={isRefreshing}
+            className="inline-flex items-center justify-center gap-2 transition-all"
+            style={{
+              background: '#FFFFFF',
+              color: '#10B981',
+              border: '2px solid #10B981',
+              borderRadius: '8px',
+              padding: '12px 20px',
+              fontSize: '14px',
+              fontWeight: 500,
+              cursor: isRefreshing ? 'not-allowed' : 'pointer',
+              opacity: isRefreshing ? 0.6 : 1
+            }}
+            onMouseEnter={(e) => {
+              if (!isRefreshing) {
+                e.currentTarget.style.background = '#F0FDF4';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#FFFFFF';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            <motion.div
+              animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
+              transition={isRefreshing ? { duration: 1, repeat: Infinity, ease: 'linear' } : {}}
+            >
+              <RefreshCw className="w-5 h-5" strokeWidth={2} />
+            </motion.div>
+            <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
+          </button>
+
           <button
             onClick={() => setIsGenerarOpen(true)}
             className="inline-flex items-center justify-center gap-2 transition-all"
@@ -344,7 +436,9 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
                 </div>
                 <div>
                   <p className="text-xs text-gray-600">Empleados Elegibles</p>
-                  <p className="text-lg font-bold text-gray-900">{EMPLEADOS_ELEGIBLES.length}</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {isLoading ? '...' : certificados.length}
+                  </p>
                 </div>
               </div>
               <div className="h-8 w-px bg-blue-200"></div>
@@ -355,8 +449,8 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
                 <div>
                   <p className="text-xs text-gray-600">Docentes Activos</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {EMPLEADOS_ELEGIBLES.filter(emp => 
-                      emp.roles.some(role => role.name === 'Docente')
+                    {isLoading ? '...' : certificados.filter(cert =>
+                      cert.empleado.cargo.toLowerCase().includes('docente')
                     ).length}
                   </p>
                 </div>
@@ -369,9 +463,8 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
                 <div>
                   <p className="text-xs text-gray-600">Administrativos Activos</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {EMPLEADOS_ELEGIBLES.filter(emp => 
-                      emp.roles.some(role => role.name === 'Administrativo') &&
-                      !emp.roles.some(role => role.name === 'Docente')
+                    {isLoading ? '...' : certificados.filter(cert =>
+                      !cert.empleado.cargo.toLowerCase().includes('docente')
                     ).length}
                   </p>
                 </div>
@@ -536,7 +629,33 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
         className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden"
         style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
       >
-        {paginatedCertificados.length > 0 ? (
+        {isLoading ? (
+          <div className="text-center py-16 px-6">
+            <RefreshCw className="w-16 h-16 mx-auto mb-4 text-blue-500 animate-spin" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Cargando certificados...
+            </h3>
+            <p className="text-sm text-gray-600">
+              Por favor espera un momento
+            </p>
+          </div>
+        ) : error ? (
+          <div className="text-center py-16 px-6">
+            <XCircle className="w-16 h-16 mx-auto mb-4 text-red-500" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Error al cargar certificados
+            </h3>
+            <p className="text-sm text-gray-600 mb-6">
+              {error}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-[#003DA5] text-white rounded-lg hover:bg-[#002873] transition-colors"
+            >
+              Reintentar
+            </button>
+          </div>
+        ) : paginatedCertificados.length > 0 ? (
           <>
             {/* Tabla con estructura HTML tradicional para mejor alineación */}
             <div className="overflow-x-auto">
@@ -691,38 +810,17 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
                             >
                               <Eye className="w-5 h-5 text-gray-600" />
                             </button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <button 
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                                >
-                                  <MoreVertical className="w-5 h-5 text-gray-600" />
-                                </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuItem onClick={() => toast.info('Descargar PDF')}>
-                                  <Download className="w-4 h-4 mr-2" />
-                                  Descargar PDF
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => toast.info('Ver QR')}>
-                                  <QrCode className="w-4 h-4 mr-2" />
-                                  Ver código QR
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => toast.info('Reenviar email')}>
-                                  <Mail className="w-4 h-4 mr-2" />
-                                  Reenviar email
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem 
-                                  onClick={() => toast.warning('Revocar certificado')}
-                                  className="text-red-600"
-                                >
-                                  <XCircle className="w-4 h-4 mr-2" />
-                                  Revocar
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                              }}
+                              className="p-2 rounded-lg text-gray-400 cursor-not-allowed"
+                              title="Acciones deshabilitadas temporalmente"
+                              disabled
+                            >
+                              <MoreVertical className="w-5 h-5" />
+                            </button>
+
                           </div>
                         </td>
                       </tr>

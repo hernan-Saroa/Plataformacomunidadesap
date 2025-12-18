@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Input } from '../ui/input';
@@ -28,7 +28,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
+import { Checkbox } from '../ui/checkbox';
 import { simularEnvioCorreo } from '../../utils/emailTemplates';
+import { certificadosService } from '../../services/api/certificados.service';
+import { VisorPDFCertificado } from '../certificados-laborales/VisorPDFCertificado';
+import { QRCodeCanvas } from 'qrcode.react';
+import { getPublicBaseUrl } from '../../config/environment';
 
 interface SolicitarCertificadoLaboralProps {
   onBack: () => void;
@@ -39,7 +44,7 @@ interface EmpleadoData {
   tipo_documento: string;
   numero_documento: string;
   nombre_completo: string;
-  tipo_vinculacion: 'Administrativo' | 'Docente Planta' | 'Docente Cátedra' | 'Docente Ocasional';
+  tipo_vinculacion: string;
   cargo: string;
   dependencia: string;
   fecha_vinculacion: string;
@@ -47,6 +52,7 @@ interface EmpleadoData {
   correo_institucional: string;
   correo_personal: string;
   salario_actual: number;
+  templateType?: 'docente' | 'administrador';
 }
 
 interface CertificadoGenerado {
@@ -57,8 +63,12 @@ interface CertificadoGenerado {
   dependencia: string;
   fecha_vinculacion: string;
   salario_actual: number;
+  salario_original?: number;
+  salario_texto_original?: string;
+  incluyeSalario?: boolean;
   qr_code: string;
   nombre_completo: string;
+  certificado_completo?: any; // Datos completos del certificado para el visor PDF
 }
 
 // Función para enmascarar correo (Habeas Data)
@@ -142,8 +152,72 @@ const BASE_DATOS_EMPLEADOS: EmpleadoData[] = [
 type Paso = 'ingreso-documento' | 'validacion-codigo' | 'certificado-generado';
 
 export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarCertificadoLaboralProps) {
+  const resolverTemplateType = (data?: { position_category?: string; career_category?: string }) => {
+    const texto = `${data?.position_category || ''} ${data?.career_category || ''}`.toLowerCase();
+    return texto.includes('docent') ? 'docente' : 'administrador';
+  };
+
+  const mapCertificadoExistente = (cert: any): CertificadoGenerado => {
+    const templateType = resolverTemplateType(cert);
+    const salarioBase = cert.monthly_salary || 0;
+    const salarioTextoBase = cert.salary_text;
+    return {
+      numero_radicado: cert.certificate_number || cert.verification_code || `CERT-${Date.now()}`,
+      tipo_certificado: 'Certificado Laboral General',
+      fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
+      cargo: cert.career_category || 'N/A',
+      dependencia: cert.department || 'N/A',
+      fecha_vinculacion: cert.hiring_date?.split('T')[0] || 'N/A',
+      salario_actual: salarioBase,
+      salario_original: salarioBase,
+      salario_texto_original: salarioTextoBase,
+      incluyeSalario: true,
+      qr_code: cert.verification_code || `QR-CERT-${cert.id}`,
+      nombre_completo: cert.full_name || 'N/A',
+      certificado_completo: {
+        id: cert.id,
+        consecutivo: cert.certificate_number || cert.verification_code,
+        qrCode: cert.verification_code,
+        cantidadEscaneos: 0,
+        incluyeSalario: true,
+        empleado: {
+          nombre: cert.full_name,
+          documento: cert.id_number,
+          email: cert.email || cert.certificate_email || 'N/A',
+          cargo: cert.career_category,
+          dependencia: cert.department || 'N/A',
+          tipoVinculacion: cert.position_category || 'Administrativo',
+          fechaVinculacion: cert.hiring_date,
+          grado: cert.position_location || 'N/A',
+          salario: salarioBase,
+          salarioOriginal: salarioBase,
+          salarioTexto: salarioTextoBase,
+          salarioTextoOriginal: salarioTextoBase
+        },
+        estado: cert.status?.toLowerCase?.() || 'activo',
+        tipoSolicitud: 'AUTOSERVICIO' as const,
+        fechaSolicitud: cert.created_at || new Date().toISOString(),
+        fechaGeneracion: cert.issue_date || new Date().toISOString(),
+        solicitante: {
+          nombre: cert.full_name,
+          tipo: 'autoservicio' as const
+        },
+        position_location: cert.position_location,
+        department: cert.department,
+        campus: cert.campus,
+        signer_name: cert.signer_name,
+        signer_position: cert.signer_position,
+        signer_department: cert.signer_department,
+        templateType,
+      },
+    };
+  };
+
   // Estados del flujo
   const [pasoActual, setPasoActual] = useState<Paso>('ingreso-documento');
+  const [certificadoExistente, setCertificadoExistente] = useState(false);
+  const [incluirSalario, setIncluirSalario] = useState(true);
+  const certificadoBaseRef = useRef<CertificadoGenerado | null>(null);
   
   // Paso 1: Ingreso de documento
   const [tipoDocumento, setTipoDocumento] = useState('');
@@ -161,6 +235,54 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   
   // Paso 3: Certificado generado
   const [certificadoGenerado, setCertificadoGenerado] = useState<CertificadoGenerado | null>(null);
+
+  // Estados para el visor de PDF
+  const [showPDFViewer, setShowPDFViewer] = useState(false);
+  const [autoPDFAction, setAutoPDFAction] = useState<'download' | 'print' | null>(null);
+
+  const aplicarPreferenciaSalario = (cert: CertificadoGenerado | null, incluir: boolean): CertificadoGenerado | null => {
+    if (!cert) return cert;
+
+    const salarioBase = cert.salario_original ?? cert.salario_actual ?? 0;
+    const salarioTextoBase =
+      cert.salario_texto_original ||
+      cert.certificado_completo?.empleado?.salarioTextoOriginal ||
+      cert.certificado_completo?.empleado?.salarioTexto ||
+      '';
+
+    const empleadoCertificado = cert.certificado_completo?.empleado;
+
+    const certificadoActualizado: CertificadoGenerado = {
+      ...cert,
+      salario_original: cert.salario_original ?? salarioBase,
+      salario_texto_original: cert.salario_texto_original ?? salarioTextoBase,
+      incluyeSalario: incluir,
+      salario_actual: incluir ? salarioBase : 0,
+      certificado_completo: cert.certificado_completo
+        ? {
+            ...cert.certificado_completo,
+            incluyeSalario: incluir,
+            empleado: empleadoCertificado
+              ? {
+                  ...empleadoCertificado,
+                  salario: incluir ? salarioBase : 0,
+                  salarioTexto: incluir ? salarioTextoBase : '',
+                  salarioOriginal: empleadoCertificado.salarioOriginal ?? empleadoCertificado.salario ?? salarioBase,
+                  salarioTextoOriginal:
+                    empleadoCertificado.salarioTextoOriginal ?? empleadoCertificado.salarioTexto ?? salarioTextoBase,
+                }
+              : empleadoCertificado,
+          }
+        : undefined,
+    };
+
+    return certificadoActualizado;
+  };
+
+  const registrarCertificado = (cert: CertificadoGenerado) => {
+    certificadoBaseRef.current = cert;
+    setCertificadoGenerado(aplicarPreferenciaSalario(cert, incluirSalario));
+  };
 
   // Efecto para el contador regresivo del código
   useEffect(() => {
@@ -223,8 +345,8 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   // PASO 1: Buscar empleado y enviar código
   const handleBuscarEmpleado = async () => {
     // Validaciones
-    if (!tipoDocumento || !numeroDocumento) {
-      toast.error('Por favor completa todos los campos');
+    if (!numeroDocumento) {
+      toast.error('Por favor ingresa tu número de documento');
       return;
     }
 
@@ -235,53 +357,98 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
     setBuscandoEmpleado(true);
 
-    // Simular búsqueda en base de datos
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      // Verificar si existe, si ya tiene certificado activo y si es docente
+      const verificacion = await certificadosService.autoservicio.verificarDocumento(numeroDocumento);
+      if (!verificacion.existe) {
+        setBuscandoEmpleado(false);
+        toast.error('No encontramos tu documento en la base de datos de ESAP');
+        return;
+      }
 
-    // Buscar empleado en base de datos
-    const empleado = BASE_DATOS_EMPLEADOS.find(
-      emp => emp.tipo_documento === tipoDocumento && emp.numero_documento === numeroDocumento
-    );
+      // Primero, bloquear si ya tiene certificado activo
+      const tieneCertificadoActivo = Boolean(verificacion.tieneCertificado || verificacion.certificado);
+      if (tieneCertificadoActivo && verificacion.certificado) {
+        const certificado = mapCertificadoExistente(verificacion.certificado);
+        const templateType = resolverTemplateType(verificacion.certificado);
 
-    setBuscandoEmpleado(false);
+        const empleado: EmpleadoData = {
+          tipo_documento: tipoDocumento || 'CC',
+          numero_documento: numeroDocumento,
+          nombre_completo: verificacion.certificado.full_name || 'Empleado ESAP',
+          tipo_vinculacion: verificacion.certificado.position_category || 'Administrativo',
+          cargo: verificacion.certificado.career_category || 'N/A',
+          dependencia: verificacion.certificado.department || 'N/A',
+          fecha_vinculacion: verificacion.certificado.hiring_date || new Date().toISOString(),
+          estado: 'Activo',
+          correo_institucional: verificacion.certificado.email || 'N/A',
+          correo_personal: '',
+          salario_actual: verificacion.certificado.monthly_salary || 0,
+          templateType,
+        };
 
-    if (!empleado) {
-      toast.error('No se encontró registro en la base de datos de ESAP');
-      return;
+        setEmpleadoEncontrado(empleado);
+        registrarCertificado(certificado);
+        setCertificadoExistente(true);
+        setPasoActual('certificado-generado');
+        setBuscandoEmpleado(false);
+        toast.info('Ya tienes un certificado generado', {
+          description: 'Puedes visualizarlo, descargarlo o imprimirlo.',
+        });
+        return;
+      }
+
+      // Llamar al backend para verificar documento y generar código
+      const response = await certificadosService.autoservicio.generarCodigoValidacion(numeroDocumento);
+
+      // Si ya tiene certificado, el backend lanzará un error
+      // Guardar el código enviado
+      const codigo = response.codigoTest || '470547';
+      setCodigoEnviado(codigo);
+
+      // Crear objeto empleado desde la respuesta del backend
+      const solicitud = response.solicitud || {};
+      const templateType = resolverTemplateType(solicitud);
+      const cargoNormalizado = solicitud.position_category || solicitud.career_category || 'N/A';
+      const vinculoNormalizado =
+        solicitud.position_category ||
+        solicitud.career_category ||
+        (templateType === 'docente' ? 'Docente' : 'Administrativo');
+
+      const empleado: EmpleadoData = {
+        tipo_documento: tipoDocumento || 'CC',
+        numero_documento: numeroDocumento,
+        nombre_completo: solicitud.full_name || 'Empleado ESAP',
+        tipo_vinculacion: vinculoNormalizado,
+        cargo: cargoNormalizado,
+        dependencia: solicitud.department || 'N/A',
+        fecha_vinculacion: solicitud.hiring_date || new Date().toISOString(),
+        estado: 'Activo',
+        correo_institucional: response.email,
+        correo_personal: '',
+        salario_actual: solicitud.monthly_salary || 0,
+        templateType,
+      };
+
+      setEmpleadoEncontrado(empleado);
+      setBuscandoEmpleado(false);
+
+      toast.success(`Código enviado a ${response.email}`, {
+        description: `Por seguridad, revisa tu bandeja de entrada`,
+        duration: 5000
+      });
+
+      // Mostrar el código en consola para pruebas
+      console.log('🔐 CÓDIGO DE VALIDACIÓN:', codigo);
+      console.log('📧 Enviado a:', response.email);
+
+      // Avanzar al siguiente paso
+      setPasoActual('validacion-codigo');
+    } catch (error: any) {
+      setBuscandoEmpleado(false);
+      console.error('Error al buscar empleado:', error);
+      toast.error(error.response?.data?.message || error.message || 'No se encontró registro en la base de datos de ESAP');
     }
-
-    if (empleado.estado !== 'Activo') {
-      toast.error('Tu vinculación no está activa. Contacta a Talento Humano.');
-      return;
-    }
-
-    // Generar código de validación
-    const codigo = Math.floor(100000 + Math.random() * 900000).toString();
-    setCodigoEnviado(codigo);
-    setEmpleadoEncontrado(empleado);
-
-    // Simular envío de correo
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    toast.success(`Código enviado a ${empleado.correo_institucional}`, {
-      description: `Por seguridad, revisa tu bandeja de entrada`,
-      duration: 5000
-    });
-
-    // Mostrar el código en consola para pruebas
-    console.log('🔐 CÓDIGO DE VALIDACIÓN:', codigo);
-    console.log('📧 Enviado a:', empleado.correo_institucional);
-
-    // Enviar correo con diseño HTML profesional
-    simularEnvioCorreo('certificado-codigo', {
-      nombreCompleto: empleado.nombre_completo,
-      codigo: codigo,
-      correoDestino: empleado.correo_institucional,
-      tiempoExpiracion: '5 minutos'
-    });
-
-    // Avanzar al siguiente paso
-    setPasoActual('validacion-codigo');
   };
 
   // PASO 2: Validar código y generar certificado
@@ -293,57 +460,111 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     }
 
     setValidandoCodigo(true);
-    
-    // Simular validación
-    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    if (codigoValidacion !== codigoEnviado) {
+    try {
+      // Llamar al backend para validar código y generar certificado
+      const response = await certificadosService.autoservicio.validarCodigoYGenerarCertificado(
+        numeroDocumento,
+        codigoValidacion
+      );
+      const cert = response?.certificado;
+      if (!cert) {
+        throw new Error(response?.mensaje || 'Código incorrecto. Verifica e intenta nuevamente.');
+      }
+
+      toast.success('¡Código validado correctamente!');
+
+      const templateType = resolverTemplateType(cert);
+      const salarioBase = cert.monthly_salary || empleadoEncontrado?.salario_actual || 0;
+      const salarioTextoBase = cert.salary_text;
+
+      // Construir objeto de certificado completo desde la respuesta del backend
+      const certificado: CertificadoGenerado = {
+        numero_radicado: cert.certificate_number || cert.verification_code || `CERT-${Date.now()}`,
+        tipo_certificado: 'Certificado Laboral General',
+        fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
+        cargo: cert.career_category || empleadoEncontrado?.cargo || 'N/A',
+        dependencia: cert.department || empleadoEncontrado?.dependencia || 'N/A',
+        fecha_vinculacion: cert.hiring_date?.split('T')[0] || empleadoEncontrado?.fecha_vinculacion || 'N/A',
+        salario_actual: salarioBase,
+        salario_original: salarioBase,
+        salario_texto_original: salarioTextoBase,
+        incluyeSalario: true,
+        qr_code: cert.verification_code || `QR-CERT-${cert.id}`,
+        nombre_completo: cert.full_name || empleadoEncontrado?.nombre_completo || 'N/A',
+        // Datos completos del certificado para el visor
+        certificado_completo: {
+          id: cert.id,
+          consecutivo: cert.certificate_number || cert.verification_code,
+          qrCode: cert.verification_code,
+          cantidadEscaneos: 0,
+          incluyeSalario: true,
+          empleado: {
+            nombre: cert.full_name,
+            documento: cert.id_number,
+            email: empleadoEncontrado?.correo_institucional || 'N/A',
+            cargo: cert.career_category,
+            dependencia: cert.department || 'N/A',
+            tipoVinculacion: cert.position_category || 'Administrativo',
+            fechaVinculacion: cert.hiring_date,
+            grado: cert.position_location || 'N/A',
+            salario: salarioBase,
+            salarioOriginal: salarioBase,
+            salarioTexto: salarioTextoBase,
+            salarioTextoOriginal: salarioTextoBase
+          },
+          estado: 'activo' as const,
+          tipoSolicitud: 'AUTOSERVICIO' as const,
+          fechaSolicitud: cert.created_at || new Date().toISOString(),
+          fechaGeneracion: cert.issue_date || new Date().toISOString(),
+          solicitante: {
+            nombre: cert.full_name,
+            tipo: 'autoservicio' as const
+          },
+          position_location: cert.position_location,
+          department: cert.department,
+          campus: cert.campus,
+          signer_name: cert.signer_name,
+          signer_position: cert.signer_position,
+          signer_department: cert.signer_department
+          ,
+          templateType,
+        }
+      };
+
+      registrarCertificado(certificado);
+      setCertificadoExistente(false);
       setValidandoCodigo(false);
-      toast.error('Código incorrecto. Verifica e intenta nuevamente.');
-      return;
+
+      toast.success('¡Certificado generado exitosamente!', {
+        description: 'Se ha enviado una copia a tu correo registrado',
+        duration: 5000
+      });
+
+      console.log('✅ Certificado generado:', certificado);
+
+      // Avanzar al paso final
+      setPasoActual('certificado-generado');
+    } catch (error: any) {
+      setValidandoCodigo(false);
+      console.error('Error al validar código:', error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message;
+      const status = error.response?.status;
+
+      if (status === 400) {
+        toast.error(errorMessage || 'Código incorrecto o expirado.');
+      } else if (errorMessage?.includes('incorrecto') || errorMessage?.includes('inválido')) {
+        toast.error('Código incorrecto. Verifica e intenta nuevamente.');
+      } else if (errorMessage?.includes('expirado')) {
+        toast.error('El código ha expirado. Solicita uno nuevo.');
+      } else {
+        toast.error(errorMessage || 'Error al validar el código. Intenta nuevamente.');
+      }
     }
-
-    // Código correcto - Generar certificado
-    toast.success('¡Código validado correctamente!');
-    
-    // Simular generación de certificado
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    if (!empleadoEncontrado) return;
-
-    const numeroRadicado = `${Math.floor(100 + Math.random() * 900)}-${new Date().getFullYear()}-TH`;
-    const qrCode = `QR-CERT-${numeroRadicado}`;
-
-    const certificado: CertificadoGenerado = {
-      numero_radicado: numeroRadicado,
-      tipo_certificado: 'Certificado Laboral General',
-      fecha_generacion: new Date().toISOString().split('T')[0],
-      cargo: empleadoEncontrado.cargo,
-      dependencia: empleadoEncontrado.dependencia,
-      fecha_vinculacion: empleadoEncontrado.fecha_vinculacion,
-      salario_actual: empleadoEncontrado.salario_actual,
-      qr_code: qrCode,
-      nombre_completo: empleadoEncontrado.nombre_completo
-    };
-
-    setCertificadoGenerado(certificado);
-    setValidandoCodigo(false);
-
-    toast.success('¡Certificado generado exitosamente!', {
-      description: 'Se ha enviado una copia a tu correo registrado',
-      duration: 5000
-    });
-
-    // Enviar correo con el certificado generado
-    simularEnvioCorreo('certificado-generado', {
-      nombreCompleto: empleadoEncontrado.nombre_completo,
-      correoDestino: empleadoEncontrado.correo_institucional,
-      consecutivoCertificado: numeroRadicado,
-      urlValidacion: `https://esap.edu.co/verificar/${numeroRadicado}`
-    });
-
-    // Avanzar al paso final
-    setPasoActual('certificado-generado');
   };
 
   // Reenviar código
@@ -351,39 +572,73 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     if (!empleadoEncontrado) return;
 
     setReenviandoCodigo(true);
-    
-    // Generar nuevo código
-    const nuevoCodigo = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // Simular reenvío
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    setCodigoEnviado(nuevoCodigo);
-    setReenviandoCodigo(false);
-    
-    // Reiniciar contador y estado de expiración
-    setTiempoRestante(300); // 5 minutos nuevamente
-    setCodigoExpirado(false);
-    
-    // Limpiar inputs de código
-    setDigitosCodigo(['', '', '', '', '', '']);
-    
-    toast.success('Código reenviado a tu correo', {
-      description: empleadoEncontrado.correo_institucional
-    });
 
-    console.log('🔐 NUEVO CÓDIGO:', nuevoCodigo);
+    try {
+      // Llamar al backend para generar y enviar nuevo código
+      const response = await certificadosService.autoservicio.generarCodigoValidacion(numeroDocumento);
+
+      const nuevoCodigo = response.codigoTest || '470547';
+      setCodigoEnviado(nuevoCodigo);
+      setReenviandoCodigo(false);
+
+      // Reiniciar contador y estado de expiración
+      setTiempoRestante(300); // 5 minutos nuevamente
+      setCodigoExpirado(false);
+
+      // Limpiar inputs de código
+      setDigitosCodigo(['', '', '', '', '', '']);
+
+      toast.success('Código reenviado a tu correo', {
+        description: response.email
+      });
+
+      console.log('🔐 NUEVO CÓDIGO:', nuevoCodigo);
+      console.log('📧 Enviado a:', response.email);
+    } catch (error: any) {
+      setReenviandoCodigo(false);
+      console.error('Error al reenviar código:', error);
+      toast.error(error.response?.data?.message || error.message || 'Error al reenviar el código. Intenta nuevamente.');
+    }
   };
 
   // Handlers de certificado generado
+  const handleVerPDF = () => {
+    if (!certificadoGenerado?.certificado_completo) {
+      toast.error('No se puede mostrar el certificado. Faltan datos.');
+      return;
+    }
+    setAutoPDFAction(null);
+    setShowPDFViewer(true);
+  };
+
   const handleDescargar = () => {
-    toast.success('Descargando certificado en PDF...', {
-      description: 'El archivo se guardará en tu carpeta de descargas'
-    });
+    if (!certificadoGenerado?.certificado_completo) {
+      toast.error('No se puede descargar el certificado. Faltan datos.');
+      return;
+    }
+    setAutoPDFAction('download');
+    setShowPDFViewer(true);
+
+    // Cerrar el visor después de que se ejecute la descarga
+    setTimeout(() => {
+      setShowPDFViewer(false);
+      setAutoPDFAction(null);
+    }, 1000);
   };
 
   const handleImprimir = () => {
-    toast.info('Abriendo vista de impresión...');
+    if (!certificadoGenerado?.certificado_completo) {
+      toast.error('No se puede imprimir el certificado. Faltan datos.');
+      return;
+    }
+    setAutoPDFAction('print');
+    setShowPDFViewer(true);
+
+    // Cerrar el visor después de que se ejecute la impresión
+    setTimeout(() => {
+      setShowPDFViewer(false);
+      setAutoPDFAction(null);
+    }, 1000);
   };
 
   const handleNuevaSolicitud = () => {
@@ -395,7 +650,33 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     setCodigoEnviado('');
     setEmpleadoEncontrado(null);
     setCertificadoGenerado(null);
+    setCertificadoExistente(false);
+    certificadoBaseRef.current = null;
   };
+
+  // Asegurar que el paso activo se mantenga en "certificado" cuando ya hay certificado listo
+  useEffect(() => {
+    if (certificadoGenerado && empleadoEncontrado && pasoActual !== 'certificado-generado') {
+      setPasoActual('certificado-generado');
+    }
+  }, [certificadoGenerado, empleadoEncontrado, pasoActual]);
+
+  // Si se marca certificado existente, asegura que el paso sea certificado
+  useEffect(() => {
+    if (certificadoExistente && pasoActual !== 'certificado-generado') {
+      setPasoActual('certificado-generado');
+    }
+  }, [certificadoExistente, pasoActual]);
+
+  useEffect(() => {
+    if (certificadoBaseRef.current) {
+      setCertificadoGenerado(aplicarPreferenciaSalario(certificadoBaseRef.current, incluirSalario));
+    }
+  }, [incluirSalario]);
+
+  // Paso visual para el stepper: si ya hay certificado, mostrar siempre el paso 3 activo
+  const pasoActivoUI: Paso =
+    certificadoGenerado || certificadoExistente ? 'certificado-generado' : pasoActual;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -403,7 +684,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       <PublicNavbar onLoginClick={onLoginClick} onNavigateToHome={onBack} />
 
       {/* Main Content */}
-      <div className="pt-24 sm:pt-28 pb-20">
+      <div className="pt-24 sm:pt-28 py-8 mb-16">
         {/* Botón Volver */}
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mb-8">
           <motion.button
@@ -445,14 +726,14 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
               {/* Paso 1 */}
               <div className="flex items-center">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all ${
-                  pasoActual === 'ingreso-documento' 
+                  pasoActivoUI === 'ingreso-documento' 
                     ? 'bg-[#003DA5] text-white scale-110 shadow-lg' 
                     : 'bg-green-500 text-white'
                 }`}>
-                  {pasoActual !== 'ingreso-documento' ? <CheckCircle className="w-5 h-5" /> : '1'}
+                  {pasoActivoUI !== 'ingreso-documento' ? <CheckCircle className="w-5 h-5" /> : '1'}
                 </div>
                 <span className={`ml-2 text-sm font-semibold hidden sm:inline ${
-                  pasoActual === 'ingreso-documento' ? 'text-[#003DA5]' : 'text-gray-500'
+                  pasoActivoUI === 'ingreso-documento' ? 'text-[#003DA5]' : 'text-gray-500'
                 }`}>
                   Documento
                 </span>
@@ -463,16 +744,16 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
               {/* Paso 2 */}
               <div className="flex items-center">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all ${
-                  pasoActual === 'validacion-codigo' 
+                  pasoActivoUI === 'validacion-codigo' 
                     ? 'bg-[#003DA5] text-white scale-110 shadow-lg' 
-                    : pasoActual === 'certificado-generado'
+                    : pasoActivoUI === 'certificado-generado'
                     ? 'bg-green-500 text-white'
                     : 'bg-gray-300 text-gray-600'
                 }`}>
-                  {pasoActual === 'certificado-generado' ? <CheckCircle className="w-5 h-5" /> : '2'}
+                  {pasoActivoUI === 'certificado-generado' ? <CheckCircle className="w-5 h-5" /> : '2'}
                 </div>
                 <span className={`ml-2 text-sm font-semibold hidden sm:inline ${
-                  pasoActual === 'validacion-codigo' ? 'text-[#003DA5]' : 'text-gray-500'
+                  pasoActivoUI === 'validacion-codigo' ? 'text-[#003DA5]' : 'text-gray-500'
                 }`}>
                   Validación
                 </span>
@@ -483,14 +764,14 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
               {/* Paso 3 */}
               <div className="flex items-center">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all ${
-                  pasoActual === 'certificado-generado' 
-                    ? 'bg-[#003DA5] text-white scale-110 shadow-lg' 
+                  pasoActivoUI === 'certificado-generado'
+                    ? 'bg-green-500 text-white scale-110 shadow-lg'
                     : 'bg-gray-300 text-gray-600'
                 }`}>
-                  3
+                  {pasoActivoUI === 'certificado-generado' ? <CheckCircle className="w-5 h-5" /> : '3'}
                 </div>
                 <span className={`ml-2 text-sm font-semibold hidden sm:inline ${
-                  pasoActual === 'certificado-generado' ? 'text-[#003DA5]' : 'text-gray-500'
+                  pasoActivoUI === 'certificado-generado' ? 'text-[#003DA5]' : 'text-gray-500'
                 }`}>
                   Certificado
                 </span>
@@ -563,6 +844,24 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                         <p className="text-xs text-gray-500 mt-1">
                           Solo números, sin puntos ni espacios
                         </p>
+                      </div>
+
+                      {/* Preferencia de salario */}
+                      <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <Checkbox
+                          id="sin-salario"
+                          checked={!incluirSalario}
+                          onCheckedChange={(checked) => setIncluirSalario(!checked)}
+                          className="mt-1"
+                        />
+                        <div>
+                          <Label htmlFor="sin-salario" className="text-sm font-semibold text-gray-800 cursor-pointer">
+                            Solicitar certificado sin informacion salarial
+                          </Label>
+                          <p className="text-xs text-gray-600 mt-1">
+                            Oculta el salario en el PDF y en la vista previa. Puedes cambiarlo en cualquier momento.
+                          </p>
+                        </div>
                       </div>
 
                       {/* Botón Continuar */}
@@ -756,13 +1055,13 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                     </div>
 
                     {/* Código de prueba visible */}
-                    <div className="mt-6 p-4 bg-yellow-50 border border-yellow-300 rounded-lg">
+                    {/* <div className="mt-6 p-4 bg-yellow-50 border border-yellow-300 rounded-lg">
                       <p className="text-sm text-yellow-800">
                         <strong>🔐 Código de prueba:</strong> <span className="font-mono font-bold text-lg">{codigoEnviado}</span>
                         <br />
                         <span className="text-xs">(En producción, este código solo se enviaría al correo)</span>
                       </p>
-                    </div>
+                    </div> */}
 
                     {/* Contador regresivo */}
                     {!codigoExpirado && (
@@ -797,13 +1096,28 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                         <CheckCircle className="w-6 h-6 text-white" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-xl font-bold text-green-900 mb-2">
-                          ¡Certificado Generado Exitosamente!
-                        </h3>
-                        <p className="text-green-700 mb-3">
-                          Tu certificado laboral ha sido generado y está listo para descargar.
-                          Se ha enviado una copia a tu correo <strong>{empleadoEncontrado.correo_institucional}</strong>
-                        </p>
+                        {(() => {
+                          const correoDestino =
+                            empleadoEncontrado.correo_institucional && empleadoEncontrado.correo_institucional !== 'N/A'
+                              ? empleadoEncontrado.correo_institucional
+                              : 'tu correo registrado';
+                          const titulo = certificadoExistente
+                            ? 'Ya tienes un certificado vigente'
+                            : '¡Certificado Generado Exitosamente!';
+                          const descripcion = certificadoExistente
+                            ? `Este certificado ya estaba generado y se mantiene vigente. Puedes descargarlo, imprimirlo o compartirlo. También se encuentra disponible en ${correoDestino}.`
+                            : `Tu certificado laboral ha sido generado y está listo para descargar. Se ha enviado una copia a ${correoDestino}.`;
+                          return (
+                            <>
+                              <h3 className="text-xl font-bold text-green-900 mb-2">
+                                {titulo}
+                              </h3>
+                              <p className="text-green-700 mb-3">
+                                {descripcion}
+                              </p>
+                            </>
+                          );
+                        })()}
                         <div className="flex items-center gap-2 text-sm text-green-800">
                           <Calendar className="w-4 h-4" />
                           <span>Generado el {new Date(certificadoGenerado.fecha_generacion).toLocaleDateString('es-CO', { 
@@ -831,19 +1145,36 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                       <p className="text-sm text-gray-600">
                         Escuela Superior de Administración Pública - ESAP
                       </p>
-                      <div className="mt-4 inline-flex items-center gap-2">
-                        <Badge className="bg-green-100 text-green-700 border-green-300">
-                          <CheckCircle className="w-3 h-3 mr-1" />
-                          Firmado Digitalmente
-                        </Badge>
-                        <Badge variant="outline" className="border-blue-300 text-blue-700">
-                          {certificadoGenerado.numero_radicado}
-                        </Badge>
-                      </div>
+                    <div className="mt-4 inline-flex items-center gap-2">
+                      <Badge className="bg-green-100 text-green-700 border-green-300">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Firmado Digitalmente
+                      </Badge>
+                      <Badge variant="outline" className="border-blue-300 text-blue-700">
+                        {certificadoGenerado.numero_radicado}
+                      </Badge>
                     </div>
+                  </div>
 
-                    {/* Contenido del certificado */}
-                    <div className="space-y-6">
+                  <div className="mt-6 flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <Checkbox
+                      id="toggle-salario"
+                      checked={!incluirSalario}
+                      onCheckedChange={(checked) => setIncluirSalario(!checked)}
+                      className="mt-1"
+                    />
+                    <div>
+                      <Label htmlFor="toggle-salario" className="text-sm font-semibold text-gray-800 cursor-pointer">
+                        Ocultar salario en este certificado
+                      </Label>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Si prefieres el certificado sin salario, marca esta opción. Se aplica también al PDF y a las impresiones.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Contenido del certificado */}
+                  <div className="space-y-6">
                       {/* Datos del empleado */}
                       <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
                         <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -879,27 +1210,45 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                               {new Date(certificadoGenerado.fecha_vinculacion).toLocaleDateString('es-CO')}
                             </p>
                           </div>
-                          <div className="sm:col-span-2">
-                            <p className="text-gray-600 mb-1">Salario Actual</p>
-                            <p className="font-bold text-gray-900">
-                              ${certificadoGenerado.salario_actual.toLocaleString('es-CO')} COP
-                            </p>
-                          </div>
+                          {incluirSalario ? (
+                            <div className="sm:col-span-2">
+                              <p className="text-gray-600 mb-1">Salario Actual</p>
+                              <p className="font-bold text-gray-900">
+                                ${certificadoGenerado.salario_actual.toLocaleString('es-CO')} COP
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="sm:col-span-2">
+                              <div className="flex items-center gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                <Shield className="w-4 h-4" />
+                                El certificado se generará sin información salarial.
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       {/* Código QR y validación */}
                       <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
                         <div className="flex flex-col sm:flex-row items-center gap-6">
-                          <div className="w-32 h-32 bg-white rounded-lg border-2 border-blue-300 flex items-center justify-center flex-shrink-0">
-                            <QrCode className="w-20 h-20 text-blue-600" />
+                          {/* QR Code Real */}
+                          <div className="bg-white rounded-lg p-3 border-2 border-blue-300 flex-shrink-0">
+                            <QRCodeCanvas
+                              value={`${getPublicBaseUrl()}/verificar-certificado/${certificadoGenerado.qr_code}`}
+                              size={112}
+                              level="H"
+                              includeMargin={false}
+                            />
                           </div>
                           <div className="flex-1 text-center sm:text-left">
                             <h4 className="font-bold text-gray-900 mb-2">Código de Validación</h4>
                             <p className="text-sm text-gray-700 mb-3">
                               Este certificado cuenta con firma electrónica y código QR único para validación pública.
                             </p>
-                            <p className="font-mono font-bold text-blue-700">{certificadoGenerado.qr_code}</p>
+                            <p className="font-mono font-bold text-blue-700 break-all">{certificadoGenerado.qr_code}</p>
+                            <p className="text-xs text-gray-500 mt-2">
+                              Escanea el código QR para verificar la autenticidad del certificado
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -918,30 +1267,40 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                 </Card>
 
                 {/* Botones de acción */}
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col gap-3">
                   <Button
-                    onClick={handleDescargar}
-                    className="flex-1 h-12 bg-gradient-to-r from-[#003DA5] to-[#1e5da8] hover:from-[#002d7a] hover:to-[#164a8f] text-white font-bold shadow-lg"
+                    onClick={handleVerPDF}
+                    className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold shadow-lg"
                   >
-                    <Download className="w-5 h-5 mr-2" />
-                    Descargar PDF
+                    <Eye className="w-5 h-5 mr-2" />
+                    Ver PDF
                   </Button>
-                  <Button
-                    onClick={handleImprimir}
-                    variant="outline"
-                    className="flex-1 h-12 border-2 font-bold"
-                  >
-                    <Printer className="w-5 h-5 mr-2" />
-                    Imprimir
-                  </Button>
-                  <Button
-                    onClick={handleNuevaSolicitud}
-                    variant="outline"
-                    className="flex-1 h-12 border-2 font-bold"
-                  >
-                    <FileText className="w-5 h-5 mr-2" />
-                    Nueva Solicitud
-                  </Button>
+
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button
+                      onClick={handleDescargar}
+                      className="flex-1 h-12 bg-gradient-to-r from-[#003DA5] to-[#1e5da8] hover:from-[#002d7a] hover:to-[#164a8f] text-white font-bold shadow-lg"
+                    >
+                      <Download className="w-5 h-5 mr-2" />
+                      Descargar PDF
+                    </Button>
+                    <Button
+                      onClick={handleImprimir}
+                      variant="outline"
+                      className="flex-1 h-12 border-2 font-bold"
+                    >
+                      <Printer className="w-5 h-5 mr-2" />
+                      Imprimir
+                    </Button>
+                    <Button
+                      onClick={handleNuevaSolicitud}
+                      variant="outline"
+                      className="flex-1 h-12 border-2 font-bold"
+                    >
+                      <FileText className="w-5 h-5 mr-2" />
+                      Nueva Solicitud
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Info adicional */}
@@ -966,6 +1325,17 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Visor de PDF Modal */}
+      {certificadoGenerado?.certificado_completo && (
+        <VisorPDFCertificado
+          isOpen={showPDFViewer}
+          onClose={() => setShowPDFViewer(false)}
+          autoAction={autoPDFAction || undefined}
+          hiddenMode={!!autoPDFAction}
+          certificado={certificadoGenerado.certificado_completo}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   User,
@@ -18,11 +18,14 @@ import {
   Copy,
   Activity
 } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { ModalCodigoQR } from './ModalCodigoQR';
 import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';
+import { certificadosService } from '../../services/api/certificados.service';
+import { getPublicBaseUrl } from '../../config/environment';
 
 interface CertificadoDetallePanelProps {
   certificado: {
@@ -56,8 +59,34 @@ interface CertificadoDetallePanelProps {
 
 export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDetallePanelProps) {
   const [showPDFViewer, setShowPDFViewer] = React.useState(false);
+  const [autoPDFAction, setAutoPDFAction] = React.useState<'download' | 'print' | null>(null);
   const [showQRModal, setShowQRModal] = React.useState(false);
   const [showHistorialVerificaciones, setShowHistorialVerificaciones] = React.useState(false);
+  const verificationBase = getPublicBaseUrl();
+  const verificationPath = '/verificar-certificado';
+  const verificationUrl = `${verificationBase}${verificationPath}/${certificado.qrCode}`;
+
+  // Helper para formatear fechas de forma segura
+  const formatearFecha = (fechaStr: string, opciones?: Intl.DateTimeFormatOptions) => {
+    try {
+      if (!fechaStr || fechaStr === 'N/A') {
+        return 'Fecha no disponible';
+      }
+      const fecha = new Date(fechaStr);
+      if (isNaN(fecha.getTime())) {
+        console.error('Fecha inválida:', fechaStr);
+        return 'Fecha no disponible';
+      }
+      return fecha.toLocaleDateString('es-CO', opciones || {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    } catch (error) {
+      console.error('Error al formatear fecha:', error);
+      return 'Fecha no disponible';
+    }
+  };
 
   // Mock data: Historial de verificaciones del QR
   const mockVerificaciones = [
@@ -217,11 +246,123 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     }
   ];
 
+  const [verificaciones, setVerificaciones] = React.useState<typeof mockVerificaciones>([]);
+  const [historialCargado, setHistorialCargado] = React.useState(false);
+  const [cargandoHistorial, setCargandoHistorial] = React.useState(false);
+  const [historialError, setHistorialError] = React.useState<string | null>(null);
+
+  const normalizarResultado = (valor: any) => {
+    const val = typeof valor === 'string' ? valor.toLowerCase() : '';
+    if (['fallida', 'failed', 'invalid', 'error'].includes(val)) return 'fallida' as const;
+    if (['sospechosa', 'suspicious', 'warning'].includes(val)) return 'sospechosa' as const;
+    return 'exitosa' as const;
+  };
+
+  const normalizarDispositivo = (valor: any) => {
+    let val = '';
+    if (typeof valor === 'string') {
+      val = valor.toLowerCase();
+    } else if (valor && typeof valor === 'object') {
+      const typeVal = valor.tipo || valor.type || valor.device || '';
+      if (typeof typeVal === 'string') {
+        val = typeVal.toLowerCase();
+      }
+    }
+    if (val.includes('tablet')) return 'tablet' as const;
+    if (val.includes('mobile') || val.includes('phone')) return 'mobile' as const;
+    return 'desktop' as const;
+  };
+
+  const mapearHistorial = (historial: any[]): typeof mockVerificaciones => {
+    if (!Array.isArray(historial)) return [];
+
+    return historial.map((item, index) => ({
+      id: item.id || item.codigo || `VER-${String(index + 1).padStart(3, '0')}`,
+      timestamp: item.timestamp || item.fecha || item.fechaHora || item.created_at || new Date().toISOString(),
+      resultado: normalizarResultado(item.resultado || item.result || item.status || item.estado),
+      dispositivo: {
+        tipo: normalizarDispositivo(item.dispositivo || item.device || item.device_type),
+        sistemaOperativo: item.sistemaOperativo || item.device?.os || item.so || item.dispositivo?.sistemaOperativo || 'No informado',
+        navegador: item.navegador || item.device?.browser || item.browser || item.dispositivo?.navegador || 'No informado',
+        version: item.device?.version || item.version || '',
+      },
+      ubicacion: {
+        ip: item.ip || item.ipAddress || item.ubicacion?.ip || '0.0.0.0',
+        pais: item.pais || item.country || item.ubicacion?.pais || 'Desconocido',
+        ciudad: item.ciudad || item.city || item.ubicacion?.ciudad || 'Desconocido',
+        latitud: item.latitud || item.lat || item.ubicacion?.latitud,
+        longitud: item.longitud || item.lng || item.ubicacion?.longitud,
+        proveedor: item.proveedor || item.isp || item.ubicacion?.proveedor,
+      },
+      detalles: item.detalles || item.mensaje || item.message,
+    }));
+  };
+
+  const cargarHistorialVerificaciones = async () => {
+    if (historialCargado || cargandoHistorial) return;
+    setCargandoHistorial(true);
+    setHistorialError(null);
+
+    try {
+      const response = await certificadosService.validacion.historialValidaciones(certificado.qrCode);
+      const historialRemoto =
+        response?.validation_history ||
+        response?.validationHistory ||
+        response?.validations ||
+        response?.validaciones ||
+        response?.historial ||
+        [];
+
+      if (Array.isArray(historialRemoto) && historialRemoto.length > 0) {
+        setVerificaciones(mapearHistorial(historialRemoto));
+      } else {
+        setVerificaciones([]);
+      }
+
+      setHistorialCargado(true);
+    } catch (error) {
+      console.error('Error cargando historial de verificaciones:', error);
+      setHistorialError('No se pudo cargar el historial de verificaciones en vivo.');
+      setVerificaciones([]);
+      setHistorialCargado(true);
+    } finally {
+      setCargandoHistorial(false);
+    }
+  };
+
+  const handleToggleHistorial = async () => {
+    const nextValue = !showHistorialVerificaciones;
+    setShowHistorialVerificaciones(nextValue);
+
+    if (nextValue) {
+      await cargarHistorialVerificaciones();
+    }
+  };
+
+  const totalVerificaciones = verificaciones.length || certificado.cantidadEscaneos || 0;
+
   const handleDescargar = () => {
-    toast.success('Descargando certificado...', {
-      description: `${certificado.consecutivo}.pdf`,
-      duration: 3000
-    });
+    if (certificado.pdfUrl) {
+      const link = document.createElement('a');
+      link.href = certificado.pdfUrl;
+      link.download = `${certificado.consecutivo}.pdf`;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('Descarga iniciada', {
+        description: `${certificado.consecutivo}.pdf`
+      });
+      return;
+    }
+
+    // Generar mediante visor en modo oculto
+    setAutoPDFAction('download');
+    setShowPDFViewer(true);
+    setTimeout(() => {
+      setShowPDFViewer(false);
+      setAutoPDFAction(null);
+    }, 800);
   };
 
   const handleEnviarEmail = () => {
@@ -232,19 +373,72 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   };
 
   const handleImprimir = () => {
-    toast.info('Abriendo vista de impresión...');
+    if (certificado.pdfUrl) {
+      const printWindow = window.open(certificado.pdfUrl, '_blank');
+      if (printWindow) {
+        printWindow.addEventListener('load', () => {
+          printWindow.focus();
+          printWindow.print();
+        });
+      }
+      toast.info('Enviando a impresion...');
+      return;
+    }
+
+    setAutoPDFAction('print');
+    setShowPDFViewer(true);
+    setTimeout(() => {
+      setShowPDFViewer(false);
+      setAutoPDFAction(null);
+    }, 1000);
   };
 
   const handleVerQR = () => {
     setShowQRModal(true);
   };
 
-  const handleCopiarEnlace = () => {
-    const enlace = `https://esap.edu.co/verificar/${certificado.consecutivo}`;
-    navigator.clipboard.writeText(enlace);
-    toast.success('Enlace copiado', {
-      description: 'El enlace de verificación fue copiado al portapapeles'
-    });
+  const copiarAlPortapapeles = async (texto: string) => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(texto);
+        return true;
+      }
+    } catch (_) {
+      // fallback abajo
+    }
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = texto;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
+  const handleCopiarEnlace = async () => {
+    const ok = await copiarAlPortapapeles(verificationUrl);
+    if (ok) {
+      toast.success('Enlace copiado', {
+        description: 'El enlace de verificación fue copiado al portapapeles'
+      });
+    } else {
+      toast.error('No se pudo copiar el enlace');
+    }
+  };
+
+  const handleCopiarConsecutivo = async () => {
+    const ok = await copiarAlPortapapeles(certificado.consecutivo);
+    if (ok) {
+      toast.success('Consecutivo copiado', {
+        description: certificado.consecutivo
+      });
+    } else {
+      toast.error('No se pudo copiar el consecutivo');
+    }
   };
 
   const handleVerPDF = () => {
@@ -344,11 +538,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                          {new Date(certificado.empleado.fechaVinculacion).toLocaleDateString('es-CO', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
-                          })}
+                          {formatearFecha(certificado.empleado.fechaVinculacion)}
                         </p>
                       </div>
                       <div>
@@ -422,9 +612,9 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                             {certificado.consecutivo}
                           </p>
                           <button
-                            onClick={handleCopiarEnlace}
+                            onClick={handleCopiarConsecutivo}
                             className="text-gray-400 hover:text-[#003DA5] transition-colors"
-                            title="Copiar ID"
+                            title="Copiar consecutivo"
                           >
                             <Copy className="w-3.5 h-3.5" />
                           </button>
@@ -446,11 +636,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5 text-gray-400" />
-                          {new Date(certificado.fechaSolicitud).toLocaleDateString('es-CO', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric'
-                          })}
+                          {formatearFecha(certificado.fechaSolicitud, { year: 'numeric', month: 'short', day: 'numeric' })}
                         </p>
                       </div>
                       <div>
@@ -459,11 +645,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
                           <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-                          {new Date(certificado.fechaGeneracion).toLocaleDateString('es-CO', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric'
-                          })}
+                          {formatearFecha(certificado.fechaGeneracion, { year: 'numeric', month: 'short', day: 'numeric' })}
                         </p>
                       </div>
                     </div>
@@ -474,10 +656,24 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Código QR
                         </label>
-                        <p className="text-sm text-blue-600 font-mono flex items-center gap-1.5">
-                          <QrCode className="w-3.5 h-3.5" />
-                          QR-{certificado.qrCode.slice(-6)}
-                        </p>
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-white border border-gray-200 rounded-lg shadow-sm">
+                            <QRCodeCanvas
+                              value={verificationUrl}
+                              size={72}
+                              level="H"
+                              includeMargin
+                              className="block"
+                            />
+                          </div>
+                          <div className="flex flex-col">
+                            <p className="text-sm text-blue-600 font-mono flex items-center gap-1.5">
+                              <QrCode className="w-3.5 h-3.5" />
+                              {certificado.qrCode}
+                            </p>
+                            <span className="text-xs text-gray-500">Escanea para verificar este certificado</span>
+                          </div>
+                        </div>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
@@ -536,7 +732,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       Ver Código QR
                     </button>
                     <button
-                      onClick={() => setShowHistorialVerificaciones(!showHistorialVerificaciones)}
+                      onClick={handleToggleHistorial}
                       className="col-span-2 flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors text-sm font-medium"
                     >
                       <Activity className="w-4 h-4" />
@@ -558,7 +754,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     📧 Certificado enviado automáticamente
                   </h4>
                   <p className="text-xs text-blue-800">
-                    Este certificado fue solicitado por el interesado y enviado automáticamente a <strong>{certificado.empleado.email}</strong> el {new Date(certificado.fechaSolicitud).toLocaleDateString('es-CO', {
+                    Este certificado fue solicitado por el interesado y enviado automáticamente a <strong>{certificado.empleado.email}</strong> el {formatearFecha(certificado.fechaSolicitud, {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
@@ -573,10 +769,18 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
             {/* Historial de Verificaciones QR - Sección adicional debajo del panel */}
             {showHistorialVerificaciones && (
               <div className="mt-5 border-t border-gray-200 pt-5">
+                {cargandoHistorial && (
+                  <p className="text-sm text-gray-500 mb-3">Cargando historial de verificaciones...</p>
+                )}
+                {historialError && (
+                  <p className="mb-3 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                    {historialError}
+                  </p>
+                )}
                 <HistorialVerificacionesQR
                   consecutivo={certificado.consecutivo}
-                  verificaciones={mockVerificaciones}
-                  totalVerificaciones={certificado.cantidadEscaneos}
+                  verificaciones={verificaciones}
+                  totalVerificaciones={totalVerificaciones}
                 />
               </div>
             )}
@@ -586,6 +790,8 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
           <VisorPDFCertificado
             isOpen={showPDFViewer}
             onClose={() => setShowPDFViewer(false)}
+            autoAction={autoPDFAction || undefined}
+            hiddenMode={!!autoPDFAction}
             certificado={certificado}
           />
 
@@ -594,6 +800,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
             isOpen={showQRModal}
             onClose={() => setShowQRModal(false)}
             certificado={certificado}
+            verificationUrl={verificationUrl}
           />
         </motion.div>
       )}

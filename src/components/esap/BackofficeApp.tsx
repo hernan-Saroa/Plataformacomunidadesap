@@ -61,8 +61,7 @@ import { NotificationsProvider } from './NotificationsContext';
 
 type ModuleView = 
   | 'dashboard'
-  | 'users-persons'
-  | 'carpeta-digital'
+  | 'users-persons' 
   | 'roles-permissions'
   | 'reports'
   | 'audit'
@@ -96,21 +95,16 @@ interface BackofficeAppProps {
     personId: string;
     module?: string;
     hasBothSystemsAccess?: boolean;
-    restrictedAccess?: boolean;
   };
   userRoles?: string[];
 }
 
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, userData, userRoles }: BackofficeAppProps = {}) {
-  // Si el usuario tiene acceso restringido, abrir directamente su módulo específico
-  const initialModule = userData?.module === 'control-interno'
-    ? 'control-interno'
-    : userData?.module === 'certificados-laborales' 
+  // Si el usuario es cerlaboral@esap.edu.co o ar.empresarial@esap.edu.co, abrir automáticamente su módulo específico
+  const initialModule = userData?.module === 'certificados-laborales' 
     ? 'certificados-laborales' 
     : userData?.module === 'arquitectura-empresarial'
     ? 'dashboard' // Abrir en Dashboard Ejecutivo que muestra métricas de Arquitectura
-    : userData?.module === 'gestion-legal'
-    ? 'gestion-legal' // Abrir directamente el módulo de Gestión Legal
     : 'dashboard';
   const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -172,6 +166,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   // Handlers
   const handleLogout = () => {
+    console.log('Logout clicked - Cerrando sesión...');
     // Llamar al handler de logout del padre (App.tsx) si existe
     if (onLogout) {
       onLogout();
@@ -179,6 +174,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   };
 
   const handleViewProfile = () => {
+    console.log('View profile clicked');
     setShowProfile(true);
   };
 
@@ -222,12 +218,15 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       
       case 'community-posts':
         return <CommunityPostsModuleUnified />;
+        // return <CommunityPostsModule />;
       
       case 'community-events':
         return <CommunityEventsModuleUnified />;
+        // return <CommunityEventsModule />;
       
       case 'community-announcements':
         return <CommunityAnnouncementsModuleUnified />;
+        // return <CommunityAnnouncementsModule />;
       
       case 'job-board':
         return <JobBoardManagementModulePremium />;
@@ -251,7 +250,12 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return <GestionLegalFull />;
       
       case 'certificados-laborales':
-        return <CertificadosLaboralesRouter />;
+        return (
+          <CertificadosLaboralesRouter 
+            userRoles={userRoles || []}
+            userEmail={currentUser.email}
+          />
+        );
       
       case 'estructura-organizacional':
         return <EstructuraOrganizacionalModule />;
