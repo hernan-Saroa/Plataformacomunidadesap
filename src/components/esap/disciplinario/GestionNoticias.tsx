@@ -6,7 +6,7 @@
  * Integrado en el sistema completo de Control Disciplinario
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -45,6 +45,9 @@ import { FlujoNoticiasDisciplinarias } from './FlujoNoticiasDisciplinarias';
 import { ModalDetallesNoticia } from './ModalDetallesNoticia';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
 
+import { disciplinaryService, DisciplinaryNews } from '../../../services/api/disciplinary.service';
+
+
 // ==================== INTERFACES ====================
 interface Profesional {
   id: string;
@@ -67,10 +70,18 @@ interface AccionAuditoria {
 
 interface NoticiaDisciplinaria {
   id: string;
-  numeroRadicado: string;
+  radicado: string;
   origen: 'Anónimo' | 'Quejoso' | 'Informante' | 'De oficio' | 'Remisión por competencia';
   fechaQueja: string;
   territorial: string;
+  fechaRecepcion: string;
+  disciplinable: {
+    nombre: string;
+    cargo: string;
+    cedula?: string;
+    email?: string;
+    telefono?: string;
+  };
   denunciado: {
     nombre: string;
     identificacion: string;
@@ -98,7 +109,7 @@ const PROFESIONALES_MOCK: Profesional[] = [
   { id: '4', nombre: 'Ana García Ruiz', cargo: 'Coordinador', email: 'ana.garcia@esap.edu.co', procesosAsignados: 5, capacidadMaxima: 8 }
 ];
 
-const MOCK_NOTICIAS: NoticiaDisciplinaria[] = [
+/*const MOCK_NOTICIAS: NoticiaDisciplinaria[] = [
   {
     id: '1',
     numeroRadicado: 'ND-2025-0025',
@@ -206,7 +217,7 @@ const MOCK_NOTICIAS: NoticiaDisciplinaria[] = [
       }
     ]
   }
-];
+];*/
 
 // ==================== MODAL DEVOLVER ====================
 function ModalDevolver({ noticia, onClose, onConfirm }: { 
@@ -257,7 +268,7 @@ function ModalDevolver({ noticia, onClose, onConfirm }: {
                   Devolver Noticia
                 </h2>
                 <p className="text-sm text-gray-600">
-                  {noticia.numeroRadicado} - {noticia.denunciado.nombre}
+                  {noticia.radicado} - {noticia.disciplinable.nombre}
                 </p>
               </div>
             </div>
@@ -427,7 +438,7 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
                   Asignar Proceso
                 </h2>
                 <p className="text-sm text-gray-600">
-                  {noticia.numeroRadicado} - {noticia.denunciado.nombre}
+                  {noticia.radicado} - {noticia.disciplinable.nombre}
                 </p>
               </div>
             </div>
@@ -640,7 +651,7 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
                   Historial de Auditoría
                 </h2>
                 <p className="text-sm text-gray-600">
-                  {noticia.numeroRadicado} - {noticia.denunciado.nombre}
+                  {noticia.radicado} - {noticia.disciplinable.nombre}
                 </p>
               </div>
             </div>
@@ -755,7 +766,38 @@ export function GestionNoticias() {
   const [showDetallesModal, setShowDetallesModal] = useState(false);
   const [showArchivarModal, setShowArchivarModal] = useState(false);
   const [noticiaSeleccionada, setNoticiaSeleccionada] = useState<NoticiaDisciplinaria | null>(null);
-  const [noticias, setNoticias] = useState<NoticiaDisciplinaria[]>(MOCK_NOTICIAS);
+  const [noticias, setNoticias] = useState<NoticiaDisciplinaria[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [selectedNewsForAssignment, setSelectedNewsForAssignment] = useState<NoticiaDisciplinaria | null>(null);
+  const [selectedNewsForReturn, setSelectedNewsForReturn] = useState<string | null>(null);
+  const [selectedNewsForDetail, setSelectedNewsForDetail] = useState<NoticiaDisciplinaria | null>(null);
+
+  const loadNoticias = async () => {
+        try {
+            setLoading(true);
+            const data = await disciplinaryService.getAllNoticias();
+            console.log('📊 Datos de noticias:', data);
+            setNoticias(data);
+        } catch (error) {
+            console.error(error);
+            toast.error('Error al cargar noticias');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadNoticias();
+    }, []);
+
+    // const handleDevolver = (id: string) => {
+    //     setSelectedNewsForReturn(id);
+    // };
+
+    // const handleAsignar = (noticia: DisciplinaryNews) => {
+    //     setSelectedNewsForAssignment(noticia);
+    // };
 
   const handleCreateNoticia = (data: any) => {
     const year = new Date().getFullYear();
@@ -768,7 +810,7 @@ export function GestionNoticias() {
       origen: data.origen,
       fechaQueja: data.fechaQueja,
       territorial: data.territorial,
-      denunciado: data.denunciado,
+      denunciado: data.disciplinable,
       estado: 'pendiente',
       estadoLabel: 'Pendiente',
       etapa: 'Pendiente de Revisión',
@@ -836,7 +878,7 @@ export function GestionNoticias() {
     if (!profesional) return;
 
     const year = new Date().getFullYear();
-    const numeroSecuencial = noticiaSeleccionada.numeroRadicado.split('-')[2];
+    const numeroSecuencial = noticiaSeleccionada.radicado.split('-')[2];
     const procesoRadicado = `PD-${year}-${numeroSecuencial}`;
 
     const accionAsignacion: AccionAuditoria = {
@@ -937,16 +979,25 @@ export function GestionNoticias() {
   };
 
   const filteredNoticias = noticias.filter(noticia => {
+    console.log('🔍 Buscando:', noticia);
     const matchesSearch = 
-      noticia.numeroRadicado.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      noticia.denunciado.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      noticia.denunciado.identificacion.includes(searchQuery);
+      noticia.radicado.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      noticia.disciplinable.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      noticia.disciplinable.cedula.includes(searchQuery);
     
     const matchesEstado = filterEstado === 'all' || noticia.estado === filterEstado;
     const matchesOrigen = filterOrigen === 'all' || noticia.origen === filterOrigen;
 
     return matchesSearch && matchesEstado && matchesOrigen;
   });
+
+  const diasTranscurridos = (data: string) => {
+    const fecha = new Date(data);
+    const hoy = new Date();
+    const diffTime = hoy.getTime() - fecha.getTime();
+    const diasRestantes = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diasRestantes;
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -1132,14 +1183,14 @@ export function GestionNoticias() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="font-bold text-lg" style={{ color: '#003DA5' }}>
-                        {noticia.numeroRadicado}
+                        {noticia.radicado}
                       </h3>
                       {getEstadoBadge(noticia.estadoLabel)}
                       {getOrigenBadge(noticia.origen)}
                     </div>
-                    <p className="text-sm font-semibold text-gray-900">{noticia.denunciado.nombre}</p>
+                    <p className="text-sm font-semibold text-gray-900">{noticia.disciplinable.nombre}</p>
                     <p className="text-xs text-gray-500">
-                      {noticia.etapa} • {noticia.denunciado.dependencia}
+                      {noticia.estado} • {noticia.territorial}
                     </p>
                   </div>
                 </div>
@@ -1148,7 +1199,7 @@ export function GestionNoticias() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pl-15">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                    <p className="text-sm font-medium text-gray-900">{noticia.denunciado.identificacion}</p>
+                    <p className="text-sm font-medium text-gray-900">{noticia.disciplinable.cedula}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Territorial</p>
@@ -1189,7 +1240,7 @@ export function GestionNoticias() {
                 <div className="text-right">
                   <p className="text-xs text-gray-500 mb-1">Hace</p>
                   <p className="text-xl font-bold" style={{ color: '#003DA5' }}>
-                    {noticia.diasTranscurridos} días
+                    {diasTranscurridos(noticia.fechaRecepcion)} días
                   </p>
                 </div>
 
@@ -1396,7 +1447,7 @@ export function GestionNoticias() {
             onConfirm={() => {
               setNoticias(noticias.filter(n => n.id !== noticiaSeleccionada?.id));
               toast.success('Noticia Archivada', {
-                description: `La noticia ${noticiaSeleccionada?.numeroRadicado} ha sido archivada exitosamente.`
+                description: `La noticia ${noticiaSeleccionada?.radicado} ha sido archivada exitosamente.`
               });
               setShowArchivarModal(false);
               setNoticiaSeleccionada(null);
