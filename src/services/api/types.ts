@@ -22,7 +22,7 @@ export interface LoginResponse {
     nombre: string;
     roles: string[];
     sistema: 'backoffice' | 'portal';
-    accesoD ual: boolean;
+    accesoDual: boolean;
   };
   seleccionarSistema?: boolean;
 }

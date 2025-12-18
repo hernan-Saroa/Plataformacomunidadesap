@@ -22,12 +22,10 @@ export { FocusManager } from './FocusManager';
 
 // Search & Navigation
 export { GlobalSearch } from './GlobalSearch';
-export { GlobalSearchEnhanced } from './GlobalSearchEnhanced';
 
 // Onboarding & Help
 export { OnboardingTour } from './OnboardingTour';
 export { HelpFloatingButton } from './HelpFloatingButton';
-export { WelcomeModal } from './WelcomeModal';
 export { InlineTip } from './InlineTip';
 
 // UX Premium Provider (Integra todas las características)
