@@ -1,0 +1,384 @@
+version: "3.9"
+
+services:
+  # ============ FRONTEND (React + Vite) ============
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: superapp-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      # URL que el frontend usará en el navegador para llamar al backend
+      VITE_API_URL: "http://localhost:3000"
+    depends_on:
+      - api-gateway
+    networks:
+      - superapp-net
+
+  # ============ API GATEWAY ============
+  api-gateway:
+    build:
+      context: ./backend/api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    env_file:
+      - ./backend/api-gateway/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+
+      # Rutas internas a otros microservicios (DNS de Docker)
+      AUTH_SERVICE_URL: http://auth-service:3001
+      ACADEMIC_REGISTRATION_SERVICE_URL: http://academic-registration-service:3002
+      ACADEMIC_WORK_PLAN_SERVICE_URL: http://academic-work-plan-service:3003
+      CERTIFICATION_SERVICE_URL: http://certification-service:3004
+      INTERNAL_DISCIPLINARY_CONTROL_SERVICE_URL: http://internal-disciplinary-control-service:3005
+      INTEROPERABILITY_SERVICE_URL: http://interoperability-service:3006
+      INTERNAL_INSTITUTIONAL_CONTROL_SERVICE_URL: http://internal-institutional-control-service:3007
+      LEGAL_MANAGEMENT_SERVICE_URL: http://legal-management-service:3008
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service:3009
+      TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service:3010
+    ports:
+      - "3000:3000"
+    depends_on:
+      - auth-service
+      - academic-registration-service
+      - academic-work-plan-service
+      - certification-service
+      - internal-disciplinary-control-service
+      - interoperability-service
+      - internal-institutional-control-service
+      - legal-management-service
+      - notifications-service
+      - travel-expenses-service
+    networks:
+      - superapp-net
+
+  # ============ AUTH SERVICE ============
+  auth-service:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    env_file:
+      - ./backend/auth-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: 
+      DB_NAME: esap_db
+      DB_SCHEMA: auth
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+      USER_SERVICE_URL: http://auth-service:3001
+      NOTIFICATION_SERVICE_URL: http://notifications-service:3009
+    ports:
+      - "3001:3001"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ ACADEMIC REGISTRATION SERVICE ============
+  academic-registration-service:
+    build:
+      context: ./backend/academic-registration-service
+      dockerfile: Dockerfile
+    container_name: academic-registration-service
+    env_file:
+      - ./backend/academic-registration-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: 
+      DB_NAME: esap_db
+      DB_SCHEMA: academic_registration
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3002:3002"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ ACADEMIC WORK PLAN SERVICE ============
+  academic-work-plan-service:
+    build:
+      context: ./backend/academic-work-plan-service
+      dockerfile: Dockerfile
+    container_name: academic-work-plan-service
+    env_file:
+      - ./backend/academic-work-plan-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: 
+      DB_NAME: esap_db
+      DB_SCHEMA: academic_work_plan
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3003:3003"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ CERTIFICATION SERVICE ============
+  certification-service:
+    build:
+      context: ./backend/certification-service
+      dockerfile: Dockerfile
+    container_name: certification-service
+    env_file:
+      - ./backend/certification-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3004
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: 
+      DB_NAME: esap_db
+      DB_SCHEMA: certification
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3004:3004"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ INTERNAL DISCIPLINARY CONTROL SERVICE ============
+  internal-disciplinary-control-service:
+    build:
+      context: ./backend/internal-disciplinary-control-service
+      dockerfile: Dockerfile
+    container_name: internal-disciplinary-control-service
+    env_file:
+      - ./backend/internal-disciplinary-control-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: 
+      DB_NAME: esap_db
+      DB_SCHEMA: internal_disciplinary_control
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3005:3005"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ INTEROPERABILITY SERVICE ============
+  interoperability-service:
+    build:
+      context: ./backend/interoperability-service
+      dockerfile: Dockerfile
+    container_name: interoperability-service
+    env_file:
+      - ./backend/interoperability-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3006
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: 
+      DB_NAME: esap_db
+      DB_SCHEMA: interoperability
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3006:3006"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ INTERNAL INSTITUTIONAL CONTROL SERVICE ============
+  internal-institutional-control-service:
+    build:
+      context: ./backend/internal-institutional-control-service
+      dockerfile: Dockerfile
+    container_name: internal-institutional-control-service
+    env_file:
+      - ./backend/internal-institutional-control-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3007
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: 
+      DB_NAME: esap_db
+      DB_SCHEMA: internal_institutional_control
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3007:3007"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ LEGAL MANAGEMENT SERVICE ============
+  legal-management-service:
+    build:
+      context: ./backend/legal-management-service
+      dockerfile: Dockerfile
+    container_name: legal-management-service
+    env_file:
+      - ./backend/legal-management-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3008
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: 
+      DB_NAME: esap_db
+      DB_SCHEMA: legal_management
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3008:3008"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ NOTIFICATIONS SERVICE ============
+  notifications-service:
+    build:
+      context: ./backend/notifications-service
+      dockerfile: Dockerfile
+    container_name: notifications-service
+    env_file:
+      - ./backend/notifications-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3009
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: 
+      DB_NAME: esap_db
+      DB_SCHEMA: notifications
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3009:3009"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ TRAVEL EXPENSES SERVICE ============
+  travel-expenses-service:
+    build:
+      context: ./backend/travel-expenses-service
+      dockerfile: Dockerfile
+    container_name: travel-expenses-service
+    env_file:
+      - ./backend/travel-expenses-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3010
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: 
+      DB_NAME: esap_db
+      DB_SCHEMA: travel_expenses
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3010:3010"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ POSTGRES ============
+  db:
+    image: postgres:16
+    container_name: superapp-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: esap_db
+      # Para poder usarla sin contraseña dentro del contenedor:
+      POSTGRES_HOST_AUTH_METHOD: trust
+      # O, si quieres password:
+      # POSTGRES_PASSWORD: ""   # y que DB_PASS coincida
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - superapp-net
+
+  # ============ REDIS ============
+  redis:
+    image: redis:7
+    container_name: superapp-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - superapp-net
+
+networks:
+  superapp-net:
+
+volumes:
+  pgdata:

@@ -1,0 +1,418 @@
+version: "3.9"
+
+# Docker Compose para entorno QA (Quality Assurance)
+# Servidor: http://135.237.81.133
+# Uso: docker-compose -f docker-compose.qa.yml up -d --build
+
+services:
+  # ============ FRONTEND (React + Vite - Build de producción con Nginx) ============
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.dev
+      args:
+        # Nueva estructura de URLs: /{service}/api/v{version}/{path}
+        # Ejemplo: /auth/api/v1/users
+        VITE_API_URL: "http://135.237.81.133:3000"
+    container_name: superapp-frontend-qa
+    ports:
+      - "80:80"
+    depends_on:
+      - api-gateway
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ API GATEWAY ============
+  api-gateway:
+    build:
+      context: ./backend/api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+
+      # CORS - Permitir acceso desde el frontend
+      CORS_ORIGIN: "http://135.237.81.133"
+
+      # Rutas internas a otros microservicios (DNS de Docker)
+      AUTH_SERVICE_URL: http://auth-service-qa:3001
+      ACADEMIC_REGISTRATION_SERVICE_URL: http://academic-registration-service-qa:3002
+      ACADEMIC_WORK_PLAN_SERVICE_URL: http://academic-work-plan-service-qa:3003
+      CERTIFICATION_SERVICE_URL: http://certification-service-qa:3004
+      INTERNAL_DISCIPLINARY_CONTROL_SERVICE_URL: http://internal-disciplinary-control-service-qa:3005
+      INTEROPERABILITY_SERVICE_URL: http://interoperability-service-qa:3006
+      INTERNAL_INSTITUTIONAL_CONTROL_SERVICE_URL: http://internal-institutional-control-service-qa:3007
+      LEGAL_MANAGEMENT_SERVICE_URL: http://legal-management-service-qa:3008
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service-qa:3009
+      TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service-qa:3010
+    ports:
+      - "3000:3000"
+    depends_on:
+      - auth-service
+      - academic-registration-service
+      - academic-work-plan-service
+      - certification-service
+      - internal-disciplinary-control-service
+      - interoperability-service
+      - internal-institutional-control-service
+      - legal-management-service
+      - notifications-service
+      - travel-expenses-service
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ AUTH SERVICE ============
+  auth-service:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: auth
+
+      # JWT - IMPORTANTE: Cambiar en producción real
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_qa_2024}
+      JWT_EXPIRES_IN: 1h
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-esap_refresh_secret_qa_2024}
+      JWT_REFRESH_EXPIRES_IN: 7d
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway-qa:3000
+      USER_SERVICE_URL: http://auth-service-qa:3001
+      NOTIFICATION_SERVICE_URL: http://notifications-service-qa:3009
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ ACADEMIC REGISTRATION SERVICE ============
+  academic-registration-service:
+    build:
+      context: ./backend/academic-registration-service
+      dockerfile: Dockerfile
+    container_name: academic-registration-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: academic_registration
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway-qa:3000
+    ports:
+      - "3002:3002"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ ACADEMIC WORK PLAN SERVICE ============
+  academic-work-plan-service:
+    build:
+      context: ./backend/academic-work-plan-service
+      dockerfile: Dockerfile
+    container_name: academic-work-plan-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: academic_work_plan
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway-qa:3000
+    ports:
+      - "3003:3003"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ CERTIFICATION SERVICE ============
+  certification-service:
+    build:
+      context: ./backend/certification-service
+      dockerfile: Dockerfile
+    container_name: certification-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: certification
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway-qa:3000
+    ports:
+      - "3004:3004"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ INTERNAL DISCIPLINARY CONTROL SERVICE ============
+  internal-disciplinary-control-service:
+    build:
+      context: ./backend/internal-disciplinary-control-service
+      dockerfile: Dockerfile
+    container_name: internal-disciplinary-control-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: internal_disciplinary_control
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway-qa:3000
+    ports:
+      - "3005:3005"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ INTEROPERABILITY SERVICE ============
+  interoperability-service:
+    build:
+      context: ./backend/interoperability-service
+      dockerfile: Dockerfile
+    container_name: interoperability-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3006
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: interoperability
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway-qa:3000
+    ports:
+      - "3006:3006"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ INTERNAL INSTITUTIONAL CONTROL SERVICE ============
+  internal-institutional-control-service:
+    build:
+      context: ./backend/internal-institutional-control-service
+      dockerfile: Dockerfile
+    container_name: internal-institutional-control-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3007
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: internal_institutional_control
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway-qa:3000
+    ports:
+      - "3007:3007"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ LEGAL MANAGEMENT SERVICE ============
+  legal-management-service:
+    build:
+      context: ./backend/legal-management-service
+      dockerfile: Dockerfile
+    container_name: legal-management-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3008
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: legal_management
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway-qa:3000
+    ports:
+      - "3008:3008"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ NOTIFICATIONS SERVICE ============
+  notifications-service:
+    build:
+      context: ./backend/notifications-service
+      dockerfile: Dockerfile
+    container_name: notifications-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3009
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: notifications
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway-qa:3000
+    ports:
+      - "3009:3009"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ TRAVEL EXPENSES SERVICE ============
+  travel-expenses-service:
+    build:
+      context: ./backend/travel-expenses-service
+      dockerfile: Dockerfile
+    container_name: travel-expenses-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3010
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: travel_expenses
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway-qa:3000
+    ports:
+      - "3010:3010"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ POSTGRES ============
+  db:
+    image: postgres:16
+    container_name: superapp-db-qa
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-esap_secure_password_2024}
+      POSTGRES_DB: esap_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata-qa:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - superapp-net-qa
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d esap_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============ REDIS ============
+  redis:
+    image: redis:7-alpine
+    container_name: superapp-redis-qa
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata-qa:/data
+    networks:
+      - superapp-net-qa
+    command: redis-server --appendonly yes
+
+networks:
+  superapp-net-qa:
+    driver: bridge
+
+volumes:
+  pgdata-qa:
+    name: esap-pgdata-qa
+  redisdata-qa:
+    name: esap-redisdata-qa
