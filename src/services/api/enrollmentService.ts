@@ -1,5 +1,41 @@
-import { apiClient } from './client';
-import type { EnrollmentRequest, CreateEnrollmentData, ApproveEnrollmentData, RejectEnrollmentData } from './types';
+import { apiClient } from './apiClient';
+
+// Types
+export interface EnrollmentRequest {
+  id_solicitud: string;
+  tipo_documento: 'CC' | 'TI' | 'CE' | 'PP';
+  numero_documento: string;
+  nombres: string;
+  apellidos: string;
+  email_personal: string;
+  telefono_movil: string;
+  origen_solicitud: string;
+  validado_en_bd_esap: boolean;
+  tipo_usuario_detectado: string;
+  estado_solicitud: 'Pendiente' | 'En_revisión' | 'Aprobada' | 'Rechazada';
+  fecha_solicitud: string;
+  horas_pendientes: number;
+}
+
+export interface CreateEnrollmentData {
+  tipo_documento: string;
+  numero_documento: string;
+  nombres: string;
+  apellidos: string;
+  email_personal: string;
+  telefono_movil: string;
+  password: string;
+  origen_solicitud: string;
+  codigo_qr?: string;
+}
+
+export interface ApproveEnrollmentData {
+  observaciones?: string;
+}
+
+export interface RejectEnrollmentData {
+  motivo_rechazo: string;
+}
 
 export const enrollmentService = {
   /**

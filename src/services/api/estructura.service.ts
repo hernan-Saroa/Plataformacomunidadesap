@@ -1,49 +1,85 @@
 /**
  * Estructura Organizacional Service
- * Servicio para gestión de territoriales, regionales y sedes
+ * Servicio para gestión de seccionales, sedes y geopolítica
+ * Usa las tablas auth.seccionales, auth.sedes y auth.geopolitica
+ *
+ * Nota: Todos los endpoints van al servicio 'auth' del API Gateway
+ * URL: /auth/api/v1/estructura-organizacional -> auth-service:3001/estructura-organizacional
  */
 
 import { apiClient } from './client';
-import type { Territorial, Sede, Programa } from './types';
+import type {
+  Seccional,
+  Sede,
+  Geopolitica,
+  EstructuraOrganizacionalResponse,
+  EstadisticasEstructuraOrganizacional,
+  SedesResponse,
+  SeccionalesResponse,
+} from './types';
+
+// Prefijo del servicio en el API Gateway
+const SERVICE_PREFIX = '/auth/api/v1';
 
 export const estructuraService = {
   /**
-   * TERRITORIALES
+   * Obtener toda la estructura organizacional
    */
-  territoriales: {
+  async obtenerEstructura(): Promise<EstructuraOrganizacionalResponse> {
+    return apiClient.get<EstructuraOrganizacionalResponse>(`${SERVICE_PREFIX}/estructura-organizacional`);
+  },
+
+  /**
+   * Obtener estadísticas
+   */
+  async obtenerEstadisticas(): Promise<{ data: EstadisticasEstructuraOrganizacional }> {
+    return apiClient.get<{ data: EstadisticasEstructuraOrganizacional }>(`${SERVICE_PREFIX}/estructura-organizacional/estadisticas`);
+  },
+
+  /**
+   * GEOPOLÍTICA
+   */
+  geopolitica: {
     /**
-     * Listar territoriales
+     * Listar departamentos
      */
-    async listar(params?: { activas?: boolean }): Promise<Territorial[]> {
-      return apiClient.get<Territorial[]>('/backoffice/territoriales', { params });
+    async listarDepartamentos(): Promise<{ data: Geopolitica[] }> {
+      return apiClient.get<{ data: Geopolitica[] }>(`${SERVICE_PREFIX}/estructura-organizacional/geopolitica/departamentos`);
     },
 
     /**
-     * Obtener territorial por ID
+     * Listar ciudades por departamento
      */
-    async obtenerPorId(id: string): Promise<Territorial> {
-      return apiClient.get<Territorial>(`/backoffice/territoriales/${id}`);
+    async listarCiudades(idDepartamento: number): Promise<{ data: Geopolitica[] }> {
+      return apiClient.get<{ data: Geopolitica[] }>(
+        `${SERVICE_PREFIX}/estructura-organizacional/geopolitica/departamentos/${idDepartamento}/ciudades`
+      );
     },
 
     /**
-     * Crear territorial
+     * Obtener geopolítica por ID
      */
-    async crear(data: Omit<Territorial, 'id' | 'createdAt' | 'updatedAt'>): Promise<Territorial> {
-      return apiClient.post<Territorial>('/backoffice/territoriales', data);
+    async obtenerPorId(id: number): Promise<{ data: Geopolitica | null }> {
+      return apiClient.get<{ data: Geopolitica | null }>(`${SERVICE_PREFIX}/estructura-organizacional/geopolitica/${id}`);
+    },
+  },
+
+  /**
+   * SECCIONALES
+   */
+  seccionales: {
+    /**
+     * Listar seccionales
+     */
+    async listar(): Promise<SeccionalesResponse> {
+      return apiClient.get<SeccionalesResponse>(`${SERVICE_PREFIX}/estructura-organizacional/seccionales`);
     },
 
     /**
-     * Actualizar territorial
+     * Obtener seccional por ID
      */
-    async actualizar(id: string, data: Partial<Territorial>): Promise<Territorial> {
-      return apiClient.put<Territorial>(`/backoffice/territoriales/${id}`, data);
-    },
-
-    /**
-     * Eliminar territorial
-     */
-    async eliminar(id: string): Promise<{ mensaje: string }> {
-      return apiClient.delete<{ mensaje: string }>(`/backoffice/territoriales/${id}`);
+    async obtenerPorId(id: number): Promise<{ data: Seccional | null }> {
+      return apiClient.get<{ data: Seccional | null }>(`${SERVICE_PREFIX}/estructura-organizacional/seccionales/${id}`);
     },
   },
 
@@ -52,77 +88,37 @@ export const estructuraService = {
    */
   sedes: {
     /**
-     * Listar sedes
+     * Listar sedes con filtros opcionales
      */
     async listar(params?: {
-      territorialId?: string;
-      activas?: boolean;
-    }): Promise<Sede[]> {
-      return apiClient.get<Sede[]>('/backoffice/sedes', { params });
+      idSeccional?: number;
+      search?: string;
+    }): Promise<SedesResponse> {
+      const queryParams = new URLSearchParams();
+      if (params?.idSeccional) queryParams.append('idSeccional', params.idSeccional.toString());
+      if (params?.search) queryParams.append('search', params.search);
+
+      const queryString = queryParams.toString();
+      const endpoint = queryString
+        ? `${SERVICE_PREFIX}/estructura-organizacional/sedes?${queryString}`
+        : `${SERVICE_PREFIX}/estructura-organizacional/sedes`;
+
+      return apiClient.get<SedesResponse>(endpoint);
+    },
+
+    /**
+     * Listar sedes por seccional
+     */
+    async listarPorSeccional(idSeccional: number): Promise<{ data: Sede[] }> {
+      return apiClient.get<{ data: Sede[] }>(`${SERVICE_PREFIX}/estructura-organizacional/sedes/seccional/${idSeccional}`);
     },
 
     /**
      * Obtener sede por ID
      */
-    async obtenerPorId(id: string): Promise<Sede> {
-      return apiClient.get<Sede>(`/backoffice/sedes/${id}`);
+    async obtenerPorId(id: number): Promise<{ data: Sede | null }> {
+      return apiClient.get<{ data: Sede | null }>(`${SERVICE_PREFIX}/estructura-organizacional/sedes/${id}`);
     },
-
-    /**
-     * Crear sede
-     */
-    async crear(data: Omit<Sede, 'id' | 'createdAt' | 'updatedAt'>): Promise<Sede> {
-      return apiClient.post<Sede>('/backoffice/sedes', data);
-    },
-
-    /**
-     * Actualizar sede
-     */
-    async actualizar(id: string, data: Partial<Sede>): Promise<Sede> {
-      return apiClient.put<Sede>(`/backoffice/sedes/${id}`, data);
-    },
-
-    /**
-     * Eliminar sede
-     */
-    async eliminar(id: string): Promise<{ mensaje: string }> {
-      return apiClient.delete<{ mensaje: string }>(`/backoffice/sedes/${id}`);
-    },
-
-    /**
-     * Obtener programas de una sede
-     */
-    async obtenerProgramas(sedeId: string): Promise<Programa[]> {
-      return apiClient.get<Programa[]>(`/backoffice/sedes/${sedeId}/programas`);
-    },
-
-    /**
-     * Asignar programa a sede
-     */
-    async asignarPrograma(sedeId: string, programaId: string): Promise<{ mensaje: string }> {
-      return apiClient.post<{ mensaje: string }>(`/backoffice/sedes/${sedeId}/programas/${programaId}`);
-    },
-
-    /**
-     * Remover programa de sede
-     */
-    async removerPrograma(sedeId: string, programaId: string): Promise<{ mensaje: string }> {
-      return apiClient.delete<{ mensaje: string }>(`/backoffice/sedes/${sedeId}/programas/${programaId}`);
-    },
-  },
-
-  /**
-   * Obtener árbol organizacional completo
-   */
-  async obtenerArbol(): Promise<any> {
-    return apiClient.get('/backoffice/estructura-organizacional/arbol');
-  },
-
-  /**
-   * Obtener datos para mapa de cobertura
-   */
-  async mapaCobertura(): Promise<any> {
-    return apiClient.get('/backoffice/estructura-organizacional/mapa-cobertura');
   },
 };
 

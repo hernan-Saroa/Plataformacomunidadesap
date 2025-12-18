@@ -1,6 +1,9 @@
 /**
  * Dashboard Service
  * Servicio para métricas y datos del dashboard ejecutivo
+ *
+ * Nota: Todos los endpoints van al servicio 'auth' del API Gateway
+ * URL: /auth/api/v1/backoffice/dashboard -> auth-service:3001/backoffice/dashboard
  */
 
 import { apiClient } from './client';
@@ -10,6 +13,9 @@ import type {
   DistribucionRol,
   ActividadReciente,
 } from './types';
+
+// Prefijo del servicio en el API Gateway
+const SERVICE_PREFIX = '/auth/api/v1';
 
 export const dashboardService = {
   /**
@@ -21,7 +27,7 @@ export const dashboardService = {
     territorialId?: string;
     sedeId?: string;
   }): Promise<MetricasSuperiores> {
-    return apiClient.get<MetricasSuperiores>('/backoffice/dashboard/metricas-principales', { params });
+    return apiClient.get<MetricasSuperiores>(`${SERVICE_PREFIX}/backoffice/dashboard/metricas-principales`, { params });
   },
 
   /**
@@ -31,7 +37,7 @@ export const dashboardService = {
     periodo?: 'dia' | 'semana' | 'mes' | 'año';
     territorialId?: string;
   }): Promise<CrecimientoUsuarios> {
-    return apiClient.get<CrecimientoUsuarios>('/backoffice/dashboard/crecimiento-usuarios', { params });
+    return apiClient.get<CrecimientoUsuarios>(`${SERVICE_PREFIX}/backoffice/dashboard/crecimiento-usuarios`, { params });
   },
 
   /**
@@ -40,7 +46,7 @@ export const dashboardService = {
   async distribucionRoles(params?: {
     territorialId?: string;
   }): Promise<DistribucionRol[]> {
-    return apiClient.get<DistribucionRol[]>('/backoffice/dashboard/distribucion-roles', { params });
+    return apiClient.get<DistribucionRol[]>(`${SERVICE_PREFIX}/backoffice/dashboard/distribucion-roles`, { params });
   },
 
   /**
@@ -50,7 +56,7 @@ export const dashboardService = {
     territorialId?: string;
     limit?: number;
   }): Promise<any[]> {
-    return apiClient.get('/backoffice/dashboard/usuarios-por-sede', { params });
+    return apiClient.get(`${SERVICE_PREFIX}/backoffice/dashboard/usuarios-por-sede`, { params });
   },
 
   /**
@@ -59,21 +65,21 @@ export const dashboardService = {
   async actividadReciente(params?: {
     limit?: number;
   }): Promise<ActividadReciente[]> {
-    return apiClient.get<ActividadReciente[]>('/backoffice/dashboard/actividad-reciente', { params });
+    return apiClient.get<ActividadReciente[]>(`${SERVICE_PREFIX}/backoffice/dashboard/actividad-reciente`, { params });
   },
 
   /**
    * Obtener alertas pendientes
    */
   async alertas(): Promise<any[]> {
-    return apiClient.get('/backoffice/dashboard/alertas');
+    return apiClient.get(`${SERVICE_PREFIX}/backoffice/dashboard/alertas`);
   },
 
   /**
    * Obtener datos para mapa de cobertura
    */
   async mapaCobertura(): Promise<any> {
-    return apiClient.get('/backoffice/dashboard/mapa-cobertura');
+    return apiClient.get(`${SERVICE_PREFIX}/backoffice/dashboard/mapa-cobertura`);
   },
 };
 

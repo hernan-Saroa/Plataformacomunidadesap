@@ -1,145 +1,243 @@
 /**
- * Servicio Control Interno Disciplinario
- * Gestiona procesos, audiencias, notificaciones y gestión documental
+ * Servicio API - Control Interno de Gestión
+ * 
+ * Conecta con el backend en: http://localhost:3007/api/v1
+ * 
+ * Servicios migrados a BD (funcionando):
+ * 1. UniversoAuditoriasService ✅
+ * 2. ProgramaAnualService ✅
+ * 3. PlanIndividualService ✅
+ * 4. ListasChequeoService ✅
+ * 5. HallazgosService ✅
+ * 6. InformesService ✅
+ * 7. NotificacionesService ✅
+ * 8. DocumentosService ✅
+ * 9. ConfiguracionService ✅
  */
 
-import { apiClient } from './client';
-import type {
-  // Dashboard
-  DashboardControlInterno,
-  EstadisticasControlInterno,
-  
-  // Plan Anual
-  PlanAnualAuditoria,
-  CreatePlanAnualRequest,
-  UpdatePlanAnualRequest,
-  
-  // Auditorías
-  Auditoria,
-  CreateAuditoriaRequest,
-  UpdateAuditoriaRequest,
-  AuditoriaDetalle,
-  
-  // Hallazgos
-  Hallazgo,
-  CreateHallazgoRequest,
-  UpdateHallazgoRequest,
-  HallazgoDetalle,
-  
-  // Planes de Mejoramiento
-  PlanMejoramiento,
-  CreatePlanMejoramientoRequest,
-  UpdatePlanMejoramientoRequest,
-  AccionMejora,
-  
-  // Listas de Chequeo
-  ListaChequeo,
-  CreateListaChequeoRequest,
-  ItemListaChequeo,
-  
-  // Universo de Auditorías
-  UniversoAuditorias,
-  ProcesoAuditable,
-  EvaluacionRiesgo,
-  
-  // Seguimiento
-  SeguimientoHallazgo,
-  AvancePlanMejoramiento,
-  
-  // Reportes
-  ReporteAuditoriaParams,
-  ReporteHallazgosParams,
-  
-  // Filtros y paginación
-  PaginatedResponse,
-  FiltrosControlInterno
-} from '../../types/control-interno';
+import { apiClient } from './apiClient';
+import { getServiceUrl, API_MODE, MICROSERVICE_URLS } from '../../config/environment';
+
+// Base URL del servicio de Control Interno usando variables de entorno
+// En modo gateway: http://localhost:3000 o http://4.156.71.181:3000
+// En modo direct: http://localhost:3007
+const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
+
+// Prefijo del servicio para el API Gateway
+// En modo gateway se usa: /control-institucional/api/v1
+// En modo direct no se usa prefijo porque se conecta directo al microservicio
+const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '';
 
 // ============================================================================
-// ENDPOINTS
+// TIPOS (simplificados - ajustar según necesidades)
 // ============================================================================
 
-const ENDPOINTS = {
-  // Dashboard
-  DASHBOARD: '/control-interno/dashboard',
-  ESTADISTICAS: '/control-interno/estadisticas',
-  KPI: '/control-interno/kpi',
-  ALERTAS: '/control-interno/alertas',
-  
-  // Plan Anual de Auditoría
-  PLAN_ANUAL: {
-    BASE: '/control-interno/plan-anual',
-    BY_ID: (id: string) => `/control-interno/plan-anual/${id}`,
-    BY_YEAR: (year: number) => `/control-interno/plan-anual/year/${year}`,
-    APROBAR: (id: string) => `/control-interno/plan-anual/${id}/aprobar`,
-    DESCARGAR: (id: string) => `/control-interno/plan-anual/${id}/download`,
-    CRONOGRAMA: (id: string) => `/control-interno/plan-anual/${id}/cronograma`,
-  },
-  
-  // Auditorías
-  AUDITORIAS: {
-    BASE: '/control-interno/auditorias',
-    BY_ID: (id: string) => `/control-interno/auditorias/${id}`,
-    DETALLE: (id: string) => `/control-interno/auditorias/${id}/detalle`,
-    EQUIPO: (id: string) => `/control-interno/auditorias/${id}/equipo`,
-    CRONOGRAMA: (id: string) => `/control-interno/auditorias/${id}/cronograma`,
-    EVIDENCIAS: (id: string) => `/control-interno/auditorias/${id}/evidencias`,
-    UPLOAD_EVIDENCIA: (id: string) => `/control-interno/auditorias/${id}/evidencias/upload`,
-    CAMBIAR_ESTADO: (id: string) => `/control-interno/auditorias/${id}/estado`,
-  },
-  
-  // Hallazgos
-  HALLAZGOS: {
-    BASE: '/control-interno/hallazgos',
-    BY_ID: (id: string) => `/control-interno/hallazgos/${id}`,
-    DETALLE: (id: string) => `/control-interno/hallazgos/${id}/detalle`,
-    BY_AUDITORIA: (auditoriaId: string) => `/control-interno/hallazgos/auditoria/${auditoriaId}`,
-    COMENTARIOS: (id: string) => `/control-interno/hallazgos/${id}/comentarios`,
-    EVIDENCIAS: (id: string) => `/control-interno/hallazgos/${id}/evidencias`,
-    SEGUIMIENTO: (id: string) => `/control-interno/hallazgos/${id}/seguimiento`,
-    ESTADISTICAS: '/control-interno/hallazgos/estadisticas',
-  },
-  
-  // Planes de Mejoramiento
-  PLANES_MEJORAMIENTO: {
-    BASE: '/control-interno/planes-mejoramiento',
-    BY_ID: (id: string) => `/control-interno/planes-mejoramiento/${id}`,
-    BY_HALLAZGO: (hallazgoId: string) => `/control-interno/planes-mejoramiento/hallazgo/${hallazgoId}`,
-    ACCIONES: (id: string) => `/control-interno/planes-mejoramiento/${id}/acciones`,
-    ACCION_BY_ID: (planId: string, accionId: string) => `/control-interno/planes-mejoramiento/${planId}/acciones/${accionId}`,
-    AVANCE: (id: string) => `/control-interno/planes-mejoramiento/${id}/avance`,
-    APROBAR: (id: string) => `/control-interno/planes-mejoramiento/${id}/aprobar`,
-    RECHAZAR: (id: string) => `/control-interno/planes-mejoramiento/${id}/rechazar`,
-  },
-  
-  // Listas de Chequeo
-  LISTAS_CHEQUEO: {
-    BASE: '/control-interno/listas-chequeo',
-    BY_ID: (id: string) => `/control-interno/listas-chequeo/${id}`,
-    BY_TIPO: (tipo: string) => `/control-interno/listas-chequeo/tipo/${tipo}`,
-    ITEMS: (id: string) => `/control-interno/listas-chequeo/${id}/items`,
-    EVALUAR: (id: string) => `/control-interno/listas-chequeo/${id}/evaluar`,
-    RESULTADOS: (id: string) => `/control-interno/listas-chequeo/${id}/resultados`,
-  },
-  
-  // Universo de Auditorías
-  UNIVERSO: {
-    BASE: '/control-interno/universo',
-    PROCESOS: '/control-interno/universo/procesos',
-    PROCESO_BY_ID: (id: string) => `/control-interno/universo/procesos/${id}`,
-    EVALUACION_RIESGO: (procesoId: string) => `/control-interno/universo/procesos/${procesoId}/riesgo`,
-    MATRIZ_RIESGO: '/control-interno/universo/matriz-riesgo',
-  },
-  
-  // Reportes
-  REPORTES: {
-    AUDITORIA: '/control-interno/reportes/auditoria',
-    HALLAZGOS: '/control-interno/reportes/hallazgos',
-    PLAN_MEJORAMIENTO: '/control-interno/reportes/plan-mejoramiento',
-    CONSOLIDADO: '/control-interno/reportes/consolidado',
-    INDICADORES: '/control-interno/reportes/indicadores',
+export interface ProcesoAuditable {
+  id: string;
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  tipo: string;
+  macroproceso: string;
+  responsable: string;
+  dependencia: string;
+  territorial?: string;
+  evaluacionRiesgo: {
+    probabilidad: number;
+    impacto: number;
+    nivelControl: number;
+    riesgoInherente: number;
+    riesgoResidual: number;
+    nivelRiesgo: 'bajo' | 'medio' | 'alto';
+  };
+  frecuenciaAuditoria: string;
+  ultimaAuditoria?: string;
+  proximaAuditoria?: string;
+  prioridad: number;
+  priorizacionAnos: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuditoriaProgramada {
+  id: string;
+  codigo: string;
+  nombre: string;
+  tipo: string;
+  procesoId?: string;
+  procesoNombre?: string;
+  año: number;
+  estado: string;
+  fechaInicio: string;
+  fechaFin: string;
+  auditorLider?: string;
+  equipo?: string[];
+  observaciones?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Hallazgo {
+  id: string;
+  codigo: string;
+  categoria: 'critico' | 'controversia' | 'borrador';
+  estado: string;
+  area: string;
+  auditoria: string;
+  auditoriaEntity?: AuditoriaProgramada;
+  descripcion: string;
+  criterioIncumplido: string;
+  normativaRelacionada: string[];
+  evidencias: Array<{
+    id: string;
+    nombre: string;
+    tipo: string;
+    fecha: string;
+  }>;
+  recomendaciones: string[];
+  fechaDeteccion: string;
+  fechaNotificacion?: string;
+  responsable?: string;
+  fechaLimiteCorreccion?: string;
+  observacionesControversia?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListaChequeo {
+  id: string;
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  tipo: 'cumplimiento' | 'proceso' | 'sistema' | 'procedimiento';
+  categoria: string;
+  version: string;
+  estado: 'activa' | 'inactiva' | 'obsoleta';
+  items?: any[];
+  itemsJsonb?: Array<{
+    id: string;
+    numero: number;
+    pregunta: string;
+    criterio: string;
+    normativaReferencia?: string;
+    tipoRespuesta: 'si_no' | 'cumple_no_cumple' | 'texto' | 'numerico';
+    obligatorio: boolean;
+    pesoCalificacion?: number;
+    evidenciaRequerida: boolean;
+  }>;
+  aplicablePara: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlanIndividual {
+  id: string;
+  auditoriaId: string;
+  codigo: string;
+  nombre: string;
+  objetivo: string;
+  alcance: string;
+  metodologia: string;
+  recursos: string[];
+  cronograma: any;
+  estado: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ============================================================================
+// CLIENTE API ESPECÍFICO PARA CONTROL INTERNO
+// ============================================================================
+
+class ControlInternoAPIClient {
+  private baseURL: string;
+  private servicePrefix: string;
+
+  constructor() {
+    this.baseURL = CONTROL_INTERNO_BASE_URL;
+    this.servicePrefix = SERVICE_PREFIX;
   }
-};
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    // En modo gateway: http://4.156.71.181:3000/control-institucional/api/v1/plan-anual-5-roles
+    // En modo direct: http://localhost:3007/plan-anual-5-roles
+    const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
+    
+    const defaultHeaders: HeadersInit = {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Accept': 'application/json; charset=utf-8',
+    };
+
+    // Agregar token si existe
+    const token = localStorage.getItem('esap_access_token');
+    if (token) {
+      defaultHeaders['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...defaultHeaders,
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(error.message || `HTTP ${response.status}`);
+    }
+
+    // Manejar respuestas vacías (204 No Content) o sin contenido
+    const contentType = response.headers.get('content-type');
+    if (response.status === 204 || !contentType?.includes('application/json')) {
+      // Si no hay contenido, devolver un objeto vacío
+      return {} as T;
+    }
+
+    // Intentar parsear JSON, si falla devolver objeto vacío
+    try {
+      const text = await response.text();
+      return text ? JSON.parse(text) : ({} as T);
+    } catch {
+      return {} as T;
+    }
+  }
+
+  async get<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: 'GET' });
+  }
+
+  async post<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async put<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async patch<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async delete<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+}
+
+const client = new ControlInternoAPIClient();
 
 // ============================================================================
 // SERVICIO DE CONTROL INTERNO
@@ -148,141 +246,145 @@ const ENDPOINTS = {
 class ControlInternoService {
   
   // ==========================================================================
-  // DASHBOARD Y ESTADÍSTICAS
+  // UNIVERSO DE AUDITORÍAS
   // ==========================================================================
   
   /**
-   * Obtiene el dashboard ejecutivo de Control Interno
+   * Obtiene todos los procesos auditables
    */
-  async getDashboard(): Promise<DashboardControlInterno> {
-    return apiClient.get<DashboardControlInterno>(ENDPOINTS.DASHBOARD);
+  async getProcesosAuditables(): Promise<ProcesoAuditable[]> {
+    return client.get<ProcesoAuditable[]>('/universo-auditorias/procesos');
   }
   
   /**
-   * Obtiene estadísticas generales del módulo
+   * Obtiene un proceso auditable por ID
    */
-  async getEstadisticas(params?: { periodo?: string; territorial?: string }): Promise<EstadisticasControlInterno> {
-    return apiClient.get<EstadisticasControlInterno>(ENDPOINTS.ESTADISTICAS, params);
+  async getProcesoById(id: string): Promise<ProcesoAuditable> {
+    return client.get<ProcesoAuditable>(`/universo-auditorias/procesos/${id}`);
   }
   
   /**
-   * Obtiene KPIs del sistema de control interno
+   * Crea un nuevo proceso auditable
    */
-  async getKPIs(periodo: string): Promise<any> {
-    return apiClient.get(ENDPOINTS.KPI, { periodo });
+  async createProceso(data: Partial<ProcesoAuditable>): Promise<ProcesoAuditable> {
+    return client.post<ProcesoAuditable>('/universo-auditorias/procesos', data);
   }
   
   /**
-   * Obtiene alertas activas
+   * Actualiza un proceso auditable
    */
-  async getAlertas(): Promise<any[]> {
-    return apiClient.get(ENDPOINTS.ALERTAS);
+  async updateProceso(id: string, data: Partial<ProcesoAuditable>): Promise<ProcesoAuditable> {
+    return client.put<ProcesoAuditable>(`/universo-auditorias/procesos/${id}`, data);
   }
-  
+
+  /**
+   * Elimina un proceso auditable
+   */
+  async deleteProceso(id: string): Promise<void> {
+    return client.delete(`/universo-auditorias/procesos/${id}`);
+  }
+
+  /**
+   * Obtiene la evaluación de riesgo de un proceso
+   */
+  async getEvaluacionRiesgo(procesoId: string): Promise<any> {
+    return client.get(`/universo-auditorias/procesos/${procesoId}/riesgo`);
+  }
+
+  /**
+   * Evalúa el riesgo de un proceso
+   */
+  async evaluarRiesgo(procesoId: string, data: any): Promise<any> {
+    return client.post(`/universo-auditorias/procesos/${procesoId}/riesgo`, data);
+  }
+
+  /**
+   * Obtiene la matriz de riesgo
+   */
+  async getMatrizRiesgo(): Promise<any> {
+    return client.get('/universo-auditorias/matriz-riesgo');
+  }
+
+  /**
+   * Obtiene la priorización de auditorías
+   */
+  async getPriorizacion(): Promise<any> {
+    return client.get('/universo-auditorias/priorizacion');
+  }
+
   // ==========================================================================
-  // PLAN ANUAL DE AUDITORÍA
-  // ==========================================================================
-  
-  /**
-   * Obtiene todos los planes anuales
-   */
-  async getPlanes(params?: { year?: number; estado?: string }): Promise<PaginatedResponse<PlanAnualAuditoria>> {
-    return apiClient.get<PaginatedResponse<PlanAnualAuditoria>>(ENDPOINTS.PLAN_ANUAL.BASE, params);
-  }
-  
-  /**
-   * Obtiene un plan anual por ID
-   */
-  async getPlanById(id: string): Promise<PlanAnualAuditoria> {
-    return apiClient.get<PlanAnualAuditoria>(ENDPOINTS.PLAN_ANUAL.BY_ID(id));
-  }
-  
-  /**
-   * Obtiene el plan anual de un año específico
-   */
-  async getPlanByYear(year: number): Promise<PlanAnualAuditoria> {
-    return apiClient.get<PlanAnualAuditoria>(ENDPOINTS.PLAN_ANUAL.BY_YEAR(year));
-  }
-  
-  /**
-   * Crea un nuevo plan anual
-   */
-  async createPlan(data: CreatePlanAnualRequest): Promise<PlanAnualAuditoria> {
-    return apiClient.post<PlanAnualAuditoria>(ENDPOINTS.PLAN_ANUAL.BASE, data);
-  }
-  
-  /**
-   * Actualiza un plan anual
-   */
-  async updatePlan(id: string, data: UpdatePlanAnualRequest): Promise<PlanAnualAuditoria> {
-    return apiClient.put<PlanAnualAuditoria>(ENDPOINTS.PLAN_ANUAL.BY_ID(id), data);
-  }
-  
-  /**
-   * Aprueba un plan anual
-   */
-  async aprobarPlan(id: string, observaciones?: string): Promise<PlanAnualAuditoria> {
-    return apiClient.post<PlanAnualAuditoria>(ENDPOINTS.PLAN_ANUAL.APROBAR(id), { observaciones });
-  }
-  
-  /**
-   * Descarga el plan anual en PDF
-   */
-  async descargarPlan(id: string): Promise<Blob> {
-    return apiClient.get<Blob>(ENDPOINTS.PLAN_ANUAL.DESCARGAR(id));
-  }
-  
-  // ==========================================================================
-  // AUDITORÍAS
+  // PROGRAMA ANUAL
   // ==========================================================================
   
   /**
-   * Obtiene todas las auditorías con filtros
+   * Obtiene todos los programas anuales
    */
-  async getAuditorias(params?: FiltrosControlInterno): Promise<PaginatedResponse<Auditoria>> {
-    return apiClient.get<PaginatedResponse<Auditoria>>(ENDPOINTS.AUDITORIAS.BASE, params);
+  async getProgramasAnuales(year?: string): Promise<any> {
+    const query = year ? `?year=${year}` : '';
+    return client.get<any>(`/programa-anual${query}`);
   }
-  
+
   /**
-   * Obtiene una auditoría por ID
+   * Obtiene un programa anual por ID
    */
-  async getAuditoriaById(id: string): Promise<AuditoriaDetalle> {
-    return apiClient.get<AuditoriaDetalle>(ENDPOINTS.AUDITORIAS.DETALLE(id));
+  async getProgramaById(id: string): Promise<AuditoriaProgramada> {
+    return client.get<AuditoriaProgramada>(`/programa-anual/${id}`);
   }
-  
+
   /**
-   * Crea una nueva auditoría
+   * Crea un nuevo programa anual
    */
-  async createAuditoria(data: CreateAuditoriaRequest): Promise<Auditoria> {
-    return apiClient.post<Auditoria>(ENDPOINTS.AUDITORIAS.BASE, data);
+  async createPrograma(data: { year: number; version?: string; creadoPor?: string }): Promise<any> {
+    return client.post<any>('/programa-anual', data);
   }
-  
+
   /**
-   * Actualiza una auditoría
+   * Actualiza un programa anual
    */
-  async updateAuditoria(id: string, data: UpdateAuditoriaRequest): Promise<Auditoria> {
-    return apiClient.put<Auditoria>(ENDPOINTS.AUDITORIAS.BY_ID(id), data);
+  async updatePrograma(id: string, data: Partial<AuditoriaProgramada>): Promise<AuditoriaProgramada> {
+    return client.put<AuditoriaProgramada>(`/programa-anual/${id}`, data);
   }
-  
+
   /**
-   * Cambia el estado de una auditoría
+   * Elimina un programa anual
    */
-  async cambiarEstadoAuditoria(id: string, nuevoEstado: string, observaciones?: string): Promise<Auditoria> {
-    return apiClient.post<Auditoria>(ENDPOINTS.AUDITORIAS.CAMBIAR_ESTADO(id), {
-      estado: nuevoEstado,
-      observaciones
-    });
+  async deletePrograma(id: string): Promise<void> {
+    return client.delete(`/programa-anual/${id}`);
   }
-  
+
   /**
-   * Sube evidencias a una auditoría
+   * Importa auditorías a un programa
    */
-  async uploadEvidencia(id: string, archivo: File, descripcion?: string): Promise<any> {
-    const formData = new FormData();
-    formData.append('archivo', archivo);
-    if (descripcion) formData.append('descripcion', descripcion);
-    
-    return apiClient.upload(ENDPOINTS.AUDITORIAS.UPLOAD_EVIDENCIA(id), formData);
+  async importarAuditorias(programaId: string, data: any): Promise<any> {
+    return client.post(`/programa-anual/${programaId}/importar-auditorias`, data);
+  }
+
+  /**
+   * Obtiene las auditorías de un programa
+   */
+  async getAuditoriasPrograma(programaId: string): Promise<AuditoriaProgramada[]> {
+    return client.get<AuditoriaProgramada[]>(`/programa-anual/${programaId}/auditorias`);
+  }
+
+  /**
+   * Obtiene el cronograma de un programa
+   */
+  async getCronograma(programaId: string): Promise<any> {
+    return client.get(`/programa-anual/${programaId}/cronograma`);
+  }
+
+  /**
+   * Amplía el plazo de una auditoría
+   */
+  async ampliarPlazo(auditoriaId: string, data: any): Promise<any> {
+    return client.post(`/programa-anual/auditorias/${auditoriaId}/ampliar-plazo`, data);
+  }
+
+  /**
+   * Genera el documento oficial de un programa
+   */
+  async generarDocumentoOficial(programaId: string): Promise<any> {
+    return client.get(`/programa-anual/${programaId}/documento-oficial`);
   }
   
   // ==========================================================================
@@ -290,115 +392,70 @@ class ControlInternoService {
   // ==========================================================================
   
   /**
-   * Obtiene todos los hallazgos con filtros
+   * Obtiene todos los hallazgos
    */
-  async getHallazgos(params?: FiltrosControlInterno): Promise<PaginatedResponse<Hallazgo>> {
-    return apiClient.get<PaginatedResponse<Hallazgo>>(ENDPOINTS.HALLAZGOS.BASE, params);
+  async getHallazgos(params?: { categoria?: string; estado?: string; area?: string }): Promise<Hallazgo[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.categoria) queryParams.append('categoria', params.categoria);
+    if (params?.estado) queryParams.append('estado', params.estado);
+    if (params?.area) queryParams.append('area', params.area);
+    
+    const query = queryParams.toString();
+    return client.get<Hallazgo[]>(`/hallazgos${query ? `?${query}` : ''}`);
   }
-  
+
   /**
-   * Obtiene un hallazgo por ID con detalle completo
+   * Obtiene un hallazgo por ID
    */
-  async getHallazgoById(id: string): Promise<HallazgoDetalle> {
-    return apiClient.get<HallazgoDetalle>(ENDPOINTS.HALLAZGOS.DETALLE(id));
-  }
-  
-  /**
-   * Obtiene hallazgos de una auditoría específica
-   */
-  async getHallazgosByAuditoria(auditoriaId: string): Promise<Hallazgo[]> {
-    return apiClient.get<Hallazgo[]>(ENDPOINTS.HALLAZGOS.BY_AUDITORIA(auditoriaId));
+  async getHallazgoById(id: string): Promise<Hallazgo> {
+    return client.get<Hallazgo>(`/hallazgos/${id}`);
   }
   
   /**
    * Crea un nuevo hallazgo
    */
-  async createHallazgo(data: CreateHallazgoRequest): Promise<Hallazgo> {
-    return apiClient.post<Hallazgo>(ENDPOINTS.HALLAZGOS.BASE, data);
+  async createHallazgo(data: any): Promise<Hallazgo> {
+    return client.post<Hallazgo>('/hallazgos', data);
   }
   
   /**
    * Actualiza un hallazgo
    */
-  async updateHallazgo(id: string, data: UpdateHallazgoRequest): Promise<Hallazgo> {
-    return apiClient.put<Hallazgo>(ENDPOINTS.HALLAZGOS.BY_ID(id), data);
+  async updateHallazgo(id: string, data: any): Promise<Hallazgo> {
+    return client.put<Hallazgo>(`/hallazgos/${id}`, data);
   }
   
   /**
    * Elimina un hallazgo
    */
   async deleteHallazgo(id: string): Promise<void> {
-    return apiClient.delete(ENDPOINTS.HALLAZGOS.BY_ID(id));
+    if (!id || typeof id !== 'string' || id.trim() === '') {
+      throw new Error('ID de hallazgo no válido');
+    }
+    // Asegurarse de que el ID esté codificado correctamente en la URL
+    const encodedId = encodeURIComponent(id.trim());
+    return client.delete(`/hallazgos/${encodedId}`);
   }
-  
+
   /**
-   * Obtiene estadísticas de hallazgos
+   * Obtiene hallazgos críticos
    */
-  async getEstadisticasHallazgos(): Promise<any> {
-    return apiClient.get(ENDPOINTS.HALLAZGOS.ESTADISTICAS);
+  async getHallazgosCriticos(): Promise<Hallazgo[]> {
+    return client.get<Hallazgo[]>('/hallazgos/categoria/criticos');
   }
-  
-  // ==========================================================================
-  // PLANES DE MEJORAMIENTO
-  // ==========================================================================
-  
+
   /**
-   * Obtiene todos los planes de mejoramiento
+   * Obtiene controversias
    */
-  async getPlanesMejoramiento(params?: FiltrosControlInterno): Promise<PaginatedResponse<PlanMejoramiento>> {
-    return apiClient.get<PaginatedResponse<PlanMejoramiento>>(ENDPOINTS.PLANES_MEJORAMIENTO.BASE, params);
+  async getControversias(): Promise<Hallazgo[]> {
+    return client.get<Hallazgo[]>('/hallazgos/categoria/controversias');
   }
-  
+
   /**
-   * Obtiene un plan de mejoramiento por ID
+   * Obtiene borradores
    */
-  async getPlanMejoramientoById(id: string): Promise<PlanMejoramiento> {
-    return apiClient.get<PlanMejoramiento>(ENDPOINTS.PLANES_MEJORAMIENTO.BY_ID(id));
-  }
-  
-  /**
-   * Crea un plan de mejoramiento
-   */
-  async createPlanMejoramiento(data: CreatePlanMejoramientoRequest): Promise<PlanMejoramiento> {
-    return apiClient.post<PlanMejoramiento>(ENDPOINTS.PLANES_MEJORAMIENTO.BASE, data);
-  }
-  
-  /**
-   * Actualiza un plan de mejoramiento
-   */
-  async updatePlanMejoramiento(id: string, data: UpdatePlanMejoramientoRequest): Promise<PlanMejoramiento> {
-    return apiClient.put<PlanMejoramiento>(ENDPOINTS.PLANES_MEJORAMIENTO.BY_ID(id), data);
-  }
-  
-  /**
-   * Crea una acción de mejora
-   */
-  async createAccionMejora(planId: string, data: Partial<AccionMejora>): Promise<AccionMejora> {
-    return apiClient.post<AccionMejora>(ENDPOINTS.PLANES_MEJORAMIENTO.ACCIONES(planId), data);
-  }
-  
-  /**
-   * Actualiza una acción de mejora
-   */
-  async updateAccionMejora(planId: string, accionId: string, data: Partial<AccionMejora>): Promise<AccionMejora> {
-    return apiClient.put<AccionMejora>(
-      ENDPOINTS.PLANES_MEJORAMIENTO.ACCION_BY_ID(planId, accionId),
-      data
-    );
-  }
-  
-  /**
-   * Aprueba un plan de mejoramiento
-   */
-  async aprobarPlanMejoramiento(id: string, observaciones?: string): Promise<PlanMejoramiento> {
-    return apiClient.post<PlanMejoramiento>(ENDPOINTS.PLANES_MEJORAMIENTO.APROBAR(id), { observaciones });
-  }
-  
-  /**
-   * Rechaza un plan de mejoramiento
-   */
-  async rechazarPlanMejoramiento(id: string, motivo: string): Promise<PlanMejoramiento> {
-    return apiClient.post<PlanMejoramiento>(ENDPOINTS.PLANES_MEJORAMIENTO.RECHAZAR(id), { motivo });
+  async getBorradores(): Promise<Hallazgo[]> {
+    return client.get<Hallazgo[]>('/hallazgos/categoria/borradores');
   }
   
   // ==========================================================================
@@ -408,93 +465,747 @@ class ControlInternoService {
   /**
    * Obtiene todas las listas de chequeo
    */
-  async getListasChequeo(params?: { tipo?: string }): Promise<PaginatedResponse<ListaChequeo>> {
-    return apiClient.get<PaginatedResponse<ListaChequeo>>(ENDPOINTS.LISTAS_CHEQUEO.BASE, params);
+  async getListasChequeo(params?: { tipo?: string; categoria?: string }): Promise<ListaChequeo[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.tipo) queryParams.append('tipo', params.tipo);
+    if (params?.categoria) queryParams.append('categoria', params.categoria);
+    
+    const query = queryParams.toString();
+    return client.get<ListaChequeo[]>(`/listas-chequeo${query ? `?${query}` : ''}`);
   }
   
   /**
    * Obtiene una lista de chequeo por ID
    */
   async getListaChequeoById(id: string): Promise<ListaChequeo> {
-    return apiClient.get<ListaChequeo>(ENDPOINTS.LISTAS_CHEQUEO.BY_ID(id));
+    return client.get<ListaChequeo>(`/listas-chequeo/${id}`);
   }
-  
+
   /**
-   * Crea una lista de chequeo
+   * Crea una nueva lista de chequeo
    */
-  async createListaChequeo(data: CreateListaChequeoRequest): Promise<ListaChequeo> {
-    return apiClient.post<ListaChequeo>(ENDPOINTS.LISTAS_CHEQUEO.BASE, data);
+  async createListaChequeo(data: Partial<ListaChequeo>): Promise<ListaChequeo> {
+    return client.post<ListaChequeo>('/listas-chequeo', data);
   }
-  
+
   /**
-   * Evalúa una lista de chequeo
+   * Actualiza una lista de chequeo
    */
-  async evaluarListaChequeo(id: string, respuestas: any[]): Promise<any> {
-    return apiClient.post(ENDPOINTS.LISTAS_CHEQUEO.EVALUAR(id), { respuestas });
+  async updateListaChequeo(id: string, data: Partial<ListaChequeo>): Promise<ListaChequeo> {
+    return client.put<ListaChequeo>(`/listas-chequeo/${id}`, data);
+  }
+
+  /**
+   * Elimina una lista de chequeo
+   */
+  async deleteListaChequeo(id: string): Promise<void> {
+    return client.delete(`/listas-chequeo/${id}`);
+  }
+
+  /**
+   * Obtiene los items de una lista
+   */
+  async getItemsLista(id: string): Promise<any[]> {
+    return client.get<any[]>(`/listas-chequeo/${id}/items`);
+  }
+
+  /**
+   * Agrega un item a una lista
+   */
+  async agregarItemLista(id: string, item: any): Promise<any> {
+    return client.post(`/listas-chequeo/${id}/items`, item);
+  }
+
+  /**
+   * Aplica una lista a una auditoría
+   */
+  async aplicarLista(data: {
+    listaChequeoId: string;
+    auditoriaId: string;
+    aplicadoPor: string;
+    respuestas: Array<{
+      itemId: string;
+      respuesta: string | number | boolean;
+      observaciones?: string;
+      evidencias?: string[];
+    }>;
+  }): Promise<any> {
+    return client.post('/listas-chequeo/aplicar', data);
+  }
+
+  /**
+   * Obtiene las listas aplicadas a una auditoría
+   */
+  async getListasAplicadas(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/listas-chequeo/auditoria/${auditoriaId}`);
+  }
+
+  /**
+   * Obtiene los resultados de listas aplicadas
+   */
+  async getResultadosListas(auditoriaId: string): Promise<any> {
+    return client.get(`/listas-chequeo/auditoria/${auditoriaId}/resultados`);
   }
   
   // ==========================================================================
-  // UNIVERSO DE AUDITORÍAS
+  // PLAN INDIVIDUAL
   // ==========================================================================
   
   /**
-   * Obtiene el universo de auditorías
+   * Obtiene el plan individual de una auditoría
    */
-  async getUniverso(): Promise<UniversoAuditorias> {
-    return apiClient.get<UniversoAuditorias>(ENDPOINTS.UNIVERSO.BASE);
+  async getPlanIndividualByAuditoria(auditoriaId: string): Promise<PlanIndividual> {
+    return client.get<PlanIndividual>(`/plan-individual/auditoria/${auditoriaId}`);
   }
-  
+
   /**
-   * Obtiene todos los procesos auditables
+   * Obtiene un plan individual por ID
    */
-  async getProcesosAuditables(): Promise<ProcesoAuditable[]> {
-    return apiClient.get<ProcesoAuditable[]>(ENDPOINTS.UNIVERSO.PROCESOS);
+  async getPlanIndividualById(id: string): Promise<PlanIndividual> {
+    return client.get<PlanIndividual>(`/plan-individual/${id}`);
   }
-  
+
   /**
-   * Obtiene un proceso auditable por ID
+   * Crea un plan individual
    */
-  async getProcesoById(id: string): Promise<ProcesoAuditable> {
-    return apiClient.get<ProcesoAuditable>(ENDPOINTS.UNIVERSO.PROCESO_BY_ID(id));
+  async createPlanIndividual(data: Partial<PlanIndividual>): Promise<PlanIndividual> {
+    return client.post<PlanIndividual>('/plan-individual', data);
   }
-  
+
   /**
-   * Obtiene la evaluación de riesgo de un proceso
+   * Actualiza un plan individual
    */
-  async getEvaluacionRiesgo(procesoId: string): Promise<EvaluacionRiesgo> {
-    return apiClient.get<EvaluacionRiesgo>(ENDPOINTS.UNIVERSO.EVALUACION_RIESGO(procesoId));
+  async updatePlanIndividual(id: string, data: Partial<PlanIndividual>): Promise<PlanIndividual> {
+    return client.put<PlanIndividual>(`/plan-individual/${id}`, data);
   }
-  
-  /**
-   * Obtiene la matriz de riesgo
-   */
-  async getMatrizRiesgo(): Promise<any> {
-    return apiClient.get(ENDPOINTS.UNIVERSO.MATRIZ_RIESGO);
-  }
-  
+
   // ==========================================================================
-  // REPORTES
+  // PLAN ANUAL
   // ==========================================================================
   
   /**
-   * Genera reporte de auditoría
+   * Obtiene todos los planes anuales
    */
-  async generarReporteAuditoria(params: ReporteAuditoriaParams): Promise<Blob> {
-    return apiClient.post<Blob>(ENDPOINTS.REPORTES.AUDITORIA, params);
+  async getPlanesAnuales(year?: string): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (year) queryParams.append('year', year);
+    const query = queryParams.toString();
+    return client.get<any[]>(`/plan-anual-5-roles${query ? `?${query}` : ''}`);
   }
+
+  /**
+   * Obtiene un plan anual por ID
+   */
+  async getPlanAnualById(id: string): Promise<any> {
+    return client.get<any>(`/plan-anual-5-roles/${id}`);
+  }
+
+  /**
+   * Crea un nuevo plan anual
+   */
+  async createPlanAnual(data: { año: number; responsable?: string; estado?: string }): Promise<any> {
+    return client.post<any>('/plan-anual-5-roles', data);
+  }
+
+  /**
+   * Actualiza un plan anual
+   */
+  async updatePlanAnual(id: string, data: any): Promise<any> {
+    return client.put<any>(`/plan-anual/${id}`, data);
+  }
+
+  /**
+   * Elimina un plan anual
+   */
+  async deletePlanAnual(id: string): Promise<any> {
+    return client.delete<any>(`/plan-anual/${id}`);
+  }
+
+  /**
+   * Obtiene el cumplimiento de un plan anual
+   */
+  async getCompliancePlanAnual(id: string): Promise<any> {
+    return client.get(`/plan-anual/${id}/compliance`);
+  }
+
+  /**
+   * Obtiene los roles de un plan anual
+   */
+  async getRolesPlanAnual(id: string): Promise<any> {
+    return client.get(`/plan-anual-5-roles/${id}/roles`);
+  }
+
+  /**
+   * Agrega una actividad a un rol del plan anual
+   */
+  async addActividadPlanAnual(rolId: string, data: {
+    nombre: string;
+    descripcion?: string;
+    responsable: string;
+    fecha_inicio: string;
+    fecha_fin: string;
+    estado?: 'pendiente' | 'en-progreso' | 'completada' | 'retrasada';
+    porcentaje_avance?: number;
+    observaciones?: string;
+    prioridad?: 'Alta' | 'Media' | 'Baja';
+  }): Promise<any> {
+    return client.post(`/plan-anual-5-roles/${rolId}/actividades`, data);
+  }
+
+  /**
+   * Actualiza una actividad del plan anual
+   */
+  async updateActividadPlanAnual(actividadId: string, data: any): Promise<any> {
+    return client.put(`/plan-anual-5-roles/actividades/${actividadId}`, data);
+  }
+
+  /**
+   * Elimina una actividad del plan anual
+   */
+  async deleteActividadPlanAnual(actividadId: string): Promise<void> {
+    return client.delete(`/plan-anual-5-roles/actividades/${actividadId}`);
+  }
+
+  /**
+   * Obtiene el cronograma de un plan anual
+   */
+  async getCronogramaPlanAnual(id: string): Promise<any> {
+    return client.get(`/plan-anual/${id}/cronograma`);
+  }
+
+  /**
+   * Agrega una auditoría al cronograma de un plan anual
+   */
+  async agregarAuditoriaCronograma(id: string, auditoria: any): Promise<any> {
+    return client.post(`/plan-anual/${id}/cronograma`, auditoria);
+  }
+
+  /**
+   * Asigna un equipo a una auditoría del cronograma
+   */
+  async asignarEquipoAuditoria(id: string, auditoriaId: string, equipo: any): Promise<any> {
+    return client.put(`/plan-anual/${id}/auditorias/${auditoriaId}/equipo`, equipo);
+  }
+
+  /**
+   * Actualiza un rol de un plan anual
+   */
+  async actualizarRolPlanAnual(id: string, rolId: string, datosRol: any): Promise<any> {
+    return client.put(`/plan-anual/${id}/roles/${rolId}`, datosRol);
+  }
+
+  // ==========================================================================
+  // PLANES DE MEJORAMIENTO
+  // ==========================================================================
   
   /**
-   * Genera reporte de hallazgos
+   * Obtiene todos los planes de mejoramiento
    */
-  async generarReporteHallazgos(params: ReporteHallazgosParams): Promise<Blob> {
-    return apiClient.post<Blob>(ENDPOINTS.REPORTES.HALLAZGOS, params);
+  async getPlanesMejoramiento(params?: { estado?: string; area?: string }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.estado) queryParams.append('estado', params.estado);
+    if (params?.area) queryParams.append('area', params.area);
+    const query = queryParams.toString();
+    return client.get<any[]>(`/planes-mejoramiento${query ? `?${query}` : ''}`);
   }
+
+  /**
+   * Obtiene un plan de mejoramiento por ID
+   */
+  async getPlanMejoramientoById(id: string): Promise<any> {
+    return client.get<any>(`/planes-mejoramiento/${id}`);
+  }
+
+  /**
+   * Obtiene el plan de mejoramiento de un hallazgo
+   */
+  async getPlanMejoramientoByHallazgo(hallazgoId: string): Promise<any> {
+    return client.get<any>(`/planes-mejoramiento/hallazgo/${hallazgoId}`);
+  }
+
+  /**
+   * Crea un nuevo plan de mejoramiento
+   */
+  async createPlanMejoramiento(data: any): Promise<any> {
+    return client.post<any>('/planes-mejoramiento', data);
+  }
+
+  /**
+   * Actualiza un plan de mejoramiento
+   */
+  async updatePlanMejoramiento(id: string, data: any): Promise<any> {
+    return client.put<any>(`/planes-mejoramiento/${id}`, data);
+  }
+
+  /**
+   * Aprobar un plan de mejoramiento
+   */
+  async aprobarPlanMejoramiento(id: string, observaciones?: string): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/${id}/aprobar`, { observaciones });
+  }
+
+  /**
+   * Rechazar un plan de mejoramiento
+   */
+  async rechazarPlanMejoramiento(id: string, motivo: string): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/${id}/rechazar`, { motivo_rechazo: motivo });
+  }
+
+  /**
+   * Crear una acción en un plan de mejoramiento
+   */
+  async crearAccionPlanMejoramiento(planId: string, accion: any): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/${planId}/acciones`, accion);
+  }
+
+  /**
+   * Actualizar una acción de un plan de mejoramiento
+   */
+  async actualizarAccionPlanMejoramiento(planId: string, accionId: string, data: any): Promise<any> {
+    return client.put<any>(`/planes-mejoramiento/${planId}/acciones/${accionId}`, data);
+  }
+
+  /**
+   * Eliminar una acción de un plan de mejoramiento
+   */
+  async eliminarAccionPlanMejoramiento(planId: string, accionId: string): Promise<void> {
+    return client.delete(`/planes-mejoramiento/${planId}/acciones/${accionId}`);
+  }
+
+  /**
+   * Cargar evidencia en una acción
+   */
+  async cargarEvidenciaAccion(planId: string, accionId: string, evidencia: any): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias`, evidencia);
+  }
+
+  /**
+   * Validar evidencia de una acción
+   */
+  async validarEvidenciaAccion(planId: string, accionId: string, evidenciaId: string, data: any): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias/${evidenciaId}/validar`, data);
+  }
+
+  /**
+   * Registrar avance de un plan de mejoramiento
+   */
+  async registrarAvancePlanMejoramiento(planId: string, data: any): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/${planId}/avance`, data);
+  }
+
+  /**
+   * Obtener seguimiento de un plan de mejoramiento
+   */
+  async getSeguimientoPlanMejoramiento(planId: string): Promise<any> {
+    return client.get<any>(`/planes-mejoramiento/${planId}/seguimiento`);
+  }
+
+  /**
+   * Obtener semáforo de cumplimiento de un plan
+   */
+  async getSemaforoPlanMejoramiento(planId: string): Promise<any> {
+    return client.get<any>(`/planes-mejoramiento/${planId}/semaforo`);
+  }
+
+  /**
+   * Crear un registro de seguimiento para una acción
+   */
+  async createRegistroSeguimiento(planId: string, seguimientoId: string, data: any): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/${planId}/seguimientos/${seguimientoId}/registros`, data);
+  }
+
+  // ==========================================================================
+  // APROBACIONES
+  // ==========================================================================
   
   /**
-   * Genera reporte consolidado
+   * Obtiene todas las aprobaciones
    */
-  async generarReporteConsolidado(periodo: string): Promise<Blob> {
-    return apiClient.post<Blob>(ENDPOINTS.REPORTES.CONSOLIDADO, { periodo });
+  async getAprobaciones(params?: { estado?: string }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.estado) queryParams.append('estado', params.estado);
+    const query = queryParams.toString();
+    return client.get<any[]>(`/aprobaciones${query ? `?${query}` : ''}`);
+  }
+
+  /**
+   * Obtiene aprobaciones pendientes
+   */
+  async getAprobacionesPendientes(): Promise<any[]> {
+    return client.get<any[]>('/aprobaciones/pendientes');
+  }
+
+  /**
+   * Obtiene una aprobación por ID
+   */
+  async getAprobacionById(id: string): Promise<any> {
+    return client.get<any>(`/aprobaciones/${id}`);
+  }
+
+  /**
+   * Aprueba una solicitud
+   */
+  async aprobar(id: string, data: { observaciones?: string }): Promise<any> {
+    return client.post<any>(`/aprobaciones/${id}/aprobar`, data);
+  }
+
+  /**
+   * Rechaza una solicitud
+   */
+  async rechazar(id: string, data: { motivo: string }): Promise<any> {
+    return client.post<any>(`/aprobaciones/${id}/rechazar`, { motivo_rechazo: data.motivo });
+  }
+
+  /**
+   * Obtiene estadísticas de aprobaciones
+   */
+  async getAprobacionesEstadisticas(): Promise<any> {
+    return client.get<any>('/aprobaciones/estadisticas');
+  }
+
+  /**
+   * Crea una nueva aprobación
+   */
+  async createAprobacion(data: any): Promise<any> {
+    return client.post<any>('/aprobaciones', data);
+  }
+
+  /**
+   * Actualiza una aprobación
+   */
+  async updateAprobacion(id: string, data: any): Promise<any> {
+    return client.put<any>(`/aprobaciones/${id}`, data);
+  }
+
+  /**
+   * Elimina una aprobación
+   */
+  async deleteAprobacion(id: string): Promise<void> {
+    return client.delete(`/aprobaciones/${id}`);
+  }
+
+  // ==========================================================================
+  // INFORMES LEY
+  // ==========================================================================
+  
+  /**
+   * Obtiene todos los informes
+   */
+  async getInformes(params?: { estado?: string }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.estado) queryParams.append('estado', params.estado);
+    const query = queryParams.toString();
+    return client.get<any[]>(`/informes${query ? `?${query}` : ''}`);
+  }
+
+  /**
+   * Obtiene informes de ley
+   */
+  async getInformesLey(): Promise<any[]> {
+    return client.get<any[]>('/informes/ley');
+  }
+
+  /**
+   * Obtiene informes próximos a vencer
+   */
+  async getInformesProximosAVencer(): Promise<any[]> {
+    return client.get<any[]>('/informes/ley/proximos-vencer');
+  }
+
+  /**
+   * Obtiene un informe por ID
+   */
+  async getInformeById(id: string): Promise<any> {
+    return client.get<any>(`/informes/${id}`);
+  }
+
+  // ==========================================================================
+  // DOCUMENTOS
+  // ==========================================================================
+  
+  /**
+   * Obtiene todos los documentos
+   */
+  async getDocumentos(params?: { auditoriaId?: string; etapa?: string; tipo?: string }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.auditoriaId) queryParams.append('auditoriaId', params.auditoriaId);
+    if (params?.etapa) queryParams.append('etapa', params.etapa);
+    if (params?.tipo) queryParams.append('tipo', params.tipo);
+    const query = queryParams.toString();
+    return client.get<any[]>(`/documentos${query ? `?${query}` : ''}`);
+  }
+
+  /**
+   * Obtiene documentos de una auditoría
+   */
+  async getDocumentosByAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/documentos/auditoria/${auditoriaId}`);
+  }
+
+  /**
+   * Obtiene documentos por etapa
+   */
+  async getDocumentosByEtapa(auditoriaId: string, etapa: string): Promise<any[]> {
+    return client.get<any[]>(`/documentos/auditoria/${auditoriaId}/etapa/${etapa}`);
+  }
+
+  /**
+   * Obtiene un documento por ID
+   */
+  async getDocumentoById(id: string): Promise<any> {
+    return client.get<any>(`/documentos/${id}`);
+  }
+
+  /**
+   * Crea un documento
+   */
+  async createDocumento(data: any): Promise<any> {
+    return client.post<any>('/documentos', data);
+  }
+
+  /**
+   * Actualiza un documento
+   */
+  async updateDocumento(id: string, data: any): Promise<any> {
+    return client.put<any>(`/documentos/${id}`, data);
+  }
+
+  /**
+   * Elimina un documento
+   */
+  async deleteDocumento(id: string): Promise<void> {
+    return client.delete(`/documentos/${id}`);
+  }
+
+  /**
+   * Obtiene versiones de un documento
+   */
+  async getVersionesDocumento(id: string): Promise<any[]> {
+    return client.get<any[]>(`/documentos/${id}/versiones`);
+  }
+
+  /**
+   * Crea una nueva versión de un documento
+   */
+  async crearVersionDocumento(id: string, data: any): Promise<any> {
+    return client.post<any>(`/documentos/${id}/version`, data);
+  }
+
+  // ==========================================================================
+  // ETAPAS DE AUDITORÍA
+  // ==========================================================================
+  
+  /**
+   * Obtiene las etapas de una auditoría
+   */
+  async getEtapasAuditoria(auditoriaId: string): Promise<any> {
+    return client.get<any>(`/etapas-auditoria/auditoria/${auditoriaId}`);
+  }
+
+  /**
+   * Obtiene una etapa específica de una auditoría
+   */
+  async getEtapaAuditoria(auditoriaId: string, etapa: 'planeacion' | 'ejecucion' | 'comunicacion'): Promise<any> {
+    return client.get<any>(`/etapas-auditoria/auditoria/${auditoriaId}/etapa/${etapa}`);
+  }
+
+  // Planeación
+  async iniciarPlaneacion(auditoriaId: string, data: any): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/planeacion/iniciar`, data);
+  }
+
+  async generarOficioAnuncio(auditoriaId: string): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/planeacion/generar-oficio`);
+  }
+
+  async generarCartas(auditoriaId: string): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/planeacion/generar-cartas`);
+  }
+
+  async solicitarInformacion(auditoriaId: string, data: any): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/planeacion/solicitar-informacion`, data);
+  }
+
+  async completarPlaneacion(auditoriaId: string): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/planeacion/completar`);
+  }
+
+  // Ejecución
+  async iniciarEjecucion(auditoriaId: string, data: any): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/iniciar`, data);
+  }
+
+  async registrarReunionApertura(auditoriaId: string, data: any): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/reunion-apertura`, data);
+  }
+
+  async registrarReunionCierre(auditoriaId: string, data: any): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/reunion-cierre`, data);
+  }
+
+  async presentarHallazgosPreliminares(auditoriaId: string): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/presentar-hallazgos-preliminares`);
+  }
+
+  async completarEjecucion(auditoriaId: string): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/completar`);
+  }
+
+  // Comunicación
+  async iniciarComunicacion(auditoriaId: string, data: any): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/iniciar`, data);
+  }
+
+  async generarInformePreliminar(auditoriaId: string): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/generar-informe-preliminar`);
+  }
+
+  async generarInformeFinal(auditoriaId: string): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/generar-informe-final`);
+  }
+
+  async generarInformeEjecutivo(auditoriaId: string): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/generar-informe-ejecutivo`);
+  }
+
+  async completarComunicacion(auditoriaId: string): Promise<any> {
+    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/completar`);
+  }
+
+  // ==========================================================================
+  // AUDITORÍAS (Gestión de Auditorías)
+  // ==========================================================================
+  
+  /**
+   * Obtiene todas las auditorías con filtros opcionales
+   */
+  async getAuditorias(filters?: {
+    tipo?: string;
+    fase?: string;
+    prioridad?: string;
+    territorial?: string;
+    search?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
+  }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (filters?.tipo) queryParams.append('tipo', filters.tipo);
+    if (filters?.fase) queryParams.append('fase', filters.fase);
+    if (filters?.prioridad) queryParams.append('prioridad', filters.prioridad);
+    if (filters?.territorial) queryParams.append('territorial', filters.territorial);
+    if (filters?.search) queryParams.append('search', filters.search);
+    if (filters?.fechaDesde) queryParams.append('fechaDesde', filters.fechaDesde);
+    if (filters?.fechaHasta) queryParams.append('fechaHasta', filters.fechaHasta);
+    
+    const query = queryParams.toString();
+    return client.get<any[]>(`/auditorias${query ? `?${query}` : ''}`);
+  }
+
+  /**
+   * Obtiene una auditoría por ID
+   */
+  async getAuditoriaById(id: string): Promise<any> {
+    return client.get<any>(`/auditorias/${id}`);
+  }
+
+  /**
+   * Obtiene una auditoría por código
+   */
+  async getAuditoriaByCodigo(codigo: string): Promise<any> {
+    return client.get<any>(`/auditorias/codigo/${codigo}`);
+  }
+
+  /**
+   * Crea una nueva auditoría
+   */
+  async createAuditoria(data: any): Promise<any> {
+    return client.post<any>('/auditorias', data);
+  }
+
+  /**
+   * Actualiza una auditoría
+   */
+  async updateAuditoria(id: string, data: any): Promise<any> {
+    return client.put<any>(`/auditorias/${id}`, data);
+  }
+
+  /**
+   * Elimina una auditoría
+   */
+  async deleteAuditoria(id: string): Promise<void> {
+    return client.delete(`/auditorias/${id}`);
+  }
+
+  /**
+   * Actualiza el progreso de una auditoría
+   */
+  async updateProgresoAuditoria(id: string, progreso: number): Promise<any> {
+    return client.patch<any>(`/auditorias/${id}/progreso`, { progreso });
+  }
+
+  /**
+   * Actualiza la fase de una auditoría
+   */
+  async updateFaseAuditoria(id: string, fase: string): Promise<any> {
+    return client.patch<any>(`/auditorias/${id}/fase`, { fase });
+  }
+
+  /**
+   * Obtiene auditorías por fase
+   */
+  async getAuditoriasByFase(fase: string): Promise<any[]> {
+    return client.get<any[]>(`/auditorias/fase/${fase}`);
+  }
+
+  /**
+   * Incrementa el contador de hallazgos de una auditoría
+   */
+  async incrementarHallazgosAuditoria(id: string): Promise<any> {
+    return client.post<any>(`/auditorias/${id}/hallazgos/incrementar`);
+  }
+
+  /**
+   * Decrementa el contador de hallazgos de una auditoría
+   */
+  async decrementarHallazgosAuditoria(id: string): Promise<any> {
+    return client.post<any>(`/auditorias/${id}/hallazgos/decrementar`);
+  }
+
+  /**
+   * Obtiene estadísticas de auditorías
+   */
+  async getEstadisticasAuditorias(): Promise<{
+    totalAuditorias: number;
+    enCurso: number;
+    completadas: number;
+    hallazgosTotal: number;
+    porFase: { fase: string; cantidad: number }[];
+    porTipo: { tipo: string; cantidad: number }[];
+    porPrioridad: { prioridad: string; cantidad: number }[];
+  }> {
+    return client.get('/auditorias/estadisticas');
+  }
+
+  // ==========================================================================
+  // DASHBOARD
+  // ==========================================================================
+  
+  /**
+   * Obtiene datos del dashboard
+   * Nota: Este endpoint puede no existir aún, usar datos consolidados
+   */
+  async getDashboard(): Promise<any> {
+    // Si el endpoint existe, usarlo. Si no, consolidar datos de otros servicios
+    try {
+      return await client.get('/dashboard');
+    } catch {
+      // Si no existe, retornar estructura vacía para que el componente maneje
+      return {
+        estadisticas: {},
+        alertas: [],
+        actividadesRecientes: [],
+      };
+    }
   }
 }
 

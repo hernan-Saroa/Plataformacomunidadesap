@@ -13,22 +13,26 @@ export { APIClientError } from './client';
 export * from './types';
 
 // Services - Importar primero
-import authServiceImport from './auth.service';
+import authServiceImport from './authService';
 import usuariosServiceImport from './usuarios.service';
+import rolesServiceImport from './roles.service';
 import dashboardServiceImport from './dashboard.service';
 import estructuraServiceImport from './estructura.service';
 import certificadosServiceImport from './certificados.service';
 import portalServiceImport from './portal.service';
 import publicoServiceImport from './publico.service';
+import * as programasServiceImport from './programas.service';
 
 // Re-exportar servicios individuales
 export const authService = authServiceImport;
 export const usuariosService = usuariosServiceImport;
+export const rolesService = rolesServiceImport;
 export const dashboardService = dashboardServiceImport;
 export const estructuraService = estructuraServiceImport;
 export const certificadosService = certificadosServiceImport;
 export const portalService = portalServiceImport;
 export const publicoService = publicoServiceImport;
+export const programasService = programasServiceImport;
 
 /**
  * Objeto con todos los servicios agrupados
@@ -37,11 +41,13 @@ export const publicoService = publicoServiceImport;
 export const api = {
   auth: authServiceImport,
   usuarios: usuariosServiceImport,
+  roles: rolesServiceImport,
   dashboard: dashboardServiceImport,
   estructura: estructuraServiceImport,
   certificados: certificadosServiceImport,
   portal: portalServiceImport,
   publico: publicoServiceImport,
+  programas: programasServiceImport,
 } as const;
 
 /**

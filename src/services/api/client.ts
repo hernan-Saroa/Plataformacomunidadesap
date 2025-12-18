@@ -1,9 +1,14 @@
 /**
  * API Client
  * Cliente HTTP centralizado con manejo de autenticación, errores y refresh tokens
+ *
+ * MODOS DE CONEXIÓN:
+ * - Gateway Mode: Todas las requests van a http://localhost:3000/{service}/api/v1/{path}
+ * - Direct Mode: Cada servicio en su puerto http://localhost:300X/{path}
  */
 
 import { getBaseURL, STORAGE_KEYS, API_CONFIG, APIResponse, APIError } from './config';
+import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
 
 /**
  * Custom error para errores de API
@@ -75,11 +80,56 @@ class APIClient {
 
   /**
    * Construir URL con query parameters
+   *
+   * En modo 'gateway': /auth/api/v1/roles -> http://localhost:3000/auth/api/v1/roles
+   * En modo 'direct':  /auth/api/v1/roles -> http://localhost:3001/roles
    */
   private buildURL(endpoint: string, params?: Record<string, any>): string {
-    const url = new URL(`${this.baseURL}${endpoint}`);
-    
+    let fullUrl: string;
+
+    // En modo directo, extraer el servicio del endpoint y redirigir al puerto correcto
+    if (API_MODE === 'direct' && endpoint.startsWith('/')) {
+      const serviceUrlMap = MICROSERVICE_URLS as Record<string, string>;
+
+      // Extraer el nombre del servicio del endpoint
+      // Ejemplo: /auth/api/v1/roles -> auth
+      const match = endpoint.match(/^\/([^/]+)\/api\/v\d+(.*)$/);
+
+      if (match) {
+        const [, serviceName, restPath] = match;
+        const serviceUrl = serviceUrlMap[serviceName];
+
+        if (serviceUrl) {
+          // Construir URL directa al microservicio (sin el prefijo del servicio)
+          fullUrl = `${serviceUrl}${restPath || '/'}`;
+          console.log('🔗 API Client [DIRECT MODE]:', {
+            endpoint,
+            serviceName,
+            serviceUrl,
+            finalURL: fullUrl,
+          });
+        } else {
+          // Servicio no encontrado, usar baseURL normal
+          console.warn(`⚠️ Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
+          fullUrl = `${this.baseURL}${endpoint}`;
+        }
+      } else {
+        // No es un endpoint con formato de servicio, usar baseURL
+        fullUrl = `${this.baseURL}${endpoint}`;
+      }
+    } else {
+      // Modo gateway: comportamiento normal
+      fullUrl = `${this.baseURL}${endpoint}`;
+      console.log('🔗 API Client [GATEWAY MODE]:', {
+        endpoint,
+        baseURL: this.baseURL,
+        finalURL: fullUrl,
+      });
+    }
+
+    // Agregar parámetros de query
     if (params) {
+      const url = new URL(fullUrl);
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== '') {
           if (Array.isArray(value)) {
@@ -89,9 +139,10 @@ class APIClient {
           }
         }
       });
+      fullUrl = url.toString();
     }
-    
-    return url.toString();
+
+    return fullUrl;
   }
 
   /**
@@ -131,9 +182,14 @@ class APIClient {
         throw new Error('Token refresh failed');
       }
 
-      const data: APIResponse<{ accessToken: string; refreshToken: string }> = await response.json();
-      
-      if (data.exito && data.datos) {
+      const data: any = await response.json();
+
+      // Verificar formato del backend
+      if (data.success && data.data) {
+        this.setTokens(data.data.accessToken, data.data.refreshToken);
+        return data.data.accessToken;
+      } else if (data.exito && data.datos) {
+        // Formato alternativo
         this.setTokens(data.datos.accessToken, data.datos.refreshToken);
         return data.datos.accessToken;
       }
@@ -220,22 +276,39 @@ class APIClient {
       }
 
       // Parsear respuesta
-      const data: APIResponse<T> | APIError = await response.json();
+      const data: any = await response.json();
 
-      // Si no es exitoso, lanzar error
-      if (!data.exito) {
-        const errorData = data as APIError;
-        throw new APIClientError(
-          response.status,
-          errorData.error.codigo,
-          errorData.error.mensaje,
-          errorData.error.detalles
-        );
+      // Verificar si es el formato del backend (success/data) o el formato esperado (exito/datos)
+      if (data.success !== undefined) {
+        // Formato del backend: { success: true, data: {...}, timestamp: ... }
+        if (!data.success) {
+          throw new APIClientError(
+            response.status,
+            'BACKEND_ERROR',
+            data.message || 'Error del servidor',
+            data.details
+          );
+        }
+        return data.data as T;
+      } else if (data.exito !== undefined) {
+        // Formato esperado: { exito: true, datos: {...} }
+        if (!data.exito) {
+          const errorData = data as APIError;
+          throw new APIClientError(
+            response.status,
+            errorData.error.codigo,
+            errorData.error.mensaje,
+            errorData.error.detalles
+          );
+        }
+
+        // Retornar datos
+        const successData = data as APIResponse<T>;
+        return successData.datos as T;
+      } else {
+        // Formato desconocido, asumir que los datos están directamente en la respuesta
+        return data as T;
       }
-
-      // Retornar datos
-      const successData = data as APIResponse<T>;
-      return successData.datos as T;
 
     } catch (error) {
       if (skipErrorHandling) {

@@ -1,9 +1,9 @@
 /**
- * Servicio de Roles
- * Gestiona roles del sistema (no roles de persona)
+ * Servicio de Roles y Permisos
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
+import { API_ENDPOINTS } from '../../config/environment';
 import type { 
   Role, 
   Permission,

@@ -19,16 +19,6 @@ export const searchSynonyms: Record<string, string[]> = {
     'listar usuarios', 'listado personas', 'directorio'
   ],
   
-  // ==================== CARPETA DIGITAL ====================
-  'carpeta-digital': [
-    // Español
-    'carpeta digital', 'documentos', 'archivos', 'folder',
-    'subir documento', 'cargar archivo', 'upload',
-    'ver documentos', 'ver archivos', 'view',
-    'gestionar categorías', 'categorías', 'categories',
-    'organizar documentos', 'organizar archivos', 'organize'
-  ],
-  
   // ==================== ENROLAMIENTO ====================
   'enrollment-requests': [
     // Español
@@ -176,8 +166,8 @@ export const moduleMetadata: Record<string, {
   actions?: Array<{ label: string; route: string }>;
 }> = {
   'users-management': {
-    label: 'Personas',
-    subtitle: 'Administración de perfiles',
+    label: 'Usuarios',
+    subtitle: 'Gestión de personas',
     icon: 'users',
     route: '/users',
     category: 'Administrativo',
@@ -185,19 +175,6 @@ export const moduleMetadata: Record<string, {
       { label: 'Crear usuario', route: '/users?action=create' },
       { label: 'Importar usuarios', route: '/users?action=import' },
       { label: 'Exportar listado', route: '/users?action=export' }
-    ]
-  },
-  
-  'carpeta-digital': {
-    label: 'Carpeta Digital',
-    subtitle: 'Documentos del usuario',
-    icon: 'folder',
-    route: '/carpeta-digital',
-    category: 'Administrativo',
-    actions: [
-      { label: 'Subir documento', route: '/carpeta-digital?action=upload' },
-      { label: 'Ver documentos', route: '/carpeta-digital?action=view' },
-      { label: 'Gestionar categorías', route: '/carpeta-digital?action=categories' }
     ]
   },
   

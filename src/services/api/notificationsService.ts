@@ -1,5 +1,8 @@
-import { apiClient } from './client';
-import type { AxiosResponse } from 'axios';
+import { apiClient } from './apiClient';
+
+// Prefijo del servicio en el API Gateway
+// Nueva estructura: /{service}/api/v{version}/{path}
+const SERVICE_PREFIX = '/auth/api/v1';
 
 // Types
 export interface Notification {
@@ -60,7 +63,7 @@ export const notificationsService = {
     }
   ): Promise<{ data: Notification[]; total: number; no_leidas: number }> => {
     try {
-      const response: AxiosResponse<{ data: Notification[]; total: number; no_leidas: number }> = await apiClient.get(`/users/${userId}/notifications`, { params });
+      const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/notifications`, { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching notifications:', error);
@@ -73,7 +76,7 @@ export const notificationsService = {
    */
   getUnread: async (userId: string): Promise<Notification[]> => {
     try {
-      const response: AxiosResponse<Notification[]> = await apiClient.get(`/users/${userId}/notifications/unread`);
+      const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/notifications/unread`);
       return response.data;
     } catch (error) {
       console.error('Error fetching unread notifications:', error);
@@ -86,7 +89,7 @@ export const notificationsService = {
    */
   getUnreadCount: async (userId: string): Promise<number> => {
     try {
-      const response: AxiosResponse<{ count: number }> = await apiClient.get(`/users/${userId}/notifications/unread/count`);
+      const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/notifications/unread/count`);
       return response.data.count;
     } catch (error) {
       console.error('Error fetching unread count:', error);
@@ -99,7 +102,7 @@ export const notificationsService = {
    */
   markAsRead: async (notificationId: string): Promise<{ success: boolean }> => {
     try {
-      const response: AxiosResponse<{ success: boolean }> = await apiClient.put(`/notifications/${notificationId}/mark-read`);
+      const response = await apiClient.put(`${SERVICE_PREFIX}/notifications/${notificationId}/mark-read`);
       return response.data;
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -112,7 +115,7 @@ export const notificationsService = {
    */
   markAllAsRead: async (userId: string): Promise<{ success: boolean; count: number }> => {
     try {
-      const response: AxiosResponse<{ success: boolean; count: number }> = await apiClient.put(`/users/${userId}/notifications/mark-all-read`);
+      const response = await apiClient.put(`${SERVICE_PREFIX}/users/${userId}/notifications/mark-all-read`);
       return response.data;
     } catch (error) {
       console.error('Error marking all as read:', error);
@@ -125,7 +128,7 @@ export const notificationsService = {
    */
   archive: async (notificationId: string): Promise<{ success: boolean }> => {
     try {
-      const response: AxiosResponse<{ success: boolean }> = await apiClient.put(`/notifications/${notificationId}/archive`);
+      const response = await apiClient.put(`${SERVICE_PREFIX}/notifications/${notificationId}/archive`);
       return response.data;
     } catch (error) {
       console.error('Error archiving notification:', error);
@@ -138,7 +141,7 @@ export const notificationsService = {
    */
   delete: async (notificationId: string): Promise<{ success: boolean }> => {
     try {
-      const response: AxiosResponse<{ success: boolean }> = await apiClient.delete(`/notifications/${notificationId}`);
+      const response = await apiClient.delete(`${SERVICE_PREFIX}/notifications/${notificationId}`);
       return response.data;
     } catch (error) {
       console.error('Error deleting notification:', error);
@@ -151,7 +154,7 @@ export const notificationsService = {
    */
   create: async (data: CreateNotificationData): Promise<Notification> => {
     try {
-      const response: AxiosResponse<Notification> = await apiClient.post('/notifications', data);
+      const response = await apiClient.post(`${SERVICE_PREFIX}/notifications`, data);
       return response.data;
     } catch (error) {
       console.error('Error creating notification:', error);
@@ -162,12 +165,12 @@ export const notificationsService = {
   /**
    * Crear notificaciones en masa
    */
-  createBulk: async (notifications: CreateNotificationData[]): Promise<{ 
-    success: boolean; 
-    created: number 
+  createBulk: async (notifications: CreateNotificationData[]): Promise<{
+    success: boolean;
+    created: number
   }> => {
     try {
-      const response: AxiosResponse<{ success: boolean; created: number }> = await apiClient.post('/notifications/bulk', { notifications });
+      const response = await apiClient.post(`${SERVICE_PREFIX}/notifications/bulk`, { notifications });
       return response.data;
     } catch (error) {
       console.error('Error creating bulk notifications:', error);
@@ -180,7 +183,7 @@ export const notificationsService = {
    */
   trackEmailOpen: async (notificationId: string): Promise<{ success: boolean }> => {
     try {
-      const response: AxiosResponse<{ success: boolean }> = await apiClient.post(`/notifications/${notificationId}/track/email-open`);
+      const response = await apiClient.post(`${SERVICE_PREFIX}/notifications/${notificationId}/track/email-open`);
       return response.data;
     } catch (error) {
       console.error('Error tracking email open:', error);
@@ -193,7 +196,7 @@ export const notificationsService = {
    */
   trackEmailClick: async (notificationId: string): Promise<{ success: boolean }> => {
     try {
-      const response: AxiosResponse<{ success: boolean }> = await apiClient.post(`/notifications/${notificationId}/track/email-click`);
+      const response = await apiClient.post(`${SERVICE_PREFIX}/notifications/${notificationId}/track/email-click`);
       return response.data;
     } catch (error) {
       console.error('Error tracking email click:', error);
@@ -213,17 +216,10 @@ export const notificationsService = {
     notificaciones_por_prioridad: Record<string, number>;
   }> => {
     try {
-      const url = userId 
-        ? `/users/${userId}/notifications/stats`
-        : '/notifications/stats';
-      const response: AxiosResponse<{
-        total_enviadas: number;
-        total_leidas: number;
-        tasa_lectura: number;
-        tasa_apertura_email: number;
-        notificaciones_por_categoria: Record<string, number>;
-        notificaciones_por_prioridad: Record<string, number>;
-      }> = await apiClient.get(url);
+      const url = userId
+        ? `${SERVICE_PREFIX}/users/${userId}/notifications/stats`
+        : `${SERVICE_PREFIX}/notifications/stats`;
+      const response = await apiClient.get(url);
       return response.data;
     } catch (error) {
       console.error('Error fetching notification stats:', error);
@@ -240,11 +236,7 @@ export const notificationsService = {
     frecuencia_resumen: 'inmediato' | 'diario' | 'semanal';
   }> => {
     try {
-      const response: AxiosResponse<{
-        email_habilitado: boolean;
-        categorias_habilitadas: string[];
-        frecuencia_resumen: 'inmediato' | 'diario' | 'semanal';
-      }> = await apiClient.get(`/users/${userId}/notification-preferences`);
+      const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/notification-preferences`);
       return response.data;
     } catch (error) {
       console.error('Error fetching notification preferences:', error);
@@ -264,8 +256,8 @@ export const notificationsService = {
     }
   ): Promise<{ success: boolean }> => {
     try {
-      const response: AxiosResponse<{ success: boolean }> = await apiClient.put(
-        `/users/${userId}/notification-preferences`, 
+      const response = await apiClient.put(
+        `${SERVICE_PREFIX}/users/${userId}/notification-preferences`,
         preferences
       );
       return response.data;

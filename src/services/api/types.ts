@@ -146,6 +146,195 @@ export interface ListarUsuariosParams {
 // ESTRUCTURA ORGANIZACIONAL
 // ============================================
 
+/**
+ * Unidad Organizacional - Nueva estructura unificada
+ * Representa: Sede Central, Territoriales, CETAP, Regionales, Sedes
+ */
+export interface UnidadOrganizacional {
+  id: string;
+  codigo: string;
+  nombre: string;
+  nombreCorto?: string;
+  nivel: 'nacional' | 'territorial' | 'cetap' | 'regional' | 'sede';
+  descripcion?: string;
+
+  // Jerarquía
+  padreId?: string;
+  padre?: UnidadOrganizacional;
+  hijos?: UnidadOrganizacional[];
+  ruta?: string[];
+  rutaNombres?: string[];
+
+  // Ubicación
+  departamento?: string;
+  ciudad?: string;
+  direccion?: string;
+  telefono?: string;
+  email?: string;
+
+  // Configuración
+  estado: 'activa' | 'inactiva' | 'en_configuracion' | 'cerrada_temporal';
+  permiteInscripciones: boolean;
+  permiteMatriculas: boolean;
+  visiblePortal: boolean;
+
+  // Capacidades
+  capacidadEstudiantes?: number;
+  capacidadDocentes?: number;
+
+  // Metadata
+  observaciones?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Asignación de Usuario a Unidad Organizacional
+ */
+export interface AsignacionUsuarioEstructura {
+  id: string;
+  usuarioId: string;
+  unidadId: string;
+  ambitoAcceso: 'nacional' | 'territorial' | 'regional' | 'local';
+  esPrincipal: boolean;
+  estado: 'activa' | 'inactiva';
+  fechaInicio: string;
+  fechaFin?: string;
+  observaciones?: string;
+  createdAt: string;
+  updatedAt: string;
+
+  // Relaciones expandidas
+  usuario?: Usuario;
+  unidad?: UnidadOrganizacional;
+}
+
+/**
+ * Estadísticas de Estructura Organizacional
+ */
+export interface EstadisticasEstructura {
+  totalUnidades: number;
+  unidadesPorNivel: Array<{
+    nivel: string;
+    count: string;
+  }>;
+  totalAsignaciones: number;
+}
+
+/**
+ * Respuesta paginada de unidades organizacionales
+ */
+export interface UnidadesOrganizacionalesResponse {
+  data: UnidadOrganizacional[];
+  meta: {
+    total: number;
+  };
+}
+
+// ============================================
+// ESTRUCTURA ORGANIZACIONAL - NUEVAS TABLAS
+// ============================================
+
+/**
+ * División Geopolítica (Departamentos y Ciudades)
+ */
+export interface Geopolitica {
+  idGeopolitica: number;
+  nomDivGeopolitica: string;
+  tipDivision: 'DEPTO' | 'CIUDAD';
+  idPadre?: number;
+  padre?: Geopolitica;
+}
+
+/**
+ * Seccional (Territorial)
+ */
+export interface Seccional {
+  idSeccional: number;
+  codSeccional?: string;
+  nomSeccional: string;
+  idUbiSeccional?: number;
+  ubicacion?: Geopolitica;
+}
+
+/**
+ * Sede
+ */
+export interface Sede {
+  idSede: number;
+  codSede?: string;
+  nomSede: string;
+  idGeopolitica?: number;
+  idSeccional?: number;
+  geopolitica?: Geopolitica;
+  seccional?: Seccional;
+  dirSede?: string;
+  telSede?: string;
+  emailSede?: string;
+  capacidadEstudiantes?: number;
+  capacidadDocentes?: number;
+  sedeAct?: string;
+  permiteInscripciones?: boolean;
+  permiteMatriculas?: boolean;
+  visiblePortal?: boolean;
+  observaciones?: string;
+}
+
+/**
+ * Respuesta del endpoint principal de estructura organizacional
+ */
+export interface EstructuraOrganizacionalResponse {
+  data: {
+    seccionales: Seccional[];
+    sedes: Sede[];
+  };
+  meta: {
+    totalSeccionales: number;
+    totalSedes: number;
+  };
+}
+
+/**
+ * Estadísticas de Estructura Organizacional (nuevo)
+ */
+export interface EstadisticasEstructuraOrganizacional {
+  totalSeccionales: number;
+  totalSedes: number;
+  totalEstudiantes: number;
+  totalDocentes: number;
+  sedesPorSeccional: Array<{
+    seccional: string;
+    count: string;
+  }>;
+}
+
+/**
+ * Respuesta de lista de sedes
+ */
+export interface SedesResponse {
+  data: Sede[];
+  meta: {
+    total: number;
+  };
+}
+
+/**
+ * Respuesta de lista de seccionales
+ */
+export interface SeccionalesResponse {
+  data: Seccional[];
+  meta: {
+    total: number;
+  };
+}
+
+// ============================================
+// TIPOS LEGACY (mantener para compatibilidad)
+// ============================================
+
+/**
+ * @deprecated Usar Seccional
+ */
 export interface Territorial {
   id: string;
   codigo: string;
@@ -159,25 +348,6 @@ export interface Territorial {
   directorEmail?: string;
   activa: boolean;
   orden?: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Sede {
-  id: string;
-  territorialId: string;
-  regionalId?: string;
-  codigo: string;
-  nombre: string;
-  tipo: 'Principal' | 'Subsede' | 'CREAD' | 'Extensión';
-  departamento?: string;
-  ciudad?: string;
-  direccion?: string;
-  telefono?: string;
-  email?: string;
-  coordenadasLat?: number;
-  coordenadasLng?: number;
-  activa: boolean;
   createdAt: string;
   updatedAt: string;
 }

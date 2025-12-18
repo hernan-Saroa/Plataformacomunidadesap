@@ -1,6 +1,9 @@
 /**
  * Público Service
  * Servicios públicos de la Landing Page (sin autenticación)
+ *
+ * Nueva estructura de URLs: /{service}/api/v{version}/{path}
+ * Cada sección usa el prefijo del servicio correspondiente
  */
 
 import { apiClient } from './client';
@@ -13,16 +16,21 @@ import type {
   AplicacionConvocatoria,
 } from './types';
 
+// Prefijos de servicios en el API Gateway
+const AUTH_PREFIX = '/auth/api/v1';
+const CERTIFICADOS_PREFIX = '/certificados/api/v1';
+const REGISTRO_ACADEMICO_PREFIX = '/registro-academico/api/v1';
+
 export const publicoService = {
   /**
-   * PROGRAMAS
+   * PROGRAMAS (registro-academico-service)
    */
   programas: {
     /**
      * Listar programas activos
      */
     async listar(params?: { activo?: boolean }): Promise<Programa[]> {
-      return apiClient.get<Programa[]>('/public/programas', {
+      return apiClient.get<Programa[]>(`${REGISTRO_ACADEMICO_PREFIX}/public/programas`, {
         params,
         requiresAuth: false,
       });
@@ -30,14 +38,14 @@ export const publicoService = {
   },
 
   /**
-   * SEDES
+   * SEDES (registro-academico-service)
    */
   sedes: {
     /**
      * Listar sedes (opcionalmente filtradas por programa)
      */
     async listar(params?: { programaId?: string }): Promise<Sede[]> {
-      return apiClient.get<Sede[]>('/public/sedes', {
+      return apiClient.get<Sede[]>(`${REGISTRO_ACADEMICO_PREFIX}/public/sedes`, {
         params,
         requiresAuth: false,
       });
@@ -45,7 +53,7 @@ export const publicoService = {
   },
 
   /**
-   * VINCULACIONES
+   * VINCULACIONES (auth-service)
    */
   vinculaciones: {
     /**
@@ -56,7 +64,7 @@ export const publicoService = {
       fechaSolicitud: string;
       mensaje: string;
     }> {
-      return apiClient.post('/public/vinculaciones', data, {
+      return apiClient.post(`${AUTH_PREFIX}/public/vinculaciones`, data, {
         requiresAuth: false,
       });
     },
@@ -65,14 +73,14 @@ export const publicoService = {
      * Consultar estado de solicitud por folio
      */
     async consultar(folio: string): Promise<Vinculacion> {
-      return apiClient.get<Vinculacion>(`/public/vinculaciones/${folio}`, {
+      return apiClient.get<Vinculacion>(`${AUTH_PREFIX}/public/vinculaciones/${folio}`, {
         requiresAuth: false,
       });
     },
   },
 
   /**
-   * ENROLAMIENTO QR
+   * ENROLAMIENTO QR (auth-service)
    */
   enrolamiento: {
     /**
@@ -84,7 +92,7 @@ export const publicoService = {
       email: string;
       metadata: Record<string, any>;
     }> {
-      return apiClient.post('/public/enrolamiento/validar-qr', { qrToken }, {
+      return apiClient.post(`${AUTH_PREFIX}/public/enrolamiento/validar-qr`, { qrToken }, {
         requiresAuth: false,
       });
     },
@@ -96,7 +104,7 @@ export const publicoService = {
       codigoEnviado: boolean;
       expiraEn: string;
     }> {
-      return apiClient.post('/public/enrolamiento/enviar-codigo', { qrToken, email }, {
+      return apiClient.post(`${AUTH_PREFIX}/public/enrolamiento/enviar-codigo`, { qrToken, email }, {
         requiresAuth: false,
       });
     },
@@ -107,7 +115,7 @@ export const publicoService = {
     async verificarCodigo(qrToken: string, email: string, codigo: string): Promise<{
       verificado: boolean;
     }> {
-      return apiClient.post('/public/enrolamiento/verificar-codigo', { qrToken, email, codigo }, {
+      return apiClient.post(`${AUTH_PREFIX}/public/enrolamiento/verificar-codigo`, { qrToken, email, codigo }, {
         requiresAuth: false,
       });
     },
@@ -131,14 +139,14 @@ export const publicoService = {
       token: string;
       mensaje: string;
     }> {
-      return apiClient.post('/public/enrolamiento/completar', data, {
+      return apiClient.post(`${AUTH_PREFIX}/public/enrolamiento/completar`, data, {
         requiresAuth: false,
       });
     },
   },
 
   /**
-   * CERTIFICADOS LABORALES
+   * CERTIFICADOS LABORALES (certificados-service)
    */
   certificadosLaborales: {
     /**
@@ -149,7 +157,7 @@ export const publicoService = {
       codigoEnviado: boolean;
       mensaje: string;
     }> {
-      return apiClient.post('/public/certificados-laborales/validar-email', { email }, {
+      return apiClient.post(`${CERTIFICADOS_PREFIX}/public/certificados-laborales/validar-email`, { email }, {
         requiresAuth: false,
       });
     },
@@ -161,7 +169,7 @@ export const publicoService = {
       verificado: boolean;
       token: string;
     }> {
-      return apiClient.post('/public/certificados-laborales/verificar-codigo', { email, codigo }, {
+      return apiClient.post(`${CERTIFICADOS_PREFIX}/public/certificados-laborales/verificar-codigo`, { email, codigo }, {
         requiresAuth: false,
       });
     },
@@ -187,7 +195,7 @@ export const publicoService = {
       fechaSolicitud: string;
       mensaje: string;
     }> {
-      return apiClient.post('/public/certificados-laborales/solicitar', data, {
+      return apiClient.post(`${CERTIFICADOS_PREFIX}/public/certificados-laborales/solicitar`, data, {
         requiresAuth: false,
       });
     },
@@ -204,14 +212,14 @@ export const publicoService = {
       certificadoPDF?: string;
       motivoRechazo?: string;
     }> {
-      return apiClient.get(`/public/certificados-laborales/${codigo}`, {
+      return apiClient.get(`${CERTIFICADOS_PREFIX}/public/certificados-laborales/${codigo}`, {
         requiresAuth: false,
       });
     },
   },
 
   /**
-   * CONVOCATORIAS DOCENTES
+   * CONVOCATORIAS DOCENTES (auth-service o rrhh-service)
    */
   convocatorias: {
     /**
@@ -222,7 +230,7 @@ export const publicoService = {
       ciudad?: string;
       tipoContrato?: string;
     }): Promise<ConvocatoriaDocente[]> {
-      return apiClient.get<ConvocatoriaDocente[]>('/public/convocatorias', {
+      return apiClient.get<ConvocatoriaDocente[]>(`${AUTH_PREFIX}/public/convocatorias`, {
         params,
         requiresAuth: false,
       });
@@ -232,7 +240,7 @@ export const publicoService = {
      * Obtener detalle de convocatoria
      */
     async obtenerPorId(id: string): Promise<ConvocatoriaDocente> {
-      return apiClient.get<ConvocatoriaDocente>(`/public/convocatorias/${id}`, {
+      return apiClient.get<ConvocatoriaDocente>(`${AUTH_PREFIX}/public/convocatorias/${id}`, {
         requiresAuth: false,
       });
     },
@@ -262,7 +270,7 @@ export const publicoService = {
       fechaAplicacion: string;
     }> {
       const formData = new FormData();
-      
+
       // Datos básicos
       formData.append('tipoDocumento', data.tipoDocumento);
       formData.append('numeroDocumento', data.numeroDocumento);
@@ -276,29 +284,29 @@ export const publicoService = {
       formData.append('universidadGrado', data.universidadGrado);
       formData.append('anosExperiencia', String(data.anosExperiencia));
       formData.append('areasExperiencia', JSON.stringify(data.areasExperiencia));
-      
+
       // Archivos
       formData.append('hojaVida', data.hojaVida);
       data.diplomas.forEach(diploma => formData.append('diplomas', diploma));
       if (data.certificados) {
         data.certificados.forEach(cert => formData.append('certificados', cert));
       }
-      
-      return apiClient.upload(`/public/convocatorias/${convocatoriaId}/aplicar`, formData);
+
+      return apiClient.upload(`${AUTH_PREFIX}/public/convocatorias/${convocatoriaId}/aplicar`, formData);
     },
 
     /**
      * Consultar estado de aplicación
      */
     async consultarAplicacion(folio: string): Promise<AplicacionConvocatoria> {
-      return apiClient.get<AplicacionConvocatoria>(`/public/convocatorias/aplicacion/${folio}`, {
+      return apiClient.get<AplicacionConvocatoria>(`${AUTH_PREFIX}/public/convocatorias/aplicacion/${folio}`, {
         requiresAuth: false,
       });
     },
   },
 
   /**
-   * CONTACTO
+   * CONTACTO (notificaciones-service)
    */
   contacto: {
     /**
@@ -316,7 +324,7 @@ export const publicoService = {
       fechaEnvio: string;
       mensaje: string;
     }> {
-      return apiClient.post('/public/contacto', data, {
+      return apiClient.post(`${AUTH_PREFIX}/public/contacto`, data, {
         requiresAuth: false,
       });
     },

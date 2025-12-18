@@ -1,6 +1,9 @@
 /**
  * Portal Service
  * Servicio para el Portal Transaccional (red social universitaria)
+ *
+ * Nota: Todos los endpoints van al servicio 'auth' del API Gateway
+ * URL: /auth/api/v1/portal -> auth-service:3001/portal
  */
 
 import { apiClient } from './client';
@@ -10,6 +13,9 @@ import type {
   Conexion,
   Notificacion,
 } from './types';
+
+// Prefijo del servicio en el API Gateway
+const SERVICE_PREFIX = '/auth/api/v1';
 
 export const portalService = {
   /**
@@ -29,7 +35,7 @@ export const portalService = {
       siguiente: number;
       hayMas: boolean;
     }> {
-      return apiClient.get('/portal/feed', { params });
+      return apiClient.get(`${SERVICE_PREFIX}/portal/feed`, { params });
     },
 
     /**
@@ -60,28 +66,28 @@ export const portalService = {
         data.archivos.forEach(file => formData.append('archivos', file));
       }
       
-      return apiClient.upload<Publicacion>('/portal/publicaciones', formData);
+      return apiClient.upload<Publicacion>(`${SERVICE_PREFIX}/portal/publicaciones`, formData);
     },
 
     /**
      * Editar publicación
      */
     async editarPublicacion(id: string, data: Partial<Publicacion>): Promise<Publicacion> {
-      return apiClient.put<Publicacion>(`/portal/publicaciones/${id}`, data);
+      return apiClient.put<Publicacion>(`${SERVICE_PREFIX}/portal/publicaciones/${id}`, data);
     },
 
     /**
      * Eliminar publicación
      */
     async eliminarPublicacion(id: string): Promise<{ mensaje: string }> {
-      return apiClient.delete<{ mensaje: string }>(`/portal/publicaciones/${id}`);
+      return apiClient.delete<{ mensaje: string }>(`${SERVICE_PREFIX}/portal/publicaciones/${id}`);
     },
 
     /**
      * Like/Unlike publicación
      */
     async toggleLike(publicacionId: string): Promise<{ liked: boolean }> {
-      return apiClient.post<{ liked: boolean }>(`/portal/publicaciones/${publicacionId}/like`);
+      return apiClient.post<{ liked: boolean }>(`${SERVICE_PREFIX}/portal/publicaciones/${publicacionId}/like`);
     },
 
     /**
@@ -91,21 +97,21 @@ export const portalService = {
       contenido: string;
       comentarioPadreId?: string;
     }): Promise<Comentario> {
-      return apiClient.post<Comentario>(`/portal/publicaciones/${publicacionId}/comentarios`, data);
+      return apiClient.post<Comentario>(`${SERVICE_PREFIX}/portal/publicaciones/${publicacionId}/comentarios`, data);
     },
 
     /**
      * Compartir publicación
      */
     async compartir(publicacionId: string): Promise<{ mensaje: string }> {
-      return apiClient.post<{ mensaje: string }>(`/portal/publicaciones/${publicacionId}/compartir`);
+      return apiClient.post<{ mensaje: string }>(`${SERVICE_PREFIX}/portal/publicaciones/${publicacionId}/compartir`);
     },
 
     /**
      * Guardar publicación
      */
     async guardar(publicacionId: string): Promise<{ guardado: boolean }> {
-      return apiClient.post<{ guardado: boolean }>(`/portal/publicaciones/${publicacionId}/guardar`);
+      return apiClient.post<{ guardado: boolean }>(`${SERVICE_PREFIX}/portal/publicaciones/${publicacionId}/guardar`);
     },
 
     /**
@@ -115,7 +121,7 @@ export const portalService = {
       motivo: string;
       descripcion: string;
     }): Promise<{ mensaje: string }> {
-      return apiClient.post<{ mensaje: string }>(`/portal/publicaciones/${publicacionId}/reportar`, data);
+      return apiClient.post<{ mensaje: string }>(`${SERVICE_PREFIX}/portal/publicaciones/${publicacionId}/reportar`, data);
     },
   },
 
@@ -127,14 +133,14 @@ export const portalService = {
      * Obtener perfil de usuario
      */
     async obtener(usuarioId: string): Promise<any> {
-      return apiClient.get(`/portal/perfil/${usuarioId}`);
+      return apiClient.get(`${SERVICE_PREFIX}/portal/perfil/${usuarioId}`);
     },
 
     /**
      * Obtener mi perfil
      */
     async miPerfil(): Promise<any> {
-      return apiClient.get('/portal/perfil/mi-perfil');
+      return apiClient.get(`${SERVICE_PREFIX}/portal/perfil/mi-perfil`);
     },
 
     /**
@@ -151,7 +157,7 @@ export const portalService = {
         }
       });
       
-      return apiClient.upload('/portal/perfil/mi-perfil', formData);
+      return apiClient.upload(`${SERVICE_PREFIX}/portal/perfil/mi-perfil`, formData);
     },
 
     /**
@@ -180,7 +186,7 @@ export const portalService = {
      * Obtener mis conexiones
      */
     async mis(): Promise<Conexion[]> {
-      return apiClient.get<Conexion[]>('/portal/conexiones');
+      return apiClient.get<Conexion[]>(`${SERVICE_PREFIX}/portal/conexiones`);
     },
 
     /**
@@ -190,14 +196,14 @@ export const portalService = {
       recibidas: Conexion[];
       enviadas: Conexion[];
     }> {
-      return apiClient.get('/portal/conexiones/solicitudes');
+      return apiClient.get(`${SERVICE_PREFIX}/portal/conexiones/solicitudes`);
     },
 
     /**
      * Enviar solicitud de conexión
      */
     async enviarSolicitud(destinatarioId: string, mensaje?: string): Promise<Conexion> {
-      return apiClient.post<Conexion>('/portal/conexiones/enviar-solicitud', {
+      return apiClient.post<Conexion>(`${SERVICE_PREFIX}/portal/conexiones/enviar-solicitud`, {
         destinatarioId,
         mensaje,
       });
@@ -207,28 +213,28 @@ export const portalService = {
      * Aceptar solicitud
      */
     async aceptar(solicitudId: string): Promise<Conexion> {
-      return apiClient.post<Conexion>(`/portal/conexiones/${solicitudId}/aceptar`);
+      return apiClient.post<Conexion>(`${SERVICE_PREFIX}/portal/conexiones/${solicitudId}/aceptar`);
     },
 
     /**
      * Rechazar solicitud
      */
     async rechazar(solicitudId: string): Promise<{ mensaje: string }> {
-      return apiClient.post<{ mensaje: string }>(`/portal/conexiones/${solicitudId}/rechazar`);
+      return apiClient.post<{ mensaje: string }>(`${SERVICE_PREFIX}/portal/conexiones/${solicitudId}/rechazar`);
     },
 
     /**
      * Remover conexión
      */
     async remover(conexionId: string): Promise<{ mensaje: string }> {
-      return apiClient.delete<{ mensaje: string }>(`/portal/conexiones/${conexionId}`);
+      return apiClient.delete<{ mensaje: string }>(`${SERVICE_PREFIX}/portal/conexiones/${conexionId}`);
     },
 
     /**
      * Obtener sugerencias de conexiones
      */
     async sugerencias(params?: { limit?: number }): Promise<any[]> {
-      return apiClient.get('/portal/conexiones/sugerencias', { params });
+      return apiClient.get(`${SERVICE_PREFIX}/portal/conexiones/sugerencias`, { params });
     },
   },
 
@@ -240,7 +246,7 @@ export const portalService = {
      * Listar conversaciones
      */
     async conversaciones(): Promise<any[]> {
-      return apiClient.get('/portal/conversaciones');
+      return apiClient.get(`${SERVICE_PREFIX}/portal/conversaciones`);
     },
 
     /**
@@ -250,7 +256,7 @@ export const portalService = {
       offset?: number;
       limit?: number;
     }): Promise<any[]> {
-      return apiClient.get(`/portal/conversaciones/${conversacionId}/mensajes`, { params });
+      return apiClient.get(`${SERVICE_PREFIX}/portal/conversaciones/${conversacionId}/mensajes`, { params });
     },
 
     /**
@@ -271,21 +277,21 @@ export const portalService = {
       if (data.imagen) formData.append('imagen', data.imagen);
       if (data.archivo) formData.append('archivo', data.archivo);
       
-      return apiClient.upload('/portal/mensajes', formData);
+      return apiClient.upload(`${SERVICE_PREFIX}/portal/mensajes`, formData);
     },
 
     /**
      * Editar mensaje
      */
     async editar(mensajeId: string, contenido: string): Promise<any> {
-      return apiClient.put(`/portal/mensajes/${mensajeId}`, { contenido });
+      return apiClient.put(`${SERVICE_PREFIX}/portal/mensajes/${mensajeId}`, { contenido });
     },
 
     /**
      * Eliminar mensaje
      */
     async eliminar(mensajeId: string): Promise<{ mensaje: string }> {
-      return apiClient.delete<{ mensaje: string }>(`/portal/mensajes/${mensajeId}`);
+      return apiClient.delete<{ mensaje: string }>(`${SERVICE_PREFIX}/portal/mensajes/${mensajeId}`);
     },
 
     /**
@@ -304,28 +310,28 @@ export const portalService = {
      * Obtener notificaciones
      */
     async listar(params?: { leidas?: boolean }): Promise<Notificacion[]> {
-      return apiClient.get<Notificacion[]>('/portal/notificaciones', { params });
+      return apiClient.get<Notificacion[]>(`${SERVICE_PREFIX}/portal/notificaciones`, { params });
     },
 
     /**
      * Marcar notificación como leída
      */
     async marcarLeida(id: string): Promise<Notificacion> {
-      return apiClient.put<Notificacion>(`/portal/notificaciones/${id}/marcar-leida`);
+      return apiClient.put<Notificacion>(`${SERVICE_PREFIX}/portal/notificaciones/${id}/marcar-leida`);
     },
 
     /**
      * Marcar todas como leídas
      */
     async marcarTodasLeidas(): Promise<{ mensaje: string }> {
-      return apiClient.put<{ mensaje: string }>('/portal/notificaciones/marcar-todas-leidas');
+      return apiClient.put<{ mensaje: string }>(`${SERVICE_PREFIX}/portal/notificaciones/marcar-todas-leidas`);
     },
 
     /**
      * Eliminar notificación
      */
     async eliminar(id: string): Promise<{ mensaje: string }> {
-      return apiClient.delete<{ mensaje: string }>(`/portal/notificaciones/${id}`);
+      return apiClient.delete<{ mensaje: string }>(`${SERVICE_PREFIX}/portal/notificaciones/${id}`);
     },
   },
 
@@ -348,14 +354,14 @@ export const portalService = {
       eventos: any[];
       total: number;
     }> {
-      return apiClient.get('/portal/buscar', { params });
+      return apiClient.get(`${SERVICE_PREFIX}/portal/buscar`, { params });
     },
 
     /**
      * Obtener sugerencias de búsqueda
      */
     async sugerencias(): Promise<{ recientes: string[]; populares: string[] }> {
-      return apiClient.get('/portal/buscar/sugerencias');
+      return apiClient.get(`${SERVICE_PREFIX}/portal/buscar/sugerencias`);
     },
   },
 };

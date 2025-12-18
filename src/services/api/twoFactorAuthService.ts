@@ -2,12 +2,13 @@
  * Servicio de Autenticación de Dos Factores (2FA)
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
+import { API_ENDPOINTS } from '../../config/environment';
 
-interface Enable2FAResponse {
+interface Send2FACodeResponse {
   success: boolean;
   message: string;
-  qrCode: string;
+  expiresIn: number; // segundos
 }
 
 interface Verify2FACodeResponse {
@@ -18,37 +19,44 @@ interface Verify2FACodeResponse {
 
 class TwoFactorAuthService {
   /**
-   * Habilitar 2FA para un usuario
+   * Enviar código de verificación al correo del usuario
    */
-  async enable2FA(userId: string): Promise<Enable2FAResponse> {
+  async sendVerificationCode(email: string, roleId?: string): Promise<Send2FACodeResponse> {
     try {
       // Mock implementation - en producción llamaría al API
-      console.log(`📧 Habilitando 2FA para usuario ${userId}`);
+      console.log(`📧 Enviando código 2FA a ${email} para rol ${roleId || 'default'}`);
       
       // Simular llamada al API
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Generar código mock (en producción esto se hace en el backend)
-      const mockQRCode = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIA...';
+      const mockCode = Math.floor(100000 + Math.random() * 900000).toString();
       
-      console.log(`✅ QR Code 2FA generado (DEMO): ${mockQRCode}`);
+      // Guardar código en sessionStorage para demostración
+      sessionStorage.setItem('2fa-code', mockCode);
+      sessionStorage.setItem('2fa-email', email);
+      sessionStorage.setItem('2fa-expires', (Date.now() + 5 * 60 * 1000).toString());
+      
+      console.log(`✅ Código 2FA generado (DEMO): ${mockCode}`);
+      console.log(`⏱️ Expira en 5 minutos`);
       
       return {
         success: true,
-        message: `2FA habilitado para usuario ${userId}`,
-        qrCode: mockQRCode
+        message: `Código de verificación enviado a ${email}`,
+        expiresIn: 300 // 5 minutos
       };
       
       // En producción sería algo como:
-      // return apiClient.post<Enable2FAResponse>(API_ENDPOINTS.AUTH.ENABLE_2FA, {
-      //   userId
+      // return apiClient.post<Send2FACodeResponse>(API_ENDPOINTS.AUTH.SEND_2FA_CODE, {
+      //   email,
+      //   roleId
       // });
     } catch (error) {
-      console.error('Error habilitando 2FA:', error);
+      console.error('Error enviando código 2FA:', error);
       return {
         success: false,
-        message: 'Error al habilitar 2FA',
-        qrCode: ''
+        message: 'Error al enviar el código de verificación',
+        expiresIn: 0
       };
     }
   }
@@ -56,28 +64,28 @@ class TwoFactorAuthService {
   /**
    * Verificar código de autenticación
    */
-  async verifyCode(userId: string, code: string): Promise<Verify2FACodeResponse> {
+  async verifyCode(email: string, code: string): Promise<Verify2FACodeResponse> {
     try {
       // Mock implementation
-      console.log(`🔐 Verificando código 2FA para usuario ${userId}: ${code}`);
+      console.log(`🔐 Verificando código 2FA para ${email}: ${code}`);
       
       // Simular llamada al API
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Verificar código mock
       const storedCode = sessionStorage.getItem('2fa-code');
-      const storedUserId = sessionStorage.getItem('2fa-userId');
+      const storedEmail = sessionStorage.getItem('2fa-email');
       const expiresAt = sessionStorage.getItem('2fa-expires');
       
       // Validaciones
-      if (!storedCode || !storedUserId || !expiresAt) {
+      if (!storedCode || !storedEmail || !expiresAt) {
         return {
           success: false,
           message: 'No hay código de verificación activo'
         };
       }
       
-      if (storedUserId !== userId) {
+      if (storedEmail !== email) {
         return {
           success: false,
           message: 'El código no corresponde a este usuario'
@@ -86,7 +94,7 @@ class TwoFactorAuthService {
       
       if (Date.now() > parseInt(expiresAt)) {
         sessionStorage.removeItem('2fa-code');
-        sessionStorage.removeItem('2fa-userId');
+        sessionStorage.removeItem('2fa-email');
         sessionStorage.removeItem('2fa-expires');
         return {
           success: false,
@@ -106,7 +114,7 @@ class TwoFactorAuthService {
       
       // Limpiar código usado
       sessionStorage.removeItem('2fa-code');
-      sessionStorage.removeItem('2fa-userId');
+      sessionStorage.removeItem('2fa-email');
       sessionStorage.removeItem('2fa-expires');
       
       return {
@@ -117,7 +125,7 @@ class TwoFactorAuthService {
       
       // En producción sería algo como:
       // return apiClient.post<Verify2FACodeResponse>(API_ENDPOINTS.AUTH.VERIFY_2FA_CODE, {
-      //   userId,
+      //   email,
       //   code
       // });
     } catch (error) {
@@ -132,14 +140,14 @@ class TwoFactorAuthService {
   /**
    * Reenviar código de verificación
    */
-  async resendCode(userId: string): Promise<Enable2FAResponse> {
+  async resendCode(email: string, roleId?: string): Promise<Send2FACodeResponse> {
     // Limpiar código anterior
     sessionStorage.removeItem('2fa-code');
-    sessionStorage.removeItem('2fa-userId');
+    sessionStorage.removeItem('2fa-email');
     sessionStorage.removeItem('2fa-expires');
     
     // Enviar nuevo código
-    return this.enable2FA(userId);
+    return this.sendVerificationCode(email, roleId);
   }
 
   /**
@@ -180,12 +188,12 @@ class TwoFactorAuthService {
   /**
    * Verificar si hay un código activo
    */
-  hasActiveCode(userId: string): boolean {
-    const storedUserId = sessionStorage.getItem('2fa-userId');
+  hasActiveCode(email: string): boolean {
+    const storedEmail = sessionStorage.getItem('2fa-email');
     const expiresAt = sessionStorage.getItem('2fa-expires');
     
-    if (!storedUserId || !expiresAt) return false;
-    if (storedUserId !== userId) return false;
+    if (!storedEmail || !expiresAt) return false;
+    if (storedEmail !== email) return false;
     if (Date.now() > parseInt(expiresAt)) {
       this.clearCode();
       return false;
@@ -199,7 +207,7 @@ class TwoFactorAuthService {
    */
   clearCode(): void {
     sessionStorage.removeItem('2fa-code');
-    sessionStorage.removeItem('2fa-userId');
+    sessionStorage.removeItem('2fa-email');
     sessionStorage.removeItem('2fa-expires');
   }
 }

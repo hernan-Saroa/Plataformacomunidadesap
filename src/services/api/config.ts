@@ -3,24 +3,34 @@
  * Configuración centralizada para todas las llamadas API
  */
 
-// Helper para obtener variables de entorno de forma segura
-const getEnvVar = (key: string, defaultValue: string): string => {
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-    return import.meta.env[key] || defaultValue;
-  }
-  return defaultValue;
+// IMPORTANTE: Vite solo reemplaza accesos ESTÁTICOS a import.meta.env
+// Accesos dinámicos como import.meta.env[key] NO funcionan en build
+
+import { getPublicBaseUrl } from '../../config/environment';
+
+// Acceso estático a variables de entorno de Vite
+const VITE_API_URL = import.meta.env.VITE_API_URL as string | undefined;
+const VITE_MODE = import.meta.env.MODE || 'development';
+
+// URLs por ambiente (fallbacks si VITE_API_URL no está definida)
+const API_URLS = {
+  development: 'http://localhost:3000',
+  // En servidor dev usamos la IP; cambiar a https://api.esap.edu.co en prod real
+  production: 'http://4.156.71.181:3000',
 };
 
 export const API_CONFIG = {
-  // Base URLs por ambiente
+  // Base URLs por ambiente (URL del API Gateway, sin sufijos)
+  // La estructura de endpoints es: /{service}/api/v{version}/{path}
+  // Ejemplo: /auth/api/v1/login, /certificados/api/v1/generate
   baseURL: {
-    development: getEnvVar('VITE_API_URL', 'http://localhost:3000/api/v1'),
-    production: getEnvVar('VITE_API_URL', 'https://api.esap.edu.co/v1'),
+    development: VITE_API_URL || API_URLS.development,
+    production: VITE_API_URL || API_URLS.production,
   },
-  
+
   // Timeout para requests (30 segundos)
   timeout: 30000,
-  
+
   // Headers por defecto
   headers: {
     'Content-Type': 'application/json',
@@ -32,9 +42,15 @@ export const API_CONFIG = {
  * Obtener la base URL según el ambiente
  */
 export const getBaseURL = (): string => {
-  const mode = getEnvVar('VITE_MODE', 'development');
-  const env = (mode === 'production' ? 'production' : 'development') as 'development' | 'production';
+  const env = (VITE_MODE === 'production' ? 'production' : 'development') as 'development' | 'production';
   return API_CONFIG.baseURL[env];
+};
+
+/**
+ * Obtener la URL base del frontend para QR codes y enlaces públicos
+ */
+export const getFrontendURL = (): string => {
+  return getPublicBaseUrl();
 };
 
 /**

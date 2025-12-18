@@ -1,11 +1,58 @@
 /**
  * Environment Configuration for ESAP Backoffice
- * 
+ *
  * Este archivo centraliza todas las variables de entorno y configuraciones
  * necesarias para conectar el frontend con el backend Node.js/Express
+ *
+ * MODOS DE CONEXIÓN:
+ * 1. Gateway Mode (default para Docker): Todas las requests van al API Gateway
+ *    - URL: http://localhost:3000/{service}/api/v1/{path}
+ *
+ * 2. Direct Mode (para desarrollo local sin Docker): Cada servicio en su puerto
+ *    - Auth: http://localhost:3001/{path}
+ *    - Certificados: http://localhost:3004/{path}
+ *    - etc.
+ *
+ * Para activar Direct Mode, usa: VITE_API_MODE=direct
  */
 
-// Safely access import.meta.env
+// IMPORTANTE: Vite solo reemplaza accesos ESTÁTICOS a import.meta.env
+// Por eso usamos acceso directo en lugar de dinámico con [key]
+
+// Determinar el entorno actual
+export const ENV = import.meta.env.MODE || 'development';
+
+// URL del API desde variable de entorno (Vite la inyecta en build time)
+const VITE_API_URL = import.meta.env.VITE_API_URL as string | undefined;
+const VITE_CERTIFICADOS_URL = import.meta.env.VITE_CERTIFICADOS_URL as string | undefined;
+const VITE_PUBLIC_FRONTEND_URL = import.meta.env.VITE_PUBLIC_FRONTEND_URL as string | undefined;
+
+// Modo de API: 'gateway' (usa API Gateway) o 'direct' (conexión directa a microservicios)
+const VITE_API_MODE = import.meta.env.VITE_API_MODE as string | undefined;
+export const API_MODE = VITE_API_MODE || 'gateway';
+
+// URLs base del API Gateway según el entorno
+const API_GATEWAY_URLS = {
+  development: 'http://localhost:3000', // API Gateway local
+  dev: 'http://4.156.71.181:3000', // Servidor de desarrollo del equipo
+  production: 'http://4.156.71.181:3000',
+};
+
+// URLs directas a cada microservicio (para desarrollo local sin Docker)
+export const MICROSERVICE_URLS = {
+  auth: 'http://localhost:3001',
+  'registro-academico': 'http://localhost:3002',
+  pta: 'http://localhost:3003',
+  certificados: VITE_CERTIFICADOS_URL || 'http://localhost:3004',
+  'control-disciplinario': 'http://localhost:3005',
+  interoperabilidad: 'http://localhost:3006',
+  'control-institucional': 'http://localhost:3007',
+  legal: 'http://localhost:3008',
+  notificaciones: 'http://localhost:3009',
+  viaticos: 'http://localhost:3010',
+};
+
+// Helper para otras variables de entorno (solo para variables no críticas)
 const getEnvVar = (key: string, defaultValue: string = ''): string => {
   try {
     return (import.meta?.env?.[key] as string) || defaultValue;
@@ -14,22 +61,90 @@ const getEnvVar = (key: string, defaultValue: string = ''): string => {
   }
 };
 
-// Determinar el entorno actual
-export const ENV = getEnvVar('MODE', 'development');
+/**
+ * Obtiene la URL base para un servicio específico
+ * En modo 'direct': retorna la URL directa del microservicio
+ * En modo 'gateway': retorna la URL del API Gateway
+ */
+export const getServiceUrl = (serviceName: keyof typeof MICROSERVICE_URLS): string => {
+  if (API_MODE === 'direct') {
+    return MICROSERVICE_URLS[serviceName] || API_GATEWAY_URLS.development;
+  }
+  return VITE_API_URL || API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
+};
 
-// URLs del API según el entorno
-const API_URLS = {
-  development: 'http://localhost:3001/api',
-  staging: 'https://staging-api.esap.edu.co/api',
-  production: 'https://api.esap.edu.co/api',
+/**
+ * Construye la URL completa para un endpoint
+ * En modo 'direct': http://localhost:3002/users (sin prefijo de servicio)
+ * En modo 'gateway': http://localhost:3000/auth/api/v1/users (con prefijo)
+ */
+export const buildApiUrl = (serviceName: keyof typeof MICROSERVICE_URLS, path: string): string => {
+  if (API_MODE === 'direct') {
+    // En modo directo, el path ya no necesita el prefijo del servicio
+    return `${MICROSERVICE_URLS[serviceName]}${path}`;
+  }
+  // En modo gateway, incluir el prefijo del servicio
+  return `${getServiceUrl(serviceName)}/${serviceName}${path}`;
+};
+
+/**
+ * URL pública base del frontend (para armar enlaces de verificación, QR, deep links)
+ * Prioriza variable de entorno; si no existe, usa origin del navegador; si no hay window, fallback local.
+ */
+export const getPublicBaseUrl = (): string => {
+  if (VITE_PUBLIC_FRONTEND_URL) return VITE_PUBLIC_FRONTEND_URL;
+  if (typeof window !== 'undefined' && window.location?.origin) return window.location.origin;
+  return 'http://localhost:3000';
+};
+
+/**
+ * Construye una URL pública para recursos estáticos (logos/firmas) de un servicio.
+ * - direct: usa la URL directa del microservicio
+ * - gateway: agrega el prefijo del servicio para rutear por el gateway
+ * Si llega una URL absoluta a localhost, se reescribe con el host del servicio actual para evitar CORS.
+ */
+export const buildServiceAssetUrl = (
+  serviceName: keyof typeof MICROSERVICE_URLS,
+  assetPath: string,
+): string => {
+  if (!assetPath) return '';
+
+  const baseService =
+    API_MODE === 'direct'
+      ? MICROSERVICE_URLS[serviceName]
+      : `${getServiceUrl(serviceName)}/${serviceName}`;
+
+  if (/^https?:\/\//i.test(assetPath)) {
+    try {
+      const url = new URL(assetPath);
+      const base = new URL(baseService);
+      const isLoopback =
+        url.hostname === 'localhost' ||
+        url.hostname === '127.0.0.1' ||
+        url.hostname === '::1';
+
+      if (isLoopback) {
+        url.protocol = base.protocol;
+        url.host = base.host;
+        return url.toString();
+      }
+
+      return assetPath;
+    } catch {
+      return assetPath;
+    }
+  }
+
+  const normalized = assetPath.startsWith('/') ? assetPath : `/${assetPath}`;
+  return `${baseService}${normalized}`;
 };
 
 // Configuración general
 export const config = {
-  // URL base del API
-  API_BASE_URL: getEnvVar('VITE_API_URL') || API_URLS[ENV as keyof typeof API_URLS],
-  
-  // Versión del API
+  // URL base del API Gateway - usa VITE_API_URL si existe, sino el fallback por entorno
+  API_BASE_URL: VITE_API_URL || API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS],
+
+  // Versión del API por defecto
   API_VERSION: 'v1',
   
   // Timeout para requests (ms)
@@ -42,7 +157,7 @@ export const config = {
   API_RETRY_DELAY: 1000,
   
   // WebSocket URL (para notificaciones en tiempo real)
-  WS_URL: getEnvVar('VITE_WS_URL') || 'ws://localhost:3001',
+  WS_URL: getEnvVar('VITE_WS_URL') || (ENV === 'dev' ? 'ws://4.156.71.181:3000' : 'ws://localhost:3000'),
   
   // Configuración de paginación por defecto
   DEFAULT_PAGE_SIZE: 20,
@@ -76,129 +191,145 @@ export const config = {
   },
 };
 
-// Endpoints del API
+/**
+ * Endpoints del API
+ *
+ * Nueva estructura: /{service}/api/v{version}/{path}
+ * Ejemplo: /auth/api/v1/users
+ *
+ * Esto permite versionamiento independiente por microservicio.
+ */
 export const API_ENDPOINTS = {
-  // Autenticación
+  // Autenticación (auth-service)
   AUTH: {
-    LOGIN: '/auth/login',
-    LOGOUT: '/auth/logout',
-    REFRESH: '/auth/refresh',
-    VERIFY: '/auth/verify',
-    FORGOT_PASSWORD: '/auth/forgot-password',
-    RESET_PASSWORD: '/auth/reset-password',
-    CHANGE_PASSWORD: '/auth/change-password',
+    LOGIN: '/auth/api/v1/login',
+    LOGOUT: '/auth/api/v1/logout',
+    REFRESH: '/auth/api/v1/refresh',
+    VERIFY: '/auth/api/v1/verify',
+    FORGOT_PASSWORD: '/auth/api/v1/forgot-password',
+    RESET_PASSWORD: '/auth/api/v1/reset-password',
+    CHANGE_PASSWORD: '/auth/api/v1/change-password',
   },
-  
-  // Usuarios
+
+  // Usuarios (auth-service)
   USERS: {
-    BASE: '/users',
-    BY_ID: (id: string) => `/users/${id}`,
-    BULK_CREATE: '/users/bulk',
-    BULK_UPDATE: '/users/bulk-update',
-    BULK_DELETE: '/users/bulk-delete',
-    EXPORT: '/users/export',
-    IMPORT: '/users/import',
-    STATS: '/users/stats',
-    ACTIVITY: (id: string) => `/users/${id}/activity`,
-    ROLES: (id: string) => `/users/${id}/roles`,
+    BASE: '/auth/api/v1/users',
+    BY_ID: (id: string) => `/auth/api/v1/users/${id}`,
+    BULK_CREATE: '/auth/api/v1/users/bulk',
+    BULK_UPDATE: '/auth/api/v1/users/bulk-update',
+    BULK_DELETE: '/auth/api/v1/users/bulk-delete',
+    EXPORT: '/auth/api/v1/users/export',
+    IMPORT: '/auth/api/v1/users/import',
+    STATS: '/auth/api/v1/users/stats',
+    ACTIVITY: (id: string) => `/auth/api/v1/users/${id}/activity`,
+    ROLES: (id: string) => `/auth/api/v1/users/${id}/roles`,
   },
-  
-  // Personas (Usuario Persona)
+
+  // Personas (auth-service)
   PERSONS: {
-    BASE: '/persons',
-    BY_ID: (id: string) => `/persons/${id}`,
-    DOCUMENTS: (id: string) => `/persons/${id}/documents`,
-    UPLOAD_DOCUMENT: (id: string) => `/persons/${id}/documents/upload`,
-    VERIFY_DOCUMENT: (id: string, docId: string) => `/persons/${id}/documents/${docId}/verify`,
-    TIMELINE: (id: string) => `/persons/${id}/timeline`,
-    STATS: '/persons/stats',
-    EXPORT: '/persons/export',
+    BASE: '/auth/api/v1/persons',
+    BY_ID: (id: string) => `/auth/api/v1/persons/${id}`,
+    DOCUMENTS: (id: string) => `/auth/api/v1/persons/${id}/documents`,
+    UPLOAD_DOCUMENT: (id: string) => `/auth/api/v1/persons/${id}/documents/upload`,
+    VERIFY_DOCUMENT: (id: string, docId: string) => `/auth/api/v1/persons/${id}/documents/${docId}/verify`,
+    TIMELINE: (id: string) => `/auth/api/v1/persons/${id}/timeline`,
+    STATS: '/auth/api/v1/persons/stats',
+    EXPORT: '/auth/api/v1/persons/export',
   },
-  
-  // Roles
+
+  // Roles (auth-service)
   ROLES: {
-    BASE: '/roles',
-    BY_ID: (id: string) => `/roles/${id}`,
-    PERMISSIONS: (id: string) => `/roles/${id}/permissions`,
-    USERS: (id: string) => `/roles/${id}/users`,
-    DUPLICATE: (id: string) => `/roles/${id}/duplicate`,
-    COMPARE: '/roles/compare',
-    PRESETS: '/roles/presets',
-    STATS: '/roles/stats',
+    BASE: '/auth/api/v1/roles',
+    BY_ID: (id: string) => `/auth/api/v1/roles/${id}`,
+    PERMISSIONS: (id: string) => `/auth/api/v1/roles/${id}/permissions`,
+    USERS: (id: string) => `/auth/api/v1/roles/${id}/users`,
+    DUPLICATE: (id: string) => `/auth/api/v1/roles/${id}/duplicate`,
+    COMPARE: '/auth/api/v1/roles/compare',
+    PRESETS: '/auth/api/v1/roles/presets',
+    STATS: '/auth/api/v1/roles/stats',
   },
-  
-  // Permisos
+
+  // Permisos (auth-service)
   PERMISSIONS: {
-    BASE: '/permissions',
-    BY_ID: (id: string) => `/permissions/${id}`,
-    BY_CATEGORY: '/permissions/by-category',
-    BULK_ASSIGN: '/permissions/bulk-assign',
-    CHECK: '/permissions/check',
+    BASE: '/auth/api/v1/permissions',
+    BY_ID: (id: string) => `/auth/api/v1/permissions/${id}`,
+    BY_CATEGORY: '/auth/api/v1/permissions/by-category',
+    BULK_ASSIGN: '/auth/api/v1/permissions/bulk-assign',
+    CHECK: '/auth/api/v1/permissions/check',
   },
-  
-  // Auditoría
+
+  // Auditoría (futuro audit-service)
   AUDIT: {
-    BASE: '/audit',
-    BY_ID: (id: string) => `/audit/${id}`,
-    EVENTS: '/audit/events',
-    STATS: '/audit/stats',
-    TIMELINE: '/audit/timeline',
-    EXPORT: '/audit/export',
-    BY_USER: (userId: string) => `/audit/user/${userId}`,
-    BY_ENTITY: (entityType: string, entityId: string) => `/audit/${entityType}/${entityId}`,
+    BASE: '/audit/api/v1',
+    BY_ID: (id: string) => `/audit/api/v1/${id}`,
+    EVENTS: '/audit/api/v1/events',
+    STATS: '/audit/api/v1/stats',
+    TIMELINE: '/audit/api/v1/timeline',
+    EXPORT: '/audit/api/v1/export',
+    BY_USER: (userId: string) => `/audit/api/v1/user/${userId}`,
+    BY_ENTITY: (entityType: string, entityId: string) => `/audit/api/v1/${entityType}/${entityId}`,
   },
-  
-  // Dashboard y Reportes
+
+  // Dashboard y Reportes (futuro dashboard-service)
   DASHBOARD: {
-    EXECUTIVE: '/dashboard/executive',
-    STATS: '/dashboard/stats',
-    KPI: '/dashboard/kpi',
-    CHARTS: '/dashboard/charts',
-    EXPORT: '/dashboard/export',
+    EXECUTIVE: '/dashboard/api/v1/executive',
+    STATS: '/dashboard/api/v1/stats',
+    KPI: '/dashboard/api/v1/kpi',
+    CHARTS: '/dashboard/api/v1/charts',
+    EXPORT: '/dashboard/api/v1/export',
   },
-  
-  // Reportes
+
+  // Reportes (futuro reports-service)
   REPORTS: {
-    BASE: '/reports',
-    GENERATE: '/reports/generate',
-    BY_ID: (id: string) => `/reports/${id}`,
-    DOWNLOAD: (id: string) => `/reports/${id}/download`,
-    SCHEDULED: '/reports/scheduled',
-    TEMPLATES: '/reports/templates',
+    BASE: '/reports/api/v1',
+    GENERATE: '/reports/api/v1/generate',
+    BY_ID: (id: string) => `/reports/api/v1/${id}`,
+    DOWNLOAD: (id: string) => `/reports/api/v1/${id}/download`,
+    SCHEDULED: '/reports/api/v1/scheduled',
+    TEMPLATES: '/reports/api/v1/templates',
   },
-  
-  // Notificaciones
+
+  // Notificaciones (notificaciones-service)
   NOTIFICATIONS: {
-    BASE: '/notifications',
-    BY_ID: (id: string) => `/notifications/${id}`,
-    MARK_READ: (id: string) => `/notifications/${id}/read`,
-    MARK_ALL_READ: '/notifications/read-all',
-    UNREAD_COUNT: '/notifications/unread-count',
+    BASE: '/notificaciones/api/v1',
+    BY_ID: (id: string) => `/notificaciones/api/v1/${id}`,
+    MARK_READ: (id: string) => `/notificaciones/api/v1/${id}/read`,
+    MARK_ALL_READ: '/notificaciones/api/v1/read-all',
+    UNREAD_COUNT: '/notificaciones/api/v1/unread-count',
   },
-  
-  // Configuración
+
+  // Configuración (futuro settings-service)
   SETTINGS: {
-    BASE: '/settings',
-    SYSTEM: '/settings/system',
-    USER_PREFERENCES: '/settings/preferences',
-    THEME: '/settings/theme',
-    NOTIFICATIONS_SETTINGS: '/settings/notifications',
+    BASE: '/settings/api/v1',
+    SYSTEM: '/settings/api/v1/system',
+    USER_PREFERENCES: '/settings/api/v1/preferences',
+    THEME: '/settings/api/v1/theme',
+    NOTIFICATIONS_SETTINGS: '/settings/api/v1/notifications',
   },
-  
-  // Upload de archivos
+
+  // Upload de archivos (futuro upload-service)
   UPLOAD: {
-    IMAGE: '/upload/image',
-    DOCUMENT: '/upload/document',
-    BULK: '/upload/bulk',
-    AVATAR: '/upload/avatar',
+    IMAGE: '/upload/api/v1/image',
+    DOCUMENT: '/upload/api/v1/document',
+    BULK: '/upload/api/v1/bulk',
+    AVATAR: '/upload/api/v1/avatar',
+  },
+
+  // Certificados (certificados-service)
+  CERTIFICADOS: {
+    BASE: '/certificados/api/v1',
+    GENERATE: '/certificados/api/v1/generate',
+    BY_ID: (id: string) => `/certificados/api/v1/${id}`,
+    DOWNLOAD: (id: string) => `/certificados/api/v1/${id}/download`,
+    VERIFY: (code: string) => `/certificados/api/v1/verify/${code}`,
   },
 };
 
 // Headers comunes para todas las requests
 export const getDefaultHeaders = (includeAuth = true): HeadersInit => {
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Accept': 'application/json; charset=utf-8',
     'X-Client-Version': '1.0.0',
     'X-Client-Platform': 'web',
   };

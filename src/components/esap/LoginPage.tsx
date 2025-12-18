@@ -5,9 +5,10 @@ import { toast } from 'sonner@2.0.3';
 import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { authService } from '../../services/api/authService';
 
 interface LoginPageProps {
-  onLogin: (email: string, password: string, rememberMe?: boolean) => void;
+  onLogin: (user: any, accessToken: string, rememberMe?: boolean) => void;
   onBackToHome?: () => void;
 }
 
@@ -63,8 +64,11 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    console.log('🚀 Starting login process');
+
     if (!validateForm()) {
+      console.log('❌ Form validation failed');
       toast.error('Por favor corrija los errores en el formulario');
       return;
     }
@@ -72,10 +76,22 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     setIsLoading(true);
 
     try {
-      // Simular autenticación con delay realista
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      
-      // Validar credenciales específicas
+      console.log('📡 Calling authService.login with:', {
+        email: email.toLowerCase(),
+        password: password ? '***' : '',
+        rememberMe
+      });
+
+      // Llamar a la API de autenticación real
+      const response = await authService.login({
+        email: email.toLowerCase(),
+        password,
+        rememberMe,
+      });
+
+      console.log('✅ Auth service response:', response);
+
+      // Determinar el tipo de usuario basado en el email para mostrar mensaje personalizado
       const emailLower = email.toLowerCase();
       const validCredentials = [
         { email: 'superuser@esap.edu.co', password: '123456', type: 'superuser' },
@@ -88,40 +104,44 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         { email: 'ar.empresarial@esap.edu.co', password: '123456', type: 'arquitectura' },
         { email: 'arqempresarial@esap.edu.co', password: '123456', type: 'arquitectura' },
         { email: 'planta@esap.edu.co', password: '123456', type: 'planta-profesoral' }, // ✅ NUEVO: Gestión Profesoral
-        { email: 'gestion.legal@esap.edu.co', password: '123456', type: 'gestion-legal' }, // ✅ NUEVO: Gestión Legal
-        { email: 'c.internoge@esap.edu.co', password: '123456', type: 'control-interno' }, // ✅ NUEVO: Control Interno
       ];
 
-      // Verificar si el email existe en las credenciales válidas
-      const userExists = validCredentials.find(cred => cred.email === emailLower);
+      // // Verificar si el email existe en las credenciales válidas
+      // const userExists = validCredentials.find(cred => cred.email === emailLower);
 
-      if (!userExists) {
-        // El usuario no existe
-        toast.error('Usuario no encontrado', {
-          description: '❌ El correo electrónico ingresado no está registrado. Por favor verifica tu usuario.',
-          duration: 5000,
-        });
-        setErrors({ ...errors, email: 'Este usuario no está registrado' });
-        setIsLoading(false);
-        return;
-      }
+      // if (!userExists) {
+      //   // El usuario no existe
+      //   toast.error('Usuario no encontrado', {
+      //     description: '❌ El correo electrónico ingresado no está registrado. Por favor verifica tu usuario.',
+      //     duration: 5000,
+      //   });
+      //   setErrors({ ...errors, email: 'Este usuario no está registrado' });
+      //   setIsLoading(false);
+      //   return;
+      // }
 
-      // El usuario existe, verificar la contraseña
-      if (userExists.password !== password) {
-        // La contraseña es incorrecta
-        toast.error('Contraseña incorrecta', {
-          description: '🔑 La contraseña ingresada no es válida. Por favor verifica tu contraseña.',
-          duration: 5000,
-        });
-        setErrors({ ...errors, password: 'La contraseña es incorrecta' });
-        setIsLoading(false);
-        return;
-      }
+      // // El usuario existe, verificar la contraseña
+      // if (userExists.password !== password) {
+      //   // La contraseña es incorrecta
+      //   toast.error('Contraseña incorrecta', {
+      //     description: '🔑 La contraseña ingresada no es válida. Por favor verifica tu contraseña.',
+      //     duration: 5000,
+      //   });
+      //   setErrors({ ...errors, password: 'La contraseña es incorrecta' });
+      //   setIsLoading(false);
+      //   return;
+      // }
 
-      // Si llegamos aquí, las credenciales son válidas
-      if (emailLower === 'superuser@esap.edu.co' || emailLower === 'rector@esap.edu.co' || emailLower === 'director@esap.edu.co') {
+      // // Si llegamos aquí, las credenciales son válidas
+      // if (emailLower === 'superuser@esap.edu.co' || emailLower === 'rector@esap.edu.co' || emailLower === 'director@esap.edu.co') {
+      //   toast.success('⭐ ¡Bienvenido Super User!', {
+      //     description: 'Acceso a AMBOS sistemas concedido - Backoffice + Portal',
+      //     duration: 3500,
+      //   });
+      // } else if (emailLower === 'admin@esap.edu.co') {
+      if (emailLower === 'superuser@esap.edu.co') {
         toast.success('⭐ ¡Bienvenido Super User!', {
-          description: 'Acceso a AMBOS sistemas concedido - Backoffice + Portal',
+          description: 'Acceso al Backoffice Administrativo concedido',
           duration: 3500,
         });
       } else if (emailLower === 'admin@esap.edu.co') {
@@ -129,7 +149,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           description: 'Acceso al Backoffice Administrativo concedido',
           duration: 3500,
         });
-      } else if (emailLower === 'estudiantes@esap.edu.co') {
+      } else if (emailLower === 'estudiante@esap.edu.co') {
         toast.success('🎓 ¡Bienvenido Estudiante!', {
           description: 'Acceso al Portal Transaccional concedido',
           duration: 3500,
@@ -154,24 +174,37 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           description: 'Acceso a la Gestión Profesoral concedido',
           duration: 3500,
         });
-      } else if (emailLower === 'gestion.legal@esap.edu.co') {
-        toast.success('⚖️ ¡Bienvenido Gestión Legal!', {
-          description: 'Acceso a la Gestión Legal concedido',
-          duration: 3500,
+      }
+
+      console.log('🔄 Calling onLogin handler with user data');
+      // Pasar los datos del usuario autenticado al handler de login
+      onLogin(response.user, response.accessToken, rememberMe);
+      console.log('✅ onLogin handler completed');
+
+    } catch (error: any) {
+      console.error('❌ Error de autenticación:', error);
+
+      // Manejar diferentes tipos de errores
+      if (error.response?.status === 401) {
+        toast.error('Credenciales incorrectas', {
+          description: 'El correo electrónico o contraseña son incorrectos.',
+          duration: 5000,
         });
-      } else if (emailLower === 'c.internoge@esap.edu.co') {
-        toast.success('🔍 ¡Bienvenido Control Interno!', {
-          description: 'Acceso al Módulo de Control Interno concedido',
-          duration: 3500,
+        setErrors({
+          email: 'Verifica tu correo electrónico',
+          password: 'Verifica tu contraseña'
+        });
+      } else if (error.response?.status === 400) {
+        toast.error('Datos inválidos', {
+          description: 'Por favor verifica la información ingresada.',
+          duration: 5000,
+        });
+      } else {
+        toast.error('Error de conexión', {
+          description: `Error: ${error.message || 'Desconocido'}`,
+          duration: 5000,
         });
       }
-      
-      // Pasar rememberMe al handler de login
-      onLogin(email, password, rememberMe);
-    } catch (error) {
-      toast.error('Error al iniciar sesión', {
-        description: 'Ocurrió un error inesperado. Intenta nuevamente.',
-      });
     } finally {
       setIsLoading(false);
     }

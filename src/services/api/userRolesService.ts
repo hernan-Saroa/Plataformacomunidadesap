@@ -1,5 +1,40 @@
-import { apiClient } from './client';
-import type { UserRole, CreateRoleData, DeactivateRoleData } from './types';
+import { apiClient } from './apiClient';
+
+// Prefijo del servicio en el API Gateway
+// Nueva estructura: /{service}/api/v{version}/{path}
+const SERVICE_PREFIX = '/auth/api/v1';
+
+// Types
+export interface UserRole {
+  id_rol_usuario: string;
+  id_usuario: string;
+  tipo_rol: 'Aspirante' | 'Estudiante' | 'Docente' | 'Administrativo' | 'Graduado';
+  esta_activo: boolean;
+  es_rol_principal: boolean;
+  fecha_activacion: string;
+  fecha_desactivacion?: string;
+  fecha_expiracion?: string;
+  motivo_activacion: string;
+  motivo_desactivacion?: string;
+  observaciones?: string;
+  datos_rol?: Record<string, any>;
+  activado_por?: string;
+  activado_por_nombre?: string;
+  desactivado_por?: string;
+  desactivado_por_nombre?: string;
+}
+
+export interface CreateRoleData {
+  tipo_rol: string;
+  motivo_activacion: string;
+  es_rol_principal?: boolean;
+  datos_rol?: Record<string, any>;
+  fecha_expiracion?: string;
+}
+
+export interface DeactivateRoleData {
+  motivo_desactivacion: string;
+}
 
 export const userRolesService = {
   /**
@@ -10,7 +45,7 @@ export const userRolesService = {
     historicos: UserRole[];
   }> => {
     try {
-      const response = await apiClient.get(`/users/${userId}/roles`);
+      const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/roles`);
       return response.data;
     } catch (error) {
       console.error('Error fetching user roles:', error);
@@ -23,7 +58,7 @@ export const userRolesService = {
    */
   getActiveRoles: async (userId: string): Promise<UserRole[]> => {
     try {
-      const response = await apiClient.get(`/users/${userId}/roles/active`);
+      const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/roles/active`);
       return response.data;
     } catch (error) {
       console.error('Error fetching active roles:', error);
@@ -36,7 +71,7 @@ export const userRolesService = {
    */
   getPrincipalRole: async (userId: string): Promise<UserRole | null> => {
     try {
-      const response = await apiClient.get(`/users/${userId}/roles/principal`);
+      const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/roles/principal`);
       return response.data;
     } catch (error) {
       console.error('Error fetching principal role:', error);
@@ -49,7 +84,7 @@ export const userRolesService = {
    */
   addRole: async (userId: string, data: CreateRoleData): Promise<UserRole> => {
     try {
-      const response = await apiClient.post(`/users/${userId}/roles`, data);
+      const response = await apiClient.post(`${SERVICE_PREFIX}/users/${userId}/roles`, data);
       return response.data;
     } catch (error) {
       console.error('Error adding role:', error);
@@ -61,13 +96,13 @@ export const userRolesService = {
    * Desactivar un rol
    */
   deactivateRole: async (
-    userId: string, 
-    roleId: string, 
+    userId: string,
+    roleId: string,
     data: DeactivateRoleData
   ): Promise<{ success: boolean }> => {
     try {
       const response = await apiClient.put(
-        `/users/${userId}/roles/${roleId}/deactivate`, 
+        `${SERVICE_PREFIX}/users/${userId}/roles/${roleId}/deactivate`,
         data
       );
       return response.data;
@@ -82,7 +117,7 @@ export const userRolesService = {
    */
   setPrincipalRole: async (userId: string, roleId: string): Promise<{ success: boolean }> => {
     try {
-      const response = await apiClient.put(`/users/${userId}/roles/${roleId}/set-principal`);
+      const response = await apiClient.put(`${SERVICE_PREFIX}/users/${userId}/roles/${roleId}/set-principal`);
       return response.data;
     } catch (error) {
       console.error('Error setting principal role:', error);
@@ -94,13 +129,13 @@ export const userRolesService = {
    * Actualizar datos de un rol
    */
   updateRoleData: async (
-    userId: string, 
-    roleId: string, 
+    userId: string,
+    roleId: string,
     datos_rol: Record<string, any>
   ): Promise<UserRole> => {
     try {
       const response = await apiClient.put(
-        `/users/${userId}/roles/${roleId}/data`, 
+        `${SERVICE_PREFIX}/users/${userId}/roles/${roleId}/data`,
         { datos_rol }
       );
       return response.data;
@@ -115,7 +150,7 @@ export const userRolesService = {
    */
   getRoleHistory: async (userId: string): Promise<UserRole[]> => {
     try {
-      const response = await apiClient.get(`/users/${userId}/roles/history`);
+      const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/roles/history`);
       return response.data;
     } catch (error) {
       console.error('Error fetching role history:', error);
@@ -140,7 +175,7 @@ export const userRolesService = {
     }>;
   }> => {
     try {
-      const response = await apiClient.get('/users/roles/stats');
+      const response = await apiClient.get(`${SERVICE_PREFIX}/users/roles/stats`);
       return response.data;
     } catch (error) {
       console.error('Error fetching role stats:', error);
@@ -152,16 +187,16 @@ export const userRolesService = {
    * Validar si un usuario puede tener un rol específico
    */
   validateRole: async (
-    userId: string, 
+    userId: string,
     tipoRol: string
-  ): Promise<{ 
-    puede_agregar: boolean; 
-    motivo?: string; 
-    conflictos?: string[] 
+  ): Promise<{
+    puede_agregar: boolean;
+    motivo?: string;
+    conflictos?: string[]
   }> => {
     try {
-      const response = await apiClient.post(`/users/${userId}/roles/validate`, { 
-        tipo_rol: tipoRol 
+      const response = await apiClient.post(`${SERVICE_PREFIX}/users/${userId}/roles/validate`, {
+        tipo_rol: tipoRol
       });
       return response.data;
     } catch (error) {

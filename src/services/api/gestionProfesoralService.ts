@@ -1,9 +1,16 @@
 /**
- * Servicio de Gestión Profesoral
- * Maneja operaciones relacionadas con hojas de vida, cursos, y docentes
+ * Servicio API - Gestión Profesoral
+ * 
+ * Maneja todas las operaciones del módulo de Gestión Profesoral:
+ * - Gestión de Docentes
+ * - Planes de Trabajo Académico (PTA)
+ * - Asignaciones y Horarios
+ * - Evaluación Docente
+ * - Calendario Académico
+ * - Reportes y Analíticas
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 import type {
   // Docentes
   Docente,
