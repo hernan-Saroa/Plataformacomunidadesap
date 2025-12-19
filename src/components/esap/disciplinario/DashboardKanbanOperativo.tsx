@@ -614,9 +614,12 @@ function TarjetaProceso({
 
         <div className={`${isMobile ? 'p-2' : 'p-2.5'} flex-1 flex flex-col overflow-y-auto min-h-0`}>
           {/* Header */}
-          <div className="flex items-start justify-between mb-1.5">
+          <div
+            className="flex items-start justify-between mb-1.5 cursor-pointer hover:bg-gray-50 -mx-2.5 -mt-2.5 px-2.5 pt-2.5 pb-1.5 rounded-t-lg transition-colors"
+            onClick={() => onVerDetalles(proceso)}
+          >
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <div 
+              <div
                 className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`}
                 style={{ background: '#E0EDFF' }}
               >
@@ -1815,12 +1818,32 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [areaDestinoRemision, setAreaDestinoRemision] = useState('');
+  const STORAGE_KEY = 'kanban-disciplinario-items';
+
+  const persistItems = (data: Item[]) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.warn('No se pudo persistir items en localStorage', e);
+    }
+  };
+
+  const loadPersistedItems = (): Item[] | null => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) {
+      console.warn('No se pudo leer items persistidos', e);
+      return null;
+    }
+  };
 
   // Transformadores desde el backend real
   const stageLabelMap: Record<string, string> = {
-    EVALUACION: 'ValoraciИn',
-    INDAGACION_PREVIA: 'IndagaciИn',
-    INVESTIGACION: 'InvestigaciИn',
+    EVALUACION: 'Valoración',
+    INDAGACION_PREVIA: 'Indagación',
+    INVESTIGACION: 'Investigación',
     JUZGAMIENTO: 'Juzgamiento'
   };
 
@@ -1842,33 +1865,63 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
     const hoy = new Date();
     const dias = Math.max(1, Math.ceil((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24)));
+    const denuncianteRaw: any = (noticia as any).denunciante || {};
+    const denunciadoRaw: any = (noticia as any).disciplinable || (noticia as any).denunciado || {};
 
     return {
-      id: noticia.id,
-      numero: noticia.radicado,
+      id: (noticia as any).id || `n${Date.now()}`,
+      numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
       fechaRecepcion: fecha.toISOString().split('T')[0],
-      origen: noticia.origen || 'Noticia',
+      origen: (noticia as any).origen || 'Noticia',
       denunciante: {
-        nombre: noticia.denunciante?.nombre || 'Sin nombre',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: (noticia.denunciante as any)?.cedula || (noticia as any).denunciante?.telefono || 'N/A'
+        nombre: denuncianteRaw.nombre || 'Sin denunciante',
+        tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
+        numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.telefono || 'N/A'
       },
       denunciado: {
-        nombre: noticia.disciplinable?.nombre || 'Sin disciplinable',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: noticia.disciplinable?.cedula || 'N/A'
+        nombre: denunciadoRaw.nombre || 'Sin disciplinable',
+        tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
+        numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || 'N/A'
       },
-      hechos: noticia.hechos || '',
-      estado: mapEstadoNoticia(noticia.estado) as any,
-      prioridad: 'media',
-      diasPendientes: dias,
+      hechos: (noticia as any).hechos || '',
+      estado: mapEstadoNoticia((noticia as any).estado) as any,
+      prioridad: (noticia as any).prioridad || 'media',
+      diasPendientes: (noticia as any).diasPendientes ?? dias,
       tipo: 'noticia',
-      etapaActual: 'Recepción'
+      etapaActual: (noticia as any).etapaActual || 'Recepción'
+    };
+  };
+
+  const normalizeNoticia = (raw: any): Noticia => {
+    // Si ya es una noticia bien formada, aplicar normalización defensiva
+    const denuncianteRaw = raw.denunciante || {};
+    const denunciadoRaw = raw.denunciado || raw.disciplinable || {};
+
+    return {
+      ...raw,
+      tipo: raw.tipo || 'noticia',
+      denunciante: {
+        nombre: denuncianteRaw.nombre || 'Sin nombre',
+        tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
+        numeroIdentificacion: denuncianteRaw.numeroIdentificacion || denuncianteRaw.cedula || 'Sin identificación'
+      },
+      denunciado: {
+        nombre: denunciadoRaw.nombre || raw.disciplinable?.nombre || 'Sin nombre',
+        tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
+        numeroIdentificacion: denunciadoRaw.numeroIdentificacion || denunciadoRaw.cedula || raw.disciplinable?.cedula || 'Sin identificación',
+        cargo: denunciadoRaw.cargo || raw.disciplinable?.cargo || 'Sin cargo'
+      },
+      hechos: raw.hechos || '',
+      prioridad: raw.prioridad || 'media',
+      diasPendientes: raw.diasPendientes || 0,
+      etapaActual: raw.etapaActual || 'Recepción',
+      estado: raw.estado || 'pendiente',
+      adjuntos: raw.adjuntos || []
     };
   };
 
   const toProcesoFromApi = (proceso: ApiProceso): Proceso => {
-    const etapa = stageLabelMap[proceso.etapaActual] || 'ValoraciИn';
+    const etapa = stageLabelMap[proceso.etapaActual] || 'Valoración';
     const fechaVenc = proceso.fechaVencimientoEtapa ? new Date(proceso.fechaVencimientoEtapa) : null;
     const fechaCreacion = proceso.createdAt ? new Date(proceso.createdAt) : new Date();
     const hoy = new Date();
@@ -1919,20 +1972,40 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   // Cargar datos reales desde el microservicio (con fallback a mock)
   useEffect(() => {
     const cargarDatos = async () => {
+      // 1. Intentar cargar de localStorage primero
+      const stored = localStorage.getItem('kanban-disciplinario-items');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setItems(parsed);
+          }
+        } catch (e) {
+          console.error('Error parsing localStorage data:', e);
+        }
+      }
+
+      // 2. Cargar desde backend para actualizar
       try {
-        const [procesosApi, noticiasApi] = await Promise.all([
-          disciplinaryService.getAllProcesos(),
-          disciplinaryService.getAllNoticias()
+        const [noticiasApi, procesosApi] = await Promise.all([
+          disciplinaryService.getAllNoticias(),
+          disciplinaryService.getAllProcesos()
         ]);
 
-        const mappedNoticias = (noticiasApi || []).map(toNoticiaFromApi);
+        const mappedNoticias = (noticiasApi || []).map(toNoticiaFromApi).map(normalizeNoticia);
         const mappedProcesos = (procesosApi || []).map(toProcesoFromApi);
+        const normalized = [...mappedNoticias, ...mappedProcesos];
 
-        setItems([...mappedNoticias, ...mappedProcesos]);
+        setItems(normalized);
+        localStorage.setItem('kanban-disciplinario-items', JSON.stringify(normalized));
       } catch (error) {
         console.error('Error cargando datos reales de disciplinario', error);
         toast.error('No fue posible cargar datos reales, se muestran datos demo.');
-        setItems([...NOTICIAS_MOCK, ...PROCESOS_MOCK]);
+        const fallbackNoticias = NOTICIAS_MOCK.map(normalizeNoticia);
+        const fallbackProcesos = PROCESOS_MOCK;
+        const fallback = [...fallbackNoticias, ...fallbackProcesos];
+        setItems(fallback);
+        localStorage.setItem('kanban-disciplinario-items', JSON.stringify(fallback));
       }
     };
 
@@ -1979,47 +2052,149 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 }
   ];
 
-  // ==================== HANDLERS ====================
-  const handleDropItem = (item: Item, nuevaEtapa: string) => {
-    // Movimiento libre de noticias y procesos entre columnas
-    if (item.tipo === 'proceso' && item.etapaActual !== nuevaEtapa) {
-      setItems(prev => prev.map(i => 
-        i.id === item.id && i.tipo === 'proceso'
-          ? { ...i, etapaActual: nuevaEtapa as any }
-          : i
-      ));
-      toast.success('Proceso Movido', {
-        description: `${item.numeroProceso} → ${nuevaEtapa}`
-      });
-    } else if (item.tipo === 'noticia') {
-      setItems(prev => prev.map(i =>
-        i.id === item.id && i.tipo === 'noticia'
-          ? { ...i, etapaActual: nuevaEtapa }
-          : i
-      ));
+  const mapearOrigenNoticia = (valor: string) => {
+    const limpio = (valor || '').toString().trim().toUpperCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    switch (limpio) {
+      case 'QUEJOSO':
+        return 'QUEJOSO';
+      case 'ANONIMO':
+        return 'ANONIMO';
+      case 'INFORMANTE':
+      case 'OFICIO':
+      case 'DE OFICIO':
+        return 'OFICIO';
+      case 'REMISION':
+      case 'REMISION POR COMPETENCIA':
+        return 'REMISION';
+      default:
+        return 'ANONIMO';
     }
   };
 
-  const handleCrearNoticia = (data: any) => {
-    const nuevaNoticia: Noticia = {
-      id: `n${Date.now()}`,
-      numero: `ND-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
-      fechaRecepcion: new Date().toISOString().split('T')[0],
-      origen: data.origen || 'Denuncia Ciudadana',
-      denunciado: data.denunciado?.nombre || '',
-      hechos: data.descripcionHechos || '',
-      estado: 'pendiente',
-      prioridad: 'media',
-      diasPendientes: 0,
-      tipo: 'noticia',
-      etapaActual: 'Recepción'
+  // ==================== HANDLERS ====================
+  const handleDropItem = async (item: Item, nuevaEtapa: string) => {
+    if (!item) return;
+
+    // Movimiento libre de noticias y procesos entre columnas con persistencia
+    const etapaMap: Record<string, string> = {
+      'Recepción': 'EVALUACION',
+      'Valoración': 'EVALUACION',
+      'Indagación': 'INDAGACION_PREVIA',
+      'Investigación': 'INVESTIGACION',
+      'Juzgamiento': 'JUZGAMIENTO',
+      'Fallo': 'JUZGAMIENTO'
     };
 
-    setItems(prev => [...prev, nuevaNoticia]);
-    toast.success('Noticia Creada', {
-      description: `${nuevaNoticia.numero} en Recepción`
+    // Actualizar estado local inmediatamente
+    setItems(prev => {
+      const updated = prev.map(i =>
+        i.id === item.id ? { ...i, etapaActual: nuevaEtapa as any } : i
+      );
+      localStorage.setItem('kanban-disciplinario-items', JSON.stringify(updated));
+      return updated;
     });
-    setModalActivo(null);
+
+    // Si es proceso, actualizar backend
+    if (item.tipo === 'proceso') {
+      const backendStage = etapaMap[nuevaEtapa];
+      if (backendStage) {
+        try {
+          await disciplinaryService.cambiarEtapa(item.id, backendStage);
+          toast.success('Proceso Movido', {
+            description: `${item.numeroProceso} → ${nuevaEtapa}`
+          });
+        } catch (error) {
+          console.error('Error actualizando etapa en backend:', error);
+          toast.error('No se pudo actualizar en el servidor');
+        }
+      }
+    } else if (item.tipo === 'noticia') {
+      toast.success('Noticia Movida', {
+        description: `${item.numero} → ${nuevaEtapa}`
+      });
+    }
+  };
+
+  const handleCrearNoticia = async (data: any) => {
+    const denuncianteFromForm = data.denunciantes?.[0] || {};
+    const denunciadoFromForm = data.denunciado || {};
+
+    try {
+      // Subir evidencias (si hay)
+      const urls: string[] = [];
+      if (data.evidencias?.length > 0) {
+        for (const file of data.evidencias) {
+          try {
+            const uploaded = await disciplinaryService.uploadFile(file);
+            if (uploaded?.url) {
+              urls.push(uploaded.url);
+            }
+          } catch (uploadError) {
+            console.error('Error uploading file:', uploadError);
+            toast.warning(`No se pudo subir el archivo: ${file.name}`);
+          }
+        }
+      }
+
+      // También revisar archivosAdjuntos por compatibilidad
+      if (data.archivosAdjuntos && Array.isArray(data.archivosAdjuntos)) {
+        for (const file of data.archivosAdjuntos as File[]) {
+          try {
+            const uploaded = await disciplinaryService.uploadFile(file);
+            if (uploaded?.url) {
+              urls.push(uploaded.url);
+            }
+          } catch (uploadError) {
+            console.error('Error uploading file:', uploadError);
+            toast.warning(`No se pudo subir el archivo: ${file.name}`);
+          }
+        }
+      }
+
+      const emailDen = (denuncianteFromForm.correo || denuncianteFromForm.email || '').trim();
+      const denunciantePayload: any = {
+        nombre: denuncianteFromForm.nombre || 'Sin denunciante',
+        cedula: denuncianteFromForm.identificacion || denuncianteFromForm.numeroIdentificacion || 'N/A',
+        cargo: denuncianteFromForm.cargo,
+      };
+      if (emailDen && emailDen.includes('@')) {
+        denunciantePayload.email = emailDen;
+      }
+
+      const payload = {
+        origen: mapearOrigenNoticia(data.origen || 'QUEJOSO'),
+        territorial: data.territorial || 'Dirección Nacional',
+        dependenciaDenunciado: denunciadoFromForm.dependencia || 'Por determinar',
+        hechos: data.descripcionHechos || '',
+        denunciante: [denunciantePayload],
+        disciplinable: [{
+          nombre: denunciadoFromForm.nombre || 'Sin denunciado',
+          cedula: denunciadoFromForm.identificacion || denunciadoFromForm.numeroIdentificacion || 'N/A',
+          cargo: denunciadoFromForm.cargo,
+        }],
+        adjuntos: urls,
+      };
+
+      const apiNoticia = await disciplinaryService.radicarNoticia(payload as any);
+      const nuevaNoticia = normalizeNoticia(apiNoticia);
+
+      setItems(prev => {
+        const updated = [...prev, nuevaNoticia];
+        localStorage.setItem('kanban-disciplinario-items', JSON.stringify(updated));
+        return updated;
+      });
+
+      toast.success('Noticia creada correctamente', {
+        description: `${nuevaNoticia.numero} en Recepción`
+      });
+    } catch (error) {
+      console.error('Error al crear noticia', error);
+      toast.error('Error al crear la noticia');
+    } finally {
+      setModalActivo(null);
+    }
   };
 
   const handleConvertirNoticia = (noticia: Noticia) => {
@@ -2548,7 +2723,14 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
         {/* MODALES - (mantener igual pero responsive) */}
         <AnimatePresence>
-          {modalActivo && (
+          {modalActivo && itemSeleccionado && (() => {
+            // Normalizar item seleccionado para evitar crashes por campos undefined
+            // Solo normalizar si los campos críticos están undefined
+            const itemSeguro = (itemSeleccionado.denunciante && itemSeleccionado.denunciado)
+              ? itemSeleccionado
+              : normalizeNoticia(itemSeleccionado);
+
+            return (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -2566,16 +2748,8 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                   maxWidth: isMobile ? 'calc(100vw - 2rem)' : '32rem'
                 }}
               >
-                {/* Modal: Crear Noticia */}
-                {modalActivo === 'crear-noticia' && (
-                  <CreateNoticiaModal
-                    onClose={() => setModalActivo(null)}
-                    onSave={handleCrearNoticia}
-                  />
-                )}
-
                 {/* Modal: Convertir a Proceso */}
-                {modalActivo === 'convertir-proceso' && itemSeleccionado && (
+                {modalActivo === 'convertir-proceso' && itemSeguro && (
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
@@ -2599,17 +2773,17 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                         <div className="flex items-center gap-2 mb-2">
                           <FileText className="w-4 h-4 text-orange-600" />
                           <p className="text-sm font-bold text-orange-700">
-                            {itemSeleccionado.numero}
+                            {itemSeguro.numero}
                           </p>
                         </div>
                         <p className="font-bold text-gray-900 mb-1">
-                          {itemSeleccionado.denunciado.nombre}
+                          {itemSeguro.denunciado.nombre}
                         </p>
                         <p className="text-xs text-gray-600 mb-2">
-                          {itemSeleccionado.denunciado.tipoIdentificacion} {itemSeleccionado.denunciado.numeroIdentificacion}
+                          {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
                         </p>
                         <p className="text-sm text-gray-600 line-clamp-2">
-                          {itemSeleccionado.hechos}
+                          {itemSeguro.hechos}
                         </p>
                       </div>
 
@@ -2664,7 +2838,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 )}
 
                 {/* Modal: Devolver Noticia */}
-                {modalActivo === 'devolver-noticia' && itemSeleccionado && (
+                {modalActivo === 'devolver-noticia' && itemSeguro && (
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
@@ -2682,10 +2856,10 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
                     <div className="space-y-4">
                       <div className="p-4 bg-yellow-50 rounded-xl border-2 border-yellow-200">
-                        <p className="text-sm font-bold mb-1">{itemSeleccionado.numero}</p>
-                        <p className="text-sm text-gray-700">{itemSeleccionado.denunciado.nombre}</p>
+                        <p className="text-sm font-bold mb-1">{itemSeguro.numero}</p>
+                        <p className="text-sm text-gray-700">{itemSeguro.denunciado.nombre}</p>
                         <p className="text-xs text-gray-600">
-                          {itemSeleccionado.denunciado.tipoIdentificacion} {itemSeleccionado.denunciado.numeroIdentificacion}
+                          {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
                         </p>
                       </div>
 
@@ -2715,7 +2889,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 )}
 
                 {/* Modal: Devolver por Competencia */}
-                {modalActivo === 'devolver-competencia' && itemSeleccionado && (
+                {modalActivo === 'devolver-competencia' && itemSeguro && (
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
@@ -2733,10 +2907,10 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
                     <div className="space-y-4">
                       <div className="p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
-                        <p className="text-sm font-bold mb-1 text-purple-900">{itemSeleccionado.numero}</p>
-                        <p className="text-sm text-gray-700">{itemSeleccionado.denunciado.nombre}</p>
+                        <p className="text-sm font-bold mb-1 text-purple-900">{itemSeguro.numero}</p>
+                        <p className="text-sm text-gray-700">{itemSeguro.denunciado.nombre}</p>
                         <p className="text-xs text-gray-600">
-                          {itemSeleccionado.denunciado.tipoIdentificacion} {itemSeleccionado.denunciado.numeroIdentificacion}
+                          {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
                         </p>
                       </div>
 
@@ -2805,7 +2979,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 {/* Modal: Archivar Noticia - REEMPLAZADO POR COMPONENTE MODAL COMPLETO */}
 
                 {/* Modal: Aprobar Borrador */}
-                {modalActivo === 'aprobar-borrador' && itemSeleccionado && (
+                {modalActivo === 'aprobar-borrador' && itemSeguro && (
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
@@ -2844,7 +3018,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 )}
 
                 {/* Modal: Ver Detalles del Proceso - COMPLETO CON EDITOR */}
-                {modalActivo === 'ver-detalles' && itemSeleccionado && (
+                {modalActivo === 'ver-detalles' && itemSeguro && (
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
@@ -2852,7 +3026,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                           <Eye className="w-6 h-6" style={{ color: '#003DA5' }} />
                         </div>
                         <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black`} style={{ color: '#003DA5' }}>
-                          {itemSeleccionado.tipo === 'noticia' ? 'Detalles de la Noticia' : 'Detalles del Proceso'}
+                          {itemSeguro.tipo === 'noticia' ? 'Detalles de la Noticia' : 'Detalles del Proceso'}
                         </h3>
                       </div>
                       <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
@@ -2862,11 +3036,11 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto">
                       {/* VISTA PARA NOTICIAS */}
-                      {itemSeleccionado.tipo === 'noticia' && (
+                      {itemSeguro.tipo === 'noticia' && (
                         <>
                           {/* Información de la Noticia */}
                           <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
-                            <h4 className="font-bold text-orange-900 mb-2">{(itemSeleccionado as Noticia).numero}</h4>
+                            <h4 className="font-bold text-orange-900 mb-2">{(itemSeguro as Noticia).numero}</h4>
                             <div className="grid grid-cols-2 gap-2 text-sm">
                               <div>
                                 <p className="text-gray-600">Origen:</p>
@@ -2900,10 +3074,17 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                               👤 DENUNCIANTE
                             </h5>
                             <div className="p-3 bg-gray-50 rounded-lg space-y-1">
-                              <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).denunciante.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Noticia).denunciante.tipoIdentificacion}:</span> {(itemSeleccionado as Noticia).denunciante.numeroIdentificacion}
-                              </p>
+                              {(() => {
+                                const den = (itemSeleccionado as Noticia).denunciante || { nombre: 'Sin denunciante', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
+                                return (
+                                  <>
+                                    <p className="font-bold text-gray-900">{den.nombre}</p>
+                                    <p className="text-sm text-gray-600">
+                                      <span className="font-semibold">{den.tipoIdentificacion}:</span> {den.numeroIdentificacion}
+                                    </p>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -2913,10 +3094,17 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                               ⚠️ DENUNCIADO
                             </h5>
                             <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
-                              <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).denunciado.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Noticia).denunciado.tipoIdentificacion}:</span> {(itemSeleccionado as Noticia).denunciado.numeroIdentificacion}
-                              </p>
+                              {(() => {
+                                const den = (itemSeleccionado as Noticia).denunciado || { nombre: 'Sin denunciado', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
+                                return (
+                                  <>
+                                    <p className="font-bold text-gray-900">{den.nombre}</p>
+                                    <p className="text-sm text-gray-600">
+                                      <span className="font-semibold">{den.tipoIdentificacion}:</span> {den.numeroIdentificacion}
+                                    </p>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -2931,7 +3119,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                       )}
 
                       {/* VISTA PARA PROCESOS */}
-                      {itemSeleccionado.tipo === 'proceso' && (
+                      {itemSeguro.tipo === 'proceso' && (
                         <>
                           {/* Información del Proceso */}
                           <div className="p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
@@ -3191,6 +3379,17 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 )}
               </motion.div>
             </motion.div>
+            );
+          })()}
+        </AnimatePresence>
+
+        {/* MODAL: CREAR NOTICIA (sin depender de itemSeleccionado) */}
+        <AnimatePresence>
+          {modalActivo === 'crear-noticia' && (
+            <CreateNoticiaModal
+              onClose={() => setModalActivo(null)}
+              onSave={handleCrearNoticia}
+            />
           )}
         </AnimatePresence>
 
@@ -3335,5 +3534,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     </DndProvider>
   );
 }
+
+
 
 
