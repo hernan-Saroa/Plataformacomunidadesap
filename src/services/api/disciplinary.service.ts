@@ -147,6 +147,10 @@ class DisciplinaryService {
 
     // --- AUTOS ---
 
+    async getAllAutos(): Promise<LegalAuto[]> {
+        return apiClient.get<LegalAuto[]>(`${SERVICE_PREFIX}/disciplinary-autos`);
+    }
+
     async getAutosPorProceso(processId: string): Promise<LegalAuto[]> {
         return apiClient.get<LegalAuto[]>(`${SERVICE_PREFIX}/disciplinary-autos/by-process/${processId}`);
     }
