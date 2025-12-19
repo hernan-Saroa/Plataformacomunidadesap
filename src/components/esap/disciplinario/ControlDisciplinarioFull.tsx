@@ -760,7 +760,7 @@ export function ControlDisciplinarioFull() {
       breadcrumb={['Backoffice', 'Control Interno Disciplinario', getTitleForSection()]}
     >
       {/* Contenido Principal */}
-      {currentSection === 'dashboard' && <DashboardKanbanOperativo />}
+      {currentSection === 'dashboard' && <DashboardKanbanOperativo onNavigateToExpediente={() => setCurrentSection('expediente')} />}
       {currentSection === 'noticias' && <GestionNoticias />}
       {currentSection === 'aprobacion' && <RevisionAprobacionJefe />}
       {currentSection === 'expediente' && <ExpedienteElectronico />}

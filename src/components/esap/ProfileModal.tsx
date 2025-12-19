@@ -614,13 +614,24 @@ export function ProfileModal({
                 <span className="text-[9px] md:text-[10px] text-gray-600 font-semibold">Sesión activa vía Office 365</span>
               </div>
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevenir propagación del evento
+                  console.log('🔴 Botón Cerrar Sesión clickeado');
                   if (onLogout) {
+                    console.log('✅ Ejecutando onLogout');
                     onClose(); // Cerrar el drawer primero
-                    setTimeout(() => onLogout(), 200); // Ejecutar logout con pequeño delay
+                    setTimeout(() => {
+                      onLogout();
+                    }, 200); // Ejecutar logout con pequeño delay
+                  } else {
+                    console.log('❌ No hay onLogout definido');
+                    toast.error('Error al cerrar sesión', {
+                      description: 'No se pudo cerrar la sesión. Intenta de nuevo.',
+                    });
                   }
                 }}
-                className="flex items-center gap-1 px-2 py-1 md:px-2.5 md:py-1.5 text-[9px] md:text-[10px] font-bold text-red-600 hover:text-red-700 hover:bg-red-50 border-2 border-transparent hover:border-red-200 rounded-lg transition-all active:scale-95 shadow-sm hover:shadow-md"
+                className="flex items-center gap-1 px-2 py-1 md:px-2.5 md:py-1.5 text-[9px] md:text-[10px] font-bold text-red-600 hover:text-red-700 hover:bg-red-50 border-2 border-transparent hover:border-red-200 rounded-lg transition-all active:scale-95 shadow-sm hover:shadow-md cursor-pointer"
+                type="button"
               >
                 <LogOut className="w-2.5 h-2.5 md:w-3 md:h-3" />
                 Cerrar Sesión

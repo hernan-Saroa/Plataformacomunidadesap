@@ -9,12 +9,9 @@ import { TopBar } from './TopBar';
 import { ExecutiveDashboard } from './ExecutiveDashboard';
 import { UsersPersonsModulePremium } from './UsersPersonsModulePremium';
 import { CarpetaDigitalModule } from './CarpetaDigitalModule';
-import { RolesPermissionsModuleComplete } from './RolesPermissionsModuleComplete';
 import { ReportsModuleV2 } from './ReportsModuleV2';
 import { AuditModulePremium } from './AuditModulePremium';
 import { GraduatesManagementModule } from './GraduatesManagementModule';
-import { GraduateVerificationModulePremium } from './GraduateVerificationModulePremium';
-import { ReviewRequestsModule } from './ReviewRequestsModule';
 import { EnrollmentManagementModule } from './EnrollmentManagementModule';
 import { CommunityManagementModulePremium } from './CommunityManagementModulePremium';
 import { CommunityPostsModuleUnified } from './CommunityPostsModuleUnified';
@@ -22,7 +19,6 @@ import { CommunityEventsModuleUnified } from './CommunityEventsModuleUnified';
 import { CommunityAnnouncementsModuleUnified } from './CommunityAnnouncementsModuleUnified';
 import { JobBoardManagementModulePremium } from './JobBoardManagementModulePremium';
 import { CertificateRequestsModule } from './CertificateRequestsModule';
-import { VerificationCertificatesModule } from './VerificationCertificatesModule';
 import { GraduateCertificatesWrapper } from './GraduateCertificatesWrapper';
 import { RolesAdministrationModulePremium } from './RolesAdministrationModulePremium';
 
@@ -35,8 +31,8 @@ import { ControlInternoFull } from './control-interno/ControlInternoFull';
 // Importar módulo de Control Disciplinario Completo (Sistema Full)
 import { ControlDisciplinarioFull } from './disciplinario/ControlDisciplinarioFull';
 
-// Importar módulo de Gestión Legal (Juzgamiento Disciplinario)
-import { GestionLegalFull } from './gestion-legal/GestionLegalFull';
+// Importar módulo de Gestión Legal (Kanban SIGL como vista principal)
+import { KanbanSIGL } from './gestion-legal/KanbanSIGL';
 
 // Importar módulo de Certificados Laborales
 import { CertificadosLaboralesRouter } from '../certificados-laborales/CertificadosLaboralesRouter';
@@ -89,6 +85,13 @@ interface BackofficeAppProps {
   onLogout?: () => void;
   onBackToSystemSelector?: () => void;
   onSystemChange?: (system: 'backoffice' | 'portal') => void;
+  usuario?: {
+    id: string;
+    nombre: string;
+    tipo: 'externo' | 'interno';
+    email: string;
+    rol?: string;
+  };
   userData?: {
     name: string;
     email: string;
@@ -99,14 +102,17 @@ interface BackofficeAppProps {
   userRoles?: string[];
 }
 
-export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, userData, userRoles }: BackofficeAppProps = {}) {
-  // Si el usuario es cerlaboral@esap.edu.co o ar.empresarial@esap.edu.co, abrir automáticamente su módulo específico
-  const initialModule = userData?.module === 'certificados-laborales' 
+export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, usuario, userData, userRoles }: BackofficeAppProps = {}) {
+  // Si el usuario tiene acceso restringido, abrir directamente su módulo específico
+  const initialModule = userData?.module === 'control-interno'
+    ? 'control-interno'
+    : userData?.module === 'certificados-laborales' 
     ? 'certificados-laborales' 
     : userData?.module === 'arquitectura-empresarial'
     ? 'dashboard' // Abrir en Dashboard Ejecutivo que muestra métricas de Arquitectura
     : 'dashboard';
   const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
+  const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(''); // Nuevo: Guardar el módulo del sidebar
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false); // Estado para mobile sidebar
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
@@ -143,9 +149,39 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       'control-interno': 'control-interno',
       'control-disciplinario': 'control-disciplinario',
       'gestion-legal': 'gestion-legal',
+      // Módulos SIGL - Todos mapeados a 'gestion-legal' con prop moduloInicial
+      'gestion-legal-defensa-judicial': 'gestion-legal',
+      'gestion-legal-organos-control': 'gestion-legal',
+      'gestion-legal-asesoria': 'gestion-legal',
+      'gestion-legal-juzgamiento': 'gestion-legal',
+      'gestion-legal-coactivos': 'gestion-legal',
+      'gestion-legal-notificaciones': 'gestion-legal',
+      'gestion-legal-buzon': 'gestion-legal',
+      'gestion-legal-plan-accion': 'gestion-legal',
+      'gestion-legal-riesgos': 'gestion-legal',
+      'gestion-legal-mejoramiento': 'gestion-legal',
+      'gestion-legal-terminos': 'gestion-legal',
       'arquitectura-empresarial': 'arquitectura-empresarial',
     };
     return (mappings[sidebarModule] as ModuleView) || 'dashboard';
+  };
+
+  // Mapeo de sidebar ID a módulo SIGL específico
+  const getModuloSIGL = (sidebarModule: string): string | undefined => {
+    const moduloMapping: Record<string, string> = {
+      'gestion-legal-defensa-judicial': 'mod-01',
+      'gestion-legal-organos-control': 'mod-02',
+      'gestion-legal-asesoria': 'mod-03',
+      'gestion-legal-juzgamiento': 'mod-04',
+      'gestion-legal-coactivos': 'mod-05',
+      'gestion-legal-notificaciones': 'mod-06',
+      'gestion-legal-buzon': 'mod-07',
+      'gestion-legal-plan-accion': 'mod-08',
+      'gestion-legal-riesgos': 'mod-09',
+      'gestion-legal-mejoramiento': 'mod-10',
+      'gestion-legal-terminos': 'mod-11',
+    };
+    return moduloMapping[sidebarModule];
   };
 
   // Mock user data - en producción vendría del contexto de autenticación
@@ -247,7 +283,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return <ControlDisciplinarioFull />;
       
       case 'gestion-legal':
-        return <GestionLegalFull />;
+        return <KanbanSIGL key={currentSidebarModule || 'gestion-legal'} moduloInicial={getModuloSIGL(currentSidebarModule)} />;
       
       case 'certificados-laborales':
         return (
@@ -284,8 +320,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           isCollapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           currentModule={currentModule}
+          currentSidebarModule={currentSidebarModule}
           onModuleChange={(sidebarModule) => {
+            console.log('🔍 Sidebar module clicked:', sidebarModule);
             const mappedModule = mapSidebarToModule(sidebarModule);
+            const moduloSIGL = getModuloSIGL(sidebarModule);
+            console.log('📍 Mapped to:', mappedModule, 'SIGL Module:', moduloSIGL);
+            setCurrentSidebarModule(sidebarModule);
             setCurrentModule(mappedModule);
             setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
           }}

@@ -930,6 +930,9 @@ export function RevisionAprobacionJefe() {
   const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_PENDIENTES);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterEstado, setFilterEstado] = useState('all');
+  const [filterPrioridad, setFilterPrioridad] = useState('all');
+  const [filterEtapa, setFilterEtapa] = useState('all');
+  const [filterTipoAuto, setFilterTipoAuto] = useState('all');
   const [borradorSeleccionado, setBorradorSeleccionado] = useState<BorradorPendiente | null>(null);
   const [showModalRevision, setShowModalRevision] = useState(false);
   const [showFlujoModal, setShowFlujoModal] = useState(false);
@@ -996,8 +999,11 @@ export function RevisionAprobacionJefe() {
       b.profesional.nombre.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesEstado = filterEstado === 'all' || b.estado === filterEstado;
+    const matchesPrioridad = filterPrioridad === 'all' || b.prioridad === filterPrioridad;
+    const matchesEtapa = filterEtapa === 'all' || b.etapa === filterEtapa;
+    const matchesTipoAuto = filterTipoAuto === 'all' || b.plantilla === filterTipoAuto;
 
-    return matchesSearch && matchesEstado;
+    return matchesSearch && matchesEstado && matchesPrioridad && matchesEtapa && matchesTipoAuto;
   });
 
   const estadisticas = {
@@ -1034,34 +1040,89 @@ export function RevisionAprobacionJefe() {
 
       {/* Filtros - RESPONSIVE */}
       <Card className="p-3 sm:p-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          {/* Búsqueda */}
-          <div className="flex-1 relative">
+        <div className="space-y-3">
+          {/* Búsqueda - Full Width */}
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar por proceso, denunciado..."
+              placeholder="Buscar por proceso, denunciado, documento..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 sm:pl-11 pr-4 py-2.5 sm:py-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          {/* Filtro Estado */}
-          <div className="relative">
-            <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 pointer-events-none" />
-            <select
-              value={filterEstado}
-              onChange={(e) => setFilterEstado(e.target.value)}
-              className="w-full sm:w-auto pl-10 sm:pl-11 pr-8 sm:pr-10 py-2.5 sm:py-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none cursor-pointer"
-            >
-              <option value="all">Todos</option>
-              <option value="pendiente_revision">Pendientes</option>
-              <option value="en_revision">En Revisión</option>
-              <option value="aprobado">Aprobados</option>
-              <option value="devuelto">Devueltos</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 pointer-events-none" />
+          {/* Grid de Filtros - Responsive */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+            {/* Filtro Estado */}
+            <div className="relative">
+              <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
+              <select
+                value={filterEstado}
+                onChange={(e) => setFilterEstado(e.target.value)}
+                className="w-full pl-9 pr-8 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none cursor-pointer"
+              >
+                <option value="all">📊 Todos los Estados</option>
+                <option value="pendiente_revision">🟡 Pendientes</option>
+                <option value="en_revision">🔵 En Revisión</option>
+                <option value="aprobado">🟢 Aprobados</option>
+                <option value="devuelto">🔴 Devueltos</option>
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+
+            {/* Filtro Prioridad */}
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
+              <select
+                value={filterPrioridad}
+                onChange={(e) => setFilterPrioridad(e.target.value)}
+                className="w-full pl-9 pr-8 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none cursor-pointer"
+              >
+                <option value="all">⚡ Todas las Prioridades</option>
+                <option value="alta">🔴 Alta</option>
+                <option value="media">🟡 Media</option>
+                <option value="baja">🟢 Baja</option>
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+
+            {/* Filtro Etapa */}
+            <div className="relative">
+              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
+              <select
+                value={filterEtapa}
+                onChange={(e) => setFilterEtapa(e.target.value)}
+                className="w-full pl-9 pr-8 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none cursor-pointer"
+              >
+                <option value="all">📋 Todas las Etapas</option>
+                <option value="Indagación Preliminar">🔍 Indagación Preliminar</option>
+                <option value="Valoración">⚖️ Valoración</option>
+                <option value="Investigación">📝 Investigación</option>
+                <option value="Juzgamiento">⚖️ Juzgamiento</option>
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+
+            {/* Filtro Tipo de Auto */}
+            <div className="relative">
+              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
+              <select
+                value={filterTipoAuto}
+                onChange={(e) => setFilterTipoAuto(e.target.value)}
+                className="w-full pl-9 pr-8 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none cursor-pointer"
+              >
+                <option value="all">📄 Todos los Tipos</option>
+                <option value="Auto de Indagación Preliminar">📋 Auto de Indagación</option>
+                <option value="Auto de Inhibitorio">🚫 Auto de Inhibitorio</option>
+                <option value="Auto de Apertura">📂 Auto de Apertura</option>
+                <option value="Auto de Cargos">⚖️ Auto de Cargos</option>
+                <option value="Auto de Descargos">📝 Auto de Descargos</option>
+                <option value="Auto de Archivo">📁 Auto de Archivo</option>
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
           </div>
         </div>
       </Card>

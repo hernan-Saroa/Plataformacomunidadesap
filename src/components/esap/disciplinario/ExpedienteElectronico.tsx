@@ -51,10 +51,16 @@ interface VersionDocumento {
   tamaño: string;
 }
 
+interface Persona {
+  nombre: string;
+  tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT';
+  numeroIdentificacion: string;
+}
+
 interface Proceso {
   id: string;
   numero: string;
-  denunciado: string;
+  denunciado: Persona | string; // Permite ambos tipos para compatibilidad
   etapaActual: string;
   fechaInicio: string;
   estado: string;
@@ -284,6 +290,41 @@ function ModalVisorDocumento({
   onClose: () => void;
 }) {
   const [versionSeleccionada, setVersionSeleccionada] = useState(documento.version);
+  const [viendoPDF, setViendoPDF] = useState(false);
+
+  const handleDescargarVersion = () => {
+    const versionData = documento.versiones.find(v => v.numero === versionSeleccionada);
+    
+    toast.success('Descarga Iniciada', {
+      description: `Descargando versión ${versionSeleccionada} de ${documento.nombre}`
+    });
+
+    // Simular descarga del documento
+    const link = document.createElement('a');
+    link.href = '#';
+    link.download = `${documento.nombre}_v${versionSeleccionada}.pdf`;
+    
+    // Registrar actividad de descarga
+    setTimeout(() => {
+      toast.info('Descarga Completada', {
+        description: `${documento.nombre} (Versión ${versionSeleccionada}) - ${versionData?.tamaño || documento.tamaño}`
+      });
+    }, 1000);
+  };
+
+  const handleVerPDF = () => {
+    setViendoPDF(true);
+    toast.success('Abriendo Visor PDF', {
+      description: `Cargando versión ${versionSeleccionada} del documento`
+    });
+    
+    // Simular apertura de visor PDF
+    setTimeout(() => {
+      toast.info('Documento Listo', {
+        description: 'El visor PDF está listo. En producción, se abriría el documento completo.'
+      });
+    }, 500);
+  };
 
   return (
     <motion.div
@@ -342,6 +383,35 @@ function ModalVisorDocumento({
 
         {/* Contenido */}
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 240px)' }}>
+          {/* Vista previa del PDF si está activa */}
+          {viendoPDF && (
+            <Card className="p-8 mb-6 bg-gray-100 border-2 border-dashed border-gray-300">
+              <div className="text-center">
+                <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-lg font-bold text-gray-700 mb-2">
+                  Vista Previa del Documento
+                </p>
+                <p className="text-sm text-gray-600 mb-4">
+                  {documento.nombre} - Versión {versionSeleccionada}
+                </p>
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  <p className="text-sm text-gray-700">
+                    🔍 En producción, aquí se mostraría el visor PDF completo con el documento.
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Se puede integrar con bibliotecas como React-PDF o PDF.js
+                  </p>
+                </div>
+                <Button 
+                  onClick={() => setViendoPDF(false)}
+                  className="mt-4 bg-gray-500"
+                >
+                  Cerrar Vista Previa
+                </Button>
+              </div>
+            </Card>
+          )}
+
           {/* Información del Documento */}
           <Card className="p-4 mb-6 bg-gray-50">
             <div className="grid grid-cols-2 gap-4">
@@ -435,11 +505,17 @@ function ModalVisorDocumento({
 
         {/* Footer */}
         <div className="p-6 border-t bg-gray-50 flex gap-3">
-          <Button style={{ background: '#003DA5', color: '#FFFFFF' }}>
+          <Button 
+            onClick={handleDescargarVersion}
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
+          >
             <Download className="w-4 h-4 mr-2" />
             Descargar Versión {versionSeleccionada}
           </Button>
-          <Button className="bg-purple-600">
+          <Button 
+            onClick={handleVerPDF}
+            className="bg-purple-600"
+          >
             <Eye className="w-4 h-4 mr-2" />
             Ver PDF
           </Button>
@@ -700,8 +776,22 @@ export function ExpedienteElectronico() {
   };
 
   const handleExportarExpediente = () => {
-    toast.info('Generando Expediente PDF...', {
-      description: 'Por favor espere mientras se genera el documento'
+    if (!procesoSeleccionado) {
+      toast.error('Proceso no seleccionado', {
+        description: 'Debe seleccionar un proceso para exportar el expediente'
+      });
+      return;
+    }
+
+    if (documentos.length === 0) {
+      toast.warning('Expediente vacío', {
+        description: 'No hay documentos en este expediente para exportar'
+      });
+      return;
+    }
+
+    const toastId = toast.loading('Generando Expediente PDF...', {
+      description: '📋 Recopilando información del proceso\n📄 Generando índice electrónico\n⏳ Por favor espere...'
     });
 
     const doc = new jsPDF();
@@ -730,17 +820,35 @@ export function ExpedienteElectronico() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.text(`Número de Proceso: ${procesoSeleccionado?.numero || 'N/A'}`, 14, 105);
-    doc.text(`Denunciado: ${procesoSeleccionado?.denunciado || 'N/A'}`, 14, 113);
-    doc.text(`Etapa Actual: ${procesoSeleccionado?.etapaActual || 'N/A'}`, 14, 121);
-    doc.text(`Estado: ${procesoSeleccionado?.estado || 'N/A'}`, 14, 129);
-    doc.text(`Fecha de Inicio: ${procesoSeleccionado?.fechaInicio || 'N/A'}`, 14, 137);
+    doc.text(`Etapa Actual: ${procesoSeleccionado?.etapaActual || procesoSeleccionado?.etapa || 'N/A'}`, 14, 113);
+    doc.text(`Estado: ${procesoSeleccionado?.estado || procesoSeleccionado?.estadoActual || 'En Gestión'}`, 14, 121);
+    doc.text(`Fecha de Inicio: ${procesoSeleccionado?.fechaInicio || procesoSeleccionado?.fechaCreacion || 'N/A'}`, 14, 129);
 
     doc.setFont('helvetica', 'bold');
-    doc.text('ESTADÍSTICAS DEL EXPEDIENTE', 14, 150);
+    doc.text('DENUNCIANTE', 14, 142);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Total de Documentos: ${metrics.totalDocumentos}`, 14, 160);
-    doc.text(`Autos: ${metrics.autos} | Evidencias: ${metrics.evidencias}`, 14, 168);
-    doc.text(`Firmados: ${metrics.firmados} | Notificados: ${metrics.notificados}`, 14, 176);
+    doc.text(`Nombre: ${procesoSeleccionado?.denunciante?.nombre || procesoSeleccionado?.denuncianteNombre || 'N/A'}`, 14, 150);
+    doc.text(`${procesoSeleccionado?.denunciante?.tipoIdentificacion || 'CC'}: ${procesoSeleccionado?.denunciante?.numeroIdentificacion || 'N/A'}`, 14, 158);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('DENUNCIADO', 14, 171);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Nombre: ${procesoSeleccionado?.denunciado?.nombre || procesoSeleccionado?.denunciadoNombre || procesoSeleccionado?.denunciado || 'N/A'}`, 14, 179);
+    doc.text(`${procesoSeleccionado?.denunciado?.tipoIdentificacion || 'CC'}: ${procesoSeleccionado?.denunciado?.numeroIdentificacion || procesoSeleccionado?.cedula || 'N/A'}`, 14, 187);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('PROFESIONAL ASIGNADO', 14, 200);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Nombre: ${procesoSeleccionado?.profesionalAsignado?.nombre || procesoSeleccionado?.profesional || 'N/A'}`, 14, 208);
+    doc.text(`${procesoSeleccionado?.profesionalAsignado?.tipoIdentificacion || 'CC'}: ${procesoSeleccionado?.profesionalAsignado?.numeroIdentificacion || 'N/A'}`, 14, 216);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('ESTADÍSTICAS DEL EXPEDIENTE', 14, 229);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Total de Documentos: ${metrics.totalDocumentos}`, 14, 239);
+    doc.text(`Autos: ${metrics.autos} | Evidencias: ${metrics.evidencias} | Oficios: ${metrics.oficios}`, 14, 247);
+    doc.text(`Actas: ${metrics.actas} | Notificaciones: ${metrics.notificaciones}`, 14, 255);
+    doc.text(`Firmados: ${metrics.firmados} | Notificados: ${metrics.notificados}`, 14, 263);
 
     doc.setFontSize(8);
     doc.setTextColor(128, 128, 128);
@@ -849,14 +957,32 @@ export function ExpedienteElectronico() {
     const nombreArchivo = `Expediente_${procesoSeleccionado?.numero || 'Completo'}_${new Date().toISOString().split('T')[0]}.pdf`;
     doc.save(nombreArchivo);
 
-    toast.success('¡Expediente Exportado!', {
-      description: `${nombreArchivo} - ${documentos.length} documentos`
-    });
+    setTimeout(() => {
+      toast.dismiss(toastId);
+      toast.success('¡Expediente Exportado Exitosamente!', {
+        description: `${nombreArchivo}\n📄 ${documentos.length} documentos incluidos\n📑 ${totalPages} páginas generadas\n✅ Incluye índice electrónico y detalles completos`,
+        duration: 5000
+      });
+    }, 500);
   };
 
   const handleImprimirIndice = () => {
-    toast.info('Generando Índice PDF...', {
-      description: 'Generando documento'
+    if (!procesoSeleccionado) {
+      toast.error('Proceso no seleccionado', {
+        description: 'Debe seleccionar un proceso para imprimir el índice'
+      });
+      return;
+    }
+
+    if (documentos.length === 0) {
+      toast.warning('Índice vacío', {
+        description: 'No hay documentos en el índice para imprimir'
+      });
+      return;
+    }
+
+    toast.info('Preparando Impresión...', {
+      description: 'Abriendo vista previa de impresión'
     });
 
     const doc = new jsPDF();
@@ -941,12 +1067,31 @@ export function ExpedienteElectronico() {
       doc.text(`Pág. ${i}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
     }
 
-    const nombreArchivo = `Indice_${procesoSeleccionado?.numero || 'Exp'}_${new Date().toISOString().split('T')[0]}.pdf`;
-    doc.save(nombreArchivo);
-
-    toast.success('¡Índice Generado!', {
-      description: `${nombreArchivo}`
-    });
+    // Convertir el PDF a blob y abrirlo en nueva ventana para imprimir
+    const pdfBlob = doc.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    
+    // Abrir en nueva ventana
+    const printWindow = window.open(pdfUrl, '_blank');
+    
+    if (printWindow) {
+      // Esperar a que se cargue el PDF y luego abrir el diálogo de impresión
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+          toast.success('Diálogo de Impresión Abierto', {
+            description: 'Índice Electrónico listo para imprimir'
+          });
+        }, 250);
+      };
+    } else {
+      // Si no se puede abrir la ventana (bloqueador de pop-ups), descargar el archivo
+      const nombreArchivo = `Indice_${procesoSeleccionado?.numero || 'Exp'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(nombreArchivo);
+      toast.warning('Ventana Bloqueada', {
+        description: 'El archivo se ha descargado. Permite ventanas emergentes para imprimir directamente.'
+      });
+    }
   };
   
   const handleSeleccionarProceso = (proceso: Proceso) => {
@@ -960,7 +1105,7 @@ export function ExpedienteElectronico() {
     }
     
     toast.success('Proceso Seleccionado', {
-      description: `${proceso.numero} - ${proceso.denunciado}`
+      description: `${proceso.numero} - ${typeof proceso.denunciado === 'string' ? proceso.denunciado : proceso.denunciado.nombre}`
     });
   };
 
@@ -990,6 +1135,8 @@ export function ExpedienteElectronico() {
     totalDocumentos: documentos.length,
     autos: documentos.filter(d => d.tipo === 'auto').length,
     evidencias: documentos.filter(d => d.tipo === 'evidencia').length,
+    oficios: documentos.filter(d => d.tipo === 'oficio').length,
+    actas: documentos.filter(d => d.tipo === 'acta').length,
     notificaciones: documentos.filter(d => d.tipo === 'notificacion').length,
     firmados: documentos.filter(d => d.metadatos.firmado).length,
     notificados: documentos.filter(d => d.metadatos.notificado).length
@@ -1019,10 +1166,11 @@ export function ExpedienteElectronico() {
 
           <button
             onClick={handleExportarExpediente}
-            className="px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
+            className="px-5 py-2.5 rounded-lg text-white font-semibold hover:shadow-lg transition-all duration-200 flex items-center gap-2 hover:scale-105"
             style={{ background: '#DC2626' }}
+            title="Exportar expediente completo con índice electrónico"
           >
-            <Package className="w-4 h-4" />
+            <Package className="w-5 h-5" />
             Exportar Expediente PDF
           </button>
         </div>
@@ -1058,7 +1206,7 @@ export function ExpedienteElectronico() {
                     className="px-4 py-2 cursor-pointer hover:bg-gray-100"
                     onClick={() => handleSeleccionarProceso(proceso)}
                   >
-                    {proceso.numero} - {proceso.denunciado} ({proceso.etapaActual})
+                    {proceso.numero} - {typeof proceso.denunciado === 'string' ? proceso.denunciado : proceso.denunciado.nombre} ({proceso.etapaActual})
                   </div>
                 ))}
                 {procesosFiltrados.length === 0 && (
@@ -1288,10 +1436,11 @@ export function ExpedienteElectronico() {
             </h2>
             <button
               onClick={handleImprimirIndice}
-              className="px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity"
+              className="px-5 py-2.5 rounded-lg text-white font-semibold hover:shadow-lg transition-all duration-200 flex items-center gap-2 hover:scale-105"
               style={{ background: '#DC2626' }}
+              title="Imprimir índice electrónico del expediente"
             >
-              <Printer className="w-4 h-4 inline mr-2" />
+              <Printer className="w-5 h-5" />
               Imprimir Índice
             </button>
           </div>
@@ -1339,12 +1488,28 @@ export function ExpedienteElectronico() {
       {/* Vista: Auditoría */}
       {vistaActual === 'auditoria' && (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-xl font-bold mb-6" style={{ color: '#003DA5' }}>
-            Registro de Auditoría
-          </h2>
-          <div className="space-y-4">
-            {AUDITORIA_MOCK.map((actividad) => (
-              <div key={actividad.id} className="p-4 border-l-4 border-blue-500 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold" style={{ color: '#003DA5' }}>
+              Registro de Auditoría
+            </h2>
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Clock className="w-4 h-4" />
+              <span>Últimas {AUDITORIA_MOCK.length} actividades</span>
+            </div>
+          </div>
+
+          {AUDITORIA_MOCK.length === 0 ? (
+            <div className="text-center py-12">
+              <Shield className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+              <p className="text-gray-600">No hay actividades registradas</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Las actividades del expediente se registrarán automáticamente aquí
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {AUDITORIA_MOCK.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()).map((actividad) => (
+              <div key={actividad.id} className="p-4 border-l-4 border-blue-500 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                 <div className="flex items-start gap-4">
                   <div
                     className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
@@ -1364,18 +1529,29 @@ export function ExpedienteElectronico() {
                       {actividad.usuario} • {new Date(actividad.fecha).toLocaleString('es-CO')}
                     </p>
                   </div>
-                  <Badge className={
-                    actividad.tipo === 'carga' ? 'bg-green-100 text-green-700' :
-                    actividad.tipo === 'descarga' ? 'bg-blue-100 text-blue-700' :
-                    actividad.tipo === 'exportacion' ? 'bg-purple-100 text-purple-700' :
-                    'bg-gray-100 text-gray-700'
-                  }>
-                    {actividad.tipo}
+                  <Badge 
+                    className={
+                      actividad.tipo === 'carga' ? 'bg-green-100 text-green-700 border-green-200' :
+                      actividad.tipo === 'descarga' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                      actividad.tipo === 'visualizacion' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                      actividad.tipo === 'exportacion' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                      actividad.tipo === 'enlace_externo' ? 'bg-cyan-100 text-cyan-700 border-cyan-200' :
+                      'bg-gray-100 text-gray-700 border-gray-200'
+                    }
+                  >
+                    {actividad.tipo === 'carga' ? 'Carga' :
+                     actividad.tipo === 'descarga' ? 'Descarga' :
+                     actividad.tipo === 'visualizacion' ? 'Visualización' :
+                     actividad.tipo === 'exportacion' ? 'Exportación' :
+                     actividad.tipo === 'enlace_externo' ? 'Enlace Externo' :
+                     actividad.tipo === 'modificacion' ? 'Modificación' :
+                     actividad.tipo}
                   </Badge>
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
