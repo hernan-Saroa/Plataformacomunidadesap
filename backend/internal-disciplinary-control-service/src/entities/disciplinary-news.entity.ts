@@ -27,6 +27,9 @@ export interface PersonInfo {
   cedula?: string;
   email?: string;
   cargo?: string;
+  telefono?: string;
+  direccion?: string;
+  dependencia?: string;
 }
 
 @Entity('disciplinary_news')
@@ -53,10 +56,10 @@ export class DisciplinaryNews {
   dependenciaDenunciado: string;
 
   @Column({ type: 'jsonb', nullable: true })
-  denunciante: PersonInfo;
+  denunciante: PersonInfo[];
 
   @Column({ type: 'jsonb', nullable: true })
-  disciplinable: PersonInfo;
+  disciplinable: PersonInfo[];
 
   @Column({ type: 'text' })
   hechos: string;

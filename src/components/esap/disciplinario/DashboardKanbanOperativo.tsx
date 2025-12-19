@@ -1,4 +1,4 @@
-/**
+﻿/**
  * DASHBOARD KANBAN OPERATIVO V4 - CONTROL INTERNO DISCIPLINARIO
  * Versión RESPONSIVE con soporte completo para Mobile, Tablet y Desktop
  * INTEGRACIÓN COMPLETA: Editor de Documentos + Gestión Documental
@@ -36,6 +36,7 @@ import {
 } from './ModalesGestionDocumental';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
 import { SistemaComentarios } from './SistemaComentarios';
+import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
 
 // ==================== TIPOS ====================
 interface Persona {
@@ -55,6 +56,7 @@ interface Noticia {
   estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada';
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
+  etapaActual?: string;
   tipo: 'noticia';
 }
 
@@ -124,7 +126,8 @@ const NOTICIAS_MOCK: Noticia[] = [
     estado: 'pendiente',
     prioridad: 'alta',
     diasPendientes: 3,
-    tipo: 'noticia'
+    tipo: 'noticia',
+    etapaActual: 'Recepción'
   },
   {
     id: 'n2',
@@ -145,7 +148,8 @@ const NOTICIAS_MOCK: Noticia[] = [
     estado: 'pendiente',
     prioridad: 'media',
     diasPendientes: 5,
-    tipo: 'noticia'
+    tipo: 'noticia',
+    etapaActual: 'Recepción'
   },
   {
     id: 'n3',
@@ -166,7 +170,8 @@ const NOTICIAS_MOCK: Noticia[] = [
     estado: 'pendiente',
     prioridad: 'alta',
     diasPendientes: 1,
-    tipo: 'noticia'
+    tipo: 'noticia',
+    etapaActual: 'Recepción'
   }
 ];
 
@@ -445,10 +450,10 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
           <div className="mb-2 pb-2 border-b border-gray-200">
             <p className="text-xs text-gray-500 mb-0.5">👤 Denunciante:</p>
             <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-              {noticia.denunciante.nombre}
+              {(noticia.denunciante||{nombre:'Sin denunciante',tipoIdentificacion:'CC',numeroIdentificacion:'N/A'}).nombre}
             </p>
             <p className="text-xs text-gray-600">
-              {noticia.denunciante.tipoIdentificacion} {noticia.denunciante.numeroIdentificacion}
+              {`${(noticia.denunciante||{tipoIdentificacion:'CC',numeroIdentificacion:'N/A'}).tipoIdentificacion} ${(noticia.denunciante||{tipoIdentificacion:'CC',numeroIdentificacion:'N/A'}).numeroIdentificacion}`}
             </p>
           </div>
 
@@ -456,10 +461,10 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
           <div className="mb-2 pb-2 border-b border-gray-200">
             <p className="text-xs text-gray-500 mb-0.5">⚠️ Denunciado:</p>
             <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-              {noticia.denunciado.nombre}
+              {(noticia as any).denunciado?.nombre || 'Sin denunciado'}
             </p>
             <p className="text-xs text-gray-600">
-              {noticia.denunciado.tipoIdentificacion} {noticia.denunciado.numeroIdentificacion}
+              {`${(noticia as any).denunciado?.tipoIdentificacion || 'CC'} ${(noticia as any).denunciado?.numeroIdentificacion || 'N/A'}`}
             </p>
           </div>
 
@@ -580,6 +585,11 @@ function TarjetaProceso({
   };
 
   const semaforo = semaforoIndicator[proceso.semaforo];
+  const denunciante = proceso.denunciante || { nombre: 'Sin denunciante', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
+  const denunciado = proceso.denunciado || { nombre: 'Sin denunciado', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
+  const profesionalAsignado = typeof proceso.profesionalAsignado === 'string'
+    ? { nombre: proceso.profesionalAsignado, tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' }
+    : (proceso.profesionalAsignado || { nombre: 'Sin asignar', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' });
 
   return (
     <motion.div
@@ -627,10 +637,10 @@ function TarjetaProceso({
           <div className="mb-1.5 pb-1.5 border-b border-gray-200">
             <p className="text-xs text-gray-500 mb-0.5">👤 Denunciante:</p>
             <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-              {proceso.denunciante.nombre}
+              {denunciante.nombre}
             </p>
             <p className="text-xs text-gray-600">
-              {proceso.denunciante.tipoIdentificacion} {proceso.denunciante.numeroIdentificacion}
+              {denunciante.tipoIdentificacion} {denunciante.numeroIdentificacion}
             </p>
           </div>
 
@@ -638,10 +648,10 @@ function TarjetaProceso({
           <div className="mb-1.5 pb-1.5 border-b border-gray-200">
             <p className="text-xs text-gray-500 mb-0.5">⚠️ Denunciado:</p>
             <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-              {proceso.denunciado.nombre}
+              {denunciado.nombre}
             </p>
             <p className="text-xs text-gray-600">
-              {proceso.denunciado.tipoIdentificacion} {proceso.denunciado.numeroIdentificacion}
+              {denunciado.tipoIdentificacion} {denunciado.numeroIdentificacion}
             </p>
           </div>
 
@@ -653,16 +663,16 @@ function TarjetaProceso({
                   className="text-xs"
                   style={{ background: '#E0EDFF', color: '#003DA5' }}
                 >
-                  {proceso.profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                  {profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').substring(0, 2)}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500">👨‍💼 Profesional:</p>
                 <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-                  {proceso.profesionalAsignado.nombre}
+                  {profesionalAsignado.nombre}
                 </p>
                 <p className="text-xs text-gray-600">
-                  {proceso.profesionalAsignado.tipoIdentificacion} {proceso.profesionalAsignado.numeroIdentificacion}
+                  {profesionalAsignado.tipoIdentificacion} {profesionalAsignado.numeroIdentificacion}
                 </p>
               </div>
             </div>
@@ -1055,11 +1065,11 @@ function VistaLista({
                     <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
                       <Avatar className="w-6 h-6">
                         <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5', fontSize: '9px' }}>
-                          {proceso.profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                          {profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
                       <p className="text-xs font-medium text-gray-700 truncate flex-1">
-                        {proceso.profesionalAsignado.nombre}
+                        {profesionalAsignado.nombre}
                       </p>
                     </div>
                   )}
@@ -1246,11 +1256,11 @@ function VistaLista({
                         <div className="flex items-center gap-2">
                           <Avatar className="w-7 h-7">
                             <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5', fontSize: '10px' }}>
-                              {proceso.profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                              {profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
                             </AvatarFallback>
                           </Avatar>
                           <p className="text-xs font-medium" style={{ color: '#4B5563' }}>
-                            {proceso.profesionalAsignado.nombre}
+                            {profesionalAsignado.nombre}
                           </p>
                         </div>
                       ) : (
@@ -1507,12 +1517,7 @@ function ColumnaKanban({
     drop: (item: any) => {
       onDrop(item, etapa);
     },
-    canDrop: (item: any) => {
-      if (item.tipo === 'noticia') {
-        return etapa === 'Recepción';
-      }
-      return true;
-    },
+    canDrop: () => true,
     collect: (monitor) => ({
       isOver: monitor.isOver(),
       canDrop: monitor.canDrop()
@@ -1541,7 +1546,8 @@ function ColumnaKanban({
 
   const itemsFiltrados = items.filter(item => {
     if (item.tipo === 'noticia') {
-      return etapa === 'Recepción';
+      const etapaItem = (item as any).etapaActual || 'Recepción';
+      return etapa === etapaItem;
     }
     return item.tipo === 'proceso' && item.etapaActual === etapa;
   });
@@ -1810,6 +1816,130 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   const [observaciones, setObservaciones] = useState('');
   const [areaDestinoRemision, setAreaDestinoRemision] = useState('');
 
+  // Transformadores desde el backend real
+  const stageLabelMap: Record<string, string> = {
+    EVALUACION: 'ValoraciИn',
+    INDAGACION_PREVIA: 'IndagaciИn',
+    INVESTIGACION: 'InvestigaciИn',
+    JUZGAMIENTO: 'Juzgamiento'
+  };
+
+  const mapEstadoNoticia = (estado?: ApiNoticia['estado']) => {
+    switch (estado) {
+      case 'ASIGNADA':
+        return 'asignada';
+      case 'EN_VALORACION':
+        return 'en-valoracion';
+      case 'DEVUELTA':
+        return 'archivada';
+      default:
+        return 'pendiente';
+    }
+  };
+
+  const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
+    const fechaRecepcion = (noticia as any)?.fechaRecepcion;
+    const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
+    const hoy = new Date();
+    const dias = Math.max(1, Math.ceil((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24)));
+
+    return {
+      id: noticia.id,
+      numero: noticia.radicado,
+      fechaRecepcion: fecha.toISOString().split('T')[0],
+      origen: noticia.origen || 'Noticia',
+      denunciante: {
+        nombre: noticia.denunciante?.nombre || 'Sin nombre',
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: (noticia.denunciante as any)?.cedula || (noticia as any).denunciante?.telefono || 'N/A'
+      },
+      denunciado: {
+        nombre: noticia.disciplinable?.nombre || 'Sin disciplinable',
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: noticia.disciplinable?.cedula || 'N/A'
+      },
+      hechos: noticia.hechos || '',
+      estado: mapEstadoNoticia(noticia.estado) as any,
+      prioridad: 'media',
+      diasPendientes: dias,
+      tipo: 'noticia',
+      etapaActual: 'Recepción'
+    };
+  };
+
+  const toProcesoFromApi = (proceso: ApiProceso): Proceso => {
+    const etapa = stageLabelMap[proceso.etapaActual] || 'ValoraciИn';
+    const fechaVenc = proceso.fechaVencimientoEtapa ? new Date(proceso.fechaVencimientoEtapa) : null;
+    const fechaCreacion = proceso.createdAt ? new Date(proceso.createdAt) : new Date();
+    const hoy = new Date();
+    const diasRestantes = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    const totalDias = fechaVenc ? Math.max(1, Math.round((fechaVenc.getTime() - fechaCreacion.getTime()) / (1000 * 60 * 60 * 24))) : 1;
+    const transcurridos = totalDias - diasRestantes;
+    const porcentajeTiempo = Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
+    const semaforo: 'verde' | 'amarillo' | 'rojo' = diasRestantes <= 0
+      ? 'rojo'
+      : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
+    const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
+
+    return {
+      id: proceso.id,
+      numeroProceso: proceso.radicadoProceso,
+      noticiaOrigen: proceso.news?.radicado || 'N/A',
+      denunciante: {
+        nombre: proceso.news?.denunciante?.nombre || 'Sin denunciante',
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: (proceso.news?.denunciante as any)?.cedula || 'N/A'
+      },
+      denunciado: {
+        nombre: proceso.news?.disciplinable?.nombre || 'Sin disciplinable',
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: proceso.news?.disciplinable?.cedula || 'N/A'
+      },
+      cedula: proceso.news?.disciplinable?.cedula || 'N/A',
+      etapaActual: etapa as any,
+      estadoActual: proceso.estado || 'ACTIVO',
+      profesionalAsignado: {
+        nombre: abogado,
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: (proceso as any).abogadoAsignado?.id || '',
+      },
+      semaforo,
+      diasRestantes,
+      porcentajeTiempo,
+      borradores: [],
+      documentos: [],
+      pendienteAprobacion: false,
+      ultimaActuacion: 'Actualizado desde backend',
+      fechaCreacion: fechaCreacion.toISOString().split('T')[0],
+      tipo: 'proceso',
+      hechos: proceso.news?.hechos,
+    };
+  };
+
+  // Cargar datos reales desde el microservicio (con fallback a mock)
+  useEffect(() => {
+    const cargarDatos = async () => {
+      try {
+        const [procesosApi, noticiasApi] = await Promise.all([
+          disciplinaryService.getAllProcesos(),
+          disciplinaryService.getAllNoticias()
+        ]);
+
+        const mappedNoticias = (noticiasApi || []).map(toNoticiaFromApi);
+        const mappedProcesos = (procesosApi || []).map(toProcesoFromApi);
+
+        setItems([...mappedNoticias, ...mappedProcesos]);
+      } catch (error) {
+        console.error('Error cargando datos reales de disciplinario', error);
+        toast.error('No fue posible cargar datos reales, se muestran datos demo.');
+        setItems([...NOTICIAS_MOCK, ...PROCESOS_MOCK]);
+      }
+    };
+
+    cargarDatos();
+  }, []);
+
+
   // Detectar tamaño de pantalla con breakpoints mejorados
   useEffect(() => {
     const checkScreenSize = () => {
@@ -1851,24 +1981,22 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
   // ==================== HANDLERS ====================
   const handleDropItem = (item: Item, nuevaEtapa: string) => {
-    if (item.tipo === 'noticia') {
-      if (nuevaEtapa !== 'Recepción') {
-        toast.error('Las noticias solo pueden estar en Recepción', {
-          description: 'Usa "Convertir a Proceso"'
-        });
-        return;
-      }
-    } else if (item.tipo === 'proceso') {
-      if (item.etapaActual !== nuevaEtapa) {
-        setItems(prev => prev.map(i => 
-          i.id === item.id && i.tipo === 'proceso'
-            ? { ...i, etapaActual: nuevaEtapa as any }
-            : i
-        ));
-        toast.success('Proceso Movido', {
-          description: `${item.numeroProceso} → ${nuevaEtapa}`
-        });
-      }
+    // Movimiento libre de noticias y procesos entre columnas
+    if (item.tipo === 'proceso' && item.etapaActual !== nuevaEtapa) {
+      setItems(prev => prev.map(i => 
+        i.id === item.id && i.tipo === 'proceso'
+          ? { ...i, etapaActual: nuevaEtapa as any }
+          : i
+      ));
+      toast.success('Proceso Movido', {
+        description: `${item.numeroProceso} → ${nuevaEtapa}`
+      });
+    } else if (item.tipo === 'noticia') {
+      setItems(prev => prev.map(i =>
+        i.id === item.id && i.tipo === 'noticia'
+          ? { ...i, etapaActual: nuevaEtapa }
+          : i
+      ));
     }
   };
 
@@ -1883,7 +2011,8 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       estado: 'pendiente',
       prioridad: 'media',
       diasPendientes: 0,
-      tipo: 'noticia'
+      tipo: 'noticia',
+      etapaActual: 'Recepción'
     };
 
     setItems(prev => [...prev, nuevaNoticia]);
@@ -1906,15 +2035,32 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       return;
     }
 
+    const denuncianteFallback: Persona = itemSeleccionado?.denunciante || {
+      nombre: 'Sin denunciante',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: 'N/A'
+    };
+
+    const denunciadoFallback: Persona = itemSeleccionado?.denunciado || {
+      nombre: 'Sin denunciado',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: 'N/A'
+    };
+
     const nuevoProceso: Proceso = {
       id: `p${Date.now()}`,
       numeroProceso: `PD-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
       noticiaOrigen: itemSeleccionado.numero,
-      denunciado: itemSeleccionado.denunciado,
+      denunciante: denuncianteFallback,
+      denunciado: denunciadoFallback,
       cedula: '00000000',
       etapaActual: 'Recepción',
       estadoActual: 'En Gestión',
-      profesionalAsignado: profesionalSeleccionado,
+      profesionalAsignado: {
+        nombre: profesionalSeleccionado,
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: 'N/A'
+      },
       semaforo: 'verde',
       diasRestantes: 30,
       porcentajeTiempo: 0,
@@ -3189,3 +3335,5 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     </DndProvider>
   );
 }
+
+

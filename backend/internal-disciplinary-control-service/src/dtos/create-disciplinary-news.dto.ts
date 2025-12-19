@@ -34,6 +34,10 @@ export class PersonInfoDto {
   @IsOptional()
   @IsString()
   direccion?: string;
+
+  @IsOptional()
+  @IsString()
+  dependencia?: string;
 }
 
 export class CreateDisciplinaryNewsDto {
@@ -46,13 +50,17 @@ export class CreateDisciplinaryNewsDto {
   @IsString()
   dependenciaDenunciado: string;
 
-  @ValidateNested()
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
   @Type(() => PersonInfoDto)
-  denunciante: PersonInfoDto;
+  denunciante: PersonInfoDto[];
 
-  @ValidateNested()
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
   @Type(() => PersonInfoDto)
-  disciplinable: PersonInfoDto;
+  disciplinable: PersonInfoDto[];
 
   @IsString()
   hechos: string;
