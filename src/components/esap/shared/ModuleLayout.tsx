@@ -9,6 +9,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Menu, X } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
+import { useKeyboardNavigation } from '../../../hooks/useKeyboardNavigation';
+import { KeyboardShortcutsHelper } from './KeyboardShortcutsHelper';
 
 export interface MenuItem {
   id: string;
@@ -79,9 +81,136 @@ export function ModuleLayout({
     }
   }, [isSmallTablet]);
 
+  // Cerrar menú mobile al cambiar de sección
+  const handleSectionChange = (section: string) => {
+    onSectionChange(section);
+    setMobileMenuOpen(false);
+  };
+
+  // ✅ NAVEGACIÓN POR TECLADO
+  useKeyboardNavigation({
+    menuItems,
+    activeSection,
+    onSectionChange: handleSectionChange,
+    mobileMenuOpen,
+    setMobileMenuOpen,
+    isMobile
+  });
+
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#F9FAFB' }}>
-      {/* SIDEBAR UNIFICADO */}
+      {/* OVERLAY para Mobile Menu */}
+      <AnimatePresence>
+        {isMobile && mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* SIDEBAR MOBILE - Drawer desde la izquierda */}
+      <AnimatePresence>
+        {isMobile && mobileMenuOpen && (
+          <motion.aside
+            initial={{ x: -280 }}
+            animate={{ x: 0 }}
+            exit={{ x: -280 }}
+            transition={{ type: 'tween', duration: 0.3 }}
+            className="fixed left-0 top-0 bottom-0 w-[280px] z-50 flex flex-col"
+            style={{ 
+              background: '#FFFFFF',
+              boxShadow: '4px 0 12px rgba(0, 0, 0, 0.1)'
+            }}
+          >
+            {/* Header del Sidebar Mobile */}
+            <div className="p-4 border-b-2" style={{ borderColor: '#E5E7EB' }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="p-2 rounded-xl" style={{ background: `${moduleColor}15` }}>
+                    <div style={{ color: moduleColor }}>
+                      {moduleIcon}
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="font-black text-sm leading-tight" style={{ color: moduleColor }}>
+                      {moduleName}
+                    </h2>
+                    <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                      {moduleDescription}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => setMobileMenuOpen(false)}
+                  variant="ghost"
+                  size="sm"
+                  className="flex-shrink-0"
+                  style={{ color: moduleColor }}
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Menu Items Mobile */}
+            <nav className="flex-1 overflow-y-auto p-3">
+              <div className="space-y-1">
+                {menuItems.map((item) => {
+                  const isActive = activeSection === item.id;
+                  const itemColor = item.color || moduleColor;
+                  
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleSectionChange(item.id)}
+                      className="w-full rounded-xl p-3 transition-all relative"
+                      style={{
+                        background: isActive ? `${itemColor}15` : 'transparent',
+                        color: isActive ? itemColor : '#6B7280'
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0">
+                          {item.icon}
+                        </div>
+                        <span className="font-bold text-sm flex-1 text-left">
+                          {item.label}
+                        </span>
+                        {item.badge && (
+                          <Badge 
+                            className="text-xs font-bold"
+                            style={{ 
+                              background: itemColor,
+                              color: '#FFFFFF'
+                            }}
+                          >
+                            {item.badge}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Indicador activo */}
+                      {isActive && (
+                        <div
+                          className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full"
+                          style={{ background: itemColor }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
+          </motion.aside>
+        )}
+      </AnimatePresence>
+
+      {/* SIDEBAR DESKTOP/TABLET */}
       <motion.aside
         initial={false}
         animate={{ 
@@ -253,26 +382,42 @@ export function ModuleLayout({
 
       {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 overflow-hidden flex flex-col w-full">
-        {/* Breadcrumb Unificado */}
+        {/* Breadcrumb Unificado CON BOTÓN HAMBURGUESA MOBILE */}
         <div className="p-3 sm:p-4 md:p-6 border-b-2" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
-          <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm overflow-x-auto">
-            {breadcrumb.map((item, index) => (
-              <div key={index} className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                {index > 0 && <span style={{ color: '#D1D5DB' }}>/</span>}
-                <span 
-                  className={index === breadcrumb.length - 1 ? 'font-bold' : ''}
-                  style={{ color: index === breadcrumb.length - 1 ? moduleColor : '#9CA3AF' }}
-                >
-                  {item}
-                </span>
-              </div>
-            ))}
+          <div className="flex items-center gap-3">
+            {/* Botón Hamburguesa - Solo Mobile */}
+            {isMobile && (
+              <Button
+                onClick={() => setMobileMenuOpen(true)}
+                variant="ghost"
+                size="sm"
+                className="flex-shrink-0 md:hidden -ml-2"
+                style={{ color: moduleColor }}
+              >
+                <Menu className="w-6 h-6" />
+              </Button>
+            )}
+            
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm overflow-x-auto flex-1">
+              {breadcrumb.map((item, index) => (
+                <div key={index} className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                  {index > 0 && <span style={{ color: '#D1D5DB' }}>/</span>}
+                  <span 
+                    className={index === breadcrumb.length - 1 ? 'font-bold' : ''}
+                    style={{ color: index === breadcrumb.length - 1 ? moduleColor : '#9CA3AF' }}
+                  >
+                    {item}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Área de Contenido con Scroll */}
         <div className="flex-1 overflow-y-auto">
-          <div className="p-3 sm:p-4 md:p-6">
+          <div className="p-3 sm:p-4 md:p-6 h-full">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeSection}
@@ -280,6 +425,7 @@ export function ModuleLayout({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
+                className="h-full"
               >
                 {children}
               </motion.div>
@@ -287,6 +433,9 @@ export function ModuleLayout({
           </div>
         </div>
       </main>
+
+      {/* ⌨️ HELPER DE ATAJOS DE TECLADO */}
+      <KeyboardShortcutsHelper moduleColor={moduleColor} />
     </div>
   );
 }

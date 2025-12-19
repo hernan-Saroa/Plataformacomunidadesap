@@ -1106,13 +1106,13 @@ export function GestionNoticias() {
       {/* Lista de Noticias */}
       <div className="space-y-4">
         {filteredNoticias.map((noticia) => (
-          <Card key={noticia.id} className="p-5 hover:shadow-lg transition-all">
-            <div className="flex items-start justify-between">
+          <Card key={noticia.id} className="p-3 sm:p-5 hover:shadow-lg transition-all">
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
               {/* Información principal */}
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start gap-3 mb-3">
                   <div 
-                    className="w-12 h-12 rounded-full flex items-center justify-center"
+                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0"
                     style={{ 
                       background: noticia.estado === 'pendiente' ? '#FEF3C7' : 
                                  noticia.estado === 'en-valoracion' ? '#DBEAFE' : 
@@ -1122,7 +1122,7 @@ export function GestionNoticias() {
                     }}
                   >
                     <FileText 
-                      className="w-6 h-6" 
+                      className="w-5 h-5 sm:w-6 sm:h-6" 
                       style={{ 
                         color: noticia.estado === 'pendiente' ? '#92400E' : 
                                noticia.estado === 'en-valoracion' ? '#1E40AF' : 
@@ -1132,46 +1132,46 @@ export function GestionNoticias() {
                       }}
                     />
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <h3 className="font-bold text-lg" style={{ color: '#003DA5' }}>
+                      <h3 className="font-bold text-base sm:text-lg" style={{ color: '#003DA5' }}>
                         {noticia.numeroRadicado}
                       </h3>
                       {getEstadoBadge(noticia.estadoLabel)}
                       {getOrigenBadge(noticia.origen)}
                     </div>
-                    <p className="text-sm font-semibold text-gray-900">{noticia.denunciado.nombre}</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-sm font-semibold text-gray-900 break-words">{noticia.denunciado.nombre}</p>
+                    <p className="text-xs text-gray-500 break-words">
                       {noticia.etapa} • {noticia.denunciado.dependencia}
                     </p>
                   </div>
                 </div>
 
                 {/* Detalles adicionales */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pl-15">
-                  <div>
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 sm:pl-15">
+                  <div className="min-w-0">
                     <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                    <p className="text-sm font-medium text-gray-900">{noticia.denunciado.identificacion}</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{noticia.denunciado.identificacion}</p>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs text-gray-500 mb-1">Territorial</p>
-                    <p className="text-sm font-medium text-gray-900">{noticia.territorial}</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{noticia.territorial}</p>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs text-gray-500 mb-1">Radicador</p>
-                    <p className="text-sm font-medium text-gray-900">{noticia.radicador}</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{noticia.radicador}</p>
                   </div>
                   {noticia.profesionalAsignado && (
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 mb-1">Asignado a</p>
-                      <p className="text-sm font-medium text-green-700">{noticia.profesionalAsignado}</p>
+                      <p className="text-sm font-medium text-green-700 truncate">{noticia.profesionalAsignado}</p>
                     </div>
                   )}
                 </div>
 
                 {/* Conductas */}
                 {noticia.conductas && noticia.conductas.length > 0 && (
-                  <div className="mt-4 pl-15">
+                  <div className="mt-4 sm:pl-15">
                     <p className="text-xs text-gray-500 mb-2">Conductas Indisciplinarias:</p>
                     <div className="flex flex-wrap gap-2">
                       {noticia.conductas.map((conducta, idx) => (
@@ -1188,22 +1188,22 @@ export function GestionNoticias() {
               </div>
 
               {/* Acciones y días */}
-              <div className="flex flex-col items-end gap-3 ml-4">
-                <div className="text-right">
-                  <p className="text-xs text-gray-500 mb-1">Hace</p>
-                  <p className="text-xl font-bold" style={{ color: '#003DA5' }}>
+              <div className="flex flex-col lg:items-end gap-3 lg:ml-4">
+                <div className="flex items-center justify-between lg:block lg:text-right">
+                  <p className="text-xs text-gray-500 mb-0 lg:mb-1">Hace</p>
+                  <p className="text-lg sm:text-xl font-bold" style={{ color: '#003DA5' }}>
                     {noticia.diasTranscurridos} días
                   </p>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {/* Botón Ver Historial */}
                   <button
                     onClick={() => {
                       setNoticiaSeleccionada(noticia);
                       setShowHistorialModal(true);
                     }}
-                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors"
+                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors flex-shrink-0"
                     title="Ver historial de auditoría"
                   >
                     <History className="w-4 h-4 text-purple-600" />
@@ -1215,7 +1215,7 @@ export function GestionNoticias() {
                       setNoticiaSeleccionada(noticia);
                       setShowDetallesModal(true);
                     }}
-                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
+                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors flex-shrink-0"
                     title="Ver detalles completos"
                   >
                     <Eye className="w-4 h-4 text-gray-600" />
@@ -1227,7 +1227,7 @@ export function GestionNoticias() {
                       setNoticiaSeleccionada(noticia);
                       setShowArchivarModal(true);
                     }}
-                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 transition-colors"
+                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 transition-colors flex-shrink-0"
                     title="Archivar noticia"
                   >
                     <Trash2 className="w-4 h-4 text-red-600" />
@@ -1239,7 +1239,7 @@ export function GestionNoticias() {
                       setNoticiaSeleccionada(noticia);
                       setShowRemitirCompetenciaModal(true);
                     }}
-                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors"
+                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors flex-shrink-0"
                     title="Remitir por competencia"
                   >
                     <Send className="w-4 h-4 text-purple-600" />
@@ -1254,11 +1254,11 @@ export function GestionNoticias() {
                           setNoticiaSeleccionada(noticia);
                           setShowDevolucionModal(true);
                         }}
-                        className="px-3 h-9 flex items-center justify-center gap-2 rounded-lg border-2 border-orange-500 text-orange-700 font-semibold text-sm hover:bg-orange-50 transition-colors"
+                        className="px-3 h-9 flex items-center justify-center gap-1.5 rounded-lg border-2 border-orange-500 text-orange-700 font-semibold text-sm hover:bg-orange-50 transition-colors flex-shrink-0"
                         title="Devolver al radicador"
                       >
                         <CornerDownLeft className="w-4 h-4" />
-                        Devolver
+                        <span className="hidden sm:inline">Devolver</span>
                       </button>
                       
                       {/* Asignar */}
@@ -1267,19 +1267,19 @@ export function GestionNoticias() {
                           setNoticiaSeleccionada(noticia);
                           setShowAsignacionModal(true);
                         }}
-                        className="px-4 h-9 flex items-center justify-center gap-2 rounded-lg text-white font-semibold text-sm hover:opacity-90 transition-colors"
+                        className="px-3 sm:px-4 h-9 flex items-center justify-center gap-1.5 rounded-lg text-white font-semibold text-sm hover:opacity-90 transition-colors flex-shrink-0"
                         style={{ background: '#10B981' }}
                         title="Asignar a profesional"
                       >
                         <UserCheck className="w-4 h-4" />
-                        Asignar
+                        <span className="hidden sm:inline">Asignar</span>
                       </button>
                     </>
                   )}
                   
                   {noticia.estado === 'devuelto' && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
-                      <CornerDownLeft className="w-4 h-4 text-orange-600" />
+                    <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg w-full sm:w-auto">
+                      <CornerDownLeft className="w-4 h-4 text-orange-600 flex-shrink-0" />
                       <span className="text-sm font-semibold text-orange-700">
                         Pendiente de Corrección
                       </span>
@@ -1287,8 +1287,8 @@ export function GestionNoticias() {
                   )}
 
                   {(noticia.estado === 'asignado' || noticia.estado === 'convertido-proceso') && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
-                      <CheckCircle className="w-4 h-4 text-green-600" />
+                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg w-full sm:w-auto">
+                      <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
                       <span className="text-sm font-semibold text-green-700">
                         {noticia.procesoAsociado || 'Asignado'}
                       </span>

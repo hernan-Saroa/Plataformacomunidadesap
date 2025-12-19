@@ -1,0 +1,351 @@
+/**
+ * MEJORAS RESPONSIVE PARA CONTROL INTERNO DISCIPLINARIO
+ * Estilos específicos para Mobile y Tablet
+ */
+
+/* ============================================
+   MOBILE OPTIMIZATIONS (< 768px)
+============================================ */
+
+@media (max-width: 767px) {
+  /* Kanban Container - Full width en mobile */
+  .kanban-container-mobile {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* Columnas Kanban - Ancho óptimo en mobile */
+  .kanban-column-mobile {
+    min-width: 280px;
+    max-width: 300px;
+    flex-shrink: 0;
+  }
+
+  /* Tarjetas de Noticia - Altura optimizada */
+  .noticia-card-mobile {
+    min-height: 320px;
+    max-height: 350px;
+  }
+
+  /* Tarjetas de Proceso - Altura optimizada */
+  .proceso-card-mobile {
+    min-height: 380px;
+    max-height: 420px;
+  }
+
+  /* Header con menos padding en mobile */
+  .mobile-header {
+    padding: 0.5rem;
+  }
+
+  /* Botones más compactos en mobile */
+  .mobile-button-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  /* Estadísticas en grid 2x2 */
+  .stats-grid-mobile {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  /* Texto más pequeño en mobile */
+  .mobile-text-xs {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  .mobile-text-sm {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  /* Badge más compacto */
+  .mobile-badge {
+    padding: 0.125rem 0.5rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+  }
+
+  /* Scroll horizontal suave */
+  .mobile-scroll-container {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #CBD5E0 #F7FAFC;
+  }
+
+  .mobile-scroll-container::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .mobile-scroll-container::-webkit-scrollbar-track {
+    background: #F7FAFC;
+    border-radius: 3px;
+  }
+
+  .mobile-scroll-container::-webkit-scrollbar-thumb {
+    background: #CBD5E0;
+    border-radius: 3px;
+  }
+
+  .mobile-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: #A0AEC0;
+  }
+
+  /* Scroll indicator */
+  .mobile-scroll-indicator {
+    position: absolute;
+    top: 0.5rem;
+    right: 1rem;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(8px);
+    padding: 0.375rem 0.75rem;
+    border-radius: 9999px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border: 1px solid #E2E8F0;
+    animation: pulse-scroll 2s infinite;
+  }
+
+  @keyframes pulse-scroll {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  /* Información de partes más compacta */
+  .mobile-person-info {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #E5E7EB;
+  }
+
+  .mobile-person-name {
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1rem;
+    color: #111827;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .mobile-person-id {
+    font-size: 0.7rem;
+    line-height: 1rem;
+    color: #6B7280;
+  }
+
+  /* Grid de botones 2x2 más compacto */
+  .mobile-action-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.375rem;
+  }
+
+  .mobile-action-button {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.25rem;
+  }
+
+  /* Iconos más pequeños en mobile */
+  .mobile-icon-xs {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+
+  .mobile-icon-sm {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  /* Ocultar elementos en mobile */
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  /* Mostrar solo en mobile */
+  .show-on-mobile {
+    display: block !important;
+  }
+}
+
+/* ============================================
+   TABLET OPTIMIZATIONS (768px - 1023px)
+============================================ */
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  /* Columnas Kanban - Ancho medio en tablet */
+  .kanban-column-tablet {
+    min-width: 320px;
+    max-width: 340px;
+  }
+
+  /* Estadísticas en grid 2x2 o 4x1 */
+  .stats-grid-tablet {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+  }
+
+  /* Botones más pequeños en tablet */
+  .tablet-button-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  /* Texto mediano en tablet */
+  .tablet-text-sm {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+}
+
+/* ============================================
+   DESKTOP OPTIMIZATIONS (>= 1024px)
+============================================ */
+
+@media (min-width: 1024px) {
+  /* Columnas Kanban - Ancho completo en desktop */
+  .kanban-column-desktop {
+    min-width: 360px;
+    max-width: 380px;
+  }
+
+  /* Grid completo en desktop */
+  .stats-grid-desktop {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+  }
+
+  /* Mostrar elementos solo en desktop */
+  .show-on-desktop {
+    display: block !important;
+  }
+
+  /* Ocultar en desktop */
+  .hide-on-desktop {
+    display: none !important;
+  }
+}
+
+/* ============================================
+   UTILIDADES GENERALES
+============================================ */
+
+/* Contenedor con scroll horizontal */
+.horizontal-scroll {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevenir zoom en inputs en iOS */
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+textarea,
+select {
+  font-size: 16px !important;
+}
+
+/* Mejorar touch targets en mobile */
+@media (max-width: 767px) {
+  button,
+  a,
+  .clickable {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Animaciones suaves */
+.smooth-transition {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Card con shadow adaptativo */
+.card-adaptive-shadow {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+@media (min-width: 768px) {
+  .card-adaptive-shadow:hover {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* Truncate text helpers */
+.truncate-1-line {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.truncate-2-lines {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.truncate-3-lines {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Safe area para iOS */
+@supports (padding: max(0px)) {
+  .safe-area-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .safe-area-top {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+}
+
+/* Prevenir selección de texto en elementos interactivos */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Loading skeleton para mobile */
+.skeleton-mobile {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e0e0e0 50%,
+    #f0f0f0 75%
+  );
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
