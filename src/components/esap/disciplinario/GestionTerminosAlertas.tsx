@@ -4,7 +4,7 @@
  * REDISEÑADO - Fase 5: Diseño limpio, profesional y altamente usable
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar, Clock, Bell, AlertCircle, CheckCircle, Settings,
@@ -16,290 +16,33 @@ import {
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { FlujoTerminosAlertas } from './FlujoTerminosAlertas';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import terminosAlertasService, {
+  type Termino,
+  type DiaFestivo,
+  type ReglaAlerta,
+  type Alerta,
+} from '../../../services/api/terminosAlertas.service';
 
-// Interfaces
-interface DiaFestivo {
-  id: string;
-  fecha: string;
-  descripcion: string;
-  tipo: 'nacional' | 'regional' | 'institucional';
-  territorio?: string;
-}
-
-interface Termino {
-  id: string;
-  proceso: string;
-  numeroProceso: string;
-  actuacion: string;
-  responsable: string;
-  emailResponsable: string;
-  fechaInicio: string;
-  diasHabiles: number;
-  fechaVencimiento: string;
-  diasRestantes: number;
-  estado: 'pendiente' | 'proximo_vencer' | 'vencido' | 'cumplido';
-  alertaEnviada: boolean;
-}
-
-interface Alerta {
-  id: string;
-  termino: string;
-  proceso: string;
-  tipo: 'email' | 'visual' | 'sistema';
-  fechaEnvio: string;
-  destinatario: string;
-  estado: 'enviada' | 'pendiente' | 'error';
-  asunto: string;
-}
-
-interface ReglaAlerta {
-  id: string;
-  nombre: string;
-  diasAnticipacion: number;
-  activa: boolean;
-  enviarEmail: boolean;
-  mostrarPanel: boolean;
-  descripcion: string;
-}
-
-// Mock Data
-const DIAS_FESTIVOS_MOCK: DiaFestivo[] = [
-  {
-    id: 'f1',
-    fecha: '2025-01-01',
-    descripcion: 'Año Nuevo',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f2',
-    fecha: '2025-01-06',
-    descripcion: 'Día de los Reyes Magos',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f3',
-    fecha: '2025-03-24',
-    descripcion: 'Día de San José',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f4',
-    fecha: '2025-04-17',
-    descripcion: 'Jueves Santo',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f5',
-    fecha: '2025-04-18',
-    descripcion: 'Viernes Santo',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f6',
-    fecha: '2025-05-01',
-    descripcion: 'Día del Trabajo',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f7',
-    fecha: '2025-06-23',
-    descripcion: 'Día de San Pedro y San Pablo',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f8',
-    fecha: '2025-07-20',
-    descripcion: 'Día de la Independencia',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f9',
-    fecha: '2025-08-07',
-    descripcion: 'Batalla de Boyacá',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f10',
-    fecha: '2025-08-18',
-    descripcion: 'Asunción de la Virgen',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f11',
-    fecha: '2025-10-13',
-    descripcion: 'Día de la Raza',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f12',
-    fecha: '2025-11-03',
-    descripcion: 'Todos los Santos',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f13',
-    fecha: '2025-11-17',
-    descripcion: 'Independencia de Cartagena',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f14',
-    fecha: '2025-12-08',
-    descripcion: 'Inmaculada Concepción',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f15',
-    fecha: '2025-12-25',
-    descripcion: 'Navidad',
-    tipo: 'nacional'
-  }
-];
-
-const TERMINOS_MOCK: Termino[] = [
-  {
-    id: 't1',
-    proceso: 'Juan Pérez Gómez',
-    numeroProceso: 'P-120-2025',
-    actuacion: 'Notificación Auto de Apertura',
-    responsable: 'Secretaría OCID',
-    emailResponsable: 'secretaria@esap.edu.co',
-    fechaInicio: '2025-01-07',
-    diasHabiles: 5,
-    fechaVencimiento: '2025-01-14',
-    diasRestantes: 3,
-    estado: 'proximo_vencer',
-    alertaEnviada: true
-  },
-  {
-    id: 't2',
-    proceso: 'María González Castro',
-    numeroProceso: 'P-089-2024',
-    actuacion: 'Presentación de Descargos',
-    responsable: 'Investigado',
-    emailResponsable: 'maria.gonzalez@ejemplo.com',
-    fechaInicio: '2024-12-10',
-    diasHabiles: 10,
-    fechaVencimiento: '2024-12-23',
-    diasRestantes: -22,
-    estado: 'vencido',
-    alertaEnviada: true
-  },
-  {
-    id: 't3',
-    proceso: 'Carlos Andrés Rodríguez',
-    numeroProceso: 'P-156-2025',
-    actuacion: 'Valoración Noticia Disciplinaria',
-    responsable: 'Marta Torres',
-    emailResponsable: 'marta.torres@esap.edu.co',
-    fechaInicio: '2025-01-08',
-    diasHabiles: 30,
-    fechaVencimiento: '2025-02-18',
-    diasRestantes: 25,
-    estado: 'pendiente',
-    alertaEnviada: false
-  },
-  {
-    id: 't4',
-    proceso: 'Ana María López Hernández',
-    numeroProceso: 'P-045-2024',
-    actuacion: 'Práctica de Pruebas',
-    responsable: 'Juan Carlos Ruiz',
-    emailResponsable: 'juan.ruiz@esap.edu.co',
-    fechaInicio: '2024-11-20',
-    diasHabiles: 15,
-    fechaVencimiento: '2024-12-10',
-    diasRestantes: 0,
-    estado: 'cumplido',
-    alertaEnviada: false
-  },
-  {
-    id: 't5',
-    proceso: 'Jorge Luis Martínez Sánchez',
-    numeroProceso: 'P-198-2025',
-    actuacion: 'Indagación Preliminar',
-    responsable: 'Laura Díaz',
-    emailResponsable: 'laura.diaz@esap.edu.co',
-    fechaInicio: '2025-01-15',
-    diasHabiles: 6,
-    fechaVencimiento: '2025-01-24',
-    diasRestantes: 11,
-    estado: 'pendiente',
-    alertaEnviada: false
-  }
-];
-
-const REGLAS_ALERTA_MOCK: ReglaAlerta[] = [
-  {
-    id: 'r1',
-    nombre: 'Alerta Crítica - 2 días antes',
-    diasAnticipacion: 2,
-    activa: true,
-    enviarEmail: true,
-    mostrarPanel: true,
-    descripcion: 'Se envía cuando faltan 2 días hábiles para el vencimiento'
-  },
-  {
-    id: 'r2',
-    nombre: 'Alerta Preventiva - 5 días antes',
-    diasAnticipacion: 5,
-    activa: true,
-    enviarEmail: true,
-    mostrarPanel: true,
-    descripcion: 'Se envía cuando faltan 5 días hábiles para el vencimiento'
-  },
-  {
-    id: 'r3',
-    nombre: 'Alerta Temprana - 10 días antes',
-    diasAnticipacion: 10,
-    activa: false,
-    enviarEmail: false,
-    mostrarPanel: true,
-    descripcion: 'Se envía cuando faltan 10 días hábiles para el vencimiento'
-  }
-];
-
-const ALERTAS_MOCK: Alerta[] = [
-  {
-    id: 'a1',
-    termino: 't1',
-    proceso: 'P-120-2025 - Juan Pérez Gómez',
-    tipo: 'email',
-    fechaEnvio: '2025-01-12 09:00',
-    destinatario: 'secretaria@esap.edu.co',
-    estado: 'enviada',
-    asunto: 'Término próximo a vencer: Notificación Auto de Apertura'
-  },
-  {
-    id: 'a2',
-    termino: 't2',
-    proceso: 'P-089-2024 - María González Castro',
-    tipo: 'email',
-    fechaEnvio: '2024-12-20 08:30',
-    destinatario: 'maria.gonzalez@ejemplo.com',
-    estado: 'enviada',
-    asunto: 'Recordatorio: Presentación de Descargos'
-  },
-  {
-    id: 'a3',
-    termino: 't2',
-    proceso: 'P-089-2024 - María González Castro',
-    tipo: 'sistema',
-    fechaEnvio: '2024-12-24 00:01',
-    destinatario: 'Sistema',
-    estado: 'enviada',
-    asunto: 'Término vencido: Presentación de Descargos'
-  }
-];
+// Interfaces importadas desde el servicio
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function GestionTerminosAlertas() {
-  const [terminos, setTerminos] = useState<Termino[]>(TERMINOS_MOCK);
-  const [diasFestivos, setDiasFestivos] = useState<DiaFestivo[]>(DIAS_FESTIVOS_MOCK);
+  const [terminos, setTerminos] = useState<Termino[]>([]);
+  const [diasFestivos, setDiasFestivos] = useState<DiaFestivo[]>([]);
+  const [reglasAlerta, setReglasAlerta] = useState<ReglaAlerta[]>([]);
+  const [alertas, setAlertas] = useState<Alerta[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [festivoEditId, setFestivoEditId] = useState<string | null>(null);
+  const [stats, setStats] = useState({
+    pendientes: 0,
+    proximosVencer: 0,
+    vencidos: 0,
+    cumplidos: 0
+  });
   const [vistaActual, setVistaActual] = useState<'terminos' | 'calendario' | 'reglas' | 'historial'>('terminos');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterEstado, setFilterEstado] = useState<string>('all');
@@ -308,6 +51,8 @@ export function GestionTerminosAlertas() {
   const [showFlujoModal, setShowFlujoModal] = useState(false);
   const [terminoSeleccionado, setTerminoSeleccionado] = useState<Termino | null>(null);
   const [showModalDetalle, setShowModalDetalle] = useState(false);
+  const [showModalRegla, setShowModalRegla] = useState(false);
+  const [reglaEditando, setReglaEditando] = useState<ReglaAlerta | null>(null);
   
   // Formulario para nuevo término
   const [nuevoTermino, setNuevoTermino] = useState({
@@ -328,8 +73,64 @@ export function GestionTerminosAlertas() {
     territorio: ''
   });
 
-  // Filtrado de términos
-  const terminosFiltrados = terminos.filter(t => {
+  // Formulario para regla de alerta
+  const [reglaForm, setReglaForm] = useState({
+    nombre: '',
+    diasAnticipacion: 2,
+    activa: true,
+    enviarEmail: false,
+    mostrarPanel: true,
+    descripcion: ''
+  });
+
+  // Cargar datos desde el backend
+  useEffect(() => {
+    cargarDatos();
+  }, []);
+
+  const cargarDatos = async () => {
+    try {
+      setLoading(true);
+      
+      // Cargar términos
+      const terminosResponse = await terminosAlertasService.listarTerminos({
+        page: 1,
+        limit: 1000,
+        ...(filterEstado !== 'all' && { estado: filterEstado as any }),
+        ...(searchQuery && { search: searchQuery }),
+      });
+      setTerminos(terminosResponse.items || []);
+      if (terminosResponse.stats) {
+        setStats(terminosResponse.stats);
+      }
+
+      // Cargar festivos
+      const festivosResponse = await terminosAlertasService.listarFestivos();
+      const festivosActivos = (festivosResponse.festivos || []).filter((f) => f.activo !== false);
+      setDiasFestivos(festivosActivos);
+
+      // Cargar reglas de alerta
+      const reglasResponse = await terminosAlertasService.listarReglasAlerta();
+      setReglasAlerta(reglasResponse.reglas || []);
+
+      // Cargar alertas
+      const alertasResponse = await terminosAlertasService.listarAlertas({
+        page: 1,
+        limit: 1000,
+      });
+      setAlertas(alertasResponse.items || []);
+    } catch (error: any) {
+      console.error('Error cargando datos:', error);
+      toast.error('Error al cargar datos', {
+        description: error.message || 'No se pudieron cargar los datos del servidor'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filtrado de términos (ahora se hace en el backend, pero mantenemos filtro local para búsqueda)
+  const terminosFiltrados = terminos.filter((t: Termino) => {
     const matchesSearch = 
       t.proceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.numeroProceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -341,114 +142,101 @@ export function GestionTerminosAlertas() {
     return matchesSearch && matchesEstado;
   });
 
-  // Estadísticas
-  const stats = {
-    pendientes: terminos.filter(t => t.estado === 'pendiente').length,
-    proximosVencer: terminos.filter(t => t.estado === 'proximo_vencer').length,
-    vencidos: terminos.filter(t => t.estado === 'vencido').length,
-    cumplidos: terminos.filter(t => t.estado === 'cumplido').length
-  };
+  const festivosOrdenados = [...diasFestivos].sort(
+    (a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime(),
+  );
 
-  const handleMarcarCompleto = (id: string) => {
-    setTerminos(terminos.map(t => 
-      t.id === id ? { ...t, estado: 'cumplido' as const } : t
-    ));
+  const handleMarcarCompleto = async (id: string) => {
+    try {
+      const fechaCumplimiento = new Date().toISOString().split('T')[0];
+      await terminosAlertasService.marcarCumplido(id, {
+        fechaCumplimiento,
+      });
     toast.success('Término marcado como cumplido', {
       description: 'El término se ha actualizado correctamente'
     });
+      await cargarDatos(); // Recargar datos
+    } catch (error: any) {
+      toast.error('Error al marcar término como cumplido', {
+        description: error.message || 'No se pudo actualizar el término'
+      });
+    }
   };
 
-  const handleRecalcular = () => {
-    // Función para calcular días hábiles entre dos fechas
-    const calcularDiasHabiles = (fechaInicio: string, diasHabiles: number): { fechaVencimiento: string, diasRestantes: number } => {
-      const inicio = new Date(fechaInicio);
-      const hoy = new Date();
-      let diasContados = 0;
-      let fechaActual = new Date(inicio);
-      
-      // Calcular fecha de vencimiento
-      while (diasContados < diasHabiles) {
-        fechaActual.setDate(fechaActual.getDate() + 1);
-        const diaSemana = fechaActual.getDay();
-        const fechaStr = fechaActual.toISOString().split('T')[0];
-        
-        // Solo contar si no es fin de semana ni festivo
-        const esFestivo = diasFestivos.some(f => f.fecha === fechaStr);
-        if (diaSemana !== 0 && diaSemana !== 6 && !esFestivo) {
-          diasContados++;
-        }
-      }
-      
-      // Calcular días restantes desde hoy
-      let diasRestantesCalc = 0;
-      let fechaTemporal = new Date(hoy);
-      
-      if (fechaActual > hoy) {
-        while (fechaTemporal < fechaActual) {
-          fechaTemporal.setDate(fechaTemporal.getDate() + 1);
-          const diaSemana = fechaTemporal.getDay();
-          const fechaStr = fechaTemporal.toISOString().split('T')[0];
-          const esFestivo = diasFestivos.some(f => f.fecha === fechaStr);
-          
-          if (diaSemana !== 0 && diaSemana !== 6 && !esFestivo) {
-            diasRestantesCalc++;
-          }
-        }
-      } else {
-        // Si la fecha ya pasó, contar días negativos
-        while (fechaTemporal > fechaActual) {
-          const diaSemana = fechaTemporal.getDay();
-          const fechaStr = fechaTemporal.toISOString().split('T')[0];
-          const esFestivo = diasFestivos.some(f => f.fecha === fechaStr);
-          
-          if (diaSemana !== 0 && diaSemana !== 6 && !esFestivo) {
-            diasRestantesCalc--;
-          }
-          fechaTemporal.setDate(fechaTemporal.getDate() - 1);
-        }
-      }
-      
-      return {
-        fechaVencimiento: fechaActual.toISOString().split('T')[0],
-        diasRestantes: diasRestantesCalc
-      };
-    };
-    
-    // Recalcular todos los términos
-    const terminosActualizados = terminos.map(termino => {
-      if (termino.estado === 'cumplido') {
-        return termino; // No recalcular términos cumplidos
-      }
-      
-      const { fechaVencimiento, diasRestantes } = calcularDiasHabiles(termino.fechaInicio, termino.diasHabiles);
-      
-      // Determinar nuevo estado
-      let nuevoEstado: 'pendiente' | 'proximo_vencer' | 'vencido' | 'cumplido' = 'pendiente';
-      if (diasRestantes < 0) {
-        nuevoEstado = 'vencido';
-      } else if (diasRestantes <= 3) {
-        nuevoEstado = 'proximo_vencer';
-      }
-      
-      return {
-        ...termino,
-        fechaVencimiento,
-        diasRestantes,
-        estado: nuevoEstado
-      };
+  const handleRecalcular = async () => {
+    try {
+      toast.loading('Recalculando términos...', { id: 'recalcular' });
+      const resultado = await terminosAlertasService.recalcularTerminos();
+      toast.success('Recálculo completado', {
+        id: 'recalcular',
+        description: `${resultado.terminosActualizados} términos actualizados`
+      });
+      await cargarDatos(); // Recargar datos
+    } catch (error: any) {
+      toast.error('Error al recalcular términos', {
+        id: 'recalcular',
+        description: error.message || 'No se pudieron recalcular los términos'
+      });
+    }
+  };
+
+  const handleEliminarFestivo = async (festivoId: string, descripcion: string) => {
+    if (!confirm(`¿Está seguro de eliminar el festivo "${descripcion}"?`)) return;
+    try {
+      await terminosAlertasService.eliminarFestivo(festivoId);
+      await cargarDatos();
+      toast.success('Festivo eliminado', { description: descripcion });
+    } catch (error: any) {
+      toast.error('Error al eliminar festivo', {
+        description: error.message || 'No se pudo eliminar el festivo',
+      });
+    }
+  };
+
+  const handleToggleRegla = async (regla: ReglaAlerta) => {
+    try {
+      await terminosAlertasService.toggleReglaAlerta(regla.id);
+      toast.success(regla.activa ? 'Regla desactivada' : 'Regla activada', {
+        description: `La regla "${regla.nombre}" ha sido ${regla.activa ? 'desactivada' : 'activada'}`
+      });
+      await cargarDatos();
+    } catch (error: any) {
+      toast.error('Error al cambiar estado de la regla', {
+        description: error.message || 'No se pudo actualizar el estado'
+      });
+    }
+  };
+
+  const handleEditarRegla = (regla: ReglaAlerta) => {
+    setReglaEditando(regla);
+    setReglaForm({
+      nombre: regla.nombre,
+      diasAnticipacion: regla.diasAnticipacion,
+      activa: regla.activa,
+      enviarEmail: regla.enviarEmail,
+      mostrarPanel: regla.mostrarPanel,
+      descripcion: regla.descripcion || ''
     });
-    
-    setTerminos(terminosActualizados);
-    
-    toast.success('Términos recalculados exitosamente', {
-      description: `${terminosActualizados.length} términos actualizados con ${diasFestivos.length} festivos`
-    });
+    setShowModalRegla(true);
+  };
+
+  const handleEliminarRegla = async (regla: ReglaAlerta) => {
+    if (!confirm(`¿Está seguro de eliminar la regla "${regla.nombre}"?`)) return;
+    try {
+      await terminosAlertasService.eliminarReglaAlerta(regla.id);
+      toast.success('Regla eliminada', { description: regla.nombre });
+      await cargarDatos();
+    } catch (error: any) {
+      toast.error('Error al eliminar regla', {
+        description: error.message || 'No se pudo eliminar la regla'
+      });
+    }
   };
 
   const handleExportarExcel = () => {
     // Crear CSV
     const headers = ['Estado', 'Proceso', 'Actuación', 'Responsable', 'Email', 'Fecha Inicio', 'Días Hábiles', 'Vencimiento', 'Días Restantes'];
-    const rows = terminosFiltrados.map(t => [
+    const rows = terminosFiltrados.map((t: Termino) => [
       t.estado === 'vencido' ? 'Vencido' :
       t.estado === 'proximo_vencer' ? 'Próximo a Vencer' :
       t.estado === 'pendiente' ? 'Pendiente' : 'Cumplido',
@@ -465,7 +253,7 @@ export function GestionTerminosAlertas() {
 
     const csvContent = [
       headers.join(','),
-      ...rows.map(row => row.join(','))
+      ...rows.map((row: any) => row.join(','))
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -686,7 +474,7 @@ export function GestionTerminosAlertas() {
             }`}
           >
             <Bell className="w-4 h-4" />
-            Historial ({ALERTAS_MOCK.length})
+            Historial ({alertas.length})
           </button>
         </div>
       </div>
@@ -931,7 +719,7 @@ export function GestionTerminosAlertas() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {diasFestivos.map((festivo) => (
+                  {festivosOrdenados.map((festivo) => (
                     <tr key={festivo.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -958,29 +746,21 @@ export function GestionTerminosAlertas() {
                           <button
                             onClick={() => {
                               setNuevoFestivo({
+                          // edit mode: prellenar
                                 fecha: festivo.fecha,
                                 descripcion: festivo.descripcion,
                                 tipo: festivo.tipo,
                                 territorio: festivo.territorio || ''
                               });
+                        setFestivoEditId(festivo.id);
                               setShowModalFestivo(true);
-                              toast.info('Editar festivo', {
-                                description: 'Funcionalidad en desarrollo'
-                              });
                             }}
                             className="p-2 rounded-lg hover:bg-gray-100"
                           >
                             <Edit2 className="w-4 h-4 text-gray-600" />
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm(`¿Está seguro de eliminar el festivo "${festivo.descripcion}"?`)) {
-                                setDiasFestivos(diasFestivos.filter(f => f.id !== festivo.id));
-                                toast.success('Festivo eliminado', {
-                                  description: `${festivo.descripcion} ha sido eliminado del calendario`
-                                });
-                              }
-                            }}
+                            onClick={() => handleEliminarFestivo(festivo.id, festivo.descripcion)}
                             className="p-2 rounded-lg hover:bg-red-50"
                           >
                             <Trash2 className="w-4 h-4 text-red-600" />
@@ -1014,7 +794,7 @@ export function GestionTerminosAlertas() {
           </Card>
 
           <div className="grid gap-4">
-            {REGLAS_ALERTA_MOCK.map((regla) => (
+            {reglasAlerta.map((regla: ReglaAlerta) => (
               <Card key={regla.id} className="p-6 border border-gray-200">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -1056,20 +836,29 @@ export function GestionTerminosAlertas() {
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => toast.info('Editar regla')}
+                      onClick={() => handleEditarRegla(regla)}
                       className="p-2 rounded-lg hover:bg-gray-100"
+                      title="Editar regla"
                     >
                       <Edit2 className="w-4 h-4 text-gray-600" />
                     </button>
                     <button
-                      onClick={() => toast.info(regla.activa ? 'Desactivar regla' : 'Activar regla')}
+                      onClick={() => handleToggleRegla(regla)}
                       className={`p-2 rounded-lg ${regla.activa ? 'hover:bg-red-50' : 'hover:bg-green-50'}`}
+                      title={regla.activa ? 'Desactivar regla' : 'Activar regla'}
                     >
                       {regla.activa ? (
                         <Pause className="w-4 h-4 text-red-600" />
                       ) : (
                         <Play className="w-4 h-4 text-green-600" />
                       )}
+                    </button>
+                    <button
+                      onClick={() => handleEliminarRegla(regla)}
+                      className="p-2 rounded-lg hover:bg-red-50"
+                      title="Eliminar regla"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-600" />
                     </button>
                   </div>
                 </div>
@@ -1108,7 +897,7 @@ export function GestionTerminosAlertas() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {ALERTAS_MOCK.map((alerta) => (
+                  {alertas.map((alerta: Alerta) => (
                     <tr key={alerta.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">
                         <p className="text-sm text-gray-900">{alerta.fechaEnvio}</p>
@@ -1358,30 +1147,27 @@ export function GestionTerminosAlertas() {
                     Cancelar
                   </button>
                   <button
-                    onClick={() => {
-                      if (!nuevoTermino.numeroProceso || !nuevoTermino.proceso || !nuevoTermino.actuacion || 
-                          !nuevoTermino.responsable || !nuevoTermino.emailResponsable || !nuevoTermino.fechaInicio) {
-                        toast.error('Complete todos los campos obligatorios');
+                    onClick={async () => {
+                      if (!nuevoTermino.numeroProceso || !nuevoTermino.actuacion || !nuevoTermino.fechaInicio) {
+                        toast.error('Complete número de proceso, actuación y fecha de inicio');
                         return;
                       }
                       
-                      const nuevoId = `t${terminos.length + 1}`;
-                      const nuevoTerminoCompleto: Termino = {
-                        id: nuevoId,
-                        proceso: nuevoTermino.proceso,
-                        numeroProceso: nuevoTermino.numeroProceso,
+                      try {
+                        // Buscar proceso por radicado (numeroProceso)
+                        const proceso = await terminosAlertasService.buscarProcesoPorRadicado(nuevoTermino.numeroProceso);
+
+                        // Responsable temporal (placeholder UUID requerido por backend)
+                        const RESPONSABLE_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+
+                        await terminosAlertasService.crearTermino({
+                          procesoId: proceso.id,
                         actuacion: nuevoTermino.actuacion,
-                        responsable: nuevoTermino.responsable,
-                        emailResponsable: nuevoTermino.emailResponsable,
+                          responsableId: RESPONSABLE_PLACEHOLDER,
                         fechaInicio: nuevoTermino.fechaInicio,
                         diasHabiles: nuevoTermino.diasHabiles,
-                        fechaVencimiento: new Date(Date.now() + nuevoTermino.diasHabiles * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                        diasRestantes: nuevoTermino.diasHabiles,
-                        estado: 'pendiente',
-                        alertaEnviada: false
-                      };
-                      
-                      setTerminos([...terminos, nuevoTerminoCompleto]);
+                        });
+
                       setShowModalNuevoTermino(false);
                       setNuevoTermino({
                         proceso: '',
@@ -1390,12 +1176,15 @@ export function GestionTerminosAlertas() {
                         responsable: '',
                         emailResponsable: '',
                         fechaInicio: '',
-                        diasHabiles: 10
-                      });
-                      
-                      toast.success('Término creado exitosamente', {
-                        description: `${nuevoTerminoCompleto.actuacion} - ${nuevoTerminoCompleto.numeroProceso}`
-                      });
+                          diasHabiles: 10,
+                        });
+                        await cargarDatos();
+                        toast.success('Término creado exitosamente');
+                      } catch (error: any) {
+                        toast.error('Error al crear término', {
+                          description: error?.response?.data?.message || error.message || 'No se pudo crear el término',
+                        });
+                      }
                     }}
                     className="flex-1 px-6 py-3 rounded-lg font-semibold text-white bg-orange-500 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
                   >
@@ -1602,6 +1391,176 @@ export function GestionTerminosAlertas() {
         )}
       </AnimatePresence>
 
+      {/* Modal Editar Regla de Alerta */}
+      <AnimatePresence>
+        {showModalRegla && reglaEditando && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowModalRegla(false);
+                setReglaEditando(null);
+              }
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            >
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-gray-900">Editar Regla de Alerta</h2>
+                  <button
+                    onClick={() => {
+                      setShowModalRegla(false);
+                      setReglaEditando(null);
+                    }}
+                    className="p-2 rounded-lg hover:bg-gray-100"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Nombre de la Regla
+                  </label>
+                  <input
+                    type="text"
+                    value={reglaForm.nombre}
+                    onChange={(e) => setReglaForm({ ...reglaForm, nombre: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    placeholder="Ej: Alerta Crítica - 2 días antes"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Días de Anticipación
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="30"
+                    value={reglaForm.diasAnticipacion}
+                    onChange={(e) => setReglaForm({ ...reglaForm, diasAnticipacion: parseInt(e.target.value) || 0 })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Número de días hábiles antes del vencimiento para enviar la alerta (1-30)
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Descripción
+                  </label>
+                  <textarea
+                    value={reglaForm.descripcion}
+                    onChange={(e) => setReglaForm({ ...reglaForm, descripcion: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    rows={3}
+                    placeholder="Descripción de la regla de alerta"
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                    <div>
+                      <label className="text-sm font-semibold text-gray-700">Estado</label>
+                      <p className="text-xs text-gray-500">Activar o desactivar esta regla</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={reglaForm.activa}
+                        onChange={(e) => setReglaForm({ ...reglaForm, activa: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                    <div>
+                      <label className="text-sm font-semibold text-gray-700">Enviar Email</label>
+                      <p className="text-xs text-gray-500">Enviar notificación por correo electrónico</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={reglaForm.enviarEmail}
+                        onChange={(e) => setReglaForm({ ...reglaForm, enviarEmail: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                    <div>
+                      <label className="text-sm font-semibold text-gray-700">Mostrar en Panel</label>
+                      <p className="text-xs text-gray-500">Mostrar alerta en el panel de notificaciones</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={reglaForm.mostrarPanel}
+                        onChange={(e) => setReglaForm({ ...reglaForm, mostrarPanel: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-gray-200 flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowModalRegla(false);
+                    setReglaEditando(null);
+                  }}
+                  className="flex-1 px-6 py-3 rounded-lg font-semibold border-2 border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!reglaForm.nombre || !reglaForm.descripcion) {
+                      toast.error('Complete todos los campos obligatorios');
+                      return;
+                    }
+                    
+                    try {
+                      await terminosAlertasService.actualizarReglaAlerta(reglaEditando.id, reglaForm);
+                      toast.success('Regla actualizada exitosamente');
+                      setShowModalRegla(false);
+                      setReglaEditando(null);
+                      await cargarDatos();
+                    } catch (error: any) {
+                      toast.error('Error al actualizar regla', {
+                        description: error.message || 'No se pudo actualizar la regla'
+                      });
+                    }
+                  }}
+                  className="flex-1 px-6 py-3 rounded-lg font-semibold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+                >
+                  Guardar Cambios
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Modal Agregar Festivo */}
       <AnimatePresence>
         {showModalFestivo && (
@@ -1713,25 +1672,35 @@ export function GestionTerminosAlertas() {
                     Cancelar
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (!nuevoFestivo.fecha || !nuevoFestivo.descripcion) {
                         toast.error('Complete todos los campos obligatorios');
                         return;
                       }
                       
-                      const nuevoId = `f${diasFestivos.length + 1}`;
-                      const nuevoFestivoCompleto: DiaFestivo = {
-                        id: nuevoId,
+                      try {
+                        if (festivoEditId) {
+                          // Actualizar
+                          await terminosAlertasService.actualizarFestivo(festivoEditId, {
                         fecha: nuevoFestivo.fecha,
                         descripcion: nuevoFestivo.descripcion,
                         tipo: nuevoFestivo.tipo,
-                        territorio: nuevoFestivo.territorio || undefined
-                      };
-                      
-                      setDiasFestivos([...diasFestivos, nuevoFestivoCompleto].sort((a, b) => 
-                        new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
-                      ));
+                            territorio: nuevoFestivo.territorio || undefined,
+                          });
+                          toast.success('Festivo actualizado');
+                        } else {
+                          // Crear
+                          await terminosAlertasService.crearFestivo({
+                            fecha: nuevoFestivo.fecha,
+                            descripcion: nuevoFestivo.descripcion,
+                            tipo: nuevoFestivo.tipo,
+                            territorio: nuevoFestivo.territorio || undefined,
+                          });
+                          toast.success('Festivo agregado exitosamente');
+                        }
+                        
                       setShowModalFestivo(false);
+                        setFestivoEditId(null);
                       setNuevoFestivo({
                         fecha: '',
                         descripcion: '',
@@ -1739,14 +1708,17 @@ export function GestionTerminosAlertas() {
                         territorio: ''
                       });
                       
-                      toast.success('Festivo agregado exitosamente', {
-                        description: `${nuevoFestivoCompleto.descripcion} - ${nuevoFestivoCompleto.fecha}`
-                      });
+                        await cargarDatos(); // Recargar datos
+                      } catch (error: any) {
+                        toast.error(festivoEditId ? 'Error al actualizar festivo' : 'Error al agregar festivo', {
+                          description: error.message || 'No se pudo procesar el festivo'
+                        });
+                      }
                     }}
                     className="flex-1 px-6 py-3 rounded-lg font-semibold text-white bg-orange-500 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
                   >
                     <Save className="w-5 h-5" />
-                    Agregar Festivo
+                    {festivoEditId ? 'Guardar Cambios' : 'Agregar Festivo'}
                   </button>
                 </div>
               </div>

@@ -34,7 +34,7 @@ export class AutoService {
   async create(createAutoDto: CreateLegalAutoDto): Promise<LegalAuto> {
     try {
       // Validar que el proceso existe
-      await this.processService.findById(createAutoDto.processId);
+      await this.processService.findById(createAutoDto.processId, false);
 
       // CORRECCIÓN AQUI: Mapeo manual de campos DTO -> Entidad
       const auto = this.autoRepository.create({
