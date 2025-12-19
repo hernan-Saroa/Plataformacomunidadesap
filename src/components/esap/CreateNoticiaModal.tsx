@@ -1,4 +1,4 @@
-/**
+﻿/**
  * MODAL: CREAR NOTICIA DISCIPLINARIA
  * RF001 – Gestión de Noticias Disciplinarias
  * Formulario completo con validación y generación automática de número único
@@ -96,6 +96,8 @@ const DEPENDENCIAS_ESAP = [
   'Comunicaciones',
   ...TERRITORIALES_ESAP
 ];
+
+const DEPENDENCIAS_UNICAS = Array.from(new Set(DEPENDENCIAS_ESAP));
 
 const CONDUCTAS_INDISCIPLINARIAS = [
   'Abandono del cargo',
@@ -885,3 +887,4 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
     </div>
   );
 }
+
