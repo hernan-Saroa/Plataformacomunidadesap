@@ -35,14 +35,22 @@ import {
   ModalHistorialAuditoria
 } from './ModalesGestionDocumental';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
+import { SistemaComentarios } from './SistemaComentarios';
 
 // ==================== TIPOS ====================
+interface Persona {
+  nombre: string;
+  tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT';
+  numeroIdentificacion: string;
+}
+
 interface Noticia {
   id: string;
   numero: string;
   fechaRecepcion: string;
   origen: string;
-  denunciado: string;
+  denunciante: Persona;
+  denunciado: Persona;
   hechos: string;
   estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada';
   prioridad: 'alta' | 'media' | 'baja';
@@ -54,11 +62,12 @@ interface Proceso {
   id: string;
   numeroProceso: string;
   noticiaOrigen: string;
-  denunciado: string;
-  cedula: string;
-  etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
+  denunciante: Persona;
+  denunciado: Persona;
+  cedula: string; // Mantener por compatibilidad
+  etapaActual: 'Recepción' | 'Valoración' | 'Indagación Previa' | 'Investigación' | 'Evaluación' | 'Juzgamiento' | 'Segunda Instancia';
   estadoActual: string;
-  profesionalAsignado: string;
+  profesionalAsignado: Persona;
   semaforo: 'verde' | 'amarillo' | 'rojo';
   diasRestantes: number;
   porcentajeTiempo: number;
@@ -79,6 +88,7 @@ type ModalType =
   | 'crear-noticia'
   | 'convertir-proceso'
   | 'devolver-noticia'
+  | 'devolver-competencia'
   | 'ver-detalles'
   | 'aprobar-borrador'
   | 'archivar-noticia'
@@ -90,6 +100,7 @@ type ModalType =
   | 'gestion-actas'
   | 'historial-auditoria'
   | 'expediente-completo'
+  | 'comentarios-proceso'
   | null;
 
 // ==================== MOCK DATA ====================
@@ -99,7 +110,16 @@ const NOTICIAS_MOCK: Noticia[] = [
     numero: 'ND-2025-0260',
     fechaRecepcion: '2025-01-15',
     origen: 'Denuncia Ciudadana',
-    denunciado: 'Juan Pérez Gómez',
+    denunciante: {
+      nombre: 'Pedro Sánchez Ruiz',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '1012345678'
+    },
+    denunciado: {
+      nombre: 'Juan Pérez Gómez',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '80123456'
+    },
     hechos: 'Presunto acoso laboral en Territorial Bogotá',
     estado: 'pendiente',
     prioridad: 'alta',
@@ -111,7 +131,16 @@ const NOTICIAS_MOCK: Noticia[] = [
     numero: 'ND-2025-0261',
     fechaRecepcion: '2025-01-16',
     origen: 'Oficio Interno',
-    denunciado: 'María González Castro',
+    denunciante: {
+      nombre: 'Laura Martínez Díaz',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '52987654'
+    },
+    denunciado: {
+      nombre: 'María González Castro',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '52123456'
+    },
     hechos: 'Incumplimiento de deberes administrativos',
     estado: 'pendiente',
     prioridad: 'media',
@@ -123,7 +152,16 @@ const NOTICIAS_MOCK: Noticia[] = [
     numero: 'ND-2025-0262',
     fechaRecepcion: '2025-01-17',
     origen: 'Queja Formal',
-    denunciado: 'Carlos Ramírez López',
+    denunciante: {
+      nombre: 'Anónimo',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: 'N/A'
+    },
+    denunciado: {
+      nombre: 'Carlos Ramírez López',
+      tipoIdentificacion: 'CE',
+      numeroIdentificacion: '123456789'
+    },
     hechos: 'Uso indebido de recursos públicos',
     estado: 'pendiente',
     prioridad: 'alta',
@@ -137,11 +175,24 @@ const PROCESOS_MOCK: Proceso[] = [
     id: 'p1',
     numeroProceso: 'PD-2025-0025',
     noticiaOrigen: 'ND-2025-0152',
-    denunciado: 'Ana María López Martínez',
+    denunciante: {
+      nombre: 'Carlos Alberto Mora',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '79123456'
+    },
+    denunciado: {
+      nombre: 'Ana María López Martínez',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '52123456'
+    },
     cedula: '52123456',
     etapaActual: 'Valoración',
     estadoActual: 'En Gestión',
-    profesionalAsignado: 'Juan Pérez',
+    profesionalAsignado: {
+      nombre: 'Juan Carlos Pérez Rodríguez',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '80456789'
+    },
     semaforo: 'amarillo',
     diasRestantes: 3,
     porcentajeTiempo: 70,
@@ -156,11 +207,24 @@ const PROCESOS_MOCK: Proceso[] = [
     id: 'p2',
     numeroProceso: 'PD-2025-0018',
     noticiaOrigen: 'ND-2025-0089',
-    denunciado: 'Roberto Sánchez Cruz',
+    denunciante: {
+      nombre: 'Gloria Patricia Vargas',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '52987654'
+    },
+    denunciado: {
+      nombre: 'Roberto Sánchez Cruz',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '77385960'
+    },
     cedula: '77385960',
-    etapaActual: 'Indagación',
+    etapaActual: 'Indagación Previa',
     estadoActual: 'En Gestión',
-    profesionalAsignado: 'María García',
+    profesionalAsignado: {
+      nombre: 'María García Londoño',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '52345678'
+    },
     semaforo: 'verde',
     diasRestantes: 45,
     porcentajeTiempo: 25,
@@ -175,11 +239,24 @@ const PROCESOS_MOCK: Proceso[] = [
     id: 'p3',
     numeroProceso: 'PD-2025-0032',
     noticiaOrigen: 'ND-2025-0180',
-    denunciado: 'Luis Hernández Silva',
+    denunciante: {
+      nombre: 'Anónimo',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: 'N/A'
+    },
+    denunciado: {
+      nombre: 'Luis Hernández Silva',
+      tipoIdentificacion: 'CE',
+      numeroIdentificacion: '88776655'
+    },
     cedula: '88776655',
     etapaActual: 'Recepción',
     estadoActual: 'En Gestión',
-    profesionalAsignado: 'Carlos Mendoza',
+    profesionalAsignado: {
+      nombre: 'Carlos Mendoza Ramírez',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '1015678901'
+    },
     semaforo: 'verde',
     diasRestantes: 28,
     porcentajeTiempo: 10,
@@ -204,12 +281,14 @@ interface TarjetaNoticiaProps {
   noticia: Noticia;
   onConvertir: (noticia: Noticia) => void;
   onDevolver: (noticia: Noticia) => void;
+  onDevolverCompetencia: (noticia: Noticia) => void;
   onArchivar: (noticia: Noticia) => void;
+  onVerDetalles?: (noticia: Noticia) => void;
   vistaCompacta: boolean;
   isMobile?: boolean;
 }
 
-function TarjetaNoticia({ noticia, onConvertir, onDevolver, onArchivar, vistaCompacta, isMobile }: TarjetaNoticiaProps) {
+function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, vistaCompacta, isMobile }: TarjetaNoticiaProps) {
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
     item: { ...noticia, tipoItem: 'noticia' },
@@ -223,20 +302,28 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onArchivar, vistaCom
       ref={drag}
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
-      className="cursor-move touch-none"
+      className="cursor-move touch-none w-full"
     >
       <Card 
-        className="bg-white border border-gray-200 hover:shadow-md transition-all overflow-hidden"
+        className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full"
+        style={{ 
+          height: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px'),
+          minHeight: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px'),
+          maxHeight: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px')
+        }}
       >
         {/* Barra superior azul ESAP */}
         <div 
-          className="h-1"
+          className="h-1 flex-shrink-0"
           style={{ background: '#003DA5' }}
         />
 
-        <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
+        <div className={`${isMobile ? 'p-2.5' : 'p-3'} flex-1 flex flex-col overflow-y-auto min-h-0`}>
           {/* Header */}
-          <div className="flex items-start justify-between mb-2">
+          <div 
+            className={`flex items-start justify-between mb-2 ${onVerDetalles ? 'cursor-pointer hover:bg-gray-50 -mx-3 -mt-3 px-3 pt-3 pb-2 rounded-t-lg transition-colors' : ''}`}
+            onClick={onVerDetalles ? () => onVerDetalles(noticia) : undefined}
+          >
             <div className="flex items-center gap-2 flex-1">
               <div 
                 className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0 bg-orange-50`}
@@ -258,11 +345,25 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onArchivar, vistaCom
             </Badge>
           </div>
 
+          {/* Denunciante */}
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            <p className="text-xs text-gray-500 mb-0.5">👤 Denunciante:</p>
+            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+              {noticia.denunciante.nombre}
+            </p>
+            <p className="text-xs text-gray-600">
+              {noticia.denunciante.tipoIdentificacion} {noticia.denunciante.numeroIdentificacion}
+            </p>
+          </div>
+
           {/* Denunciado */}
           <div className="mb-2 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">Denunciado:</p>
-            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 ${isMobile ? 'line-clamp-1' : 'line-clamp-2'}`}>
-              {noticia.denunciado}
+            <p className="text-xs text-gray-500 mb-0.5">⚠️ Denunciado:</p>
+            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+              {noticia.denunciado.nombre}
+            </p>
+            <p className="text-xs text-gray-600">
+              {noticia.denunciado.tipoIdentificacion} {noticia.denunciado.numeroIdentificacion}
             </p>
           </div>
 
@@ -291,7 +392,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onArchivar, vistaCom
           </div>
 
           {/* Acciones */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 mt-auto pt-2">
             <Button
               onClick={() => onConvertir(noticia)}
               size="sm"
@@ -301,24 +402,36 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onArchivar, vistaCom
               <PlusCircle className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} mr-1.5`} />
               Convertir
             </Button>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className={`grid grid-cols-3 gap-1`}>
               <Button
                 onClick={() => onDevolver(noticia)}
                 size="sm"
                 variant="outline"
-                className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'}`}
+                className={`${isMobile ? 'text-[10px] py-1 px-0.5' : 'text-[11px] px-1.5'} truncate min-w-0`}
+                title="Devolver noticia"
               >
-                <ArrowLeft className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-                {isMobile ? '' : 'Devolver'}
+                <ArrowLeft className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} ${isMobile ? '' : 'mr-0.5'} flex-shrink-0`} />
+                {!isMobile && <span className="truncate">Devolver</span>}
+              </Button>
+              <Button
+                onClick={() => onDevolverCompetencia(noticia)}
+                size="sm"
+                variant="outline"
+                className={`${isMobile ? 'text-[10px] py-1 px-0.5' : 'text-[11px] px-1.5'} text-purple-600 hover:bg-purple-50 border-purple-300 hover:border-purple-500 truncate min-w-0`}
+                title="Remitir por competencia"
+              >
+                <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} ${isMobile ? '' : 'mr-0.5'} flex-shrink-0`} />
+                {!isMobile && <span className="truncate">Compet.</span>}
               </Button>
               <Button
                 onClick={() => onArchivar(noticia)}
                 size="sm"
                 variant="outline"
-                className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} text-red-600 hover:bg-red-50 border-red-200`}
+                className={`${isMobile ? 'text-[10px] py-1 px-0.5' : 'text-[11px] px-1.5'} text-red-600 hover:bg-red-50 border-red-200 truncate min-w-0`}
+                title="Archivar noticia"
               >
-                <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-                {isMobile ? '' : 'Archivar'}
+                <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} ${isMobile ? '' : 'mr-0.5'} flex-shrink-0`} />
+                {!isMobile && <span className="truncate">Archivar</span>}
               </Button>
             </div>
           </div>
@@ -338,6 +451,7 @@ interface TarjetaProcesoProps {
   onGestionEvidencias?: (proceso: Proceso) => void;
   onGestionOficios?: (proceso: Proceso) => void;
   onGestionActas?: (proceso: Proceso) => void;
+  onComentarios?: (proceso: Proceso) => void;
   vistaCompacta: boolean;
   isMobile?: boolean;
 }
@@ -351,6 +465,7 @@ function TarjetaProceso({
   onGestionEvidencias,
   onGestionOficios,
   onGestionActas,
+  onComentarios,
   vistaCompacta, 
   isMobile 
 }: TarjetaProcesoProps) {
@@ -361,8 +476,6 @@ function TarjetaProceso({
       isDragging: monitor.isDragging()
     })
   });
-
-  const [showActions, setShowActions] = useState(false);
 
   const semaforoIndicator = {
     verde: { color: '#10B981', label: 'En término' },
@@ -377,18 +490,23 @@ function TarjetaProceso({
       ref={drag}
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
-      className="cursor-move touch-none"
+      className="cursor-move touch-none w-full"
     >
       <Card 
-        className="bg-white border border-gray-200 hover:shadow-md transition-all overflow-hidden"
+        className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full"
+        style={{ 
+          height: vistaCompacta ? (isMobile ? '420px' : '480px') : (isMobile ? '520px' : '600px'),
+          minHeight: vistaCompacta ? (isMobile ? '420px' : '480px') : (isMobile ? '520px' : '600px'),
+          maxHeight: vistaCompacta ? (isMobile ? '420px' : '480px') : (isMobile ? '520px' : '600px')
+        }}
       >
         {/* Barra superior azul ESAP */}
         <div 
-          className="h-1"
+          className="h-1 flex-shrink-0"
           style={{ background: '#003DA5' }}
         />
 
-        <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
+        <div className={`${isMobile ? 'p-2.5' : 'p-3'} flex-1 flex flex-col overflow-y-auto min-h-0`}>
           {/* Header */}
           <div className="flex items-start justify-between mb-2">
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -409,12 +527,49 @@ function TarjetaProceso({
             </div>
           </div>
 
+          {/* Denunciante */}
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            <p className="text-xs text-gray-500 mb-0.5">👤 Denunciante:</p>
+            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+              {proceso.denunciante.nombre}
+            </p>
+            <p className="text-xs text-gray-600">
+              {proceso.denunciante.tipoIdentificacion} {proceso.denunciante.numeroIdentificacion}
+            </p>
+          </div>
+
           {/* Denunciado */}
           <div className="mb-2 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">Denunciado:</p>
-            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 ${isMobile ? 'line-clamp-1' : 'line-clamp-2'}`}>
-              {proceso.denunciado}
+            <p className="text-xs text-gray-500 mb-0.5">⚠️ Denunciado:</p>
+            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+              {proceso.denunciado.nombre}
             </p>
+            <p className="text-xs text-gray-600">
+              {proceso.denunciado.tipoIdentificacion} {proceso.denunciado.numeroIdentificacion}
+            </p>
+          </div>
+
+          {/* Profesional Asignado */}
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            <div className="flex items-center gap-2">
+              <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
+                <AvatarFallback 
+                  className="text-xs"
+                  style={{ background: '#E0EDFF', color: '#003DA5' }}
+                >
+                  {proceso.profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500">👨‍💼 Profesional:</p>
+                <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+                  {proceso.profesionalAsignado.nombre}
+                </p>
+                <p className="text-xs text-gray-600">
+                  {proceso.profesionalAsignado.tipoIdentificacion} {proceso.profesionalAsignado.numeroIdentificacion}
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Badges */}
@@ -436,24 +591,6 @@ function TarjetaProceso({
               {proceso.diasRestantes} días
             </Badge>
           </div>
-
-          {/* Profesional - Ocultar en mobile compacto */}
-          {!vistaCompacta && !isMobile && (
-            <div className="flex items-center gap-2 mb-2.5 pb-2.5 border-b border-gray-200">
-              <Avatar className="w-6 h-6">
-                <AvatarFallback 
-                  className="text-xs"
-                  style={{ background: '#E0EDFF', color: '#003DA5' }}
-                >
-                  {proceso.profesionalAsignado.split(' ').map(n => n[0]).join('')}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-gray-900 truncate">{proceso.profesionalAsignado}</p>
-                <p className="text-xs text-gray-500">Responsable</p>
-              </div>
-            </div>
-          )}
 
           {/* Métricas */}
           <div className="grid grid-cols-3 gap-1.5 mb-2.5">
@@ -488,36 +625,26 @@ function TarjetaProceso({
           )}
 
           {/* Acciones Principales - Siempre Visibles */}
-          <div className="space-y-1.5 pt-2.5 border-t border-gray-200">
+          <div className="space-y-1.5 pt-2.5 border-t border-gray-200 mt-auto">
             {/* Acción Principal: Ver Expediente */}
             <Button
-              onClick={() => onVerExpediente(proceso)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onVerExpediente(proceso);
+              }}
               size="sm"
-              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
+              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold truncate`}
               style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
-              <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1.5`} />
-              {isMobile ? 'Expediente' : 'Ver Expediente'}
+              <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1 flex-shrink-0`} />
+              <span className="truncate">Expediente</span>
             </Button>
 
-            {/* Acciones rápidas Mobile (Solo en Vista Detallada) */}
-            {!vistaCompacta && isMobile && (
-              <Button
-                onClick={() => onVerDetalles(proceso)}
-                size="sm"
-                variant="outline"
-                className="w-full text-xs py-1.5"
-              >
-                <Eye className="w-2.5 h-2.5 mr-1.5" />
-                Ver Detalles
-              </Button>
-            )}
-
-            {/* Gestión Documental - Grid compacto (Solo Desktop en Vista Detallada) */}
-            {!vistaCompacta && !isMobile && (
-              <div className="grid grid-cols-2 gap-1.5">
+            {/* Gestión Documental - Grid compacto - SIEMPRE VISIBLE */}
+            <div className="grid grid-cols-2 gap-1">
                 <Button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (onGestionAutos) {
                       onGestionAutos(proceso);
                     } else {
@@ -528,14 +655,15 @@ function TarjetaProceso({
                   }}
                   size="sm"
                   variant="outline"
-                  className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
+                  className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start truncate min-w-0`}
                 >
-                  <Scale className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-                  Autos
+                  <Scale className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5 flex-shrink-0`} />
+                  <span className="truncate">Autos</span>
                 </Button>
                 
                 <Button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (onGestionEvidencias) {
                       onGestionEvidencias(proceso);
                     } else {
@@ -546,14 +674,15 @@ function TarjetaProceso({
                   }}
                   size="sm"
                   variant="outline"
-                  className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
+                  className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start truncate min-w-0`}
                 >
-                  <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-                  Evidencias
+                  <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5 flex-shrink-0`} />
+                  <span className="truncate">Evidencias</span>
                 </Button>
 
                 <Button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (onGestionOficios) {
                       onGestionOficios(proceso);
                     } else {
@@ -564,14 +693,15 @@ function TarjetaProceso({
                   }}
                   size="sm"
                   variant="outline"
-                  className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
+                  className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start truncate min-w-0`}
                 >
-                  <Mail className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-                  Oficios
+                  <Mail className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5 flex-shrink-0`} />
+                  <span className="truncate">Oficios</span>
                 </Button>
 
                 <Button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (onGestionActas) {
                       onGestionActas(proceso);
                     } else {
@@ -582,18 +712,44 @@ function TarjetaProceso({
                   }}
                   size="sm"
                   variant="outline"
-                  className={`${isMobile ? 'text-xs py-1.5' : 'text-xs'} justify-start`}
+                  className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start truncate min-w-0`}
                 >
-                  <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-                  Actas
+                  <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5 flex-shrink-0`} />
+                  <span className="truncate">Actas</span>
+                </Button>
+
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onComentarios) {
+                      onComentarios(proceso);
+                    } else {
+                      toast.info('Comentarios', {
+                        description: proceso.numeroProceso
+                      });
+                    }
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start truncate min-w-0 font-semibold`}
+                  style={{ 
+                    borderColor: '#003DA5', 
+                    color: '#FFFFFF',
+                    background: '#003DA5'
+                  }}
+                >
+                  <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5 flex-shrink-0`} />
+                  <span className="truncate">💬 Comentarios</span>
                 </Button>
               </div>
-            )}
 
             {/* Aprobación si está pendiente */}
             {proceso.pendienteAprobacion && (
               <Button
-                onClick={() => onAprobarBorrador(proceso)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAprobarBorrador(proceso);
+                }}
                 size="sm"
                 className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} bg-green-600 hover:bg-green-700 text-white font-bold`}
               >
@@ -601,50 +757,7 @@ function TarjetaProceso({
                 Aprobar Borrador
               </Button>
             )}
-
-            {/* Ver más opciones - Toggle (Solo Desktop en Vista Detallada) */}
-            {!vistaCompacta && !isMobile && (
-              <button
-                onClick={() => setShowActions(!showActions)}
-                className="w-full text-xs py-2 text-gray-600 hover:text-gray-900 font-semibold flex items-center justify-center gap-1 transition-colors"
-              >
-                {showActions ? (
-                  <>
-                    <ChevronDown className="w-3 h-3 rotate-180 transition-transform" />
-                    Menos opciones
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="w-3 h-3 transition-transform" />
-                    Más opciones
-                  </>
-                )}
-              </button>
-            )}
           </div>
-
-          {/* Acciones Adicionales Expandibles - Solo Desktop */}
-          <AnimatePresence>
-            {showActions && !vistaCompacta && !isMobile && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="space-y-1.5 pt-1.5"
-              >
-                <Button
-                  onClick={() => onVerDetalles(proceso)}
-                  size="sm"
-                  variant="outline"
-                  className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-                  style={{ borderColor: '#003DA5', color: '#003DA5' }}
-                >
-                  <Eye className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1.5`} />
-                  {isMobile ? 'Detalles' : 'Ver Detalles Completos'}
-                </Button>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
       </Card>
     </motion.div>
@@ -661,6 +774,7 @@ interface VistaListaProps {
   onGestionEvidencias?: (proceso: Proceso) => void;
   onGestionOficios?: (proceso: Proceso) => void;
   onGestionActas?: (proceso: Proceso) => void;
+  onComentarios?: (proceso: Proceso) => void;
   onConvertirNoticia: (noticia: Noticia) => void;
   onArchivarNoticia: (noticia: Noticia) => void;
   onVerDetallesNoticia?: (noticia: Noticia) => void;
@@ -677,6 +791,7 @@ function VistaLista({
   onGestionEvidencias,
   onGestionOficios,
   onGestionActas,
+  onComentarios,
   onConvertirNoticia,
   onArchivarNoticia,
   onVerDetallesNoticia,
@@ -689,9 +804,13 @@ function VistaLista({
   const itemsFiltrados = items.filter(item => {
     const matchSearch = item.tipo === 'noticia' 
       ? (item as Noticia).numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item as Noticia).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
+        (typeof (item as Noticia).denunciado === 'string' 
+          ? (item as Noticia).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
+          : (item as Noticia).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
       : (item as Proceso).numeroProceso.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase());
+        (typeof (item as Proceso).denunciado === 'string'
+          ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
+          : (item as Proceso).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchEtapa = filtroEtapa === 'todos' || 
       (item.tipo === 'noticia' && filtroEtapa === 'Recepción') ||
@@ -734,10 +853,11 @@ function VistaLista({
             <option value="todos">Todas las etapas</option>
             <option value="Recepción">Recepción (Noticias)</option>
             <option value="Valoración">Valoración</option>
-            <option value="Indagación">Indagación</option>
+            <option value="Indagación Previa">Indagación Previa</option>
             <option value="Investigación">Investigación</option>
+            <option value="Evaluación">Evaluación</option>
             <option value="Juzgamiento">Juzgamiento</option>
-            <option value="Fallo">Fallo</option>
+            <option value="Segunda Instancia">Segunda Instancia</option>
           </select>
         </div>
       </Card>
@@ -788,11 +908,15 @@ function VistaLista({
                   <div className="pb-2 border-b border-gray-200">
                     <p className="text-xs text-gray-500 mb-1">Denunciado:</p>
                     <p className="font-bold text-sm text-gray-900">
-                      {isNoticia ? noticia!.denunciado : proceso!.denunciado}
+                      {isNoticia 
+                        ? (typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado.nombre)
+                        : (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
                     </p>
-                    {proceso && proceso.cedula && (
-                      <p className="text-xs text-gray-600 mt-0.5">CC: {proceso.cedula}</p>
-                    )}
+                    <p className="text-xs text-gray-600 mt-0.5">
+                      {isNoticia 
+                        ? (typeof noticia!.denunciado !== 'string' && `${noticia!.denunciado.tipoIdentificacion} ${noticia!.denunciado.numeroIdentificacion}`)
+                        : (typeof proceso!.denunciado !== 'string' ? `${proceso!.denunciado.tipoIdentificacion} ${proceso!.denunciado.numeroIdentificacion}` : proceso!.cedula ? `CC: ${proceso!.cedula}` : '')}
+                    </p>
                   </div>
 
                   {/* Info Row */}
@@ -831,11 +955,11 @@ function VistaLista({
                     <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
                       <Avatar className="w-6 h-6">
                         <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5', fontSize: '9px' }}>
-                          {proceso.profesionalAsignado.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                          {proceso.profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
                       <p className="text-xs font-medium text-gray-700 truncate flex-1">
-                        {proceso.profesionalAsignado}
+                        {proceso.profesionalAsignado.nombre}
                       </p>
                     </div>
                   )}
@@ -981,7 +1105,7 @@ function VistaLista({
                     <td className="px-4 py-4">
                       <div>
                         <p className="font-semibold text-sm" style={{ color: '#1F2937' }}>
-                          {isNoticia ? noticia!.denunciado : proceso!.denunciado}
+                          {isNoticia ? noticia!.denunciado.nombre : (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
                         </p>
                         {proceso && proceso.cedula && (
                           <p className="text-xs" style={{ color: '#6B7280' }}>
@@ -1022,11 +1146,11 @@ function VistaLista({
                         <div className="flex items-center gap-2">
                           <Avatar className="w-7 h-7">
                             <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5', fontSize: '10px' }}>
-                              {proceso.profesionalAsignado.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                              {proceso.profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
                             </AvatarFallback>
                           </Avatar>
                           <p className="text-xs font-medium" style={{ color: '#4B5563' }}>
-                            {proceso.profesionalAsignado}
+                            {proceso.profesionalAsignado.nombre}
                           </p>
                         </div>
                       ) : (
@@ -1233,7 +1357,9 @@ interface ColumnaKanbanProps {
   onDrop: (item: Item, nuevaEtapa: string) => void;
   onConvertirNoticia: (noticia: Noticia) => void;
   onDevolverNoticia: (noticia: Noticia) => void;
+  onDevolverCompetencia: (noticia: Noticia) => void;
   onArchivarNoticia: (noticia: Noticia) => void;
+  onVerDetallesNoticia?: (noticia: Noticia) => void;
   onVerDetalles: (proceso: Proceso) => void;
   onAprobarBorrador: (proceso: Proceso) => void;
   onVerExpediente: (proceso: Proceso) => void;
@@ -1241,8 +1367,11 @@ interface ColumnaKanbanProps {
   onGestionEvidencias?: (proceso: Proceso) => void;
   onGestionOficios?: (proceso: Proceso) => void;
   onGestionActas?: (proceso: Proceso) => void;
+  onComentarios?: (proceso: Proceso) => void;
   vistaCompacta: boolean;
   isMobile?: boolean;
+  colapsada?: boolean;
+  onToggleColapso?: () => void;
 }
 
 function ColumnaKanban({ 
@@ -1253,7 +1382,9 @@ function ColumnaKanban({
   onDrop, 
   onConvertirNoticia,
   onDevolverNoticia,
+  onDevolverCompetencia,
   onArchivarNoticia,
+  onVerDetallesNoticia,
   onVerDetalles, 
   onAprobarBorrador, 
   onVerExpediente,
@@ -1261,9 +1392,14 @@ function ColumnaKanban({
   onGestionEvidencias,
   onGestionOficios,
   onGestionActas,
+  onComentarios,
   vistaCompacta,
-  isMobile
+  isMobile,
+  colapsada = false,
+  onToggleColapso
 }: ColumnaKanbanProps) {
+  const [expandTimeout, setExpandTimeout] = useState<NodeJS.Timeout | null>(null);
+
   const [{ isOver, canDrop }, drop] = useDrop({
     accept: 'ITEM',
     drop: (item: any) => {
@@ -1281,6 +1417,26 @@ function ColumnaKanban({
     })
   });
 
+  // Auto-expandir columna al hacer drag sobre ella (si está colapsada)
+  useEffect(() => {
+    if (isOver && canDrop && colapsada && onToggleColapso) {
+      // Expandir después de 800ms de hover
+      const timeout = setTimeout(() => {
+        onToggleColapso();
+      }, 800);
+      setExpandTimeout(timeout);
+    } else if (expandTimeout) {
+      clearTimeout(expandTimeout);
+      setExpandTimeout(null);
+    }
+
+    return () => {
+      if (expandTimeout) {
+        clearTimeout(expandTimeout);
+      }
+    };
+  }, [isOver, canDrop, colapsada]);
+
   const itemsFiltrados = items.filter(item => {
     if (item.tipo === 'noticia') {
       return etapa === 'Recepción';
@@ -1291,13 +1447,120 @@ function ColumnaKanban({
   const noticias = itemsFiltrados.filter(i => i.tipo === 'noticia') as Noticia[];
   const procesos = itemsFiltrados.filter(i => i.tipo === 'proceso') as Proceso[];
 
-  const isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
-  const columnWidth = isMobile ? 'w-72' : isTablet ? 'w-64' : 'w-80';
+  // Si está colapsada, mostrar versión minimal
+  if (colapsada) {
+    // Calcular indicadores para columna colapsada
+    const procesosRojos = procesos.filter(p => p.semaforo === 'rojo').length;
+    const procesosAmarillos = procesos.filter(p => p.semaforo === 'amarillo').length;
+    const procesosVerdes = procesos.filter(p => p.semaforo === 'verde').length;
 
+    return (
+      <motion.div 
+        ref={drop} 
+        className={`flex-shrink-0`}
+        initial={{ width: 64 }}
+        animate={{ width: 64 }}
+        transition={{ duration: 0.3, ease: 'easeInOut' }}
+      >
+        <Card 
+          className={`h-full border transition-all cursor-pointer group ${
+            isOver && canDrop ? 'shadow-lg border-blue-500 bg-blue-50' : 'hover:shadow-md hover:border-blue-300'
+          }`}
+          style={{ 
+            borderColor: isOver && canDrop ? '#3B82F6' : '#E5E7EB', 
+            background: isOver && canDrop ? '#EFF6FF' : '#FFFFFF' 
+          }}
+          onClick={onToggleColapso}
+        >
+          <div className="flex flex-col items-center py-4 px-2 gap-3">
+            {/* Indicador de drag over */}
+            {isOver && canDrop && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="absolute inset-0 border-2 border-blue-500 border-dashed rounded-lg pointer-events-none"
+              />
+            )}
+            {/* Botón expandir */}
+            <button
+              className="p-2 rounded-lg bg-gray-50 group-hover:bg-blue-50 transition-colors"
+              title={`Expandir ${etapa}`}
+            >
+              <Maximize2 className="w-4 h-4 text-gray-600 group-hover:text-blue-600" />
+            </button>
+
+            {/* Icono de etapa */}
+            <div className="p-2 rounded-lg bg-gray-50 border border-gray-200 group-hover:border-blue-200">
+              {icono}
+            </div>
+
+            {/* Indicadores de semáforo - Solo si hay procesos */}
+            {procesos.length > 0 && (
+              <div className="flex flex-col gap-1 py-2">
+                {procesosRojos > 0 && (
+                  <div className="flex items-center gap-1" title={`${procesosRojos} vencidos`}>
+                    <div className="w-2 h-2 rounded-full bg-red-500" />
+                    <span className="text-xs font-bold text-red-600">{procesosRojos}</span>
+                  </div>
+                )}
+                {procesosAmarillos > 0 && (
+                  <div className="flex items-center gap-1" title={`${procesosAmarillos} próximos a vencer`}>
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-xs font-bold text-amber-600">{procesosAmarillos}</span>
+                  </div>
+                )}
+                {procesosVerdes > 0 && (
+                  <div className="flex items-center gap-1" title={`${procesosVerdes} en término`}>
+                    <div className="w-2 h-2 rounded-full bg-green-500" />
+                    <span className="text-xs font-bold text-green-600">{procesosVerdes}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Indicador de noticias - Solo en Recepción */}
+            {etapa === 'Recepción' && noticias.length > 0 && (
+              <div className="py-2">
+                <div className="flex items-center gap-1" title={`${noticias.length} noticias`}>
+                  <FileText className="w-3 h-3 text-orange-600" />
+                  <span className="text-xs font-bold text-orange-600">{noticias.length}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Nombre vertical */}
+            <div className="flex-1 flex items-center justify-center py-4">
+              <h3 
+                className="font-black text-xs text-gray-800 whitespace-nowrap"
+                style={{ 
+                  writingMode: 'vertical-rl',
+                  textOrientation: 'mixed'
+                }}
+              >
+                {etapa}
+              </h3>
+            </div>
+
+            {/* Badge contador total */}
+            <Badge
+              className="font-semibold text-xs px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 group-hover:bg-blue-100"
+            >
+              {itemsFiltrados.length}
+            </Badge>
+          </div>
+        </Card>
+      </motion.div>
+    );
+  }
+
+  // Versión expandida normal
   return (
-    <div
+    <motion.div
       ref={drop}
-      className={`flex-shrink-0 ${columnWidth}`}
+      className={`flex-shrink-0`}
+      initial={{ width: colapsada ? 64 : 320 }}
+      animate={{ width: colapsada ? 64 : 320 }}
+      transition={{ duration: 0.3, ease: 'easeInOut' }}
     >
       <Card 
         className="h-full border transition-all"
@@ -1312,7 +1575,7 @@ function ColumnaKanban({
           className={`${isMobile ? 'p-3' : 'p-4'} border-b sticky top-0 z-10 bg-gray-50`}
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-1">
               <div 
                 className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg bg-white border border-gray-200`}
               >
@@ -1322,11 +1585,23 @@ function ColumnaKanban({
                 {etapa}
               </h3>
             </div>
-            <Badge
-              className={`font-semibold ${isMobile ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'} bg-white border border-gray-200 text-gray-700`}
-            >
-              {itemsFiltrados.length}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge
+                className={`font-semibold ${isMobile ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'} bg-white border border-gray-200 text-gray-700`}
+              >
+                {itemsFiltrados.length}
+              </Badge>
+              {/* Botón colapsar */}
+              {onToggleColapso && (
+                <button
+                  onClick={onToggleColapso}
+                  className="p-1.5 rounded-lg hover:bg-white transition-colors"
+                  title={`Colapsar ${etapa}`}
+                >
+                  <Minimize2 className="w-3.5 h-3.5 text-gray-600" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Indicador de Noticias en Recepción */}
@@ -1352,7 +1627,9 @@ function ColumnaKanban({
               noticia={noticia}
               onConvertir={onConvertirNoticia}
               onDevolver={onDevolverNoticia}
+              onDevolverCompetencia={onDevolverCompetencia}
               onArchivar={onArchivarNoticia}
+              onVerDetalles={onVerDetallesNoticia}
               vistaCompacta={vistaCompacta}
               isMobile={isMobile}
             />
@@ -1379,6 +1656,7 @@ function ColumnaKanban({
               onGestionEvidencias={onGestionEvidencias}
               onGestionOficios={onGestionOficios}
               onGestionActas={onGestionActas}
+              onComentarios={onComentarios}
               vistaCompacta={vistaCompacta}
               isMobile={isMobile}
             />
@@ -1395,12 +1673,12 @@ function ColumnaKanban({
           )}
         </div>
       </Card>
-    </div>
+    </motion.div>
   );
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
-export function DashboardKanbanOperativo() {
+export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigateToExpediente?: () => void }) {
   const [items, setItems] = useState<Item[]>([...NOTICIAS_MOCK, ...PROCESOS_MOCK]);
   const [modalActivo, setModalActivo] = useState<ModalType>(null);
   const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
@@ -1408,6 +1686,7 @@ export function DashboardKanbanOperativo() {
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [vistaCompacta, setVistaCompacta] = useState(false);
+  const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
 
   // Estados para formularios
   const [formNuevaNoticia, setFormNuevaNoticia] = useState({
@@ -1419,6 +1698,7 @@ export function DashboardKanbanOperativo() {
 
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState('');
   const [observaciones, setObservaciones] = useState('');
+  const [areaDestinoRemision, setAreaDestinoRemision] = useState('');
 
   // Detectar tamaño de pantalla con breakpoints mejorados
   useEffect(() => {
@@ -1453,10 +1733,11 @@ export function DashboardKanbanOperativo() {
   const etapas = [
     { nombre: 'Recepción', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
     { nombre: 'Valoración', color: '#6B7280', icono: <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
-    { nombre: 'Indagación', color: '#6B7280', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
+    { nombre: 'Indagación Previa', color: '#6B7280', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
     { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} /> },
+    { nombre: 'Evaluación', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
     { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
-    { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> }
+    { nombre: 'Segunda Instancia', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> }
   ];
 
   // ==================== HANDLERS ====================
@@ -1564,6 +1845,58 @@ export function DashboardKanbanOperativo() {
     setItemSeleccionado(null);
   };
 
+  const handleDevolverCompetencia = (noticia: Noticia) => {
+    setItemSeleccionado(noticia);
+    setObservaciones('');
+    setAreaDestinoRemision('');
+    setModalActivo('devolver-competencia');
+  };
+
+  const handleConfirmarDevolucionCompetencia = () => {
+    // Validar que se haya seleccionado un área
+    if (!areaDestinoRemision) {
+      toast.error('Error de Validación', {
+        description: 'Debes seleccionar el área/entidad de destino'
+      });
+      return;
+    }
+
+    if (!observaciones.trim()) {
+      toast.error('Error de Validación', {
+        description: 'Debes escribir la justificación de la remisión'
+      });
+      return;
+    }
+
+    // Generar nuevo número RC (Remisión por Competencia)
+    const año = new Date().getFullYear();
+    const numeroRC = `RC-${año}-${String(Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`;
+    
+    // Obtener nombre del área
+    const areas: Record<string, string> = {
+      'personeria': 'Personería Municipal',
+      'contraloria': 'Contraloría',
+      'procuraduria': 'Procuraduría',
+      'fiscalia': 'Fiscalía General',
+      'control-interno': 'Control Interno de Gestión',
+      'recursos-humanos': 'Recursos Humanos',
+      'otra': 'Otra Entidad'
+    };
+    
+    const nombreArea = areas[areaDestinoRemision] || areaDestinoRemision;
+    
+    toast.success('Remitido por Competencia', {
+      description: `${itemSeleccionado.numero} → ${numeroRC} (${nombreArea})`
+    });
+    
+    // Remover la noticia del listado (ya que fue remitida a otra área)
+    setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
+    setModalActivo(null);
+    setItemSeleccionado(null);
+    setAreaDestinoRemision('');
+    setObservaciones('');
+  };
+
   const handleArchivarNoticia = (noticia: Noticia) => {
     setItemSeleccionado(noticia);
     setModalActivo('archivar-noticia');
@@ -1576,6 +1909,11 @@ export function DashboardKanbanOperativo() {
     });
     setModalActivo(null);
     setItemSeleccionado(null);
+  };
+
+  const handleVerDetallesNoticia = (noticia: Noticia) => {
+    setItemSeleccionado(noticia);
+    setModalActivo('ver-detalles');
   };
 
   const handleVerDetalles = (proceso: Proceso) => {
@@ -1602,9 +1940,16 @@ export function DashboardKanbanOperativo() {
   };
 
   const handleVerExpediente = (proceso: Proceso) => {
-    toast.info('Expediente', {
-      description: proceso.numeroProceso
-    });
+    if (onNavigateToExpediente) {
+      onNavigateToExpediente();
+      toast.success('Navegando a Expediente Electrónico', {
+        description: `Abriendo expediente del proceso ${proceso.numeroProceso}`
+      });
+    } else {
+      toast.info('Expediente', {
+        description: proceso.numeroProceso
+      });
+    }
   };
 
   const handleGestionAutos = (proceso: Proceso) => {
@@ -1625,6 +1970,42 @@ export function DashboardKanbanOperativo() {
   const handleGestionActas = (proceso: Proceso) => {
     setItemSeleccionado(proceso);
     setModalActivo('gestion-actas');
+  };
+
+  const handleComentarios = (proceso: Proceso) => {
+    setItemSeleccionado(proceso);
+    setModalActivo('comentarios-proceso');
+  };
+
+  // Toggle colapsar/expandir columna
+  const toggleColumnaColapsada = (nombreEtapa: string) => {
+    setColumnasColapsadas(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(nombreEtapa)) {
+        newSet.delete(nombreEtapa);
+      } else {
+        newSet.add(nombreEtapa);
+      }
+      return newSet;
+    });
+  };
+
+  // Colapsar/Expandir todas las columnas
+  const toggleTodasColumnas = () => {
+    if (columnasColapsadas.size > 0) {
+      // Si hay columnas colapsadas, expandir todas
+      setColumnasColapsadas(new Set());
+      toast.success('Columnas expandidas', {
+        description: 'Todas las columnas ahora están visibles'
+      });
+    } else {
+      // Si todas están expandidas, colapsar todas
+      const todasLasEtapas = etapas.map(e => e.nombre);
+      setColumnasColapsadas(new Set(todasLasEtapas));
+      toast.success('Columnas colapsadas', {
+        description: 'Espacio optimizado en el tablero'
+      });
+    }
   };
 
   // Calcular estadísticas
@@ -1710,6 +2091,28 @@ export function DashboardKanbanOperativo() {
                   <>
                     <Columns3 className="w-4 h-4" />
                     Kanban
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Botón Expandir/Colapsar Todo - Solo en vista Kanban */}
+            {tipoVista === 'kanban' && !isMobile && (
+              <button
+                onClick={toggleTodasColumnas}
+                className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all hover:bg-gray-100 border-2 border-gray-300 hover:border-blue-400"
+                style={{ color: '#003DA5' }}
+                title={columnasColapsadas.size > 0 ? 'Expandir todas las columnas' : 'Colapsar todas las columnas'}
+              >
+                {columnasColapsadas.size > 0 ? (
+                  <>
+                    <Maximize2 className="w-4 h-4" />
+                    {!isTablet && 'Expandir'}
+                  </>
+                ) : (
+                  <>
+                    <Minimize2 className="w-4 h-4" />
+                    {!isTablet && 'Colapsar'}
                   </>
                 )}
               </button>
@@ -1817,6 +2220,7 @@ export function DashboardKanbanOperativo() {
         {/* Vista Kanban o Lista según selección */}
         {tipoVista === 'kanban' ? (
           <div className="relative">
+
             {/* Indicador de scroll en mobile/tablet */}
             {(isMobile || isTablet) && (
               <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
@@ -1845,7 +2249,9 @@ export function DashboardKanbanOperativo() {
                 onDrop={handleDropItem}
                 onConvertirNoticia={handleConvertirNoticia}
                 onDevolverNoticia={handleDevolverNoticia}
+                onDevolverCompetencia={handleDevolverCompetencia}
                 onArchivarNoticia={handleArchivarNoticia}
+                onVerDetallesNoticia={handleVerDetallesNoticia}
                 onVerDetalles={handleVerDetalles}
                 onAprobarBorrador={handleAprobarBorrador}
                 onVerExpediente={handleVerExpediente}
@@ -1853,8 +2259,11 @@ export function DashboardKanbanOperativo() {
                 onGestionEvidencias={handleGestionEvidencias}
                 onGestionOficios={handleGestionOficios}
                 onGestionActas={handleGestionActas}
+                onComentarios={handleComentarios}
                 vistaCompacta={vistaCompacta}
                 isMobile={isMobile}
+                colapsada={columnasColapsadas.has(etapa.nombre)}
+                onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
               />
             ))}
             </div>
@@ -1869,6 +2278,7 @@ export function DashboardKanbanOperativo() {
             onGestionEvidencias={handleGestionEvidencias}
             onGestionOficios={handleGestionOficios}
             onGestionActas={handleGestionActas}
+            onComentarios={handleComentarios}
             onConvertirNoticia={handleConvertirNoticia}
             onArchivarNoticia={handleArchivarNoticia}
             onVerDetallesNoticia={(noticia) => {
@@ -1937,7 +2347,10 @@ export function DashboardKanbanOperativo() {
                           </p>
                         </div>
                         <p className="font-bold text-gray-900 mb-1">
-                          {itemSeleccionado.denunciado}
+                          {itemSeleccionado.denunciado.nombre}
+                        </p>
+                        <p className="text-xs text-gray-600 mb-2">
+                          {itemSeleccionado.denunciado.tipoIdentificacion} {itemSeleccionado.denunciado.numeroIdentificacion}
                         </p>
                         <p className="text-sm text-gray-600 line-clamp-2">
                           {itemSeleccionado.hechos}
@@ -2014,7 +2427,10 @@ export function DashboardKanbanOperativo() {
                     <div className="space-y-4">
                       <div className="p-4 bg-yellow-50 rounded-xl border-2 border-yellow-200">
                         <p className="text-sm font-bold mb-1">{itemSeleccionado.numero}</p>
-                        <p className="text-sm text-gray-700">{itemSeleccionado.denunciado}</p>
+                        <p className="text-sm text-gray-700">{itemSeleccionado.denunciado.nombre}</p>
+                        <p className="text-xs text-gray-600">
+                          {itemSeleccionado.denunciado.tipoIdentificacion} {itemSeleccionado.denunciado.numeroIdentificacion}
+                        </p>
                       </div>
 
                       <div>
@@ -2037,6 +2453,94 @@ export function DashboardKanbanOperativo() {
                       </Button>
                       <Button onClick={handleConfirmarDevolucion} className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white">
                         Devolver
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                {/* Modal: Devolver por Competencia */}
+                {modalActivo === 'devolver-competencia' && itemSeleccionado && (
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-xl bg-purple-100">
+                          <Send className="w-6 h-6 text-purple-600" />
+                        </div>
+                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
+                          Remitir por Competencia
+                        </h3>
+                      </div>
+                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                        <X className="w-5 h-5 text-gray-600" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
+                        <p className="text-sm font-bold mb-1 text-purple-900">{itemSeleccionado.numero}</p>
+                        <p className="text-sm text-gray-700">{itemSeleccionado.denunciado.nombre}</p>
+                        <p className="text-xs text-gray-600">
+                          {itemSeleccionado.denunciado.tipoIdentificacion} {itemSeleccionado.denunciado.numeroIdentificacion}
+                        </p>
+                      </div>
+
+                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex items-start gap-2">
+                          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-bold text-blue-900 mb-1">Remisión por Competencia</p>
+                            <p className="text-xs text-blue-700">
+                              Esta noticia no es competencia del área de Control Interno Disciplinario. 
+                              Se generará un nuevo número RC (Remisión por Competencia) y se remitirá al área correspondiente.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-bold text-gray-700 mb-2 block">
+                          Área/Entidad de Destino *
+                        </label>
+                        <select
+                          value={areaDestinoRemision}
+                          onChange={(e) => setAreaDestinoRemision(e.target.value)}
+                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold"
+                        >
+                          <option value="">Seleccionar área...</option>
+                          <option value="personeria">Personería Municipal</option>
+                          <option value="contraloria">Contraloría</option>
+                          <option value="procuraduria">Procuraduría</option>
+                          <option value="fiscalia">Fiscalía General de la Nación</option>
+                          <option value="control-interno">Control Interno de Gestión</option>
+                          <option value="recursos-humanos">Recursos Humanos</option>
+                          <option value="otra">Otra entidad...</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-bold text-gray-700 mb-2 block">
+                          Justificación de la Remisión *
+                        </label>
+                        <textarea
+                          value={observaciones}
+                          onChange={(e) => setObservaciones(e.target.value)}
+                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          rows={4}
+                          placeholder="Explica por qué esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida..."
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 mt-6">
+                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                        Cancelar
+                      </Button>
+                      <Button 
+                        onClick={handleConfirmarDevolucionCompetencia} 
+                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                      >
+                        <Send className="w-4 h-4 mr-2" />
+                        Remitir
                       </Button>
                     </div>
                   </>
@@ -2109,16 +2613,23 @@ export function DashboardKanbanOperativo() {
                             <h4 className="font-bold text-orange-900 mb-2">{(itemSeleccionado as Noticia).numero}</h4>
                             <div className="grid grid-cols-2 gap-2 text-sm">
                               <div>
+                                <p className="text-gray-600">Origen:</p>
+                                <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).origen}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-600">Fecha Recepción:</p>
+                                <p className="font-bold text-gray-900">{new Date((itemSeleccionado as Noticia).fechaRecepcion).toLocaleDateString('es-CO')}</p>
+                              </div>
+                              <div>
                                 <p className="text-gray-600">Estado:</p>
-                                <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).estado}</p>
+                                <p className="font-bold text-gray-900 capitalize">{(itemSeleccionado as Noticia).estado.replace('-', ' ')}</p>
                               </div>
                               <div>
-                                <p className="text-gray-600">Fecha:</p>
-                                <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).fechaCreacion}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Profesional:</p>
-                                <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).profesionalAsignado}</p>
+                                <p className="text-gray-600">Prioridad:</p>
+                                <p className={`font-bold ${
+                                  (itemSeleccionado as Noticia).prioridad === 'alta' ? 'text-red-600' :
+                                  (itemSeleccionado as Noticia).prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
+                                } capitalize`}>{(itemSeleccionado as Noticia).prioridad}</p>
                               </div>
                               <div>
                                 <p className="text-gray-600">Días Pendientes:</p>
@@ -2127,11 +2638,29 @@ export function DashboardKanbanOperativo() {
                             </div>
                           </div>
 
+                          {/* Denunciante */}
+                          <div>
+                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                              👤 DENUNCIANTE
+                            </h5>
+                            <div className="p-3 bg-gray-50 rounded-lg space-y-1">
+                              <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).denunciante.nombre}</p>
+                              <p className="text-sm text-gray-600">
+                                <span className="font-semibold">{(itemSeleccionado as Noticia).denunciante.tipoIdentificacion}:</span> {(itemSeleccionado as Noticia).denunciante.numeroIdentificacion}
+                              </p>
+                            </div>
+                          </div>
+
                           {/* Denunciado */}
                           <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">DENUNCIADO</h5>
-                            <div className="p-3 bg-gray-50 rounded-lg">
-                              <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).denunciado}</p>
+                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                              ⚠️ DENUNCIADO
+                            </h5>
+                            <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
+                              <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).denunciado.nombre}</p>
+                              <p className="text-sm text-gray-600">
+                                <span className="font-semibold">{(itemSeleccionado as Noticia).denunciado.tipoIdentificacion}:</span> {(itemSeleccionado as Noticia).denunciado.numeroIdentificacion}
+                              </p>
                             </div>
                           </div>
 
@@ -2161,22 +2690,48 @@ export function DashboardKanbanOperativo() {
                                 <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).etapaActual}</p>
                               </div>
                               <div>
-                                <p className="text-gray-600">Profesional:</p>
-                                <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).profesionalAsignado}</p>
-                              </div>
-                              <div>
                                 <p className="text-gray-600">Días Restantes:</p>
                                 <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).diasRestantes}d</p>
                               </div>
                             </div>
                           </div>
 
+                          {/* Denunciante */}
+                          <div>
+                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                              👤 DENUNCIANTE
+                            </h5>
+                            <div className="p-3 bg-gray-50 rounded-lg space-y-1">
+                              <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).denunciante.nombre}</p>
+                              <p className="text-sm text-gray-600">
+                                <span className="font-semibold">{(itemSeleccionado as Proceso).denunciante.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciante.numeroIdentificacion}
+                              </p>
+                            </div>
+                          </div>
+
                           {/* Denunciado */}
                           <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">DENUNCIADO</h5>
-                            <div className="p-3 bg-gray-50 rounded-lg">
-                              <p className="font-bold text-gray-900 mb-1"> {(itemSeleccionado as Proceso).denunciado}</p>
-                              <p className="text-sm text-gray-600">Cédula: {(itemSeleccionado as Proceso).cedula}</p>
+                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                              ⚠️ DENUNCIADO
+                            </h5>
+                            <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
+                              <p className="font-bold text-gray-900 mb-1"> {(itemSeleccionado as Proceso).denunciado.nombre}</p>
+                              <p className="text-sm text-gray-600">
+                                <span className="font-semibold">{(itemSeleccionado as Proceso).denunciado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciado.numeroIdentificacion}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Profesional Asignado */}
+                          <div>
+                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                              👨‍💼 PROFESIONAL ASIGNADO
+                            </h5>
+                            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-1">
+                              <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).profesionalAsignado.nombre}</p>
+                              <p className="text-sm text-gray-600">
+                                <span className="font-semibold">{(itemSeleccionado as Proceso).profesionalAsignado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).profesionalAsignado.numeroIdentificacion}
+                              </p>
                             </div>
                           </div>
 
@@ -2431,6 +2986,69 @@ export function DashboardKanbanOperativo() {
             />
           )}
 
+          {modalActivo === 'comentarios-proceso' && itemSeleccionado && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+              onClick={() => setModalActivo(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden"
+              >
+                {/* Header */}
+                <div className="p-6 border-b" style={{ background: 'linear-gradient(135deg, #003DA5 0%, #0056D6 100%)' }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 rounded-xl bg-white/20">
+                        <MessageSquare className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-black text-white">
+                          Comentarios del Proceso
+                        </h2>
+                        <p className="text-sm text-white/80 mt-1">
+                          {itemSeleccionado.numeroProceso} - Trazabilidad Completa
+                        </p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setModalActivo(null)} 
+                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                    >
+                      <X className="w-6 h-6 text-white" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Contenido */}
+                <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 160px)' }}>
+                  <SistemaComentarios
+                    numeroProceso={itemSeleccionado.numeroProceso}
+                    etapaActual={itemSeleccionado.etapaActual}
+                    profesionalActual={itemSeleccionado.profesionalAsignado}
+                  />
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 border-t bg-gray-50">
+                  <Button 
+                    onClick={() => setModalActivo(null)} 
+                    variant="outline" 
+                    className="w-full"
+                  >
+                    Cerrar
+                  </Button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+
           {modalActivo === 'historial-auditoria' && itemSeleccionado && (
             <ModalHistorialAuditoria
               proceso={itemSeleccionado}
@@ -2445,8 +3063,8 @@ export function DashboardKanbanOperativo() {
                 id: itemSeleccionado.id,
                 numeroRadicado: itemSeleccionado.numero,
                 denunciado: {
-                  nombre: itemSeleccionado.denunciado,
-                  identificacion: itemSeleccionado.cedula || 'N/A'
+                  nombre: itemSeleccionado.denunciado.nombre,
+                  identificacion: `${itemSeleccionado.denunciado.tipoIdentificacion} ${itemSeleccionado.denunciado.numeroIdentificacion}`
                 }
               }}
               onClose={() => {

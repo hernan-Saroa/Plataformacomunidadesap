@@ -20,12 +20,18 @@ import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
 
 // ==================== INTERFACES ====================
+interface Persona {
+  nombre: string;
+  tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT';
+  numeroIdentificacion: string;
+}
+
 interface NoticiaResumen {
   id: string;
   numero: string;
   fechaRecepcion: string;
   origen: string;
-  denunciado: string;
+  denunciado: Persona | string; // Permite ambos tipos para compatibilidad
   hechos: string;
   estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada';
   prioridad: 'alta' | 'media' | 'baja';
@@ -36,7 +42,7 @@ interface ProcesoResumen {
   id: string;
   numeroProceso: string;
   noticiaOrigen: string;
-  denunciado: string;
+  denunciado: Persona | string; // Permite ambos tipos para compatibilidad
   etapaActual: string;
   estadoActual: string;
   profesionalAsignado: string;
@@ -448,7 +454,7 @@ export function DashboardEjecutivoIntegrado({ onNavigate }: { onNavigate?: (sect
                         </div>
 
                         <p className="font-semibold text-gray-900 mb-1">
-                          Denunciado: {noticia.denunciado}
+                          Denunciado: {typeof noticia.denunciado === 'string' ? noticia.denunciado : noticia.denunciado.nombre}
                         </p>
                         <p className="text-sm text-gray-700 mb-3">
                           {noticia.hechos}
@@ -542,14 +548,14 @@ export function DashboardEjecutivoIntegrado({ onNavigate }: { onNavigate?: (sect
                         </div>
 
                         <p className="font-semibold text-gray-900 mb-3">
-                          {proceso.denunciado}
+                          {typeof proceso.denunciado === 'string' ? proceso.denunciado : proceso.denunciado.nombre}
                         </p>
 
                         {/* Métricas */}
                         <div className="grid grid-cols-5 gap-4">
                           <div>
                             <p className="text-xs text-gray-600">Profesional</p>
-                            <p className="font-semibold text-sm text-gray-900">{proceso.profesionalAsignado}</p>
+                            <p className="font-semibold text-sm text-gray-900">{typeof proceso.profesionalAsignado === 'string' ? proceso.profesionalAsignado : ''}</p>
                           </div>
                           <div>
                             <p className="text-xs text-gray-600">Días Restantes</p>
@@ -732,10 +738,10 @@ export function DashboardEjecutivoIntegrado({ onNavigate }: { onNavigate?: (sect
 
                       <div className="flex-1">
                         <h3 className="text-lg font-bold text-orange-900 mb-1">
-                          {proceso.numeroProceso} - {proceso.denunciado}
+                          {proceso.numeroProceso} - {typeof proceso.denunciado === 'string' ? proceso.denunciado : proceso.denunciado.nombre}
                         </h3>
                         <p className="text-sm text-orange-700 mb-2">
-                          Etapa: {proceso.etapaActual} • Profesional: {proceso.profesionalAsignado}
+                          Etapa: {proceso.etapaActual} • Profesional: {typeof proceso.profesionalAsignado === 'string' ? proceso.profesionalAsignado : ''}
                         </p>
                         <p className="text-lg font-black text-orange-600">
                           ⚠️ {proceso.diasRestantes} días restantes
@@ -797,7 +803,7 @@ export function DashboardEjecutivoIntegrado({ onNavigate }: { onNavigate?: (sect
 
                 <div>
                   <p className="text-sm font-semibold text-gray-600 mb-1">Denunciado</p>
-                  <p className="font-bold text-gray-900">{selectedNoticia.denunciado}</p>
+                  <p className="font-bold text-gray-900">{typeof selectedNoticia.denunciado === 'string' ? selectedNoticia.denunciado : selectedNoticia.denunciado.nombre}</p>
                 </div>
 
                 <div>

@@ -43,7 +43,6 @@ import { toast } from 'sonner@2.0.3';
 
 // Importar modales
 import { RevisarPTAsModal } from './modals/RevisarPTAsModal';
-import { GestionDocentesModal } from './modals/GestionDocentesModal';
 import { GestionDocentesModalV2 } from './modals/GestionDocentesModalV2';
 import { EvaluacionesModal } from './modals/EvaluacionesModal';
 import { AnalyticsModal } from './modals/AnalyticsModal';

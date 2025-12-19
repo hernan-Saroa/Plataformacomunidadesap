@@ -27,7 +27,7 @@ interface Proceso {
   semaforo: 'verde' | 'amarillo' | 'rojo';
   diasRestantes: number;
   porcentajeTiempo: number;
-  profesionalAsignado: string;
+  profesionalAsignado: string; // Mantenido como string para compatibilidad
   fechaCreacion: string;
   ultimaActuacion: string;
   documentos: number;

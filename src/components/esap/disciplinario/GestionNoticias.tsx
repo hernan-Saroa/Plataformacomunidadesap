@@ -33,7 +33,8 @@ import {
   Paperclip,
   History,
   Bell,
-  HelpCircle
+  HelpCircle,
+  Send
 } from 'lucide-react';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
@@ -44,6 +45,7 @@ import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { FlujoNoticiasDisciplinarias } from './FlujoNoticiasDisciplinarias';
 import { ModalDetallesNoticia } from './ModalDetallesNoticia';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
+import { ModalRemitirCompetencia } from './ModalRemitirCompetencia';
 
 // ==================== INTERFACES ====================
 interface Profesional {
@@ -754,6 +756,7 @@ export function GestionNoticias() {
   const [showFlujoModal, setShowFlujoModal] = useState(false);
   const [showDetallesModal, setShowDetallesModal] = useState(false);
   const [showArchivarModal, setShowArchivarModal] = useState(false);
+  const [showRemitirCompetenciaModal, setShowRemitirCompetenciaModal] = useState(false);
   const [noticiaSeleccionada, setNoticiaSeleccionada] = useState<NoticiaDisciplinaria | null>(null);
   const [noticias, setNoticias] = useState<NoticiaDisciplinaria[]>(MOCK_NOTICIAS);
 
@@ -1229,6 +1232,18 @@ export function GestionNoticias() {
                   >
                     <Trash2 className="w-4 h-4 text-red-600" />
                   </button>
+
+                  {/* Botón Remitir por Competencia */}
+                  <button
+                    onClick={() => {
+                      setNoticiaSeleccionada(noticia);
+                      setShowRemitirCompetenciaModal(true);
+                    }}
+                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors"
+                    title="Remitir por competencia"
+                  >
+                    <Send className="w-4 h-4 text-purple-600" />
+                  </button>
                   
                   {/* RF002: Botones de Revisión y Asignación */}
                   {(noticia.estado === 'pendiente' || noticia.estado === 'en-valoracion') && (
@@ -1399,6 +1414,47 @@ export function GestionNoticias() {
                 description: `La noticia ${noticiaSeleccionada?.numeroRadicado} ha sido archivada exitosamente.`
               });
               setShowArchivarModal(false);
+              setNoticiaSeleccionada(null);
+            }}
+          />
+        )}
+
+        {showRemitirCompetenciaModal && noticiaSeleccionada && (
+          <ModalRemitirCompetencia
+            noticia={noticiaSeleccionada}
+            onClose={() => {
+              setShowRemitirCompetenciaModal(false);
+              setNoticiaSeleccionada(null);
+            }}
+            onConfirm={(data) => {
+              // Actualizar la noticia: cambiar el número de ND a RC
+              setNoticias(noticias.map(n => {
+                if (n.id === noticiaSeleccionada?.id) {
+                  return {
+                    ...n,
+                    numeroRadicado: data.numeroRC,
+                    origen: 'Remisión por competencia' as const,
+                    estado: 'devuelto' as const,
+                    estadoLabel: 'Devuelto' as const,
+                    historialAuditoria: [
+                      ...n.historialAuditoria,
+                      {
+                        id: Date.now().toString(),
+                        tipo: 'devolucion' as const,
+                        usuario: 'Sistema',
+                        fecha: new Date().toISOString(),
+                        observaciones: `Remitido por competencia a: ${data.areaDestino}. Justificación: ${data.justificacion}`
+                      }
+                    ]
+                  };
+                }
+                return n;
+              }));
+              
+              toast.success('Remitido por Competencia', {
+                description: `La noticia ahora tiene el número ${data.numeroRC} y ha sido remitida a ${data.areaDestino}.`
+              });
+              setShowRemitirCompetenciaModal(false);
               setNoticiaSeleccionada(null);
             }}
           />

@@ -123,11 +123,43 @@ const PROFESIONALES_DATA: Profesional[] = [
 ];
 
 // ==================== MODAL VER DETALLE ====================
-function ModalDetalleProfesional({ profesional, onClose }: { profesional: Profesional; onClose: () => void }) {
+function ModalDetalleProfesional({ 
+  profesional, 
+  onClose,
+  onEditar,
+  onVerProcesos 
+}: { 
+  profesional: Profesional; 
+  onClose: () => void;
+  onEditar?: (profesional: Profesional) => void;
+  onVerProcesos?: (profesional: Profesional) => void;
+}) {
   const porcentajeCarga = (profesional.procesosAsignados / profesional.capacidadMaxima) * 100;
   const tasaEfectividad = profesional.procesosAsignados > 0 
     ? ((profesional.procesosAlDia / profesional.procesosAsignados) * 100).toFixed(1)
     : '100';
+
+  const handleEditarProfesional = () => {
+    if (onEditar) {
+      onEditar(profesional);
+      onClose();
+    } else {
+      toast.info('Función de edición no disponible', {
+        description: 'Esta función se implementará próximamente'
+      });
+    }
+  };
+
+  const handleVerProcesos = () => {
+    if (onVerProcesos) {
+      onVerProcesos(profesional);
+      onClose();
+    } else {
+      toast.info(`Procesos asignados a ${profesional.nombre}`, {
+        description: `Total: ${profesional.procesosAsignados} procesos • ${profesional.procesosAlDia} al día • ${profesional.procesosEnRiesgo} en riesgo • ${profesional.procesosVencidos} vencidos`
+      });
+    }
+  };
 
   return (
     <motion.div
@@ -378,7 +410,7 @@ function ModalDetalleProfesional({ profesional, onClose }: { profesional: Profes
         {/* Footer */}
         <div className="p-6 border-t flex items-center gap-3" style={{ borderColor: '#E5E7EB' }}>
           <button
-            onClick={() => toast.info('Editar profesional')}
+            onClick={handleEditarProfesional}
             className="flex-1 px-4 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-2"
             style={{ background: '#003DA5', color: '#FFFFFF' }}
           >
@@ -386,7 +418,7 @@ function ModalDetalleProfesional({ profesional, onClose }: { profesional: Profes
             Editar Profesional
           </button>
           <button
-            onClick={() => toast.info('Ver procesos asignados')}
+            onClick={handleVerProcesos}
             className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2"
             style={{ background: '#F3F4F6', color: '#4B5563' }}
           >
@@ -1051,6 +1083,16 @@ export function GestionProfesionales() {
             onClose={() => {
               setShowModal(null);
               setProfesionalSeleccionado(null);
+            }}
+            onEditar={(prof) => {
+              setProfesionalEditar(prof);
+              setShowModal('formulario');
+            }}
+            onVerProcesos={(prof) => {
+              toast.info(`Procesos de ${prof.nombre}`, {
+                description: `${prof.procesosAsignados} procesos asignados • ${prof.procesosAlDia} al día • ${prof.procesosEnRiesgo} en riesgo • ${prof.procesosVencidos} vencidos`,
+                duration: 5000
+              });
             }}
           />
         )}
