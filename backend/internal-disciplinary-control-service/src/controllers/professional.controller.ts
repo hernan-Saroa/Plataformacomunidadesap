@@ -194,10 +194,10 @@ export class ProfessionalController {
                 this.httpService.get(`${authServiceUrl}/users?limit=1000`)
             );
 
-            console.log('Auth service response structure:', JSON.stringify(response.data, null, 2));
+            console.log('Auth service response structure:', JSON.stringify((response as any).data, null, 2));
 
             // Auth service wraps response: {success, data: {data: [...], meta}, timestamp}
-            const users = response.data.data.data || [];
+            const users = (response as any).data.data.data || [];
 
             if (!Array.isArray(users)) {
                 console.error('Users is not an array:', typeof users, users);

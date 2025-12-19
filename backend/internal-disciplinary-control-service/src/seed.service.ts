@@ -199,12 +199,12 @@ export class SeedService {
         origen: NewsOrigin.REMISION,
         territorial: 'BARRANQUILLA',
         dependenciaDenunciado: 'PLANEACION',
-        denunciante: { nombre: 'Oficina Control Interno', email: 'oci@esap.edu.co' },
-        disciplinable: {
+        denunciante: [{ nombre: 'Oficina Control Interno', email: 'oci@esap.edu.co' }],
+        disciplinable: [{
           nombre: 'Luisa Fernandez',
           cedula: '321654987',
           cargo: 'Profesional Planeacion',
-        },
+        }],
         hechos: 'Remision por posible conflicto de interes en contratacion.',
         adjuntos: [],
         estado: NewsStatus.RADICADA,
