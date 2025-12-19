@@ -3,7 +3,7 @@
  * Parámetros del sistema y configuraciones generales
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Save, Settings, Clock, Users, Bell, FileText, Shield,
@@ -13,6 +13,8 @@ import {
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner@2.0.3';
+
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 // Tipo para etapa dinámica
 interface Etapa {
@@ -32,31 +34,86 @@ interface Cargo {
 
 export function ModuloConfiguracion() {
   // Estados de configuración - Etapas ahora dinámicas
-  const [etapas, setEtapas] = useState<Etapa[]>([
-    { id: '1', nombre: 'RECEPCIÓN', dias: 3, orden: 1 },
-    { id: '2', nombre: 'VALORACIÓN', dias: 10, orden: 2 },
-    { id: '3', nombre: 'INDAGACIÓN', dias: 40, orden: 3 },
-    { id: '4', nombre: 'INVESTIGACIÓN', dias: 60, orden: 4 },
-    { id: '5', nombre: 'JUZGAMIENTO', dias: 50, orden: 5 },
-    { id: '6', nombre: 'FALLO', dias: 10, orden: 6 }
-  ]);
+  const [etapas, setEtapas] = useState<Etapa[]>([]); // Start empty, load from backend if possible, or keep defaults if endpoint not ready for stages
+
+  // Capacidades dinámicas
+  const [cargos, setCargos] = useState<Cargo[]>([]);
 
   const [editandoEtapa, setEditandoEtapa] = useState<string | null>(null);
   const [nombreEditando, setNombreEditando] = useState('');
-
-  // Capacidades ahora son dinámicas - pueden agregarse/quitarse
-  const [cargos, setCargos] = useState<Cargo[]>([
-    { id: '1', nombre: 'ESPECIALIZADO', capacidad: 12, rolId: 'rol-especializado' },
-    { id: '2', nombre: 'UNIVERSITARIO', capacidad: 10, rolId: 'rol-universitario' },
-    { id: '3', nombre: 'SENIOR', capacidad: 15, rolId: 'rol-senior' },
-    { id: '4', nombre: 'COORDINADOR', capacidad: 8, rolId: 'rol-coordinador' }
-  ]);
-
   const [editandoCargo, setEditandoCargo] = useState<string | null>(null);
   const [nombreCargoEditando, setNombreCargoEditando] = useState('');
   const [mostrarModalAgregarCargo, setMostrarModalAgregarCargo] = useState(false);
   const [nuevoCargoNombre, setNuevoCargoNombre] = useState('');
   const [nuevoCargoCapacidad, setNuevoCargoCapacidad] = useState(10);
+
+  const [loading, setLoading] = useState(true);
+
+  // Cargar configuración al iniciar
+  useEffect(() => {
+    loadConfiguration();
+  }, []);
+
+  const loadConfiguration = async () => {
+    try {
+      setLoading(true);
+      const [globalConfig, stagesConfig] = await Promise.all([
+        disciplinaryService.getGlobalConfig(),
+        disciplinaryService.getStageConfiguration()
+      ]);
+
+      // 1. Mapear Global Config (Capacidades, Notificaciones, Alertas)
+      if (globalConfig) {
+        // Capacidades
+        if (globalConfig.roleCapacities) {
+          const loadedCargos = Object.entries(globalConfig.roleCapacities).map(([key, value], index) => ({
+            id: (index + 1).toString(),
+            nombre: key.replace(/_/g, ' ').toUpperCase(), // 'profesional_universitario' -> 'PROFESIONAL UNIVERSITARIO'
+            capacidad: Number(value),
+            rolId: key
+          }));
+          setCargos(loadedCargos);
+        }
+
+        // Notificaciones
+        if (globalConfig.notificationSettings) {
+          setNotificaciones(prev => ({ ...prev, ...globalConfig.notificationSettings }));
+        }
+
+        // Alertas
+        if (globalConfig.alertSettings) {
+          setAlertas(prev => ({ ...prev, ...globalConfig.alertSettings }));
+        }
+      }
+
+      // 2. Mapear Stages
+      if (stagesConfig && Array.isArray(stagesConfig) && stagesConfig.length > 0) {
+        const mappedStages = stagesConfig.map((s: any, index: number) => ({
+          id: s.id || (index + 1).toString(),
+          nombre: s.etapa,
+          dias: s.diasHabiles,
+          orden: index + 1
+        }));
+        setEtapas(mappedStages);
+      } else {
+        // Fallback defaults if empty
+        setEtapas([
+          { id: '1', nombre: 'RECEPCIÓN', dias: 3, orden: 1 },
+          { id: '2', nombre: 'VALORACIÓN', dias: 10, orden: 2 },
+          { id: '3', nombre: 'INDAGACIÓN', dias: 40, orden: 3 },
+          { id: '4', nombre: 'INVESTIGACIÓN', dias: 60, orden: 4 },
+          { id: '5', nombre: 'JUZGAMIENTO', dias: 50, orden: 5 },
+          { id: '6', nombre: 'FALLO', dias: 10, orden: 6 }
+        ]);
+      }
+
+    } catch (error) {
+      console.error('Error loading config:', error);
+      toast.error('Error al cargar la configuración del servidor');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const [notificaciones, setNotificaciones] = useState({
     vencimiento7dias: true,
@@ -77,10 +134,44 @@ export function ModuloConfiguracion() {
     diasAnticipacion: 7
   });
 
-  const handleGuardar = () => {
-    toast.success('Configuración guardada exitosamente', {
-      description: 'Los cambios se aplicarán de inmediato'
-    });
+  const handleGuardar = async () => {
+    try {
+      // 1. Prepare Global Config Payload
+      const roleCapacities: Record<string, number> = {};
+      cargos.forEach(c => {
+        // Use consistent key format: lowercase, underscores
+        const key = c.rolId || c.nombre.toLowerCase().replace(/ /g, '_');
+        roleCapacities[key] = c.capacidad;
+      });
+
+      const globalPayload = {
+        roleCapacities,
+        notificationSettings: notificaciones,
+        alertSettings: alertas,
+        securitySettings: { auditEnabled: true, digitalSignature: true, backupEnabled: true } // Keep existing or add state for these if needed
+      };
+
+      // 2. Prepare Stages Payload
+      const stagesPayload = etapas.map(e => ({
+        etapa: e.nombre,
+        diasHabiles: e.dias,
+        descripcion: `Etapa de ${e.nombre}`,
+        activo: true
+      }));
+
+      // 3. Send to Backend
+      await Promise.all([
+        disciplinaryService.updateGlobalConfig(globalPayload),
+        disciplinaryService.updateStageConfiguration(stagesPayload)
+      ]);
+
+      toast.success('Configuración guardada exitosamente', {
+        description: 'Los cambios se aplicarán de inmediato'
+      });
+    } catch (error) {
+      console.error('Error saving config:', error);
+      toast.error('Error al guardar la configuración');
+    }
   };
 
   const handleRestablecer = () => {
@@ -527,7 +618,7 @@ export function ModuloConfiguracion() {
                       [item.key]: e.target.checked
                     })}
                     className="w-5 h-5 rounded border-2 focus:outline-none"
-                    style={{ 
+                    style={{
                       borderColor: '#E5E7EB',
                       accentColor: '#003DA5'
                     }}
@@ -560,7 +651,7 @@ export function ModuloConfiguracion() {
                       [item.key]: e.target.checked
                     })}
                     className="w-5 h-5 rounded border-2 focus:outline-none"
-                    style={{ 
+                    style={{
                       borderColor: '#E5E7EB',
                       accentColor: '#003DA5'
                     }}
@@ -592,7 +683,7 @@ export function ModuloConfiguracion() {
                       [item.key]: e.target.checked
                     })}
                     className="w-5 h-5 rounded border-2 focus:outline-none"
-                    style={{ 
+                    style={{
                       borderColor: '#E5E7EB',
                       accentColor: '#003DA5'
                     }}

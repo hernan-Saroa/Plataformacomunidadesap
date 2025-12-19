@@ -468,56 +468,63 @@ function ModalAsignar({ noticia, onClose, onConfirm, profesionales }: {
               Profesional Responsable <span className="text-red-500">*</span>
             </label>
 
-            <div className="grid gap-3">
-              {profesionales.map((prof) => {
-                const carga = (prof.procesosAsignados / prof.capacidadMaxima) * 100;
-                const isSelected = profesionalId === prof.id;
+            <div className="grid gap-3 max-h-60 overflow-y-auto pr-2">
+              {profesionales.map((profesional) => {
+                const isFull = profesional.procesosAsignados >= profesional.capacidadMaxima;
+                const isSelected = profesionalSeleccionado?.id === profesional.id;
 
                 return (
                   <div
-                    key={prof.id}
-                    onClick={() => setProfesionalId(prof.id)}
-                    className={`
-                      p-4 border-2 rounded-xl cursor-pointer transition-all
-                      ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}
-                    `}
+                    key={profesional.id}
+                    onClick={() => !isFull && setProfesionalId(profesional.id)}
+                    className={`p-4 rounded-xl border-2 transition-all cursor-pointer ${isSelected
+                      ? 'border-blue-600 bg-blue-50'
+                      : isFull
+                        ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
+                        : 'border-gray-200 hover:border-blue-400 hover:bg-gray-50'
+                      }`}
                   >
-                    <div className="flex items-center gap-4">
-                      <Avatar className="w-12 h-12 border-2 border-white shadow-sm">
-                        <AvatarFallback style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                          {(prof.nombre || 'NN').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                        </AvatarFallback>
-                      </Avatar>
-
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between mb-1">
-                          <h3 className="font-bold text-gray-900">{prof.nombre}</h3>
-                          {isSelected && (
-                            <CheckCircle className="w-5 h-5 text-blue-600" />
-                          )}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isSelected ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+                          }`}>
+                          {profesional.nombre.split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{prof.cargo}</p>
-
-                        {/* Barra de carga */}
                         <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs text-gray-600">Carga de trabajo</span>
-                            <span className="text-xs font-semibold" style={{
-                              color: carga >= 90 ? '#DC2626' : carga >= 70 ? '#F59E0B' : '#10B981'
-                            }}>
-                              {prof.procesosAsignados}/{prof.capacidadMaxima} procesos ({carga.toFixed(0)}%)
-                            </span>
-                          </div>
-                          <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full transition-all"
-                              style={{
-                                width: `${carga}%`,
-                                background: carga >= 90 ? '#DC2626' : carga >= 70 ? '#F59E0B' : '#10B981'
-                              }}
-                            />
-                          </div>
+                          <h4 className="font-bold text-gray-900">{profesional.nombre}</h4>
+                          <p className="text-sm text-gray-500">{profesional.cargo}</p>
                         </div>
+                      </div>
+                      {isSelected && <CheckCircle className="w-6 h-6 text-blue-600" />}
+                      {isFull && !isSelected && (
+                        <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200">
+                          Capacidad Llena
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Barra de Capacidad */}
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className={isFull ? 'text-red-600 font-bold' : 'text-gray-600'}>
+                          {isFull ? 'Sin cupo disponible' : 'Capacidad'}
+                        </span>
+                        <span className="font-bold text-gray-900">
+                          {profesional.procesosAsignados} / {profesional.capacidadMaxima}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full ${isFull
+                            ? 'bg-red-500'
+                            : profesional.procesosAsignados > (profesional.capacidadMaxima * 0.8)
+                              ? 'bg-orange-500'
+                              : 'bg-green-500'
+                            }`}
+                          style={{
+                            width: `${Math.min((profesional.procesosAsignados / profesional.capacidadMaxima) * 100, 100)}%`
+                          }}
+                        />
                       </div>
                     </div>
                   </div>
@@ -587,16 +594,17 @@ function ModalAsignar({ noticia, onClose, onConfirm, profesionales }: {
             </button>
             <button
               type="submit"
-              className="flex-1 px-6 py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
-              style={{ background: '#10B981' }}
+              disabled={!profesionalSeleccionado}
+              className={`flex-1 px-6 py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 ${!profesionalSeleccionado ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#10B981]'
+                }`}
             >
               <UserCheck className="w-4 h-4" />
               {convertirAProceso ? 'Asignar y Convertir' : 'Asignar'}
             </button>
           </div>
         </form>
-      </motion.div>
-    </motion.div>
+      </motion.div >
+    </motion.div >
   );
 }
 
