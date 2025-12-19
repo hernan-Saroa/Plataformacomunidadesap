@@ -30,16 +30,34 @@ import { Evidence } from './entities/evidence.entity';
 import { StageConfiguration } from './entities/stage-configuration.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
 import { AutoVersion } from './entities/auto-version.entity';
+import { TerminoProcesal } from './entities/termino-procesal.entity';
+import { DiaFestivo } from './entities/dia-festivo.entity';
+import { ReglaAlerta } from './entities/regla-alerta.entity';
+import { AlertaEnviada } from './entities/alerta-enviada.entity';
 
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',
-  host: process.env.DATABASE_HOST || process.env.DB_HOST,
-  port: parseInt(process.env.DATABASE_PORT || process.env.DB_PORT || '5432', 10),
-  username: process.env.DATABASE_USER || process.env.DB_USER,
-  password: process.env.DATABASE_PASSWORD || process.env.DB_PASS,
-  database: process.env.DATABASE_NAME || process.env.DB_NAME,
-  schema: process.env.DB_SCHEMA || 'public',
-  entities: [DisciplinaryNews, DisciplinaryProcess, LegalAuto, Sequence, DisciplinaryProfessional, Evidence, StageConfiguration, SystemConfiguration, AutoVersion],
+  host: process.env.DB_HOST,
+  port: parseInt(process.env.DB_PORT || '5432', 10),
+  username: process.env.DB_USER,
+  password: process.env.DB_PASS ? String(process.env.DB_PASS) : '', // Asegurar que sea string
+  database: process.env.DB_NAME,
+  schema: process.env.DB_SCHEMA,
+  entities: [
+    DisciplinaryNews,
+    DisciplinaryProcess,
+    LegalAuto,
+    Sequence,
+    DisciplinaryProfessional,
+    Evidence,
+    StageConfiguration,
+    SystemConfiguration,
+    AutoVersion,
+    TerminoProcesal,
+    DiaFestivo,
+    ReglaAlerta,
+    AlertaEnviada,
+  ],
   synchronize: false,
   logging: false,
 };

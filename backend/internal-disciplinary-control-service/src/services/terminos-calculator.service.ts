@@ -3,33 +3,20 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProcessStage } from '../entities/disciplinary-process.entity';
 import { StageConfiguration } from '../entities/stage-configuration.entity';
+import { DiaFestivo } from '../entities/dia-festivo.entity';
 
 @Injectable()
 export class TerminosCalculatorService {
+  private festivosCache: DiaFestivo[] | null = null;
+  private cacheTimestamp: number = 0;
+  private readonly CACHE_DURATION = 60 * 60 * 1000; // 1 hora
+
   constructor(
     @InjectRepository(StageConfiguration)
     private configRepo: Repository<StageConfiguration>,
+    @InjectRepository(DiaFestivo)
+    private festivosRepo: Repository<DiaFestivo>,
   ) { }
-
-  /**
-   * Días festivos en Colombia (mock para este ejemplo)
-   */
-  private readonly festivosColombia = [
-    '01-01', // Año Nuevo
-    '01-08', // Reyes
-    '03-25', // San José
-    '05-01', // Trabajo
-    '06-10', // Corpus Christi
-    '06-17', // Sagrado Corazón
-    '07-01', // San Pedro y Pablo
-    '07-20', // Independencia
-    '08-07', // Batalla de Boyacá
-    '08-15', // Asunción
-    '11-01', // Todos los Santos
-    '11-11', // Independencia de Cartagena
-    '12-08', // Inmaculada Concepción
-    '12-25', // Navidad
-  ];
 
   /**
    * Calcula la fecha de vencimiento según la etapa del proceso
@@ -74,7 +61,7 @@ export class TerminosCalculatorService {
       fechaVencimiento.setDate(fechaVencimiento.getDate() + dias);
       return { dias, fechaVencimiento };
     } else {
-      const fechaVencimiento = this.sumarDiasHabiles(desde, dias);
+      const fechaVencimiento = await this.sumarDiasHabiles(desde, dias);
       return { dias, fechaVencimiento };
     }
   }
@@ -89,9 +76,30 @@ export class TerminosCalculatorService {
   }
 
   /**
+   * Obtiene festivos activos desde BD (con caché)
+   */
+  private async obtenerFestivosActivos(): Promise<DiaFestivo[]> {
+    const now = Date.now();
+    
+    // Si el caché es válido, retornarlo
+    if (this.festivosCache && (now - this.cacheTimestamp) < this.CACHE_DURATION) {
+      return this.festivosCache;
+    }
+
+    // Obtener de BD
+    this.festivosCache = await this.festivosRepo.find({
+      where: { activo: true },
+    });
+    this.cacheTimestamp = now;
+
+    return this.festivosCache;
+  }
+
+  /**
    * Suma días hábiles (excluyendo fines de semana y festivos)
    */
-  private sumarDiasHabiles(fecha: Date, diasAsumar: number): Date {
+  async sumarDiasHabiles(fecha: Date, diasAsumar: number): Promise<Date> {
+    const festivos = await this.obtenerFestivosActivos();
     let diasSumados = 0;
     const resultado = new Date(fecha);
 
@@ -104,7 +112,7 @@ export class TerminosCalculatorService {
       }
 
       // Saltar festivos
-      if (this.esFestivo(resultado)) {
+      if (await this.esFestivo(resultado, festivos)) {
         continue;
       }
 
@@ -115,41 +123,72 @@ export class TerminosCalculatorService {
   }
 
   /**
-   * Verifica si una fecha es festivo en Colombia
+   * Verifica si una fecha es festivo
    */
-  private esFestivo(fecha: Date): boolean {
-    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-    const dia = String(fecha.getDate()).padStart(2, '0');
-    const fechaStr = `${mes}-${dia}`;
-
-    return this.festivosColombia.includes(fechaStr);
+  private async esFestivo(fecha: Date, festivos?: DiaFestivo[]): Promise<boolean> {
+    const festivosList = festivos || await this.obtenerFestivosActivos();
+    
+    const fechaStr = fecha.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    return festivosList.some(festivo => {
+      const festivoStr = festivo.fecha.toISOString().split('T')[0];
+      return festivoStr === fechaStr;
+    });
   }
 
   /**
    * Calcula los días hábiles restantes hasta una fecha
    */
-  diasHabilesRestantes(fechaVencimiento: Date): number {
+  async diasHabilesRestantes(fechaVencimiento: Date): Promise<number> {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
-    if (fechaVencimiento < hoy) {
-      return 0; // Ya vencido
+    const fechaVenc = new Date(fechaVencimiento);
+    fechaVenc.setHours(0, 0, 0, 0);
+
+    if (fechaVenc < hoy) {
+      // Ya vencido, calcular días negativos
+      let diasVencidos = 0;
+      const temporal = new Date(fechaVenc);
+      const festivos = await this.obtenerFestivosActivos();
+
+      while (temporal < hoy) {
+        temporal.setDate(temporal.getDate() + 1);
+
+        // Contar solo días hábiles
+        if (temporal.getDay() !== 0 && temporal.getDay() !== 6) {
+          if (!(await this.esFestivo(temporal, festivos))) {
+            diasVencidos++;
+          }
+        }
+      }
+
+      return -diasVencidos; // Negativo indica vencido
     }
 
     let diasRestantes = 0;
     const temporal = new Date(hoy);
+    const festivos = await this.obtenerFestivosActivos();
 
-    while (temporal < fechaVencimiento) {
+    while (temporal < fechaVenc) {
       temporal.setDate(temporal.getDate() + 1);
 
       // Contar solo días hábiles
       if (temporal.getDay() !== 0 && temporal.getDay() !== 6) {
-        if (!this.esFestivo(temporal)) {
+        if (!(await this.esFestivo(temporal, festivos))) {
           diasRestantes++;
         }
       }
     }
 
     return diasRestantes;
+  }
+
+  /**
+   * Limpia el caché de festivos (llamar cuando se actualiza un festivo)
+   */
+  limpiarCacheFestivos(): void {
+    this.festivosCache = null;
+    this.cacheTimestamp = 0;
   }
 }
