@@ -25,23 +25,20 @@ export interface DisciplinaryNews {
     hechos: string;
     denunciante: {
         nombre: string;
-        cedula?: string;
-        email?: string;
-        cargo?: string;
-        dependencia?: string;
-    }[];
+        email: string;
+        telefono?: string;
+        direccion?: string;
+    };
     disciplinable: {
         nombre: string;
+        cargo: string;
         cedula?: string;
         email?: string;
-        cargo?: string;
-        dependencia?: string;
         telefono?: string;
-    }[];
+    };
     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
     createdAt: string;
     updatedAt: string;
-    fechaRecepcion: string;
 }
 
 export interface DisciplinaryProcess {
@@ -150,10 +147,6 @@ class DisciplinaryService {
 
     // --- AUTOS ---
 
-    async getAllAutos(): Promise<LegalAuto[]> {
-        return apiClient.get<LegalAuto[]>(`${SERVICE_PREFIX}/disciplinary-autos`);
-    }
-
     async getAutosPorProceso(processId: string): Promise<LegalAuto[]> {
         return apiClient.get<LegalAuto[]>(`${SERVICE_PREFIX}/disciplinary-autos/by-process/${processId}`);
     }
@@ -212,16 +205,8 @@ class DisciplinaryService {
         return apiClient.post<any>(`${SERVICE_PREFIX}/professionals`, data);
     }
 
-    async updateProfessional(id: string, data: any): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/professionals/${id}`, data);
-    }
-
     async getProfessionalsWorkload(): Promise<Array<{ id: string; nombre: string; procesosAsignados: number; capacidadMaxima: number }>> {
         return apiClient.get<Array<{ id: string; nombre: string; procesosAsignados: number; capacidadMaxima: number }>>(`${SERVICE_PREFIX}/professionals/workload`);
-    }
-
-    async getCandidates(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/professionals/candidates`);
     }
 
     // --- ARCHIVOS ---
