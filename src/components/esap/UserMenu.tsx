@@ -58,6 +58,7 @@ export function UserMenu({
   const handleLogoutClick = () => {
     setShowMenu(false);
     // Mostrar diálogo de confirmación
+    onLogout();
     ConfirmationDialog({
       title: '¿Cerrar sesión?',
       message: '¿Estás seguro que deseas cerrar tu sesión? Tendrás que iniciar sesión nuevamente para acceder al backoffice.',

@@ -6,15 +6,17 @@
  * - Backoffice Administrativo
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { BackofficeApp } from './components/esap/BackofficeApp';
+import { PortalTransaccional } from './components/portal/PortalTransaccional';
 import { LandingPage } from './components/portal/LandingPage';
 import { PortalDashboard } from './components/portal/PortalDashboard';
 import { AuthenticatedPortalNavbar } from './components/portal/AuthenticatedPortalNavbar';
 import { LoginPage } from './components/esap/LoginPage';
 import { SystemSelector } from './components/esap/SystemSelector';
 import { Toaster } from 'sonner';
+import { toast } from 'sonner@2.0.3';
 import { authService } from './services/api/authService';
 
 // Importar Demo de Control Disciplinario
@@ -42,6 +44,61 @@ type AppView =
 
 type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | null;
 
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice';
+
+interface Usuario {
+  id: string;
+  nombre: string;
+  tipo: 'externo' | 'interno';
+  email: string;
+  rol?: string;
+}
+
+interface User {
+  id: string;
+  person: UserPerson;
+  roles: UserRoles[];
+  username: string;
+  accessToken: string;
+  rememberMe: boolean;
+}
+
+interface UserPerson {
+  id: string;
+  identification_number: string;
+  identification_type: string;
+  full_name: string;
+  first_name: string;
+  last_name: string;
+  gender: string;
+  email: string;
+  phone: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface UserRoles {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  type: string;
+  is_active: boolean;
+  requires_2fa: boolean;
+  created_by: string;
+  updated_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SesionGuardada {
+  usuario: Usuario;
+  vista: Vista;
+  timestamp: number;
+}
+
 interface UserData {
   name: string;
   email: string;
@@ -50,6 +107,10 @@ interface UserData {
   module?: string;
   datos_por_rol?: any;
 }
+
+// Configuración de timeout (15 minutos en milisegundos)
+const TIMEOUT_INACTIVIDAD = 2 * 60 * 1000; // 15 minutos
+const TIEMPO_ALERTA = 1 * 60 * 1000; // 1 minuto antes de cerrar sesión
 
 export default function App() {
   // DEMO MODE: Cambiar a false para ver aplicativo completo
@@ -78,15 +139,164 @@ export default function App() {
   const [userType, setUserType] = useState<'portal' | 'administrativo'>('portal');
   const [activeRole, setActiveRole] = useState<string>('Estudiante');
 
+  const [vistaActual, setVistaActual] = useState<Vista>('landing');
+  const [usuarioActual, setUsuarioActual] = useState<Usuario | null>(null);
+  const [mostrarAlertaInactividad, setMostrarAlertaInactividad] = useState(false);
+
+  const timerInactividadRef = useRef<NodeJS.Timeout | null>(null);
+  const timerAlertaRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ============================================
+  // PERSISTENCIA DE SESIÓN
+  // ============================================
+
+  // Cargar sesión guardada al iniciar
+  useEffect(() => {
+    const sesionGuardada = localStorage.getItem('esap-sesion-activa');
+    if (sesionGuardada) {
+      try {
+        const sesion: SesionGuardada = JSON.parse(sesionGuardada);
+        
+        // Verificar que la sesión no haya expirado (24 horas)
+        const tiempoTranscurrido = Date.now() - sesion.timestamp;
+        const EXPIRACION_SESION = 24 * 60 * 60 * 1000; // 24 horas
+        
+        if (tiempoTranscurrido < EXPIRACION_SESION) {
+          setUsuarioActual(sesion.usuario);
+          setVistaActual(sesion.vista);
+          console.log('✅ Sesión restaurada:', sesion.usuario.nombre);
+          
+          toast.success('Sesión restaurada', {
+            description: `Bienvenido de nuevo, ${sesion.usuario.nombre}`,
+          });
+        } else {
+          // Sesión expirada
+          localStorage.removeItem('esap-sesion-activa');
+          console.log('⏰ Sesión expirada');
+        }
+      } catch (error) {
+        console.error('Error al restaurar sesión:', error);
+        localStorage.removeItem('esap-sesion-activa');
+      }
+    }
+  }, []);
+
+  // Guardar sesión cuando cambie el usuario o vista
+  useEffect(() => {
+    if (usuarioActual && (vistaActual === 'portal' || vistaActual === 'backoffice')) {
+      const sesion: SesionGuardada = {
+        usuario: usuarioActual,
+        vista: vistaActual,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem('esap-sesion-activa', JSON.stringify(sesion));
+    } else {
+      localStorage.removeItem('esap-sesion-activa');
+    }
+  }, [usuarioActual, vistaActual]);
+
+  // ============================================
+  // SISTEMA DE DETECCIÓN DE INACTIVIDAD
+  // ============================================
+
+  const resetearTimerInactividad = useCallback(() => {
+    // Limpiar timers existentes
+    if (timerInactividadRef.current) {
+      clearTimeout(timerInactividadRef.current);
+    }
+    if (timerAlertaRef.current) {
+      clearTimeout(timerAlertaRef.current);
+    }
+    setMostrarAlertaInactividad(false);
+
+    // Solo activar si hay usuario autenticado
+    if (!usuarioActual) return;
+
+    // Timer para mostrar alerta (14 minutos)
+    timerAlertaRef.current = setTimeout(() => {
+      setMostrarAlertaInactividad(true);
+      toast.warning('⚠️ Inactividad detectada', {
+        description: 'Tu sesión se cerrará en 1 minuto por seguridad',
+        duration: 10000,
+      });
+    }, TIMEOUT_INACTIVIDAD - TIEMPO_ALERTA);
+
+    // Timer para cerrar sesión automáticamente (15 minutos)
+    timerInactividadRef.current = setTimeout(() => {
+      handleLogoutPorInactividad();
+    }, TIMEOUT_INACTIVIDAD);
+  }, [usuarioActual]);
+
+  // Detectar actividad del usuario
+  useEffect(() => {
+    if (!usuarioActual) return;
+
+    const eventos = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+
+    eventos.forEach((evento) => {
+      document.addEventListener(evento, resetearTimerInactividad);
+    });
+
+    // Iniciar timer al montar
+    resetearTimerInactividad();
+
+    // Cleanup
+    return () => {
+      eventos.forEach((evento) => {
+        document.removeEventListener(evento, resetearTimerInactividad);
+      });
+      if (timerInactividadRef.current) {
+        clearTimeout(timerInactividadRef.current);
+      }
+      if (timerAlertaRef.current) {
+        clearTimeout(timerAlertaRef.current);
+      }
+    };
+  }, [usuarioActual, resetearTimerInactividad]);
+
+  const handleLogoutPorInactividad = () => {
+    toast.error('Sesión cerrada por inactividad', {
+      description: 'Has estado inactivo durante 15 minutos',
+      duration: 5000,
+    });
+    
+    setUsuarioActual(null);
+    setVistaActual('landing');
+    localStorage.removeItem('esap-sesion-activa');
+    setMostrarAlertaInactividad(false);
+    
+    console.log('⏰ Sesión cerrada por inactividad');
+  };
+
   // Handler para mostrar pantalla de login
   const handleLoginClick = () => {
     setCurrentView('login');
+    setVistaActual('login');
+  };
+
+  // ============================================
+  // HANDLERS DE NAVEGACIÓN
+  // ============================================
+
+  const handleIrALogin = () => {
+    setVistaActual('login');
+  };
+
+  const handleVolverALanding = () => {
+    setVistaActual('landing');
+    setUsuarioActual(null);
+    localStorage.removeItem('esap-sesion-activa');
   };
 
   // Handler para login con integración del backend
-  const handleLogin = (user: any, accessToken: string, rememberMe?: boolean) => {
+  const handleLogin = (user: User, accessToken: string, rememberMe?: boolean) => {
     try {
-      console.log('🔐 Login handler called with:', { user, accessToken, rememberMe });
+      console.log('🔐 Login handler called with user:', user);
+      console.log('🔐 Login handler called with accessToken:', accessToken);
+      console.log('🔐 Login handler called with rememberMe:', rememberMe);
+      user.accessToken = accessToken;
+      user.rememberMe = rememberMe || false;
+      localStorage.setItem('esap-sesion-activa', JSON.stringify(user));
 
       // Guardar token JWT
       localStorage.setItem('esap_auth_token', accessToken);
@@ -105,158 +315,6 @@ export default function App() {
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
-        // DISCRIMINACIÓN AUTOMÁTICA POR DOMINIO:
-        // - superuser@esap.edu.co → SELECTOR DE SISTEMA (Acceso a ambos)
-        // - admin@esap.edu.co, hadmin@esap.edu.co → Backoffice Administrativo
-        // - cerlaboral@esap.edu.co → Backoffice con acceso a Certificados Laborales
-        // - estudiante@esap.edu.co, docente@esap.edu.co → Portal Transaccional
-
-        // const emailLower = email.toLowerCase();
-
-        // // ============================================
-        // // SUPER USER - Acceso a Ambos Sistemas
-        // // ============================================
-        // if (emailLower === 'superuser@esap.edu.co' || 
-        //     emailLower === 'rector@esap.edu.co' || 
-        //     emailLower === 'director@esap.edu.co') {
-
-        //   setUserType('administrativo');
-        //   setIsAuthenticated(true);
-
-        //   // Configurar nombre según el usuario
-        //   const name = emailLower === 'rector@esap.edu.co' 
-        //     ? 'Dr. Andrés Felipe Mora Cortés'
-        //     : emailLower === 'director@esap.edu.co'
-        //     ? 'Dr. Carlos Eduardo Rincón'
-        //     : 'Super Administrador ESAP';
-
-        //   setUserData({ 
-        //     name, 
-        //     email, 
-        //     personId: 'super-001',
-        //     hasBothSystemsAccess: true // Flag para indicar acceso dual
-        //   });
-
-        //   const roleName = emailLower === 'rector@esap.edu.co' 
-        //     ? 'Rector Nacional'
-        //     : emailLower === 'director@esap.edu.co'
-        //     ? 'Director Nacional'
-        //     : 'Super Admin';
-
-        //   setUserRoles([roleName]);
-
-        //   // Redirigir DIRECTAMENTE al BACKOFFICE
-        //   // Desde ahí pueden cambiar al Portal usando el System Switcher
-        //   setCurrentView('backoffice');
-        //   return;
-        // }
-
-        // if (emailLower.includes('admin') || emailLower.includes('hadmin') || emailLower === 'cerlaboral@esap.edu.co') {
-        //   // Usuario Administrativo → Backoffice
-        //   setUserType('administrativo');
-        //   setIsAuthenticated(true);
-
-        //   // Configurar datos según el tipo de usuario administrativo
-        //   if (emailLower === 'cerlaboral@esap.edu.co') {
-        //     setUserData({ 
-        //       name: 'Coordinador Certificados Laborales', 
-        //       email, 
-        //       personId: 'cerlaboral-001',
-        //       module: 'certificados-laborales' // Módulo específico de acceso
-        //     });
-        //     setUserRoles(['Coordinador de Certificados Laborales']);
-        //   } else {
-        //     setUserData({ 
-        //       name: 'Administrador ESAP', 
-        //       email, 
-        //       personId: 'admin-001' 
-        //     });
-        //     setUserRoles(['Administrativo']);
-        //   }
-
-        //   setCurrentView('backoffice');
-        // } else {
-        //   // Usuario Estudiante/Graduado/Docente → Portal Transaccional
-        //   // Simular múltiples roles para demo (en producción viene del backend)
-        //   const roles: string[] = [];
-        //   let name = 'Usuario ESAP';
-        //   let userData: any = {};
-
-        //   if (emailLower.includes('docente') || emailLower.includes('profesor')) {
-        //     setUserType('docente');
-        //     roles.push('Docente');
-
-        //     // Discriminación por tipo de vinculación docente
-        //     if (emailLower.includes('planta') || emailLower.includes('carrera')) {
-        //       // Docente de PLANTA - Tiempo Completo
-        //       name = 'Dr. Juan Carlos Pérez';
-        //       userData = {
-        //         name,
-        //         email,
-        //         personId: `persona-${Date.now()}`,
-        //         datos_por_rol: {
-        //           Docente: {
-        //             tipo_vinculacion: 'Carrera',
-        //             dedicacion: 'Tiempo Completo',
-        //             area: 'Administración Pública y Gestión Territorial',
-        //             codigo_docente: 'DOC-PLANTA-001',
-        //             clases_asignadas: 4,
-        //             estudiantes_totales: 112,
-        //             nivel_educativo: 'Doctorado',
-        //             anos_experiencia: 15,
-        //             funciones_administrativas: ['Coordinador de Programa', 'Miembro Comité Curricular'],
-        //             investigacion_activa: true,
-        //             coordinacion: 'Especialización en Gestión Pública',
-        //           }
-        //         }
-        //       };
-        //     } else if (emailLower.includes('catedra')) {
-        //       // Docente de CÁTEDRA - Medio Tiempo/Horas
-        //       name = 'Mg. Ana María López';
-        //       userData = {
-        //         name,
-        //         email,
-        //         personId: `persona-${Date.now()}`,
-        //         datos_por_rol: {
-        //           Docente: {
-        //             tipo_vinculacion: 'Cátedra',
-        //             dedicacion: 'Medio Tiempo',
-        //             area: 'Políticas Públicas',
-        //             codigo_docente: 'DOC-CATEDRA-456',
-        //             clases_asignadas: 2,
-        //             estudiantes_totales: 58,
-        //             nivel_educativo: 'Maestría',
-        //             anos_experiencia: 8,
-        //           }
-        //         }
-        //       };
-        //     } else {
-        //       // Por defecto: Docente Ocasional (planta temporal)
-        //       name = 'Dr. Carlos Hernández';
-        //       userData = {
-        //         name,
-        //         email,
-        //         personId: `persona-${Date.now()}`,
-        //         datos_por_rol: {
-        //           Docente: {
-        //             tipo_vinculacion: 'Ocasional',
-        //             dedicacion: 'Tiempo Completo',
-        //             area: 'Derecho Público',
-        //             codigo_docente: 'DOC-OCAS-789',
-        //             clases_asignadas: 3,
-        //             estudiantes_totales: 87,
-        //             nivel_educativo: 'Doctorado',
-        //             anos_experiencia: 12,
-        //             investigacion_activa: true,
-        //           }
-        //         }
-        //       };
-        //     }
-        //   } else if (emailLower.includes('graduado') || emailLower.includes('egresado')) {
-        //     setUserType('graduado');
-        //     roles.push('Graduado');
-        //     name = 'María González';
-        //     userData = { name, email, personId: `persona-${Date.now()}` };
       if (hasAdminRole) {
         console.log('🏢 Redirecting to backoffice');
         // Usuario Administrativo → Backoffice
@@ -269,6 +327,10 @@ export default function App() {
         });
         setUserRoles(['Administrativo']);
         setCurrentView('backoffice');
+        setVistaActual('backoffice');
+        // toast.success('¡Bienvenido al Backoffice Administrativo!', {
+        //   description: `Hola ${userName}`,
+        // });
       } else {
         console.log('🎓 Redirecting to portal');
         // Usuario Estudiante/Graduado/Docente → Portal Transaccional
@@ -281,6 +343,7 @@ export default function App() {
         if (emailLower.includes('cerlaboral')) {
           userType = 'administrativo';
           currentView = 'backoffice'
+          setVistaActual('backoffice');
           setUserData({ 
             name: userName, 
             email: userEmail, 
@@ -333,6 +396,10 @@ export default function App() {
         setIsAuthenticated(true);
         setUserRoles(portalRoles);
         setCurrentView(currentView);
+        setVistaActual('portal');
+        toast.success('¡Bienvenido al Portal Transaccional!', {
+          description: `Hola ${userName}`,
+        });
       }
 
       // Guardar sesión si rememberMe está activo
@@ -342,6 +409,9 @@ export default function App() {
           token: accessToken
         }));
       }
+
+      // Iniciar sistema de detección de inactividad
+      resetearTimerInactividad();
 
       console.log('✅ Login completed successfully');
     } catch (error) {
@@ -353,12 +423,25 @@ export default function App() {
 
   // Handler para logout (desde cualquier ambiente)
   const handleLogout = () => {
+    toast.success('Sesión cerrada exitosamente', {
+      description: 'Has cerrado sesión de forma segura',
+    });
     setIsAuthenticated(false);
     setUserType('portal');
     setUserRoles([]);
-    setUserData({ name: 'Usuario ESAP', email: 'usuario@esap.edu.co', personId: '' });
-    localStorage.removeItem('esap-remember-session');
+    setUserData(null);
     setCurrentView('landing');
+    setVistaActual('landing');
+    localStorage.removeItem('esap-sesion-activa');
+    localStorage.removeItem('esap-remember-session');
+    // Limpiar timers
+    if (timerInactividadRef.current) {
+      clearTimeout(timerInactividadRef.current);
+    }
+    if (timerAlertaRef.current) {
+      clearTimeout(timerAlertaRef.current);
+    }
+    setMostrarAlertaInactividad(false);
   };
 
   // Handler para volver al home desde login
@@ -468,146 +551,111 @@ export default function App() {
     }
   };
 
+  // ============================================
+  // RENDERIZADO CONDICIONAL POR VISTA
+  // ============================================
+
+  const renderVista = () => {
+    switch (vistaActual) {
+      case 'landing':
+        return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;
+      
+      case 'login':
+        return (
+          <LoginPage
+            onLogin={handleLogin}
+            onBackToHome={handleBackToHome}
+          />
+        );
+      
+      case 'portal':
+        return (
+          <PortalTransaccional
+            usuario={usuarioActual!}
+            onLogout={handleLogout}
+          />
+        );
+      
+      case 'backoffice':
+        return (
+          <BackofficeApp
+            usuario={usuarioActual!}
+            onLogout={handleLogout}
+          />
+        );
+      
+      default:
+        return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;
+    }
+  };
+
   return (
     <>
-      {/* React Router Routes para URLs con parámetros dinámicos */}
-      <Routes>
-        {/* Ruta pública para verificación de certificados con QR */}
-        <Route path="/verificar-certificado/:codigo" element={<VerificarCertificado />} />
-
-        {/* Todas las demás rutas se manejan con el sistema de vistas */}
-        <Route path="*" element={
-          <>
-            {/* Landing Page - Vista Pública */}
-            {currentView === 'landing' && (
-              <LandingPage
-                onLoginClick={handleLoginClick}
-                onNavigate={handleNavigate}
-              />
-            )}
-
-      {/* Login Page - Sistema de Login Dual con Discriminación Automática */}
-      {currentView === 'login' && (
-        <LoginPage
-          onLogin={handleLogin}
-          onBackToHome={handleBackToHome}
-        />
-      )}
-
-      {/* System Selector - Para Super Users con Acceso a Ambos Sistemas */}
-      {currentView === 'system-selector' && isAuthenticated && (
-        <SystemSelector
-          userName={userData.name}
-          userEmail={userData.email}
-          userRoles={userRoles}
-          onSelectSystem={handleSelectSystem}
-          onLogout={handleLogout}
-        />
-      )}
-
-      {/* Portal Transaccional - Estudiantes/Graduados/Docentes */}
-      {currentView === 'portal-transaccional' && isAuthenticated && (
-        <div className="min-h-screen bg-gray-50">
-          {/* Navbar Autenticado con Logout */}
-          <AuthenticatedPortalNavbar
-            userName={userData.name}
-            userEmail={userData.email}
-            userRoles={userRoles}
-            activeRole={activeRole}
-            onLogout={handleLogout}
-            onSystemChange={handleSystemChange}
-            hasBothSystemsAccess={userData.hasBothSystemsAccess}
-          />
-
-          {/* Portal Dashboard con Sistema de Roles */}
-          <PortalDashboard
-            userName={userData.name}
-            userEmail={userData.email}
-            userPersonId={userData.personId}
-            userRoles={userRoles}
-            userData={userData}
-            onActiveRoleChange={setActiveRole}
-          />
-        </div>
-      )}
-
-      {/* Backoffice Administrativo - Personal Administrativo */}
-      {currentView === 'backoffice' && isAuthenticated && userType === 'administrativo' && (
-        <BackofficeApp
-          onLogout={handleLogout}
-          onBackToSystemSelector={handleBackToSystemSelector}
-          onSystemChange={handleSystemChange}
-          userData={userData}
-          userRoles={userRoles}
-        />
-      )}
-
-      {/* SERVICIOS PÚBLICOS - Sin autenticación requerida */}
-
-      {/* 1. Enrolamiento QR - Proceso de auto-enrolamiento */}
-      {currentView === 'enrollment-qr' && (
-        <EnrollmentQRLandingUnified
-          onBeginActivation={() => {
-            // En producción iniciaría el flujo de activación
-            console.log('Iniciando proceso de enrolamiento');
-          }}
-          onBackToHome={handleBackToHome}
-          onLoginClick={handleLoginClick}
-        />
-      )}
-
-      {/* 2. Formulario de Vinculaciones - Formulario de interés (alimenta módulo Aspirantes) */}
-      {currentView === 'vinculaciones' && (
-        <VinculacionForm onBack={handleBackToHome} onLoginClick={handleLoginClick} />
-      )}
-
-      {/* 3. Verificación de Títulos - Certificados públicos de verificación con QR */}
-      {currentView === 'verificacion' && (
-        <PublicTitleVerification onBack={handleBackToHome} onLoginClick={handleLoginClick} />
-      )}
-
-      {/* 4. Solicitar Certificados Laborales - Sistema de solicitud con validación 2FA */}
-      {currentView === 'solicitar-certificados-laborales' && (
-        <SolicitarCertificadoLaboral
-          onBack={handleBackToHome}
-          onLoginClick={handleLoginClick}
-        />
-      )}
-
-      {/* 5. Convocatorias Docentes - Pendiente de implementar */}
-      {currentView === 'convocatorias-docentes' && (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-          <div className="max-w-2xl w-full bg-white rounded-2xl shadow-lg p-8 text-center">
-            <div className="w-20 h-20 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
-              </svg>
+      <style>{`
+        [data-sonner-toaster] { position: fixed !important; z-index: 9999 !important; }
+        [data-sonner-toast] { background: white !important; border: 1px solid #e5e7eb !important; border-radius: 12px !important; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important; padding: 16px !important; }
+        [data-sonner-toast][data-type=\"success\"] { border-left: 4px solid #10b981 !important; }
+        [data-sonner-toast][data-type=\"error\"] { border-left: 4px solid #ef4444 !important; }
+        [data-sonner-toast][data-type=\"warning\"] { border-left: 4px solid #f59e0b !important; }
+        [data-title] { font-weight: 600 !important; color: #111827 !important; font-size: 14px !important; }
+        [data-description] { color: #6b7280 !important; font-size: 13px !important; margin-top: 4px !important; }
+      `}</style>
+      
+      {renderVista()}
+      
+      {/* Modal de Alerta de Inactividad */}
+      {mostrarAlertaInactividad && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000] animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-in zoom-in-95 duration-300">
+            {/* Header */}
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-6 h-6 text-orange-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  ⚠️ Inactividad Detectada
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Tu sesión está por expirar
+                </p>
+              </div>
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Convocatorias Docentes</h2>
-            <p className="text-lg text-gray-600 mb-8">
-              El módulo de Convocatorias Docentes estará disponible próximamente.
-              Aquí podrás aplicar a convocatorias abiertas para docentes de ESAP.
-            </p>
-            <button
-              onClick={handleBackToHome}
-              className="px-6 py-3 bg-gradient-to-r from-[#003DA5] to-[#0052CC] text-white rounded-lg font-semibold hover:shadow-lg transition-all"
-            >
-              Volver al Inicio
-            </button>
+
+            {/* Contenido */}
+            <div className="mb-6">
+              <div className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-xl mb-4">
+                <Clock className="w-5 h-5 text-orange-600 flex-shrink-0" />
+                <p className="text-sm text-gray-700">
+                  Has estado <strong>inactivo durante 14 minutos</strong>. Tu sesión se cerrará automáticamente en <strong className="text-orange-600">1 minuto</strong> por seguridad.
+                </p>
+              </div>
+              <p className="text-sm text-gray-600">
+                ¿Deseas continuar con tu sesión activa?
+              </p>
+            </div>
+
+            {/* Botones */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleLogout}
+                className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-medium"
+              >
+                Cerrar Sesión
+              </button>
+              <button
+                onClick={handleContinuarSesion}
+                className="flex-1 px-4 py-3 bg-[#003DA5] text-white rounded-xl hover:bg-[#002870] transition-all font-medium shadow-lg"
+              >
+                Continuar Sesión
+              </button>
+            </div>
           </div>
         </div>
       )}
-
-            {/* Toast Global */}
-            <Toaster
-              position="top-right"
-              richColors
-              closeButton
-              duration={4000}
-            />
-          </>
-        } />
-      </Routes>
+      
+      <Toaster position="top-right" richColors expand={true} />
     </>
   );
+
 }
