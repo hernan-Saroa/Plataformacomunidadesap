@@ -15,10 +15,10 @@ import { toast } from 'sonner@2.0.3';
 interface NoticiaDisciplinaria {
   id: string;
   numeroRadicado: string;
-  denunciado: {
+  disciplinable: {
     nombre: string;
-    identificacion: string;
-  };
+    cedula?: string;
+  }[];
 }
 
 interface Props {
@@ -38,7 +38,7 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
       });
       return;
     }
-    
+
     if (!motivoArchivo.trim()) {
       toast.error('Motivo requerido', {
         description: 'Debes seleccionar el motivo del archivo'
@@ -100,8 +100,8 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
                 </p>
                 <div className="bg-white rounded-lg p-3 border border-red-200 shadow-sm">
                   <p className="font-bold text-gray-900">{noticia.numeroRadicado}</p>
-                  <p className="text-sm text-gray-700">{noticia.denunciado.nombre}</p>
-                  <p className="text-xs text-gray-500">{noticia.denunciado.identificacion}</p>
+                  <p className="text-sm text-gray-700">{noticia.disciplinable[0]?.nombre || 'Sin nombre'}</p>
+                  <p className="text-xs text-gray-500">{noticia.disciplinable[0]?.cedula || 'N/A'}</p>
                 </div>
               </div>
             </div>
@@ -152,7 +152,7 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
           {/* Nota */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <p className="text-xs text-gray-700">
-              <strong className="text-gray-900">Nota:</strong> La acción de archivo quedará registrada en el sistema de auditoría con tu usuario, 
+              <strong className="text-gray-900">Nota:</strong> La acción de archivo quedará registrada en el sistema de auditoría con tu usuario,
               fecha y hora exacta. Este registro es permanente y no puede ser modificado.
             </p>
           </div>
@@ -170,7 +170,7 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
             onClick={handleArchivar}
             disabled={confirmacionTexto !== noticia.numeroRadicado || !motivoArchivo}
             className="flex-1 px-4 py-2.5 rounded-lg font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-            style={{ 
+            style={{
               background: confirmacionTexto === noticia.numeroRadicado && motivoArchivo ? '#DC2626' : '#9CA3AF'
             }}
           >

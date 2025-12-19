@@ -22,12 +22,12 @@ interface NoticiaDisciplinaria {
   origen: string;
   fechaQueja: string;
   territorial: string;
-  denunciado: {
+  disciplinable: {
     nombre: string;
-    identificacion: string;
-    cargo: string;
-    dependencia: string;
-  };
+    cedula?: string;
+    cargo?: string;
+    dependencia?: string;
+  }[];
   estado: string;
   estadoLabel: string;
   etapa: string;
@@ -109,32 +109,36 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
             </div>
           </Card>
 
-          {/* Denunciado */}
+          {/* Disciplinables (Antes Denunciado) */}
           <div>
             <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
               <User className="w-5 h-5" style={{ color: '#003DA5' }} />
-              Información del Denunciado/Investigado
+              Información de los Disciplinables
             </h3>
-            <Card className="p-5 border-2 border-gray-200">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Nombre Completo</p>
-                  <p className="text-sm font-semibold text-gray-900">{noticia.denunciado.nombre}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                  <p className="text-sm font-semibold text-gray-900">{noticia.denunciado.identificacion}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Cargo</p>
-                  <p className="text-sm font-semibold text-gray-900">{noticia.denunciado.cargo}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Dependencia</p>
-                  <p className="text-sm font-semibold text-gray-900">{noticia.denunciado.dependencia}</p>
-                </div>
-              </div>
-            </Card>
+            <div className="space-y-4">
+              {noticia.disciplinable.map((person, idx) => (
+                <Card key={idx} className="p-5 border-2 border-gray-200">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Nombre Completo</p>
+                      <p className="text-sm font-semibold text-gray-900">{person.nombre}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Identificación</p>
+                      <p className="text-sm font-semibold text-gray-900">{person.cedula || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Cargo</p>
+                      <p className="text-sm font-semibold text-gray-900">{person.cargo}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Dependencia</p>
+                      <p className="text-sm font-semibold text-gray-900">{person.dependencia || 'N/A'}</p>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
           </div>
 
           {/* Información de Radicación */}
@@ -187,7 +191,7 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
               <Card className="p-5 bg-red-50 border-2 border-red-200">
                 <div className="flex flex-wrap gap-2">
                   {noticia.conductas.map((conducta, idx) => (
-                    <span 
+                    <span
                       key={idx}
                       className="px-3 py-2 bg-red-100 text-red-800 text-sm font-semibold rounded-lg border border-red-300"
                     >

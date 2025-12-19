@@ -40,6 +40,6 @@ export const databaseConfig: TypeOrmModuleOptions = {
   database: process.env.DB_NAME,
   schema: process.env.DB_SCHEMA,
   entities: [DisciplinaryNews, DisciplinaryProcess, LegalAuto, Sequence, DisciplinaryProfessional, Evidence, StageConfiguration, SystemConfiguration, AutoVersion],
-  synchronize: false,
+  synchronize: true,
   logging: false,
 };
