@@ -641,7 +641,9 @@ function TarjetaProceso({
             </Button>
 
             {/* Gestión Documental - Grid compacto - SIEMPRE VISIBLE */}
-            <div className="grid grid-cols-2 gap-1">
+            <div className="space-y-1">
+              {/* Primera fila: Autos y Evidencias */}
+              <div className="grid grid-cols-2 gap-1">
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -679,7 +681,10 @@ function TarjetaProceso({
                   <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5 flex-shrink-0`} />
                   <span className="truncate">Evidencias</span>
                 </Button>
+              </div>
 
+              {/* Segunda fila: Oficios y Actas */}
+              <div className="grid grid-cols-2 gap-1">
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -717,31 +722,31 @@ function TarjetaProceso({
                   <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5 flex-shrink-0`} />
                   <span className="truncate">Actas</span>
                 </Button>
-
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onComentarios) {
-                      onComentarios(proceso);
-                    } else {
-                      toast.info('Comentarios', {
-                        description: proceso.numeroProceso
-                      });
-                    }
-                  }}
-                  size="sm"
-                  variant="outline"
-                  className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start truncate min-w-0 font-semibold`}
-                  style={{ 
-                    borderColor: '#003DA5', 
-                    color: '#FFFFFF',
-                    background: '#003DA5'
-                  }}
-                >
-                  <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5 flex-shrink-0`} />
-                  <span className="truncate">💬 Comentarios</span>
-                </Button>
               </div>
+
+              {/* Tercera fila: Comentarios (ancho completo y destacado) */}
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onComentarios) {
+                    onComentarios(proceso);
+                  } else {
+                    toast.info('Comentarios', {
+                      description: proceso.numeroProceso
+                    });
+                  }
+                }}
+                size="sm"
+                className={`w-full ${isMobile ? 'text-[10px] py-1.5' : 'text-[11px] py-2'} font-bold`}
+                style={{ 
+                  background: '#003DA5',
+                  color: '#FFFFFF'
+                }}
+              >
+                <MessageSquare className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} mr-1 flex-shrink-0`} />
+                <span className="truncate">💬 Comentarios del Proceso</span>
+              </Button>
+            </div>
 
             {/* Aprobación si está pendiente */}
             {proceso.pendienteAprobacion && (
