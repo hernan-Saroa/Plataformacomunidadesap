@@ -495,9 +495,9 @@ function TarjetaProceso({
       <Card 
         className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full"
         style={{ 
-          height: vistaCompacta ? (isMobile ? '420px' : '480px') : (isMobile ? '520px' : '600px'),
-          minHeight: vistaCompacta ? (isMobile ? '420px' : '480px') : (isMobile ? '520px' : '600px'),
-          maxHeight: vistaCompacta ? (isMobile ? '420px' : '480px') : (isMobile ? '520px' : '600px')
+          height: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px'),
+          minHeight: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px'),
+          maxHeight: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px')
         }}
       >
         {/* Barra superior azul ESAP */}
@@ -506,9 +506,9 @@ function TarjetaProceso({
           style={{ background: '#003DA5' }}
         />
 
-        <div className={`${isMobile ? 'p-2.5' : 'p-3'} flex-1 flex flex-col overflow-y-auto min-h-0`}>
+        <div className={`${isMobile ? 'p-2' : 'p-2.5'} flex-1 flex flex-col overflow-y-auto min-h-0`}>
           {/* Header */}
-          <div className="flex items-start justify-between mb-2">
+          <div className="flex items-start justify-between mb-1.5">
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <div 
                 className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`}
@@ -528,7 +528,7 @@ function TarjetaProceso({
           </div>
 
           {/* Denunciante */}
-          <div className="mb-2 pb-2 border-b border-gray-200">
+          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
             <p className="text-xs text-gray-500 mb-0.5">👤 Denunciante:</p>
             <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
               {proceso.denunciante.nombre}
@@ -539,7 +539,7 @@ function TarjetaProceso({
           </div>
 
           {/* Denunciado */}
-          <div className="mb-2 pb-2 border-b border-gray-200">
+          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
             <p className="text-xs text-gray-500 mb-0.5">⚠️ Denunciado:</p>
             <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
               {proceso.denunciado.nombre}
@@ -550,7 +550,7 @@ function TarjetaProceso({
           </div>
 
           {/* Profesional Asignado */}
-          <div className="mb-2 pb-2 border-b border-gray-200">
+          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
             <div className="flex items-center gap-2">
               <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
                 <AvatarFallback 
@@ -573,7 +573,7 @@ function TarjetaProceso({
           </div>
 
           {/* Badges */}
-          <div className="flex items-center gap-1.5 mb-2.5 flex-wrap">
+          <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
             {proceso.pendienteAprobacion && (
               <Badge className={`${isMobile ? 'text-xs' : 'text-xs'} bg-red-50 text-red-700 border border-red-200 flex items-center gap-1 font-semibold`}>
                 <AlertCircle className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'}`} />
@@ -593,7 +593,7 @@ function TarjetaProceso({
           </div>
 
           {/* Métricas */}
-          <div className="grid grid-cols-3 gap-1.5 mb-2.5">
+          <div className="grid grid-cols-3 gap-1.5 mb-1.5">
             <div 
               className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}
             >
@@ -618,14 +618,14 @@ function TarjetaProceso({
 
           {/* Última actuación - Solo desktop */}
           {!vistaCompacta && !isMobile && (
-            <div className="mb-2.5">
+            <div className="mb-1.5">
               <p className="text-xs text-gray-500 mb-0.5">Última actuación:</p>
               <p className="text-xs text-gray-700 line-clamp-1">{proceso.ultimaActuacion}</p>
             </div>
           )}
 
           {/* Acciones Principales - Siempre Visibles */}
-          <div className="space-y-1.5 pt-2.5 border-t border-gray-200 mt-auto">
+          <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
             {/* Acción Principal: Ver Expediente */}
             <Button
               onClick={(e) => {
