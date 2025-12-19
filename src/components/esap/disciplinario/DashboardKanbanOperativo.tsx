@@ -1,4 +1,4 @@
-/**
+﻿/**
  * DASHBOARD KANBAN OPERATIVO V4 - CONTROL INTERNO DISCIPLINARIO
  * Versión RESPONSIVE con soporte completo para Mobile, Tablet y Desktop
  * INTEGRACIÓN COMPLETA: Editor de Documentos + Gestión Documental
@@ -56,6 +56,7 @@ interface Noticia {
   estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada';
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
+  etapaActual?: string;
   tipo: 'noticia';
 }
 
@@ -125,7 +126,8 @@ const NOTICIAS_MOCK: Noticia[] = [
     estado: 'pendiente',
     prioridad: 'alta',
     diasPendientes: 3,
-    tipo: 'noticia'
+    tipo: 'noticia',
+    etapaActual: 'Recepción'
   },
   {
     id: 'n2',
@@ -146,7 +148,8 @@ const NOTICIAS_MOCK: Noticia[] = [
     estado: 'pendiente',
     prioridad: 'media',
     diasPendientes: 5,
-    tipo: 'noticia'
+    tipo: 'noticia',
+    etapaActual: 'Recepción'
   },
   {
     id: 'n3',
@@ -167,7 +170,8 @@ const NOTICIAS_MOCK: Noticia[] = [
     estado: 'pendiente',
     prioridad: 'alta',
     diasPendientes: 1,
-    tipo: 'noticia'
+    tipo: 'noticia',
+    etapaActual: 'Recepción'
   }
 ];
 
@@ -1513,12 +1517,7 @@ function ColumnaKanban({
     drop: (item: any) => {
       onDrop(item, etapa);
     },
-    canDrop: (item: any) => {
-      if (item.tipo === 'noticia') {
-        return etapa === 'Recepción';
-      }
-      return true;
-    },
+    canDrop: () => true,
     collect: (monitor) => ({
       isOver: monitor.isOver(),
       canDrop: monitor.canDrop()
@@ -1547,7 +1546,8 @@ function ColumnaKanban({
 
   const itemsFiltrados = items.filter(item => {
     if (item.tipo === 'noticia') {
-      return etapa === 'Recepción';
+      const etapaItem = (item as any).etapaActual || 'Recepción';
+      return etapa === etapaItem;
     }
     return item.tipo === 'proceso' && item.etapaActual === etapa;
   });
@@ -1862,7 +1862,8 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       estado: mapEstadoNoticia(noticia.estado) as any,
       prioridad: 'media',
       diasPendientes: dias,
-      tipo: 'noticia'
+      tipo: 'noticia',
+      etapaActual: 'Recepción'
     };
   };
 
@@ -1980,24 +1981,22 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
   // ==================== HANDLERS ====================
   const handleDropItem = (item: Item, nuevaEtapa: string) => {
-    if (item.tipo === 'noticia') {
-      if (nuevaEtapa !== 'Recepción') {
-        toast.error('Las noticias solo pueden estar en Recepción', {
-          description: 'Usa "Convertir a Proceso"'
-        });
-        return;
-      }
-    } else if (item.tipo === 'proceso') {
-      if (item.etapaActual !== nuevaEtapa) {
-        setItems(prev => prev.map(i => 
-          i.id === item.id && i.tipo === 'proceso'
-            ? { ...i, etapaActual: nuevaEtapa as any }
-            : i
-        ));
-        toast.success('Proceso Movido', {
-          description: `${item.numeroProceso} → ${nuevaEtapa}`
-        });
-      }
+    // Movimiento libre de noticias y procesos entre columnas
+    if (item.tipo === 'proceso' && item.etapaActual !== nuevaEtapa) {
+      setItems(prev => prev.map(i => 
+        i.id === item.id && i.tipo === 'proceso'
+          ? { ...i, etapaActual: nuevaEtapa as any }
+          : i
+      ));
+      toast.success('Proceso Movido', {
+        description: `${item.numeroProceso} → ${nuevaEtapa}`
+      });
+    } else if (item.tipo === 'noticia') {
+      setItems(prev => prev.map(i =>
+        i.id === item.id && i.tipo === 'noticia'
+          ? { ...i, etapaActual: nuevaEtapa }
+          : i
+      ));
     }
   };
 
@@ -2012,7 +2011,8 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       estado: 'pendiente',
       prioridad: 'media',
       diasPendientes: 0,
-      tipo: 'noticia'
+      tipo: 'noticia',
+      etapaActual: 'Recepción'
     };
 
     setItems(prev => [...prev, nuevaNoticia]);
@@ -3335,3 +3335,5 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     </DndProvider>
   );
 }
+
+
