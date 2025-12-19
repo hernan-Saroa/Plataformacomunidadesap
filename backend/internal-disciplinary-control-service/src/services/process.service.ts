@@ -159,10 +159,15 @@ export class ProcessService {
   /**
    * Obtiene un proceso por ID
    */
-  async findById(id: string): Promise<DisciplinaryProcess> {
+  async findById(id: string, includeAutos: boolean = false): Promise<DisciplinaryProcess> {
+    const relations = ['news', 'evidence'];
+    if (includeAutos) {
+      relations.push('autos');
+    }
+    
     const proceso = await this.processRepository.findOne({
       where: { id },
-      relations: ['news', 'autos', 'evidence'],
+      relations,
     });
     if (!proceso) {
       throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
@@ -185,7 +190,7 @@ export class ProcessService {
    * Cambia la etapa del proceso (US-009)
    */
   async changeStage(id: string, stage: ProcessStage): Promise<DisciplinaryProcess> {
-    const proceso = await this.findById(id);
+    const proceso = await this.findById(id, false);
 
     // Validar transición de etapa
     this.validarTransicionEtapa(proceso.etapaActual, stage);
@@ -204,7 +209,7 @@ export class ProcessService {
    * Actualiza datos generales del proceso (abogado, hechos, disciplinable)
    */
   async update(id: string, updateDto: UpdateDisciplinaryProcessDto): Promise<DisciplinaryProcess> {
-    const proceso = await this.findById(id);
+    const proceso = await this.findById(id, false);
     let updated = false;
 
     // 1. Actualizar abogado asignado si se proporciona
@@ -229,11 +234,12 @@ export class ProcessService {
       if (updateDto.hechos) newsUpdate.hechos = updateDto.hechos;
 
       if (updateDto.disciplinable) {
-        // Merge con datos existentes del disciplinable
-        newsUpdate.disciplinable = {
-          ...proceso.news.disciplinable,
-          ...updateDto.disciplinable
-        };
+        // Merge con datos existentes del disciplinable (es un array)
+        const disciplinableExistente = proceso.news.disciplinable || [];
+        const disciplinableActualizado = disciplinableExistente.length > 0
+          ? [{ ...disciplinableExistente[0], ...updateDto.disciplinable }]
+          : [updateDto.disciplinable];
+        newsUpdate.disciplinable = disciplinableActualizado;
       }
 
       // Actualizar noticia relacionada
@@ -270,35 +276,120 @@ export class ProcessService {
     id: string,
     nuevoEstado: ProcessStatus,
   ): Promise<DisciplinaryProcess> {
-    const proceso = await this.findById(id);
+    const proceso = await this.findById(id, false);
     proceso.estado = nuevoEstado;
     return await this.processRepository.save(proceso);
   }
 
   /**
+   * Obtener proceso por radicado del proceso
+   */
+  async findByRadicado(radicadoProceso: string): Promise<DisciplinaryProcess> {
+    const proceso = await this.processRepository.findOne({
+      where: { radicadoProceso },
+      relations: ['news'],
+    });
+
+    if (!proceso) {
+      throw new HttpException(
+        `Proceso con radicado ${radicadoProceso} no encontrado`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    return proceso;
+  }
+
+  /**
    * Agregar evidencia al proceso
    */
-  async addEvidence(id: string, url: string, originalName: string): Promise<DisciplinaryProcess> {
-    const proceso = await this.findById(id);
+  async addEvidence(
+    id: string,
+    url: string,
+    originalName: string,
+    descripcion?: string,
+    fileType?: string,
+    fileSize?: number,
+    nombreDocumento?: string,
+    tipoDocumento?: string,
+    etapa?: string,
+    usuarioCarga?: string,
+  ): Promise<DisciplinaryProcess> {
+    try {
+      console.log('💾 addEvidence - Iniciando guardado en BD...');
+      console.log('💾 Parámetros recibidos:', {
+        id,
+        url,
+        originalName,
+        descripcion,
+        fileType,
+        fileSize,
+        nombreDocumento,
+        tipoDocumento,
+        etapa,
+        usuarioCarga,
+      });
 
-    // Crear entidad de evidencia
-    const evidence = this.evidenceRepository.create({
-      url,
-      process: proceso,
-      processId: proceso.id,
-      description: 'Evidencia cargada desde el portal',
-      filename: originalName,
-    });
-    await this.evidenceRepository.save(evidence);
+      const proceso = await this.findById(id, false); // No cargar autos para evitar errores
+      console.log('✅ Proceso encontrado:', proceso.id, proceso.radicadoProceso);
 
-    // Mantener compatibilidad con campo legacy
-    if (!proceso.pruebas) {
-      proceso.pruebas = [];
+      // Determinar tipo de archivo desde la extensión si no se proporciona
+      const extension = originalName.split('.').pop()?.toLowerCase() || '';
+      const finalFileType = fileType || extension;
+
+      // Preparar datos para la evidencia
+      const evidenceData = {
+        url,
+        process: proceso,
+        processId: proceso.id,
+        description: descripcion || 'Documento cargado desde el portal',
+        filename: originalName,
+        fileType: finalFileType,
+        fileSize: fileSize || 0,
+        nombreDocumento: nombreDocumento || originalName,
+        tipoDocumento: tipoDocumento || 'DOCUMENTO',
+        etapa: etapa || undefined,
+        usuarioCarga: usuarioCarga || 'Sistema',
+      };
+
+      console.log('💾 Datos de evidencia a guardar:', JSON.stringify(evidenceData, null, 2));
+
+      // Crear entidad de evidencia con toda la información
+      const evidence = this.evidenceRepository.create(evidenceData);
+      console.log('✅ Entidad creada, guardando...');
+
+      const evidenceGuardada = await this.evidenceRepository.save(evidence);
+      console.log('✅ Evidencia guardada exitosamente. ID:', evidenceGuardada.id);
+      console.log('✅ Evidencia guardada completa:', JSON.stringify(evidenceGuardada, null, 2));
+
+      // Mantener compatibilidad con campo legacy
+      if (!proceso.pruebas) {
+        proceso.pruebas = [];
+      }
+      proceso.pruebas.push(url);
+
+      await this.processRepository.update(id, { pruebas: proceso.pruebas });
+      console.log('✅ Proceso actualizado con nueva prueba');
+      
+      return proceso;
+    } catch (error) {
+      console.error('❌ ERROR en addEvidence:', error);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error stack:', error.stack);
+      throw error;
     }
-    proceso.pruebas.push(url);
+  }
 
-    await this.processRepository.update(id, { pruebas: proceso.pruebas });
-    return proceso;
+  /**
+   * Obtener evidencias de un proceso
+   */
+  async getEvidenceByProcessId(processId: string): Promise<any[]> {
+    const evidencias = await this.evidenceRepository.find({
+      where: { processId },
+      order: { createdAt: 'DESC' },
+    });
+
+    return evidencias;
   }
 
   /**
@@ -326,7 +417,7 @@ export class ProcessService {
    */
   async delete(id: string): Promise<void> {
     // 1. Obtener proceso con noticia
-    const proceso = await this.findById(id);
+    const proceso = await this.findById(id, false);
 
     // 2. Si la noticia está ASIGNADA, cambiarla a RADICADA
     if (proceso.news && proceso.news.estado === NewsStatus.ASIGNADA) {

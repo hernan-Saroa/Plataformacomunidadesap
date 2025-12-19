@@ -28,6 +28,18 @@ export class Evidence {
     @Column({ nullable: true })
     fileSize: number;
 
+    @Column({ name: 'nombreDocumento', nullable: true })
+    nombreDocumento: string;
+
+    @Column({ name: 'tipoDocumento', nullable: true })
+    tipoDocumento: string;
+
+    @Column({ nullable: true, type: 'varchar' })
+    etapa: string | null;
+
+    @Column({ name: 'usuarioCarga', nullable: true })
+    usuarioCarga: string;
+
     @CreateDateColumn()
     createdAt: Date;
 

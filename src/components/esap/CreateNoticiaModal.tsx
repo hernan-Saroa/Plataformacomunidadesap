@@ -97,6 +97,7 @@ const DEPENDENCIAS_ESAP = [
   ...TERRITORIALES_ESAP
 ];
 
+const TERRITORIALES_UNICAS = Array.from(new Set(TERRITORIALES_ESAP));
 const DEPENDENCIAS_UNICAS = Array.from(new Set(DEPENDENCIAS_ESAP));
 
 const CONDUCTAS_INDISCIPLINARIAS = [
@@ -324,10 +325,17 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
   const handleSave = () => {
     if (!validateStep4()) return;
 
+    // Si no usaron el botón "Agregar Denunciado", toma el denunciado del formulario principal
+    const disciplinables = denunciados.length > 0
+      ? denunciados
+      : (formData.denunciado?.nombre || formData.denunciado?.identificacion)
+        ? [{ ...formData.denunciado, id: Date.now().toString() }]
+        : [];
+
     const dataToSave = {
       ...formData,
       denunciantes,
-      disciplinable: denunciados, // Map 'denunciados' from UI to 'disciplinable' array in backend
+      disciplinable: disciplinables, // Map 'denunciados' from UI to 'disciplinable' array en backend
 
       archivosAdjuntos,
       fechaRegistro: new Date().toISOString(),
@@ -470,14 +478,14 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                 <select
                   value={formData.territorial}
                   onChange={(e) => handleChange('territorial', e.target.value)}
-                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.territorial ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                >
-                  <option value="">Seleccione territorial...</option>
-                  {TERRITORIALES_ESAP.map(territorial => (
-                    <option key={territorial} value={territorial}>{territorial}</option>
-                  ))}
-                </select>
+                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.territorial ? 'border-red-500' : 'border-gray-300'
+                  }`}
+              >
+                <option value="">Seleccione territorial...</option>
+                {TERRITORIALES_UNICAS.map(territorial => (
+                  <option key={territorial} value={territorial}>{territorial}</option>
+                ))}
+              </select>
                 {errors.territorial && (
                   <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" />
@@ -562,14 +570,14 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                     <select
                       value={formData.denunciado.dependencia}
                       onChange={(e) => handleChange('denunciado.dependencia', e.target.value)}
-                      className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors['denunciado.dependencia'] ? 'border-red-500' : 'border-gray-300'
-                        }`}
-                    >
-                      <option value="">Seleccione dependencia...</option>
-                      {DEPENDENCIAS_ESAP.map(dep => (
-                        <option key={dep} value={dep}>{dep}</option>
-                      ))}
-                    </select>
+                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors['denunciado.dependencia'] ? 'border-red-500' : 'border-gray-300'
+                  }`}
+              >
+                <option value="">Seleccione dependencia...</option>
+                {DEPENDENCIAS_UNICAS.map(dep => (
+                  <option key={dep} value={dep}>{dep}</option>
+                ))}
+              </select>
                     {errors['denunciado.dependencia'] && (
                       <p className="text-xs text-red-600 mt-1">{errors['denunciado.dependencia']}</p>
                     )}

@@ -7,6 +7,7 @@
  */
 
 import { apiClient } from './apiClient';
+import { buildApiUrl } from '../../config/environment';
 
 // Prefijo del servicio en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
@@ -88,6 +89,17 @@ export interface CreateAutoDto {
     comentarios?: string;
 }
 
+export interface DocumentoExpediente {
+    id: string;
+    url: string;
+    filename: string;
+    description: string;
+    fileType: string;
+    fileSize: number;
+    createdAt: string;
+    processId: string;
+}
+
 // ============================================================================
 // SERVICIO
 // ============================================================================
@@ -143,6 +155,102 @@ class DisciplinaryService {
 
     async addEvidence(id: string, url: string, originalName: string): Promise<DisciplinaryProcess> {
         return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/evidence`, { url, originalName });
+    }
+
+    // --- DOCUMENTOS DEL EXPEDIENTE ---
+
+    /**
+     * Subir documento al expediente del proceso
+     */
+    async uploadDocumento(
+        processId: string,
+        file: File,
+        tipo?: string,
+        descripcion?: string,
+        nombre?: string,
+        etapa?: string,
+        usuarioCarga?: string,
+    ): Promise<{ message: string; url: string; filename: string }> {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (tipo) formData.append('tipo', tipo);
+        if (descripcion) formData.append('descripcion', descripcion);
+        if (nombre) formData.append('nombre', nombre);
+        if (etapa) formData.append('etapa', etapa);
+        if (usuarioCarga) formData.append('usuarioCarga', usuarioCarga);
+
+        return apiClient.upload<{ message: string; url: string; filename: string }>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
+            formData
+        );
+    }
+
+    /**
+     * Listar documentos del expediente del proceso
+     */
+    async getDocumentosExpediente(processId: string): Promise<{
+        proceso: { id: string; radicadoProceso: string };
+        documentos: any[]; // El backend devuelve el formato completo ya mapeado
+    }> {
+        return apiClient.get<{
+            proceso: { id: string; radicadoProceso: string };
+            documentos: any[];
+        }>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`);
+    }
+
+    /**
+     * Descargar documento del expediente
+     */
+    async downloadDocument(processId: string, documentId: string, filename: string): Promise<void> {
+        // Construir URL usando buildApiUrl para respetar el modo de conexión (gateway/direct)
+        const endpoint = `/api/v1/disciplinary-processes/${processId}/documents/${documentId}/download`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+        
+        // Obtener token de autenticación
+        const token = localStorage.getItem('esap_access_token');
+        const headers: HeadersInit = {
+            'Accept': 'application/octet-stream',
+        };
+        
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers,
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = `Error ${response.status}: ${response.statusText}`;
+            try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.message || errorMessage;
+            } catch {
+                // Si no es JSON, usar el texto del error
+            }
+            throw new Error(errorMessage);
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+    }
+
+    /**
+     * Obtener URL para descargar documento
+     */
+    getDocumentoUrl(urlRelativa: string): string {
+        // La URL relativa viene del backend, necesitamos construir la URL completa
+        // Por ahora asumimos que está en el mismo dominio
+        return `${window.location.origin}/control-disciplinario/api/v1/files/${urlRelativa}`;
     }
 
     // --- AUTOS ---
@@ -246,4 +354,6 @@ class DisciplinaryService {
     }
 }
 
-export const disciplinaryService = new DisciplinaryService();
+const disciplinaryService = new DisciplinaryService();
+export default disciplinaryService;
+export { disciplinaryService };
