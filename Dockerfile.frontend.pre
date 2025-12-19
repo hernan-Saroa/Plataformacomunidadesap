@@ -1,0 +1,46 @@
+# Dockerfile para Frontend en PRE
+# Multi-stage build: Build con Node.js, Serve con Nginx
+
+# ============ STAGE 1: Build ============
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copiar archivos de dependencias primero (para aprovechar cache de Docker)
+COPY package.json package-lock.json* ./
+
+# Instalar dependencias
+RUN npm install --legacy-peer-deps
+
+# Copiar código fuente
+COPY . .
+
+# Argumento para la URL del API (se pasa en build time)
+ARG VITE_API_URL=http://172.16.202.222:3000
+
+# Exportar como variable de entorno Y crear .env.production
+# Vite necesita ambas cosas para inyectar la variable correctamente
+ENV VITE_API_URL=${VITE_API_URL}
+RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
+    echo "Contenido de .env.production:" && cat .env.production
+
+# Build de producción (Vite lee .env.production automáticamente)
+RUN npm run build && \
+    echo "Verificando build..." && \
+    grep -r "172.16.202.222" /app/build/assets/*.js | head -1 || echo "URL no encontrada en build"
+
+# ============ STAGE 2: Serve con Nginx ============
+FROM nginx:alpine AS production
+
+# Copiar configuración personalizada de nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copiar archivos de build desde el stage anterior
+# vite.config.ts tiene outDir: 'build'
+COPY --from=builder /app/build /usr/share/nginx/html
+
+# Exponer puerto 80
+EXPOSE 80
+
+# Comando por defecto
+CMD ["nginx", "-g", "daemon off;"]
