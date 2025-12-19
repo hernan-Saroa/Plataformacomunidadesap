@@ -150,6 +150,10 @@ class DisciplinaryService {
 
     // --- AUTOS ---
 
+    async getAllAutos(): Promise<LegalAuto[]> {
+        return apiClient.get<LegalAuto[]>(`${SERVICE_PREFIX}/disciplinary-autos`);
+    }
+
     async getAutosPorProceso(processId: string): Promise<LegalAuto[]> {
         return apiClient.get<LegalAuto[]>(`${SERVICE_PREFIX}/disciplinary-autos/by-process/${processId}`);
     }
@@ -208,8 +212,16 @@ class DisciplinaryService {
         return apiClient.post<any>(`${SERVICE_PREFIX}/professionals`, data);
     }
 
+    async updateProfessional(id: string, data: any): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/professionals/${id}`, data);
+    }
+
     async getProfessionalsWorkload(): Promise<Array<{ id: string; nombre: string; procesosAsignados: number; capacidadMaxima: number }>> {
         return apiClient.get<Array<{ id: string; nombre: string; procesosAsignados: number; capacidadMaxima: number }>>(`${SERVICE_PREFIX}/professionals/workload`);
+    }
+
+    async getCandidates(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/professionals/candidates`);
     }
 
     // --- ARCHIVOS ---

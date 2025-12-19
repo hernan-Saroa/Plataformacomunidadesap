@@ -4,7 +4,7 @@
  * VERSIÓN OPTIMIZADA: Responsive y Paleta Corporativa ESAP
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Search, Eye, CheckCircle, XCircle, Edit2,
@@ -21,6 +21,7 @@ import { Button } from '../../ui/button';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
 import { FlujoRevisionAprobacion } from './FlujoRevisionAprobacion';
+import { disciplinaryService, LegalAuto } from '../../../services/api/disciplinary.service';
 
 // Interfaces
 interface BorradorPendiente {
@@ -55,107 +56,26 @@ interface AccionRevision {
 
 type TipoFirma = 'electronica' | 'digital' | 'local';
 
-// Mock Data
-const BORRADORES_PENDIENTES: BorradorPendiente[] = [
-  {
-    id: 'b1',
-    numeroProceso: 'P-120-2025',
-    titulo: 'Auto de Indagación Preliminar',
-    plantilla: 'Auto de Indagación Preliminar',
-    version: 2,
-    fechaEnvio: '2025-01-08T14:30:00',
-    profesional: {
-      nombre: 'Juan Carlos Pérez',
-      email: 'juan.perez@esap.edu.co'
-    },
-    observacionesProfesional: 'Se adjuntan todos los documentos soporte. La conducta presunta está claramente configurada según el artículo 48 de la Ley 734.',
-    contenido: `AUTO DE APERTURA DE INDAGACIÓN PRELIMINAR
-
-PROCESO No: P-120-2025
-NOTICIA ORIGEN: ND-260
-DISCIPLINABLE: Juan Pérez Gómez
-IDENTIFICACIÓN: 1234567890
-
-La Oficina de Control Interno Disciplinario de la ESAP, en uso de sus facultades legales,
-
-CONSIDERANDO:
-
-PRIMERO: Que mediante noticia disciplinaria No. ND-260 de fecha 03 de enero de 2025, se puso en conocimiento presuntos hechos de acoso laboral.
-
-SEGUNDO: Que los hechos descritos ameritan indagación preliminar para establecer si se configura falta disciplinaria.
-
-RESUELVE:
-
-ARTÍCULO PRIMERO: ABRIR INDAGACIÓN PRELIMINAR en contra de Juan Pérez Gómez, identificado con CC 1234567890.
-
-ARTÍCULO SEGUNDO: NOTIFÍQUESE el presente auto al investigado.
-
-Dado en Bogotá D.C., a los 08 días del mes de enero de 2025.`,
-    denunciado: 'Juan Pérez Gómez',
-    etapa: 'Indagación Preliminar',
-    prioridad: 'alta',
-    estado: 'pendiente_revision',
-    tiempoEspera: '2h 15m',
-    historial: [
-      {
-        id: 'h1',
-        tipo: 'recibido',
-        usuario: 'Juan Carlos Pérez',
-        fecha: '2025-01-08T14:30:00',
-        descripcion: 'Borrador enviado para revisión',
-        detalles: { version: 2 }
-      }
-    ]
-  },
-  {
-    id: 'b2',
-    numeroProceso: 'P-089-2024',
-    titulo: 'Auto de Inhibitorio',
-    plantilla: 'Auto de Inhibitorio',
-    version: 1,
-    fechaEnvio: '2025-01-07T10:15:00',
-    profesional: {
-      nombre: 'María Torres',
-      email: 'maria.torres@esap.edu.co'
-    },
-    observacionesProfesional: 'Los hechos investigados no constituyen falta disciplinaria. Se recomienda archivo.',
-    contenido: `AUTO DE INHIBITORIO
-
-PROCESO No: P-089-2024
-NOTICIA ORIGEN: ND-178
-
-Se RESUELVE INHIBIRSE de iniciar investigación disciplinaria por no configurarse falta disciplinaria.`,
-    denunciado: 'María González Castro',
-    etapa: 'Valoración',
-    prioridad: 'media',
-    estado: 'en_revision',
-    tiempoEspera: '1d 4h',
-    historial: [
-      {
-        id: 'h2',
-        tipo: 'recibido',
-        usuario: 'María Torres',
-        fecha: '2025-01-07T10:15:00',
-        descripcion: 'Borrador enviado para revisión'
-      },
-      {
-        id: 'h3',
-        tipo: 'revision_iniciada',
-        usuario: 'Jefe OCID',
-        fecha: '2025-01-08T09:00:00',
-        descripcion: 'Revisión iniciada'
-      }
-    ]
+// Helper to map backend status to frontend status
+const mapBackendStatus = (status: string) => {
+  switch (status) {
+    case 'REVISION_JEFE': return 'pendiente_revision';
+    case 'APROBADO': return 'aprobado';
+    case 'DEVUELTO': return 'devuelto';
+    default: return 'pendiente_revision';
   }
-];
+};
+
+// Mock Data - Empty as it will be loaded from backend
+const BORRADORES_PENDIENTES: BorradorPendiente[] = [];
 
 // Modal de Revisión y Edición - RESPONSIVE
-function ModalRevisionEdicion({ 
-  borrador, 
-  onClose, 
-  onAprobar, 
-  onDevolver 
-}: { 
+function ModalRevisionEdicion({
+  borrador,
+  onClose,
+  onAprobar,
+  onDevolver
+}: {
   borrador: BorradorPendiente;
   onClose: () => void;
   onAprobar: (comentarios: string) => void;
@@ -219,8 +139,8 @@ function ModalRevisionEdicion({
               </div>
             </div>
 
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={onClose}
               className="p-2 hover:bg-white/20 rounded-lg transition-colors flex-shrink-0"
             >
               <X className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
@@ -233,22 +153,20 @@ function ModalRevisionEdicion({
           <div className="flex px-3 sm:px-6 min-w-max">
             <button
               onClick={() => setActiveTab('documento')}
-              className={`px-4 sm:px-6 py-2.5 sm:py-3 font-semibold text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'documento'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
+              className={`px-4 sm:px-6 py-2.5 sm:py-3 font-semibold text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === 'documento'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`}
             >
               <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline-block mr-1.5" />
               Documento
             </button>
             <button
               onClick={() => setActiveTab('historial')}
-              className={`px-4 sm:px-6 py-2.5 sm:py-3 font-semibold text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'historial'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
+              className={`px-4 sm:px-6 py-2.5 sm:py-3 font-semibold text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === 'historial'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`}
             >
               <History className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline-block mr-1.5" />
               Historial ({borrador.historial.length})
@@ -417,16 +335,16 @@ function ModalRevisionEdicion({
                       className="w-full h-64 sm:h-80 p-3 sm:p-4 border-2 border-blue-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-mono"
                     />
                     <div className="flex flex-col sm:flex-row gap-2">
-                      <Button 
-                        onClick={handleGuardarEdicion} 
+                      <Button
+                        onClick={handleGuardarEdicion}
                         style={{ background: '#003DA5' }}
                         className="w-full sm:flex-1"
                       >
                         <Check className="w-4 h-4 mr-2" />
                         Guardar Cambios
                       </Button>
-                      <Button 
-                        onClick={() => setModoEdicion(false)} 
+                      <Button
+                        onClick={() => setModoEdicion(false)}
                         className="bg-gray-500 hover:bg-gray-600 w-full sm:w-auto"
                       >
                         Descartar
@@ -583,12 +501,12 @@ function ModalRevisionEdicion({
 }
 
 // Modal de Aprobación - RESPONSIVE Y CORPORATIVO
-function ModalAprobar({ 
-  borrador, 
+function ModalAprobar({
+  borrador,
   comentariosJefe,
-  onClose, 
-  onConfirm 
-}: { 
+  onClose,
+  onConfirm
+}: {
   borrador: BorradorPendiente;
   comentariosJefe: string;
   onClose: () => void;
@@ -634,15 +552,13 @@ function ModalAprobar({
             <div className="space-y-3">
               {/* Firma Electrónica */}
               <Card
-                className={`p-3 sm:p-4 cursor-pointer border-2 transition-all ${
-                  tipoFirma === 'electronica' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
-                }`}
+                className={`p-3 sm:p-4 cursor-pointer border-2 transition-all ${tipoFirma === 'electronica' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                  }`}
                 onClick={() => setTipoFirma('electronica')}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                    tipoFirma === 'electronica' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
-                  }`}>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${tipoFirma === 'electronica' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
+                    }`}>
                     {tipoFirma === 'electronica' && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -659,15 +575,13 @@ function ModalAprobar({
 
               {/* Firma Digital */}
               <Card
-                className={`p-3 sm:p-4 cursor-pointer border-2 transition-all ${
-                  tipoFirma === 'digital' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
-                }`}
+                className={`p-3 sm:p-4 cursor-pointer border-2 transition-all ${tipoFirma === 'digital' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                  }`}
                 onClick={() => setTipoFirma('digital')}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                    tipoFirma === 'digital' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
-                  }`}>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${tipoFirma === 'digital' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
+                    }`}>
                     {tipoFirma === 'digital' && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -685,15 +599,13 @@ function ModalAprobar({
 
               {/* Firma Local */}
               <Card
-                className={`p-3 sm:p-4 cursor-pointer border-2 transition-all ${
-                  tipoFirma === 'local' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
-                }`}
+                className={`p-3 sm:p-4 cursor-pointer border-2 transition-all ${tipoFirma === 'local' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                  }`}
                 onClick={() => setTipoFirma('local')}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                    tipoFirma === 'local' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
-                  }`}>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${tipoFirma === 'local' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
+                    }`}>
                     {tipoFirma === 'local' && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -759,11 +671,11 @@ function ModalAprobar({
 }
 
 // Modal de Devolución - RESPONSIVE Y CORPORATIVO
-function ModalDevolver({ 
-  borrador, 
-  onClose, 
-  onConfirm 
-}: { 
+function ModalDevolver({
+  borrador,
+  onClose,
+  onConfirm
+}: {
   borrador: BorradorPendiente;
   onClose: () => void;
   onConfirm: (motivo: string, comentarios: string, archivos: File[]) => void;
@@ -799,14 +711,15 @@ function ModalDevolver({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[10000] p-2 sm:p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-2 sm:p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.9 }}
-        animate={{ scale: 1 }}
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col"
       >
         {/* Header */}
         <div className="p-4 sm:p-6 border-b bg-red-600">
@@ -822,7 +735,7 @@ function ModalDevolver({
         </div>
 
         {/* Contenido */}
-        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto">
+        <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto max-h-[70vh]">
           {/* Motivo */}
           <div>
             <label className="block font-bold text-gray-900 mb-2 text-sm sm:text-base">
@@ -831,61 +744,67 @@ function ModalDevolver({
             <select
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
-              className="w-full p-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
+              className="w-full p-3 border-2 border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
             >
               <option value="">Seleccione un motivo...</option>
-              <option value="errores_forma">Errores de forma o redacción</option>
-              <option value="falta_fundamentacion">Falta fundamentación jurídica</option>
-              <option value="documentos_incompletos">Documentos incompletos</option>
-              <option value="inconsistencias_juridicas">Inconsistencias jurídicas</option>
-              <option value="requiere_ajustes">Requiere ajustes menores</option>
-              <option value="otro">Otro motivo</option>
+              <option value="correccion_forma">Corrección de Forma/Redacción</option>
+              <option value="falta_revisar_pruebas">Falta Revisión de Pruebas</option>
+              <option value="error_fundamentacion">Error en Fundamentación Jurídica</option>
+              <option value="documentos_faltantes">Documentos Soporte Faltantes</option>
+              <option value="otro">Otro</option>
             </select>
           </div>
 
           {/* Comentarios */}
           <div>
             <label className="block font-bold text-gray-900 mb-2 text-sm sm:text-base">
-              Comentarios Detallados <span className="text-red-600">*</span>
+              Observaciones Detalladas <span className="text-red-600">*</span>
             </label>
             <textarea
               value={comentarios}
               onChange={(e) => setComentarios(e.target.value)}
-              placeholder="Describa detalladamente las correcciones..."
+              placeholder="Describa las correcciones requeridas..."
               className="w-full h-32 p-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
             />
           </div>
 
-          {/* Archivos */}
-          <div>
-            <label className="block font-semibold text-gray-900 mb-2 text-sm">
-              Archivos Complementarios (Opcional)
+          {/* Adjuntar Archivos */}
+          <div className="space-y-3">
+            <label className="block font-bold text-gray-900 text-sm sm:text-base">
+              Adjuntar Correcciones (Opcional)
             </label>
-            <input
-              type="file"
-              multiple
-              onChange={handleAgregarArchivos}
-              className="hidden"
-              id="archivos-devolucion"
-            />
-            <label
-              htmlFor="archivos-devolucion"
-              className="block p-4 sm:p-6 border-2 border-dashed border-gray-300 rounded-lg text-center cursor-pointer hover:border-red-400 hover:bg-red-50 transition-all"
-            >
-              <Upload className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400 mx-auto mb-2" />
-              <p className="text-xs sm:text-sm font-semibold text-gray-700">Click para adjuntar</p>
-            </label>
+            <div className="flex items-center justify-center w-full">
+              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <Upload className="w-8 h-8 mb-3 text-gray-400" />
+                  <p className="mb-2 text-sm text-gray-500">
+                    <span className="font-semibold">Click para subir</span>
+                  </p>
+                  <p className="text-xs text-gray-500">Word, PDF (Max 10MB)</p>
+                </div>
+                <input
+                  type="file"
+                  className="hidden"
+                  multiple
+                  onChange={handleAgregarArchivos}
+                />
+              </label>
+            </div>
+
+            {/* Lista de Archivos */}
             {archivosAdjuntos.length > 0 && (
-              <div className="mt-3 space-y-2">
+              <div className="space-y-2">
                 {archivosAdjuntos.map((archivo, index) => (
-                  <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200">
-                    <FileText className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm flex-1 truncate">{archivo.name}</span>
+                  <div key={index} className="flex items-center justify-between p-2 bg-gray-100 rounded-lg">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Paperclip className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                      <span className="text-xs text-gray-700 truncate">{archivo.name}</span>
+                    </div>
                     <button
                       onClick={() => setArchivosAdjuntos(archivosAdjuntos.filter((_, i) => i !== index))}
-                      className="p-1 hover:bg-red-100 rounded"
+                      className="text-red-500 hover:text-red-700 p-1"
                     >
-                      <Trash2 className="w-4 h-4 text-red-600" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
@@ -893,7 +812,7 @@ function ModalDevolver({
             )}
           </div>
 
-          {/* Alerta */}
+          {/* Info Notificación */}
           <Card className="p-3 sm:p-4 bg-red-50 border-red-200">
             <div className="flex gap-3">
               <Mail className="w-5 h-5 text-red-600 flex-shrink-0" />
@@ -927,7 +846,8 @@ function ModalDevolver({
 
 // Componente Principal - RESPONSIVE Y CORPORATIVO
 export function RevisionAprobacionJefe() {
-  const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_PENDIENTES);
+  const [borradores, setBorradores] = useState<BorradorPendiente[]>([]);
+  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterEstado, setFilterEstado] = useState('all');
   const [filterPrioridad, setFilterPrioridad] = useState('all');
@@ -937,299 +857,332 @@ export function RevisionAprobacionJefe() {
   const [showModalRevision, setShowModalRevision] = useState(false);
   const [showFlujoModal, setShowFlujoModal] = useState(false);
 
-  const handleAprobar = (borradorId: string, comentarios: string) => {
-    setBorradores(borradores.map(b =>
-      b.id === borradorId
-        ? {
-            ...b,
-            estado: 'aprobado',
-            historial: [
-              ...b.historial,
-              {
-                id: Date.now().toString(),
-                tipo: 'aprobado',
-                usuario: 'Jefe OCID',
-                fecha: new Date().toISOString(),
-                descripcion: 'Auto aprobado y enviado para firma',
-                detalles: { comentarios }
-              }
-            ]
-          }
-        : b
-    ));
+  // Authentication Context Placeholder
+  const currentUser = { id: 'JEFE_OCID_ID', nombre: 'Jefe OCID' };
 
-    setShowModalRevision(false);
-    toast.success('Auto Aprobado', {
-      description: 'Enviado para firma electrónica'
-    });
-  };
+  const loadAutos = async () => {
+    try {
+      setLoading(true);
+      const autos = await disciplinaryService.getAllAutos();
 
-  const handleDevolver = (borradorId: string, motivo: string, comentarios: string, archivos: File[]) => {
-    setBorradores(borradores.map(b =>
-      b.id === borradorId
-        ? {
-            ...b,
-            estado: 'devuelto',
-            historial: [
-              ...b.historial,
-              {
-                id: Date.now().toString(),
-                tipo: 'devuelto',
-                usuario: 'Jefe OCID',
-                fecha: new Date().toISOString(),
-                descripcion: 'Auto devuelto para correcciones',
-                detalles: { motivo, comentarios, archivos: archivos.length }
-              }
-            ]
-          }
-        : b
-    ));
+      const mappedBorradores: BorradorPendiente[] = autos.map(auto => {
+        const proceso = (auto as any).process || {};
+        const abogado = proceso.abogadoAsignado || {};
+        const news = proceso.news || {};
+        const disciplinableList = Array.isArray(news.disciplinable)
+          ? news.disciplinable
+          : (news.disciplinable ? [news.disciplinable] : []);
 
-    setShowModalRevision(false);
-    toast.success('Auto Devuelto', {
-      description: `Profesional notificado. ${archivos.length} archivos adjuntos`
-    });
-  };
+        const denunciadoNombre = disciplinableList.length > 0
+          ? disciplinableList[0].nombre
+          : 'Desconocido';
 
-  const filteredBorradores = borradores.filter(b => {
-    const matchesSearch = 
-      b.numeroProceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.titulo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.denunciado.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.profesional.nombre.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesEstado = filterEstado === 'all' || b.estado === filterEstado;
-    const matchesPrioridad = filterPrioridad === 'all' || b.prioridad === filterPrioridad;
-    const matchesEtapa = filterEtapa === 'all' || b.etapa === filterEtapa;
-    const matchesTipoAuto = filterTipoAuto === 'all' || b.plantilla === filterTipoAuto;
+        return {
+          id: auto.id,
+          numeroProceso: proceso.radicadoProceso || 'SIN-RADICADO',
+          titulo: auto.tipo,
+          plantilla: auto.tipo,
+          version: auto.currentVersion || 1,
+          fechaEnvio: auto.createdAt,
+          profesional: {
+            nombre: abogado.nombreCompleto || abogado.nombre || 'Sin Asignar',
+            email: abogado.email || 'N/A'
+          },
+          observacionesProfesional: auto.comentarios || 'Sin observaciones',
+          contenido: auto.contenido,
+          denunciado: denunciadoNombre,
+          etapa: proceso.etapaActual || 'Etapa desconocida',
+          prioridad: 'media',
+          estado: mapBackendStatus(auto.estado) as any,
+          historial: [],
+          tiempoEspera: '0h'
+        };
+      });
 
-    return matchesSearch && matchesEstado && matchesPrioridad && matchesEtapa && matchesTipoAuto;
-  });
-
-  const estadisticas = {
-    pendientes: borradores.filter(b => b.estado === 'pendiente_revision').length,
-    enRevision: borradores.filter(b => b.estado === 'en_revision').length,
-    aprobados: borradores.filter(b => b.estado === 'aprobado').length,
-    devueltos: borradores.filter(b => b.estado === 'devuelto').length,
-    total: borradores.length
-  };
-
-  const getEstadoBadge = (estado: string) => {
-    switch(estado) {
-      case 'pendiente_revision':
-        return { bg: '#FEF3C7', color: '#F59E0B', text: 'Pendiente' };
-      case 'en_revision':
-        return { bg: '#DBEAFE', color: '#003DA5', text: 'En Revisión' };
-      case 'aprobado':
-        return { bg: '#D1FAE5', color: '#10B981', text: 'Aprobado' };
-      case 'devuelto':
-        return { bg: '#FEE2E2', color: '#DC2626', text: 'Devuelto' };
-      default:
-        return { bg: '#F3F4F6', color: '#6B7280', text: 'Desconocido' };
+      setBorradores(mappedBorradores);
+    } catch (error) {
+      console.error('Error loading autos:', error);
+      toast.error('Error al cargar revisiones');
+    } finally {
+      setLoading(false);
     }
   };
 
-  return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold" style={{ color: '#003DA5' }}>
-          Revisión y Aprobación de Autos
-        </h1>
-      </div>
+  useEffect(() => {
+    loadAutos();
+  }, []);
 
-      {/* Filtros - RESPONSIVE */}
-      <Card className="p-3 sm:p-4">
-        <div className="space-y-3">
-          {/* Búsqueda - Full Width */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por proceso, denunciado, documento..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 sm:pl-11 pr-4 py-2.5 sm:py-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+  const handleAprobar = async (borradorId: string, comentarios: string) => {
+    try {
+      await disciplinaryService.firmarAuto(borradorId, currentUser.id);
+
+      toast.success('Auto Aprobado y Firmado', {
+        description: `El documento ha sido firmado digitalmente por ${currentUser.nombre}`
+      });
+
+      setShowModalRevision(false);
+      setBorradorSeleccionado(null);
+      loadAutos(); // Refresh
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al aprobar el auto');
+    }
+  };
+
+  const handleDevolver = async (borradorId: string, motivo: string, comentarios: string, archivos: File[]) => {
+    try {
+      await disciplinaryService.devolverAuto(borradorId, currentUser.id, `${motivo}: ${comentarios}`);
+
+      toast.success('Auto Devuelto', {
+        description: 'Se ha notificado al profesional para correcciones'
+      });
+
+      setShowModalRevision(false);
+      setBorradorSeleccionado(null);
+      loadAutos(); // Refresh
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al devolver el auto');
+    }
+  };
+
+  const filteredBorradores = borradores.filter(b => {
+    const matchesSearch =
+      b.numeroProceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      b.titulo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      b.profesional.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      b.denunciado.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesEstado = filterEstado === 'all' || b.estado === filterEstado;
+    const matchesPrioridad = filterPrioridad === 'all' || b.prioridad === filterPrioridad;
+    const matchesEtapa = filterEtapa === 'all' || b.etapa === filterEtapa;
+    const matchesTipo = filterTipoAuto === 'all' || b.plantilla === filterTipoAuto;
+
+    return matchesSearch && matchesEstado && matchesPrioridad && matchesEtapa && matchesTipo;
+  });
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-20 sm:pb-10">
+      {/* Header Corporativo Fixed */}
+      <div className="bg-white border-b shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between py-4 sm:py-6 gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-red-600 rounded-xl shadow-lg shadow-red-200">
+                <FileSignature className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
+                  Revisión y Aprobación
+                </h1>
+                <p className="text-xs sm:text-sm text-gray-500 font-medium">
+                  Control Interno Disciplinario
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowFlujoModal(true)}
+                className="hidden sm:flex text-blue-700 border-blue-200 hover:bg-blue-50"
+              >
+                <HelpCircle className="w-4 h-4 mr-2" />
+                Ver Flujo
+              </Button>
+              <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 hidden sm:block">
+                <p className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-0.5">Pendientes</p>
+                <p className="text-2xl font-bold text-blue-900 leading-none">
+                  {borradores.filter(b => b.estado === 'pendiente_revision').length}
+                </p>
+              </div>
+            </div>
           </div>
 
-          {/* Grid de Filtros - Responsive */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-            {/* Filtro Estado */}
-            <div className="relative">
-              <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
+          {/* Filtros Avanzados - Responsive Grid */}
+          <div className="py-4 border-t space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Buscador Principal */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="Buscar por radicado, profesional o denunciado..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm"
+                />
+              </div>
+
+              {/* Filtros Rápidos Mobile */}
+              <div className="flex sm:hidden gap-2 overflow-x-auto pb-1">
+                <select
+                  value={filterEstado}
+                  onChange={(e) => setFilterEstado(e.target.value)}
+                  className="bg-white border text-sm rounded-lg px-3 py-2 whitespace-nowrap"
+                >
+                  <option value="all">Todos los Estados</option>
+                  <option value="pendiente_revision">Pendientes</option>
+                  <option value="en_revision">En Revisión</option>
+                </select>
+                {/* Más filtros si es necesario */}
+              </div>
+            </div>
+
+            {/* Filtros Desktop */}
+            <div className="hidden sm:flex flex-wrap gap-3">
               <select
                 value={filterEstado}
                 onChange={(e) => setFilterEstado(e.target.value)}
-                className="w-full pl-9 pr-8 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none cursor-pointer"
+                className="bg-white border-none py-2 px-4 rounded-lg text-sm font-medium text-gray-600 ring-1 ring-gray-200 hover:ring-gray-300 focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm"
               >
-                <option value="all">📊 Todos los Estados</option>
-                <option value="pendiente_revision">🟡 Pendientes</option>
-                <option value="en_revision">🔵 En Revisión</option>
-                <option value="aprobado">🟢 Aprobados</option>
-                <option value="devuelto">🔴 Devueltos</option>
+                <option value="all">Todos los Estados</option>
+                <option value="pendiente_revision">Pendiente Revisión</option>
+                <option value="en_revision">En Revisión</option>
+                <option value="aprobado">Aprobados</option>
+                <option value="devuelto">Devueltos</option>
               </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
 
-            {/* Filtro Prioridad */}
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
               <select
                 value={filterPrioridad}
                 onChange={(e) => setFilterPrioridad(e.target.value)}
-                className="w-full pl-9 pr-8 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none cursor-pointer"
+                className="bg-white border-none py-2 px-4 rounded-lg text-sm font-medium text-gray-600 ring-1 ring-gray-200 hover:ring-gray-300 focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm"
               >
-                <option value="all">⚡ Todas las Prioridades</option>
-                <option value="alta">🔴 Alta</option>
-                <option value="media">🟡 Media</option>
-                <option value="baja">🟢 Baja</option>
+                <option value="all">Todas las Prioridades</option>
+                <option value="alta">Alta Prioridad</option>
+                <option value="media">Prioridad Media</option>
+                <option value="baja">Prioridad Baja</option>
               </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
 
-            {/* Filtro Etapa */}
-            <div className="relative">
-              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
               <select
                 value={filterEtapa}
                 onChange={(e) => setFilterEtapa(e.target.value)}
-                className="w-full pl-9 pr-8 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none cursor-pointer"
+                className="bg-white border-none py-2 px-4 rounded-lg text-sm font-medium text-gray-600 ring-1 ring-gray-200 hover:ring-gray-300 focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm"
               >
-                <option value="all">📋 Todas las Etapas</option>
-                <option value="Indagación Preliminar">🔍 Indagación Preliminar</option>
-                <option value="Valoración">⚖️ Valoración</option>
-                <option value="Investigación">📝 Investigación</option>
-                <option value="Juzgamiento">⚖️ Juzgamiento</option>
+                <option value="all">Todas las Etapas</option>
+                <option value="Indagación Preliminar">Indagación Preliminar</option>
+                <option value="Investigación">Investigación</option>
+                <option value="Juzgamiento">Juzgamiento</option>
               </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
 
-            {/* Filtro Tipo de Auto */}
-            <div className="relative">
-              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
-              <select
-                value={filterTipoAuto}
-                onChange={(e) => setFilterTipoAuto(e.target.value)}
-                className="w-full pl-9 pr-8 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none cursor-pointer"
-              >
-                <option value="all">📄 Todos los Tipos</option>
-                <option value="Auto de Indagación Preliminar">📋 Auto de Indagación</option>
-                <option value="Auto de Inhibitorio">🚫 Auto de Inhibitorio</option>
-                <option value="Auto de Apertura">📂 Auto de Apertura</option>
-                <option value="Auto de Cargos">⚖️ Auto de Cargos</option>
-                <option value="Auto de Descargos">📝 Auto de Descargos</option>
-                <option value="Auto de Archivo">📁 Auto de Archivo</option>
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <div className="flex-1" /> {/* Spacer */}
+
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Filter className="w-4 h-4" />
+                <span>{filteredBorradores.length} resultados</span>
+              </div>
             </div>
           </div>
         </div>
-      </Card>
-
-      {/* Lista de Borradores - RESPONSIVE */}
-      <div className="space-y-3 sm:space-y-4">
-        {filteredBorradores.map((borrador, index) => {
-          const estadoBadge = getEstadoBadge(borrador.estado);
-
-          return (
-            <motion.div
-              key={borrador.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-            >
-              <Card className="p-4 sm:p-5 hover:shadow-lg transition-all border-l-4" style={{ borderLeftColor: estadoBadge.color }}>
-                <div className="space-y-3 sm:space-y-4">
-                  {/* Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <h3 className="text-lg sm:text-xl font-bold" style={{ color: '#003DA5' }}>
-                          {borrador.numeroProceso}
-                        </h3>
-                      </div>
-                      <p className="text-xs sm:text-sm text-gray-600 mb-1">{borrador.titulo}</p>
-                      <p className="text-sm sm:text-base font-semibold text-gray-900 mb-2">
-                        Denunciado: {borrador.denunciado}
-                      </p>
-                    </div>
-
-                    {/* Botón Revisar - Desktop */}
-                    <Button
-                      onClick={() => {
-                        setBorradorSeleccionado(borrador);
-                        setShowModalRevision(true);
-                      }}
-                      style={{ background: '#003DA5' }}
-                      size="sm"
-                      disabled={borrador.estado === 'aprobado'}
-                      className="hidden sm:flex"
-                    >
-                      <Eye className="w-4 h-4 mr-2" />
-                      Revisar
-                    </Button>
-                  </div>
-
-                  {/* Profesional y Metadata */}
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 text-xs sm:text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <Avatar className="w-8 h-8">
-                        <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }} className="text-xs">
-                          {borrador.profesional.nombre.split(' ').map(n => n[0]).join('')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-gray-900 truncate">{borrador.profesional.nombre}</p>
-                        <p className="text-xs text-gray-500 truncate">{borrador.profesional.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4 flex-shrink-0" />
-                      <span className="truncate">{new Date(borrador.fechaEnvio).toLocaleDateString('es-CO')}</span>
-                    </div>
-                  </div>
-
-                  {/* Observaciones */}
-                  <Card className="p-3 bg-gray-50 border-gray-200">
-                    <p className="text-xs font-semibold text-gray-700 mb-1">Observaciones:</p>
-                    <p className="text-xs sm:text-sm text-gray-700 line-clamp-2">{borrador.observacionesProfesional}</p>
-                  </Card>
-
-                  {/* Botón Revisar - Mobile */}
-                  <Button
-                    onClick={() => {
-                      setBorradorSeleccionado(borrador);
-                      setShowModalRevision(true);
-                    }}
-                    style={{ background: '#003DA5' }}
-                    disabled={borrador.estado === 'aprobado'}
-                    className="w-full sm:hidden"
-                  >
-                    <Eye className="w-4 h-4 mr-2" />
-                    {borrador.estado === 'aprobado' ? 'Aprobado' : 'Revisar Documento'}
-                  </Button>
-                </div>
-              </Card>
-            </motion.div>
-          );
-        })}
       </div>
 
-      {/* Estado Vacío */}
-      {filteredBorradores.length === 0 && (
-        <Card className="p-8 sm:p-12 text-center">
-          <FileText className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="font-bold text-gray-900 mb-2 text-base sm:text-lg">No hay documentos</h3>
-          <p className="text-xs sm:text-sm text-gray-600">
-            {searchQuery 
-              ? 'No se encontraron resultados'
-              : 'Los documentos aparecerán aquí'}
-          </p>
-        </Card>
-      )}
+      {/* Lista de Tarjetas - GRID RESPONSIVE */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <span className="loading loading-spinner text-primary"></span>
+          </div>
+        ) : filteredBorradores.length === 0 ? (
+          <div className="text-center py-12 sm:py-16 bg-white rounded-2xl border-2 border-dashed border-gray-200">
+            <div className="bg-gray-50 w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
+              <FileSignature className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
+            </div>
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">No hay revisiones pendientes</h3>
+            <p className="text-gray-500 max-w-sm mx-auto text-sm sm:text-base">
+              Al parecer estás al día con tus responsabilidades. ¡Buen trabajo!
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+            <AnimatePresence>
+              {filteredBorradores.map((borrador) => (
+                <motion.div
+                  key={borrador.id}
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                >
+                  <Card
+                    className="group hover:shadow-xl transition-all duration-300 border-l-4 overflow-hidden relative"
+                    style={{
+                      borderLeftColor:
+                        borrador.prioridad === 'alta' ? '#EF4444' :
+                          borrador.prioridad === 'media' ? '#F59E0B' : '#10B981'
+                    }}
+                  >
+                    {/* Badge de Estado Absoluto */}
+                    <div className="absolute top-3 right-3">
+                      <Badge className={`
+                        ${borrador.estado === 'pendiente_revision' ? 'bg-orange-100 text-orange-700' :
+                          borrador.estado === 'en_revision' ? 'bg-blue-100 text-blue-700' :
+                            borrador.estado === 'aprobado' ? 'bg-green-100 text-green-700' :
+                              'bg-red-100 text-red-700'}
+                        border-0 px-2 py-1 text-xs font-semibold
+                      `}>
+                        {borrador.estado.replace('_', ' ').toUpperCase()}
+                      </Badge>
+                    </div>
 
-      {/* Modal de Revisión */}
+                    <div className="p-4 sm:p-5">
+                      {/* Cabecera Tarjeta */}
+                      <div className="mb-4 pr-16 sm:pr-20">
+                        <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-1 line-clamp-2" title={borrador.titulo}>
+                          {borrador.titulo}
+                        </h3>
+                        <p className="text-xs font-mono text-gray-500 flex items-center gap-2">
+                          {borrador.numeroProceso}
+                          <span className="w-1 h-1 rounded-full bg-gray-300" />
+                          v{borrador.version}
+                        </p>
+                      </div>
+
+                      {/* Info Principal */}
+                      <div className="space-y-3 mb-4 sm:mb-5">
+                        <div className="flex items-start gap-3">
+                          <Avatar className="w-8 h-8 ring-2 ring-gray-100">
+                            <AvatarFallback className="bg-gray-100 text-gray-600 text-xs font-bold">
+                              {borrador.profesional.nombre.substring(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{borrador.profesional.nombre}</p>
+                            <p className="text-xs text-gray-500">Profesional Asignado</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 p-2 rounded-lg">
+                          <User className="w-3.5 h-3.5 text-gray-400" />
+                          <span className="truncate flex-1 font-medium">{borrador.denunciado}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                          <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          <span>Enviado: {new Date(borrador.fechaEnvio).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+
+                      {/* Botón Acción */}
+                      <Button
+                        onClick={() => {
+                          setBorradorSeleccionado(borrador);
+                          setShowModalRevision(true);
+                        }}
+                        className="w-full bg-white text-blue-600 border border-blue-200 hover:bg-blue-50 hover:border-blue-300 font-semibold group-hover:bg-blue-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 shadow-sm"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Revisar Documento
+                      </Button>
+                    </div>
+                  </Card>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </main>
+
+      {/* Modal Principal de Revisión */}
       <AnimatePresence>
         {showModalRevision && borradorSeleccionado && (
           <ModalRevisionEdicion
@@ -1239,59 +1192,16 @@ export function RevisionAprobacionJefe() {
               setBorradorSeleccionado(null);
             }}
             onAprobar={(comentarios) => handleAprobar(borradorSeleccionado.id, comentarios)}
-            onDevolver={(motivo, comentarios, archivos) => 
-              handleDevolver(borradorSeleccionado.id, motivo, comentarios, archivos)
-            }
+            onDevolver={(motivo, comentarios, archivos) => handleDevolver(borradorSeleccionado.id, motivo, comentarios, archivos)}
           />
-        )}
-
-        {showFlujoModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setShowFlujoModal(false);
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="w-full max-w-6xl max-h-[90vh] overflow-auto rounded-2xl shadow-2xl"
-              style={{ background: '#FFFFFF' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="sticky top-0 z-10 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">
-                  ¿Cómo funciona la Revisión y Aprobación de Autos?
-                </h2>
-                <button
-                  onClick={() => setShowFlujoModal(false)}
-                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  <X className="w-5 h-5 text-gray-600" />
-                </button>
-              </div>
-              <div className="p-6">
-                <FlujoRevisionAprobacion />
-              </div>
-            </motion.div>
-          </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Botón Flotante de Ayuda */}
-      <motion.button
-        onClick={() => setShowFlujoModal(true)}
-        className="fixed bottom-8 right-8 p-4 rounded-full shadow-2xl hover:shadow-3xl transition-all z-40"
-        style={{ background: '#10B981' }}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.95 }}
-      >
-        <HelpCircle className="w-6 h-6 text-white" />
-      </motion.button>
+      {/* Modal de Ayuda */}
+      <FlujoRevisionAprobacion
+        open={showFlujoModal}
+        onClose={() => setShowFlujoModal(false)}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { HttpModule } from '@nestjs/axios';
 
 // Entities
 import { DisciplinaryNews } from './entities/disciplinary-news.entity';
@@ -38,6 +39,7 @@ import { FilesController } from './controllers/files.controller';
 
 @Module({
   imports: [
+    HttpModule,
     TypeOrmModule.forRoot(databaseConfig),
     TypeOrmModule.forFeature([
       DisciplinaryNews,
