@@ -5,12 +5,12 @@
  */
 
 import { useState } from 'react';
-import { 
-  X, 
-  AlertCircle, 
-  User, 
-  Calendar, 
-  Building2, 
+import {
+  X,
+  AlertCircle,
+  User,
+  Calendar,
+  Building2,
   FileText,
   Upload,
   Plus,
@@ -19,6 +19,14 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner@2.0.3';
+
+interface Denunciado {
+  id: string;
+  nombre: string;
+  identificacion: string;
+  cargo: string;
+  dependencia: string;
+}
 
 interface Denunciante {
   id: string;
@@ -128,6 +136,8 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
   });
 
   const [denunciantes, setDenunciantes] = useState<Denunciante[]>([]);
+  const [denunciados, setDenunciados] = useState<Denunciado[]>([]);
+
   const [currentDenunciante, setCurrentDenunciante] = useState<Denunciante>({
     id: '',
     nombre: '',
@@ -211,6 +221,40 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
     setDenunciantes(denunciantes.filter(d => d.id !== id));
   };
 
+  const handleAgregarDenunciado = () => {
+    if (!formData.denunciado.nombre || !formData.denunciado.identificacion || !formData.denunciado.dependencia) {
+      toast.error('Campos requeridos', {
+        description: 'Nombre, identificación y dependencia son obligatorios'
+      });
+      return;
+    }
+
+    const nuevoDenunciado: Denunciado = {
+      id: Date.now().toString(),
+      nombre: formData.denunciado.nombre,
+      identificacion: formData.denunciado.identificacion,
+      cargo: formData.denunciado.cargo,
+      dependencia: formData.denunciado.dependencia
+    };
+
+    setDenunciados([...denunciados, nuevoDenunciado]);
+    setFormData({
+      ...formData,
+      denunciado: {
+        nombre: '',
+        identificacion: '',
+        cargo: '',
+        dependencia: ''
+      }
+    });
+
+    toast.success('Denunciado agregado');
+  };
+
+  const handleEliminarDenunciado = (id: string) => {
+    setDenunciados(denunciados.filter(d => d.id !== id));
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       setArchivosAdjuntos([...archivosAdjuntos, ...Array.from(e.target.files)]);
@@ -228,14 +272,11 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
   };
 
   const validateStep2 = () => {
-    const newErrors: Record<string, string> = {};
-
-    if (!formData.denunciado.nombre) newErrors['denunciado.nombre'] = 'Nombre es obligatorio';
-    if (!formData.denunciado.identificacion) newErrors['denunciado.identificacion'] = 'Identificación es obligatoria';
-    if (!formData.denunciado.dependencia) newErrors['denunciado.dependencia'] = 'Dependencia es obligatoria';
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (denunciados.length === 0) {
+      toast.error('Debe agregar al menos un denunciado');
+      return false;
+    }
+    return true;
   };
 
   const validateStep3 = () => {
@@ -286,6 +327,8 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
     const dataToSave = {
       ...formData,
       denunciantes,
+      disciplinable: denunciados, // Map 'denunciados' from UI to 'disciplinable' array in backend
+
       archivosAdjuntos,
       fechaRegistro: new Date().toISOString(),
       radicador: 'Usuario Actual' // En producción vendría del contexto
@@ -298,7 +341,7 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div 
+        <div
           className="px-6 py-4 border-b border-gray-200 flex items-center justify-between"
           style={{ background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)' }}
         >
@@ -326,11 +369,10 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
               <div key={step.num} className="flex items-center">
                 <div className="flex flex-col items-center">
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
-                      currentStep >= step.num
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-500'
-                    }`}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${currentStep >= step.num
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 text-gray-500'
+                      }`}
                   >
                     {step.num}
                   </div>
@@ -338,9 +380,8 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                 </div>
                 {idx < 3 && (
                   <div
-                    className={`w-16 h-1 mx-2 ${
-                      currentStep > step.num ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}
+                    className={`w-16 h-1 mx-2 ${currentStep > step.num ? 'bg-blue-600' : 'bg-gray-200'
+                      }`}
                   />
                 )}
               </div>
@@ -360,9 +401,8 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                 <select
                   value={formData.origen}
                   onChange={(e) => handleChange('origen', e.target.value)}
-                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.origen ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.origen ? 'border-red-500' : 'border-gray-300'
+                    }`}
                 >
                   <option value="">Seleccione el origen...</option>
                   {ORIGENES_NOTICIA.map(origen => (
@@ -430,9 +470,8 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                 <select
                   value={formData.territorial}
                   onChange={(e) => handleChange('territorial', e.target.value)}
-                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.territorial ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.territorial ? 'border-red-500' : 'border-gray-300'
+                    }`}
                 >
                   <option value="">Seleccione territorial...</option>
                   {TERRITORIALES_ESAP.map(territorial => (
@@ -456,92 +495,131 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                 <div className="flex gap-3">
                   <User className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <h3 className="font-semibold text-blue-900 mb-1">Datos del Denunciado</h3>
+                    <h3 className="font-semibold text-blue-900 mb-1">Datos de los Denunciados</h3>
                     <p className="text-sm text-blue-700">
-                      Información de la persona señalada en la noticia disciplinaria
+                      Puede agregar uno o varios funcionarios implicados en la noticia disciplinaria
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Nombre Completo *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.denunciado.nombre}
-                    onChange={(e) => handleChange('denunciado.nombre', e.target.value)}
-                    placeholder="Nombres y apellidos completos"
-                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors['denunciado.nombre'] ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                  />
-                  {errors['denunciado.nombre'] && (
-                    <p className="text-xs text-red-600 mt-1">{errors['denunciado.nombre']}</p>
-                  )}
-                </div>
+              {/* Formulario para agregar denunciado */}
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                <h3 className="font-semibold text-gray-900 mb-4">Agregar Denunciado</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Nombre Completo *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.denunciado.nombre}
+                      onChange={(e) => handleChange('denunciado.nombre', e.target.value)}
+                      placeholder="Nombres y apellidos completos"
+                      className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors['denunciado.nombre'] ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                    />
+                    {errors['denunciado.nombre'] && (
+                      <p className="text-xs text-red-600 mt-1">{errors['denunciado.nombre']}</p>
+                    )}
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Identificación *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.denunciado.identificacion}
-                    onChange={(e) => handleChange('denunciado.identificacion', e.target.value)}
-                    placeholder="Número de cédula"
-                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors['denunciado.identificacion'] ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                  />
-                  {errors['denunciado.identificacion'] && (
-                    <p className="text-xs text-red-600 mt-1">{errors['denunciado.identificacion']}</p>
-                  )}
-                </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Identificación *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.denunciado.identificacion}
+                      onChange={(e) => handleChange('denunciado.identificacion', e.target.value)}
+                      placeholder="Número de cédula"
+                      className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors['denunciado.identificacion'] ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                    />
+                    {errors['denunciado.identificacion'] && (
+                      <p className="text-xs text-red-600 mt-1">{errors['denunciado.identificacion']}</p>
+                    )}
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Cargo
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.denunciado.cargo}
-                    onChange={(e) => handleChange('denunciado.cargo', e.target.value)}
-                    placeholder="Cargo del denunciado"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Cargo
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.denunciado.cargo}
+                      onChange={(e) => handleChange('denunciado.cargo', e.target.value)}
+                      placeholder="Cargo del denunciado"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
 
-                <div className="col-span-2">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    <Building2 className="w-4 h-4 inline mr-1" />
-                    Dependencia del Denunciado *
-                  </label>
-                  <select
-                    value={formData.denunciado.dependencia}
-                    onChange={(e) => handleChange('denunciado.dependencia', e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors['denunciado.dependencia'] ? 'border-red-500' : 'border-gray-300'
-                    }`}
+                  <div className="col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <Building2 className="w-4 h-4 inline mr-1" />
+                      Dependencia del Denunciado *
+                    </label>
+                    <select
+                      value={formData.denunciado.dependencia}
+                      onChange={(e) => handleChange('denunciado.dependencia', e.target.value)}
+                      className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors['denunciado.dependencia'] ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                    >
+                      <option value="">Seleccione dependencia...</option>
+                      {DEPENDENCIAS_ESAP.map(dep => (
+                        <option key={dep} value={dep}>{dep}</option>
+                      ))}
+                    </select>
+                    {errors['denunciado.dependencia'] && (
+                      <p className="text-xs text-red-600 mt-1">{errors['denunciado.dependencia']}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <Button
+                    onClick={handleAgregarDenunciado}
+                    variant="outline"
+                    className="w-full border-blue-600 text-blue-700 hover:bg-blue-50"
                   >
-                    <option value="">Seleccione dependencia...</option>
-                    {DEPENDENCIAS_UNICAS.map(dep => (
-                      <option key={dep} value={dep}>{dep}</option>
-                    ))}
-                  </select>
-                  {errors['denunciado.dependencia'] && (
-                    <p className="text-xs text-red-600 mt-1">{errors['denunciado.dependencia']}</p>
-                  )}
+                    <Plus className="w-4 h-4 mr-2" />
+                    Agregar Denunciado al Listado
+                  </Button>
                 </div>
               </div>
+
+              {/* Lista de denunciados agregados */}
+              {denunciados.length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-3">
+                    Denunciados Registrados ({denunciados.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {denunciados.map(denunciado => (
+                      <div key={denunciado.id} className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-gray-900">{denunciado.nombre}</p>
+                          <p className="text-sm text-gray-600">
+                            {denunciado.identificacion} • {denunciado.cargo} • {denunciado.dependencia}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleEliminarDenunciado(denunciado.id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* PASO 3: Denunciantes */}
           {currentStep === 3 && (
             <div className="space-y-6 max-w-3xl mx-auto">
+
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                 <div className="flex gap-3">
                   <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -689,9 +767,8 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                   onChange={(e) => handleChange('descripcionHechos', e.target.value)}
                   rows={6}
                   placeholder="Describa de manera clara y detallada los hechos que originan la noticia disciplinaria..."
-                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.descripcionHechos ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.descripcionHechos ? 'border-red-500' : 'border-gray-300'
+                    }`}
                 />
                 <div className="flex justify-between items-center mt-1">
                   {errors.descripcionHechos && (
@@ -789,7 +866,7 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
           >
             {currentStep === 1 ? 'Cancelar' : 'Anterior'}
           </Button>
-          
+
           {currentStep < 4 ? (
             <Button
               onClick={handleNextStep}

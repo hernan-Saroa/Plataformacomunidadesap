@@ -145,19 +145,19 @@ export class SeedService {
       {
         origen: NewsOrigin.QUEJOSO,
         territorial: 'BOGOTA',
-        dependenciaDenunciado: 'TALENTO HUMANO',
-        denunciante: {
-          nombre: 'Pedro Sanchez Ruiz',
-          cedula: '1012345678',
-          email: 'pedro.sanchez@example.com',
+        dependenciaDenunciado: 'RECURSOS HUMANOS',
+        denunciante: [{
+          nombre: 'Juan Carlos López',
+          cedula: '1234567890',
+          email: 'juan.lopez@example.com',
           cargo: 'Ciudadano',
-        },
-        disciplinable: {
-          nombre: 'Juan Perez Gomez',
-          cedula: '80123456',
-          cargo: 'Profesional Territorial',
-        },
-        hechos: 'Presunto acoso laboral en territorial Bogota.',
+        }],
+        disciplinable: [{
+          nombre: 'María González García',
+          cedula: '9876543210',
+          cargo: 'Jefe de Departamento',
+        }],
+        hechos: 'Se alega incumplimiento en los procedimientos administrativos y trato discriminatorio hacia el personal.',
         adjuntos: [],
         estado: NewsStatus.RADICADA,
       },
@@ -165,17 +165,17 @@ export class SeedService {
         origen: NewsOrigin.OFICIO,
         territorial: 'MEDELLIN',
         dependenciaDenunciado: 'TESORERIA',
-        denunciante: {
+        denunciante: [{
           nombre: 'Inspector ESAP',
           email: 'inspector@esap.gov.co',
           cargo: 'Inspector',
-        },
-        disciplinable: {
-          nombre: 'Roberto Perez Mendez',
+        }],
+        disciplinable: [{
+          nombre: 'Roberto Pérez Mendez',
           cedula: '5555555555',
           cargo: 'Tesorero Regional',
-        },
-        hechos: 'Presunta irregularidad en el manejo de fondos publicos segun auditoria interna.',
+        }],
+        hechos: 'Presunta irregularidad en el manejo de fondos públicos según auditoría interna.',
         adjuntos: [],
         estado: NewsStatus.RADICADA,
       },
@@ -183,13 +183,15 @@ export class SeedService {
         origen: NewsOrigin.ANONIMO,
         territorial: 'CALI',
         dependenciaDenunciado: 'CONTRATACION',
-        denunciante: { nombre: 'Anonimo' },
-        disciplinable: {
+        denunciante: [{
+          nombre: 'Anónimo',
+        }],
+        disciplinable: [{
           nombre: 'Carlos Ruiz',
           cedula: '111222333',
           cargo: 'Contratista',
-        },
-        hechos: 'Posible favorecimiento en proceso de licitacion.',
+        }],
+        hechos: 'Posible favorecimiento en proceso de licitación.',
         adjuntos: [],
         estado: NewsStatus.DEVUELTA,
       },

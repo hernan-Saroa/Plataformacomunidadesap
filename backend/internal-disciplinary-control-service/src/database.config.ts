@@ -40,6 +40,6 @@ export const databaseConfig: TypeOrmModuleOptions = {
   database: process.env.DATABASE_NAME || process.env.DB_NAME,
   schema: process.env.DB_SCHEMA || 'public',
   entities: [DisciplinaryNews, DisciplinaryProcess, LegalAuto, Sequence, DisciplinaryProfessional, Evidence, StageConfiguration, SystemConfiguration, AutoVersion],
-  synchronize: true, // ⚠️ TEMPORAL: Cambiado a true para crear tablas automáticamente en desarrollo
-  logging: true,
+  synchronize: false,
+  logging: false,
 };
