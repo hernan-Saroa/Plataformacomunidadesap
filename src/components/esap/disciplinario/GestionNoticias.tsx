@@ -8,12 +8,12 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Search, 
-  Plus, 
-  Eye, 
-  Edit, 
-  Trash2, 
+import {
+  Search,
+  Plus,
+  Eye,
+  Edit,
+  Trash2,
   FileText,
   Calendar,
   User,
@@ -222,9 +222,9 @@ const PROFESIONALES_MOCK: Profesional[] = [
 ];*/
 
 // ==================== MODAL DEVOLVER ====================
-function ModalDevolver({ noticia, onClose, onConfirm }: { 
-  noticia: NoticiaDisciplinaria; 
-  onClose: () => void; 
+function ModalDevolver({ noticia, onClose, onConfirm }: {
+  noticia: NoticiaDisciplinaria;
+  onClose: () => void;
   onConfirm: (observaciones: string, archivos: File[]) => void;
 }) {
   const [observaciones, setObservaciones] = useState('');
@@ -392,9 +392,9 @@ function ModalDevolver({ noticia, onClose, onConfirm }: {
 }
 
 // ==================== MODAL ASIGNAR ====================
-function ModalAsignar({ noticia, onClose, onConfirm }: { 
-  noticia: NoticiaDisciplinaria; 
-  onClose: () => void; 
+function ModalAsignar({ noticia, onClose, onConfirm }: {
+  noticia: NoticiaDisciplinaria;
+  onClose: () => void;
   onConfirm: (profesionalId: string, observaciones: string, convertirAProceso: boolean) => void;
 }) {
   const [profesionalId, setProfesionalId] = useState('');
@@ -411,7 +411,7 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
   };
 
   const profesionalSeleccionado = PROFESIONALES_MOCK.find(p => p.id === profesionalId);
-  const porcentajeCarga = profesionalSeleccionado 
+  const porcentajeCarga = profesionalSeleccionado
     ? (profesionalSeleccionado.procesosAsignados / profesionalSeleccionado.capacidadMaxima) * 100
     : 0;
 
@@ -460,12 +460,12 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
             <label className="block font-semibold mb-3 text-gray-900">
               Profesional Responsable <span className="text-red-500">*</span>
             </label>
-            
+
             <div className="grid gap-3">
               {PROFESIONALES_MOCK.map((prof) => {
                 const carga = (prof.procesosAsignados / prof.capacidadMaxima) * 100;
                 const isSelected = profesionalId === prof.id;
-                
+
                 return (
                   <div
                     key={prof.id}
@@ -481,7 +481,7 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
                           {prof.nombre.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
-                      
+
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-1">
                           <h3 className="font-bold text-gray-900">{prof.nombre}</h3>
@@ -490,13 +490,13 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
                           )}
                         </div>
                         <p className="text-sm text-gray-600 mb-2">{prof.cargo}</p>
-                        
+
                         {/* Barra de carga */}
                         <div>
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs text-gray-600">Carga de trabajo</span>
-                            <span className="text-xs font-semibold" style={{ 
-                              color: carga >= 90 ? '#DC2626' : carga >= 70 ? '#F59E0B' : '#10B981' 
+                            <span className="text-xs font-semibold" style={{
+                              color: carga >= 90 ? '#DC2626' : carga >= 70 ? '#F59E0B' : '#10B981'
                             }}>
                               {prof.procesosAsignados}/{prof.capacidadMaxima} procesos ({carga.toFixed(0)}%)
                             </span>
@@ -546,7 +546,7 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
                   Convertir a Proceso Disciplinario
                 </p>
                 <p className="text-sm text-blue-700">
-                  Al activar esta opción, la noticia se convertirá automáticamente en un proceso disciplinario 
+                  Al activar esta opción, la noticia se convertirá automáticamente en un proceso disciplinario
                   con radicado PD-YYYY-#### y se asignará al profesional seleccionado.
                 </p>
               </div>
@@ -562,7 +562,7 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
                   Notificación Automática
                 </p>
                 <p className="text-sm text-green-700">
-                  {profesionalSeleccionado?.nombre || 'El profesional seleccionado'} recibirá una notificación 
+                  {profesionalSeleccionado?.nombre || 'El profesional seleccionado'} recibirá una notificación
                   por correo electrónico ({profesionalSeleccionado?.email}) sobre la asignación.
                 </p>
               </div>
@@ -672,7 +672,7 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
             {noticia.historialAuditoria.map((accion, index) => {
               const color = getColorAccion(accion.tipo);
               const isLast = index === noticia.historialAuditoria.length - 1;
-              
+
               return (
                 <div key={accion.id} className="flex gap-4">
                   {/* Línea temporal */}
@@ -705,7 +705,7 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
                           })}
                         </Badge>
                       </div>
-                      
+
                       <p className="text-sm text-gray-600 mb-2">
                         <span className="font-semibold">Usuario:</span> {accion.usuario}
                       </p>
@@ -777,30 +777,30 @@ export function GestionNoticias() {
   const [selectedNewsForDetail, setSelectedNewsForDetail] = useState<NoticiaDisciplinaria | null>(null);
 
   const loadNoticias = async () => {
-        try {
-            setLoading(true);
-            const data = await disciplinaryService.getAllNoticias();
-            console.log('📊 Datos de noticias:', data);
-            setNoticias(data);
-        } catch (error) {
-            console.error(error);
-            toast.error('Error al cargar noticias');
-        } finally {
-            setLoading(false);
-        }
-    };
+    try {
+      setLoading(true);
+      const data = await disciplinaryService.getAllNoticias();
+      console.log('📊 Datos de noticias:', data);
+      setNoticias(data);
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al cargar noticias');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    useEffect(() => {
-        loadNoticias();
-    }, []);
+  useEffect(() => {
+    loadNoticias();
+  }, []);
 
-    // const handleDevolver = (id: string) => {
-    //     setSelectedNewsForReturn(id);
-    // };
+  // const handleDevolver = (id: string) => {
+  //     setSelectedNewsForReturn(id);
+  // };
 
-    // const handleAsignar = (noticia: DisciplinaryNews) => {
-    //     setSelectedNewsForAssignment(noticia);
-    // };
+  // const handleAsignar = (noticia: DisciplinaryNews) => {
+  //     setSelectedNewsForAssignment(noticia);
+  // };
 
   const handleCreateNoticia = (data: any) => {
     const year = new Date().getFullYear();
@@ -834,7 +834,7 @@ export function GestionNoticias() {
     };
 
     setNoticias([nuevaNoticia, ...noticias]);
-    
+
     toast.success('Noticia Disciplinaria Registrada', {
       description: `Radicado ${numeroRadicado} creado exitosamente. Se ha notificado al Jefe de OCID.`
     });
@@ -854,15 +854,15 @@ export function GestionNoticias() {
       archivos: archivos.map(f => f.name)
     };
 
-    setNoticias(noticias.map(n => 
-      n.id === noticiaSeleccionada.id 
-        ? { 
-            ...n, 
-            estado: 'devuelto', 
-            estadoLabel: 'Devuelto',
-            etapa: 'Devuelto para Correcciones',
-            historialAuditoria: [...n.historialAuditoria, nuevaAccion]
-          }
+    setNoticias(noticias.map(n =>
+      n.id === noticiaSeleccionada.id
+        ? {
+          ...n,
+          estado: 'devuelto',
+          estadoLabel: 'Devuelto',
+          etapa: 'Devuelto para Correcciones',
+          historialAuditoria: [...n.historialAuditoria, nuevaAccion]
+        }
         : n
     ));
 
@@ -906,22 +906,22 @@ export function GestionNoticias() {
       acciones.push(accionConversion);
     }
 
-    setNoticias(noticias.map(n => 
-      n.id === noticiaSeleccionada.id 
-        ? { 
-            ...n, 
-            estado: convertirAProceso ? 'convertido-proceso' : 'asignado',
-            estadoLabel: convertirAProceso ? 'Convertido a Proceso' : 'Asignado',
-            etapa: convertirAProceso ? `Convertido a ${procesoRadicado}` : 'Asignado a Profesional',
-            profesionalAsignado: profesional.nombre,
-            procesoAsociado: convertirAProceso ? procesoRadicado : undefined,
-            historialAuditoria: [...n.historialAuditoria, ...acciones]
-          }
+    setNoticias(noticias.map(n =>
+      n.id === noticiaSeleccionada.id
+        ? {
+          ...n,
+          estado: convertirAProceso ? 'convertido-proceso' : 'asignado',
+          estadoLabel: convertirAProceso ? 'Convertido a Proceso' : 'Asignado',
+          etapa: convertirAProceso ? `Convertido a ${procesoRadicado}` : 'Asignado a Profesional',
+          profesionalAsignado: profesional.nombre,
+          procesoAsociado: convertirAProceso ? procesoRadicado : undefined,
+          historialAuditoria: [...n.historialAuditoria, ...acciones]
+        }
         : n
     ));
 
     toast.success(convertirAProceso ? 'Proceso Creado y Asignado' : 'Noticia Asignada', {
-      description: convertirAProceso 
+      description: convertirAProceso
         ? `${procesoRadicado} creado y asignado a ${profesional.nombre}. Se ha enviado notificación.`
         : `Asignado a ${profesional.nombre}. Se ha enviado notificación.`
     });
@@ -939,12 +939,12 @@ export function GestionNoticias() {
       'Convertido a Proceso': { bg: '#D1FAE5', text: '#065F46', border: '#10B981' }
     };
     const config = configs[estado] || configs['Pendiente'];
-    
+
     return (
-      <Badge 
+      <Badge
         className="px-2 py-1"
-        style={{ 
-          background: config.bg, 
+        style={{
+          background: config.bg,
           color: config.text,
           borderColor: config.border,
           border: '1px solid'
@@ -964,13 +964,13 @@ export function GestionNoticias() {
       'Remisión por competencia': { bg: '#FEE2E2', text: '#991B1B' }
     };
     const config = configs[origen] || configs['Anónimo'];
-    
+
     return (
-      <Badge 
+      <Badge
         variant="outline"
         className="px-2 py-1"
-        style={{ 
-          background: config.bg, 
+        style={{
+          background: config.bg,
           color: config.text,
           borderColor: config.text,
           opacity: 0.9
@@ -983,11 +983,11 @@ export function GestionNoticias() {
 
   const filteredNoticias = noticias.filter(noticia => {
     console.log('🔍 Buscando:', noticia);
-    const matchesSearch = 
+    const matchesSearch =
       noticia.radicado.toLowerCase().includes(searchQuery.toLowerCase()) ||
       noticia.disciplinable.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
       noticia.disciplinable.cedula.includes(searchQuery);
-    
+
     const matchesEstado = filterEstado === 'all' || noticia.estado === filterEstado;
     const matchesOrigen = filterOrigen === 'all' || noticia.origen === filterOrigen;
 
@@ -1110,7 +1110,7 @@ export function GestionNoticias() {
               className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          
+
           <select
             value={filterOrigen}
             onChange={(e) => setFilterOrigen(e.target.value)}
@@ -1162,24 +1162,24 @@ export function GestionNoticias() {
               {/* Información principal */}
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-3">
-                  <div 
+                  <div
                     className="w-12 h-12 rounded-full flex items-center justify-center"
-                    style={{ 
-                      background: noticia.estado === 'pendiente' ? '#FEF3C7' : 
-                                 noticia.estado === 'en-valoracion' ? '#DBEAFE' : 
-                                 noticia.estado === 'devuelto' ? '#FEE2E2' :
-                                 noticia.estado === 'asignado' ? '#E0E7FF' :
-                                 '#D1FAE5'
+                    style={{
+                      background: noticia.estado === 'pendiente' ? '#FEF3C7' :
+                        noticia.estado === 'en-valoracion' ? '#DBEAFE' :
+                          noticia.estado === 'devuelto' ? '#FEE2E2' :
+                            noticia.estado === 'asignado' ? '#E0E7FF' :
+                              '#D1FAE5'
                     }}
                   >
-                    <FileText 
-                      className="w-6 h-6" 
-                      style={{ 
-                        color: noticia.estado === 'pendiente' ? '#92400E' : 
-                               noticia.estado === 'en-valoracion' ? '#1E40AF' : 
-                               noticia.estado === 'devuelto' ? '#991B1B' :
-                               noticia.estado === 'asignado' ? '#4338CA' :
-                               '#065F46'
+                    <FileText
+                      className="w-6 h-6"
+                      style={{
+                        color: noticia.estado === 'pendiente' ? '#92400E' :
+                          noticia.estado === 'en-valoracion' ? '#1E40AF' :
+                            noticia.estado === 'devuelto' ? '#991B1B' :
+                              noticia.estado === 'asignado' ? '#4338CA' :
+                                '#065F46'
                       }}
                     />
                   </div>
@@ -1226,7 +1226,7 @@ export function GestionNoticias() {
                     <p className="text-xs text-gray-500 mb-2">Conductas Indisciplinarias:</p>
                     <div className="flex flex-wrap gap-2">
                       {noticia.conductas.map((conducta, idx) => (
-                        <span 
+                        <span
                           key={idx}
                           className="px-2 py-1 bg-red-50 text-red-700 text-xs rounded-md border border-red-200"
                         >
@@ -1295,7 +1295,7 @@ export function GestionNoticias() {
                   >
                     <Send className="w-4 h-4 text-purple-600" />
                   </button>
-                  
+
                   {/* RF002: Botones de Revisión y Asignación */}
                   {(noticia.estado === 'pendiente' || noticia.estado === 'en-valoracion') && (
                     <>
@@ -1311,7 +1311,7 @@ export function GestionNoticias() {
                         <CornerDownLeft className="w-4 h-4" />
                         Devolver
                       </button>
-                      
+
                       {/* Asignar */}
                       <button
                         onClick={() => {
@@ -1327,7 +1327,7 @@ export function GestionNoticias() {
                       </button>
                     </>
                   )}
-                  
+
                   {noticia.estado === 'devuelto' && (
                     <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
                       <CornerDownLeft className="w-4 h-4 text-orange-600" />
@@ -1501,7 +1501,7 @@ export function GestionNoticias() {
                 }
                 return n;
               }));
-              
+
               toast.success('Remitido por Competencia', {
                 description: `La noticia ahora tiene el número ${data.numeroRC} y ha sido remitida a ${data.areaDestino}.`
               });

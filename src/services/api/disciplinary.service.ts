@@ -25,20 +25,23 @@ export interface DisciplinaryNews {
     hechos: string;
     denunciante: {
         nombre: string;
-        email: string;
-        telefono?: string;
-        direccion?: string;
-    };
-    disciplinable: {
-        nombre: string;
-        cargo: string;
         cedula?: string;
         email?: string;
+        cargo?: string;
+        dependencia?: string;
+    }[];
+    disciplinable: {
+        nombre: string;
+        cedula?: string;
+        email?: string;
+        cargo?: string;
+        dependencia?: string;
         telefono?: string;
-    };
+    }[];
     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
     createdAt: string;
     updatedAt: string;
+    fechaRecepcion: string;
 }
 
 export interface DisciplinaryProcess {
