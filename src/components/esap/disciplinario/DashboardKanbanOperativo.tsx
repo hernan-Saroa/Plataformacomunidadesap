@@ -1865,8 +1865,10 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
     const hoy = new Date();
     const dias = Math.max(1, Math.ceil((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24)));
-    const denuncianteRaw: any = (noticia as any).denunciante || {};
-    const denunciadoRaw: any = (noticia as any).disciplinable || (noticia as any).denunciado || {};
+    const denuncianteFuente: any = (noticia as any).denunciante;
+    const disciplinableFuente: any = (noticia as any).disciplinable || (noticia as any).denunciado;
+    const denuncianteRaw: any = Array.isArray(denuncianteFuente) ? (denuncianteFuente[0] || {}) : (denuncianteFuente || {});
+    const denunciadoRaw: any = Array.isArray(disciplinableFuente) ? (disciplinableFuente[0] || {}) : (disciplinableFuente || {});
 
     return {
       id: (noticia as any).id || `n${Date.now()}`,
@@ -1894,8 +1896,10 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
   const normalizeNoticia = (raw: any): Noticia => {
     // Si ya es una noticia bien formada, aplicar normalización defensiva
-    const denuncianteRaw = raw.denunciante || {};
-    const denunciadoRaw = raw.denunciado || raw.disciplinable || {};
+    const denuncianteFuente = raw.denunciante;
+    const disciplinableFuente = raw.disciplinable || raw.denunciado;
+    const denuncianteRaw = Array.isArray(denuncianteFuente) ? (denuncianteFuente[0] || {}) : (denuncianteFuente || {});
+    const denunciadoRaw = Array.isArray(disciplinableFuente) ? (disciplinableFuente[0] || {}) : (disciplinableFuente || {});
 
     return {
       ...raw,
@@ -2119,7 +2123,8 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
   const handleCrearNoticia = async (data: any) => {
     const denuncianteFromForm = data.denunciantes?.[0] || {};
-    const denunciadoFromForm = data.denunciado || {};
+    const disciplinablesFromForm = Array.isArray(data.disciplinable) ? data.disciplinable : [];
+    const denunciadoFromForm = disciplinablesFromForm[0] || data.denunciado || {};
 
     try {
       // Subir evidencias (si hay)
@@ -2169,16 +2174,40 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
         dependenciaDenunciado: denunciadoFromForm.dependencia || 'Por determinar',
         hechos: data.descripcionHechos || '',
         denunciante: [denunciantePayload],
-        disciplinable: [{
-          nombre: denunciadoFromForm.nombre || 'Sin denunciado',
-          cedula: denunciadoFromForm.identificacion || denunciadoFromForm.numeroIdentificacion || 'N/A',
-          cargo: denunciadoFromForm.cargo,
-        }],
+        disciplinable: disciplinablesFromForm.length > 0
+          ? disciplinablesFromForm.map((d: any) => ({
+            nombre: d.nombre || 'Sin denunciado',
+            cedula: d.identificacion || d.numeroIdentificacion || 'N/A',
+            cargo: d.cargo,
+            dependencia: d.dependencia
+          }))
+          : [{
+            nombre: denunciadoFromForm.nombre || 'Sin denunciado',
+            cedula: denunciadoFromForm.identificacion || denunciadoFromForm.numeroIdentificacion || 'N/A',
+            cargo: denunciadoFromForm.cargo,
+            dependencia: denunciadoFromForm.dependencia
+          }],
         adjuntos: urls,
       };
 
       const apiNoticia = await disciplinaryService.radicarNoticia(payload as any);
-      const nuevaNoticia = normalizeNoticia(apiNoticia);
+      let nuevaNoticia = normalizeNoticia(apiNoticia);
+
+      // Si el backend no devuelve el disciplinable, usar el que viene del formulario
+      if (!nuevaNoticia.denunciado?.nombre || nuevaNoticia.denunciado.nombre.startsWith('Sin')) {
+        const firstDisc = disciplinablesFromForm[0] || payload.disciplinable?.[0];
+        if (firstDisc) {
+          nuevaNoticia = normalizeNoticia({
+            ...nuevaNoticia,
+            denunciado: {
+              nombre: firstDisc.nombre,
+              tipoIdentificacion: 'CC',
+              numeroIdentificacion: firstDisc.cedula || firstDisc.identificacion || firstDisc.numeroIdentificacion || 'N/A',
+              cargo: firstDisc.cargo
+            }
+          });
+        }
+      }
 
       setItems(prev => {
         const updated = [...prev, nuevaNoticia];

@@ -325,10 +325,17 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
   const handleSave = () => {
     if (!validateStep4()) return;
 
+    // Si no usaron el botón "Agregar Denunciado", toma el denunciado del formulario principal
+    const disciplinables = denunciados.length > 0
+      ? denunciados
+      : (formData.denunciado?.nombre || formData.denunciado?.identificacion)
+        ? [{ ...formData.denunciado, id: Date.now().toString() }]
+        : [];
+
     const dataToSave = {
       ...formData,
       denunciantes,
-      disciplinable: denunciados, // Map 'denunciados' from UI to 'disciplinable' array in backend
+      disciplinable: disciplinables, // Map 'denunciados' from UI to 'disciplinable' array en backend
 
       archivosAdjuntos,
       fechaRegistro: new Date().toISOString(),
