@@ -65,7 +65,7 @@ interface Proceso {
   denunciante: Persona;
   denunciado: Persona;
   cedula: string; // Mantener por compatibilidad
-  etapaActual: 'Recepción' | 'Valoración' | 'Indagación Previa' | 'Investigación' | 'Evaluación' | 'Juzgamiento' | 'Segunda Instancia';
+  etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
   estadoActual: string;
   profesionalAsignado: Persona;
   semaforo: 'verde' | 'amarillo' | 'rojo';
@@ -218,7 +218,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '77385960'
     },
     cedula: '77385960',
-    etapaActual: 'Indagación Previa',
+    etapaActual: 'Indagación',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'María García Londoño',
@@ -265,6 +265,102 @@ const PROCESOS_MOCK: Proceso[] = [
     pendienteAprobacion: false,
     ultimaActuacion: 'Proceso creado',
     fechaCreacion: '2025-01-28',
+    tipo: 'proceso'
+  },
+  {
+    id: 'p4',
+    numeroProceso: 'PD-2025-0045',
+    noticiaOrigen: 'ND-2025-0201',
+    denunciante: {
+      nombre: 'Sandra Milena Castro',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '52445566'
+    },
+    denunciado: {
+      nombre: 'Jorge Luis Ramírez',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '79556677'
+    },
+    cedula: '79556677',
+    etapaActual: 'Investigación',
+    estadoActual: 'En Gestión',
+    profesionalAsignado: {
+      nombre: 'María García Londoño',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '52345678'
+    },
+    semaforo: 'amarillo',
+    diasRestantes: 15,
+    porcentajeTiempo: 75,
+    borradores: [],
+    documentos: [],
+    pendienteAprobacion: false,
+    ultimaActuacion: 'Pruebas recaudadas',
+    fechaCreacion: '2024-11-20',
+    tipo: 'proceso'
+  },
+  {
+    id: 'p5',
+    numeroProceso: 'PD-2024-0892',
+    noticiaOrigen: 'ND-2024-0654',
+    denunciante: {
+      nombre: 'Ricardo Parra Moreno',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '80998877'
+    },
+    denunciado: {
+      nombre: 'Patricia Gómez Díaz',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '52778899'
+    },
+    cedula: '52778899',
+    etapaActual: 'Juzgamiento',
+    estadoActual: 'En Gestión',
+    profesionalAsignado: {
+      nombre: 'Juan Carlos Pérez Rodríguez',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '80456789'
+    },
+    semaforo: 'verde',
+    diasRestantes: 30,
+    porcentajeTiempo: 40,
+    borradores: [],
+    documentos: [],
+    pendienteAprobacion: false,
+    ultimaActuacion: 'Audiencia programada',
+    fechaCreacion: '2024-10-05',
+    tipo: 'proceso'
+  },
+  {
+    id: 'p6',
+    numeroProceso: 'PD-2024-0765',
+    noticiaOrigen: 'ND-2024-0543',
+    denunciante: {
+      nombre: 'Liliana Torres Vega',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '52334455'
+    },
+    denunciado: {
+      nombre: 'Fernando Castro Ruiz',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '79223344'
+    },
+    cedula: '79223344',
+    etapaActual: 'Fallo',
+    estadoActual: 'En Gestión',
+    profesionalAsignado: {
+      nombre: 'Carlos Mendoza Ramírez',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: '1015678901'
+    },
+    semaforo: 'verde',
+    diasRestantes: 8,
+    porcentajeTiempo: 20,
+    borradores: [],
+    documentos: [],
+    pendienteAprobacion: true,
+    ultimaActuacion: 'Elaboración de fallo',
+    fechaCreacion: '2024-09-15',
     tipo: 'proceso'
   }
 ];
@@ -856,13 +952,12 @@ function VistaLista({
             onChange={(e) => setFiltroEtapa(e.target.value)}
           >
             <option value="todos">Todas las etapas</option>
-            <option value="Recepción">Recepción (Noticias)</option>
-            <option value="Valoración">Valoración</option>
-            <option value="Indagación Previa">Indagación Previa</option>
-            <option value="Investigación">Investigación</option>
-            <option value="Evaluación">Evaluación</option>
-            <option value="Juzgamiento">Juzgamiento</option>
-            <option value="Segunda Instancia">Segunda Instancia</option>
+            <option value="Recepción">Recepción (Noticias) - 3 días</option>
+            <option value="Valoración">Valoración - 10 días</option>
+            <option value="Indagación">Indagación - 40 días</option>
+            <option value="Investigación">Investigación - 60 días</option>
+            <option value="Juzgamiento">Juzgamiento - 50 días</option>
+            <option value="Fallo">Fallo - 10 días</option>
           </select>
         </div>
       </Card>
@@ -1359,6 +1454,7 @@ interface ColumnaKanbanProps {
   items: Item[];
   color: string;
   icono: React.ReactNode;
+  diasEstimados?: number;
   onDrop: (item: Item, nuevaEtapa: string) => void;
   onConvertirNoticia: (noticia: Noticia) => void;
   onDevolverNoticia: (noticia: Noticia) => void;
@@ -1384,6 +1480,7 @@ function ColumnaKanban({
   items, 
   color, 
   icono,
+  diasEstimados,
   onDrop, 
   onConvertirNoticia,
   onDevolverNoticia,
@@ -1586,9 +1683,17 @@ function ColumnaKanban({
               >
                 {icono}
               </div>
-              <h3 className={`font-black ${isMobile ? 'text-xs' : 'text-sm'} text-gray-800`}>
-                {etapa}
-              </h3>
+              <div className="flex-1 min-w-0">
+                <h3 className={`font-black ${isMobile ? 'text-xs' : 'text-sm'} text-gray-800`}>
+                  {etapa}
+                </h3>
+                {diasEstimados && (
+                  <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                    <Clock className="w-2.5 h-2.5" />
+                    {diasEstimados} días
+                  </p>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Badge
@@ -1736,13 +1841,12 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   };
 
   const etapas = [
-    { nombre: 'Recepción', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
-    { nombre: 'Valoración', color: '#6B7280', icono: <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
-    { nombre: 'Indagación Previa', color: '#6B7280', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
-    { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} /> },
-    { nombre: 'Evaluación', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
-    { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> },
-    { nombre: 'Segunda Instancia', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} /> }
+    { nombre: 'Recepción', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 3 },
+    { nombre: 'Valoración', color: '#6B7280', icono: <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
+    { nombre: 'Indagación', color: '#6B7280', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 40 },
+    { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />, diasEstimados: 60 },
+    { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 50 },
+    { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 }
   ];
 
   // ==================== HANDLERS ====================
@@ -2251,6 +2355,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 items={items}
                 color={etapa.color}
                 icono={etapa.icono}
+                diasEstimados={etapa.diasEstimados}
                 onDrop={handleDropItem}
                 onConvertirNoticia={handleConvertirNoticia}
                 onDevolverNoticia={handleDevolverNoticia}

@@ -790,8 +790,8 @@ export function ExpedienteElectronico() {
       return;
     }
 
-    toast.info('Generando Expediente PDF...', {
-      description: 'Por favor espere mientras se genera el documento'
+    const toastId = toast.loading('Generando Expediente PDF...', {
+      description: '📋 Recopilando información del proceso\n📄 Generando índice electrónico\n⏳ Por favor espere...'
     });
 
     const doc = new jsPDF();
@@ -820,17 +820,35 @@ export function ExpedienteElectronico() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.text(`Número de Proceso: ${procesoSeleccionado?.numero || 'N/A'}`, 14, 105);
-    doc.text(`Denunciado: ${procesoSeleccionado?.denunciado || 'N/A'}`, 14, 113);
-    doc.text(`Etapa Actual: ${procesoSeleccionado?.etapaActual || 'N/A'}`, 14, 121);
-    doc.text(`Estado: ${procesoSeleccionado?.estado || 'N/A'}`, 14, 129);
-    doc.text(`Fecha de Inicio: ${procesoSeleccionado?.fechaInicio || 'N/A'}`, 14, 137);
+    doc.text(`Etapa Actual: ${procesoSeleccionado?.etapaActual || procesoSeleccionado?.etapa || 'N/A'}`, 14, 113);
+    doc.text(`Estado: ${procesoSeleccionado?.estado || procesoSeleccionado?.estadoActual || 'En Gestión'}`, 14, 121);
+    doc.text(`Fecha de Inicio: ${procesoSeleccionado?.fechaInicio || procesoSeleccionado?.fechaCreacion || 'N/A'}`, 14, 129);
 
     doc.setFont('helvetica', 'bold');
-    doc.text('ESTADÍSTICAS DEL EXPEDIENTE', 14, 150);
+    doc.text('DENUNCIANTE', 14, 142);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Total de Documentos: ${metrics.totalDocumentos}`, 14, 160);
-    doc.text(`Autos: ${metrics.autos} | Evidencias: ${metrics.evidencias}`, 14, 168);
-    doc.text(`Firmados: ${metrics.firmados} | Notificados: ${metrics.notificados}`, 14, 176);
+    doc.text(`Nombre: ${procesoSeleccionado?.denunciante?.nombre || procesoSeleccionado?.denuncianteNombre || 'N/A'}`, 14, 150);
+    doc.text(`${procesoSeleccionado?.denunciante?.tipoIdentificacion || 'CC'}: ${procesoSeleccionado?.denunciante?.numeroIdentificacion || 'N/A'}`, 14, 158);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('DENUNCIADO', 14, 171);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Nombre: ${procesoSeleccionado?.denunciado?.nombre || procesoSeleccionado?.denunciadoNombre || procesoSeleccionado?.denunciado || 'N/A'}`, 14, 179);
+    doc.text(`${procesoSeleccionado?.denunciado?.tipoIdentificacion || 'CC'}: ${procesoSeleccionado?.denunciado?.numeroIdentificacion || procesoSeleccionado?.cedula || 'N/A'}`, 14, 187);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('PROFESIONAL ASIGNADO', 14, 200);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Nombre: ${procesoSeleccionado?.profesionalAsignado?.nombre || procesoSeleccionado?.profesional || 'N/A'}`, 14, 208);
+    doc.text(`${procesoSeleccionado?.profesionalAsignado?.tipoIdentificacion || 'CC'}: ${procesoSeleccionado?.profesionalAsignado?.numeroIdentificacion || 'N/A'}`, 14, 216);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('ESTADÍSTICAS DEL EXPEDIENTE', 14, 229);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Total de Documentos: ${metrics.totalDocumentos}`, 14, 239);
+    doc.text(`Autos: ${metrics.autos} | Evidencias: ${metrics.evidencias} | Oficios: ${metrics.oficios}`, 14, 247);
+    doc.text(`Actas: ${metrics.actas} | Notificaciones: ${metrics.notificaciones}`, 14, 255);
+    doc.text(`Firmados: ${metrics.firmados} | Notificados: ${metrics.notificados}`, 14, 263);
 
     doc.setFontSize(8);
     doc.setTextColor(128, 128, 128);
@@ -940,8 +958,10 @@ export function ExpedienteElectronico() {
     doc.save(nombreArchivo);
 
     setTimeout(() => {
+      toast.dismiss(toastId);
       toast.success('¡Expediente Exportado Exitosamente!', {
-        description: `${nombreArchivo} - ${documentos.length} documentos incluidos • ${totalPages} páginas generadas`
+        description: `${nombreArchivo}\n📄 ${documentos.length} documentos incluidos\n📑 ${totalPages} páginas generadas\n✅ Incluye índice electrónico y detalles completos`,
+        duration: 5000
       });
     }, 500);
   };
@@ -1115,6 +1135,8 @@ export function ExpedienteElectronico() {
     totalDocumentos: documentos.length,
     autos: documentos.filter(d => d.tipo === 'auto').length,
     evidencias: documentos.filter(d => d.tipo === 'evidencia').length,
+    oficios: documentos.filter(d => d.tipo === 'oficio').length,
+    actas: documentos.filter(d => d.tipo === 'acta').length,
     notificaciones: documentos.filter(d => d.tipo === 'notificacion').length,
     firmados: documentos.filter(d => d.metadatos.firmado).length,
     notificados: documentos.filter(d => d.metadatos.notificado).length
