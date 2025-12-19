@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
-import { GestionAuditoriasKanban } from "./GestionAuditoriasKanban";  // ✅ MÓDULO 1 CONSOLIDADO
+import { GestionAuditoriasKanbanSimple as GestionAuditoriasKanban } from "./GestionAuditoriasKanbanSimple";  // ✅ MÓDULO 1 CONSOLIDADO (Versión Simple)
 import { PlanificacionAnualIntegrada } from "./PlanificacionAnualIntegrada";  // ✅ MÓDULO 2 CONSOLIDADO
 import { HallazgosYMejoramientoCompleto } from "./HallazgosYMejoramientoCompleto";  // ✅ MÓDULO 3 CONSOLIDADO
 import { InformesYDocumentalCompleto } from "./InformesYDocumentalCompleto";  // ✅ MÓDULO 4 CONSOLIDADO

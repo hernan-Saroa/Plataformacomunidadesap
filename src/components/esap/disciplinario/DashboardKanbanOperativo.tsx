@@ -68,6 +68,7 @@ interface Proceso {
   etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
   estadoActual: string;
   profesionalAsignado: Persona;
+  profesionalAsignadoId?: string; // ID del profesional para filtrado
   semaforo: 'verde' | 'amarillo' | 'rojo';
   diasRestantes: number;
   porcentajeTiempo: number;
@@ -193,6 +194,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '80456789'
     },
+    profesionalAsignadoId: '1',
     semaforo: 'amarillo',
     diasRestantes: 3,
     porcentajeTiempo: 70,
@@ -225,6 +227,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '52345678'
     },
+    profesionalAsignadoId: '2',
     semaforo: 'verde',
     diasRestantes: 45,
     porcentajeTiempo: 25,
@@ -257,6 +260,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '1015678901'
     },
+    profesionalAsignadoId: '3',
     semaforo: 'verde',
     diasRestantes: 28,
     porcentajeTiempo: 10,
@@ -289,6 +293,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '52345678'
     },
+    profesionalAsignadoId: '2',
     semaforo: 'amarillo',
     diasRestantes: 15,
     porcentajeTiempo: 75,
@@ -321,6 +326,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '80456789'
     },
+    profesionalAsignadoId: '1',
     semaforo: 'verde',
     diasRestantes: 30,
     porcentajeTiempo: 40,
@@ -353,6 +359,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '1015678901'
     },
+    profesionalAsignadoId: '3',
     semaforo: 'verde',
     diasRestantes: 8,
     porcentajeTiempo: 20,
@@ -1788,7 +1795,13 @@ function ColumnaKanban({
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
-export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigateToExpediente?: () => void }) {
+export function DashboardKanbanOperativo({ 
+  onNavigateToExpediente,
+  filtroProfesionalId 
+}: { 
+  onNavigateToExpediente?: () => void;
+  filtroProfesionalId?: string | null;
+}) {
   const [items, setItems] = useState<Item[]>([...NOTICIAS_MOCK, ...PROCESOS_MOCK]);
   const [modalActivo, setModalActivo] = useState<ModalType>(null);
   const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
@@ -2123,10 +2136,61 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   const procesosPendientesAprobacion = procesos.filter(p => p.pendienteAprobacion).length;
   const procesosEnTermino = procesos.filter(p => p.semaforo === 'verde').length;
 
+  // Filtrar por profesional si está activo el filtro
+  const itemsFiltrados = filtroProfesionalId 
+    ? items.filter(item => {
+        if (item.tipo === 'proceso') {
+          return (item as Proceso).profesionalAsignadoId === filtroProfesionalId;
+        }
+        return false; // No mostrar noticias cuando hay filtro de profesional
+      })
+    : items;
+
+  // Obtener nombre del profesional filtrado
+  const profesionalFiltrado = filtroProfesionalId ? (() => {
+    const profesionales = [
+      { id: '1', nombre: 'Juan Pérez Rodríguez' },
+      { id: '2', nombre: 'María Torres Gómez' },
+      { id: '3', nombre: 'Carlos Mendoza Silva' },
+      { id: '4', nombre: 'Ana González López' }
+    ];
+    return profesionales.find(p => p.id === filtroProfesionalId);
+  })() : null;
+
   // ==================== RENDER ====================
   return (
     <DndProvider backend={isTouchDevice() ? TouchBackend : HTML5Backend}>
       <div className="space-y-3 md:space-y-4">
+        {/* Banner de Filtro Activo por Profesional */}
+        {filtroProfesionalId && profesionalFiltrado && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-4 rounded-xl border-2 flex items-center justify-between gap-3"
+            style={{ background: '#E0EDFF', borderColor: '#003DA5' }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg" style={{ background: '#003DA5' }}>
+                <Users className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="font-bold text-sm" style={{ color: '#003DA5' }}>
+                  Filtrado por Profesional
+                </p>
+                <p className="text-xs" style={{ color: '#003DA5' }}>
+                  Mostrando solo los procesos de: <span className="font-bold">{profesionalFiltrado.nombre}</span>
+                </p>
+              </div>
+            </div>
+            <Badge
+              className="font-bold px-3 py-1"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              {itemsFiltrados.length} proceso{itemsFiltrados.length !== 1 ? 's' : ''}
+            </Badge>
+          </motion.div>
+        )}
+
         {/* Header Responsive Mejorado */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex-1">
@@ -2352,7 +2416,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
               <ColumnaKanban
                 key={etapa.nombre}
                 etapa={etapa.nombre}
-                items={items}
+                items={itemsFiltrados}
                 color={etapa.color}
                 icono={etapa.icono}
                 diasEstimados={etapa.diasEstimados}
@@ -2380,7 +2444,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
           </div>
         ) : (
           <VistaLista
-            items={items}
+            items={itemsFiltrados}
             onVerDetalles={handleVerDetalles}
             onAprobarBorrador={handleAprobarBorrador}
             onVerExpediente={handleVerExpediente}

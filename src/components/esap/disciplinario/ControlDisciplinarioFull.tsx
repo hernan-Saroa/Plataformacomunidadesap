@@ -308,6 +308,7 @@ function EtapasStepper({ etapaActual, porcentajeTiempo, semaforo }: {
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ControlDisciplinarioFull() {
   const [currentSection, setCurrentSection] = useState<'dashboard' | 'noticias' | 'aprobacion' | 'expediente' | 'terminos' | 'profesionales' | 'config'>('dashboard');
+  const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
 
   const menuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5' },
@@ -324,6 +325,11 @@ export function ControlDisciplinarioFull() {
     return item?.label || 'Control Interno Disciplinario';
   };
 
+  const handleVerProcesosProfesional = (profesional: any) => {
+    setFiltroProfesional(profesional.id);
+    setCurrentSection('dashboard');
+  };
+
   return (
     <ModuleLayout
       moduleName="CONTROL INTERNO DISCIPLINARIO"
@@ -336,12 +342,12 @@ export function ControlDisciplinarioFull() {
       breadcrumb={['Backoffice', 'Control Interno Disciplinario', getTitleForSection()]}
     >
       {/* Contenido Principal */}
-      {currentSection === 'dashboard' && <DashboardKanbanOperativo onNavigateToExpediente={() => setCurrentSection('expediente')} />}
+      {currentSection === 'dashboard' && <DashboardKanbanOperativo onNavigateToExpediente={() => setCurrentSection('expediente')} filtroProfesionalId={filtroProfesional} />}
       {currentSection === 'noticias' && <GestionNoticias />}
       {currentSection === 'aprobacion' && <RevisionAprobacionJefe />}
       {currentSection === 'expediente' && <ExpedienteElectronico />}
       {currentSection === 'terminos' && <GestionTerminosAlertas />}
-      {currentSection === 'profesionales' && <GestionProfesionales />}
+      {currentSection === 'profesionales' && <GestionProfesionales onVerProcesos={handleVerProcesosProfesional} />}
       {currentSection === 'config' && <ModuloConfiguracion />}
     </ModuleLayout>
   );

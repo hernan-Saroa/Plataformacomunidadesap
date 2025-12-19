@@ -736,7 +736,7 @@ function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => v
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
-export function GestionProfesionales() {
+export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profesional: Profesional) => void }) {
   const [profesionales, setProfesionales] = useState(PROFESIONALES_DATA);
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
@@ -1088,12 +1088,7 @@ export function GestionProfesionales() {
               setProfesionalEditar(prof);
               setShowModal('formulario');
             }}
-            onVerProcesos={(prof) => {
-              toast.info(`Procesos de ${prof.nombre}`, {
-                description: `${prof.procesosAsignados} procesos asignados • ${prof.procesosAlDia} al día • ${prof.procesosEnRiesgo} en riesgo • ${prof.procesosVencidos} vencidos`,
-                duration: 5000
-              });
-            }}
+            onVerProcesos={onVerProcesos}
           />
         )}
         {showModal === 'formulario' && (

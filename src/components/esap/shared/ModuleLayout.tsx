@@ -4,9 +4,9 @@
  * Garantiza coherencia visual y experiencia de usuario consistente
  */
 
-import { useState, ReactNode } from 'react';
+import { useState, ReactNode, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Menu, X } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 
@@ -52,15 +52,41 @@ export function ModuleLayout({
   children,
   initialSidebarCollapsed = false
 }: ModuleLayoutProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarCollapsed);
+  // Detectar tamaño de pantalla
+  const [windowWidth, setWindowWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 1024
+  );
+  
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isMobile = windowWidth < 768;
+  const isSmallTablet = windowWidth >= 768 && windowWidth < 1024;
+  
+  // Auto-colapsar en pantallas pequeñas (tablets)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    initialSidebarCollapsed || isSmallTablet
+  );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Auto-colapsar cuando la pantalla es pequeña
+  useEffect(() => {
+    if (isSmallTablet && !sidebarCollapsed) {
+      setSidebarCollapsed(true);
+    }
+  }, [isSmallTablet]);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#F9FAFB' }}>
       {/* SIDEBAR UNIFICADO */}
       <motion.aside
         initial={false}
-        animate={{ width: sidebarCollapsed ? 80 : 280 }}
+        animate={{ 
+          width: sidebarCollapsed ? 64 : (isSmallTablet ? 200 : 280)
+        }}
         transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
         className="hidden md:flex flex-shrink-0 border-r-2 flex-col"
         style={{ 
