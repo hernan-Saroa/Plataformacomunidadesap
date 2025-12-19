@@ -4,7 +4,7 @@
  * NOTA: Los usuarios se crean ÚNICAMENTE desde Administración de Personas
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, Plus, Filter, Download, Eye, Edit, Trash2, MoreVertical,
@@ -15,6 +15,8 @@ import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
+
+import { disciplinaryService, DisciplinaryProcess } from '../../../services/api/disciplinary.service';
 
 interface Profesional {
   id: string;
@@ -737,12 +739,49 @@ function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => v
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function GestionProfesionales() {
-  const [profesionales, setProfesionales] = useState(PROFESIONALES_DATA);
+  const [profesionales, setProfesionales] = useState<Profesional[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState<Profesional | null>(null);
   const [showModal, setShowModal] = useState<'detalle' | 'formulario' | null>(null);
   const [profesionalEditar, setProfesionalEditar] = useState<Profesional | undefined>();
+
+  // Cargar profesionales del backend
+  const fetchProfesionales = async () => {
+    try {
+      setLoading(true);
+      const data = await disciplinaryService.getProfesionales();
+      // Mapear los datos del backend al formato del frontend
+      const mappedData = data.map((p: any) => ({
+        id: p.id,
+        nombre: p.nombreCompleto,
+        cargo: p.cargo,
+        especialidad: p.especialidad || 'General',
+        email: p.email,
+        telefono: p.telefono || 'N/A',
+        procesosAsignados: p.procesosAsignados || 0,
+        capacidadMaxima: p.capacidadMaxima || 10,
+        procesosVencidos: 0,
+        procesosEnRiesgo: 0,
+        procesosAlDia: p.procesosAsignados || 0, // Simplificación inicial
+        fechaIngreso: new Date(p.createdAt).toLocaleDateString(),
+        estado: (p.estado || 'activo').toLowerCase(),
+        tipoContrato: p.tipoContrato || 'Contratista',
+        territorial: p.territorial || 'Nacional'
+      }));
+      setProfesionales(mappedData);
+    } catch (error) {
+      console.error('Error fetching professionals:', error);
+      toast.error('Error al cargar profesionales');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProfesionales();
+  }, []);
 
   const profesionalesFiltrados = profesionales.filter(p => {
     const matchSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
