@@ -14,7 +14,9 @@ import {
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+
+
 
 import { disciplinaryService, DisciplinaryProcess } from '../../../services/api/disciplinary.service';
 
@@ -443,13 +445,63 @@ function ModalFormularioProfesional({ onClose, profesional, onSuccess }: { onClo
   const [territorial, setTerritorial] = useState(profesional?.territorial || '');
   const [candidatos, setCandidatos] = useState<any[]>([]);
   const [loadingCandidatos, setLoadingCandidatos] = useState(false);
+  const [configCapacidades, setConfigCapacidades] = useState<Record<string, number>>({});
+  const [limiteDetectado, setLimiteDetectado] = useState<number | null>(null);
 
-  // Cargar candidatos disponibles al abrir el modal (solo si es nuevo profesional)
+  // Cargar configuración global y candidatos
   useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const config = await disciplinaryService.getGlobalConfig();
+        if (config && config.roleCapacities) {
+          setConfigCapacidades(config.roleCapacities);
+        }
+      } catch (err) {
+        console.error('Error loading config:', err);
+      }
+    };
+    loadConfig();
+
     if (!profesional) {
       fetchCandidatos();
     }
   }, [profesional]);
+
+  // Efecto para actualizar capacidad cuando cambia el usuario seleccionado
+  useEffect(() => {
+    if (usuarioSeleccionado && Object.keys(configCapacidades).length > 0) {
+      const cargoNormalizado = usuarioSeleccionado.cargo
+        .toLowerCase()
+        .replace(/ /g, '_')
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Remove accents just in case
+
+      // Try exact match, or partial match, or fallback
+      let limit = 10; // Default fallback
+
+      // Check direct key match (e.g. 'profesional_universitario')
+      if (configCapacidades[cargoNormalizado]) {
+        limit = configCapacidades[cargoNormalizado];
+      } else {
+        // Try finding a key that is contained in the cargo string
+        const matchingKey = Object.keys(configCapacidades).find(key =>
+          cargoNormalizado.includes(key) || key.includes(cargoNormalizado)
+        );
+        if (matchingKey) {
+          limit = configCapacidades[matchingKey];
+        } else {
+          // Check 'especializado', 'universitario' specifics
+          if (cargoNormalizado.includes('especializado')) limit = configCapacidades['especializado'] || 12;
+          else if (cargoNormalizado.includes('universitario')) limit = configCapacidades['universitario'] || 10;
+          else if (cargoNormalizado.includes('senior')) limit = configCapacidades['senior'] || 15;
+          else if (cargoNormalizado.includes('coordinador')) limit = configCapacidades['coordinador'] || 8;
+        }
+      }
+
+      setCapacidadMaxima(limit);
+      setLimiteDetectado(limit);
+      toast.info(`Capacidad ajustada a ${limit} según cargo: ${usuarioSeleccionado.cargo}`);
+    }
+  }, [usuarioSeleccionado, configCapacidades]);
 
   const fetchCandidatos = async () => {
     try {
@@ -613,7 +665,7 @@ function ModalFormularioProfesional({ onClose, profesional, onSuccess }: { onClo
                             <div className="flex items-center gap-3">
                               <Avatar>
                                 <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                                  {usuario.nombre.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                                  {usuario.nombre.split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
@@ -749,6 +801,11 @@ function ModalFormularioProfesional({ onClose, profesional, onSuccess }: { onClo
                 </div>
                 <p className="text-xs mt-2" style={{ color: '#9CA3AF' }}>
                   Basado en el cargo del usuario y la configuración establecida en el módulo de Configuración
+                  {limiteDetectado && (
+                    <span className="block mt-1 font-bold text-orange-600">
+                      * El límite configurado para este cargo es de {limiteDetectado} procesos.
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
