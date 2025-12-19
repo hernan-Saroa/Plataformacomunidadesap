@@ -60,6 +60,12 @@ interface Profesional {
   capacidadMaxima: number;
 }
 
+// Ensure mock compatibility if needed, but prefer real data
+const PROFESIONALES_MOCK_FALLBACK: Profesional[] = [
+  { id: '1', nombre: 'Juan Carlos Pérez', cargo: 'Profesional Especializado', email: 'juan.perez@esap.edu.co', procesosAsignados: 8, capacidadMaxima: 12 },
+  { id: '2', nombre: 'María Torres Silva', cargo: 'Profesional Universitario', email: 'maria.torres@esap.edu.co', procesosAsignados: 6, capacidadMaxima: 10 }
+];
+
 interface AccionAuditoria {
   id: string;
   tipo: 'creacion' | 'devolucion' | 'asignacion' | 'conversion' | 'edicion';
@@ -392,10 +398,11 @@ function ModalDevolver({ noticia, onClose, onConfirm }: {
 }
 
 // ==================== MODAL ASIGNAR ====================
-function ModalAsignar({ noticia, onClose, onConfirm }: {
+function ModalAsignar({ noticia, onClose, onConfirm, profesionales }: {
   noticia: NoticiaDisciplinaria;
   onClose: () => void;
   onConfirm: (profesionalId: string, observaciones: string, convertirAProceso: boolean) => void;
+  profesionales: Profesional[];
 }) {
   const [profesionalId, setProfesionalId] = useState('');
   const [observaciones, setObservaciones] = useState('');
@@ -410,7 +417,7 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
     onConfirm(profesionalId, observaciones, convertirAProceso);
   };
 
-  const profesionalSeleccionado = PROFESIONALES_MOCK.find(p => p.id === profesionalId);
+  const profesionalSeleccionado = profesionales.find(p => p.id === profesionalId);
   const porcentajeCarga = profesionalSeleccionado
     ? (profesionalSeleccionado.procesosAsignados / profesionalSeleccionado.capacidadMaxima) * 100
     : 0;
@@ -462,7 +469,7 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
             </label>
 
             <div className="grid gap-3">
-              {PROFESIONALES_MOCK.map((prof) => {
+              {profesionales.map((prof) => {
                 const carga = (prof.procesosAsignados / prof.capacidadMaxima) * 100;
                 const isSelected = profesionalId === prof.id;
 
@@ -478,7 +485,7 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
                     <div className="flex items-center gap-4">
                       <Avatar className="w-12 h-12 border-2 border-white shadow-sm">
                         <AvatarFallback style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                          {prof.nombre.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                          {(prof.nombre || 'NN').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
 
@@ -770,28 +777,75 @@ export function GestionNoticias() {
   const [showRemitirCompetenciaModal, setShowRemitirCompetenciaModal] = useState(false);
   const [noticiaSeleccionada, setNoticiaSeleccionada] = useState<NoticiaDisciplinaria | null>(null);
   const [noticias, setNoticias] = useState<NoticiaDisciplinaria[]>([]);
+  const [profesionales, setProfesionales] = useState<Profesional[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [selectedNewsForAssignment, setSelectedNewsForAssignment] = useState<NoticiaDisciplinaria | null>(null);
   const [selectedNewsForReturn, setSelectedNewsForReturn] = useState<string | null>(null);
   const [selectedNewsForDetail, setSelectedNewsForDetail] = useState<NoticiaDisciplinaria | null>(null);
 
-  const loadNoticias = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const data = await disciplinaryService.getAllNoticias();
-      console.log('📊 Datos de noticias:', data);
-      setNoticias(data);
+      const [noticiasData, profesionalesData] = await Promise.all([
+        disciplinaryService.getAllNoticias(),
+        disciplinaryService.getProfesionales()
+      ]);
+
+      const getFrontendStatus = (backendStatus: string): any => {
+        const s = (backendStatus || '').toUpperCase();
+        if (s === 'RADICADA') return 'pendiente';
+        if (s === 'EN_VALORACION') return 'en-valoracion';
+        if (s === 'DEVUELTA' || s === 'DEVUELTO') return 'devuelto';
+        if (s === 'ASIGNADA' || s === 'ASIGNADO') return 'asignado';
+        if (s === 'CONVERTIDO_PROCESO') return 'convertido-proceso';
+        return 'pendiente';
+      };
+
+      const mappedNews: NoticiaDisciplinaria[] = noticiasData.map((news) => ({
+        id: news.id,
+        numeroRadicado: news.radicado,
+        origen: news.origen as any,
+        fechaQueja: news.createdAt,
+        territorial: news.territorial,
+        disciplinable: Array.isArray(news.disciplinable) ? news.disciplinable : (news.disciplinable ? [news.disciplinable] : []),
+        denunciante: Array.isArray(news.denunciante) ? news.denunciante : (news.denunciante ? [news.denunciante] : []),
+        fechaRecepcion: news.fechaRecepcion?.toString() || news.createdAt,
+        estado: getFrontendStatus(news.estado),
+        estadoLabel: (news.estado || 'Pendiente') as any,
+        etapa: 'En Evaluación',
+        diasTranscurridos: 0,
+        radicador: 'Sistema',
+        fechaRegistro: news.createdAt,
+        conductas: [],
+        descripcion: news.hechos,
+        historialAuditoria: []
+      }));
+
+      setNoticias(mappedNews);
+
+      const mappedProfesionales: Profesional[] = (profesionalesData || []).map((p: any) => ({
+        id: p.id,
+        nombre: p.nombreCompleto || p.nombre || 'Sin Nombre',
+        cargo: p.cargo || 'Sin Cargo',
+        email: p.email || '',
+        procesosAsignados: p.procesosAsignados || 0,
+        capacidadMaxima: p.capacidadMaxima || 10
+      }));
+
+      setProfesionales(mappedProfesionales.length > 0 ? mappedProfesionales : PROFESIONALES_MOCK_FALLBACK);
+
     } catch (error) {
       console.error(error);
-      toast.error('Error al cargar noticias');
+      toast.error('Error al cargar datos');
+      setProfesionales(PROFESIONALES_MOCK_FALLBACK);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadNoticias();
+    loadData();
   }, []);
 
   // const handleDevolver = (id: string) => {
@@ -807,30 +861,68 @@ export function GestionNoticias() {
     const numeroSecuencial = (noticias.length + 1).toString().padStart(4, '0');
     const numeroRadicado = `ND-${year}-${numeroSecuencial}`;
 
-    const nuevaNoticia: NoticiaDisciplinaria = {
-      id: Date.now().toString(),
-      numeroRadicado,
-      origen: data.origen,
-      fechaQueja: data.fechaQueja,
-      territorial: data.territorial,
-      denunciado: data.disciplinable,
-      estado: 'pendiente',
-      estadoLabel: 'Pendiente',
-      etapa: 'Pendiente de Revisión',
-      diasTranscurridos: 0,
-      radicador: 'Usuario Actual',
-      fechaRegistro: new Date().toISOString(),
-      conductas: data.conductasSeleccionadas,
-      descripcion: data.descripcionHechos,
-      historialAuditoria: [
-        {
-          id: '1',
-          tipo: 'creacion',
-          usuario: 'Usuario Actual',
-          fecha: new Date().toISOString(),
-          observaciones: 'Noticia radicada inicialmente'
+    const handleCreateNoticia = async (data: any) => {
+      try {
+        setLoading(true);
+
+        const uploadedUrls: string[] = [];
+        if (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) {
+          toast.info('Subiendo archivos adjuntos...');
+          const uploadPromises = data.archivosAdjuntos.map((file: File) =>
+            disciplinaryService.uploadFile(file)
+          );
+          const results = await Promise.all(uploadPromises);
+          results.forEach(res => uploadedUrls.push(res.url));
         }
-      ]
+
+        const origenMap: Record<string, string> = {
+          'Anónimo': 'ANONIMO',
+          'Quejoso': 'QUEJOSO',
+          'Informante': 'QUEJOSO',
+          'De oficio': 'OFICIO',
+          'Remisión por competencia': 'REMISION'
+        };
+
+        const denunciantesMapped = (data.denunciantes || []).map((d: any) => ({
+          nombre: d.nombre,
+          cedula: d.identificacion,
+          email: d.correo,
+          cargo: d.cargo,
+          telefono: d.telefono,
+          direccion: d.direccion
+        }));
+
+        const disciplinablesMapped = (data.disciplinable || []).map((d: any) => ({
+          nombre: d.nombre,
+          cedula: d.identificacion,
+          cargo: d.cargo,
+          dependencia: d.dependencia || d.cargo // Fallback
+        }));
+
+        const createDto = {
+          origen: origenMap[data.origen] || 'ANONIMO',
+          territorial: data.territorial,
+          dependenciaDenunciado: data.dependenciaDenunciado || disciplinablesMapped[0]?.dependencia || 'Por determinar',
+          hechos: data.descripcionHechos,
+          denunciante: denunciantesMapped,
+          disciplinable: disciplinablesMapped,
+          adjuntos: uploadedUrls
+        };
+
+        console.log('📝 Sending payload:', createDto);
+        await disciplinaryService.radicarNoticia(createDto);
+
+        toast.success('Noticia enviada con éxito');
+
+        // Reload news to get the server-generated fields
+        await loadData();
+        setShowCreateModal(false);
+      } catch (error) {
+        console.error('Error creating news:', error);
+        toast.error('Error al crear la noticia. Verifique los datos.');
+      } finally {
+        setLoading(false);
+      }
     };
 
     setNoticias([nuevaNoticia, ...noticias]);
@@ -842,6 +934,45 @@ export function GestionNoticias() {
     setShowCreateModal(false);
   };
 
+  const handleAsignar = async (profesionalId: string, observaciones: string, convertirAProceso: boolean) => {
+    if (!noticiaSeleccionada) return;
+
+    try {
+      const profesional = profesionales.find(p => p.id === profesionalId);
+      if (!profesional) {
+        toast.error('Profesional no encontrado');
+        return;
+      }
+
+      setLoading(true);
+
+      const assignDto = {
+        newsId: noticiaSeleccionada.id,
+        abogadoId: profesional.id,
+        abogadoNombre: profesional.nombre
+      };
+
+      console.log('Asignando noticia:', assignDto);
+      await disciplinaryService.asignarProceso(assignDto);
+
+      toast.success('Noticia Asignada y Procesada', {
+        description: `Se ha asignado a ${profesional.nombre} y generado el proceso correspondiente.`
+      });
+
+      await loadData();
+
+      setShowAsignacionModal(false);
+      setNoticiaSeleccionada(null);
+
+    } catch (error) {
+      console.error('Error al asignar:', error);
+      toast.error('Error al asignar la noticia', {
+        description: 'No se pudo completar la asignación. Intente nuevamente.'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
   const handleDevolver = (observaciones: string, archivos: File[]) => {
     if (!noticiaSeleccionada) return;
 
@@ -851,9 +982,10 @@ export function GestionNoticias() {
       usuario: 'Jefe OCID',
       fecha: new Date().toISOString(),
       observaciones,
-      archivos: archivos.map(f => f.name)
+      // archivos: archivos.map(f => f.name) // Ajustar según backend si es necesario
     };
 
+    // Lógica temporal de devolución (frontend optimista)
     setNoticias(noticias.map(n =>
       n.id === noticiaSeleccionada.id
         ? {
@@ -874,61 +1006,9 @@ export function GestionNoticias() {
     setNoticiaSeleccionada(null);
   };
 
-  const handleAsignar = (profesionalId: string, observaciones: string, convertirAProceso: boolean) => {
-    if (!noticiaSeleccionada) return;
+  // NOTE: Eliminated duplicate handleAsignar here
+  // The correct async handleAsignar is defined above at line ~884
 
-    const profesional = PROFESIONALES_MOCK.find(p => p.id === profesionalId);
-    if (!profesional) return;
-
-    const year = new Date().getFullYear();
-    const numeroSecuencial = noticiaSeleccionada.radicado.split('-')[2];
-    const procesoRadicado = `PD-${year}-${numeroSecuencial}`;
-
-    const accionAsignacion: AccionAuditoria = {
-      id: Date.now().toString(),
-      tipo: 'asignacion',
-      usuario: 'Jefe OCID',
-      fecha: new Date().toISOString(),
-      observaciones: observaciones || `Asignado a ${profesional.nombre}`,
-      profesionalAsignado: profesional.nombre
-    };
-
-    const acciones = [accionAsignacion];
-
-    if (convertirAProceso) {
-      const accionConversion: AccionAuditoria = {
-        id: (Date.now() + 1).toString(),
-        tipo: 'conversion',
-        usuario: 'Jefe OCID',
-        fecha: new Date().toISOString(),
-        observaciones: `Convertido a proceso disciplinario ${procesoRadicado}`
-      };
-      acciones.push(accionConversion);
-    }
-
-    setNoticias(noticias.map(n =>
-      n.id === noticiaSeleccionada.id
-        ? {
-          ...n,
-          estado: convertirAProceso ? 'convertido-proceso' : 'asignado',
-          estadoLabel: convertirAProceso ? 'Convertido a Proceso' : 'Asignado',
-          etapa: convertirAProceso ? `Convertido a ${procesoRadicado}` : 'Asignado a Profesional',
-          profesionalAsignado: profesional.nombre,
-          procesoAsociado: convertirAProceso ? procesoRadicado : undefined,
-          historialAuditoria: [...n.historialAuditoria, ...acciones]
-        }
-        : n
-    ));
-
-    toast.success(convertirAProceso ? 'Proceso Creado y Asignado' : 'Noticia Asignada', {
-      description: convertirAProceso
-        ? `${procesoRadicado} creado y asignado a ${profesional.nombre}. Se ha enviado notificación.`
-        : `Asignado a ${profesional.nombre}. Se ha enviado notificación.`
-    });
-
-    setShowAsignacionModal(false);
-    setNoticiaSeleccionada(null);
-  };
 
   const getEstadoBadge = (estado: string) => {
     const configs: Record<string, { bg: string; text: string; border: string }> = {
@@ -983,10 +1063,18 @@ export function GestionNoticias() {
 
   const filteredNoticias = noticias.filter(noticia => {
     console.log('🔍 Buscando:', noticia);
+    const term = searchQuery.toLowerCase();
+    const radicado = (noticia.numeroRadicado || '').toLowerCase();
+
+    // Check if any disciplinable matches
+    const matchesDisciplinable = (noticia.disciplinable || []).some(d =>
+      (d.nombre || '').toLowerCase().includes(term) ||
+      (d.cedula || '').includes(term)
+    );
+
     const matchesSearch =
-      noticia.radicado.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      noticia.disciplinable.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      noticia.disciplinable.cedula.includes(searchQuery);
+      radicado.includes(term) ||
+      matchesDisciplinable;
 
     const matchesEstado = filterEstado === 'all' || noticia.estado === filterEstado;
     const matchesOrigen = filterOrigen === 'all' || noticia.origen === filterOrigen;
@@ -1388,6 +1476,7 @@ export function GestionNoticias() {
         {showAsignacionModal && noticiaSeleccionada && (
           <ModalAsignar
             noticia={noticiaSeleccionada}
+            profesionales={profesionales}
             onClose={() => {
               setShowAsignacionModal(false);
               setNoticiaSeleccionada(null);
