@@ -73,14 +73,20 @@ export class SeedService {
   }
 
   private async seedConfigurations(): Promise<void> {
-    const stageCount = await this.stageConfigRepository.count();
-    if (stageCount === 0) {
-      await this.stageConfigRepository.save([
-        { etapa: ProcessStage.EVALUACION, diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
-        { etapa: ProcessStage.INDAGACION_PREVIA, diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
-        { etapa: ProcessStage.INVESTIGACION, diasHabiles: 60, descripcion: 'Investigación', activo: true },
-        { etapa: ProcessStage.JUZGAMIENTO, diasHabiles: 30, descripcion: 'Juzgamiento', activo: true },
-      ]);
+    const stages = [
+      { etapa: ProcessStage.RECEPCION, diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
+      { etapa: ProcessStage.EVALUACION, diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
+      { etapa: ProcessStage.INDAGACION_PREVIA, diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
+      { etapa: ProcessStage.INVESTIGACION, diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
+      { etapa: ProcessStage.JUZGAMIENTO, diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
+      { etapa: ProcessStage.FALLO, diasHabiles: 10, descripcion: 'Emisión de fallo', activo: true },
+    ];
+
+    for (const stage of stages) {
+      const exists = await this.stageConfigRepository.findOne({ where: { etapa: stage.etapa } });
+      if (!exists) {
+        await this.stageConfigRepository.save(stage);
+      }
     }
 
     const systemCount = await this.systemConfigRepository.count();
