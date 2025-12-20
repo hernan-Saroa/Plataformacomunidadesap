@@ -338,14 +338,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           }
         />
 
-        {/* Main Content */}
-        <div
-          className="transition-all duration-300 md:ml-20 lg:ml-20"
-          style={{
-            marginLeft: typeof window !== 'undefined' && window.innerWidth >= 768 
-              ? (sidebarCollapsed ? '80px' : '260px')
-              : '0px',
-          }}
+        {/* Main Content - Con margen izquierdo para el sidebar */}
+        <div 
+          className={`transition-all duration-300 ${
+            sidebarCollapsed 
+              ? 'md:ml-[80px]' 
+              : 'md:ml-[260px] lg:ml-[220px] xl:ml-[240px] 2xl:ml-[260px]'
+          }`}
         >
           {/* Top Bar */}
           <TopBar
@@ -370,7 +369,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
             currentSystem="backoffice"
           />
 
-          {/* Module Content - Con espacio superior para evitar superposición */}
+          {/* Module Content */}
           <main className="p-4 md:p-6 lg:p-8 min-h-screen">
             {renderModule()}
           </main>

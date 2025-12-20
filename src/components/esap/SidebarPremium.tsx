@@ -124,7 +124,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   useEffect(() => {
     if (currentSidebarModule && currentSidebarModule.startsWith('gestion-legal-')) {
       setExpandedMenus(prev => ({ ...prev, 'gestion-legal-menu': true }));
-      setExpandedSections(prev => ({ ...prev, 'sistema-gestion': true }));
+      setExpandedSections(prev => ({ ...prev, 'gestion-usuarios': true }));
     }
   }, [currentSidebarModule]);
 

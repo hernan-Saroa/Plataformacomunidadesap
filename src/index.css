@@ -9191,8 +9191,14 @@
   }
 
   @media (width >= 48rem) {
-    .md\:ml-20 {
-      margin-left: calc(var(--spacing) * 20);
+    .md\:ml-\[80px\] {
+      margin-left: 80px;
+    }
+  }
+
+  @media (width >= 48rem) {
+    .md\:ml-\[260px\] {
+      margin-left: 260px;
     }
   }
 
@@ -9814,8 +9820,8 @@
   }
 
   @media (width >= 64rem) {
-    .lg\:ml-20 {
-      margin-left: calc(var(--spacing) * 20);
+    .lg\:ml-\[220px\] {
+      margin-left: 220px;
     }
   }
 
@@ -10432,6 +10438,12 @@
   }
 
   @media (width >= 80rem) {
+    .xl\:ml-\[240px\] {
+      margin-left: 240px;
+    }
+  }
+
+  @media (width >= 80rem) {
     .xl\:inline {
       display: inline;
     }
@@ -10774,6 +10786,12 @@
   @media (width >= 80rem) {
     .xl\:text-\[11px\] {
       font-size: 11px;
+    }
+  }
+
+  @media (width >= 96rem) {
+    .\32 xl\:ml-\[260px\] {
+      margin-left: 260px;
     }
   }
 
