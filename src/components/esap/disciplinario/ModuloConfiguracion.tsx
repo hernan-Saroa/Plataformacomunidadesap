@@ -41,6 +41,7 @@ export function ModuloConfiguracion() {
 
   const [editandoEtapa, setEditandoEtapa] = useState<string | null>(null);
   const [nombreEditando, setNombreEditando] = useState('');
+  const [diasEditando, setDiasEditando] = useState<number>(0);
   const [editandoCargo, setEditandoCargo] = useState<string | null>(null);
   const [nombreCargoEditando, setNombreCargoEditando] = useState('');
   const [mostrarModalAgregarCargo, setMostrarModalAgregarCargo] = useState(false);
@@ -65,13 +66,32 @@ export function ModuloConfiguracion() {
       // 1. Mapear Global Config (Capacidades, Notificaciones, Alertas)
       if (globalConfig) {
         // Capacidades
+        // Capacities
         if (globalConfig.roleCapacities) {
-          const loadedCargos = Object.entries(globalConfig.roleCapacities).map(([key, value], index) => ({
-            id: (index + 1).toString(),
-            nombre: key.replace(/_/g, ' ').toUpperCase(), // 'profesional_universitario' -> 'PROFESIONAL UNIVERSITARIO'
-            capacidad: Number(value),
-            rolId: key
-          }));
+          let entries: [string, any][] = [];
+
+          // Robust check: is it an array or an object?
+          if (Array.isArray(globalConfig.roleCapacities)) {
+            // If array, we might lose keys? Or maybe it's just values.
+            // Best guess: map indices or try to salvage structure. 
+            // But honestly, it should be an object. If it's an array, it's likely corrupt or defaulted wrong.
+            // Let's filter out numeric keys if possible or just log warning.
+            console.warn('roleCapacities is an array, expected object:', globalConfig.roleCapacities);
+            // Fallback: try to see if it has named keys attached (weird JS) or just skip
+          } else {
+            entries = Object.entries(globalConfig.roleCapacities);
+          }
+
+          const loadedCargos = entries.map(([key, value], index) => {
+            // Fix: Ensure we don't display numeric keys if somehow they got in
+            const name = isNaN(Number(key)) ? key.replace(/_/g, ' ').toUpperCase() : `CARGO ${key}`;
+            return {
+              id: (index + 1).toString(),
+              nombre: name,
+              capacidad: Number(value),
+              rolId: key
+            };
+          });
           setCargos(loadedCargos);
         }
 
@@ -180,18 +200,52 @@ export function ModuloConfiguracion() {
     }
   };
 
-  const handleAgregarEtapa = () => {
+  /* MODIFIED: Persist addition immediately */
+  const handleAgregarEtapa = async () => {
     const nuevaEtapa: Etapa = {
-      id: (etapas.length + 1).toString(),
+      id: `temp-${Date.now()}`, // Temporary ID that backend will ignore
       nombre: 'NUEVA ETAPA',
       dias: 10,
       orden: etapas.length + 1
     };
-    setEtapas([...etapas, nuevaEtapa]);
+    const updatedEtapas = [...etapas, nuevaEtapa];
+    setEtapas(updatedEtapas);
+
+    try {
+      const stagesPayload = updatedEtapas.map(e => ({
+        id: e.id,
+        etapa: e.nombre,
+        diasHabiles: e.dias,
+        descripcion: `Etapa de ${e.nombre}`,
+        activo: true
+      }));
+      await disciplinaryService.updateStageConfiguration(stagesPayload);
+      toast.success('Nueva etapa agregada');
+    } catch (error) {
+      console.error('Error adding stage:', error);
+      toast.error('Error al agregar etapa');
+    }
   };
 
-  const handleEliminarEtapa = (id: string) => {
-    setEtapas(etapas.filter(etapa => etapa.id !== id));
+  /* MODIFIED: Persist deletion immediately */
+  const handleEliminarEtapa = async (id: string) => {
+    const updatedEtapas = etapas.filter(etapa => etapa.id !== id);
+    setEtapas(updatedEtapas);
+
+    try {
+      const stagesPayload = updatedEtapas.map(e => ({
+        id: e.id,
+        etapa: e.nombre,
+        diasHabiles: e.dias,
+        descripcion: `Etapa de ${e.nombre}`,
+        activo: true
+      }));
+      await disciplinaryService.updateStageConfiguration(stagesPayload);
+      toast.info('Etapa eliminada');
+    } catch (error) {
+      console.error('Error deleting stage:', error);
+      toast.error('Error al eliminar etapa');
+    }
   };
 
   const handleEditarEtapa = (id: string) => {
@@ -199,37 +253,104 @@ export function ModuloConfiguracion() {
     if (etapa) {
       setEditandoEtapa(id);
       setNombreEditando(etapa.nombre);
+      setDiasEditando(etapa.dias);
     }
   };
 
-  const handleGuardarEdicionEtapa = (id: string) => {
-    setEtapas(etapas.map(etapa => etapa.id === id ? { ...etapa, nombre: nombreEditando } : etapa));
+  /* MODIFIED: Inline save with instant backend update */
+  const handleGuardarEdicionEtapa = async (id: string) => {
+    // 1. Update local state first for responsiveness
+    // Use the explicit edit state values
+    const updatedEtapas = etapas.map(etapa => etapa.id === id ? { ...etapa, nombre: nombreEditando, dias: diasEditando } : etapa);
+    setEtapas(updatedEtapas);
     setEditandoEtapa(null);
     setNombreEditando('');
+    setDiasEditando(0);
+
+    // 2. Send to backend immediately
+    try {
+      const stagesPayload = updatedEtapas.map(e => ({
+        id: e.id, /* Send ID to allow renaming */
+        etapa: e.nombre,
+        diasHabiles: e.dias,
+        descripcion: `Etapa de ${e.nombre}`,
+        activo: true
+      }));
+
+      await disciplinaryService.updateStageConfiguration(stagesPayload);
+      toast.success('Etapa actualizada');
+    } catch (error) {
+      console.error('Error saving stage:', error);
+      toast.error('Error al guardar cambios en la etapa');
+      // Optional: revert local state on error?
+    }
   };
 
-  const handleAgregarCargo = () => {
+  /* MODIFIED: Persist new role immediately */
+  const handleAgregarCargo = async () => {
     const nuevoCargo: Cargo = {
       id: (cargos.length + 1).toString(),
       nombre: nuevoCargoNombre,
       capacidad: nuevoCargoCapacidad
     };
-    setCargos([...cargos, nuevoCargo]);
+    const updatedCargos = [...cargos, nuevoCargo];
+    setCargos(updatedCargos);
     setMostrarModalAgregarCargo(false);
     setNuevoCargoNombre('');
     setNuevoCargoCapacidad(10);
-    toast.success('Cargo agregado exitosamente', {
-      description: `${nuevoCargoNombre} con capacidad de ${nuevoCargoCapacidad} procesos`
-    });
+
+    // Save to Global Config
+    try {
+      const roleCapacities: Record<string, number> = {};
+      updatedCargos.forEach(c => {
+        const key = c.rolId || c.nombre.toLowerCase().replace(/ /g, '_');
+        roleCapacities[key] = c.capacidad;
+      });
+      const globalPayload = {
+        roleCapacities,
+        notificationSettings: notificaciones,
+        alertSettings: alertas,
+        securitySettings: { auditEnabled: true, digitalSignature: true, backupEnabled: true }
+      };
+      await disciplinaryService.updateGlobalConfig(globalPayload);
+
+      toast.success('Cargo agregado exitosamente', {
+        description: `${nuevoCargoNombre} con capacidad de ${nuevoCargoCapacidad} procesos`
+      });
+    } catch (error) {
+      console.error('Error adding role:', error);
+      toast.error('Error al guardar el nuevo cargo');
+    }
   };
 
-  const handleEliminarCargo = (id: string) => {
+  /* MODIFIED: Persist deletion immediately */
+  const handleEliminarCargo = async (id: string) => {
     const cargo = cargos.find(c => c.id === id);
-    setCargos(cargos.filter(cargo => cargo.id !== id));
+    const updatedCargos = cargos.filter(c => c.id !== id);
+    setCargos(updatedCargos);
+
     if (cargo) {
-      toast.info('Cargo eliminado', {
-        description: `${cargo.nombre} ha sido removido`
-      });
+      try {
+        const roleCapacities: Record<string, number> = {};
+        updatedCargos.forEach(c => {
+          const key = c.rolId || c.nombre.toLowerCase().replace(/ /g, '_');
+          roleCapacities[key] = c.capacidad;
+        });
+        const globalPayload = {
+          roleCapacities,
+          notificationSettings: notificaciones,
+          alertSettings: alertas,
+          securitySettings: { auditEnabled: true, digitalSignature: true, backupEnabled: true }
+        };
+        await disciplinaryService.updateGlobalConfig(globalPayload);
+
+        toast.info('Cargo eliminado', {
+          description: `${cargo.nombre} ha sido removido`
+        });
+      } catch (error) {
+        console.error('Error deleting role:', error);
+        toast.error('Error al eliminar el cargo');
+      }
     }
   };
 
@@ -241,10 +362,31 @@ export function ModuloConfiguracion() {
     }
   };
 
-  const handleGuardarEdicionCargo = (id: string) => {
-    setCargos(cargos.map(cargo => cargo.id === id ? { ...cargo, nombre: nombreCargoEditando } : cargo));
+  /* MODIFIED: Persist edit immediately */
+  const handleGuardarEdicionCargo = async (id: string) => {
+    const updatedCargos = cargos.map(cargo => cargo.id === id ? { ...cargo, nombre: nombreCargoEditando } : cargo);
+    setCargos(updatedCargos);
     setEditandoCargo(null);
     setNombreCargoEditando('');
+
+    try {
+      const roleCapacities: Record<string, number> = {};
+      updatedCargos.forEach(c => {
+        const key = c.rolId || c.nombre.toLowerCase().replace(/ /g, '_');
+        roleCapacities[key] = c.capacidad;
+      });
+      const globalPayload = {
+        roleCapacities,
+        notificationSettings: notificaciones,
+        alertSettings: alertas,
+        securitySettings: { auditEnabled: true, digitalSignature: true, backupEnabled: true }
+      };
+      await disciplinaryService.updateGlobalConfig(globalPayload);
+      toast.success('Cargo actualizado');
+    } catch (error) {
+      console.error('Error updating role:', error);
+      toast.error('Error al actualizar el cargo');
+    }
   };
 
   return (
@@ -304,23 +446,32 @@ export function ModuloConfiguracion() {
                       type="text"
                       value={nombreEditando}
                       onChange={(e) => setNombreEditando(e.target.value)}
-                      className="flex-1 px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                      className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
                       style={{ borderColor: '#E5E7EB' }}
+                      autoFocus
                     />
                   ) : (
                     etapa.nombre
                   )}
                 </span>
                 <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    min="1"
-                    max="365"
-                    value={etapa.dias}
-                    onChange={(e) => setEtapas(etapas.map(e => e.id === etapa.id ? { ...e, dias: parseInt(e.target.value) || 0 } : e))}
-                    className="flex-1 px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                    style={{ borderColor: '#E5E7EB' }}
-                  />
+                  {editandoEtapa === etapa.id ? (
+                    <input
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={diasEditando}
+                      onChange={(e) => setDiasEditando(parseInt(e.target.value) || 0)}
+                      className="flex-1 px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                      style={{ borderColor: '#E5E7EB' }}
+                    />
+                  ) : (
+                    <div className="flex-1 px-4 py-2.5 rounded-xl border-2 bg-gray-50 flex items-center" style={{ borderColor: '#E5E7EB' }}>
+                      <span className="font-bold text-lg" style={{ color: '#1F2937' }}>
+                        {etapa.dias}
+                      </span>
+                    </div>
+                  )}
                   <span className="text-sm font-semibold whitespace-nowrap" style={{ color: '#6B7280' }}>
                     días
                   </span>
@@ -423,7 +574,7 @@ export function ModuloConfiguracion() {
                   type="number"
                   min="1"
                   max="30"
-                  value={cargo.capacidad}
+                  value={cargo.capacidad || ''}
                   onChange={(e) => setCargos(cargos.map(c => c.id === cargo.id ? { ...c, capacidad: parseInt(e.target.value) || 0 } : c))}
                   className="flex-1 px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5] text-center text-xl font-bold"
                   style={{ borderColor: '#E5E7EB', color: '#003DA5' }}

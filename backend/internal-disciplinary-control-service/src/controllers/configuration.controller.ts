@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StageConfiguration } from '../entities/stage-configuration.entity';
 import { SystemConfiguration } from '../entities/system-configuration.entity';
+import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
+import { ReglaAlerta } from '../entities/regla-alerta.entity';
 
 @Controller('configuration')
 export class ConfigurationController {
@@ -11,6 +13,10 @@ export class ConfigurationController {
         private stageConfigRepo: Repository<StageConfiguration>,
         @InjectRepository(SystemConfiguration)
         private systemConfigRepo: Repository<SystemConfiguration>,
+        @InjectRepository(DisciplinaryProcess)
+        private processRepo: Repository<DisciplinaryProcess>,
+        @InjectRepository(ReglaAlerta)
+        private reglasRepo: Repository<ReglaAlerta>,
     ) { }
 
     // --- STAGE CONFIGURATION (Punto 1) ---
@@ -23,15 +29,45 @@ export class ConfigurationController {
     @Put('stages')
     async updateStageConfigs(@Body() configs: StageConfiguration[]) {
         const savedConfigs: StageConfiguration[] = [];
+        // Regex for standard UUID (v4)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
         for (const config of configs) {
-            let existing = await this.stageConfigRepo.findOne({ where: { etapa: config.etapa } });
+            let existing: StageConfiguration | null = null;
+
+            // 1. Try to find by ID ONLY if it is a valid UUID
+            if (config.id && uuidRegex.test(config.id)) {
+                existing = await this.stageConfigRepo.findOne({ where: { id: config.id } });
+            }
+
+            // 2. If not found by ID (or ID was invalid/temp), try by Name
+            if (!existing) {
+                existing = await this.stageConfigRepo.findOne({ where: { etapa: config.etapa } });
+            }
+
             if (existing) {
+                // Check if name is changing for Cascading Update
+                if (existing.etapa !== config.etapa) {
+                    const oldName = existing.etapa;
+                    const newName = config.etapa;
+
+                    // Update all processes that are currently in the old stage
+                    await this.processRepo.update(
+                        { etapaActual: oldName },
+                        { etapaActual: newName }
+                    );
+                }
+
+                // Update existing
+                existing.etapa = config.etapa;
                 existing.diasHabiles = config.diasHabiles;
                 existing.descripcion = config.descripcion;
                 existing.activo = config.activo;
                 savedConfigs.push(await this.stageConfigRepo.save(existing));
             } else {
-                savedConfigs.push(await this.stageConfigRepo.save(config));
+                // Create new (ensure we don't pass the temp ID)
+                const { id, ...data } = config;
+                savedConfigs.push(await this.stageConfigRepo.save(data));
             }
         }
         return savedConfigs;
@@ -57,7 +93,54 @@ export class ConfigurationController {
         } else {
             this.systemConfigRepo.merge(existing, config);
         }
-        return this.systemConfigRepo.save(existing);
+
+        const saved = await this.systemConfigRepo.save(existing);
+
+        // Sync Reglas de Alerta
+        if (config.notificationSettings) {
+            await this.syncAlertRules(config.notificationSettings);
+        }
+
+        return saved;
+    }
+
+    private async syncAlertRules(settings: any) {
+        const mapping = [
+            { key: 'vencimiento7dias', days: 7, name: 'Alerta 7 días antes' },
+            { key: 'vencimiento3dias', days: 3, name: 'Alerta 3 días antes' },
+            { key: 'vencimiento1dia', days: 1, name: 'Alerta 1 día antes' },
+            { key: 'procesoVencido', days: 0, name: 'Alerta Proceso Vencido' }
+        ];
+
+        for (const map of mapping) {
+            const isActive = settings[map.key];
+            if (isActive !== undefined) {
+                // Try to find by unique name first (more stable)
+                let rule = await this.reglasRepo.findOne({ where: { nombre: map.name } });
+
+                // If not found by name, try by days (legacy/fallback)
+                if (!rule) {
+                    rule = await this.reglasRepo.findOne({ where: { diasAnticipacion: map.days } });
+                }
+
+                if (!rule) {
+                    rule = this.reglasRepo.create({
+                        nombre: map.name,
+                        diasAnticipacion: map.days,
+                        activa: isActive,
+                        enviarEmail: settings.emailMasterSwitch || false,
+                        mostrarPanel: true
+                    });
+                } else {
+                    rule.activa = isActive;
+                    // Update email setting if present
+                    if (settings.emailMasterSwitch !== undefined) {
+                        rule.enviarEmail = settings.emailMasterSwitch;
+                    }
+                }
+                await this.reglasRepo.save(rule);
+            }
+        }
     }
 
     // Seed inicial si está vacío
@@ -67,10 +150,12 @@ export class ConfigurationController {
         const stagesCount = await this.stageConfigRepo.count();
         if (stagesCount === 0) {
             const defaults = [
-                { etapa: 'EVALUACION', diasHabiles: 30, descripcion: 'Etapa de evaluación inicial', activo: true },
-                { etapa: 'INDAGACION_PREVIA', diasHabiles: 180, descripcion: 'Etapa de indagación previa', activo: true },
-                { etapa: 'INVESTIGACION', diasHabiles: 180, descripcion: 'Etapa de investigación', activo: true },
-                { etapa: 'JUZGAMIENTO', diasHabiles: 90, descripcion: 'Etapa de juzgamiento', activo: true },
+                { etapa: 'RECEPCIÓN', diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
+                { etapa: 'VALORACIÓN', diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
+                { etapa: 'INDAGACIÓN', diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
+                { etapa: 'INVESTIGACIÓN', diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
+                { etapa: 'JUZGAMIENTO', diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
+                { etapa: 'FALLO', diasHabiles: 10, descripcion: 'Emisión de fallo', activo: true },
             ];
             await this.stageConfigRepo.save(defaults);
         }

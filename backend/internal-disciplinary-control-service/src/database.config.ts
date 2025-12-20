@@ -30,6 +30,10 @@ import { Evidence } from './entities/evidence.entity';
 import { StageConfiguration } from './entities/stage-configuration.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
 import { AutoVersion } from './entities/auto-version.entity';
+import { TerminoProcesal } from './entities/termino-procesal.entity';
+import { DiaFestivo } from './entities/dia-festivo.entity';
+import { ReglaAlerta } from './entities/regla-alerta.entity';
+import { AlertaEnviada } from './entities/alerta-enviada.entity';
 
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',
@@ -39,7 +43,21 @@ export const databaseConfig: TypeOrmModuleOptions = {
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
   schema: process.env.DB_SCHEMA,
-  entities: [DisciplinaryNews, DisciplinaryProcess, LegalAuto, Sequence, DisciplinaryProfessional, Evidence, StageConfiguration, SystemConfiguration, AutoVersion],
+  entities: [
+    DisciplinaryNews, 
+    DisciplinaryProcess, 
+    LegalAuto, 
+    Sequence, 
+    DisciplinaryProfessional, 
+    Evidence, 
+    StageConfiguration, 
+    SystemConfiguration, 
+    AutoVersion,
+    TerminoProcesal,
+    DiaFestivo,
+    ReglaAlerta,
+    AlertaEnviada
+  ],
   synchronize: false,
   logging: false,
 };

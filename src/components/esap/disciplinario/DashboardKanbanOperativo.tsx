@@ -86,7 +86,7 @@ interface Proceso {
 }
 
 type Item = Noticia | Proceso;
-type ModalType = 
+type ModalType =
   | 'crear-noticia'
   | 'convertir-proceso'
   | 'devolver-noticia'
@@ -405,28 +405,28 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
       animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
       className="cursor-move touch-none w-full"
     >
-      <Card 
+      <Card
         className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full"
-        style={{ 
+        style={{
           height: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px'),
           minHeight: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px'),
           maxHeight: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px')
         }}
       >
         {/* Barra superior azul ESAP */}
-        <div 
+        <div
           className="h-1 flex-shrink-0"
           style={{ background: '#003DA5' }}
         />
 
         <div className={`${isMobile ? 'p-2.5' : 'p-3'} flex-1 flex flex-col overflow-y-auto min-h-0`}>
           {/* Header */}
-          <div 
+          <div
             className={`flex items-start justify-between mb-2 ${onVerDetalles ? 'cursor-pointer hover:bg-gray-50 -mx-3 -mt-3 px-3 pt-3 pb-2 rounded-t-lg transition-colors' : ''}`}
             onClick={onVerDetalles ? () => onVerDetalles(noticia) : undefined}
           >
             <div className="flex items-center gap-2 flex-1">
-              <div 
+              <div
                 className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0 bg-orange-50`}
               >
                 <FileText className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-orange-600`} />
@@ -450,10 +450,10 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
           <div className="mb-2 pb-2 border-b border-gray-200">
             <p className="text-xs text-gray-500 mb-0.5">👤 Denunciante:</p>
             <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-              {(noticia.denunciante||{nombre:'Sin denunciante',tipoIdentificacion:'CC',numeroIdentificacion:'N/A'}).nombre}
+              {(noticia.denunciante || { nombre: 'Sin denunciante', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' }).nombre}
             </p>
             <p className="text-xs text-gray-600">
-              {`${(noticia.denunciante||{tipoIdentificacion:'CC',numeroIdentificacion:'N/A'}).tipoIdentificacion} ${(noticia.denunciante||{tipoIdentificacion:'CC',numeroIdentificacion:'N/A'}).numeroIdentificacion}`}
+              {`${(noticia.denunciante || { tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' }).tipoIdentificacion} ${(noticia.denunciante || { tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' }).numeroIdentificacion}`}
             </p>
           </div>
 
@@ -557,18 +557,18 @@ interface TarjetaProcesoProps {
   isMobile?: boolean;
 }
 
-function TarjetaProceso({ 
-  proceso, 
-  onVerDetalles, 
-  onAprobarBorrador, 
-  onVerExpediente, 
+function TarjetaProceso({
+  proceso,
+  onVerDetalles,
+  onAprobarBorrador,
+  onVerExpediente,
   onGestionAutos,
   onGestionEvidencias,
   onGestionOficios,
   onGestionActas,
   onComentarios,
-  vistaCompacta, 
-  isMobile 
+  vistaCompacta,
+  isMobile
 }: TarjetaProcesoProps) {
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
@@ -598,16 +598,16 @@ function TarjetaProceso({
       animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
       className="cursor-move touch-none w-full"
     >
-      <Card 
+      <Card
         className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full"
-        style={{ 
+        style={{
           height: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px'),
           minHeight: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px'),
           maxHeight: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px')
         }}
       >
         {/* Barra superior azul ESAP */}
-        <div 
+        <div
           className="h-1 flex-shrink-0"
           style={{ background: '#003DA5' }}
         />
@@ -662,7 +662,7 @@ function TarjetaProceso({
           <div className="mb-1.5 pb-1.5 border-b border-gray-200">
             <div className="flex items-center gap-2">
               <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
-                <AvatarFallback 
+                <AvatarFallback
                   className="text-xs"
                   style={{ background: '#E0EDFF', color: '#003DA5' }}
                 >
@@ -689,11 +689,11 @@ function TarjetaProceso({
                 {isMobile ? 'Pend.' : 'Pendiente'}
               </Badge>
             )}
-            <Badge 
+            <Badge
               className={`${isMobile ? 'text-xs' : 'text-xs'} flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200`}
               style={{ color: semaforo.color }}
             >
-              <div 
+              <div
                 className={`${isMobile ? 'w-1.5 h-1.5' : 'w-2 h-2'} rounded-full`}
                 style={{ background: semaforo.color }}
               />
@@ -703,19 +703,19 @@ function TarjetaProceso({
 
           {/* Métricas */}
           <div className="grid grid-cols-3 gap-1.5 mb-1.5">
-            <div 
+            <div
               className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}
             >
               <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-gray-700`}>{proceso.borradores.length}</p>
               <p className="text-xs text-gray-500">{isMobile ? 'B' : 'Borr.'}</p>
             </div>
-            <div 
+            <div
               className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}
             >
               <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-gray-700`}>{proceso.documentos.length}</p>
               <p className="text-xs text-gray-500">Docs</p>
             </div>
-            <div 
+            <div
               className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}
             >
               <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-gray-700`}>
@@ -771,7 +771,7 @@ function TarjetaProceso({
                   <Scale className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5 flex-shrink-0`} />
                   <span className="truncate">Autos</span>
                 </Button>
-                
+
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -847,7 +847,7 @@ function TarjetaProceso({
                 }}
                 size="sm"
                 className={`w-full ${isMobile ? 'text-[10px] py-1.5' : 'text-[11px] py-2'} font-bold`}
-                style={{ 
+                style={{
                   background: '#003DA5',
                   color: '#FFFFFF'
                 }}
@@ -916,25 +916,25 @@ function VistaLista({
   const [searchTerm, setSearchTerm] = useState('');
 
   const itemsFiltrados = items.filter(item => {
-    const matchSearch = item.tipo === 'noticia' 
+    const matchSearch = item.tipo === 'noticia'
       ? (item as Noticia).numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (typeof (item as Noticia).denunciado === 'string' 
-          ? (item as Noticia).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
-          : (item as Noticia).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
+      (typeof (item as Noticia).denunciado === 'string'
+        ? (item as Noticia).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
+        : (item as Noticia).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
       : (item as Proceso).numeroProceso.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (typeof (item as Proceso).denunciado === 'string'
-          ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
-          : (item as Proceso).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchEtapa = filtroEtapa === 'todos' || 
+      (typeof (item as Proceso).denunciado === 'string'
+        ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
+        : (item as Proceso).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    const matchEtapa = filtroEtapa === 'todos' ||
       (item.tipo === 'noticia' && filtroEtapa === 'Recepción') ||
       (item.tipo === 'proceso' && (item as Proceso).etapaActual === filtroEtapa);
-    
+
     return matchSearch && matchEtapa;
   });
 
   const getSemaforoColor = (semaforo?: string) => {
-    switch(semaforo) {
+    switch (semaforo) {
       case 'verde': return { bg: '#D1FAE5', color: '#059669', text: 'En término' };
       case 'amarillo': return { bg: '#FEF3C7', color: '#D97706', text: 'Próximo a vencer' };
       case 'rojo': return { bg: '#FEE2E2', color: '#DC2626', text: 'Vencido' };
@@ -988,11 +988,11 @@ function VistaLista({
             return (
               <Card key={item.id} className="overflow-hidden border-2" style={{ borderColor: '#E5E7EB' }}>
                 {/* Barra superior con color de tipo */}
-                <div 
-                  className="h-1" 
+                <div
+                  className="h-1"
                   style={{ background: isNoticia ? '#F59E0B' : '#003DA5' }}
                 />
-                
+
                 <div className="p-3 space-y-3">
                   {/* Header */}
                   <div className="flex items-start justify-between">
@@ -1021,12 +1021,12 @@ function VistaLista({
                   <div className="pb-2 border-b border-gray-200">
                     <p className="text-xs text-gray-500 mb-1">Denunciado:</p>
                     <p className="font-bold text-sm text-gray-900">
-                      {isNoticia 
+                      {isNoticia
                         ? (typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado.nombre)
                         : (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
                     </p>
                     <p className="text-xs text-gray-600 mt-0.5">
-                      {isNoticia 
+                      {isNoticia
                         ? (typeof noticia!.denunciado !== 'string' && `${noticia!.denunciado.tipoIdentificacion} ${noticia!.denunciado.numeroIdentificacion}`)
                         : (typeof proceso!.denunciado !== 'string' ? `${proceso!.denunciado.tipoIdentificacion} ${proceso!.denunciado.numeroIdentificacion}` : proceso!.cedula ? `CC: ${proceso!.cedula}` : '')}
                     </p>
@@ -1043,7 +1043,7 @@ function VistaLista({
                     >
                       {isNoticia ? 'Recepción' : proceso!.etapaActual}
                     </Badge>
-                    
+
                     {proceso && semaforo && (
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg" style={{ background: semaforo.bg }}>
                         <div className="w-1.5 h-1.5 rounded-full" style={{ background: semaforo.color }} />
@@ -1052,7 +1052,7 @@ function VistaLista({
                         </span>
                       </div>
                     )}
-                    
+
                     {isNoticia && (
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-orange-50">
                         <Clock className="w-3 h-3 text-orange-600" />
@@ -1152,310 +1152,310 @@ function VistaLista({
         /* Vista de Tabla para Desktop/Tablet */
         <Card className="border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
           <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="sticky top-0" style={{ background: '#F9FAFB' }}>
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Número / Tipo
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Denunciado
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Etapa / Estado
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Responsable
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Semáforo
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Tiempo
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Acciones
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {itemsFiltrados.map((item, index) => {
-                const isNoticia = item.tipo === 'noticia';
-                const noticia = isNoticia ? (item as Noticia) : null;
-                const proceso = !isNoticia ? (item as Proceso) : null;
-                const semaforo = proceso ? getSemaforoColor(proceso.semaforo) : null;
+            <table className="w-full">
+              <thead className="sticky top-0" style={{ background: '#F9FAFB' }}>
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Número / Tipo
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Denunciado
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Etapa / Estado
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Responsable
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Semáforo
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Tiempo
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemsFiltrados.map((item, index) => {
+                  const isNoticia = item.tipo === 'noticia';
+                  const noticia = isNoticia ? (item as Noticia) : null;
+                  const proceso = !isNoticia ? (item as Proceso) : null;
+                  const semaforo = proceso ? getSemaforoColor(proceso.semaforo) : null;
 
-                return (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-gray-50 transition-colors"
-                    style={{ borderTop: index > 0 ? '1px solid #E5E7EB' : 'none' }}
-                  >
-                    {/* Número / Tipo */}
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        {isNoticia ? (
-                          <div className="p-1.5 rounded-lg bg-orange-100">
-                            <FileText className="w-4 h-4 text-orange-600" />
+                  return (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-gray-50 transition-colors"
+                      style={{ borderTop: index > 0 ? '1px solid #E5E7EB' : 'none' }}
+                    >
+                      {/* Número / Tipo */}
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-2">
+                          {isNoticia ? (
+                            <div className="p-1.5 rounded-lg bg-orange-100">
+                              <FileText className="w-4 h-4 text-orange-600" />
+                            </div>
+                          ) : (
+                            <div className="p-1.5 rounded-lg" style={{ background: '#E0EDFF' }}>
+                              <FolderOpen className="w-4 h-4" style={{ color: '#003DA5' }} />
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-bold text-sm" style={{ color: '#1F2937' }}>
+                              {isNoticia ? noticia!.numero : proceso!.numeroProceso}
+                            </p>
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                              {isNoticia ? 'Noticia' : 'Proceso'}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Denunciado */}
+                      <td className="px-4 py-4">
+                        <div>
+                          <p className="font-semibold text-sm" style={{ color: '#1F2937' }}>
+                            {isNoticia ? noticia!.denunciado.nombre : (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
+                          </p>
+                          {proceso && proceso.cedula && (
+                            <p className="text-xs" style={{ color: '#6B7280' }}>
+                              CC: {proceso.cedula}
+                            </p>
+                          )}
+                          {proceso && proceso.cargo && (
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                              {proceso.cargo}
+                            </p>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Etapa / Estado */}
+                      <td className="px-4 py-4">
+                        <div>
+                          <Badge
+                            className="mb-1"
+                            style={{
+                              background: isNoticia ? '#FEF3C7' : '#E0EDFF',
+                              color: isNoticia ? '#D97706' : '#003DA5'
+                            }}
+                          >
+                            {isNoticia ? 'Recepción' : proceso!.etapaActual}
+                          </Badge>
+                          {proceso && (
+                            <p className="text-xs" style={{ color: '#6B7280' }}>
+                              {proceso.estadoActual}
+                            </p>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Responsable */}
+                      <td className="px-4 py-4">
+                        {proceso ? (
+                          <div className="flex items-center gap-2">
+                            <Avatar className="w-7 h-7">
+                              <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5', fontSize: '10px' }}>
+                                {profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <p className="text-xs font-medium" style={{ color: '#4B5563' }}>
+                              {profesionalAsignado.nombre}
+                            </p>
                           </div>
                         ) : (
-                          <div className="p-1.5 rounded-lg" style={{ background: '#E0EDFF' }}>
-                            <FolderOpen className="w-4 h-4" style={{ color: '#003DA5' }} />
+                          <p className="text-xs" style={{ color: '#9CA3AF' }}>Sin asignar</p>
+                        )}
+                      </td>
+
+                      {/* Semáforo */}
+                      <td className="px-4 py-4 text-center">
+                        {proceso && semaforo ? (
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: semaforo.bg }}>
+                            <div className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
+                            <span className="text-xs font-semibold" style={{ color: semaforo.color }}>
+                              {semaforo.text}
+                            </span>
                           </div>
+                        ) : (
+                          <span className="text-xs" style={{ color: '#9CA3AF' }}>N/A</span>
                         )}
-                        <div>
-                          <p className="font-bold text-sm" style={{ color: '#1F2937' }}>
-                            {isNoticia ? noticia!.numero : proceso!.numeroProceso}
-                          </p>
-                          <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                            {isNoticia ? 'Noticia' : 'Proceso'}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Denunciado */}
-                    <td className="px-4 py-4">
-                      <div>
-                        <p className="font-semibold text-sm" style={{ color: '#1F2937' }}>
-                          {isNoticia ? noticia!.denunciado.nombre : (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
-                        </p>
-                        {proceso && proceso.cedula && (
-                          <p className="text-xs" style={{ color: '#6B7280' }}>
-                            CC: {proceso.cedula}
-                          </p>
-                        )}
-                        {proceso && proceso.cargo && (
-                          <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                            {proceso.cargo}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Etapa / Estado */}
-                    <td className="px-4 py-4">
-                      <div>
-                        <Badge
-                          className="mb-1"
-                          style={{
-                            background: isNoticia ? '#FEF3C7' : '#E0EDFF',
-                            color: isNoticia ? '#D97706' : '#003DA5'
-                          }}
-                        >
-                          {isNoticia ? 'Recepción' : proceso!.etapaActual}
-                        </Badge>
-                        {proceso && (
-                          <p className="text-xs" style={{ color: '#6B7280' }}>
-                            {proceso.estadoActual}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Responsable */}
-                    <td className="px-4 py-4">
-                      {proceso ? (
-                        <div className="flex items-center gap-2">
-                          <Avatar className="w-7 h-7">
-                            <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5', fontSize: '10px' }}>
-                              {profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <p className="text-xs font-medium" style={{ color: '#4B5563' }}>
-                            {profesionalAsignado.nombre}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="text-xs" style={{ color: '#9CA3AF' }}>Sin asignar</p>
-                      )}
-                    </td>
-
-                    {/* Semáforo */}
-                    <td className="px-4 py-4 text-center">
-                      {proceso && semaforo ? (
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: semaforo.bg }}>
-                          <div className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
-                          <span className="text-xs font-semibold" style={{ color: semaforo.color }}>
-                            {semaforo.text}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs" style={{ color: '#9CA3AF' }}>N/A</span>
-                      )}
-                    </td>
-
-                    {/* Tiempo */}
-                    <td className="px-4 py-4 text-center">
-                      {isNoticia ? (
-                        <div>
-                          <p className="text-sm font-bold" style={{ color: '#F59E0B' }}>
-                            {noticia!.diasPendientes} días
-                          </p>
-                          <p className="text-xs" style={{ color: '#9CA3AF' }}>pendientes</p>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-sm font-bold" style={{ 
-                            color: proceso!.diasRestantes < 5 ? '#DC2626' : proceso!.diasRestantes < 10 ? '#F59E0B' : '#10B981'
-                          }}>
-                            {proceso!.diasRestantes} días
-                          </p>
-                          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                            <div
-                              className="h-full rounded-full transition-all"
-                              style={{
-                                width: `${proceso!.porcentajeTiempo}%`,
-                                background: proceso!.porcentajeTiempo >= 80 ? '#DC2626' : proceso!.porcentajeTiempo >= 60 ? '#F59E0B' : '#10B981'
-                              }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Acciones */}
-                    <td className="px-4 py-4">
-                      <div className="flex items-center justify-end gap-1 flex-wrap">
+                      {/* Tiempo */}
+                      <td className="px-4 py-4 text-center">
                         {isNoticia ? (
-                          <>
-                            {/* Ver Detalles de Noticia */}
-                            {onVerDetallesNoticia && (
+                          <div>
+                            <p className="text-sm font-bold" style={{ color: '#F59E0B' }}>
+                              {noticia!.diasPendientes} días
+                            </p>
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>pendientes</p>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-sm font-bold" style={{
+                              color: proceso!.diasRestantes < 5 ? '#DC2626' : proceso!.diasRestantes < 10 ? '#F59E0B' : '#10B981'
+                            }}>
+                              {proceso!.diasRestantes} días
+                            </p>
+                            <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${proceso!.porcentajeTiempo}%`,
+                                  background: proceso!.porcentajeTiempo >= 80 ? '#DC2626' : proceso!.porcentajeTiempo >= 60 ? '#F59E0B' : '#10B981'
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="px-4 py-4">
+                        <div className="flex items-center justify-end gap-1 flex-wrap">
+                          {isNoticia ? (
+                            <>
+                              {/* Ver Detalles de Noticia */}
+                              {onVerDetallesNoticia && (
+                                <button
+                                  onClick={() => onVerDetallesNoticia(noticia!)}
+                                  className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                                  title="Ver detalles de la noticia"
+                                >
+                                  <Eye className="w-4 h-4" style={{ color: '#003DA5' }} />
+                                </button>
+                              )}
+
+                              {/* Convertir a Proceso */}
                               <button
-                                onClick={() => onVerDetallesNoticia(noticia!)}
+                                onClick={() => onConvertirNoticia(noticia!)}
+                                className="p-2 rounded-lg hover:bg-green-50 transition-colors"
+                                title="Convertir a proceso disciplinario"
+                              >
+                                <PlusCircle className="w-4 h-4 text-green-600" />
+                              </button>
+
+                              {/* Devolver Noticia */}
+                              {onDevolverNoticia && (
+                                <button
+                                  onClick={() => onDevolverNoticia(noticia!)}
+                                  className="p-2 rounded-lg hover:bg-yellow-50 transition-colors"
+                                  title="Devolver noticia"
+                                >
+                                  <ArrowLeft className="w-4 h-4 text-yellow-600" />
+                                </button>
+                              )}
+
+                              {/* Archivar Noticia */}
+                              <button
+                                onClick={() => onArchivarNoticia(noticia!)}
+                                className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                                title="Archivar noticia"
+                              >
+                                <Archive className="w-4 h-4 text-red-600" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {/* Acción: Ver Detalles */}
+                              <button
+                                onClick={() => onVerDetalles(proceso!)}
                                 className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
-                                title="Ver detalles de la noticia"
+                                title="Ver detalles del proceso"
                               >
                                 <Eye className="w-4 h-4" style={{ color: '#003DA5' }} />
                               </button>
-                            )}
 
-                            {/* Convertir a Proceso */}
-                            <button
-                              onClick={() => onConvertirNoticia(noticia!)}
-                              className="p-2 rounded-lg hover:bg-green-50 transition-colors"
-                              title="Convertir a proceso disciplinario"
-                            >
-                              <PlusCircle className="w-4 h-4 text-green-600" />
-                            </button>
+                              {/* Acción: Ver Expediente Completo */}
+                              <button
+                                onClick={() => onVerExpediente(proceso!)}
+                                className="p-2 rounded-lg hover:bg-purple-50 transition-colors"
+                                title="Ver expediente completo"
+                              >
+                                <FolderOpen className="w-4 h-4 text-purple-600" />
+                              </button>
 
-                            {/* Devolver Noticia */}
-                            {onDevolverNoticia && (
-                              <button
-                                onClick={() => onDevolverNoticia(noticia!)}
-                                className="p-2 rounded-lg hover:bg-yellow-50 transition-colors"
-                                title="Devolver noticia"
-                              >
-                                <ArrowLeft className="w-4 h-4 text-yellow-600" />
-                              </button>
-                            )}
+                              {/* Acción: Gestionar Autos */}
+                              {onGestionAutos && (
+                                <button
+                                  onClick={() => onGestionAutos(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-green-50 transition-colors"
+                                  title="Gestionar autos"
+                                >
+                                  <Scale className="w-4 h-4 text-green-600" />
+                                </button>
+                              )}
 
-                            {/* Archivar Noticia */}
-                            <button
-                              onClick={() => onArchivarNoticia(noticia!)}
-                              className="p-2 rounded-lg hover:bg-red-50 transition-colors"
-                              title="Archivar noticia"
-                            >
-                              <Archive className="w-4 h-4 text-red-600" />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            {/* Acción: Ver Detalles */}
-                            <button
-                              onClick={() => onVerDetalles(proceso!)}
-                              className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
-                              title="Ver detalles del proceso"
-                            >
-                              <Eye className="w-4 h-4" style={{ color: '#003DA5' }} />
-                            </button>
-                            
-                            {/* Acción: Ver Expediente Completo */}
-                            <button
-                              onClick={() => onVerExpediente(proceso!)}
-                              className="p-2 rounded-lg hover:bg-purple-50 transition-colors"
-                              title="Ver expediente completo"
-                            >
-                              <FolderOpen className="w-4 h-4 text-purple-600" />
-                            </button>
-                            
-                            {/* Acción: Gestionar Autos */}
-                            {onGestionAutos && (
-                              <button
-                                onClick={() => onGestionAutos(proceso!)}
-                                className="p-2 rounded-lg hover:bg-green-50 transition-colors"
-                                title="Gestionar autos"
-                              >
-                                <Scale className="w-4 h-4 text-green-600" />
-                              </button>
-                            )}
-                            
-                            {/* Acción: Gestionar Evidencias */}
-                            {onGestionEvidencias && (
-                              <button
-                                onClick={() => onGestionEvidencias(proceso!)}
-                                className="p-2 rounded-lg hover:bg-indigo-50 transition-colors"
-                                title="Gestionar evidencias"
-                              >
-                                <Paperclip className="w-4 h-4 text-indigo-600" />
-                              </button>
-                            )}
-                            
-                            {/* Acción: Gestionar Oficios */}
-                            {onGestionOficios && (
-                              <button
-                                onClick={() => onGestionOficios(proceso!)}
-                                className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
-                                title="Gestionar oficios"
-                              >
-                                <Send className="w-4 h-4 text-blue-600" />
-                              </button>
-                            )}
-                            
-                            {/* Acción: Gestionar Actas */}
-                            {onGestionActas && (
-                              <button
-                                onClick={() => onGestionActas(proceso!)}
-                                className="p-2 rounded-lg hover:bg-teal-50 transition-colors"
-                                title="Gestionar actas"
-                              >
-                                <FileSignature className="w-4 h-4 text-teal-600" />
-                              </button>
-                            )}
-                            
-                            {/* Acción: Aprobar Borrador (condicional) */}
-                            {proceso!.pendienteAprobacion && (
-                              <button
-                                onClick={() => onAprobarBorrador(proceso!)}
-                                className="p-2 rounded-lg hover:bg-amber-50 transition-colors"
-                                title="Aprobar borrador pendiente"
-                              >
-                                <CheckCircle className="w-4 h-4 text-amber-600" />
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                              {/* Acción: Gestionar Evidencias */}
+                              {onGestionEvidencias && (
+                                <button
+                                  onClick={() => onGestionEvidencias(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-indigo-50 transition-colors"
+                                  title="Gestionar evidencias"
+                                >
+                                  <Paperclip className="w-4 h-4 text-indigo-600" />
+                                </button>
+                              )}
 
-          {itemsFiltrados.length === 0 && (
-            <div className="p-12 text-center">
-              <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: '#D1D5DB' }} />
-              <p className="text-sm font-bold" style={{ color: '#6B7280' }}>
-                No se encontraron resultados
-              </p>
-              <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                Intenta ajustar los filtros de búsqueda
-              </p>
-            </div>
-          )}
-        </div>
-      </Card>
+                              {/* Acción: Gestionar Oficios */}
+                              {onGestionOficios && (
+                                <button
+                                  onClick={() => onGestionOficios(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                                  title="Gestionar oficios"
+                                >
+                                  <Send className="w-4 h-4 text-blue-600" />
+                                </button>
+                              )}
+
+                              {/* Acción: Gestionar Actas */}
+                              {onGestionActas && (
+                                <button
+                                  onClick={() => onGestionActas(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-teal-50 transition-colors"
+                                  title="Gestionar actas"
+                                >
+                                  <FileSignature className="w-4 h-4 text-teal-600" />
+                                </button>
+                              )}
+
+                              {/* Acción: Aprobar Borrador (condicional) */}
+                              {proceso!.pendienteAprobacion && (
+                                <button
+                                  onClick={() => onAprobarBorrador(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-amber-50 transition-colors"
+                                  title="Aprobar borrador pendiente"
+                                >
+                                  <CheckCircle className="w-4 h-4 text-amber-600" />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {itemsFiltrados.length === 0 && (
+              <div className="p-12 text-center">
+                <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: '#D1D5DB' }} />
+                <p className="text-sm font-bold" style={{ color: '#6B7280' }}>
+                  No se encontraron resultados
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                  Intenta ajustar los filtros de búsqueda
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
       )}
     </div>
   );
@@ -1488,20 +1488,20 @@ interface ColumnaKanbanProps {
   onToggleColapso?: () => void;
 }
 
-function ColumnaKanban({ 
-  etapa, 
-  items, 
-  color, 
+function ColumnaKanban({
+  etapa,
+  items,
+  color,
   icono,
   diasEstimados,
-  onDrop, 
+  onDrop,
   onConvertirNoticia,
   onDevolverNoticia,
   onDevolverCompetencia,
   onArchivarNoticia,
   onVerDetallesNoticia,
-  onVerDetalles, 
-  onAprobarBorrador, 
+  onVerDetalles,
+  onAprobarBorrador,
   onVerExpediente,
   onGestionAutos,
   onGestionEvidencias,
@@ -1566,20 +1566,19 @@ function ColumnaKanban({
     const procesosVerdes = procesos.filter(p => p.semaforo === 'verde').length;
 
     return (
-      <motion.div 
-        ref={drop} 
+      <motion.div
+        ref={drop}
         className={`flex-shrink-0`}
         initial={{ width: 64 }}
         animate={{ width: 64 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
       >
-        <Card 
-          className={`h-full border transition-all cursor-pointer group ${
-            isOver && canDrop ? 'shadow-lg border-blue-500 bg-blue-50' : 'hover:shadow-md hover:border-blue-300'
-          }`}
-          style={{ 
-            borderColor: isOver && canDrop ? '#3B82F6' : '#E5E7EB', 
-            background: isOver && canDrop ? '#EFF6FF' : '#FFFFFF' 
+        <Card
+          className={`h-full border transition-all cursor-pointer group ${isOver && canDrop ? 'shadow-lg border-blue-500 bg-blue-50' : 'hover:shadow-md hover:border-blue-300'
+            }`}
+          style={{
+            borderColor: isOver && canDrop ? '#3B82F6' : '#E5E7EB',
+            background: isOver && canDrop ? '#EFF6FF' : '#FFFFFF'
           }}
           onClick={onToggleColapso}
         >
@@ -1641,9 +1640,9 @@ function ColumnaKanban({
 
             {/* Nombre vertical */}
             <div className="flex-1 flex items-center justify-center py-4">
-              <h3 
+              <h3
                 className="font-black text-xs text-gray-800 whitespace-nowrap"
-                style={{ 
+                style={{
                   writingMode: 'vertical-rl',
                   textOrientation: 'mixed'
                 }}
@@ -1673,7 +1672,7 @@ function ColumnaKanban({
       animate={{ width: colapsada ? 64 : 320 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
     >
-      <Card 
+      <Card
         className="h-full border transition-all"
         style={{
           borderColor: isOver && canDrop ? color : '#E5E7EB',
@@ -1682,12 +1681,12 @@ function ColumnaKanban({
         }}
       >
         {/* Header de Columna */}
-        <div 
+        <div
           className={`${isMobile ? 'p-3' : 'p-4'} border-b sticky top-0 z-10 bg-gray-50`}
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 flex-1">
-              <div 
+              <div
                 className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg bg-white border border-gray-200`}
               >
                 {icono}
@@ -1735,8 +1734,8 @@ function ColumnaKanban({
         </div>
 
         {/* Lista de Items */}
-        <div 
-          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`} 
+        <div
+          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`}
           style={{ maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)' }}
         >
           {/* Renderizar Noticias primero */}
@@ -1924,8 +1923,23 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     };
   };
 
-  const toProcesoFromApi = (proceso: ApiProceso): Proceso => {
-    const etapa = stageLabelMap[proceso.etapaActual] || 'Valoración';
+  const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
+    let etapa = proceso.etapaActual;
+
+    // Normalize Stage:
+    // 1. Try to find exact or case-insensitive match in current configuration
+    const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
+    if (match) {
+      etapa = match.etapa;
+    } else {
+      // 2. Fallback to legacy map if not found (e.g. for 'EVALUACION' enum)
+      etapa = stageLabelMap[etapa] || etapa;
+      // 3. Final fallback: Title Case if it looks like an uppercase constant
+      if (etapa === etapa.toUpperCase() && etapa.length > 3) {
+        etapa = etapa.charAt(0).toUpperCase() + etapa.slice(1).toLowerCase();
+      }
+    }
+
     const fechaVenc = proceso.fechaVencimientoEtapa ? new Date(proceso.fechaVencimientoEtapa) : null;
     const fechaCreacion = proceso.createdAt ? new Date(proceso.createdAt) : new Date();
     const hoy = new Date();
@@ -1973,35 +1987,136 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     };
   };
 
+  // Estados para configuración de etapas
+  const [stageConfigs, setStageConfigs] = useState<any[]>([]);
+
   // Cargar datos reales desde el microservicio (con fallback a mock)
   useEffect(() => {
     const cargarDatos = async () => {
       // 1. Intentar cargar de localStorage primero
-      const stored = localStorage.getItem('kanban-disciplinario-items');
-      if (stored) {
+      const storedItems = localStorage.getItem('kanban-disciplinario-items');
+      const storedConfig = localStorage.getItem('kanban-disciplinario-config');
+
+      if (storedItems) {
         try {
-          const parsed = JSON.parse(stored);
+          const parsed = JSON.parse(storedItems);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setItems(parsed);
           }
         } catch (e) {
-          console.error('Error parsing localStorage data:', e);
+          console.error('Error parsing localStorage items:', e);
+        }
+      }
+
+      if (storedConfig) {
+        try {
+          const parsedConfig = JSON.parse(storedConfig);
+          if (Array.isArray(parsedConfig)) {
+            setStageConfigs(parsedConfig);
+          }
+        } catch (e) {
+          console.error('Error parsing localStorage config:', e);
         }
       }
 
       // 2. Cargar desde backend para actualizar
       try {
-        const [noticiasApi, procesosApi] = await Promise.all([
+        const [noticiasApi, procesosApi, stagesApi] = await Promise.all([
           disciplinaryService.getAllNoticias(),
-          disciplinaryService.getAllProcesos()
+          disciplinaryService.getAllProcesos(),
+          disciplinaryService.getStageConfiguration()
         ]);
 
-        const mappedNoticias = (noticiasApi || []).map(toNoticiaFromApi).map(normalizeNoticia);
-        const mappedProcesos = (procesosApi || []).map(toProcesoFromApi);
-        const normalized = [...mappedNoticias, ...mappedProcesos];
+        // Ensure stages are available for mapping
+        let activeStages = Array.isArray(stagesApi) ? stagesApi.filter(s => s.activo !== false) : [];
 
-        setItems(normalized);
-        localStorage.setItem('kanban-disciplinario-items', JSON.stringify(normalized));
+        // 3. Ordenar etapas según requerimiento exacto
+        const STANDARD_ORDER = ['Recepción', 'Valoración', 'Indagación', 'Investigación', 'Juzgamiento', 'Fallo'];
+
+        activeStages.sort((a, b) => {
+          // Normalizar para comparación (ignorar mayúsculas/tildes en la comparación del orden)
+          const nameA = a.etapa.trim();
+          const nameB = b.etapa.trim();
+
+          // Buscar índice flexiblemente
+          const indexA = STANDARD_ORDER.findIndex(o =>
+            o.localeCompare(nameA, undefined, { sensitivity: 'base' }) === 0 ||
+            o.toUpperCase() === nameA.toUpperCase()
+          );
+          const indexB = STANDARD_ORDER.findIndex(o =>
+            o.localeCompare(nameB, undefined, { sensitivity: 'base' }) === 0 ||
+            o.toUpperCase() === nameB.toUpperCase()
+          );
+
+          if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+          if (indexA !== -1) return -1;
+          if (indexB !== -1) return 1;
+          return 0; // Mantener orden de llegada para nuevas etapas
+        });
+
+        // Helper para normalizar nombres de etapas (Match robusto)
+        const normalizeStageName = (inputName: string, configStages: any[]) => {
+          if (!inputName) return 'Recepción';
+
+          // 1. Búsqueda exacta o sw insensible
+          const cleanInput = inputName.trim();
+          const match = configStages.find(s =>
+            s.etapa === cleanInput ||
+            s.etapa.localeCompare(cleanInput, undefined, { sensitivity: 'base' }) === 0
+          );
+
+          if (match) return match.etapa;
+
+          // 2. Fallback a mapeo legacy si es necesario
+          const legacyMap: Record<string, string> = {
+            'EVALUACION': 'Valoración',
+            'INDAGACION_PREVIA': 'Indagación',
+            'INVESTIGACION': 'Investigación',
+            'JUZGAMIENTO': 'Juzgamiento',
+            'RECEPCION': 'Recepción'
+          };
+          const mapped = legacyMap[cleanInput.toUpperCase()];
+          if (mapped) {
+            // Verificar si el mapeado existe en la config actual
+            const matchMapped = configStages.find(s => s.etapa.localeCompare(mapped, undefined, { sensitivity: 'base' }) === 0);
+            if (matchMapped) return matchMapped.etapa;
+          }
+
+          // 3. Si parece una constante (MAYUSCULAS), intentar convertir a Title Case y buscar de nuevo
+          if (cleanInput === cleanInput.toUpperCase() && cleanInput.length > 3) {
+            const titleCase = cleanInput.charAt(0).toUpperCase() + cleanInput.slice(1).toLowerCase();
+            const matchTitle = configStages.find(s => s.etapa.localeCompare(titleCase, undefined, { sensitivity: 'base' }) === 0);
+            if (matchTitle) return matchTitle.etapa;
+            return titleCase; // Devolver TitleCase aunque no esté en config, para que se vea bonito
+          }
+
+          return cleanInput;
+        };
+
+        const mappedNoticias = (noticiasApi || []).map(n => {
+          const not = toNoticiaFromApi(n);
+          // Aplicar normalización extra a la etapa de la noticia
+          return { ...normalizeNoticia(not), etapaActual: normalizeStageName(not.etapaActual, activeStages) };
+        });
+
+        const mappedProcesos = (procesosApi || []).map(p => {
+          // Pasar el helper o usar la lógica dentro
+          // Reusamos toProcesoFromApi pero inyectando el nombre normalizado
+          const proc = toProcesoFromApi(p, activeStages); // Ya tiene lógica básica, pero mejoremosla
+          proc.etapaActual = normalizeStageName(p.etapaActual, activeStages) as any;
+          return proc;
+        });
+
+        const normalizedItems = [...mappedNoticias, ...mappedProcesos];
+
+        setItems(normalizedItems);
+        localStorage.setItem('kanban-disciplinario-items', JSON.stringify(normalizedItems));
+
+        if (activeStages.length > 0) {
+          setStageConfigs(activeStages);
+          localStorage.setItem('kanban-disciplinario-config', JSON.stringify(activeStages));
+        }
+
       } catch (error) {
         console.error('Error cargando datos reales de disciplinario', error);
         toast.error('No fue posible cargar datos reales, se muestran datos demo.');
@@ -2010,11 +2125,17 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
         const fallback = [...fallbackNoticias, ...fallbackProcesos];
         setItems(fallback);
         localStorage.setItem('kanban-disciplinario-items', JSON.stringify(fallback));
+
+        // Fallback or keep existing stageConfigs if empty
+        if (stageConfigs.length === 0) {
+          // No default config? leave empty or set defaults?
+          // Let the hardcoded fallback below handle it if stageConfigs is empty
+        }
       }
     };
 
     cargarDatos();
-  }, []);
+  }, []); // Run once
 
 
   // Detectar tamaño de pantalla con breakpoints mejorados
@@ -2023,14 +2144,14 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       const width = window.innerWidth;
       setIsMobile(width < 768);
       setIsTablet(width >= 768 && width < 1024);
-      
+
       // Auto-activar vista compacta en mobile y tablet
       if (width < 1024) {
         setVistaCompacta(true);
       } else {
         setVistaCompacta(false);
       }
-      
+
       // Auto-cambiar a vista lista en mobile pequeño
       if (width < 640 && tipoVista === 'kanban') {
         setTipoVista('lista');
@@ -2047,14 +2168,37 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   };
 
-  const etapas = [
-    { nombre: 'Recepción', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 3 },
-    { nombre: 'Valoración', color: '#6B7280', icono: <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
-    { nombre: 'Indagación', color: '#6B7280', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 40 },
-    { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />, diasEstimados: 60 },
-    { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 50 },
-    { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 }
-  ];
+  // Icon mapping helper
+  const getStageIcon = (nombre: string) => {
+    const n = nombre.toLowerCase();
+    const iconClass = `${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`;
+    const activeIconClass = `${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`;
+
+    if (n.includes('recep')) return <FileCheck className={iconClass} />;
+    if (n.includes('valor')) return <Eye className={iconClass} />;
+    if (n.includes('indaga')) return <Search className={iconClass} />;
+    if (n.includes('investiga')) return <Scale className={activeIconClass} style={{ color: '#003DA5' }} />;
+    if (n.includes('juzga')) return <AlertTriangle className={iconClass} />;
+    if (n.includes('fallo')) return <CheckCircle className={iconClass} />;
+    return <FolderOpen className={iconClass} />;
+  };
+
+  // Build dynamic etapas from config or fallback
+  const etapas = stageConfigs.length > 0
+    ? stageConfigs.map(cfg => ({
+      nombre: cfg.etapa,
+      color: cfg.etapa.toLowerCase().includes('investiga') ? '#003DA5' : '#6B7280',
+      icono: getStageIcon(cfg.etapa),
+      diasEstimados: Number(cfg.diasHabiles) || 0
+    }))
+    : [
+      { nombre: 'Recepción', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 3 },
+      { nombre: 'Valoración', color: '#6B7280', icono: <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
+      { nombre: 'Indagación', color: '#6B7280', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 40 },
+      { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />, diasEstimados: 60 },
+      { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 50 },
+      { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 }
+    ];
 
   const mapearOrigenNoticia = (valor: string) => {
     const limpio = (valor || '').toString().trim().toUpperCase()
@@ -2081,16 +2225,6 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   const handleDropItem = async (item: Item, nuevaEtapa: string) => {
     if (!item) return;
 
-    // Movimiento libre de noticias y procesos entre columnas con persistencia
-    const etapaMap: Record<string, string> = {
-      'Recepción': 'EVALUACION',
-      'Valoración': 'EVALUACION',
-      'Indagación': 'INDAGACION_PREVIA',
-      'Investigación': 'INVESTIGACION',
-      'Juzgamiento': 'JUZGAMIENTO',
-      'Fallo': 'JUZGAMIENTO'
-    };
-
     // Actualizar estado local inmediatamente
     setItems(prev => {
       const updated = prev.map(i =>
@@ -2102,17 +2236,14 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
     // Si es proceso, actualizar backend
     if (item.tipo === 'proceso') {
-      const backendStage = etapaMap[nuevaEtapa];
-      if (backendStage) {
-        try {
-          await disciplinaryService.cambiarEtapa(item.id, backendStage);
-          toast.success('Proceso Movido', {
-            description: `${item.numeroProceso} → ${nuevaEtapa}`
-          });
-        } catch (error) {
-          console.error('Error actualizando etapa en backend:', error);
-          toast.error('No se pudo actualizar en el servidor');
-        }
+      try {
+        await disciplinaryService.cambiarEtapa(item.id, nuevaEtapa);
+        toast.success('Proceso Movido', {
+          description: `${item.numeroProceso} → ${nuevaEtapa}`
+        });
+      } catch (error) {
+        console.error('Error actualizando etapa en backend:', error);
+        toast.error('No se pudo actualizar en el servidor');
       }
     } else if (item.tipo === 'noticia') {
       toast.success('Noticia Movida', {
@@ -2280,7 +2411,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       ...prev.filter(i => i.id !== itemSeleccionado.id),
       nuevoProceso
     ]);
-    
+
     toast.success('Proceso Creado', {
       description: `${nuevoProceso.numeroProceso} → ${profesionalSeleccionado}`
     });
@@ -2330,7 +2461,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     // Generar nuevo número RC (Remisión por Competencia)
     const año = new Date().getFullYear();
     const numeroRC = `RC-${año}-${String(Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`;
-    
+
     // Obtener nombre del área
     const areas: Record<string, string> = {
       'personeria': 'Personería Municipal',
@@ -2341,13 +2472,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       'recursos-humanos': 'Recursos Humanos',
       'otra': 'Otra Entidad'
     };
-    
+
     const nombreArea = areas[areaDestinoRemision] || areaDestinoRemision;
-    
+
     toast.success('Remitido por Competencia', {
       description: `${itemSeleccionado.numero} → ${numeroRC} (${nombreArea})`
     });
-    
+
     // Remover la noticia del listado (ya que fue remitida a otra área)
     setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
     setModalActivo(null);
@@ -2480,9 +2611,9 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
         {/* Header Responsive Mejorado */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex-1">
-            <h2 
+            <h2
               className="font-black leading-tight"
-              style={{ 
+              style={{
                 color: '#003DA5',
                 fontSize: isMobile ? '1.25rem' : isTablet ? '1.375rem' : '1.5rem'
               }}
@@ -2502,12 +2633,11 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
               <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
                 <button
                   onClick={() => setTipoVista('kanban')}
-                  className={`${isTablet ? 'px-2 py-1.5' : 'px-3 py-2'} rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                    tipoVista === 'kanban'
-                      ? 'bg-white shadow-sm' 
-                      : 'hover:bg-gray-200'
-                  }`}
-                  style={{ 
+                  className={`${isTablet ? 'px-2 py-1.5' : 'px-3 py-2'} rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${tipoVista === 'kanban'
+                    ? 'bg-white shadow-sm'
+                    : 'hover:bg-gray-200'
+                    }`}
+                  style={{
                     color: tipoVista === 'kanban' ? '#003DA5' : '#6B7280'
                   }}
                 >
@@ -2516,12 +2646,11 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 </button>
                 <button
                   onClick={() => setTipoVista('lista')}
-                  className={`${isTablet ? 'px-2 py-1.5' : 'px-3 py-2'} rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                    tipoVista === 'lista'
-                      ? 'bg-white shadow-sm' 
-                      : 'hover:bg-gray-200'
-                  }`}
-                  style={{ 
+                  className={`${isTablet ? 'px-2 py-1.5' : 'px-3 py-2'} rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${tipoVista === 'lista'
+                    ? 'bg-white shadow-sm'
+                    : 'hover:bg-gray-200'
+                    }`}
+                  style={{
                     color: tipoVista === 'lista' ? '#003DA5' : '#6B7280'
                   }}
                 >
@@ -2530,13 +2659,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 </button>
               </div>
             )}
-            
+
             {/* Toggle de Vista Mobile */}
             {isMobile && (
               <button
                 onClick={() => setTipoVista(tipoVista === 'kanban' ? 'lista' : 'kanban')}
                 className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all"
-                style={{ 
+                style={{
                   background: '#F3F4F6',
                   color: '#003DA5'
                 }}
@@ -2592,13 +2721,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
           <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
             <div className={`flex items-center ${isMobile ? 'gap-2 p-2.5' : 'gap-3 p-3'}`}>
-              <div 
+              <div
                 className={`${isMobile ? 'p-2' : 'p-2.5'} rounded-lg bg-orange-50 flex-shrink-0`}
               >
                 <FileText className={`${isMobile ? 'w-4 h-4' : isTablet ? 'w-4.5 h-4.5' : 'w-5 h-5'} text-orange-600`} />
               </div>
               <div className="min-w-0">
-                <p 
+                <p
                   className="font-black text-gray-900 leading-none"
                   style={{ fontSize: isMobile ? '1.5rem' : isTablet ? '1.625rem' : '1.75rem' }}
                 >
@@ -2613,14 +2742,14 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
           <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
             <div className={`flex items-center ${isMobile ? 'gap-2 p-2.5' : 'gap-3 p-3'}`}>
-              <div 
+              <div
                 className={`${isMobile ? 'p-2' : 'p-2.5'} rounded-lg flex-shrink-0`}
                 style={{ background: '#E0EDFF' }}
               >
                 <FolderOpen className={`${isMobile ? 'w-4 h-4' : isTablet ? 'w-4.5 h-4.5' : 'w-5 h-5'}`} style={{ color: '#003DA5' }} />
               </div>
               <div className="min-w-0">
-                <p 
+                <p
                   className="font-black text-gray-900 leading-none"
                   style={{ fontSize: isMobile ? '1.5rem' : isTablet ? '1.625rem' : '1.75rem' }}
                 >
@@ -2635,13 +2764,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
           <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
             <div className={`flex items-center ${isMobile ? 'gap-2 p-2.5' : 'gap-3 p-3'}`}>
-              <div 
+              <div
                 className={`${isMobile ? 'p-2' : 'p-2.5'} rounded-lg bg-red-50 flex-shrink-0`}
               >
                 <AlertCircle className={`${isMobile ? 'w-4 h-4' : isTablet ? 'w-4.5 h-4.5' : 'w-5 h-5'} text-red-600`} />
               </div>
               <div className="min-w-0">
-                <p 
+                <p
                   className="font-black text-gray-900 leading-none"
                   style={{ fontSize: isMobile ? '1.5rem' : isTablet ? '1.625rem' : '1.75rem' }}
                 >
@@ -2656,13 +2785,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
           <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
             <div className={`flex items-center ${isMobile ? 'gap-2 p-2.5' : 'gap-3 p-3'}`}>
-              <div 
+              <div
                 className={`${isMobile ? 'p-2' : 'p-2.5'} rounded-lg bg-green-50 flex-shrink-0`}
               >
                 <CheckCircle className={`${isMobile ? 'w-4 h-4' : isTablet ? 'w-4.5 h-4.5' : 'w-5 h-5'} text-green-600`} />
               </div>
               <div className="min-w-0">
-                <p 
+                <p
                   className="font-black text-gray-900 leading-none"
                   style={{ fontSize: isMobile ? '1.5rem' : isTablet ? '1.625rem' : '1.75rem' }}
                 >
@@ -2689,8 +2818,8 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 </p>
               </div>
             )}
-            
-            <div 
+
+            <div
               className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
               style={{
                 scrollbarWidth: 'thin',
@@ -2698,34 +2827,34 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 WebkitOverflowScrolling: 'touch'
               }}
             >
-            {etapas.map((etapa) => (
-              <ColumnaKanban
-                key={etapa.nombre}
-                etapa={etapa.nombre}
-                items={items}
-                color={etapa.color}
-                icono={etapa.icono}
-                diasEstimados={etapa.diasEstimados}
-                onDrop={handleDropItem}
-                onConvertirNoticia={handleConvertirNoticia}
-                onDevolverNoticia={handleDevolverNoticia}
-                onDevolverCompetencia={handleDevolverCompetencia}
-                onArchivarNoticia={handleArchivarNoticia}
-                onVerDetallesNoticia={handleVerDetallesNoticia}
-                onVerDetalles={handleVerDetalles}
-                onAprobarBorrador={handleAprobarBorrador}
-                onVerExpediente={handleVerExpediente}
-                onGestionAutos={handleGestionAutos}
-                onGestionEvidencias={handleGestionEvidencias}
-                onGestionOficios={handleGestionOficios}
-                onGestionActas={handleGestionActas}
-                onComentarios={handleComentarios}
-                vistaCompacta={vistaCompacta}
-                isMobile={isMobile}
-                colapsada={columnasColapsadas.has(etapa.nombre)}
-                onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
-              />
-            ))}
+              {etapas.map((etapa) => (
+                <ColumnaKanban
+                  key={etapa.nombre}
+                  etapa={etapa.nombre}
+                  items={items}
+                  color={etapa.color}
+                  icono={etapa.icono}
+                  diasEstimados={etapa.diasEstimados}
+                  onDrop={handleDropItem}
+                  onConvertirNoticia={handleConvertirNoticia}
+                  onDevolverNoticia={handleDevolverNoticia}
+                  onDevolverCompetencia={handleDevolverCompetencia}
+                  onArchivarNoticia={handleArchivarNoticia}
+                  onVerDetallesNoticia={handleVerDetallesNoticia}
+                  onVerDetalles={handleVerDetalles}
+                  onAprobarBorrador={handleAprobarBorrador}
+                  onVerExpediente={handleVerExpediente}
+                  onGestionAutos={handleGestionAutos}
+                  onGestionEvidencias={handleGestionEvidencias}
+                  onGestionOficios={handleGestionOficios}
+                  onGestionActas={handleGestionActas}
+                  onComentarios={handleComentarios}
+                  vistaCompacta={vistaCompacta}
+                  isMobile={isMobile}
+                  colapsada={columnasColapsadas.has(etapa.nombre)}
+                  onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
+                />
+              ))}
             </div>
           </div>
         ) : (
@@ -2760,654 +2889,653 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
               : normalizeNoticia(itemSeleccionado);
 
             return (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-              onClick={() => setModalActivo(null)}
-            >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                onClick={(e) => e.stopPropagation()}
-                className={`bg-white rounded-2xl ${isMobile ? 'p-4' : 'p-6'} ${isMobile ? 'max-w-full mx-2' : 'max-w-lg'} w-full shadow-2xl max-h-[90vh] overflow-y-auto`}
-                style={{
-                  maxWidth: isMobile ? 'calc(100vw - 2rem)' : '32rem'
-                }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+                onClick={() => setModalActivo(null)}
               >
-                {/* Modal: Convertir a Proceso */}
-                {modalActivo === 'convertir-proceso' && itemSeguro && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-blue-100">
-                          <PlusCircle className="w-6 h-6" style={{ color: '#003DA5' }} />
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className={`bg-white rounded-2xl ${isMobile ? 'p-4' : 'p-6'} ${isMobile ? 'max-w-full mx-2' : 'max-w-lg'} w-full shadow-2xl max-h-[90vh] overflow-y-auto`}
+                  style={{
+                    maxWidth: isMobile ? 'calc(100vw - 2rem)' : '32rem'
+                  }}
+                >
+                  {/* Modal: Convertir a Proceso */}
+                  {modalActivo === 'convertir-proceso' && itemSeguro && (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-blue-100">
+                            <PlusCircle className="w-6 h-6" style={{ color: '#003DA5' }} />
+                          </div>
+                          <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black`} style={{ color: '#003DA5' }}>
+                            Convertir a Proceso
+                          </h3>
                         </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black`} style={{ color: '#003DA5' }}>
-                          Convertir a Proceso
-                        </h3>
-                      </div>
-                      <button
-                        onClick={() => setModalActivo(null)}
-                        className="p-2 hover:bg-gray-100 rounded-lg"
-                      >
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FileText className="w-4 h-4 text-orange-600" />
-                          <p className="text-sm font-bold text-orange-700">
-                            {itemSeguro.numero}
-                          </p>
-                        </div>
-                        <p className="font-bold text-gray-900 mb-1">
-                          {itemSeguro.denunciado.nombre}
-                        </p>
-                        <p className="text-xs text-gray-600 mb-2">
-                          {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
-                        </p>
-                        <p className="text-sm text-gray-600 line-clamp-2">
-                          {itemSeguro.hechos}
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Profesional *
-                        </label>
-                        <select
-                          value={profesionalSeleccionado}
-                          onChange={(e) => setProfesionalSeleccionado(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        <button
+                          onClick={() => setModalActivo(null)}
+                          className="p-2 hover:bg-gray-100 rounded-lg"
                         >
-                          <option value="">Seleccionar...</option>
-                          {PROFESIONALES.map((prof) => (
-                            <option key={prof} value={prof}>{prof}</option>
-                          ))}
-                        </select>
+                          <X className="w-5 h-5 text-gray-600" />
+                        </button>
                       </div>
 
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Observaciones
-                        </label>
-                        <textarea
-                          value={observaciones}
-                          onChange={(e) => setObservaciones(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          rows={3}
-                          placeholder="Observaciones..."
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <Button
-                        onClick={() => setModalActivo(null)}
-                        variant="outline"
-                        className="flex-1"
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        onClick={handleConfirmarConversion}
-                        className="flex-1 font-bold"
-                        style={{ background: '#003DA5', color: '#FFFFFF' }}
-                      >
-                        <Check className="w-4 h-4 mr-2" />
-                        Crear
-                      </Button>
-                    </div>
-                  </>
-                )}
-
-                {/* Modal: Devolver Noticia */}
-                {modalActivo === 'devolver-noticia' && itemSeguro && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-yellow-100">
-                          <ArrowLeft className="w-6 h-6 text-yellow-600" />
-                        </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
-                          Devolver Noticia
-                        </h3>
-                      </div>
-                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="p-4 bg-yellow-50 rounded-xl border-2 border-yellow-200">
-                        <p className="text-sm font-bold mb-1">{itemSeguro.numero}</p>
-                        <p className="text-sm text-gray-700">{itemSeguro.denunciado.nombre}</p>
-                        <p className="text-xs text-gray-600">
-                          {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Motivo de Devolución *
-                        </label>
-                        <textarea
-                          value={observaciones}
-                          onChange={(e) => setObservaciones(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          rows={4}
-                          placeholder="Explica el motivo de la devolución..."
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
-                        Cancelar
-                      </Button>
-                      <Button onClick={handleConfirmarDevolucion} className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white">
-                        Devolver
-                      </Button>
-                    </div>
-                  </>
-                )}
-
-                {/* Modal: Devolver por Competencia */}
-                {modalActivo === 'devolver-competencia' && itemSeguro && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-purple-100">
-                          <Send className="w-6 h-6 text-purple-600" />
-                        </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
-                          Remitir por Competencia
-                        </h3>
-                      </div>
-                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
-                        <p className="text-sm font-bold mb-1 text-purple-900">{itemSeguro.numero}</p>
-                        <p className="text-sm text-gray-700">{itemSeguro.denunciado.nombre}</p>
-                        <p className="text-xs text-gray-600">
-                          {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
-                        </p>
-                      </div>
-
-                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                        <div className="flex items-start gap-2">
-                          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-sm font-bold text-blue-900 mb-1">Remisión por Competencia</p>
-                            <p className="text-xs text-blue-700">
-                              Esta noticia no es competencia del área de Control Interno Disciplinario. 
-                              Se generará un nuevo número RC (Remisión por Competencia) y se remitirá al área correspondiente.
+                      <div className="space-y-4">
+                        <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <FileText className="w-4 h-4 text-orange-600" />
+                            <p className="text-sm font-bold text-orange-700">
+                              {itemSeguro.numero}
                             </p>
                           </div>
+                          <p className="font-bold text-gray-900 mb-1">
+                            {itemSeguro.denunciado.nombre}
+                          </p>
+                          <p className="text-xs text-gray-600 mb-2">
+                            {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
+                          </p>
+                          <p className="text-sm text-gray-600 line-clamp-2">
+                            {itemSeguro.hechos}
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            Profesional *
+                          </label>
+                          <select
+                            value={profesionalSeleccionado}
+                            onChange={(e) => setProfesionalSeleccionado(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Seleccionar...</option>
+                            {PROFESIONALES.map((prof) => (
+                              <option key={prof} value={prof}>{prof}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            Observaciones
+                          </label>
+                          <textarea
+                            value={observaciones}
+                            onChange={(e) => setObservaciones(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            rows={3}
+                            placeholder="Observaciones..."
+                          />
                         </div>
                       </div>
 
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Área/Entidad de Destino *
-                        </label>
-                        <select
-                          value={areaDestinoRemision}
-                          onChange={(e) => setAreaDestinoRemision(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold"
-                        >
-                          <option value="">Seleccionar área...</option>
-                          <option value="personeria">Personería Municipal</option>
-                          <option value="contraloria">Contraloría</option>
-                          <option value="procuraduria">Procuraduría</option>
-                          <option value="fiscalia">Fiscalía General de la Nación</option>
-                          <option value="control-interno">Control Interno de Gestión</option>
-                          <option value="recursos-humanos">Recursos Humanos</option>
-                          <option value="otra">Otra entidad...</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Justificación de la Remisión *
-                        </label>
-                        <textarea
-                          value={observaciones}
-                          onChange={(e) => setObservaciones(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          rows={4}
-                          placeholder="Explica por qué esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida..."
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
-                        Cancelar
-                      </Button>
-                      <Button 
-                        onClick={handleConfirmarDevolucionCompetencia} 
-                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold"
-                      >
-                        <Send className="w-4 h-4 mr-2" />
-                        Remitir
-                      </Button>
-                    </div>
-                  </>
-                )}
-
-                {/* Modal: Archivar Noticia - REEMPLAZADO POR COMPONENTE MODAL COMPLETO */}
-
-                {/* Modal: Aprobar Borrador */}
-                {modalActivo === 'aprobar-borrador' && itemSeguro && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-green-100">
-                          <CheckCircle className="w-6 h-6 text-green-600" />
-                        </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
-                          Aprobar Borrador
-                        </h3>
-                      </div>
-                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="p-4 bg-green-50 rounded-xl border-2 border-green-200">
-                        <p className="text-sm font-bold text-green-700 mb-1">Proceso:</p>
-                        <p className="text-sm text-gray-900"> {itemSeleccionado.numeroProceso}</p>
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        Al aprobar, el documento pasará a estado final y se notificará al profesional asignado.
-                      </p>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
-                        Cancelar
-                      </Button>
-                      <Button onClick={handleConfirmarAprobacion} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
-                        <Check className="w-4 h-4 mr-2" />
-                        Aprobar
-                      </Button>
-                    </div>
-                  </>
-                )}
-
-                {/* Modal: Ver Detalles del Proceso - COMPLETO CON EDITOR */}
-                {modalActivo === 'ver-detalles' && itemSeguro && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-blue-100">
-                          <Eye className="w-6 h-6" style={{ color: '#003DA5' }} />
-                        </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black`} style={{ color: '#003DA5' }}>
-                          {itemSeguro.tipo === 'noticia' ? 'Detalles de la Noticia' : 'Detalles del Proceso'}
-                        </h3>
-                      </div>
-                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                      {/* VISTA PARA NOTICIAS */}
-                      {itemSeguro.tipo === 'noticia' && (
-                        <>
-                          {/* Información de la Noticia */}
-                          <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
-                            <h4 className="font-bold text-orange-900 mb-2">{(itemSeguro as Noticia).numero}</h4>
-                            <div className="grid grid-cols-2 gap-2 text-sm">
-                              <div>
-                                <p className="text-gray-600">Origen:</p>
-                                <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).origen}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Fecha Recepción:</p>
-                                <p className="font-bold text-gray-900">{new Date((itemSeleccionado as Noticia).fechaRecepcion).toLocaleDateString('es-CO')}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Estado:</p>
-                                <p className="font-bold text-gray-900 capitalize">{(itemSeleccionado as Noticia).estado.replace('-', ' ')}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Prioridad:</p>
-                                <p className={`font-bold ${
-                                  (itemSeleccionado as Noticia).prioridad === 'alta' ? 'text-red-600' :
-                                  (itemSeleccionado as Noticia).prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
-                                } capitalize`}>{(itemSeleccionado as Noticia).prioridad}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Días Pendientes:</p>
-                                <p className="font-bold text-orange-600">{(itemSeleccionado as Noticia).diasPendientes} días</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Denunciante */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              👤 DENUNCIANTE
-                            </h5>
-                            <div className="p-3 bg-gray-50 rounded-lg space-y-1">
-                              {(() => {
-                                const den = (itemSeleccionado as Noticia).denunciante || { nombre: 'Sin denunciante', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
-                                return (
-                                  <>
-                                    <p className="font-bold text-gray-900">{den.nombre}</p>
-                                    <p className="text-sm text-gray-600">
-                                      <span className="font-semibold">{den.tipoIdentificacion}:</span> {den.numeroIdentificacion}
-                                    </p>
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          </div>
-
-                          {/* Denunciado */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              ⚠️ DENUNCIADO
-                            </h5>
-                            <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
-                              {(() => {
-                                const den = (itemSeleccionado as Noticia).denunciado || { nombre: 'Sin denunciado', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
-                                return (
-                                  <>
-                                    <p className="font-bold text-gray-900">{den.nombre}</p>
-                                    <p className="text-sm text-gray-600">
-                                      <span className="font-semibold">{den.tipoIdentificacion}:</span> {den.numeroIdentificacion}
-                                    </p>
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          </div>
-
-                          {/* Hechos */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">HECHOS</h5>
-                            <div className="p-3 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-700">{(itemSeleccionado as Noticia).hechos}</p>
-                            </div>
-                          </div>
-                        </>
-                      )}
-
-                      {/* VISTA PARA PROCESOS */}
-                      {itemSeguro.tipo === 'proceso' && (
-                        <>
-                          {/* Información del Proceso */}
-                          <div className="p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
-                            <h4 className="font-bold text-blue-900 mb-2"> {(itemSeleccionado as Proceso).numeroProceso}</h4>
-                            <div className="grid grid-cols-2 gap-2 text-sm">
-                              <div>
-                                <p className="text-gray-600">Noticia Origen:</p>
-                                <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).noticiaOrigen}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Etapa:</p>
-                                <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).etapaActual}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Días Restantes:</p>
-                                <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).diasRestantes}d</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Denunciante */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              👤 DENUNCIANTE
-                            </h5>
-                            <div className="p-3 bg-gray-50 rounded-lg space-y-1">
-                              <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).denunciante.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Proceso).denunciante.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciante.numeroIdentificacion}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Denunciado */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              ⚠️ DENUNCIADO
-                            </h5>
-                            <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
-                              <p className="font-bold text-gray-900 mb-1"> {(itemSeleccionado as Proceso).denunciado.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Proceso).denunciado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciado.numeroIdentificacion}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Profesional Asignado */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              👨‍💼 PROFESIONAL ASIGNADO
-                            </h5>
-                            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-1">
-                              <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).profesionalAsignado.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Proceso).profesionalAsignado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).profesionalAsignado.numeroIdentificacion}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* NUEVA SECCIÓN: Gestión Documental - SOLO PROCESOS */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                              <FileSignature className="w-4 h-4" style={{ color: '#003DA5' }} />
-                              GESTIÓN DOCUMENTAL
-                            </h5>
-                        <div className="grid grid-cols-2 gap-2">
-                          {/* Autos */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-autos');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Scale className="w-3.5 h-3.5 mr-2" style={{ color: '#8B5CF6' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Autos</p>
-                              <p className="text-xs text-gray-500">Providencias</p>
-                            </div>
-                          </Button>
-
-                          {/* Evidencias */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-evidencias');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Archive className="w-3.5 h-3.5 mr-2" style={{ color: '#F59E0B' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Evidencias</p>
-                              <p className="text-xs text-gray-500">Pruebas</p>
-                            </div>
-                          </Button>
-
-                          {/* Oficios */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-oficios');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Mail className="w-3.5 h-3.5 mr-2" style={{ color: '#06B6D4' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Oficios</p>
-                              <p className="text-xs text-gray-500">Comunicaciones</p>
-                            </div>
-                          </Button>
-
-                          {/* Notificaciones */}
-                          <Button
-                            onClick={() => {
-                              toast.info('Notificaciones', {
-                                description: 'Gestionar notificaciones del proceso'
-                              });
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Bell className="w-3.5 h-3.5 mr-2" style={{ color: '#10B981' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Notificaciones</p>
-                              <p className="text-xs text-gray-500">Avisos</p>
-                            </div>
-                          </Button>
-
-                          {/* Actas */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-actas');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <FileCheck className="w-3.5 h-3.5 mr-2" style={{ color: '#DC2626' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Actas</p>
-                              <p className="text-xs text-gray-500">Diligencias</p>
-                            </div>
-                          </Button>
-
-                          {/* Historial */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('historial-auditoria');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <History className="w-3.5 h-3.5 mr-2" style={{ color: '#6B7280' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Historial</p>
-                              <p className="text-xs text-gray-500">Auditoría</p>
-                            </div>
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Acciones Rápidas */}
-                      <div>
-                        <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                          <Settings className="w-4 h-4" style={{ color: '#003DA5' }} />
-                          ACCIONES RÁPIDAS
-                        </h5>
-                        <div className="grid grid-cols-2 gap-2">
+                      <div className="flex gap-3 mt-6">
                         <Button
-                          onClick={() => {
-                            setModalActivo('editor-documentos');
-                          }}
-                          size="sm"
-                          className="w-full bg-purple-600 hover:bg-purple-700 text-white"
-                        >
-                          <Edit2 className="w-3.5 h-3.5 mr-2" />
-                          Editor
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            setModalActivo('subir-documentos');
-                          }}
-                          size="sm"
-                          className="w-full" style={{ background: '#003DA5', color: '#FFFFFF' }}
-                        >
-                          <Upload className="w-3.5 h-3.5 mr-2" />
-                          Subir Docs
-                        </Button>
-                      </div>
-                      </div>
-
-                          {/* Métricas - SOLO PROCESOS */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">ESTADÍSTICAS</h5>
-                            <div className="grid grid-cols-3 gap-2">
-                              <div className="p-3 bg-purple-50 rounded-lg text-center">
-                                <p className="text-2xl font-black text-purple-700"> {(itemSeleccionado as Proceso).borradores?.length || 0}</p>
-                                <p className="text-xs text-gray-600">Borradores</p>
-                              </div>
-                              <div className="p-3 bg-blue-50 rounded-lg text-center">
-                                <p className="text-2xl font-black text-blue-700"> {(itemSeleccionado as Proceso).documentos?.length || 0}</p>
-                                <p className="text-xs text-gray-600">Documentos</p>
-                              </div>
-                              <div className="p-3 bg-green-50 rounded-lg text-center">
-                                <p className="text-2xl font-black text-green-700"> {(itemSeleccionado as Proceso).porcentajeTiempo}%</p>
-                                <p className="text-xs text-gray-600">Tiempo</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Última Actuación - SOLO PROCESOS */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">ÚLTIMA ACTUACIÓN</h5>
-                            <div className="p-3 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-700"> {(itemSeleccionado as Proceso).ultimaActuacion}</p>
-                              <p className="text-xs text-gray-500 mt-1"> {(itemSeleccionado as Proceso).fechaCreacion}</p>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Botones Finales */}
-                    <div className="flex gap-2 mt-4">
-                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
-                        Cerrar
-                      </Button>
-                      {itemSeleccionado.tipo === 'proceso' && (
-                        <Button 
-                          onClick={() => handleVerExpediente(itemSeleccionado as Proceso)} 
+                          onClick={() => setModalActivo(null)}
+                          variant="outline"
                           className="flex-1"
-                          style={{ background: '#8B5CF6', color: '#FFFFFF' }}
                         >
-                          <Archive className="w-4 h-4 mr-2" />
-                          Expediente Completo
+                          Cancelar
                         </Button>
-                      )}
-                      {itemSeleccionado.tipo === 'noticia' && (
-                        <Button 
-                          onClick={() => {
-                            setModalActivo(null);
-                            handleConvertirNoticia(itemSeleccionado as Noticia);
-                          }} 
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                        <Button
+                          onClick={handleConfirmarConversion}
+                          className="flex-1 font-bold"
+                          style={{ background: '#003DA5', color: '#FFFFFF' }}
                         >
-                          <PlusCircle className="w-4 h-4 mr-2" />
-                          Convertir a Proceso
+                          <Check className="w-4 h-4 mr-2" />
+                          Crear
                         </Button>
-                      )}
-                    </div>
-                  </>
-                )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Modal: Devolver Noticia */}
+                  {modalActivo === 'devolver-noticia' && itemSeguro && (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-yellow-100">
+                            <ArrowLeft className="w-6 h-6 text-yellow-600" />
+                          </div>
+                          <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
+                            Devolver Noticia
+                          </h3>
+                        </div>
+                        <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                          <X className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="p-4 bg-yellow-50 rounded-xl border-2 border-yellow-200">
+                          <p className="text-sm font-bold mb-1">{itemSeguro.numero}</p>
+                          <p className="text-sm text-gray-700">{itemSeguro.denunciado.nombre}</p>
+                          <p className="text-xs text-gray-600">
+                            {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            Motivo de Devolución *
+                          </label>
+                          <textarea
+                            value={observaciones}
+                            onChange={(e) => setObservaciones(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            rows={4}
+                            placeholder="Explica el motivo de la devolución..."
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 mt-6">
+                        <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                          Cancelar
+                        </Button>
+                        <Button onClick={handleConfirmarDevolucion} className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white">
+                          Devolver
+                        </Button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Modal: Devolver por Competencia */}
+                  {modalActivo === 'devolver-competencia' && itemSeguro && (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-purple-100">
+                            <Send className="w-6 h-6 text-purple-600" />
+                          </div>
+                          <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
+                            Remitir por Competencia
+                          </h3>
+                        </div>
+                        <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                          <X className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
+                          <p className="text-sm font-bold mb-1 text-purple-900">{itemSeguro.numero}</p>
+                          <p className="text-sm text-gray-700">{itemSeguro.denunciado.nombre}</p>
+                          <p className="text-xs text-gray-600">
+                            {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                          <div className="flex items-start gap-2">
+                            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-bold text-blue-900 mb-1">Remisión por Competencia</p>
+                              <p className="text-xs text-blue-700">
+                                Esta noticia no es competencia del área de Control Interno Disciplinario.
+                                Se generará un nuevo número RC (Remisión por Competencia) y se remitirá al área correspondiente.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            Área/Entidad de Destino *
+                          </label>
+                          <select
+                            value={areaDestinoRemision}
+                            onChange={(e) => setAreaDestinoRemision(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold"
+                          >
+                            <option value="">Seleccionar área...</option>
+                            <option value="personeria">Personería Municipal</option>
+                            <option value="contraloria">Contraloría</option>
+                            <option value="procuraduria">Procuraduría</option>
+                            <option value="fiscalia">Fiscalía General de la Nación</option>
+                            <option value="control-interno">Control Interno de Gestión</option>
+                            <option value="recursos-humanos">Recursos Humanos</option>
+                            <option value="otra">Otra entidad...</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            Justificación de la Remisión *
+                          </label>
+                          <textarea
+                            value={observaciones}
+                            onChange={(e) => setObservaciones(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            rows={4}
+                            placeholder="Explica por qué esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida..."
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 mt-6">
+                        <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                          Cancelar
+                        </Button>
+                        <Button
+                          onClick={handleConfirmarDevolucionCompetencia}
+                          className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                        >
+                          <Send className="w-4 h-4 mr-2" />
+                          Remitir
+                        </Button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Modal: Archivar Noticia - REEMPLAZADO POR COMPONENTE MODAL COMPLETO */}
+
+                  {/* Modal: Aprobar Borrador */}
+                  {modalActivo === 'aprobar-borrador' && itemSeguro && (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-green-100">
+                            <CheckCircle className="w-6 h-6 text-green-600" />
+                          </div>
+                          <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
+                            Aprobar Borrador
+                          </h3>
+                        </div>
+                        <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                          <X className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="p-4 bg-green-50 rounded-xl border-2 border-green-200">
+                          <p className="text-sm font-bold text-green-700 mb-1">Proceso:</p>
+                          <p className="text-sm text-gray-900"> {itemSeleccionado.numeroProceso}</p>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          Al aprobar, el documento pasará a estado final y se notificará al profesional asignado.
+                        </p>
+                      </div>
+
+                      <div className="flex gap-3 mt-6">
+                        <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                          Cancelar
+                        </Button>
+                        <Button onClick={handleConfirmarAprobacion} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
+                          <Check className="w-4 h-4 mr-2" />
+                          Aprobar
+                        </Button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Modal: Ver Detalles del Proceso - COMPLETO CON EDITOR */}
+                  {modalActivo === 'ver-detalles' && itemSeguro && (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-blue-100">
+                            <Eye className="w-6 h-6" style={{ color: '#003DA5' }} />
+                          </div>
+                          <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black`} style={{ color: '#003DA5' }}>
+                            {itemSeguro.tipo === 'noticia' ? 'Detalles de la Noticia' : 'Detalles del Proceso'}
+                          </h3>
+                        </div>
+                        <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                          <X className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                        {/* VISTA PARA NOTICIAS */}
+                        {itemSeguro.tipo === 'noticia' && (
+                          <>
+                            {/* Información de la Noticia */}
+                            <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
+                              <h4 className="font-bold text-orange-900 mb-2">{(itemSeguro as Noticia).numero}</h4>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div>
+                                  <p className="text-gray-600">Origen:</p>
+                                  <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).origen}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Fecha Recepción:</p>
+                                  <p className="font-bold text-gray-900">{new Date((itemSeleccionado as Noticia).fechaRecepcion).toLocaleDateString('es-CO')}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Estado:</p>
+                                  <p className="font-bold text-gray-900 capitalize">{(itemSeleccionado as Noticia).estado.replace('-', ' ')}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Prioridad:</p>
+                                  <p className={`font-bold ${(itemSeleccionado as Noticia).prioridad === 'alta' ? 'text-red-600' :
+                                    (itemSeleccionado as Noticia).prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
+                                    } capitalize`}>{(itemSeleccionado as Noticia).prioridad}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Días Pendientes:</p>
+                                  <p className="font-bold text-orange-600">{(itemSeleccionado as Noticia).diasPendientes} días</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Denunciante */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                👤 DENUNCIANTE
+                              </h5>
+                              <div className="p-3 bg-gray-50 rounded-lg space-y-1">
+                                {(() => {
+                                  const den = (itemSeleccionado as Noticia).denunciante || { nombre: 'Sin denunciante', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
+                                  return (
+                                    <>
+                                      <p className="font-bold text-gray-900">{den.nombre}</p>
+                                      <p className="text-sm text-gray-600">
+                                        <span className="font-semibold">{den.tipoIdentificacion}:</span> {den.numeroIdentificacion}
+                                      </p>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+
+                            {/* Denunciado */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                ⚠️ DENUNCIADO
+                              </h5>
+                              <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
+                                {(() => {
+                                  const den = (itemSeleccionado as Noticia).denunciado || { nombre: 'Sin denunciado', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
+                                  return (
+                                    <>
+                                      <p className="font-bold text-gray-900">{den.nombre}</p>
+                                      <p className="text-sm text-gray-600">
+                                        <span className="font-semibold">{den.tipoIdentificacion}:</span> {den.numeroIdentificacion}
+                                      </p>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+
+                            {/* Hechos */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2">HECHOS</h5>
+                              <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm text-gray-700">{(itemSeleccionado as Noticia).hechos}</p>
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        {/* VISTA PARA PROCESOS */}
+                        {itemSeguro.tipo === 'proceso' && (
+                          <>
+                            {/* Información del Proceso */}
+                            <div className="p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
+                              <h4 className="font-bold text-blue-900 mb-2"> {(itemSeleccionado as Proceso).numeroProceso}</h4>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div>
+                                  <p className="text-gray-600">Noticia Origen:</p>
+                                  <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).noticiaOrigen}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Etapa:</p>
+                                  <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).etapaActual}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Días Restantes:</p>
+                                  <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).diasRestantes}d</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Denunciante */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                👤 DENUNCIANTE
+                              </h5>
+                              <div className="p-3 bg-gray-50 rounded-lg space-y-1">
+                                <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).denunciante.nombre}</p>
+                                <p className="text-sm text-gray-600">
+                                  <span className="font-semibold">{(itemSeleccionado as Proceso).denunciante.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciante.numeroIdentificacion}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Denunciado */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                ⚠️ DENUNCIADO
+                              </h5>
+                              <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
+                                <p className="font-bold text-gray-900 mb-1"> {(itemSeleccionado as Proceso).denunciado.nombre}</p>
+                                <p className="text-sm text-gray-600">
+                                  <span className="font-semibold">{(itemSeleccionado as Proceso).denunciado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciado.numeroIdentificacion}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Profesional Asignado */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                👨‍💼 PROFESIONAL ASIGNADO
+                              </h5>
+                              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-1">
+                                <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).profesionalAsignado.nombre}</p>
+                                <p className="text-sm text-gray-600">
+                                  <span className="font-semibold">{(itemSeleccionado as Proceso).profesionalAsignado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).profesionalAsignado.numeroIdentificacion}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* NUEVA SECCIÓN: Gestión Documental - SOLO PROCESOS */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                <FileSignature className="w-4 h-4" style={{ color: '#003DA5' }} />
+                                GESTIÓN DOCUMENTAL
+                              </h5>
+                              <div className="grid grid-cols-2 gap-2">
+                                {/* Autos */}
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('gestion-autos');
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <Scale className="w-3.5 h-3.5 mr-2" style={{ color: '#8B5CF6' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Autos</p>
+                                    <p className="text-xs text-gray-500">Providencias</p>
+                                  </div>
+                                </Button>
+
+                                {/* Evidencias */}
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('gestion-evidencias');
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <Archive className="w-3.5 h-3.5 mr-2" style={{ color: '#F59E0B' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Evidencias</p>
+                                    <p className="text-xs text-gray-500">Pruebas</p>
+                                  </div>
+                                </Button>
+
+                                {/* Oficios */}
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('gestion-oficios');
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <Mail className="w-3.5 h-3.5 mr-2" style={{ color: '#06B6D4' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Oficios</p>
+                                    <p className="text-xs text-gray-500">Comunicaciones</p>
+                                  </div>
+                                </Button>
+
+                                {/* Notificaciones */}
+                                <Button
+                                  onClick={() => {
+                                    toast.info('Notificaciones', {
+                                      description: 'Gestionar notificaciones del proceso'
+                                    });
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <Bell className="w-3.5 h-3.5 mr-2" style={{ color: '#10B981' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Notificaciones</p>
+                                    <p className="text-xs text-gray-500">Avisos</p>
+                                  </div>
+                                </Button>
+
+                                {/* Actas */}
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('gestion-actas');
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <FileCheck className="w-3.5 h-3.5 mr-2" style={{ color: '#DC2626' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Actas</p>
+                                    <p className="text-xs text-gray-500">Diligencias</p>
+                                  </div>
+                                </Button>
+
+                                {/* Historial */}
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('historial-auditoria');
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <History className="w-3.5 h-3.5 mr-2" style={{ color: '#6B7280' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Historial</p>
+                                    <p className="text-xs text-gray-500">Auditoría</p>
+                                  </div>
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Acciones Rápidas */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                <Settings className="w-4 h-4" style={{ color: '#003DA5' }} />
+                                ACCIONES RÁPIDAS
+                              </h5>
+                              <div className="grid grid-cols-2 gap-2">
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('editor-documentos');
+                                  }}
+                                  size="sm"
+                                  className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5 mr-2" />
+                                  Editor
+                                </Button>
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('subir-documentos');
+                                  }}
+                                  size="sm"
+                                  className="w-full" style={{ background: '#003DA5', color: '#FFFFFF' }}
+                                >
+                                  <Upload className="w-3.5 h-3.5 mr-2" />
+                                  Subir Docs
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Métricas - SOLO PROCESOS */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2">ESTADÍSTICAS</h5>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="p-3 bg-purple-50 rounded-lg text-center">
+                                  <p className="text-2xl font-black text-purple-700"> {(itemSeleccionado as Proceso).borradores?.length || 0}</p>
+                                  <p className="text-xs text-gray-600">Borradores</p>
+                                </div>
+                                <div className="p-3 bg-blue-50 rounded-lg text-center">
+                                  <p className="text-2xl font-black text-blue-700"> {(itemSeleccionado as Proceso).documentos?.length || 0}</p>
+                                  <p className="text-xs text-gray-600">Documentos</p>
+                                </div>
+                                <div className="p-3 bg-green-50 rounded-lg text-center">
+                                  <p className="text-2xl font-black text-green-700"> {(itemSeleccionado as Proceso).porcentajeTiempo}%</p>
+                                  <p className="text-xs text-gray-600">Tiempo</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Última Actuación - SOLO PROCESOS */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2">ÚLTIMA ACTUACIÓN</h5>
+                              <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm text-gray-700"> {(itemSeleccionado as Proceso).ultimaActuacion}</p>
+                                <p className="text-xs text-gray-500 mt-1"> {(itemSeleccionado as Proceso).fechaCreacion}</p>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Botones Finales */}
+                      <div className="flex gap-2 mt-4">
+                        <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                          Cerrar
+                        </Button>
+                        {itemSeleccionado.tipo === 'proceso' && (
+                          <Button
+                            onClick={() => handleVerExpediente(itemSeleccionado as Proceso)}
+                            className="flex-1"
+                            style={{ background: '#8B5CF6', color: '#FFFFFF' }}
+                          >
+                            <Archive className="w-4 h-4 mr-2" />
+                            Expediente Completo
+                          </Button>
+                        )}
+                        {itemSeleccionado.tipo === 'noticia' && (
+                          <Button
+                            onClick={() => {
+                              setModalActivo(null);
+                              handleConvertirNoticia(itemSeleccionado as Noticia);
+                            }}
+                            className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <PlusCircle className="w-4 h-4 mr-2" />
+                            Convertir a Proceso
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </motion.div>
               </motion.div>
-            </motion.div>
             );
           })()}
         </AnimatePresence>
@@ -3501,8 +3629,8 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                         </p>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => setModalActivo(null)} 
+                    <button
+                      onClick={() => setModalActivo(null)}
                       className="p-2 hover:bg-white/10 rounded-lg transition-colors"
                     >
                       <X className="w-6 h-6 text-white" />
@@ -3521,9 +3649,9 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
                 {/* Footer */}
                 <div className="p-4 border-t bg-gray-50">
-                  <Button 
-                    onClick={() => setModalActivo(null)} 
-                    variant="outline" 
+                  <Button
+                    onClick={() => setModalActivo(null)}
+                    variant="outline"
                     className="w-full"
                   >
                     Cerrar

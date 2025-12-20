@@ -54,11 +54,10 @@ export class DisciplinaryProcess {
   abogadoAsignadoId: string;
 
   @Column({
-    type: 'enum',
-    enum: ProcessStage,
-    default: ProcessStage.EVALUACION,
+    type: 'varchar',
+    default: 'RECEPCIÓN',
   })
-  etapaActual: ProcessStage;
+  etapaActual: string;
 
   @Column({
     type: 'enum',
