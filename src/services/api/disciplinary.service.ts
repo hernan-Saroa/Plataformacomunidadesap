@@ -205,13 +205,13 @@ class DisciplinaryService {
         // Construir URL usando buildApiUrl para respetar el modo de conexión (gateway/direct)
         const endpoint = `/api/v1/disciplinary-processes/${processId}/documents/${documentId}/download`;
         const url = buildApiUrl('control-disciplinario', endpoint);
-        
+
         // Obtener token de autenticación
         const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/octet-stream',
         };
-        
+
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
@@ -279,10 +279,14 @@ class DisciplinaryService {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-review`, {});
     }
 
-    async firmarAuto(id: string, aprobadoPorId: string): Promise<LegalAuto> {
+    async aprobarAuto(id: string, aprobadoPorId: string): Promise<LegalAuto> {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/approve?aprobadoPorId=${aprobadoPorId}`, {
             action: 'APPROVE'
         });
+    }
+
+    async firmarAuto(id: string, userId: string): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/sign?userId=${userId}`, {});
     }
 
     async devolverAuto(id: string, aprobadoPorId: string, observaciones: string): Promise<LegalAuto> {

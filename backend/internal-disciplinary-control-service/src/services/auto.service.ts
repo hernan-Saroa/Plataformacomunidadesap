@@ -60,7 +60,7 @@ export class AutoService {
    * Obtiene todos los autos
    */
   async findAll(): Promise<LegalAuto[]> {
-    return await this.autoRepository.find({ relations: ['process'] });
+    return await this.autoRepository.find({ relations: ['process', 'versions'] });
   }
 
   /**
@@ -69,7 +69,7 @@ export class AutoService {
   async findById(id: string): Promise<LegalAuto> {
     const auto = await this.autoRepository.findOne({
       where: { id },
-      relations: ['process'],
+      relations: ['process', 'versions'],
     });
     if (!auto) {
       throw new HttpException('Auto no encontrado', HttpStatus.NOT_FOUND);
@@ -121,7 +121,7 @@ export class AutoService {
       );
     }
 
-    // AUDIT LOGGING (INTEGRACIÓN SEGURIDAD)
+    // AUDIT LOGGING (System Config based)
     try {
       const config = await this.configRepository.findOne({ where: {} });
       if (config?.securitySettings?.auditEnabled) {
@@ -133,23 +133,64 @@ export class AutoService {
 
     if (reviewAutoDto.action === ReviewAction.APPROVE) {
       auto.estado = AutoStatus.APROBADO;
-      // Simular generación de firma
-      auto.firmaUrl = this.generateMockSignatureUrl(
-        auto.id,
-        'ELECTRONICA',
-      );
-      auto.estado = AutoStatus.FIRMADO;
+
+      // Registrar en Histoial (Version)
+      await this.versionRepository.save({
+        auto: auto,
+        contenido: auto.contenido, // No cambia el contenido
+        versionNumber: auto.currentVersion,
+        createdBy: aprobadoPorId,
+        changeReason: 'Auto Aprobado por Jefe (Pendiente de Firma)',
+      });
+
     } else if (reviewAutoDto.action === ReviewAction.RETURN) {
       auto.estado = AutoStatus.DEVUELTO;
       if (reviewAutoDto.observaciones) {
         auto.rejection_comments = reviewAutoDto.observaciones;
       }
+
+      // Registrar en Historial
+      await this.versionRepository.save({
+        auto: auto,
+        contenido: auto.contenido,
+        versionNumber: auto.currentVersion,
+        createdBy: aprobadoPorId,
+        changeReason: `Auto Devuelto: ${reviewAutoDto.observaciones || 'Sin observaciones'}`,
+      });
     }
 
     if (reviewAutoDto.observaciones) {
       auto.comentarios = reviewAutoDto.observaciones;
     }
     auto.aprobadoPorId = aprobadoPorId;
+
+    return await this.autoRepository.save(auto);
+  }
+
+  /**
+   * Firma digitalmente un auto aprobado
+   */
+  async sign(id: string, userId: string): Promise<LegalAuto> {
+    const auto = await this.findById(id);
+
+    if (auto.estado !== AutoStatus.APROBADO) {
+      throw new HttpException(
+        'Solo se pueden firmar autos que estén aprobados',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    auto.firmaUrl = this.generateMockSignatureUrl(auto.id, 'ELECTRONICA');
+    auto.estado = AutoStatus.FIRMADO;
+
+    // Registrar en Historial
+    await this.versionRepository.save({
+      auto: auto,
+      contenido: auto.contenido,
+      versionNumber: auto.currentVersion,
+      createdBy: userId, // Quien firma
+      changeReason: 'Auto Firmado Digitalmente',
+    });
 
     return await this.autoRepository.save(auto);
   }
