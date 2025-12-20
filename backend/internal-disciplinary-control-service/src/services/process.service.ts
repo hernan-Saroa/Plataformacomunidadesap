@@ -164,7 +164,7 @@ export class ProcessService {
     if (includeAutos) {
       relations.push('autos');
     }
-    
+
     const proceso = await this.processRepository.findOne({
       where: { id },
       relations,
@@ -370,7 +370,7 @@ export class ProcessService {
 
       await this.processRepository.update(id, { pruebas: proceso.pruebas });
       console.log('✅ Proceso actualizado con nueva prueba');
-      
+
       return proceso;
     } catch (error) {
       console.error('❌ ERROR en addEvidence:', error);
@@ -397,10 +397,12 @@ export class ProcessService {
    */
   private validarTransicionEtapa(etapaActual: ProcessStage, nuevaEtapa: ProcessStage): void {
     const transicionesPermitidas: Record<ProcessStage, ProcessStage[]> = {
+      [ProcessStage.RECEPCION]: [ProcessStage.EVALUACION],
       [ProcessStage.EVALUACION]: [ProcessStage.INDAGACION_PREVIA],
       [ProcessStage.INDAGACION_PREVIA]: [ProcessStage.INVESTIGACION],
       [ProcessStage.INVESTIGACION]: [ProcessStage.JUZGAMIENTO],
-      [ProcessStage.JUZGAMIENTO]: [], // Final
+      [ProcessStage.JUZGAMIENTO]: [ProcessStage.FALLO],
+      [ProcessStage.FALLO]: [], // Final
     };
 
     const permitidas = transicionesPermitidas[etapaActual] || [];

@@ -14,10 +14,12 @@ import { DisciplinaryProfessional } from './disciplinary-professional.entity';
 import { Evidence } from './evidence.entity';
 
 export enum ProcessStage {
-  EVALUACION = 'EVALUACION',
-  INDAGACION_PREVIA = 'INDAGACION_PREVIA',
-  INVESTIGACION = 'INVESTIGACION',
+  RECEPCION = 'RECEPCIÓN',
+  EVALUACION = 'VALORACIÓN',
+  INDAGACION_PREVIA = 'INDAGACIÓN',
+  INVESTIGACION = 'INVESTIGACIÓN',
   JUZGAMIENTO = 'JUZGAMIENTO',
+  FALLO = 'FALLO',
 }
 
 export enum ProcessStatus {
