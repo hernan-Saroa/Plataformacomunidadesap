@@ -32,6 +32,25 @@ export class ConfigurationController {
         // Regex for standard UUID (v4)
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+        // 0. Identify stages to DELETE (those in DB but not in valid incoming list)
+        // Get all valid UUIDs from the incoming payload
+        const incomingIds = configs
+            .map(c => c.id)
+            .filter(id => id && uuidRegex.test(id));
+
+        // Get all currently existing stage IDs from DB
+        const allExistingStages = await this.stageConfigRepo.find({ select: ['id'] });
+        const allExistingIds = allExistingStages.map(s => s.id);
+
+        // Find IDs that are in DB but NOT in incoming payload
+        const idsToDelete = allExistingIds.filter(id => !incomingIds.includes(id));
+
+        // Delete them
+        if (idsToDelete.length > 0) {
+            await this.stageConfigRepo.delete(idsToDelete);
+        }
+
+        // Proceed with Update / Create
         for (const config of configs) {
             let existing: StageConfiguration | null = null;
 
@@ -41,6 +60,10 @@ export class ConfigurationController {
             }
 
             // 2. If not found by ID (or ID was invalid/temp), try by Name
+            // Note: Use careful logic here. If we deleted it above because ID didn't match, 
+            // but the user sent a "new" stage with the SAME name, we might want to revive/update it 
+            // OR treating it as a new create is identifying it by name.
+            // Current strict logic: if ID matches, update. If no ID match but Name matches, update.
             if (!existing) {
                 existing = await this.stageConfigRepo.findOne({ where: { etapa: config.etapa } });
             }
@@ -66,6 +89,7 @@ export class ConfigurationController {
                 savedConfigs.push(await this.stageConfigRepo.save(existing));
             } else {
                 // Create new (ensure we don't pass the temp ID)
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
                 const { id, ...data } = config;
                 savedConfigs.push(await this.stageConfigRepo.save(data));
             }
