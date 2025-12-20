@@ -40,7 +40,7 @@ import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Card } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { FlujoNoticiasDisciplinarias } from './FlujoNoticiasDisciplinarias';
 import { ModalDetallesNoticia } from './ModalDetallesNoticia';
@@ -78,24 +78,33 @@ interface AccionAuditoria {
 
 interface NoticiaDisciplinaria {
   id: string;
-  radicado: string;
+  numeroRadicado: string; // Changed from radicado
   origen: 'Anónimo' | 'Quejoso' | 'Informante' | 'De oficio' | 'Remisión por competencia';
   fechaQueja: string;
   territorial: string;
-  fechaRecepcion: string;
+  fechaRecepcion?: string; // Optional or required?
   disciplinable: {
     nombre: string;
     cargo: string;
     cedula?: string;
     email?: string;
     telefono?: string;
-  };
-  denunciado: {
+    dependencia?: string;
+  }[]; // Changed to Array
+  denunciado?: { // Legacy field, optional
     nombre: string;
     identificacion: string;
     cargo: string;
     dependencia: string;
   };
+  denunciantes: { // New field
+    nombre: string;
+    identificacion?: string;
+    cargo?: string;
+    email?: string;
+    telefono?: string;
+    direccion?: string;
+  }[];
   estado: 'pendiente' | 'en-valoracion' | 'devuelto' | 'asignado' | 'convertido-proceso';
   estadoLabel: 'Pendiente' | 'En Valoración' | 'Devuelto' | 'Asignado' | 'Convertido a Proceso';
   etapa: string;
@@ -201,12 +210,14 @@ const PROFESIONALES_MOCK: Profesional[] = [
     origen: 'Informante',
     fechaQueja: '2024-11-10',
     territorial: 'Dirección Nacional',
-    denunciado: {
+    denunciantes: [{
       nombre: 'Patricia Herrera Gómez',
       identificacion: '39.876.543',
       cargo: 'Jefe de Talento Humano',
-      dependencia: 'Dirección Nacional'
-    },
+      // dependencia: 'Dirección Nacional' // Optional if not in new interface
+      email: 'patricia@example.com' 
+    }],
+    disciplinable: [],
     estado: 'pendiente',
     estadoLabel: 'Pendiente',
     etapa: 'Pendiente de Revisión',
@@ -276,7 +287,7 @@ function ModalDevolver({ noticia, onClose, onConfirm }: {
                   Devolver Noticia
                 </h2>
                 <p className="text-sm text-gray-600">
-                  {noticia.radicado} - {noticia.disciplinable.nombre}
+                  {noticia.numeroRadicado} - {(noticia.disciplinable && noticia.disciplinable.length > 0) ? noticia.disciplinable[0].nombre : 'Sin Disciplinable'}
                 </p>
               </div>
             </div>
@@ -365,6 +376,9 @@ function ModalDevolver({ noticia, onClose, onConfirm }: {
               <div>
                 <p className="font-semibold text-orange-900 mb-1">
                   Se notificará al radicador
+                  <span className="font-mono text-gray-900 font-medium">
+                    {noticia.numeroRadicado}
+                  </span>
                 </p>
                 <p className="text-sm text-orange-700">
                   {noticia.radicador} recibirá una notificación para realizar las correcciones solicitadas.
@@ -447,7 +461,7 @@ function ModalAsignar({ noticia, onClose, onConfirm, profesionales }: {
                   Asignar Proceso
                 </h2>
                 <p className="text-sm text-gray-600">
-                  {noticia.radicado} - {noticia.disciplinable.nombre}
+                  {noticia.numeroRadicado} - {(noticia.disciplinable && noticia.disciplinable.length > 0) ? noticia.disciplinable[0].nombre : 'Sin Disciplinable'}
                 </p>
               </div>
             </div>
@@ -608,6 +622,20 @@ function ModalAsignar({ noticia, onClose, onConfirm, profesionales }: {
   );
 }
 
+// Helper for safe date formatting including time
+const formatDateTime = (dateString: string | undefined) => {
+  if (!dateString) return 'Fecha no disponible';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'Fecha inválida';
+  return date.toLocaleString('es-CO', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
 // ==================== MODAL VER HISTORIAL ====================
 function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; onClose: () => void }) {
   const getIconoAccion = (tipo: string) => {
@@ -618,17 +646,6 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
       case 'conversion': return <CheckCircle className="w-5 h-5" />;
       case 'edicion': return <Edit className="w-5 h-5" />;
       default: return <Clock className="w-5 h-5" />;
-    }
-  };
-
-  const getColorAccion = (tipo: string) => {
-    switch (tipo) {
-      case 'creacion': return { bg: '#DBEAFE', text: '#1E40AF' };
-      case 'devolucion': return { bg: '#FEF3C7', text: '#92400E' };
-      case 'asignacion': return { bg: '#D1FAE5', text: '#065F46' };
-      case 'conversion': return { bg: '#D1FAE5', text: '#065F46' };
-      case 'edicion': return { bg: '#E0E7FF', text: '#4338CA' };
-      default: return { bg: '#F3F4F6', text: '#6B7280' };
     }
   };
 
@@ -643,6 +660,17 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
     }
   };
 
+  const getColorAccion = (tipo: string) => {
+    switch (tipo) {
+      case 'creacion': return { bg: '#DBEAFE', text: '#1E40AF' };
+      case 'devolucion': return { bg: '#FEF3C7', text: '#92400E' };
+      case 'asignacion': return { bg: '#D1FAE5', text: '#065F46' };
+      case 'conversion': return { bg: '#D1FAE5', text: '#065F46' };
+      case 'edicion': return { bg: '#E0E7FF', text: '#4338CA' };
+      default: return { bg: '#F3F4F6', text: '#6B7280' };
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -654,101 +682,64 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
       <motion.div
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-auto"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden"
       >
-        {/* Header */}
-        <div className="p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                <History className="w-6 h-6 text-purple-600" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold" style={{ color: '#003DA5' }}>
-                  Historial de Auditoría
-                </h2>
-                <p className="text-sm text-gray-600">
-                  {noticia.radicado} - {noticia.disciplinable.nombre}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-600" />
-            </button>
+        <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Historial de Auditoría</h2>
+            <p className="text-sm text-gray-500">
+              {noticia.numeroRadicado} • {noticia.historialAuditoria.length} eventos
+            </p>
           </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-600" />
+          </button>
         </div>
 
-        {/* Timeline */}
-        <div className="p-6">
-          <div className="space-y-4">
-            {noticia.historialAuditoria.map((accion, index) => {
+        <div className="p-6 overflow-y-auto max-h-[60vh]">
+          <div className="relative border-l-2 border-gray-200 ml-3 space-y-8">
+            {noticia.historialAuditoria.map((accion, idx) => {
               const color = getColorAccion(accion.tipo);
-              const isLast = index === noticia.historialAuditoria.length - 1;
-
               return (
-                <div key={accion.id} className="flex gap-4">
-                  {/* Línea temporal */}
-                  <div className="flex flex-col items-center">
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center"
-                      style={{ background: color.bg, color: color.text }}
-                    >
-                      {getIconoAccion(accion.tipo)}
-                    </div>
-                    {!isLast && (
-                      <div className="w-0.5 h-full bg-gray-200 mt-2" />
-                    )}
-                  </div>
+                <div key={idx} className="relative ml-6">
+                  <span
+                    className="absolute -left-[33px] top-0 w-8 h-8 rounded-full flex items-center justify-center border-2 border-white shadow-sm"
+                    style={{ background: color.bg, color: color.text }}
+                  >
+                    {getIconoAccion(accion.tipo)}
+                  </span>
 
-                  {/* Contenido */}
-                  <div className="flex-1 pb-6">
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <h3 className="font-bold text-gray-900">
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h3 className="font-bold text-gray-900 text-sm">
                           {getTituloAccion(accion.tipo)}
                         </h3>
                         <Badge variant="outline" className="text-xs">
-                          {new Date(accion.fecha).toLocaleString('es-CO', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
+                          {formatDateTime(accion.fecha)}
                         </Badge>
                       </div>
 
-                      <p className="text-sm text-gray-600 mb-2">
-                        <span className="font-semibold">Usuario:</span> {accion.usuario}
+                      <p className="text-sm text-gray-600 font-medium">
+                        {accion.usuario}
                       </p>
-
-                      {accion.profesionalAsignado && (
-                        <p className="text-sm text-gray-600 mb-2">
-                          <span className="font-semibold">Profesional:</span> {accion.profesionalAsignado}
-                        </p>
-                      )}
-
-                      {accion.observaciones && (
-                        <div className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
-                          <p className="text-sm text-gray-700">{accion.observaciones}</p>
-                        </div>
-                      )}
-
-                      {accion.archivos && accion.archivos.length > 0 && (
-                        <div className="mt-3 space-y-1">
-                          <p className="text-xs font-semibold text-gray-600">Archivos adjuntos:</p>
-                          {accion.archivos.map((archivo, idx) => (
-                            <div key={idx} className="flex items-center gap-2 text-sm text-blue-600">
-                              <Paperclip className="w-3 h-3" />
-                              <span>{archivo}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
+
+                    {accion.observaciones && (
+                      <p className="text-sm text-gray-600 italic mt-2 bg-white p-2 rounded border border-gray-100">
+                        "{accion.observaciones}"
+                      </p>
+                    )}
+
+                    {accion.profesionalAsignado && (
+                      <div className="mt-2 flex items-center gap-2 text-xs text-blue-700 bg-blue-50 p-2 rounded">
+                        <UserCheck className="w-4 h-4" />
+                        Asignado a: <span className="font-bold">{accion.profesionalAsignado}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -766,9 +757,20 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
           </button>
         </div>
       </motion.div>
-    </motion.div>
+    </motion.div >
   );
 }
+
+// Helper function to calculate elapsed days
+const calculateDiasTranscurridos = (data: string | undefined | null) => {
+  if (!data) return 0;
+  const fecha = new Date(data);
+  if (isNaN(fecha.getTime())) return 0;
+  const hoy = new Date();
+  const diffTime = hoy.getTime() - fecha.getTime();
+  const diasRestantes = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diasRestantes;
+};
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function GestionNoticias() {
@@ -814,17 +816,17 @@ export function GestionNoticias() {
         id: news.id,
         numeroRadicado: news.radicado,
         origen: news.origen as any,
-        fechaQueja: news.createdAt,
+        fechaQueja: news.fechaRecepcion || news.createdAt, // User requested fecha de queja based on fechaRecepcion
         territorial: news.territorial,
         disciplinable: Array.isArray(news.disciplinable) ? news.disciplinable : (news.disciplinable ? [news.disciplinable] : []),
-        denunciante: Array.isArray(news.denunciante) ? news.denunciante : (news.denunciante ? [news.denunciante] : []),
-        fechaRecepcion: news.fechaRecepcion?.toString() || news.createdAt,
+        denunciantes: Array.isArray(news.denunciante) ? news.denunciante : (news.denunciante ? [news.denunciante] : []),
+        fechaRecepcion: news.fechaRecepcion || news.createdAt,
         estado: getFrontendStatus(news.estado),
         estadoLabel: (news.estado || 'Pendiente') as any,
         etapa: 'En Evaluación',
-        diasTranscurridos: 0,
+        diasTranscurridos: calculateDiasTranscurridos(news.fechaRecepcion || news.createdAt),
         radicador: 'Sistema',
-        fechaRegistro: news.createdAt,
+        fechaRegistro: news.fechaRecepcion || news.createdAt, // User requested mapping to existing dates
         conductas: [],
         descripcion: news.hechos,
         historialAuditoria: []
@@ -864,82 +866,68 @@ export function GestionNoticias() {
   //     setSelectedNewsForAssignment(noticia);
   // };
 
-  const handleCreateNoticia = (data: any) => {
-    const year = new Date().getFullYear();
-    const numeroSecuencial = (noticias.length + 1).toString().padStart(4, '0');
-    const numeroRadicado = `ND-${year}-${numeroSecuencial}`;
+  const handleCreateNoticia = async (data: any) => {
+    try {
+      setLoading(true);
 
-    const handleCreateNoticia = async (data: any) => {
-      try {
-        setLoading(true);
-
-        const uploadedUrls: string[] = [];
-        if (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) {
-          toast.info('Subiendo archivos adjuntos...');
-          const uploadPromises = data.archivosAdjuntos.map((file: File) =>
-            disciplinaryService.uploadFile(file)
-          );
-          const results = await Promise.all(uploadPromises);
-          results.forEach(res => uploadedUrls.push(res.url));
-        }
-
-        const origenMap: Record<string, string> = {
-          'Anónimo': 'ANONIMO',
-          'Quejoso': 'QUEJOSO',
-          'Informante': 'QUEJOSO',
-          'De oficio': 'OFICIO',
-          'Remisión por competencia': 'REMISION'
-        };
-
-        const denunciantesMapped = (data.denunciantes || []).map((d: any) => ({
-          nombre: d.nombre,
-          cedula: d.identificacion,
-          email: d.correo,
-          cargo: d.cargo,
-          telefono: d.telefono,
-          direccion: d.direccion
-        }));
-
-        const disciplinablesMapped = (data.disciplinable || []).map((d: any) => ({
-          nombre: d.nombre,
-          cedula: d.identificacion,
-          cargo: d.cargo,
-          dependencia: d.dependencia || d.cargo // Fallback
-        }));
-
-        const createDto = {
-          origen: origenMap[data.origen] || 'ANONIMO',
-          territorial: data.territorial,
-          dependenciaDenunciado: data.dependenciaDenunciado || disciplinablesMapped[0]?.dependencia || 'Por determinar',
-          hechos: data.descripcionHechos,
-          denunciante: denunciantesMapped,
-          disciplinable: disciplinablesMapped,
-          adjuntos: uploadedUrls
-        };
-
-        console.log('📝 Sending payload:', createDto);
-        await disciplinaryService.radicarNoticia(createDto);
-
-        toast.success('Noticia enviada con éxito');
-
-        // Reload news to get the server-generated fields
-        await loadData();
-        setShowCreateModal(false);
-      } catch (error) {
-        console.error('Error creating news:', error);
-        toast.error('Error al crear la noticia. Verifique los datos.');
-      } finally {
-        setLoading(false);
+      const uploadedUrls: string[] = [];
+      if (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) {
+        toast.info('Subiendo archivos adjuntos...');
+        const uploadPromises = data.archivosAdjuntos.map((file: File) =>
+          disciplinaryService.uploadFile(file)
+        );
+        const results = await Promise.all(uploadPromises);
+        results.forEach(res => uploadedUrls.push(res.url));
       }
-    };
 
-    setNoticias([nuevaNoticia, ...noticias]);
+      const origenMap: Record<string, string> = {
+        'Anónimo': 'ANONIMO',
+        'Quejoso': 'QUEJOSO',
+        'Informante': 'QUEJOSO',
+        'De oficio': 'OFICIO',
+        'Remisión por competencia': 'REMISION'
+      };
 
-    toast.success('Noticia Disciplinaria Registrada', {
-      description: `Radicado ${numeroRadicado} creado exitosamente. Se ha notificado al Jefe de OCID.`
-    });
+      const denunciantesMapped = (data.denunciantes || []).map((d: any) => ({
+        nombre: d.nombre,
+        cedula: d.identificacion,
+        email: d.correo,
+        cargo: d.cargo,
+        telefono: d.telefono,
+        direccion: d.direccion
+      }));
 
-    setShowCreateModal(false);
+      const disciplinablesMapped = (data.disciplinable || []).map((d: any) => ({
+        nombre: d.nombre,
+        cedula: d.identificacion,
+        cargo: d.cargo,
+        dependencia: d.dependencia || d.cargo // Fallback
+      }));
+
+      const createDto = {
+        origen: origenMap[data.origen] || 'ANONIMO',
+        territorial: data.territorial,
+        dependenciaDenunciado: data.dependenciaDenunciado || disciplinablesMapped[0]?.dependencia || 'Por determinar',
+        hechos: data.descripcionHechos,
+        denunciante: denunciantesMapped,
+        disciplinable: disciplinablesMapped,
+        adjuntos: uploadedUrls
+      };
+
+      console.log('📝 Sending payload:', createDto);
+      await disciplinaryService.radicarNoticia(createDto);
+
+      toast.success('Noticia enviada con éxito');
+
+      // Reload news to get the server-generated fields
+      await loadData();
+      setShowCreateModal(false);
+    } catch (error) {
+      console.error('Error creating news:', error);
+      toast.error('Error al crear la noticia. Verifique los datos.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAsignar = async (profesionalId: string, observaciones: string, convertirAProceso: boolean) => {
@@ -1075,14 +1063,10 @@ export function GestionNoticias() {
     const radicado = (noticia.numeroRadicado || '').toLowerCase();
 
     // Check if any disciplinable matches
-    const matchesDisciplinable = (noticia.disciplinable || []).some(d =>
-      (d.nombre || '').toLowerCase().includes(term) ||
-      (d.cedula || '').includes(term)
-    );
-
     const matchesSearch =
-      radicado.includes(term) ||
-      matchesDisciplinable;
+      noticia.numeroRadicado.toLowerCase().includes(term) ||
+      noticia.disciplinable.some(d => d.nombre.toLowerCase().includes(term)) ||
+      (noticia.profesionalAsignado?.toLowerCase().includes(term) ?? false);
 
     const matchesEstado = filterEstado === 'all' || noticia.estado === filterEstado;
     const matchesOrigen = filterOrigen === 'all' || noticia.origen === filterOrigen;
@@ -1090,13 +1074,7 @@ export function GestionNoticias() {
     return matchesSearch && matchesEstado && matchesOrigen;
   });
 
-  const diasTranscurridos = (data: string) => {
-    const fecha = new Date(data);
-    const hoy = new Date();
-    const diffTime = hoy.getTime() - fecha.getTime();
-    const diasRestantes = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diasRestantes;
-  };
+
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -1282,12 +1260,12 @@ export function GestionNoticias() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="font-bold text-lg" style={{ color: '#003DA5' }}>
-                        {noticia.radicado}
+                        {noticia.numeroRadicado}
                       </h3>
                       {getEstadoBadge(noticia.estadoLabel)}
                       {getOrigenBadge(noticia.origen)}
                     </div>
-                    <p className="text-sm font-semibold text-gray-900">{noticia.disciplinable.nombre}</p>
+                    <p className="font-semibold text-gray-900">{(noticia.disciplinable && noticia.disciplinable.length > 0) ? noticia.disciplinable[0].nombre : 'Sin Disciplinable'}</p>
                     <p className="text-xs text-gray-500">
                       {noticia.estado} • {noticia.territorial}
                     </p>
@@ -1298,7 +1276,7 @@ export function GestionNoticias() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pl-15">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                    <p className="text-sm font-medium text-gray-900">{noticia.disciplinable.cedula}</p>
+                    <p className="text-sm font-medium text-gray-900">{(noticia.disciplinable && noticia.disciplinable.length > 0) ? noticia.disciplinable[0].cedula : 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Territorial</p>
@@ -1339,7 +1317,7 @@ export function GestionNoticias() {
                 <div className="text-right">
                   <p className="text-xs text-gray-500 mb-1">Hace</p>
                   <p className="text-xl font-bold" style={{ color: '#003DA5' }}>
-                    {diasTranscurridos(noticia.fechaRecepcion)} días
+                    {calculateDiasTranscurridos(noticia.fechaRecepcion || noticia.fechaQueja)} días
                   </p>
                 </div>
 
@@ -1559,7 +1537,7 @@ export function GestionNoticias() {
             onConfirm={() => {
               setNoticias(noticias.filter(n => n.id !== noticiaSeleccionada?.id));
               toast.success('Noticia Archivada', {
-                description: `La noticia ${noticiaSeleccionada?.radicado} ha sido archivada exitosamente.`
+                description: `La noticia ${noticiaSeleccionada?.numeroRadicado} ha sido archivada exitosamente.`
               });
               setShowArchivarModal(false);
               setNoticiaSeleccionada(null);

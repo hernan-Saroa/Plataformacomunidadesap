@@ -46,6 +46,18 @@ interface Props {
   onClose: () => void;
 }
 
+// Helper for safe date formatting
+const formatDate = (dateString: string | undefined) => {
+  if (!dateString) return 'Fecha no disponible';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'Fecha inválida';
+  return date.toLocaleDateString('es-CO', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  });
+};
+
 export function ModalDetallesNoticia({ noticia, onClose }: Props) {
   return (
     <motion.div
@@ -152,21 +164,13 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
                 <div>
                   <p className="text-xs text-gray-500 mb-1">Fecha de Queja</p>
                   <p className="text-sm font-semibold text-gray-900">
-                    {new Date(noticia.fechaQueja).toLocaleDateString('es-CO', {
-                      day: '2-digit',
-                      month: 'long',
-                      year: 'numeric'
-                    })}
+                    {formatDate(noticia.fechaQueja)}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 mb-1">Fecha de Registro</p>
                   <p className="text-sm font-semibold text-gray-900">
-                    {new Date(noticia.fechaRegistro).toLocaleDateString('es-CO', {
-                      day: '2-digit',
-                      month: 'long',
-                      year: 'numeric'
-                    })}
+                    {formatDate(noticia.fechaRegistro)}
                   </p>
                 </div>
                 <div>
