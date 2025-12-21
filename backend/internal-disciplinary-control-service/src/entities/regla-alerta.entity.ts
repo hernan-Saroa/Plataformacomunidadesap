@@ -21,7 +21,8 @@ export class ReglaAlerta {
   nombre: string;
 
   @Column({ name: 'dias_anticipacion', type: 'int' })
-  diasAnticipacion: number; // CHECK: > 0 AND <= 30
+  diasAnticipacion: number; // CHECK: >= 0 AND <= 30 (0 = immediate/vencido)
+
 
   @Column({ type: 'boolean', default: true })
   activa: boolean;
@@ -35,8 +36,8 @@ export class ReglaAlerta {
   @Column({ type: 'text', nullable: true })
   descripcion: string | null;
 
-  @Column('uuid', { name: 'creado_por_id' })
-  creadoPorId: string; // FK a personas
+  @Column('uuid', { name: 'creado_por_id', nullable: true })
+  creadoPorId: string | null; // FK a personas (nullable for system-generated rules)
 
   @CreateDateColumn({ name: 'fecha_creacion' })
   fechaCreacion: Date;
