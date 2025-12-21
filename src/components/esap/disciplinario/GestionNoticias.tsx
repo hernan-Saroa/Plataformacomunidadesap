@@ -40,7 +40,7 @@ import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Card } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner';
+import { toast } from 'sonner@2.0.3';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { FlujoNoticiasDisciplinarias } from './FlujoNoticiasDisciplinarias';
 import { ModalDetallesNoticia } from './ModalDetallesNoticia';
@@ -60,12 +60,6 @@ interface Profesional {
   capacidadMaxima: number;
 }
 
-// Ensure mock compatibility if needed, but prefer real data
-const PROFESIONALES_MOCK_FALLBACK: Profesional[] = [
-  { id: '1', nombre: 'Juan Carlos Pérez', cargo: 'Profesional Especializado', email: 'juan.perez@esap.edu.co', procesosAsignados: 8, capacidadMaxima: 12 },
-  { id: '2', nombre: 'María Torres Silva', cargo: 'Profesional Universitario', email: 'maria.torres@esap.edu.co', procesosAsignados: 6, capacidadMaxima: 10 }
-];
-
 interface AccionAuditoria {
   id: string;
   tipo: 'creacion' | 'devolucion' | 'asignacion' | 'conversion' | 'edicion';
@@ -78,32 +72,23 @@ interface AccionAuditoria {
 
 interface NoticiaDisciplinaria {
   id: string;
-  numeroRadicado: string; // Changed from radicado
+  radicado: string;
   origen: 'Anónimo' | 'Quejoso' | 'Informante' | 'De oficio' | 'Remisión por competencia';
   fechaQueja: string;
   territorial: string;
-  fechaRecepcion?: string; // Optional or required?
+  fechaRecepcion: string;
   disciplinable: {
     nombre: string;
     cargo: string;
     cedula?: string;
     email?: string;
     telefono?: string;
-    dependencia?: string;
-  }[]; // Changed to Array
-  denunciado?: { // Legacy field, optional
+  }[];
+  denunciante: {
     nombre: string;
     identificacion: string;
     cargo: string;
     dependencia: string;
-  };
-  denunciantes: { // New field
-    nombre: string;
-    identificacion?: string;
-    cargo?: string;
-    email?: string;
-    telefono?: string;
-    direccion?: string;
   }[];
   estado: 'pendiente' | 'en-valoracion' | 'devuelto' | 'asignado' | 'convertido-proceso';
   estadoLabel: 'Pendiente' | 'En Valoración' | 'Devuelto' | 'Asignado' | 'Convertido a Proceso';
@@ -210,14 +195,12 @@ const PROFESIONALES_MOCK: Profesional[] = [
     origen: 'Informante',
     fechaQueja: '2024-11-10',
     territorial: 'Dirección Nacional',
-    denunciantes: [{
+    denunciado: {
       nombre: 'Patricia Herrera Gómez',
       identificacion: '39.876.543',
       cargo: 'Jefe de Talento Humano',
-      // dependencia: 'Dirección Nacional' // Optional if not in new interface
-      email: 'patricia@example.com' 
-    }],
-    disciplinable: [],
+      dependencia: 'Dirección Nacional'
+    },
     estado: 'pendiente',
     estadoLabel: 'Pendiente',
     etapa: 'Pendiente de Revisión',
@@ -287,7 +270,7 @@ function ModalDevolver({ noticia, onClose, onConfirm }: {
                   Devolver Noticia
                 </h2>
                 <p className="text-sm text-gray-600">
-                  {noticia.numeroRadicado} - {(noticia.disciplinable && noticia.disciplinable.length > 0) ? noticia.disciplinable[0].nombre : 'Sin Disciplinable'}
+                  {noticia.radicado} - {noticia.disciplinable[0]?.nombre || 'Sin nombre'}
                 </p>
               </div>
             </div>
@@ -376,9 +359,6 @@ function ModalDevolver({ noticia, onClose, onConfirm }: {
               <div>
                 <p className="font-semibold text-orange-900 mb-1">
                   Se notificará al radicador
-                  <span className="font-mono text-gray-900 font-medium">
-                    {noticia.numeroRadicado}
-                  </span>
                 </p>
                 <p className="text-sm text-orange-700">
                   {noticia.radicador} recibirá una notificación para realizar las correcciones solicitadas.
@@ -412,11 +392,10 @@ function ModalDevolver({ noticia, onClose, onConfirm }: {
 }
 
 // ==================== MODAL ASIGNAR ====================
-function ModalAsignar({ noticia, onClose, onConfirm, profesionales }: {
+function ModalAsignar({ noticia, onClose, onConfirm }: {
   noticia: NoticiaDisciplinaria;
   onClose: () => void;
   onConfirm: (profesionalId: string, observaciones: string, convertirAProceso: boolean) => void;
-  profesionales: Profesional[];
 }) {
   const [profesionalId, setProfesionalId] = useState('');
   const [observaciones, setObservaciones] = useState('');
@@ -431,7 +410,7 @@ function ModalAsignar({ noticia, onClose, onConfirm, profesionales }: {
     onConfirm(profesionalId, observaciones, convertirAProceso);
   };
 
-  const profesionalSeleccionado = profesionales.find(p => p.id === profesionalId);
+  const profesionalSeleccionado = PROFESIONALES_MOCK.find(p => p.id === profesionalId);
   const porcentajeCarga = profesionalSeleccionado
     ? (profesionalSeleccionado.procesosAsignados / profesionalSeleccionado.capacidadMaxima) * 100
     : 0;
@@ -461,7 +440,7 @@ function ModalAsignar({ noticia, onClose, onConfirm, profesionales }: {
                   Asignar Proceso
                 </h2>
                 <p className="text-sm text-gray-600">
-                  {noticia.numeroRadicado} - {(noticia.disciplinable && noticia.disciplinable.length > 0) ? noticia.disciplinable[0].nombre : 'Sin Disciplinable'}
+                  {noticia.radicado} - {noticia.disciplinable[0]?.nombre || 'Sin nombre'}
                 </p>
               </div>
             </div>
@@ -482,63 +461,56 @@ function ModalAsignar({ noticia, onClose, onConfirm, profesionales }: {
               Profesional Responsable <span className="text-red-500">*</span>
             </label>
 
-            <div className="grid gap-3 max-h-60 overflow-y-auto pr-2">
-              {profesionales.map((profesional) => {
-                const isFull = profesional.procesosAsignados >= profesional.capacidadMaxima;
-                const isSelected = profesionalSeleccionado?.id === profesional.id;
+            <div className="grid gap-3">
+              {PROFESIONALES_MOCK.map((prof) => {
+                const carga = (prof.procesosAsignados / prof.capacidadMaxima) * 100;
+                const isSelected = profesionalId === prof.id;
 
                 return (
                   <div
-                    key={profesional.id}
-                    onClick={() => !isFull && setProfesionalId(profesional.id)}
-                    className={`p-4 rounded-xl border-2 transition-all cursor-pointer ${isSelected
-                      ? 'border-blue-600 bg-blue-50'
-                      : isFull
-                        ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
-                        : 'border-gray-200 hover:border-blue-400 hover:bg-gray-50'
-                      }`}
+                    key={prof.id}
+                    onClick={() => setProfesionalId(prof.id)}
+                    className={`
+                      p-4 border-2 rounded-xl cursor-pointer transition-all
+                      ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}
+                    `}
                   >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isSelected ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-                          }`}>
-                          {profesional.nombre.split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-gray-900">{profesional.nombre}</h4>
-                          <p className="text-sm text-gray-500">{profesional.cargo}</p>
-                        </div>
-                      </div>
-                      {isSelected && <CheckCircle className="w-6 h-6 text-blue-600" />}
-                      {isFull && !isSelected && (
-                        <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200">
-                          Capacidad Llena
-                        </Badge>
-                      )}
-                    </div>
+                    <div className="flex items-center gap-4">
+                      <Avatar className="w-12 h-12 border-2 border-white shadow-sm">
+                        <AvatarFallback style={{ background: '#003DA5', color: '#FFFFFF' }}>
+                          {prof.nombre.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
 
-                    {/* Barra de Capacidad */}
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className={isFull ? 'text-red-600 font-bold' : 'text-gray-600'}>
-                          {isFull ? 'Sin cupo disponible' : 'Capacidad'}
-                        </span>
-                        <span className="font-bold text-gray-900">
-                          {profesional.procesosAsignados} / {profesional.capacidadMaxima}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full ${isFull
-                            ? 'bg-red-500'
-                            : profesional.procesosAsignados > (profesional.capacidadMaxima * 0.8)
-                              ? 'bg-orange-500'
-                              : 'bg-green-500'
-                            }`}
-                          style={{
-                            width: `${Math.min((profesional.procesosAsignados / profesional.capacidadMaxima) * 100, 100)}%`
-                          }}
-                        />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <h3 className="font-bold text-gray-900">{prof.nombre}</h3>
+                          {isSelected && (
+                            <CheckCircle className="w-5 h-5 text-blue-600" />
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">{prof.cargo}</p>
+
+                        {/* Barra de carga */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs text-gray-600">Carga de trabajo</span>
+                            <span className="text-xs font-semibold" style={{
+                              color: carga >= 90 ? '#DC2626' : carga >= 70 ? '#F59E0B' : '#10B981'
+                            }}>
+                              {prof.procesosAsignados}/{prof.capacidadMaxima} procesos ({carga.toFixed(0)}%)
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${carga}%`,
+                                background: carga >= 90 ? '#DC2626' : carga >= 70 ? '#F59E0B' : '#10B981'
+                              }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -608,33 +580,18 @@ function ModalAsignar({ noticia, onClose, onConfirm, profesionales }: {
             </button>
             <button
               type="submit"
-              disabled={!profesionalSeleccionado}
-              className={`flex-1 px-6 py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 ${!profesionalSeleccionado ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#10B981]'
-                }`}
+              className="flex-1 px-6 py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
+              style={{ background: '#10B981' }}
             >
               <UserCheck className="w-4 h-4" />
               {convertirAProceso ? 'Asignar y Convertir' : 'Asignar'}
             </button>
           </div>
         </form>
-      </motion.div >
-    </motion.div >
+      </motion.div>
+    </motion.div>
   );
 }
-
-// Helper for safe date formatting including time
-const formatDateTime = (dateString: string | undefined) => {
-  if (!dateString) return 'Fecha no disponible';
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return 'Fecha inválida';
-  return date.toLocaleString('es-CO', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
 
 // ==================== MODAL VER HISTORIAL ====================
 function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; onClose: () => void }) {
@@ -649,17 +606,6 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
     }
   };
 
-  const getTituloAccion = (tipo: string) => {
-    switch (tipo) {
-      case 'creacion': return 'Noticia Creada';
-      case 'devolucion': return 'Devuelto al Radicador';
-      case 'asignacion': return 'Asignado a Profesional';
-      case 'conversion': return 'Convertido a Proceso';
-      case 'edicion': return 'Noticia Editada';
-      default: return 'Acción Registrada';
-    }
-  };
-
   const getColorAccion = (tipo: string) => {
     switch (tipo) {
       case 'creacion': return { bg: '#DBEAFE', text: '#1E40AF' };
@@ -668,6 +614,17 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
       case 'conversion': return { bg: '#D1FAE5', text: '#065F46' };
       case 'edicion': return { bg: '#E0E7FF', text: '#4338CA' };
       default: return { bg: '#F3F4F6', text: '#6B7280' };
+    }
+  };
+
+  const getTituloAccion = (tipo: string) => {
+    switch (tipo) {
+      case 'creacion': return 'Noticia Creada';
+      case 'devolucion': return 'Devuelto al Radicador';
+      case 'asignacion': return 'Asignado a Profesional';
+      case 'conversion': return 'Convertido a Proceso';
+      case 'edicion': return 'Noticia Editada';
+      default: return 'Acción Registrada';
     }
   };
 
@@ -682,64 +639,101 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
       <motion.div
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-auto"
       >
-        <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Historial de Auditoría</h2>
-            <p className="text-sm text-gray-500">
-              {noticia.numeroRadicado} • {noticia.historialAuditoria.length} eventos
-            </p>
+        {/* Header */}
+        <div className="p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                <History className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold" style={{ color: '#003DA5' }}>
+                  Historial de Auditoría
+                </h2>
+                <p className="text-sm text-gray-600">
+                  {noticia.radicado} - {noticia.disciplinable[0]?.nombre || 'Sin nombre'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-600" />
-          </button>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[60vh]">
-          <div className="relative border-l-2 border-gray-200 ml-3 space-y-8">
-            {noticia.historialAuditoria.map((accion, idx) => {
+        {/* Timeline */}
+        <div className="p-6">
+          <div className="space-y-4">
+            {noticia.historialAuditoria.map((accion, index) => {
               const color = getColorAccion(accion.tipo);
-              return (
-                <div key={idx} className="relative ml-6">
-                  <span
-                    className="absolute -left-[33px] top-0 w-8 h-8 rounded-full flex items-center justify-center border-2 border-white shadow-sm"
-                    style={{ background: color.bg, color: color.text }}
-                  >
-                    {getIconoAccion(accion.tipo)}
-                  </span>
+              const isLast = index === noticia.historialAuditoria.length - 1;
 
-                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="font-bold text-gray-900 text-sm">
+              return (
+                <div key={accion.id} className="flex gap-4">
+                  {/* Línea temporal */}
+                  <div className="flex flex-col items-center">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center"
+                      style={{ background: color.bg, color: color.text }}
+                    >
+                      {getIconoAccion(accion.tipo)}
+                    </div>
+                    {!isLast && (
+                      <div className="w-0.5 h-full bg-gray-200 mt-2" />
+                    )}
+                  </div>
+
+                  {/* Contenido */}
+                  <div className="flex-1 pb-6">
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="font-bold text-gray-900">
                           {getTituloAccion(accion.tipo)}
                         </h3>
                         <Badge variant="outline" className="text-xs">
-                          {formatDateTime(accion.fecha)}
+                          {new Date(accion.fecha).toLocaleString('es-CO', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
                         </Badge>
                       </div>
 
-                      <p className="text-sm text-gray-600 font-medium">
-                        {accion.usuario}
+                      <p className="text-sm text-gray-600 mb-2">
+                        <span className="font-semibold">Usuario:</span> {accion.usuario}
                       </p>
+
+                      {accion.profesionalAsignado && (
+                        <p className="text-sm text-gray-600 mb-2">
+                          <span className="font-semibold">Profesional:</span> {accion.profesionalAsignado}
+                        </p>
+                      )}
+
+                      {accion.observaciones && (
+                        <div className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
+                          <p className="text-sm text-gray-700">{accion.observaciones}</p>
+                        </div>
+                      )}
+
+                      {accion.archivos && accion.archivos.length > 0 && (
+                        <div className="mt-3 space-y-1">
+                          <p className="text-xs font-semibold text-gray-600">Archivos adjuntos:</p>
+                          {accion.archivos.map((archivo, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-sm text-blue-600">
+                              <Paperclip className="w-3 h-3" />
+                              <span>{archivo}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-
-                    {accion.observaciones && (
-                      <p className="text-sm text-gray-600 italic mt-2 bg-white p-2 rounded border border-gray-100">
-                        "{accion.observaciones}"
-                      </p>
-                    )}
-
-                    {accion.profesionalAsignado && (
-                      <div className="mt-2 flex items-center gap-2 text-xs text-blue-700 bg-blue-50 p-2 rounded">
-                        <UserCheck className="w-4 h-4" />
-                        Asignado a: <span className="font-bold">{accion.profesionalAsignado}</span>
-                      </div>
-                    )}
                   </div>
                 </div>
               );
@@ -757,20 +751,9 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
           </button>
         </div>
       </motion.div>
-    </motion.div >
+    </motion.div>
   );
 }
-
-// Helper function to calculate elapsed days
-const calculateDiasTranscurridos = (data: string | undefined | null) => {
-  if (!data) return 0;
-  const fecha = new Date(data);
-  if (isNaN(fecha.getTime())) return 0;
-  const hoy = new Date();
-  const diffTime = hoy.getTime() - fecha.getTime();
-  const diasRestantes = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diasRestantes;
-};
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function GestionNoticias() {
@@ -787,75 +770,28 @@ export function GestionNoticias() {
   const [showRemitirCompetenciaModal, setShowRemitirCompetenciaModal] = useState(false);
   const [noticiaSeleccionada, setNoticiaSeleccionada] = useState<NoticiaDisciplinaria | null>(null);
   const [noticias, setNoticias] = useState<NoticiaDisciplinaria[]>([]);
-  const [profesionales, setProfesionales] = useState<Profesional[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [selectedNewsForAssignment, setSelectedNewsForAssignment] = useState<NoticiaDisciplinaria | null>(null);
   const [selectedNewsForReturn, setSelectedNewsForReturn] = useState<string | null>(null);
   const [selectedNewsForDetail, setSelectedNewsForDetail] = useState<NoticiaDisciplinaria | null>(null);
 
-  const loadData = async () => {
+  const loadNoticias = async () => {
     try {
       setLoading(true);
-      const [noticiasData, profesionalesData] = await Promise.all([
-        disciplinaryService.getAllNoticias(),
-        disciplinaryService.getProfesionales()
-      ]);
-
-      const getFrontendStatus = (backendStatus: string): any => {
-        const s = (backendStatus || '').toUpperCase();
-        if (s === 'RADICADA') return 'pendiente';
-        if (s === 'EN_VALORACION') return 'en-valoracion';
-        if (s === 'DEVUELTA' || s === 'DEVUELTO') return 'devuelto';
-        if (s === 'ASIGNADA' || s === 'ASIGNADO') return 'asignado';
-        if (s === 'CONVERTIDO_PROCESO') return 'convertido-proceso';
-        return 'pendiente';
-      };
-
-      const mappedNews: NoticiaDisciplinaria[] = noticiasData.map((news) => ({
-        id: news.id,
-        numeroRadicado: news.radicado,
-        origen: news.origen as any,
-        fechaQueja: news.fechaRecepcion || news.createdAt, // User requested fecha de queja based on fechaRecepcion
-        territorial: news.territorial,
-        disciplinable: Array.isArray(news.disciplinable) ? news.disciplinable : (news.disciplinable ? [news.disciplinable] : []),
-        denunciantes: Array.isArray(news.denunciante) ? news.denunciante : (news.denunciante ? [news.denunciante] : []),
-        fechaRecepcion: news.fechaRecepcion || news.createdAt,
-        estado: getFrontendStatus(news.estado),
-        estadoLabel: (news.estado || 'Pendiente') as any,
-        etapa: 'En Evaluación',
-        diasTranscurridos: calculateDiasTranscurridos(news.fechaRecepcion || news.createdAt),
-        radicador: 'Sistema',
-        fechaRegistro: news.fechaRecepcion || news.createdAt, // User requested mapping to existing dates
-        conductas: [],
-        descripcion: news.hechos,
-        historialAuditoria: []
-      }));
-
-      setNoticias(mappedNews);
-
-      const mappedProfesionales: Profesional[] = (profesionalesData || []).map((p: any) => ({
-        id: p.id,
-        nombre: p.nombreCompleto || p.nombre || 'Sin Nombre',
-        cargo: p.cargo || 'Sin Cargo',
-        email: p.email || '',
-        procesosAsignados: p.procesosAsignados || 0,
-        capacidadMaxima: p.capacidadMaxima || 10
-      }));
-
-      setProfesionales(mappedProfesionales.length > 0 ? mappedProfesionales : PROFESIONALES_MOCK_FALLBACK);
-
+      const data = await disciplinaryService.getAllNoticias();
+      console.log('📊 Datos de noticias:', data);
+      setNoticias(data);
     } catch (error) {
       console.error(error);
-      toast.error('Error al cargar datos');
-      setProfesionales(PROFESIONALES_MOCK_FALLBACK);
+      toast.error('Error al cargar noticias');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    loadNoticias();
   }, []);
 
   // const handleDevolver = (id: string) => {
@@ -866,109 +802,65 @@ export function GestionNoticias() {
   //     setSelectedNewsForAssignment(noticia);
   // };
 
+  // Map frontend origen to backend enum
+  const mapOrigenToEnum = (origen: string): string => {
+    const mapping: Record<string, string> = {
+      'Anónimo': 'ANONIMO',
+      'Quejoso': 'QUEJOSO',
+      'De oficio': 'OFICIO',
+      'Remisión por competencia': 'REMISION',
+      // Fallbacks if already in enum format
+      'ANONIMO': 'ANONIMO',
+      'QUEJOSO': 'QUEJOSO',
+      'OFICIO': 'OFICIO',
+      'REMISION': 'REMISION'
+    };
+    return mapping[origen] || 'QUEJOSO'; // Default to QUEJOSO if unknown
+  };
+
   const handleCreateNoticia = async (data: any) => {
     try {
       setLoading(true);
 
-      const uploadedUrls: string[] = [];
-      if (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) {
-        toast.info('Subiendo archivos adjuntos...');
-        const uploadPromises = data.archivosAdjuntos.map((file: File) =>
-          disciplinaryService.uploadFile(file)
-        );
-        const results = await Promise.all(uploadPromises);
-        results.forEach(res => uploadedUrls.push(res.url));
-      }
-
-      const origenMap: Record<string, string> = {
-        'Anónimo': 'ANONIMO',
-        'Quejoso': 'QUEJOSO',
-        'Informante': 'QUEJOSO',
-        'De oficio': 'OFICIO',
-        'Remisión por competencia': 'REMISION'
+      const denuncianteObj = {
+        nombre: data.denunciante?.nombre || 'Anónimo',
+        email: data.denunciante?.email || '',
+        cedula: data.denunciante?.cedula || '',
+        cargo: data.denunciante?.cargo || 'Ciudadano',
       };
 
-      const denunciantesMapped = (data.denunciantes || []).map((d: any) => ({
-        nombre: d.nombre,
-        cedula: d.identificacion,
-        email: d.correo,
-        cargo: d.cargo,
-        telefono: d.telefono,
-        direccion: d.direccion
-      }));
+      // Extract first disciplinable if it's an array
+      const mainDisciplinable = Array.isArray(data.disciplinable) && data.disciplinable.length > 0
+        ? data.disciplinable[0]
+        : (data.disciplinable || { nombre: 'Por determinar', cargo: 'N/A' });
 
-      const disciplinablesMapped = (data.disciplinable || []).map((d: any) => ({
-        nombre: d.nombre,
-        cedula: d.identificacion,
-        cargo: d.cargo,
-        dependencia: d.dependencia || d.cargo // Fallback
-      }));
-
-      const createDto = {
-        origen: origenMap[data.origen] || 'ANONIMO',
+      const createDto: CreateNewsDto = {
+        origen: mapOrigenToEnum(data.origen), // Map to backend enum
         territorial: data.territorial,
-        dependenciaDenunciado: data.dependenciaDenunciado || disciplinablesMapped[0]?.dependencia || 'Por determinar',
-        hechos: data.descripcionHechos,
-        denunciante: denunciantesMapped,
-        disciplinable: disciplinablesMapped,
-        adjuntos: uploadedUrls
+        dependenciaDenunciado: mainDisciplinable.dependencia || 'Sin Dependencia',
+        hechos: data.descripcionHechos || 'Sin descripción',
+        denunciante: JSON.stringify(denuncianteObj),
+        disciplinable: JSON.stringify(mainDisciplinable),
+        // NO enviar: radicado, fechaRecepcion, estado (los genera el backend)
       };
 
-      console.log('📝 Sending payload:', createDto);
-      await disciplinaryService.radicarNoticia(createDto);
+      await disciplinaryService.radicarNoticia(createDto, data.adjuntos || []);
 
-      toast.success('Noticia enviada con éxito');
+      toast.success('Noticia Disciplinaria Registrada', {
+        description: 'La noticia ha sido radicada exitosamente.'
+      });
 
-      // Reload news to get the server-generated fields
-      await loadData();
+      loadNoticias(); // Reload to see new item
       setShowCreateModal(false);
+
     } catch (error) {
-      console.error('Error creating news:', error);
-      toast.error('Error al crear la noticia. Verifique los datos.');
+      console.error('Error creating noticia:', error);
+      toast.error('Error al crear la noticia');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAsignar = async (profesionalId: string, observaciones: string, convertirAProceso: boolean) => {
-    if (!noticiaSeleccionada) return;
-
-    try {
-      const profesional = profesionales.find(p => p.id === profesionalId);
-      if (!profesional) {
-        toast.error('Profesional no encontrado');
-        return;
-      }
-
-      setLoading(true);
-
-      const assignDto = {
-        newsId: noticiaSeleccionada.id,
-        abogadoId: profesional.id,
-        abogadoNombre: profesional.nombre
-      };
-
-      console.log('Asignando noticia:', assignDto);
-      await disciplinaryService.asignarProceso(assignDto);
-
-      toast.success('Noticia Asignada y Procesada', {
-        description: `Se ha asignado a ${profesional.nombre} y generado el proceso correspondiente.`
-      });
-
-      await loadData();
-
-      setShowAsignacionModal(false);
-      setNoticiaSeleccionada(null);
-
-    } catch (error) {
-      console.error('Error al asignar:', error);
-      toast.error('Error al asignar la noticia', {
-        description: 'No se pudo completar la asignación. Intente nuevamente.'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
   const handleDevolver = (observaciones: string, archivos: File[]) => {
     if (!noticiaSeleccionada) return;
 
@@ -978,10 +870,9 @@ export function GestionNoticias() {
       usuario: 'Jefe OCID',
       fecha: new Date().toISOString(),
       observaciones,
-      // archivos: archivos.map(f => f.name) // Ajustar según backend si es necesario
+      archivos: archivos.map(f => f.name)
     };
 
-    // Lógica temporal de devolución (frontend optimista)
     setNoticias(noticias.map(n =>
       n.id === noticiaSeleccionada.id
         ? {
@@ -1002,9 +893,61 @@ export function GestionNoticias() {
     setNoticiaSeleccionada(null);
   };
 
-  // NOTE: Eliminated duplicate handleAsignar here
-  // The correct async handleAsignar is defined above at line ~884
+  const handleAsignar = (profesionalId: string, observaciones: string, convertirAProceso: boolean) => {
+    if (!noticiaSeleccionada) return;
 
+    const profesional = PROFESIONALES_MOCK.find(p => p.id === profesionalId);
+    if (!profesional) return;
+
+    const year = new Date().getFullYear();
+    const numeroSecuencial = noticiaSeleccionada.radicado.split('-')[2];
+    const procesoRadicado = `PD-${year}-${numeroSecuencial}`;
+
+    const accionAsignacion: AccionAuditoria = {
+      id: Date.now().toString(),
+      tipo: 'asignacion',
+      usuario: 'Jefe OCID',
+      fecha: new Date().toISOString(),
+      observaciones: observaciones || `Asignado a ${profesional.nombre}`,
+      profesionalAsignado: profesional.nombre
+    };
+
+    const acciones = [accionAsignacion];
+
+    if (convertirAProceso) {
+      const accionConversion: AccionAuditoria = {
+        id: (Date.now() + 1).toString(),
+        tipo: 'conversion',
+        usuario: 'Jefe OCID',
+        fecha: new Date().toISOString(),
+        observaciones: `Convertido a proceso disciplinario ${procesoRadicado}`
+      };
+      acciones.push(accionConversion);
+    }
+
+    setNoticias(noticias.map(n =>
+      n.id === noticiaSeleccionada.id
+        ? {
+          ...n,
+          estado: convertirAProceso ? 'convertido-proceso' : 'asignado',
+          estadoLabel: convertirAProceso ? 'Convertido a Proceso' : 'Asignado',
+          etapa: convertirAProceso ? `Convertido a ${procesoRadicado}` : 'Asignado a Profesional',
+          profesionalAsignado: profesional.nombre,
+          procesoAsociado: convertirAProceso ? procesoRadicado : undefined,
+          historialAuditoria: [...n.historialAuditoria, ...acciones]
+        }
+        : n
+    ));
+
+    toast.success(convertirAProceso ? 'Proceso Creado y Asignado' : 'Noticia Asignada', {
+      description: convertirAProceso
+        ? `${procesoRadicado} creado y asignado a ${profesional.nombre}. Se ha enviado notificación.`
+        : `Asignado a ${profesional.nombre}. Se ha enviado notificación.`
+    });
+
+    setShowAsignacionModal(false);
+    setNoticiaSeleccionada(null);
+  };
 
   const getEstadoBadge = (estado: string) => {
     const configs: Record<string, { bg: string; text: string; border: string }> = {
@@ -1059,14 +1002,10 @@ export function GestionNoticias() {
 
   const filteredNoticias = noticias.filter(noticia => {
     console.log('🔍 Buscando:', noticia);
-    const term = searchQuery.toLowerCase();
-    const radicado = (noticia.numeroRadicado || '').toLowerCase();
-
-    // Check if any disciplinable matches
     const matchesSearch =
-      noticia.numeroRadicado.toLowerCase().includes(term) ||
-      noticia.disciplinable.some(d => d.nombre.toLowerCase().includes(term)) ||
-      (noticia.profesionalAsignado?.toLowerCase().includes(term) ?? false);
+      (noticia.radicado || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (noticia.disciplinable?.[0]?.nombre || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (noticia.disciplinable?.[0]?.cedula || '').includes(searchQuery);
 
     const matchesEstado = filterEstado === 'all' || noticia.estado === filterEstado;
     const matchesOrigen = filterOrigen === 'all' || noticia.origen === filterOrigen;
@@ -1074,7 +1013,13 @@ export function GestionNoticias() {
     return matchesSearch && matchesEstado && matchesOrigen;
   });
 
-
+  const diasTranscurridos = (data: string) => {
+    const fecha = new Date(data);
+    const hoy = new Date();
+    const diffTime = hoy.getTime() - fecha.getTime();
+    const diasRestantes = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diasRestantes;
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -1260,12 +1205,12 @@ export function GestionNoticias() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="font-bold text-lg" style={{ color: '#003DA5' }}>
-                        {noticia.numeroRadicado}
+                        {noticia.radicado}
                       </h3>
                       {getEstadoBadge(noticia.estadoLabel)}
                       {getOrigenBadge(noticia.origen)}
                     </div>
-                    <p className="font-semibold text-gray-900">{(noticia.disciplinable && noticia.disciplinable.length > 0) ? noticia.disciplinable[0].nombre : 'Sin Disciplinable'}</p>
+                    <p className="text-sm font-semibold text-gray-900">{noticia.disciplinable[0]?.nombre || 'Sin nombre'}</p>
                     <p className="text-xs text-gray-500">
                       {noticia.estado} • {noticia.territorial}
                     </p>
@@ -1276,7 +1221,7 @@ export function GestionNoticias() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pl-15">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                    <p className="text-sm font-medium text-gray-900">{(noticia.disciplinable && noticia.disciplinable.length > 0) ? noticia.disciplinable[0].cedula : 'N/A'}</p>
+                    <p className="text-sm font-medium text-gray-900">{noticia.disciplinable[0]?.cedula || 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Territorial</p>
@@ -1317,7 +1262,7 @@ export function GestionNoticias() {
                 <div className="text-right">
                   <p className="text-xs text-gray-500 mb-1">Hace</p>
                   <p className="text-xl font-bold" style={{ color: '#003DA5' }}>
-                    {calculateDiasTranscurridos(noticia.fechaRecepcion || noticia.fechaQueja)} días
+                    {diasTranscurridos(noticia.fechaRecepcion)} días
                   </p>
                 </div>
 
@@ -1462,7 +1407,6 @@ export function GestionNoticias() {
         {showAsignacionModal && noticiaSeleccionada && (
           <ModalAsignar
             noticia={noticiaSeleccionada}
-            profesionales={profesionales}
             onClose={() => {
               setShowAsignacionModal(false);
               setNoticiaSeleccionada(null);
@@ -1537,7 +1481,7 @@ export function GestionNoticias() {
             onConfirm={() => {
               setNoticias(noticias.filter(n => n.id !== noticiaSeleccionada?.id));
               toast.success('Noticia Archivada', {
-                description: `La noticia ${noticiaSeleccionada?.numeroRadicado} ha sido archivada exitosamente.`
+                description: `La noticia ${noticiaSeleccionada?.radicado} ha sido archivada exitosamente.`
               });
               setShowArchivarModal(false);
               setNoticiaSeleccionada(null);

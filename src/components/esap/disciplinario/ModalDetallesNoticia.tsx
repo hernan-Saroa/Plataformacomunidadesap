@@ -128,28 +128,41 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
               Información de los Disciplinables
             </h3>
             <div className="space-y-4">
-              {noticia.disciplinable.map((person, idx) => (
-                <Card key={idx} className="p-5 border-2 border-gray-200">
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Nombre Completo</p>
-                      <p className="text-sm font-semibold text-gray-900">{person.nombre}</p>
+              {(() => {
+                let list = [];
+                if (Array.isArray(noticia.disciplinable)) {
+                  list = noticia.disciplinable;
+                } else if (noticia.disciplinable) {
+                  list = [noticia.disciplinable];
+                }
+
+                if (list.length === 0) {
+                  return <p className="text-gray-500 italic">No hay información de disciplinables.</p>;
+                }
+
+                return list.map((person: any, idx: number) => (
+                  <Card key={idx} className="p-5 border-2 border-gray-200">
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Nombre Completo</p>
+                        <p className="text-sm font-semibold text-gray-900">{person?.nombre || 'Sin Nombre'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Identificación</p>
+                        <p className="text-sm font-semibold text-gray-900">{person?.cedula || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Cargo</p>
+                        <p className="text-sm font-semibold text-gray-900">{person?.cargo || 'Sin Cargo'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Dependencia</p>
+                        <p className="text-sm font-semibold text-gray-900">{person?.dependencia || 'N/A'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                      <p className="text-sm font-semibold text-gray-900">{person.cedula || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Cargo</p>
-                      <p className="text-sm font-semibold text-gray-900">{person.cargo}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Dependencia</p>
-                      <p className="text-sm font-semibold text-gray-900">{person.dependencia || 'N/A'}</p>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ));
+              })()}
             </div>
           </div>
 

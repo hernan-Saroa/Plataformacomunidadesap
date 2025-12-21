@@ -234,11 +234,12 @@ export class ProcessService {
       if (updateDto.hechos) newsUpdate.hechos = updateDto.hechos;
 
       if (updateDto.disciplinable) {
-        // Merge con datos existentes del disciplinable (es un array)
-        const disciplinableExistente = proceso.news.disciplinable || [];
-        const disciplinableActualizado = disciplinableExistente.length > 0
-          ? [{ ...disciplinableExistente[0], ...updateDto.disciplinable }]
-          : [updateDto.disciplinable];
+        // Merge con datos existentes del disciplinable (ahora es un objeto único)
+        const disciplinableExistente = proceso.news.disciplinable || {};
+        const disciplinableActualizado = {
+          ...disciplinableExistente,
+          ...updateDto.disciplinable
+        };
         newsUpdate.disciplinable = disciplinableActualizado;
       }
 
