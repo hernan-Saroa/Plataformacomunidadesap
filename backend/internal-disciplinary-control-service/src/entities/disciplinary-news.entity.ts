@@ -20,6 +20,7 @@ export enum NewsStatus {
   EN_VALORACION = 'EN_VALORACION',
   ASIGNADA = 'ASIGNADA',
   DEVUELTA = 'DEVUELTA',
+  ARCHIVADA = 'ARCHIVADA',
 }
 
 export interface PersonInfo {
@@ -79,6 +80,9 @@ export class DisciplinaryNews {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Column({ type: 'jsonb', nullable: true, default: [] })
+  historialAuditoria: any[];
 
   // Relación con procesos disciplinarios
   @OneToMany(

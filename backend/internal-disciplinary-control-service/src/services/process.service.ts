@@ -4,7 +4,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import {
   DisciplinaryProcess,
   ProcessStage,
@@ -66,14 +66,14 @@ export class ProcessService {
 
       // Calcular fecha de vencimiento de la etapa inicial (EVALUACION)
       const { fechaVencimiento } =
-        await this.terminosService.calculateVencimientoEtapa('EVALUACION');
+        await this.terminosService.calculateVencimientoEtapa(ProcessStage.EVALUACION);
 
       // Crear proceso
       const proceso = this.processRepository.create({
         radicadoProceso,
         newsId: createProcessDto.newsId,
         abogadoAsignadoId: createProcessDto.abogadoId,
-        etapaActual: 'EVALUACION', // Default initial stage
+        etapaActual: ProcessStage.EVALUACION, // Default initial stage
         estado: ProcessStatus.ACTIVO,
         fechaPrescripcion,
         fechaVencimientoEtapa: fechaVencimiento,
@@ -108,7 +108,7 @@ export class ProcessService {
       relations: ['news', 'abogadoAsignado', 'evidence'],
       where: {
         news: {
-          estado: Not(NewsStatus.DEVUELTA)
+          estado: Not(In([NewsStatus.DEVUELTA, NewsStatus.ARCHIVADA]))
         }
       },
       order: {
@@ -234,12 +234,11 @@ export class ProcessService {
       if (updateDto.hechos) newsUpdate.hechos = updateDto.hechos;
 
       if (updateDto.disciplinable) {
-        // Merge con datos existentes del disciplinable (ahora es un objeto único)
-        const disciplinableExistente = proceso.news.disciplinable || {};
-        const disciplinableActualizado = {
-          ...disciplinableExistente,
-          ...updateDto.disciplinable
-        };
+        // Merge con datos existentes del disciplinable (es un array)
+        const disciplinableExistente = (proceso.news.disciplinable as any) || [];
+        const disciplinableActualizado = (Array.isArray(disciplinableExistente) && disciplinableExistente.length > 0)
+          ? [{ ...disciplinableExistente[0], ...updateDto.disciplinable }]
+          : [updateDto.disciplinable];
         newsUpdate.disciplinable = disciplinableActualizado;
       }
 
