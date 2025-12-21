@@ -412,19 +412,11 @@ function ModalDetalleProfesional({
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t flex items-center gap-3" style={{ borderColor: '#E5E7EB' }}>
-          <button
-            onClick={handleEditarProfesional}
-            className="flex-1 px-4 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-2"
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-          >
-            <Edit className="w-4 h-4" />
-            Editar Profesional
-          </button>
+        <div className="p-6 border-t flex items-center justify-center" style={{ borderColor: '#E5E7EB' }}>
           <button
             onClick={handleVerProcesos}
-            className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2"
-            style={{ background: '#F3F4F6', color: '#4B5563' }}
+            className="px-6 py-2.5 rounded-xl font-semibold flex items-center gap-2"
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
           >
             <FolderOpen className="w-4 h-4" />
             Ver Procesos
