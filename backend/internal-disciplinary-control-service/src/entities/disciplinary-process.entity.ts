@@ -14,10 +14,10 @@ import { DisciplinaryProfessional } from './disciplinary-professional.entity';
 import { Evidence } from './evidence.entity';
 
 export enum ProcessStage {
-  RECEPCION = 'RECEPCIÓN',
-  EVALUACION = 'VALORACIÓN',
-  INDAGACION_PREVIA = 'INDAGACIÓN',
-  INVESTIGACION = 'INVESTIGACIÓN',
+  RECEPCION = 'RECEPCION',
+  EVALUACION = 'EVALUACION',
+  INDAGACION_PREVIA = 'INDAGACION',
+  INVESTIGACION = 'INVESTIGACION',
   JUZGAMIENTO = 'JUZGAMIENTO',
   FALLO = 'FALLO',
 }
@@ -55,7 +55,7 @@ export class DisciplinaryProcess {
 
   @Column({
     type: 'varchar',
-    default: 'RECEPCIÓN',
+    default: 'EVALUACION',
   })
   etapaActual: string;
 

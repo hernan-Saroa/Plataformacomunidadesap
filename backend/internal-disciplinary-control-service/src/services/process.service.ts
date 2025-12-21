@@ -66,14 +66,14 @@ export class ProcessService {
 
       // Calcular fecha de vencimiento de la etapa inicial (EVALUACION)
       const { fechaVencimiento } =
-        await this.terminosService.calculateVencimientoEtapa('VALORACIÓN');
+        await this.terminosService.calculateVencimientoEtapa('EVALUACION');
 
       // Crear proceso
       const proceso = this.processRepository.create({
         radicadoProceso,
         newsId: createProcessDto.newsId,
         abogadoAsignadoId: createProcessDto.abogadoId,
-        etapaActual: 'VALORACIÓN', // Default initial stage (was ProcessStage.EVALUACION)
+        etapaActual: 'EVALUACION', // Default initial stage
         estado: ProcessStatus.ACTIVO,
         fechaPrescripcion,
         fechaVencimientoEtapa: fechaVencimiento,

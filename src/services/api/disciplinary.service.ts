@@ -139,6 +139,8 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/status`, { status: newStatus });
     }
 
+
+
     // --- PROCESOS ---
 
     async getAllProcesos(): Promise<DisciplinaryProcess[]> {

@@ -40,8 +40,15 @@ export class TerminosCalculatorService {
       switch (etapa) {
         case 'INDAGACIÓN':
         case 'INVESTIGACIÓN':
+        case 'INVESTIGACION':
           dias = 180;
           esDiasHabiles = false; // Meses calendario
+          break;
+        case 'EVALUACION':
+        case 'VALORACION':
+        case 'VALORACIÓN':
+          dias = 10;
+          esDiasHabiles = true;
           break;
         case 'JUZGAMIENTO':
           dias = 90;
@@ -129,7 +136,8 @@ export class TerminosCalculatorService {
     const fechaStr = fecha.toISOString().split('T')[0]; // YYYY-MM-DD
 
     return festivosList.some(festivo => {
-      const festivoStr = festivo.fecha.toISOString().split('T')[0];
+      const festivoDate = new Date(festivo.fecha);
+      const festivoStr = festivoDate.toISOString().split('T')[0];
       return festivoStr === fechaStr;
     });
   }

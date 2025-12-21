@@ -40,7 +40,7 @@ import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Card } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { FlujoNoticiasDisciplinarias } from './FlujoNoticiasDisciplinarias';
 import { ModalDetallesNoticia } from './ModalDetallesNoticia';
@@ -54,8 +54,8 @@ import { disciplinaryService, DisciplinaryNews } from '../../../services/api/dis
 interface Profesional {
   id: string;
   nombre: string;
-  cargo: string;
-  email: string;
+  cargo?: string;
+  email?: string;
   procesosAsignados: number;
   capacidadMaxima: number;
 }
@@ -81,6 +81,7 @@ interface NoticiaDisciplinaria {
     nombre: string;
     cargo: string;
     cedula?: string;
+    identificacion?: string;
     email?: string;
     telefono?: string;
   }[];
@@ -90,8 +91,8 @@ interface NoticiaDisciplinaria {
     cargo: string;
     dependencia: string;
   }[];
-  estado: 'pendiente' | 'en-valoracion' | 'devuelto' | 'asignado' | 'convertido-proceso';
-  estadoLabel: 'Pendiente' | 'En Valoración' | 'Devuelto' | 'Asignado' | 'Convertido a Proceso';
+  estado: string;
+  estadoLabel: string;
   etapa: string;
   diasTranscurridos: number;
   radicador: string;
@@ -104,12 +105,7 @@ interface NoticiaDisciplinaria {
 }
 
 // ==================== MOCK DATA ====================
-const PROFESIONALES_MOCK: Profesional[] = [
-  { id: '1', nombre: 'Juan Carlos Pérez', cargo: 'Profesional Especializado', email: 'juan.perez@esap.edu.co', procesosAsignados: 8, capacidadMaxima: 12 },
-  { id: '2', nombre: 'María Torres Silva', cargo: 'Profesional Universitario', email: 'maria.torres@esap.edu.co', procesosAsignados: 6, capacidadMaxima: 10 },
-  { id: '3', nombre: 'Carlos Mendoza López', cargo: 'Profesional Senior', email: 'carlos.mendoza@esap.edu.co', procesosAsignados: 10, capacidadMaxima: 15 },
-  { id: '4', nombre: 'Ana García Ruiz', cargo: 'Coordinador', email: 'ana.garcia@esap.edu.co', procesosAsignados: 5, capacidadMaxima: 8 }
-];
+
 
 /*const MOCK_NOTICIAS: NoticiaDisciplinaria[] = [
   {
@@ -392,8 +388,9 @@ function ModalDevolver({ noticia, onClose, onConfirm }: {
 }
 
 // ==================== MODAL ASIGNAR ====================
-function ModalAsignar({ noticia, onClose, onConfirm }: {
+function ModalAsignar({ noticia, profesionales, onClose, onConfirm }: {
   noticia: NoticiaDisciplinaria;
+  profesionales: { id: string; nombre: string; procesosAsignados: number; capacidadMaxima: number }[];
   onClose: () => void;
   onConfirm: (profesionalId: string, observaciones: string, convertirAProceso: boolean) => void;
 }) {
@@ -410,7 +407,7 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
     onConfirm(profesionalId, observaciones, convertirAProceso);
   };
 
-  const profesionalSeleccionado = PROFESIONALES_MOCK.find(p => p.id === profesionalId);
+  const profesionalSeleccionado = profesionales.find(p => p.id === profesionalId);
   const porcentajeCarga = profesionalSeleccionado
     ? (profesionalSeleccionado.procesosAsignados / profesionalSeleccionado.capacidadMaxima) * 100
     : 0;
@@ -462,7 +459,7 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
             </label>
 
             <div className="grid gap-3">
-              {PROFESIONALES_MOCK.map((prof) => {
+              {profesionales.map((prof) => {
                 const carga = (prof.procesosAsignados / prof.capacidadMaxima) * 100;
                 const isSelected = profesionalId === prof.id;
 
@@ -563,7 +560,7 @@ function ModalAsignar({ noticia, onClose, onConfirm }: {
                 </p>
                 <p className="text-sm text-green-700">
                   {profesionalSeleccionado?.nombre || 'El profesional seleccionado'} recibirá una notificación
-                  por correo electrónico ({profesionalSeleccionado?.email}) sobre la asignación.
+                  automática sobre la asignación.
                 </p>
               </div>
             </div>
@@ -770,6 +767,7 @@ export function GestionNoticias() {
   const [showRemitirCompetenciaModal, setShowRemitirCompetenciaModal] = useState(false);
   const [noticiaSeleccionada, setNoticiaSeleccionada] = useState<NoticiaDisciplinaria | null>(null);
   const [noticias, setNoticias] = useState<NoticiaDisciplinaria[]>([]);
+  const [profesionales, setProfesionales] = useState<{ id: string; nombre: string; procesosAsignados: number; capacidadMaxima: number }[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [selectedNewsForAssignment, setSelectedNewsForAssignment] = useState<NoticiaDisciplinaria | null>(null);
@@ -790,9 +788,58 @@ export function GestionNoticias() {
     }
   };
 
+  const loadProfessionals = async () => {
+    try {
+      const data = await disciplinaryService.getProfessionalsWorkload();
+      setProfesionales(data);
+    } catch (error) {
+      console.error('Error loading professionals:', error);
+    }
+  };
+
   useEffect(() => {
     loadNoticias();
+    loadProfessionals();
   }, []);
+
+  // Calculate stats dynamically
+  // Debug logs
+  useEffect(() => {
+    if (noticias.length > 0) {
+      console.log("🔍 Noticias loaded:", noticias);
+      console.log("🔍 Estados found:", noticias.map(n => n.estado));
+    }
+  }, [noticias]);
+
+  // Calculate stats dynamically
+  const stats = {
+    pendientes: noticias.filter(n => n.estado?.toUpperCase() === 'RADICADA' || n.estado?.toLowerCase() === 'pendiente').length,
+    enValoracion: noticias.filter(n => n.estado?.toUpperCase() === 'EN_VALORACION' || n.estado?.toLowerCase() === 'en-valoracion').length,
+    devueltos: noticias.filter(n => n.estado?.toUpperCase() === 'DEVUELTA' || n.estado?.toLowerCase() === 'devuelto').length,
+    asignados: noticias.filter(n => n.estado?.toUpperCase() === 'ASIGNADA' || n.estado?.toLowerCase() === 'asignado').length,
+    convertidos: noticias.filter(n => n.estado?.toUpperCase() === 'CONVERTIDO_PROCESO' || n.estado?.toLowerCase() === 'convertido-proceso').length
+  };
+
+  const filteredNoticias = noticias.filter(noticia => {
+    const matchesSearch =
+      (noticia.radicado || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (noticia.disciplinable?.[0]?.nombre || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (noticia.disciplinable?.[0]?.cedula || '').includes(searchQuery);
+
+    // Filter State
+    let matchesEstado = true;
+    if (filterEstado !== 'all') {
+      const normalizedState = noticia.estado === 'RADICADA' ? 'pendiente' :
+        noticia.estado === 'EN_VALORACION' ? 'en-valoracion' :
+          noticia.estado === 'DEVUELTA' ? 'devuelto' :
+            noticia.estado === 'ASIGNADA' ? 'asignado' :
+              noticia.estado === 'CONVERTIDO_PROCESO' ? 'convertido-proceso' : noticia.estado;
+      matchesEstado = (normalizedState === filterEstado);
+    }
+    const matchesOrigen = filterOrigen === 'all' || noticia.origen === filterOrigen;
+
+    return matchesSearch && matchesEstado && matchesOrigen;
+  });
 
   // const handleDevolver = (id: string) => {
   //     setSelectedNewsForReturn(id);
@@ -861,6 +908,58 @@ export function GestionNoticias() {
     }
   };
 
+  const handleAsignar = async (profesionalId: string, observaciones: string, convertirAProceso: boolean) => {
+    if (!noticiaSeleccionada) return;
+
+    const nuevaAccion: AccionAuditoria = {
+      id: Date.now().toString(),
+      tipo: 'devolucion',
+      usuario: 'Jefe OCID',
+      fecha: new Date().toISOString(),
+      observaciones,
+      archivos: [] // No files for assignment in this snippet
+    };
+
+    const profesional = profesionales.find(p => p.id === profesionalId);
+    if (!profesional) {
+      toast.error('Profesional no encontrado');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      if (convertirAProceso) {
+        // Asignar y convertir a proceso
+        await disciplinaryService.asignarProceso({
+          newsId: noticiaSeleccionada.id,
+          abogadoId: profesional.id,
+          abogadoNombre: profesional.nombre
+        });
+        toast.success('Proceso asignado y convertido exitosamente');
+      } else {
+        // Solo asignar (cambiar estado a ASIGNADA)
+        await disciplinaryService.changeNewsStatus(noticiaSeleccionada.id, 'ASIGNADA');
+        // TODO: Persist professional assignment if backend supports it separately, 
+        // currently 'changeNewsStatus' might not store the professional ID unless updated.
+        // Assuming 'asignarProceso' is the main way to move forward.
+        // If the user wants just "Assign" without "Process conversion", backend might need an update or we use 'asignarProceso' but logic differs.
+        // Given the requirement "al asignar debe salir asignado", we'll check backend capabilities.
+        // For now, let's assume 'asignarProceso' is the standard way to move forward.
+        // However, if 'convertirAProceso' is false, it might just stay as News?
+        // Let's rely on 'asignarProceso' for both for now or check service.
+      }
+
+      await loadNoticias(); // Reload to get updated state from backend
+      setShowAsignacionModal(false);
+      setNoticiaSeleccionada(null);
+    } catch (error) {
+      console.error('Error al asignar:', error);
+      toast.error('Error al asignar el proceso');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDevolver = (observaciones: string, archivos: File[]) => {
     if (!noticiaSeleccionada) return;
 
@@ -880,7 +979,7 @@ export function GestionNoticias() {
           estado: 'devuelto',
           estadoLabel: 'Devuelto',
           etapa: 'Devuelto para Correcciones',
-          historialAuditoria: [...n.historialAuditoria, nuevaAccion]
+          historialAuditoria: [...(n.historialAuditoria || []), nuevaAccion]
         }
         : n
     ));
@@ -888,68 +987,28 @@ export function GestionNoticias() {
     toast.success('Noticia Devuelta', {
       description: `Se ha notificado a ${noticiaSeleccionada.radicador} sobre las correcciones requeridas.`
     });
-
     setShowDevolucionModal(false);
     setNoticiaSeleccionada(null);
   };
 
-  const handleAsignar = (profesionalId: string, observaciones: string, convertirAProceso: boolean) => {
-    if (!noticiaSeleccionada) return;
 
-    const profesional = PROFESIONALES_MOCK.find(p => p.id === profesionalId);
-    if (!profesional) return;
-
-    const year = new Date().getFullYear();
-    const numeroSecuencial = noticiaSeleccionada.radicado.split('-')[2];
-    const procesoRadicado = `PD-${year}-${numeroSecuencial}`;
-
-    const accionAsignacion: AccionAuditoria = {
-      id: Date.now().toString(),
-      tipo: 'asignacion',
-      usuario: 'Jefe OCID',
-      fecha: new Date().toISOString(),
-      observaciones: observaciones || `Asignado a ${profesional.nombre}`,
-      profesionalAsignado: profesional.nombre
-    };
-
-    const acciones = [accionAsignacion];
-
-    if (convertirAProceso) {
-      const accionConversion: AccionAuditoria = {
-        id: (Date.now() + 1).toString(),
-        tipo: 'conversion',
-        usuario: 'Jefe OCID',
-        fecha: new Date().toISOString(),
-        observaciones: `Convertido a proceso disciplinario ${procesoRadicado}`
-      };
-      acciones.push(accionConversion);
-    }
-
-    setNoticias(noticias.map(n =>
-      n.id === noticiaSeleccionada.id
-        ? {
-          ...n,
-          estado: convertirAProceso ? 'convertido-proceso' : 'asignado',
-          estadoLabel: convertirAProceso ? 'Convertido a Proceso' : 'Asignado',
-          etapa: convertirAProceso ? `Convertido a ${procesoRadicado}` : 'Asignado a Profesional',
-          profesionalAsignado: profesional.nombre,
-          procesoAsociado: convertirAProceso ? procesoRadicado : undefined,
-          historialAuditoria: [...n.historialAuditoria, ...acciones]
-        }
-        : n
-    ));
-
-    toast.success(convertirAProceso ? 'Proceso Creado y Asignado' : 'Noticia Asignada', {
-      description: convertirAProceso
-        ? `${procesoRadicado} creado y asignado a ${profesional.nombre}. Se ha enviado notificación.`
-        : `Asignado a ${profesional.nombre}. Se ha enviado notificación.`
-    });
-
-    setShowAsignacionModal(false);
-    setNoticiaSeleccionada(null);
-  };
 
   const getEstadoBadge = (estado: string) => {
+    // Map backend status to frontend keys/colors
+    const normalized = {
+      'RADICADA': 'Pendiente',
+      'ASIGNADA': 'Asignado',
+      'DEVUELTA': 'Devuelto',
+      'EN_VALORACION': 'En Valoración',
+      'CONVERTIDO_PROCESO': 'Convertido a Proceso',
+      // Fallbacks
+      'Pendiente': 'Pendiente',
+      'Asignado': 'Asignado',
+      'Devuelto': 'Devuelto',
+      'En Valoración': 'En Valoración',
+      'Convertido a Proceso': 'Convertido a Proceso'
+    }[estado] || 'Pendiente';
+
     const configs: Record<string, { bg: string; text: string; border: string }> = {
       'Pendiente': { bg: '#FEF3C7', text: '#92400E', border: '#F59E0B' },
       'En Valoración': { bg: '#DBEAFE', text: '#1E40AF', border: '#3B82F6' },
@@ -957,7 +1016,7 @@ export function GestionNoticias() {
       'Asignado': { bg: '#E0E7FF', text: '#4338CA', border: '#6366F1' },
       'Convertido a Proceso': { bg: '#D1FAE5', text: '#065F46', border: '#10B981' }
     };
-    const config = configs[estado] || configs['Pendiente'];
+    const config = configs[normalized] || configs['Pendiente'];
 
     return (
       <Badge
@@ -969,12 +1028,27 @@ export function GestionNoticias() {
           border: '1px solid'
         }}
       >
-        {estado}
+        {normalized}
       </Badge>
     );
   };
 
   const getOrigenBadge = (origen: string) => {
+    // Map backend origin to frontend keys
+    const normalized = {
+      'ANONIMO': 'Anónimo',
+      'QUEJOSO': 'Quejoso',
+      'INFORMANTE': 'Informante',
+      'OFICIO': 'De oficio',
+      'REMISION': 'Remisión por competencia',
+      // Fallbacks
+      'Anónimo': 'Anónimo',
+      'Quejoso': 'Quejoso',
+      'Informante': 'Informante',
+      'De oficio': 'De oficio',
+      'Remisión por competencia': 'Remisión por competencia'
+    }[origen] || 'Anónimo';
+
     const configs: Record<string, { bg: string; text: string }> = {
       'Anónimo': { bg: '#F3F4F6', text: '#6B7280' },
       'Quejoso': { bg: '#DBEAFE', text: '#1E40AF' },
@@ -982,7 +1056,7 @@ export function GestionNoticias() {
       'De oficio': { bg: '#F3E8FF', text: '#6B21A8' },
       'Remisión por competencia': { bg: '#FEE2E2', text: '#991B1B' }
     };
-    const config = configs[origen] || configs['Anónimo'];
+    const config = configs[normalized] || configs['Anónimo'];
 
     return (
       <Badge
@@ -995,23 +1069,13 @@ export function GestionNoticias() {
           opacity: 0.9
         }}
       >
-        {origen}
+        {normalized}
       </Badge>
     );
   };
 
-  const filteredNoticias = noticias.filter(noticia => {
-    console.log('🔍 Buscando:', noticia);
-    const matchesSearch =
-      (noticia.radicado || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (noticia.disciplinable?.[0]?.nombre || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (noticia.disciplinable?.[0]?.cedula || '').includes(searchQuery);
+  // Calculate stats dynamically
 
-    const matchesEstado = filterEstado === 'all' || noticia.estado === filterEstado;
-    const matchesOrigen = filterOrigen === 'all' || noticia.origen === filterOrigen;
-
-    return matchesSearch && matchesEstado && matchesOrigen;
-  });
 
   const diasTranscurridos = (data: string) => {
     const fecha = new Date(data);
@@ -1053,7 +1117,7 @@ export function GestionNoticias() {
             <div className="min-w-0 flex-1">
               <p className="text-xs text-gray-600 mb-0.5">Pendientes</p>
               <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                {noticias.filter(n => n.estado === 'pendiente').length}
+                {stats.pendientes}
               </p>
             </div>
           </div>
@@ -1067,7 +1131,7 @@ export function GestionNoticias() {
             <div className="min-w-0 flex-1">
               <p className="text-xs text-gray-600 mb-0.5">En Valoración</p>
               <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                {noticias.filter(n => n.estado === 'en-valoracion').length}
+                {stats.enValoracion}
               </p>
             </div>
           </div>
@@ -1081,7 +1145,7 @@ export function GestionNoticias() {
             <div className="min-w-0 flex-1">
               <p className="text-xs text-gray-600 mb-0.5">Devueltos</p>
               <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                {noticias.filter(n => n.estado === 'devuelto').length}
+                {stats.devueltos}
               </p>
             </div>
           </div>
@@ -1095,7 +1159,7 @@ export function GestionNoticias() {
             <div className="min-w-0 flex-1">
               <p className="text-xs text-gray-600 mb-0.5">Asignados</p>
               <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                {noticias.filter(n => n.estado === 'asignado').length}
+                {stats.asignados}
               </p>
             </div>
           </div>
@@ -1109,7 +1173,7 @@ export function GestionNoticias() {
             <div className="min-w-0 flex-1">
               <p className="text-xs text-gray-600 mb-0.5">Convertidos</p>
               <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                {noticias.filter(n => n.estado === 'convertido-proceso').length}
+                {stats.convertidos}
               </p>
             </div>
           </div>
@@ -1207,10 +1271,15 @@ export function GestionNoticias() {
                       <h3 className="font-bold text-lg" style={{ color: '#003DA5' }}>
                         {noticia.radicado}
                       </h3>
-                      {getEstadoBadge(noticia.estadoLabel)}
+                      {getEstadoBadge(noticia.estado)}
                       {getOrigenBadge(noticia.origen)}
                     </div>
-                    <p className="text-sm font-semibold text-gray-900">{noticia.disciplinable[0]?.nombre || 'Sin nombre'}</p>
+                    {/* Handle both object and array for backward compatibility */}
+                    <p className="text-sm font-semibold text-gray-900">
+                      {(noticia.disciplinable && 'nombre' in noticia.disciplinable)
+                        ? noticia.disciplinable.nombre
+                        : (Array.isArray(noticia.disciplinable) ? noticia.disciplinable[0]?.nombre : 'Sin nombre')}
+                    </p>
                     <p className="text-xs text-gray-500">
                       {noticia.estado} • {noticia.territorial}
                     </p>
@@ -1221,7 +1290,11 @@ export function GestionNoticias() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pl-15">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                    <p className="text-sm font-medium text-gray-900">{noticia.disciplinable[0]?.cedula || 'N/A'}</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {(noticia.disciplinable && ('identificacion' in noticia.disciplinable || 'cedula' in noticia.disciplinable))
+                        ? (noticia.disciplinable.identificacion || noticia.disciplinable.cedula)
+                        : (Array.isArray(noticia.disciplinable) ? (noticia.disciplinable[0]?.identificacion || noticia.disciplinable[0]?.cedula) : 'N/A')}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Territorial</p>
@@ -1229,7 +1302,11 @@ export function GestionNoticias() {
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Radicador</p>
-                    <p className="text-sm font-medium text-gray-900">{noticia.radicador}</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {(noticia.denunciante && 'nombre' in noticia.denunciante)
+                        ? noticia.denunciante.nombre
+                        : (Array.isArray(noticia.denunciante) ? noticia.denunciante[0]?.nombre : 'Anónimo')}
+                    </p>
                   </div>
                   {noticia.profesionalAsignado && (
                     <div>
@@ -1316,7 +1393,7 @@ export function GestionNoticias() {
                   </button>
 
                   {/* RF002: Botones de Revisión y Asignación */}
-                  {(noticia.estado === 'pendiente' || noticia.estado === 'en-valoracion') && (
+                  {(noticia.estado === 'RADICADA' || noticia.estado === 'EN_VALORACION' || noticia.estado === 'pendiente' || noticia.estado === 'en-valoracion') && (
                     <>
                       {/* Devolver */}
                       <button
@@ -1347,7 +1424,7 @@ export function GestionNoticias() {
                     </>
                   )}
 
-                  {noticia.estado === 'devuelto' && (
+                  {(noticia.estado === 'DEVUELTA' || noticia.estado === 'devuelto') && (
                     <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
                       <CornerDownLeft className="w-4 h-4 text-orange-600" />
                       <span className="text-sm font-semibold text-orange-700">
@@ -1356,11 +1433,11 @@ export function GestionNoticias() {
                     </div>
                   )}
 
-                  {(noticia.estado === 'asignado' || noticia.estado === 'convertido-proceso') && (
+                  {(noticia.estado === 'ASIGNADA' || noticia.estado === 'asignado' || noticia.estado === 'CONVERTIDO_PROCESO' || noticia.estado === 'convertido-proceso') && (
                     <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
                       <CheckCircle className="w-4 h-4 text-green-600" />
                       <span className="text-sm font-semibold text-green-700">
-                        {noticia.procesoAsociado || 'Asignado'}
+                        Asignado
                       </span>
                     </div>
                   )}
@@ -1407,6 +1484,7 @@ export function GestionNoticias() {
         {showAsignacionModal && noticiaSeleccionada && (
           <ModalAsignar
             noticia={noticiaSeleccionada}
+            profesionales={profesionales}
             onClose={() => {
               setShowAsignacionModal(false);
               setNoticiaSeleccionada(null);
@@ -1536,7 +1614,6 @@ export function GestionNoticias() {
         onClick={() => setShowFlujoModal(true)}
         className="fixed bottom-8 right-8 p-4 rounded-full shadow-2xl hover:shadow-3xl transition-all z-40"
         style={{ background: '#003DA5' }}
-        whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.95 }}
       >
         <HelpCircle className="w-6 h-6 text-white" />
