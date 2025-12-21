@@ -19,27 +19,32 @@ const SERVICE_PREFIX = '/control-disciplinario/api/v1';
 
 export interface DisciplinaryNews {
     id: string;
-    radicado: string;
-    origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
+    radicado: string; // ND-YYYY-XXX
+    fechaRecepcion: string;
+    origen: string; // 'ANONIMO' | 'QUEJOSO' | ...
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
-    denunciante: {
-        nombre: string;
-        email: string;
-        telefono?: string;
-        direccion?: string;
-    };
-    disciplinable: {
-        nombre: string;
-        cargo: string;
-        cedula?: string;
-        email?: string;
-        telefono?: string;
-    };
-    estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
+    denunciante: any; // JSONB single object
+    disciplinable: any; // JSONB single object
+    adjuntos: string[]; // URLs
+    estado: string; // 'RADICADA', etc.
+    observaciones: string;
     createdAt: string;
     updatedAt: string;
+}
+
+// ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
+
+export interface CreateNewsDto {
+    origen: string; // Must be: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION'
+    territorial: string;
+    dependenciaDenunciado: string;
+    hechos: string;
+    denunciante: string; // JSON Stringified single object
+    disciplinable: string; // JSON Stringified single object
+    // Backend generates these automatically, don't send:
+    // radicado, fechaRecepcion, estado, observaciones
 }
 
 export interface DisciplinaryProcess {
@@ -48,7 +53,7 @@ export interface DisciplinaryProcess {
     etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO';
     estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
     abogadoAsignadoId: string;
-    abogadoAsignadoNombre: string; // Backend might need to return this or we fetch it
+    abogadoAsignadoNombre: string;
     fechaPrescripcion: string;
     fechaVencimientoEtapa: string;
     news: DisciplinaryNews;
@@ -65,15 +70,6 @@ export interface LegalAuto {
     firmaUrl?: string;
     processId: string;
     createdAt: string;
-}
-
-export interface CreateNewsDto {
-    origen: string;
-    territorial: string;
-    dependenciaDenunciado: string;
-    hechos: string;
-    denunciante: any;
-    disciplinable: any;
 }
 
 export interface AssignProcessDto {
@@ -107,8 +103,24 @@ export interface DocumentoExpediente {
 class DisciplinaryService {
     // --- NOTICIAS ---
 
-    async radicarNoticia(data: CreateNewsDto): Promise<DisciplinaryNews> {
-        return apiClient.post<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, data);
+    async radicarNoticia(data: CreateNewsDto, files?: File[]): Promise<DisciplinaryNews> {
+        const formData = new FormData();
+        // Solo enviar campos que acepta el DTO del backend
+        formData.append('origen', data.origen);
+        formData.append('territorial', data.territorial);
+        formData.append('dependenciaDenunciado', data.dependenciaDenunciado);
+        formData.append('hechos', data.hechos);
+        formData.append('denunciante', data.denunciante);
+        formData.append('disciplinable', data.disciplinable);
+
+        // Archivos con el campo correcto que espera el backend
+        if (files && files.length > 0) {
+            files.forEach((file) => {
+                formData.append('files', file); // Backend usa 'files', no 'adjuntos'
+            });
+        }
+
+        return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
     }
 
     async getNoticiasPendientes(): Promise<DisciplinaryNews[]> {

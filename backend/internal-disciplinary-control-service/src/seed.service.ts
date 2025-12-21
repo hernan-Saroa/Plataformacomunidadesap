@@ -142,17 +142,17 @@ export class SeedService {
         origen: NewsOrigin.QUEJOSO,
         territorial: 'BOGOTA',
         dependenciaDenunciado: 'RECURSOS HUMANOS',
-        denunciante: [{
+        denunciante: {
           nombre: 'Juan Carlos López',
           cedula: '1234567890',
           email: 'juan.lopez@example.com',
           cargo: 'Ciudadano',
-        }],
-        disciplinable: [{
+        },
+        disciplinable: {
           nombre: 'María González García',
           cedula: '9876543210',
           cargo: 'Jefe de Departamento',
-        }],
+        },
         hechos: 'Se alega incumplimiento en los procedimientos administrativos y trato discriminatorio hacia el personal.',
         adjuntos: [],
         estado: NewsStatus.RADICADA,
@@ -161,16 +161,16 @@ export class SeedService {
         origen: NewsOrigin.OFICIO,
         territorial: 'MEDELLIN',
         dependenciaDenunciado: 'TESORERIA',
-        denunciante: [{
+        denunciante: {
           nombre: 'Inspector ESAP',
           email: 'inspector@esap.gov.co',
           cargo: 'Inspector',
-        }],
-        disciplinable: [{
+        },
+        disciplinable: {
           nombre: 'Roberto Pérez Mendez',
           cedula: '5555555555',
           cargo: 'Tesorero Regional',
-        }],
+        },
         hechos: 'Presunta irregularidad en el manejo de fondos públicos según auditoría interna.',
         adjuntos: [],
         estado: NewsStatus.ASIGNADA,
@@ -179,14 +179,14 @@ export class SeedService {
         origen: NewsOrigin.ANONIMO,
         territorial: 'CALI',
         dependenciaDenunciado: 'CONTRATACION',
-        denunciante: [{
+        denunciante: {
           nombre: 'Anónimo',
-        }],
-        disciplinable: [{
+        },
+        disciplinable: {
           nombre: 'Carlos Ruiz',
           cedula: '111222333',
           cargo: 'Contratista',
-        }],
+        },
         hechos: 'Posible favorecimiento en proceso de licitación.',
         adjuntos: [],
         estado: NewsStatus.DEVUELTA,
