@@ -51,6 +51,19 @@ export interface DisciplinaryNews {
     updatedAt: string;
 }
 
+// ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
+
+export interface CreateNewsDto {
+    origen: string; // Must be: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION'
+    territorial: string;
+    dependenciaDenunciado: string;
+    hechos: string;
+    denunciante: string; // JSON Stringified single object
+    disciplinable: string; // JSON Stringified single object
+    // Backend generates these automatically, don't send:
+    // radicado, fechaRecepcion, estado, observaciones
+}
+
 export interface DisciplinaryProcess {
     id: string;
     radicadoProceso: string;
@@ -59,7 +72,7 @@ export interface DisciplinaryProcess {
     kanbanNotice?: string;
     estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
     abogadoAsignadoId: string;
-    abogadoAsignadoNombre: string; // Backend might need to return this or we fetch it
+    abogadoAsignadoNombre: string;
     fechaPrescripcion: string;
     fechaVencimientoEtapa: string;
     news: DisciplinaryNews;
@@ -132,8 +145,24 @@ export interface DocumentoExpediente {
 class DisciplinaryService {
     // --- NOTICIAS ---
 
-    async radicarNoticia(data: CreateNewsDto): Promise<DisciplinaryNews> {
-        return apiClient.post<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, data);
+    async radicarNoticia(data: CreateNewsDto, files?: File[]): Promise<DisciplinaryNews> {
+        const formData = new FormData();
+        // Solo enviar campos que acepta el DTO del backend
+        formData.append('origen', data.origen);
+        formData.append('territorial', data.territorial);
+        formData.append('dependenciaDenunciado', data.dependenciaDenunciado);
+        formData.append('hechos', data.hechos);
+        formData.append('denunciante', data.denunciante);
+        formData.append('disciplinable', data.disciplinable);
+
+        // Archivos con el campo correcto que espera el backend
+        if (files && files.length > 0) {
+            files.forEach((file) => {
+                formData.append('files', file); // Backend usa 'files', no 'adjuntos'
+            });
+        }
+
+        return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
     }
 
     async getNoticiasPendientes(): Promise<DisciplinaryNews[]> {
@@ -151,6 +180,12 @@ class DisciplinaryService {
     async changeNewsStatus(id: string, newStatus: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/status`, { status: newStatus });
     }
+
+    async archiveNews(id: string, reason: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/archive`, { reason });
+    }
+
+
 
     // --- PROCESOS ---
 
@@ -350,10 +385,14 @@ class DisciplinaryService {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-review`, {});
     }
 
-    async firmarAuto(id: string, aprobadoPorId: string): Promise<LegalAuto> {
+    async aprobarAuto(id: string, aprobadoPorId: string): Promise<LegalAuto> {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/approve?aprobadoPorId=${aprobadoPorId}`, {
             action: 'APPROVE'
         });
+    }
+
+    async firmarAuto(id: string, userId: string): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/sign?userId=${userId}`, {});
     }
 
     async devolverAuto(id: string, aprobadoPorId: string, observaciones: string): Promise<LegalAuto> {

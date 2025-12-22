@@ -95,6 +95,29 @@ export class AutoController {
   }
 
   /**
+   * Firmar Auto (Paso Final)
+   */
+  @Patch(':id/sign')
+  @ApiOperation({
+    summary: 'Firmar Auto',
+    description: 'Firma digitalmente un auto que ya ha sido aprobado',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Auto firmado',
+    type: LegalAuto,
+  })
+  async sign(
+    @Param('id') id: string,
+    @Query('userId') userId: string,
+  ): Promise<LegalAuto> {
+    if (!userId) {
+      throw new Error('userId es requerido');
+    }
+    return await this.autoService.sign(id, userId);
+  }
+
+  /**
    * Actualizar contenido de borrador
    */
   @Patch(':id/content')

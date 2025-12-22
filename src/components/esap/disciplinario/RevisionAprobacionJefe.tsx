@@ -19,7 +19,7 @@ import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { FlujoRevisionAprobacion } from './FlujoRevisionAprobacion';
 import { disciplinaryService, LegalAuto } from '../../../services/api/disciplinary.service';
 
@@ -40,7 +40,7 @@ interface BorradorPendiente {
   denunciado: string;
   etapa: string;
   prioridad: 'alta' | 'media' | 'baja';
-  estado: 'pendiente_revision' | 'en_revision' | 'aprobado' | 'devuelto';
+  estado: 'pendiente_revision' | 'en_revision' | 'aprobado' | 'devuelto' | 'REVISION_JEFE' | 'APROBADO' | 'FIRMADO' | 'NOTIFICADO' | 'BORRADOR';
   historial: AccionRevision[];
   tiempoEspera?: string;
 }
@@ -57,45 +57,52 @@ interface AccionRevision {
 type TipoFirma = 'electronica' | 'digital' | 'local';
 
 // Helper to map backend status to frontend status
-const mapBackendStatus = (status: string) => {
+const mapBackendStatus = (status: string) => status;
+
+// Helper configuration for statuses
+const getStatusConfig = (status: string) => {
   switch (status) {
-    case 'REVISION_JEFE': return 'pendiente_revision';
-    case 'APROBADO': return 'aprobado';
-    case 'DEVUELTO': return 'devuelto';
-    default: return 'pendiente_revision';
+    case 'BORRADOR':
+      return { label: 'Borrador', color: 'bg-gray-100 text-gray-700 border-gray-200', icon: FileText };
+    case 'REVISION_JEFE':
+      return { label: 'En Revisión', color: 'bg-yellow-50 text-yellow-700 border-yellow-200', icon: Clock };
+    case 'APROBADO':
+      return { label: 'Aprobado', color: 'bg-green-50 text-green-700 border-green-200', icon: CheckCircle };
+    case 'DEVUELTO':
+      return { label: 'Devuelto', color: 'bg-red-50 text-red-700 border-red-200', icon: RotateCcw };
+    case 'FIRMADO':
+      return { label: 'Firmado', color: 'bg-purple-50 text-purple-700 border-purple-200', icon: FileSignature };
+    case 'NOTIFICADO':
+      return { label: 'Notificado', color: 'bg-teal-50 text-teal-700 border-teal-200', icon: Send };
+    default:
+      return { label: 'Desconocido', color: 'bg-gray-50 text-gray-500 border-gray-100', icon: HelpCircle };
   }
 };
 
 // Mock Data - Empty as it will be loaded from backend
+// Mock Data - Empty as it will be loaded from backend
 const BORRADORES_PENDIENTES: BorradorPendiente[] = [];
 
+// Modal de Revisión y Edición - RESPONSIVE
 // Modal de Revisión y Edición - RESPONSIVE
 function ModalRevisionEdicion({
   borrador,
   onClose,
   onAprobar,
-  onDevolver
+  onDevolver,
+  onFirmar
 }: {
   borrador: BorradorPendiente;
   onClose: () => void;
   onAprobar: (comentarios: string) => void;
   onDevolver: (motivo: string, comentarios: string, archivos: File[]) => void;
+  onFirmar: () => void;
 }) {
-  const [contenidoEditado, setContenidoEditado] = useState(borrador.contenido);
-  const [modoEdicion, setModoEdicion] = useState(false);
   const [comentariosJefe, setComentariosJefe] = useState('');
-  const [showModalAprobar, setShowModalAprobar] = useState(false);
+  const [showModalAprobar, setShowModalAprobar] = useState(false); // For Signing
   const [showModalDevolver, setShowModalDevolver] = useState(false);
+  const [showConfirmAprobar, setShowConfirmAprobar] = useState(false); // For Approval
   const [activeTab, setActiveTab] = useState<'documento' | 'historial'>('documento');
-  const [archivoAuto, setArchivoAuto] = useState<File | null>(null);
-  const [tipoVista, setTipoVista] = useState<'texto' | 'archivo'>('texto');
-
-  const handleGuardarEdicion = () => {
-    toast.success('Cambios Guardados', {
-      description: 'Las modificaciones han sido registradas en la auditoría'
-    });
-    setModoEdicion(false);
-  };
 
   return (
     <motion.div
@@ -148,7 +155,7 @@ function ModalRevisionEdicion({
           </div>
         </div>
 
-        {/* Tabs - RESPONSIVE */}
+        {/* Tabs */}
         <div className="border-b bg-gray-50 overflow-x-auto">
           <div className="flex px-3 sm:px-6 min-w-max">
             <button
@@ -174,7 +181,7 @@ function ModalRevisionEdicion({
           </div>
         </div>
 
-        {/* Contenido - RESPONSIVE */}
+        {/* Contenido */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-6">
           {activeTab === 'documento' ? (
             <div className="space-y-4 sm:space-y-5">
@@ -192,7 +199,7 @@ function ModalRevisionEdicion({
                 </div>
               </Card>
 
-              {/* Profesional - Mobile */}
+              {/* Profesional */}
               <Card className="p-3 sm:p-4 bg-gray-50 border-gray-200">
                 <div className="flex items-center gap-3">
                   <Avatar className="w-10 h-10 ring-2 ring-blue-100">
@@ -207,208 +214,15 @@ function ModalRevisionEdicion({
                 </div>
               </Card>
 
-              {/* Observaciones */}
-              <Card className="p-3 sm:p-4 bg-gray-50 border-gray-300">
-                <div className="flex gap-3">
-                  <MessageSquare className="w-5 h-5 text-gray-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-gray-700 mb-2">Observaciones del Profesional:</p>
-                    <p className="text-sm text-gray-700 leading-relaxed">{borrador.observacionesProfesional}</p>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Contenido del Auto */}
-              <div>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
-                    Contenido del Auto
-                  </h3>
-                  <div className="flex gap-2">
-                    {!archivoAuto && (
-                      <label htmlFor="upload-auto" className="cursor-pointer">
-                        <div className="px-3 py-2 rounded-lg border-2 border-blue-500 text-blue-700 hover:bg-blue-50 transition-colors flex items-center gap-2 text-sm font-semibold">
-                          <Upload className="w-4 h-4" />
-                          Subir Word/PDF
-                        </div>
-                        <input
-                          id="upload-auto"
-                          type="file"
-                          accept=".pdf,.doc,.docx"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              const file = e.target.files[0];
-                              setArchivoAuto(file);
-                              setTipoVista('archivo');
-                              toast.success('Archivo cargado', {
-                                description: `${file.name} listo para visualizar`
-                              });
-                            }
-                          }}
-                          className="hidden"
-                        />
-                      </label>
-                    )}
-                    <Button
-                      onClick={() => setModoEdicion(!modoEdicion)}
-                      style={{ background: modoEdicion ? '#6B7280' : '#003DA5' }}
-                      size="sm"
-                      className="w-full sm:w-auto"
-                    >
-                      <Edit2 className="w-4 h-4 mr-2" />
-                      {modoEdicion ? 'Cancelar' : 'Editar'}
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Archivo subido */}
-                {archivoAuto && (
-                  <Card className="p-4 mb-3 bg-green-50 border-green-200">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
-                          {archivoAuto.name.endsWith('.pdf') ? (
-                            <FileText className="w-5 h-5 text-green-700" />
-                          ) : (
-                            <FileText className="w-5 h-5 text-blue-700" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate">{archivoAuto.name}</p>
-                          <p className="text-xs text-gray-600">
-                            {(archivoAuto.size / 1024).toFixed(2)} KB
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 flex-shrink-0">
-                        <Button
-                          size="sm"
-                          onClick={() => setTipoVista(tipoVista === 'archivo' ? 'texto' : 'archivo')}
-                          className="bg-blue-600 hover:bg-blue-700"
-                        >
-                          <Eye className="w-4 h-4 mr-1" />
-                          {tipoVista === 'archivo' ? 'Ver Texto' : 'Ver Archivo'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            const url = URL.createObjectURL(archivoAuto);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = archivoAuto.name;
-                            a.click();
-                            URL.revokeObjectURL(url);
-                            toast.success('Descargando archivo...');
-                          }}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          <Download className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setArchivoAuto(null);
-                            setTipoVista('texto');
-                            toast.info('Archivo eliminado');
-                          }}
-                          className="bg-red-600 hover:bg-red-700"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
-                )}
-
-                {modoEdicion ? (
-                  <div className="space-y-3">
-                    <Card className="p-3 bg-blue-50 border-blue-200">
-                      <p className="text-xs text-gray-700">
-                        <AlertCircle className="w-3.5 h-3.5 inline-block mr-1" />
-                        Las modificaciones quedarán registradas en auditoría.
-                      </p>
-                    </Card>
-                    <textarea
-                      value={contenidoEditado}
-                      onChange={(e) => setContenidoEditado(e.target.value)}
-                      className="w-full h-64 sm:h-80 p-3 sm:p-4 border-2 border-blue-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-mono"
-                    />
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Button
-                        onClick={handleGuardarEdicion}
-                        style={{ background: '#003DA5' }}
-                        className="w-full sm:flex-1"
-                      >
-                        <Check className="w-4 h-4 mr-2" />
-                        Guardar Cambios
-                      </Button>
-                      <Button
-                        onClick={() => setModoEdicion(false)}
-                        className="bg-gray-500 hover:bg-gray-600 w-full sm:w-auto"
-                      >
-                        Descartar
-                      </Button>
-                    </div>
-                  </div>
-                ) : tipoVista === 'archivo' && archivoAuto ? (
-                  <Card className="p-0 border-2 border-gray-300 overflow-hidden">
-                    {archivoAuto.name.endsWith('.pdf') ? (
-                      <iframe
-                        src={URL.createObjectURL(archivoAuto)}
-                        className="w-full h-[500px] sm:h-[600px]"
-                        title="Visualizador de PDF"
-                      />
-                    ) : (
-                      <div className="p-8 text-center">
-                        <FileText className="w-16 h-16 text-blue-600 mx-auto mb-4" />
-                        <p className="font-bold text-gray-900 mb-2">
-                          Documento Word Cargado
-                        </p>
-                        <p className="text-sm text-gray-600 mb-4">
-                          {archivoAuto.name}
-                        </p>
-                        <p className="text-xs text-gray-500 mb-4">
-                          Los archivos Word (.doc, .docx) no pueden visualizarse directamente.<br />
-                          Puedes descargar el archivo o ver el contenido en modo texto.
-                        </p>
-                        <div className="flex gap-3 justify-center">
-                          <Button
-                            onClick={() => {
-                              const url = URL.createObjectURL(archivoAuto);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = archivoAuto.name;
-                              a.click();
-                              URL.revokeObjectURL(url);
-                            }}
-                            style={{ background: '#10B981' }}
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Descargar Archivo
-                          </Button>
-                          <Button
-                            onClick={() => setTipoVista('texto')}
-                            style={{ background: '#003DA5' }}
-                          >
-                            <FileText className="w-4 h-4 mr-2" />
-                            Ver como Texto
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </Card>
-                ) : (
-                  <Card className="p-4 sm:p-5 bg-gray-50 border-gray-200">
-                    <pre className="whitespace-pre-wrap font-serif text-xs sm:text-sm text-gray-900 leading-relaxed overflow-x-auto">
-                      {contenidoEditado}
-                    </pre>
-                  </Card>
-                )}
+              {/* Contenido Texto */}
+              <div className="mt-4">
+                <Card className="p-4 bg-gray-50 border-gray-200">
+                  <pre className="whitespace-pre-wrap font-serif text-sm text-gray-900">{borrador.contenido}</pre>
+                </Card>
               </div>
 
               {/* Comentarios Internos */}
-              <div>
+              <div className="mt-4">
                 <label className="block font-semibold text-gray-900 mb-2 text-sm">
                   Comentarios Internos (Opcional)
                 </label>
@@ -418,17 +232,13 @@ function ModalRevisionEdicion({
                   placeholder="Agregue comentarios internos..."
                   className="w-full h-24 p-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 />
-                <p className="text-xs text-gray-500 mt-2">
-                  <AlertCircle className="w-3 h-3 inline-block mr-1" />
-                  Para registro interno. No aparecerán en el documento final.
-                </p>
               </div>
             </div>
           ) : (
             // Tab de Historial
             <div className="space-y-3 sm:space-y-4">
               {borrador.historial.map((accion, index) => (
-                <Card key={accion.id} className="p-3 sm:p-4 border-l-4" style={{ borderLeftColor: '#003DA5' }}>
+                <Card key={accion.id || index} className="p-3 sm:p-4 border-l-4" style={{ borderLeftColor: '#003DA5' }}>
                   <div className="flex items-start gap-3">
                     <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                       <History className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
@@ -448,23 +258,38 @@ function ModalRevisionEdicion({
           )}
         </div>
 
-        {/* Footer - RESPONSIVE */}
+        {/* Footer */}
         <div className="p-3 sm:p-6 border-t bg-gray-50 flex flex-col sm:flex-row gap-2 sm:gap-3">
-          <Button
-            onClick={() => setShowModalDevolver(true)}
-            className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto order-2 sm:order-1"
-          >
-            <RotateCcw className="w-4 h-4 mr-2" />
-            Devolver
-          </Button>
-          <Button
-            onClick={() => setShowModalAprobar(true)}
-            style={{ background: '#10B981', color: '#FFFFFF' }}
-            className="hover:opacity-90 w-full sm:flex-1 order-1 sm:order-2"
-          >
-            <CheckCircle className="w-4 h-4 mr-2" />
-            Aprobar Auto
-          </Button>
+          {borrador.estado === 'REVISION_JEFE' && (
+            <>
+              <Button
+                onClick={() => setShowModalDevolver(true)}
+                className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto order-2 sm:order-1"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Devolver
+              </Button>
+              <Button
+                onClick={() => setShowConfirmAprobar(true)}
+                style={{ background: '#10B981', color: '#FFFFFF' }}
+                className="hover:opacity-90 w-full sm:flex-1 order-1 sm:order-2"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Aprobar (Visto Bueno)
+              </Button>
+            </>
+          )}
+
+          {borrador.estado === 'APROBADO' && (
+            <Button
+              onClick={() => setShowModalAprobar(true)}
+              className="bg-purple-600 hover:bg-purple-700 text-white w-full sm:flex-1 order-1 sm:order-2"
+            >
+              <FileSignature className="w-4 h-4 mr-2" />
+              Firmar Digitalmente
+            </Button>
+          )}
+
           <Button onClick={onClose} className="bg-gray-500 hover:bg-gray-600 w-full sm:w-auto order-3">
             Cerrar
           </Button>
@@ -478,8 +303,18 @@ function ModalRevisionEdicion({
               comentariosJefe={comentariosJefe}
               onClose={() => setShowModalAprobar(false)}
               onConfirm={(comentarios) => {
-                onAprobar(comentarios);
+                onFirmar();
                 setShowModalAprobar(false);
+              }}
+            />
+          )}
+
+          {showConfirmAprobar && (
+            <ModalConfirmarAprobacion
+              onClose={() => setShowConfirmAprobar(false)}
+              onConfirm={() => {
+                onAprobar(comentariosJefe);
+                setShowConfirmAprobar(false);
               }}
             />
           )}
@@ -500,7 +335,47 @@ function ModalRevisionEdicion({
   );
 }
 
-// Modal de Aprobación - RESPONSIVE Y CORPORATIVO
+// Modal simple para confirmar aprobación (Visto Bueno)
+function ModalConfirmarAprobacion({ onClose, onConfirm }: { onClose: () => void, onConfirm: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95 }}
+        animate={{ scale: 1 }}
+        exit={{ scale: 0.95 }}
+        className="bg-white rounded-xl shadow-xl w-full max-w-md p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
+            <CheckCircle className="w-8 h-8 text-green-600" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">¿Aprobar Borrador?</h3>
+          <p className="text-gray-600 mb-6">
+            Al aprobar este borrador, certifica que cumple con los requisitos jurídicos.
+            El estado cambiará a <strong>APROBADO</strong> y quedará habilitado para firma.
+          </p>
+          <div className="flex gap-3 w-full">
+            <Button onClick={onClose} className="flex-1 bg-gray-100 text-gray-700 hover:bg-gray-200">
+              Cancelar
+            </Button>
+            <Button onClick={onConfirm} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
+              Confirmar Aprobación
+            </Button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// Modal de Aprobación FINAL y Firma
 function ModalAprobar({
   borrador,
   comentariosJefe,
@@ -512,7 +387,7 @@ function ModalAprobar({
   onClose: () => void;
   onConfirm: (comentarios: string) => void;
 }) {
-  const [tipoFirma, setTipoFirma] = useState<TipoFirma>('digital');
+  const [tipoFirma, setTipoFirma] = useState<TipoFirma>('electronica');
   const [comentariosAprobacion, setComentariosAprobacion] = useState(comentariosJefe);
 
   return (
@@ -520,23 +395,24 @@ function ModalAprobar({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[10000] p-2 sm:p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-2 sm:p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.9 }}
-        animate={{ scale: 1 }}
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col"
       >
-        {/* Header */}
-        <div className="p-4 sm:p-6 border-b bg-green-600">
+        {/* Header - Firma */}
+        <div className="p-4 sm:p-6 border-b" style={{ background: '#003DA5' }}>
           <div className="flex items-center gap-3 sm:gap-4">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
-              <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              <FileSignature className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-lg sm:text-xl font-bold text-white">Aprobar Auto</h3>
+              <h3 className="text-lg sm:text-xl font-bold text-white">Firmar Auto</h3>
               <p className="text-xs sm:text-sm text-white/90 truncate">{borrador.numeroProceso}</p>
             </div>
           </div>
@@ -625,12 +501,12 @@ function ModalAprobar({
           {/* Comentarios */}
           <div>
             <label className="block font-semibold text-gray-900 mb-2 text-sm">
-              Comentarios Internos (Opcional)
+              Comentarios de la Firma (Opcional)
             </label>
             <textarea
               value={comentariosAprobacion}
               onChange={(e) => setComentariosAprobacion(e.target.value)}
-              placeholder="Agregue observaciones internas..."
+              placeholder="Agregue observaciones finales..."
               className="w-full h-24 p-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
             />
           </div>
@@ -655,11 +531,11 @@ function ModalAprobar({
         <div className="p-4 sm:p-6 border-t bg-gray-50 flex flex-col sm:flex-row gap-2 sm:gap-3">
           <Button
             onClick={() => onConfirm(comentariosAprobacion)}
-            style={{ background: '#10B981', color: '#FFFFFF' }}
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
             className="hover:opacity-90 w-full sm:flex-1"
           >
-            <CheckCircle className="w-4 h-4 mr-2" />
-            Confirmar Aprobación
+            <FileSignature className="w-4 h-4 mr-2" />
+            Firmar Digitalmente
           </Button>
           <Button onClick={onClose} className="bg-gray-500 hover:bg-gray-600 w-full sm:w-auto">
             Cancelar
@@ -670,6 +546,7 @@ function ModalAprobar({
   );
 }
 
+// Modal de Devolución - RESPONSIVE Y CORPORATIVO
 // Modal de Devolución - RESPONSIVE Y CORPORATIVO
 function ModalDevolver({
   borrador,
@@ -795,14 +672,14 @@ function ModalDevolver({
             {archivosAdjuntos.length > 0 && (
               <div className="space-y-2">
                 {archivosAdjuntos.map((archivo, index) => (
-                  <div key={index} className="flex items-center justify-between p-2 bg-gray-100 rounded-lg">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Paperclip className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span className="text-xs text-gray-700 truncate">{archivo.name}</span>
+                  <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="flex items-center gap-2 truncate">
+                      <Paperclip className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm text-gray-700 truncate">{archivo.name}</span>
                     </div>
                     <button
                       onClick={() => setArchivosAdjuntos(archivosAdjuntos.filter((_, i) => i !== index))}
-                      className="text-red-500 hover:text-red-700 p-1"
+                      className="text-red-500 hover:text-red-700"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -811,19 +688,6 @@ function ModalDevolver({
               </div>
             )}
           </div>
-
-          {/* Info Notificación */}
-          <Card className="p-3 sm:p-4 bg-red-50 border-red-200">
-            <div className="flex gap-3">
-              <Mail className="w-5 h-5 text-red-600 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs sm:text-sm font-bold text-red-900 mb-1">Notificación Automática</p>
-                <p className="text-xs sm:text-sm text-red-700">
-                  El profesional recibirá notificación por correo con los comentarios y archivos adjuntos.
-                </p>
-              </div>
-            </div>
-          </Card>
         </div>
 
         {/* Footer */}
@@ -856,48 +720,74 @@ export function RevisionAprobacionJefe() {
   const [borradorSeleccionado, setBorradorSeleccionado] = useState<BorradorPendiente | null>(null);
   const [showModalRevision, setShowModalRevision] = useState(false);
   const [showFlujoModal, setShowFlujoModal] = useState(false);
+  const [hideFinalized, setHideFinalized] = useState(false);
 
-  // Authentication Context Placeholder
-  const currentUser = { id: 'JEFE_OCID_ID', nombre: 'Jefe OCID' };
+  // Authentication Context Placeholder - Using ADMIN ID from seed
+  const currentUser = { id: '770e8400-e29b-41d4-a716-446655440002', nombre: 'Admin Sistema' };
 
   const loadAutos = async () => {
     try {
       setLoading(true);
       const autos = await disciplinaryService.getAllAutos();
 
-      const mappedBorradores: BorradorPendiente[] = autos.map(auto => {
-        const proceso = (auto as any).process || {};
-        const abogado = proceso.abogadoAsignado || {};
-        const news = proceso.news || {};
-        const disciplinableList = Array.isArray(news.disciplinable)
-          ? news.disciplinable
-          : (news.disciplinable ? [news.disciplinable] : []);
+      // Filter out drafts and notified autos
+      const mappedBorradores: BorradorPendiente[] = autos
+        .filter(auto => auto.estado !== 'BORRADOR' && auto.estado !== 'NOTIFICADO')
+        .map(auto => {
+          const proceso = (auto as any).process || {};
+          const abogado = proceso.abogadoAsignado || {};
+          const news = proceso.news || {};
+          const disciplinableList = Array.isArray(news.disciplinable)
+            ? news.disciplinable
+            : (news.disciplinable ? [news.disciplinable] : []);
 
-        const denunciadoNombre = disciplinableList.length > 0
-          ? disciplinableList[0].nombre
-          : 'Desconocido';
+          const denunciadoNombre = disciplinableList.length > 0
+            ? disciplinableList[0].nombre
+            : 'Desconocido';
 
-        return {
-          id: auto.id,
-          numeroProceso: proceso.radicadoProceso || 'SIN-RADICADO',
-          titulo: auto.tipo,
-          plantilla: auto.tipo,
-          version: auto.currentVersion || 1,
-          fechaEnvio: auto.createdAt,
-          profesional: {
-            nombre: abogado.nombreCompleto || abogado.nombre || 'Sin Asignar',
-            email: abogado.email || 'N/A'
-          },
-          observacionesProfesional: auto.comentarios || 'Sin observaciones',
-          contenido: auto.contenido,
-          denunciado: denunciadoNombre,
-          etapa: proceso.etapaActual || 'Etapa desconocida',
-          prioridad: 'media',
-          estado: mapBackendStatus(auto.estado) as any,
-          historial: [],
-          tiempoEspera: '0h'
-        };
-      });
+          // Map history from versions
+          const sortedVersions = ((auto as any).versions || []).sort((a: any, b: any) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+
+          const historial = sortedVersions.map((v: any) => {
+            let nombreUsuario = 'Sistema';
+            if (v.createdBy === currentUser.id) {
+              nombreUsuario = 'Jefe (Yo)';
+            } else if (abogado && v.createdBy === abogado.id) {
+              nombreUsuario = 'Profesional';
+            }
+
+            return {
+              id: v.id,
+              descripcion: v.changeReason || `Versión ${v.versionNumber}`,
+              usuario: nombreUsuario,
+              fecha: v.createdAt
+            };
+          });
+
+
+          return {
+            id: auto.id,
+            numeroProceso: proceso.radicadoProceso || 'SIN-RADICADO',
+            titulo: auto.tipo,
+            plantilla: auto.tipo,
+            version: (auto as any).currentVersion || 1,
+            fechaEnvio: auto.createdAt,
+            profesional: {
+              nombre: abogado.nombreCompleto || abogado.nombre || 'Sin Asignar',
+              email: abogado.email || 'N/A'
+            },
+            observacionesProfesional: (auto as any).comentarios || 'Sin observaciones',
+            contenido: auto.contenido,
+            denunciado: denunciadoNombre,
+            etapa: proceso.etapaActual || 'Etapa desconocida',
+            prioridad: 'media',
+            estado: mapBackendStatus(auto.estado) as any,
+            historial: historial,
+            tiempoEspera: '0h'
+          };
+        });
 
       setBorradores(mappedBorradores);
     } catch (error) {
@@ -914,10 +804,10 @@ export function RevisionAprobacionJefe() {
 
   const handleAprobar = async (borradorId: string, comentarios: string) => {
     try {
-      await disciplinaryService.firmarAuto(borradorId, currentUser.id);
+      await disciplinaryService.aprobarAuto(borradorId, currentUser.id);
 
-      toast.success('Auto Aprobado y Firmado', {
-        description: `El documento ha sido firmado digitalmente por ${currentUser.nombre}`
+      toast.success('Auto Aprobado', {
+        description: 'El documento ha pasado a estado Aprobado y está listo para firma'
       });
 
       setShowModalRevision(false);
@@ -926,6 +816,23 @@ export function RevisionAprobacionJefe() {
     } catch (error) {
       console.error(error);
       toast.error('Error al aprobar el auto');
+    }
+  };
+
+  const handleFirmar = async (borradorId: string) => {
+    try {
+      await disciplinaryService.firmarAuto(borradorId, currentUser.id);
+
+      toast.success('Auto Firmado Exitosamente', {
+        description: `El documento ha sido firmado digitalmente por ${currentUser.nombre}`
+      });
+
+      setShowModalRevision(false);
+      setBorradorSeleccionado(null);
+      loadAutos(); // Refresh
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al firmar el auto');
     }
   };
 
@@ -957,8 +864,9 @@ export function RevisionAprobacionJefe() {
     const matchesPrioridad = filterPrioridad === 'all' || b.prioridad === filterPrioridad;
     const matchesEtapa = filterEtapa === 'all' || b.etapa === filterEtapa;
     const matchesTipo = filterTipoAuto === 'all' || b.plantilla === filterTipoAuto;
+    const filterFinalized = hideFinalized ? (b.estado !== 'FIRMADO' && b.estado !== 'DEVUELTO') : true;
 
-    return matchesSearch && matchesEstado && matchesPrioridad && matchesEtapa && matchesTipo;
+    return matchesSearch && matchesEstado && matchesPrioridad && matchesEtapa && matchesTipo && filterFinalized;
   });
 
   return (
@@ -1037,10 +945,10 @@ export function RevisionAprobacionJefe() {
                 className="bg-white border-none py-2 px-4 rounded-lg text-sm font-medium text-gray-600 ring-1 ring-gray-200 hover:ring-gray-300 focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm"
               >
                 <option value="all">Todos los Estados</option>
-                <option value="pendiente_revision">Pendiente Revisión</option>
-                <option value="en_revision">En Revisión</option>
-                <option value="aprobado">Aprobados</option>
-                <option value="devuelto">Devueltos</option>
+                <option value="REVISION_JEFE">En Revisión</option>
+                <option value="APROBADO">Aprobados</option>
+                <option value="DEVUELTO">Devueltos</option>
+                <option value="BORRADOR">Borradores</option>
               </select>
 
               <select
@@ -1064,6 +972,19 @@ export function RevisionAprobacionJefe() {
                 <option value="Investigación">Investigación</option>
                 <option value="Juzgamiento">Juzgamiento</option>
               </select>
+
+              <div className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-gray-200">
+                <input
+                  type="checkbox"
+                  id="hideFinalized"
+                  checked={hideFinalized}
+                  onChange={(e) => setHideFinalized(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="hideFinalized" className="text-sm font-medium text-gray-700 cursor-pointer select-none">
+                  Ocultar Finalizados
+                </label>
+              </div>
 
               <div className="flex-1" /> {/* Spacer */}
 
@@ -1114,13 +1035,14 @@ export function RevisionAprobacionJefe() {
                     {/* Badge de Estado Absoluto */}
                     <div className="absolute top-3 right-3">
                       <Badge className={`
-                        ${borrador.estado === 'pendiente_revision' ? 'bg-orange-100 text-orange-700' :
-                          borrador.estado === 'en_revision' ? 'bg-blue-100 text-blue-700' :
-                            borrador.estado === 'aprobado' ? 'bg-green-100 text-green-700' :
-                              'bg-red-100 text-red-700'}
-                        border-0 px-2 py-1 text-xs font-semibold
+                        ${getStatusConfig(borrador.estado).color}
+                        border-0 px-2 py-1 text-xs font-semibold flex items-center gap-1.5
                       `}>
-                        {borrador.estado.replace('_', ' ').toUpperCase()}
+                        {(() => {
+                          const Icon = getStatusConfig(borrador.estado).icon;
+                          return <Icon className="w-3 h-3" />;
+                        })()}
+                        {getStatusConfig(borrador.estado).label}
                       </Badge>
                     </div>
 
@@ -1193,13 +1115,14 @@ export function RevisionAprobacionJefe() {
             }}
             onAprobar={(comentarios) => handleAprobar(borradorSeleccionado.id, comentarios)}
             onDevolver={(motivo, comentarios, archivos) => handleDevolver(borradorSeleccionado.id, motivo, comentarios, archivos)}
+            onFirmar={() => handleFirmar(borradorSeleccionado.id)}
           />
         )}
       </AnimatePresence>
 
       {/* Modal de Ayuda */}
       <FlujoRevisionAprobacion
-        open={showFlujoModal}
+        isOpen={showFlujoModal}
         onClose={() => setShowFlujoModal(false)}
       />
     </div>

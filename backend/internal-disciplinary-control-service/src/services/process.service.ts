@@ -4,7 +4,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import {
   DisciplinaryProcess,
   ProcessStage,
@@ -73,7 +73,7 @@ export class ProcessService {
         radicadoProceso,
         newsId: createProcessDto.newsId,
         abogadoAsignadoId: createProcessDto.abogadoId,
-        etapaActual: ProcessStage.EVALUACION,
+        etapaActual: ProcessStage.EVALUACION, // Default initial stage
         estado: ProcessStatus.ACTIVO,
         fechaPrescripcion,
         fechaVencimientoEtapa: fechaVencimiento,
@@ -108,7 +108,7 @@ export class ProcessService {
       relations: ['news', 'abogadoAsignado', 'evidence'],
       where: {
         news: {
-          estado: Not(NewsStatus.DEVUELTA)
+          estado: Not(In([NewsStatus.DEVUELTA, NewsStatus.ARCHIVADA]))
         }
       },
       order: {
@@ -164,7 +164,7 @@ export class ProcessService {
     if (includeAutos) {
       relations.push('autos');
     }
-    
+
     const proceso = await this.processRepository.findOne({
       where: { id },
       relations,
@@ -250,8 +250,8 @@ export class ProcessService {
 
       if (updateDto.disciplinable) {
         // Merge con datos existentes del disciplinable (es un array)
-        const disciplinableExistente = proceso.news.disciplinable || [];
-        const disciplinableActualizado = disciplinableExistente.length > 0
+        const disciplinableExistente = (proceso.news.disciplinable as any) || [];
+        const disciplinableActualizado = (Array.isArray(disciplinableExistente) && disciplinableExistente.length > 0)
           ? [{ ...disciplinableExistente[0], ...updateDto.disciplinable }]
           : [updateDto.disciplinable];
         newsUpdate.disciplinable = disciplinableActualizado;
@@ -397,7 +397,7 @@ export class ProcessService {
 
       await this.processRepository.update(id, { pruebas: proceso.pruebas });
       console.log('✅ Proceso actualizado con nueva prueba');
-      
+
       return proceso;
     } catch (error) {
       console.error('❌ ERROR en addEvidence:', error);
@@ -451,6 +451,7 @@ export class ProcessService {
         HttpStatus.BAD_REQUEST,
       );
     }
+    return;
   }
 
   /**

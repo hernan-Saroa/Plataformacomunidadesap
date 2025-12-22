@@ -165,4 +165,24 @@ export class NewsController {
   async delete(@Param('id') id: string): Promise<void> {
     await this.newsService.delete(id);
   }
+  /**
+   * Archivar noticia
+   */
+  @Patch(':id/archive')
+  @ApiOperation({
+    summary: 'Archivar Noticia',
+    description: 'Archiva una noticia permanentemente',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Noticia archivada',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async archive(
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.archive(id, body.reason);
+  }
 }

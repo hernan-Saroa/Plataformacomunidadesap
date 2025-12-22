@@ -178,3 +178,8 @@ backend/legal-management-service/uploads/
 .env.qa
 .env.pre
 .env.prod
+
+# Package locks local
+package-lock.json
+backend/auth-service/package-lock.json
+backend/internal-disciplinary-control-service/package-lock.json

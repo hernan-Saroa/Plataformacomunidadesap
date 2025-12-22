@@ -46,12 +46,22 @@ export class NewsService {
         adjuntos.push(...stored);
       }
 
+      // Crear historial inicial
+      const initialHistory = [{
+        id: Date.now().toString(),
+        tipo: 'radicacion',
+        usuario: 'Sistema', // TODO: Get actual user
+        fecha: new Date().toISOString(),
+        observaciones: 'Radicación exitosa en el sistema',
+      }];
+
       // Crear y guardar noticia
       const noticia = this.newsRepository.create({
         radicado,
         ...createNewsDto,
         adjuntos,
         estado: NewsStatus.RADICADA,
+        historialAuditoria: initialHistory,
       });
 
       return await this.newsRepository.save(noticia);
@@ -114,6 +124,17 @@ export class NewsService {
   ): Promise<DisciplinaryNews> {
     const noticia = await this.findById(id);
     noticia.estado = nuevoEstado;
+
+    // Log history
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'edicion',
+      usuario: 'Sistema', // TODO: Get actual user
+      fecha: new Date().toISOString(),
+      observaciones: `Cambio de estado a ${nuevoEstado}`,
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
     return await this.newsRepository.save(noticia);
   }
 
@@ -124,6 +145,38 @@ export class NewsService {
     const noticia = await this.findById(id);
     noticia.estado = NewsStatus.DEVUELTA;
     noticia.observaciones = returnNewsDto.observaciones;
+
+    // Log history
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'devolucion',
+      usuario: 'Sistema',
+      fecha: new Date().toISOString(),
+      observaciones: returnNewsDto.observaciones,
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
+    return await this.newsRepository.save(noticia);
+  }
+
+  /**
+   * Archiva una noticia
+   */
+  async archive(id: string, reason: string): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(id);
+    noticia.estado = NewsStatus.ARCHIVADA;
+    noticia.observaciones = reason;
+
+    // Log history
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'archivo',
+      usuario: 'Sistema',
+      fecha: new Date().toISOString(),
+      observaciones: reason,
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
     return await this.newsRepository.save(noticia);
   }
 

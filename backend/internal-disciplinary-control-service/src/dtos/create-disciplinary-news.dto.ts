@@ -9,7 +9,7 @@ import {
   IsArray,
   IsDateString,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { NewsOrigin } from '../entities/disciplinary-news.entity';
 
 export class PersonInfoDto {
@@ -60,16 +60,32 @@ export class CreateDisciplinaryNewsDto {
   dependenciaDenunciado: string;
 
   @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => PersonInfoDto)
-  denunciante: PersonInfoDto[];
+  @IsObject()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+    return value;
+  })
+  denunciante: PersonInfoDto;
 
   @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => PersonInfoDto)
-  disciplinable: PersonInfoDto[];
+  @IsObject()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+    return value;
+  })
+  disciplinable: PersonInfoDto;
 
   @IsString()
   hechos: string;

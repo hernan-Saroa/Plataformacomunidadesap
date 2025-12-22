@@ -58,12 +58,34 @@ interface NoticiaDisciplinaria {
   historialAuditoria: any[];
 }
 
-interface Props {
-  noticia: NoticiaDisciplinaria;
-  onClose: () => void;
-}
+// Helper for safe date formatting
+const formatDate = (dateString: string | undefined) => {
+  if (!dateString) return 'Fecha no disponible';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'Fecha inválida';
+  return date.toLocaleDateString('es-CO', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  });
+};
 
-export function ModalDetallesNoticia({ noticia, onClose }: Props) {
+export function ModalDetallesNoticia({ noticia, onClose }: { noticia: any; onClose: () => void }) {
+  // Compute values
+  const dias = getDiasTranscurridos(noticia.fechaRecepcion || noticia.createdAt);
+  const estadoLabel = getEstadoLabel(noticia.estado);
+  const origenLabel = getOrigenLabel(noticia.origen);
+
+  // Normalize disciplinables
+  const disciplinables = Array.isArray(noticia.disciplinable)
+    ? noticia.disciplinable
+    : (noticia.disciplinable ? [noticia.disciplinable] : []);
+
+  // Normalize denunciante name
+  const radicadorNombre = (noticia.denunciante && 'nombre' in noticia.denunciante)
+    ? noticia.denunciante.nombre
+    : (Array.isArray(noticia.denunciante) ? noticia.denunciante[0]?.nombre : 'Anónimo');
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -89,7 +111,7 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
                   Detalles de la Noticia
                 </h2>
                 <p className="text-sm text-gray-600">
-                  {noticia.numeroRadicado}
+                  {noticia.radicado}
                 </p>
               </div>
             </div>
@@ -109,19 +131,19 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs font-semibold text-blue-600 mb-1">RADICADO</p>
-                <p className="text-lg font-bold text-gray-900">{noticia.numeroRadicado}</p>
+                <p className="text-lg font-bold text-gray-900">{noticia.radicado}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold text-blue-600 mb-1">ORIGEN</p>
-                <p className="text-sm font-semibold text-gray-900">{noticia.origen}</p>
+                <p className="text-sm font-semibold text-gray-900">{origenLabel}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold text-blue-600 mb-1">ESTADO</p>
-                <p className="text-sm font-semibold text-gray-900">{noticia.estadoLabel}</p>
+                <p className="text-sm font-semibold text-gray-900">{estadoLabel}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold text-blue-600 mb-1">DÍAS TRANSCURRIDOS</p>
-                <p className="text-lg font-bold text-gray-900">{noticia.diasTranscurridos} días</p>
+                <p className="text-lg font-bold text-gray-900">{dias} días</p>
               </div>
             </div>
           </Card>
@@ -133,28 +155,32 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
               Información de los Disciplinables
             </h3>
             <div className="space-y-4">
-              {noticia.disciplinable.map((person, idx) => (
-                <Card key={idx} className="p-5 border-2 border-gray-200">
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Nombre Completo</p>
-                      <p className="text-sm font-semibold text-gray-900">{person.nombre}</p>
+              {disciplinables.length === 0 ? (
+                <p className="text-gray-500 italic">No hay información de disciplinables.</p>
+              ) : (
+                disciplinables.map((person: any, idx: number) => (
+                  <Card key={idx} className="p-5 border-2 border-gray-200">
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Nombre Completo</p>
+                        <p className="text-sm font-semibold text-gray-900">{person?.nombre || 'Sin Nombre'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Identificación</p>
+                        <p className="text-sm font-semibold text-gray-900">{person?.identificacion || person?.cedula || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Cargo</p>
+                        <p className="text-sm font-semibold text-gray-900">{person?.cargo || 'Sin Cargo'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Dependencia</p>
+                        <p className="text-sm font-semibold text-gray-900">{person?.dependencia || 'N/A'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                      <p className="text-sm font-semibold text-gray-900">{person.cedula || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Cargo</p>
-                      <p className="text-sm font-semibold text-gray-900">{person.cargo}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Dependencia</p>
-                      <p className="text-sm font-semibold text-gray-900">{person.dependencia || 'N/A'}</p>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))
+              )}
             </div>
           </div>
 
@@ -167,23 +193,15 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
             <Card className="p-5 border-2 border-gray-200">
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Fecha de Queja</p>
+                  <p className="text-xs text-gray-500 mb-1">Fecha de Recepción</p>
                   <p className="text-sm font-semibold text-gray-900">
-                    {new Date(noticia.fechaQueja).toLocaleDateString('es-CO', {
-                      day: '2-digit',
-                      month: 'long',
-                      year: 'numeric'
-                    })}
+                    {formatDate(noticia.fechaRecepcion || noticia.createdAt)}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 mb-1">Fecha de Registro</p>
                   <p className="text-sm font-semibold text-gray-900">
-                    {new Date(noticia.fechaRegistro).toLocaleDateString('es-CO', {
-                      day: '2-digit',
-                      month: 'long',
-                      year: 'numeric'
-                    })}
+                    {formatDate(noticia.fechaRegistro)}
                   </p>
                 </div>
                 <div>
@@ -192,7 +210,7 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 mb-1">Radicador</p>
-                  <p className="text-sm font-semibold text-gray-900">{noticia.radicador}</p>
+                  <p className="text-sm font-semibold text-gray-900">{radicadorNombre}</p>
                 </div>
               </div>
             </Card>
@@ -207,7 +225,7 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
               </h3>
               <Card className="p-5 bg-red-50 border-2 border-red-200">
                 <div className="flex flex-wrap gap-2">
-                  {noticia.conductas.map((conducta, idx) => (
+                  {noticia.conductas.map((conducta: string, idx: number) => (
                     <span
                       key={idx}
                       className="px-3 py-2 bg-red-100 text-red-800 text-sm font-semibold rounded-lg border border-red-300"
@@ -228,7 +246,7 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
                 Descripción de Hechos
               </h3>
               <Card className="p-5 border-2 border-gray-200 bg-gray-50">
-                <p className="text-sm text-gray-700 leading-relaxed">{noticia.descripcion}</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{noticia.hechos || noticia.descripcion}</p>
               </Card>
             </div>
           )}
@@ -354,7 +372,7 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
               Etapa Actual
             </h3>
             <Card className="p-5 border-2 border-blue-200 bg-blue-50">
-              <p className="text-base font-semibold text-gray-900">{noticia.etapa}</p>
+              <p className="text-base font-semibold text-gray-900">{noticia.etapa || getEstadoLabel(noticia.estado) || 'Etapa no definida'}</p>
               <p className="text-sm text-gray-600 mt-1">
                 Hace {noticia.diasTranscurridos} días
               </p>

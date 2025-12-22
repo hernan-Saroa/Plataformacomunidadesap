@@ -5,8 +5,8 @@ export class StageConfiguration {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ type: 'enum', enum: ['EVALUACION', 'INDAGACION_PREVIA', 'INVESTIGACION', 'JUZGAMIENTO'], default: 'EVALUACION' })
-    etapa: string; // EVALUACION, INDAGACION_PREVIA, INVESTIGACION, JUZGAMIENTO
+    @Column({ type: 'varchar', default: 'RECEPCIÓN' })
+    etapa: string;
 
     @Column({ name: 'diasHabiles', type: 'int', default: 30 })
     diasHabiles: number;

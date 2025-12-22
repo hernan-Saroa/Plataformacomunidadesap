@@ -293,11 +293,11 @@ function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: (
                 </p>
               </div>
               <div className="p-4 rounded-xl text-center" style={{ background: '#F9FAFB' }}>
-                <Clock className="w-8 h-8 mx-auto mb-2" style={{ 
-                  color: proceso.diasRestantes > 0 ? '#10B981' : '#DC2626' 
+                <Clock className="w-8 h-8 mx-auto mb-2" style={{
+                  color: proceso.diasRestantes > 0 ? '#10B981' : '#DC2626'
                 }} />
-                <p className="text-2xl font-extrabold mb-1" style={{ 
-                  color: proceso.diasRestantes > 0 ? '#10B981' : '#DC2626' 
+                <p className="text-2xl font-extrabold mb-1" style={{
+                  color: proceso.diasRestantes > 0 ? '#10B981' : '#DC2626'
                 }}>
                   {Math.abs(proceso.diasRestantes)}
                 </p>
@@ -568,11 +568,11 @@ export function GestionProcesos() {
 
   const procesosFiltrados = procesos.filter(p => {
     const matchSearch = p.consecutivo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       p.disciplinable.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       p.cedula.includes(searchTerm);
+      p.disciplinable.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.cedula.includes(searchTerm);
     const matchEtapa = filtroEtapa === 'todos' || p.etapaActual === filtroEtapa;
     const matchSemaforo = filtroSemaforo === 'todos' || p.semaforo === filtroSemaforo;
-    
+
     return matchSearch && matchEtapa && matchSemaforo;
   });
 
@@ -707,7 +707,7 @@ export function GestionProcesos() {
                       {proceso.consecutivo}
                     </h3>
                     <Badge className="text-xs">{proceso.noticia}</Badge>
-                    <Badge 
+                    <Badge
                       className="text-xs font-semibold"
                       style={{ background: '#E0EDFF', color: '#003DA5' }}
                     >
@@ -729,7 +729,7 @@ export function GestionProcesos() {
                   <p className="text-xs font-semibold mb-1" style={{ color: '#9CA3AF' }}>
                     {proceso.diasRestantes > 0 ? 'Vence en' : 'Vencido hace'}
                   </p>
-                  <p 
+                  <p
                     className="text-sm font-bold"
                     style={{ color: proceso.diasRestantes > 0 ? '#10B981' : '#DC2626' }}
                   >

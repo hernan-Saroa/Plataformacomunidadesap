@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ProcessStage } from '../entities/disciplinary-process.entity';
+
 import { StageConfiguration } from '../entities/stage-configuration.entity';
 import { DiaFestivo } from '../entities/dia-festivo.entity';
 
@@ -22,7 +22,7 @@ export class TerminosCalculatorService {
    * Calcula la fecha de vencimiento según la etapa del proceso
    * Retorna el número de días y la fecha de vencimiento
    */
-  async calculateVencimientoEtapa(etapa: ProcessStage, desde: Date = new Date()): Promise<{
+  async calculateVencimientoEtapa(etapa: string, desde: Date = new Date()): Promise<{
     dias: number;
     fechaVencimiento: Date;
   }> {
@@ -33,19 +33,24 @@ export class TerminosCalculatorService {
     let esDiasHabiles = true;
 
     if (config) {
-      // console.log(`DEBUG: Usando configuración de DB para ${etapa}: ${config.diasHabiles} días`);
       dias = config.diasHabiles;
       esDiasHabiles = true; // Siempre días hábiles según el nuevo schema
     } else {
-      // console.log(`DEBUG: Usando fallback para ${etapa}`);
-      // Fallback defaults
+      // Fallback defaults using string literals
       switch (etapa) {
-        case ProcessStage.INDAGACION_PREVIA:
-        case ProcessStage.INVESTIGACION:
+        case 'INDAGACIÓN':
+        case 'INVESTIGACIÓN':
+        case 'INVESTIGACION':
           dias = 180;
           esDiasHabiles = false; // Meses calendario
           break;
-        case ProcessStage.JUZGAMIENTO:
+        case 'EVALUACION':
+        case 'VALORACION':
+        case 'VALORACIÓN':
+          dias = 10;
+          esDiasHabiles = true;
+          break;
+        case 'JUZGAMIENTO':
           dias = 90;
           esDiasHabiles = true;
           break;
@@ -80,7 +85,7 @@ export class TerminosCalculatorService {
    */
   private async obtenerFestivosActivos(): Promise<DiaFestivo[]> {
     const now = Date.now();
-    
+
     // Si el caché es válido, retornarlo
     if (this.festivosCache && (now - this.cacheTimestamp) < this.CACHE_DURATION) {
       return this.festivosCache;
@@ -133,9 +138,9 @@ export class TerminosCalculatorService {
    */
   private async esFestivo(fecha: Date, festivos?: DiaFestivo[]): Promise<boolean> {
     const festivosList = festivos || await this.obtenerFestivosActivos();
-    
+
     const fechaStr = fecha.toISOString().split('T')[0]; // YYYY-MM-DD
-    
+
     return festivosList.some(festivo => {
       const rawFecha = (festivo as any).fecha;
       let festivoStr = '';

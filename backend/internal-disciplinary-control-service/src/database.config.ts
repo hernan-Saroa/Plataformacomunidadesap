@@ -12,13 +12,13 @@ if (result.error) {
   console.error('Error loading .env file from:', envPath, result.error);
 } else {
   console.log('Successfully loaded .env file from:', envPath);
-  console.log('DATABASE_HOST:', process.env.DATABASE_HOST);
-  console.log('DATABASE_PORT:', process.env.DATABASE_PORT);
-  console.log('DATABASE_USER:', process.env.DATABASE_USER);
-  console.log('DATABASE_NAME:', process.env.DATABASE_NAME);
+  console.log('DB_HOST:', process.env.DB_HOST);
+  console.log('DB_PORT:', process.env.DB_PORT);
+  console.log('DB_USER:', process.env.DB_USER);
+  console.log('DB_NAME:', process.env.DB_NAME);
   console.log('DB_SCHEMA:', process.env.DB_SCHEMA);
   // No loguear la contraseña por seguridad, pero verificar si existe
-  console.log('DATABASE_PASSWORD exists:', !!process.env.DATABASE_PASSWORD);
+  console.log('DB_PASS exists:', !!process.env.DB_PASS);
 }
 
 const dbPassword = process.env.DATABASE_PASSWORD ?? process.env.DB_PASS;
@@ -46,19 +46,19 @@ export const databaseConfig: TypeOrmModuleOptions = {
   database: process.env.DATABASE_NAME ?? process.env.DB_NAME,
   schema: process.env.DB_SCHEMA,
   entities: [
-    DisciplinaryNews,
-    DisciplinaryProcess,
-    LegalAuto,
-    Sequence,
-    DisciplinaryProfessional,
-    Evidence,
-    StageConfiguration,
-    SystemConfiguration,
+    DisciplinaryNews, 
+    DisciplinaryProcess, 
+    LegalAuto, 
+    Sequence, 
+    DisciplinaryProfessional, 
+    Evidence, 
+    StageConfiguration, 
+    SystemConfiguration, 
     AutoVersion,
     TerminoProcesal,
     DiaFestivo,
     ReglaAlerta,
-    AlertaEnviada,
+    AlertaEnviada
   ],
   synchronize: false,
   logging: false,
