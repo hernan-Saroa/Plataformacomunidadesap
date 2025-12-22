@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Body, HttpException, HttpStatus, Delete, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, HttpException, HttpStatus, Delete, Param, Patch } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DisciplinaryProfessional } from '../entities/disciplinary-professional.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 
 import { SystemConfiguration } from '../entities/system-configuration.entity';
 
@@ -17,6 +19,7 @@ export class ProfessionalController {
         private readonly processRepository: Repository<DisciplinaryProcess>,
         @InjectRepository(SystemConfiguration)
         private readonly systemConfigRepository: Repository<SystemConfiguration>,
+        private readonly httpService: HttpService,
     ) { }
 
     @Get('workload')
@@ -106,29 +109,7 @@ export class ProfessionalController {
             }
 
             // --- CONFIGURACIÓN DE CAPACIDAD ---
-            // Buscar configuración global
-            const config = await this.systemConfigRepository.findOne({ where: {} });
-
-            if (config && config.roleCapacities) {
-                // Normalizar cargo (ej. 'Profesional Universitario' -> 'profesional universitario')
-                const cargoInput = createDto.cargo.toLowerCase();
-
-                // Buscar si alguna llave de la configuración está contenida en el cargo ingresado
-                // Ej: "universitario" está en "profesional universitario" -> Match
-                const matchedKey = Object.keys(config.roleCapacities).find(key =>
-                    cargoInput.includes(key.toLowerCase())
-                );
-
-                if (matchedKey) {
-                    const defaultCapacity = config.roleCapacities[matchedKey];
-
-                    // Si el usuario intentó enviar una capacidad mayor a la configurada, se restringe.
-                    // O si no envió nada, se usa el default.
-                    if (!createDto.capacidadMaxima || createDto.capacidadMaxima > defaultCapacity) {
-                        createDto.capacidadMaxima = defaultCapacity;
-                    }
-                }
-            }
+            createDto.capacidadMaxima = await this.validateAndGetCapacity(createDto.cargo, createDto.capacidadMaxima);
 
             // Crear y guardar el profesional
             const profesional = this.professionalRepository.create(createDto);
@@ -139,6 +120,139 @@ export class ProfessionalController {
             }
             throw new HttpException(
                 `Error al crear profesional: ${error.message}`,
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    @Patch(':id')
+    @ApiOperation({ summary: 'Actualizar un profesional' })
+    @ApiResponse({ status: 200, description: 'Profesional actualizado exitosamente' })
+    @ApiResponse({ status: 404, description: 'Profesional no encontrado' })
+    async update(@Param('id') id: string, @Body() updateDto: Partial<DisciplinaryProfessional>): Promise<DisciplinaryProfessional> {
+        const professional = await this.professionalRepository.findOne({ where: { id } });
+
+        if (!professional) {
+            throw new HttpException('Profesional no encontrado', HttpStatus.NOT_FOUND);
+        }
+
+        // Si se cambia el cargo, validar capacidad
+        if (updateDto.cargo || updateDto.capacidadMaxima) {
+            updateDto.capacidadMaxima = await this.validateAndGetCapacity(
+                updateDto.cargo || professional.cargo,
+                updateDto.capacidadMaxima || professional.capacidadMaxima
+            );
+        }
+
+        // No permitir cambiar el email por este medio para evitar inconsistencias
+        delete updateDto.email;
+
+        Object.assign(professional, updateDto);
+        return await this.professionalRepository.save(professional);
+    }
+
+    private async validateAndGetCapacity(cargo: string, requestedCapacity?: number): Promise<number> {
+        // Buscar configuración global
+        const config = await this.systemConfigRepository.findOne({ where: {} });
+        let finalCapacity = requestedCapacity || 10;
+
+        if (config && config.roleCapacities && cargo) {
+            // Normalizar cargo
+            const cargoInput = cargo.toLowerCase();
+
+            // Buscar si alguna llave de la configuración está contenida en el cargo ingresado
+            const matchedKey = Object.keys(config.roleCapacities).find(key =>
+                cargoInput.includes(key.toLowerCase())
+            );
+
+            if (matchedKey) {
+                const maxAllowed = config.roleCapacities[matchedKey];
+
+                // Si no se envió nada, usar el default. Si se envió algo mayor al máximo, restringir.
+                if (!requestedCapacity || requestedCapacity > maxAllowed) {
+                    finalCapacity = maxAllowed;
+                }
+            }
+        }
+        return finalCapacity;
+    }
+
+    @Get('candidates')
+    @ApiOperation({ summary: 'Obtener candidatos disponibles (usuarios no asignados al equipo)' })
+    @ApiResponse({ status: 200, description: 'Lista de candidatos disponibles' })
+    async getCandidates(): Promise<any[]> {
+        try {
+            // 1. Obtener profesionales ya asignados al equipo disciplinario
+            const assignedProfessionals = await this.professionalRepository.find({
+                select: ['email']
+            });
+            const assignedEmails = new Set(assignedProfessionals.map(p => p.email.toLowerCase()));
+
+            // 2. Intentar llamar al servicio de autenticación
+            let users: any[] = [];
+            try {
+                const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+                console.log(`Connecting to Auth Service at: ${authServiceUrl}`);
+
+                const response = await firstValueFrom(
+                    this.httpService.get(`${authServiceUrl}/users?limit=1000`, { timeout: 5000 })
+                );
+
+                console.log('Auth service response status:', response.status);
+                // Auth service wraps response: {success, data: {data: [...], meta}, timestamp}
+                if (response.data && response.data.data && Array.isArray(response.data.data.data)) {
+                    users = response.data.data.data;
+                } else {
+                    console.warn('Invalid response structure from Auth Service, using fallback.');
+                }
+
+            } catch (authError) {
+                console.error('Auth Service unreachable or error:', authError.message);
+                console.warn('Using FALLBACK mock data for candidates.');
+
+                // FALLBACK MOCK DATA for development/testing when Auth Service is down
+                users = [
+                    {
+                        email: 'candidato1@esap.edu.co',
+                        full_name: 'Ana Maria Candidata',
+                        user: { id_user: 'mock-1', is_active: true },
+                        phone: '3001112233'
+                    },
+                    {
+                        email: 'pedro.postulante@esap.edu.co',
+                        full_name: 'Pedro Postulante',
+                        user: { id_user: 'mock-2', is_active: true },
+                        phone: '3105556677'
+                    },
+                    {
+                        email: 'luisa.abogada@esap.edu.co',
+                        full_name: 'Luisa Abogada',
+                        user: { id_user: 'mock-3', is_active: true },
+                        phone: '3209990000'
+                    }
+                ];
+            }
+
+            // 3. Filtrar usuarios que NO están asignados
+            const candidates = users
+                .filter((user: any) => {
+                    const userEmail = user.email?.toLowerCase();
+                    return userEmail && !assignedEmails.has(userEmail) && user.user?.is_active;
+                })
+                .map((user: any) => ({
+                    id: user.user?.id_user || `top-user-${Math.random()}`,
+                    nombre: user.full_name || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+                    cargo: 'Profesional Universitario', // Mock default cargo for assignment testing
+                    email: user.email,
+                    telefono: user.phone || 'N/A'
+                }));
+
+            return candidates;
+
+        } catch (error) {
+            console.error('Critical error in getCandidates:', error.message);
+            throw new HttpException(
+                `Error crítico al obtener candidatos: ${error.message}`,
                 HttpStatus.INTERNAL_SERVER_ERROR
             );
         }

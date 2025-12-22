@@ -1,39 +1,57 @@
 /**
- * Accesibilidad ARIA - Utilities
- * Sistema completo de accesibilidad para cumplir WCAG 2.1 AA
+ * Utilidades de Accesibilidad ARIA y WCAG 2.1
+ * Funciones para mejorar la accesibilidad de la aplicación
  */
 
-export interface AriaAttributes {
-  role?: string;
+export type AriaAttributes = {
   'aria-label'?: string;
   'aria-labelledby'?: string;
   'aria-describedby'?: string;
   'aria-expanded'?: boolean;
-  'aria-selected'?: boolean;
-  'aria-checked'?: boolean;
+  'aria-controls'?: string;
+  'aria-haspopup'?: boolean | 'dialog' | 'menu' | 'listbox' | 'tree' | 'grid';
   'aria-pressed'?: boolean;
+  'aria-checked'?: boolean | 'mixed';
+  'aria-selected'?: boolean;
+  'aria-disabled'?: boolean;
   'aria-hidden'?: boolean;
   'aria-live'?: 'polite' | 'assertive' | 'off';
   'aria-atomic'?: boolean;
   'aria-relevant'?: string;
-  'aria-controls'?: string;
-  'aria-owns'?: string;
-  'aria-haspopup'?: boolean | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog';
-  'aria-disabled'?: boolean;
-  'aria-invalid'?: boolean;
-  'aria-required'?: boolean;
-  'aria-current'?: 'page' | 'step' | 'location' | 'date' | 'time' | boolean;
-}
-
-/**
- * Generar ID único para asociar labels y descriptions
- */
-export const generateId = (prefix: string): string => {
-  return `${prefix}-${Math.random().toString(36).substr(2, 9)}`;
+  'aria-busy'?: boolean;
+  role?: string;
 };
 
 /**
- * Crear atributos ARIA para botones interactivos
+ * Constantes de teclas para navegación
+ */
+export const KEYBOARD_KEYS = {
+  ENTER: 'Enter',
+  SPACE: ' ',
+  ESCAPE: 'Escape',
+  TAB: 'Tab',
+  ARROW_UP: 'ArrowUp',
+  ARROW_DOWN: 'ArrowDown',
+  ARROW_LEFT: 'ArrowLeft',
+  ARROW_RIGHT: 'ArrowRight',
+  HOME: 'Home',
+  END: 'End',
+  PAGE_UP: 'PageUp',
+  PAGE_DOWN: 'PageDown',
+} as const;
+
+let idCounter = 0;
+
+/**
+ * Genera un ID único para elementos ARIA
+ */
+export const generateId = (prefix: string = 'aria'): string => {
+  idCounter += 1;
+  return `${prefix}-${idCounter}-${Date.now()}`;
+};
+
+/**
+ * Props ARIA para botones
  */
 export const getButtonAriaProps = (
   label: string,
@@ -44,17 +62,31 @@ export const getButtonAriaProps = (
     disabled?: boolean;
   }
 ): AriaAttributes => {
-  return {
+  const props: AriaAttributes = {
     'aria-label': label,
-    'aria-pressed': options?.pressed,
-    'aria-expanded': options?.expanded,
-    'aria-controls': options?.controls,
-    'aria-disabled': options?.disabled,
   };
+
+  if (options?.pressed !== undefined) {
+    props['aria-pressed'] = options.pressed;
+  }
+
+  if (options?.expanded !== undefined) {
+    props['aria-expanded'] = options.expanded;
+  }
+
+  if (options?.controls) {
+    props['aria-controls'] = options.controls;
+  }
+
+  if (options?.disabled) {
+    props['aria-disabled'] = options.disabled;
+  }
+
+  return props;
 };
 
 /**
- * Crear atributos ARIA para inputs de formulario
+ * Props ARIA para inputs
  */
 export const getInputAriaProps = (
   label: string,
@@ -62,79 +94,92 @@ export const getInputAriaProps = (
     required?: boolean;
     invalid?: boolean;
     describedBy?: string;
-    errorMessage?: string;
   }
-): AriaAttributes & { 'aria-errormessage'?: string } => {
-  return {
+): AriaAttributes => {
+  const props: AriaAttributes = {
     'aria-label': label,
-    'aria-required': options?.required,
-    'aria-invalid': options?.invalid,
-    'aria-describedby': options?.describedBy,
-    'aria-errormessage': options?.errorMessage,
   };
+
+  if (options?.describedBy) {
+    props['aria-describedby'] = options.describedBy;
+  }
+
+  return props;
 };
 
 /**
- * Crear atributos ARIA para regiones navegables
+ * Props ARIA para regiones/secciones
  */
 export const getRegionAriaProps = (
   label: string,
-  role: 'main' | 'navigation' | 'search' | 'complementary' | 'banner' | 'contentinfo' | 'region' = 'region'
+  options?: {
+    labelledBy?: string;
+  }
 ): AriaAttributes => {
-  return {
-    role,
-    'aria-label': label,
+  const props: AriaAttributes = {
+    role: 'region',
   };
+
+  if (options?.labelledBy) {
+    props['aria-labelledby'] = options.labelledBy;
+  } else {
+    props['aria-label'] = label;
+  }
+
+  return props;
 };
 
 /**
- * Crear atributos ARIA para elementos expandibles
+ * Props ARIA para elementos expandibles
  */
 export const getExpandableAriaProps = (
-  isExpanded: boolean,
-  controls: string,
-  label?: string
+  expanded: boolean,
+  controlsId: string
 ): AriaAttributes => {
   return {
-    'aria-expanded': isExpanded,
-    'aria-controls': controls,
-    'aria-label': label,
+    'aria-expanded': expanded,
+    'aria-controls': controlsId,
   };
 };
 
 /**
- * Crear atributos ARIA para tabs
+ * Props ARIA para tabs
  */
 export const getTabAriaProps = (
-  isSelected: boolean,
-  controls: string,
-  index: number
+  selected: boolean,
+  controlsId: string,
+  tabId: string
 ): AriaAttributes => {
   return {
     role: 'tab',
-    'aria-selected': isSelected,
-    'aria-controls': controls,
-    tabIndex: isSelected ? 0 : -1,
-  } as any;
+    'aria-selected': selected,
+    'aria-controls': controlsId,
+    id: tabId,
+  } as AriaAttributes & { id: string };
 };
 
 /**
- * Crear atributos ARIA para modal/dialog
+ * Props ARIA para diálogos/modales
  */
 export const getDialogAriaProps = (
   label: string,
   describedBy?: string
 ): AriaAttributes => {
-  return {
+  const props: AriaAttributes = {
     role: 'dialog',
     'aria-modal': true,
     'aria-label': label,
-    'aria-describedby': describedBy,
-  } as any;
+  } as AriaAttributes & { 'aria-modal': boolean };
+
+  if (describedBy) {
+    props['aria-describedby'] = describedBy;
+  }
+
+  return props;
 };
 
 /**
- * Crear atributos ARIA para live regions (notificaciones)
+ * Props ARIA para regiones live (anuncios dinámicos)
  */
 export const getLiveRegionAriaProps = (
   level: 'polite' | 'assertive' = 'polite'
@@ -147,27 +192,22 @@ export const getLiveRegionAriaProps = (
 };
 
 /**
- * Anunciar mensaje a lectores de pantalla
+ * Anuncia un mensaje a lectores de pantalla
  */
 export const announceToScreenReader = (
   message: string,
   level: 'polite' | 'assertive' = 'polite'
-) => {
-  if (typeof document === 'undefined') return;
-
+): void => {
   const announcement = document.createElement('div');
   announcement.setAttribute('role', 'status');
   announcement.setAttribute('aria-live', level);
   announcement.setAttribute('aria-atomic', 'true');
-  announcement.style.position = 'absolute';
-  announcement.style.left = '-10000px';
-  announcement.style.width = '1px';
-  announcement.style.height = '1px';
-  announcement.style.overflow = 'hidden';
+  announcement.className = 'sr-only';
   announcement.textContent = message;
 
   document.body.appendChild(announcement);
 
+  // Remover después de que se anuncie
   setTimeout(() => {
     document.body.removeChild(announcement);
   }, 1000);
@@ -176,28 +216,28 @@ export const announceToScreenReader = (
 /**
  * Trap focus dentro de un elemento (para modales)
  */
-export const trapFocus = (element: HTMLElement) => {
-  const focusableElements = element.querySelectorAll(
-    'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+export const trapFocus = (element: HTMLElement): (() => void) => {
+  const focusableElements = element.querySelectorAll<HTMLElement>(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
   );
 
-  const firstElement = focusableElements[0] as HTMLElement;
-  const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+  const firstFocusable = focusableElements[0];
+  const lastFocusable = focusableElements[focusableElements.length - 1];
 
   const handleTabKey = (e: KeyboardEvent) => {
     if (e.key !== 'Tab') return;
 
     if (e.shiftKey) {
       // Shift + Tab
-      if (document.activeElement === firstElement) {
-        lastElement?.focus();
+      if (document.activeElement === firstFocusable) {
         e.preventDefault();
+        lastFocusable?.focus();
       }
     } else {
       // Tab
-      if (document.activeElement === lastElement) {
-        firstElement?.focus();
+      if (document.activeElement === lastFocusable) {
         e.preventDefault();
+        firstFocusable?.focus();
       }
     }
   };
@@ -205,107 +245,82 @@ export const trapFocus = (element: HTMLElement) => {
   element.addEventListener('keydown', handleTabKey);
 
   // Focus primer elemento
-  firstElement?.focus();
+  firstFocusable?.focus();
 
-  // Retornar función cleanup
+  // Cleanup function
   return () => {
     element.removeEventListener('keydown', handleTabKey);
   };
 };
 
 /**
- * Obtener todos los elementos focusables dentro de un contenedor
- */
-export const getFocusableElements = (container: HTMLElement): HTMLElement[] => {
-  const selector = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-  return Array.from(container.querySelectorAll(selector));
-};
-
-/**
- * Mover focus al siguiente elemento focusable
- */
-export const focusNextElement = (currentElement: HTMLElement, container?: HTMLElement) => {
-  const root = container || document.body;
-  const focusable = getFocusableElements(root);
-  const currentIndex = focusable.indexOf(currentElement);
-  const nextIndex = (currentIndex + 1) % focusable.length;
-  focusable[nextIndex]?.focus();
-};
-
-/**
- * Mover focus al elemento anterior focusable
- */
-export const focusPreviousElement = (currentElement: HTMLElement, container?: HTMLElement) => {
-  const root = container || document.body;
-  const focusable = getFocusableElements(root);
-  const currentIndex = focusable.indexOf(currentElement);
-  const prevIndex = currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1;
-  focusable[prevIndex]?.focus();
-};
-
-/**
- * Verificar si elemento está visible en viewport
- */
-export const isElementVisible = (element: HTMLElement): boolean => {
-  const rect = element.getBoundingClientRect();
-  return (
-    rect.top >= 0 &&
-    rect.left >= 0 &&
-    rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-    rect.right <= (window.innerWidth || document.documentElement.clientWidth)
-  );
-};
-
-/**
- * Scroll suave hacia elemento con focus
- */
-export const scrollToElement = (element: HTMLElement, behavior: ScrollBehavior = 'smooth') => {
-  if (!isElementVisible(element)) {
-    element.scrollIntoView({ behavior, block: 'center' });
-  }
-};
-
-/**
- * Keyboard navigation map
- */
-export const KEYBOARD_KEYS = {
-  ENTER: 'Enter',
-  SPACE: ' ',
-  ESCAPE: 'Escape',
-  ARROW_UP: 'ArrowUp',
-  ARROW_DOWN: 'ArrowDown',
-  ARROW_LEFT: 'ArrowLeft',
-  ARROW_RIGHT: 'ArrowRight',
-  TAB: 'Tab',
-  HOME: 'Home',
-  END: 'End',
-  PAGE_UP: 'PageUp',
-  PAGE_DOWN: 'PageDown',
-} as const;
-
-/**
- * Detectar si usuario está navegando con teclado
+ * Detecta si el usuario está navegando con teclado
  */
 export const detectKeyboardNavigation = (): (() => void) => {
-  let isUsingKeyboard = false;
-
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Tab') {
-      isUsingKeyboard = true;
       document.body.classList.add('keyboard-navigation');
     }
   };
 
   const handleMouseDown = () => {
-    isUsingKeyboard = false;
     document.body.classList.remove('keyboard-navigation');
   };
 
   document.addEventListener('keydown', handleKeyDown);
   document.addEventListener('mousedown', handleMouseDown);
 
+  // Cleanup function
   return () => {
     document.removeEventListener('keydown', handleKeyDown);
     document.removeEventListener('mousedown', handleMouseDown);
   };
+};
+
+/**
+ * Obtiene todos los elementos focusables dentro de un contenedor
+ */
+export const getFocusableElements = (
+  container: HTMLElement
+): HTMLElement[] => {
+  const selector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+  return Array.from(container.querySelectorAll<HTMLElement>(selector));
+};
+
+/**
+ * Mueve el focus al siguiente elemento focusable
+ */
+export const focusNextElement = (currentElement: HTMLElement): void => {
+  const focusableElements = getFocusableElements(document.body);
+  const currentIndex = focusableElements.indexOf(currentElement);
+  
+  if (currentIndex !== -1 && currentIndex < focusableElements.length - 1) {
+    focusableElements[currentIndex + 1].focus();
+  }
+};
+
+/**
+ * Mueve el focus al elemento anterior focusable
+ */
+export const focusPreviousElement = (currentElement: HTMLElement): void => {
+  const focusableElements = getFocusableElements(document.body);
+  const currentIndex = focusableElements.indexOf(currentElement);
+  
+  if (currentIndex > 0) {
+    focusableElements[currentIndex - 1].focus();
+  }
+};
+
+/**
+ * Hace scroll suave a un elemento
+ */
+export const scrollToElement = (element: HTMLElement, options?: ScrollIntoViewOptions): void => {
+  if (!element) return;
+  
+  element.scrollIntoView({
+    behavior: 'smooth',
+    block: 'nearest',
+    inline: 'nearest',
+    ...options,
+  });
 };

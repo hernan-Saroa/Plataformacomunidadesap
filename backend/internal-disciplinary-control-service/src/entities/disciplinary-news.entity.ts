@@ -20,6 +20,7 @@ export enum NewsStatus {
   EN_VALORACION = 'EN_VALORACION',
   ASIGNADA = 'ASIGNADA',
   DEVUELTA = 'DEVUELTA',
+  ARCHIVADA = 'ARCHIVADA',
 }
 
 export interface PersonInfo {
@@ -27,6 +28,10 @@ export interface PersonInfo {
   cedula?: string;
   email?: string;
   cargo?: string;
+  telefono?: string;
+  direccion?: string;
+  dependencia?: string;
+  entidad?: string;
 }
 
 @Entity('disciplinary_news')
@@ -39,6 +44,9 @@ export class DisciplinaryNews {
 
   @CreateDateColumn()
   fechaRecepcion: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  fechaQueja?: Date;
 
   @Column({
     type: 'enum',
@@ -61,6 +69,9 @@ export class DisciplinaryNews {
   @Column({ type: 'text' })
   hechos: string;
 
+  @Column({ type: 'text', array: true, nullable: true })
+  conductas?: string[];
+
   @Column({
     type: 'enum',
     enum: NewsStatus,
@@ -74,8 +85,14 @@ export class DisciplinaryNews {
   @Column({ type: 'text', nullable: true })
   observaciones: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: true, default: 'RECEPCION' })
+  kanbanStage: string;
+
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Column({ type: 'jsonb', nullable: true, default: [] })
+  historialAuditoria: any[];
 
   // Relación con procesos disciplinarios
   @OneToMany(

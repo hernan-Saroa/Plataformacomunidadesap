@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import esapLogoSimple from 'figma:asset/e2a71b7a4ef26af8502b5fee60dbf1b1cca6e90a.png';
-import { Users, Shield, Activity, FolderOpen, BarChart3, FileText, ClipboardList, Settings, TrendingUp, GraduationCap, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Zap, MessageSquare, Briefcase, Calendar, Newspaper, Megaphone, CheckCircle, Award, UserPlus, FolderKanban, BookOpen, FileCheck, Building2, Scale, Layout, FileQuestion, Gavel, DollarSign, Mail, Target, AlertTriangle } from 'lucide-react';
+import { Users, Shield, Activity, FolderOpen, BarChart3, FileText, ClipboardList, Settings, TrendingUp, GraduationCap, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Zap, MessageSquare, Briefcase, Calendar, Newspaper, Megaphone, CheckCircle, Award, UserPlus, FolderKanban, BookOpen, FileCheck, Building2, Scale, Layout, FileQuestion, Gavel, DollarSign, Mail, Target, AlertTriangle, LayoutDashboard, Archive, Clock, Bell } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { motion, AnimatePresence, useAnimationControls } from 'motion/react';
 
-type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'gestion-legal-defensa-judicial' | 'gestion-legal-organos-control' | 'gestion-legal-asesoria' | 'gestion-legal-juzgamiento' | 'gestion-legal-coactivos' | 'gestion-legal-notificaciones' | 'gestion-legal-buzon' | 'gestion-legal-plan-accion' | 'gestion-legal-riesgos' | 'gestion-legal-mejoramiento' | 'gestion-legal-terminos' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'aspirantes' | 'community' | 'community-posts' | 'community-events' | 'community-announcements' | 'teacher-calls-management' | 'teacher-calls-applications' | 'teacher-calls-evaluation' | 'job-board' | 'certificate-requests' | 'gestion-profesoral' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial';
+type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'aspirantes' | 'community' | 'community-posts' | 'community-events' | 'community-announcements' | 'teacher-calls-management' | 'teacher-calls-applications' | 'teacher-calls-evaluation' | 'job-board' | 'certificate-requests' | 'gestion-profesoral' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -52,7 +52,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     community: false,       // Menú Comunidad cerrado por defecto
     'roles-security': false, // Menú Roles y Permisos cerrado por defecto
     'users-management-menu': false, // Menú Gestión Personas cerrado por defecto
-    'gestion-legal-menu': false,   // Menú Gestión Legal cerrado por defecto
   });
 
   // Estado para controlar qué SECCIONES principales están expandidas (NUEVO)
@@ -93,11 +92,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   }, [onToggleCollapse]);
 
   const handleModuleClick = (module: ModuleType) => {
-    // Auto-expandir el menú padre si es un submódulo SIGL
-    if (module.startsWith('gestion-legal-')) {
-      setExpandedMenus(prev => ({ ...prev, 'gestion-legal-menu': true }));
-    }
-    
     onModuleChange?.(module);
     // Close sidebar on mobile after selecting a module
     if (window.innerWidth < 768) {
@@ -120,13 +114,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     }));
   };
 
-  // Auto-expandir menú de Gestión Legal cuando hay un submódulo SIGL activo
-  useEffect(() => {
-    if (currentSidebarModule && currentSidebarModule.startsWith('gestion-legal-')) {
-      setExpandedMenus(prev => ({ ...prev, 'gestion-legal-menu': true }));
-      setExpandedSections(prev => ({ ...prev, 'sistema-gestion': true }));
-    }
-  }, [currentSidebarModule]);
+
 
   // Renderizar header de sección con toggle (NUEVO)
   const renderSectionHeader = (
@@ -841,9 +829,9 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   
                   {renderMenuItem(
                     'gestion-legal',
-                    <Scale className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Gestión Legal',
-                    'Juzgamiento Disciplinario'
+                    <Scale className="w-5 h-5" strokeWidth={2} />,
+                    'Gestión Legal (SIGL)',
+                    'Sistema integral'
                   )}
                 </div>
               </>
@@ -1061,81 +1049,18 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       'Procesos disciplinarios'
                     )}
 
-                    {/* Gestión Legal (SIGL) - CON 11 SUBMÓDULOS */}
-                    {renderMenuWithSubmenu(
-                      'gestion-legal-menu',
+                    {renderMenuItem(
                       'gestion-legal',
                       <Scale className="w-5 h-5" strokeWidth={2} />,
                       'Gestión Legal (SIGL)',
-                      '11 módulos',
-                      [
-                        {
-                          module: 'gestion-legal-defensa-judicial' as ModuleType,
-                          icon: <Scale className="w-4 h-4" />,
-                          label: 'Defensa Judicial',
-                          subtitle: 'Procesos judiciales'
-                        },
-                        {
-                          module: 'gestion-legal-organos-control' as ModuleType,
-                          icon: <Shield className="w-4 h-4" />,
-                          label: 'Órganos de Control',
-                          subtitle: 'Contraloría y Procuraduría'
-                        },
-                        {
-                          module: 'gestion-legal-asesoria' as ModuleType,
-                          icon: <FileQuestion className="w-4 h-4" />,
-                          label: 'Asesoría Jurídica',
-                          subtitle: '30 días hábiles'
-                        },
-                        {
-                          module: 'gestion-legal-juzgamiento' as ModuleType,
-                          icon: <Gavel className="w-4 h-4" />,
-                          label: 'Juzgamiento Disciplinario',
-                          subtitle: 'Primera instancia'
-                        },
-                        {
-                          module: 'gestion-legal-coactivos' as ModuleType,
-                          icon: <DollarSign className="w-4 h-4" />,
-                          label: 'Procesos Coactivos',
-                          subtitle: 'Cobro coactivo'
-                        },
-                        {
-                          module: 'gestion-legal-notificaciones' as ModuleType,
-                          icon: <Mail className="w-4 h-4" />,
-                          label: 'Buzón de Notificaciones',
-                          subtitle: 'Control de términos'
-                        },
-                        {
-                          module: 'gestion-legal-buzon' as ModuleType,
-                          icon: <MessageSquare className="w-4 h-4" />,
-                          label: 'Buzón Oficina Jurídica',
-                          subtitle: 'Comunicaciones'
-                        },
-                        {
-                          module: 'gestion-legal-plan-accion' as ModuleType,
-                          icon: <Target className="w-4 h-4" />,
-                          label: 'Plan de Acción',
-                          subtitle: 'Acciones correctivas'
-                        },
-                        {
-                          module: 'gestion-legal-riesgos' as ModuleType,
-                          icon: <AlertTriangle className="w-4 h-4" />,
-                          label: 'Riesgos',
-                          subtitle: 'Gestión de riesgos'
-                        },
-                        {
-                          module: 'gestion-legal-mejoramiento' as ModuleType,
-                          icon: <TrendingUp className="w-4 h-4" />,
-                          label: 'Planes de Mejoramiento',
-                          subtitle: 'Seguimiento'
-                        },
-                        {
-                          module: 'gestion-legal-terminos' as ModuleType,
-                          icon: <Calendar className="w-4 h-4" />,
-                          label: 'Términos para Informes',
-                          subtitle: 'Control de plazos'
-                        }
-                      ]
+                      'Sistema integral'
+                    )}
+                    
+                    {renderMenuItem(
+                      'centro-alertas',
+                      <Bell className="w-5 h-5" strokeWidth={2} />,
+                      'Centro de Alertas',
+                      'Configuración centralizada'
                     )}
                   </motion.div>
                 )}

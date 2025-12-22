@@ -31,8 +31,8 @@ import { ControlInternoFull } from './control-interno/ControlInternoFull';
 // Importar módulo de Control Disciplinario Completo (Sistema Full)
 import { ControlDisciplinarioFull } from './disciplinario/ControlDisciplinarioFull';
 
-// Importar módulo de Gestión Legal (Kanban SIGL como vista principal)
-import { KanbanSIGL } from './gestion-legal/KanbanSIGL';
+// Importar módulo de Gestión Legal (Sistema Full con ModuleLayout)
+import { GestionLegalFull } from './gestion-legal/GestionLegalFull';
 
 // Importar módulo de Certificados Laborales
 import { CertificadosLaboralesRouter } from '../certificados-laborales/CertificadosLaboralesRouter';
@@ -149,39 +149,9 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       'control-interno': 'control-interno',
       'control-disciplinario': 'control-disciplinario',
       'gestion-legal': 'gestion-legal',
-      // Módulos SIGL - Todos mapeados a 'gestion-legal' con prop moduloInicial
-      'gestion-legal-defensa-judicial': 'gestion-legal',
-      'gestion-legal-organos-control': 'gestion-legal',
-      'gestion-legal-asesoria': 'gestion-legal',
-      'gestion-legal-juzgamiento': 'gestion-legal',
-      'gestion-legal-coactivos': 'gestion-legal',
-      'gestion-legal-notificaciones': 'gestion-legal',
-      'gestion-legal-buzon': 'gestion-legal',
-      'gestion-legal-plan-accion': 'gestion-legal',
-      'gestion-legal-riesgos': 'gestion-legal',
-      'gestion-legal-mejoramiento': 'gestion-legal',
-      'gestion-legal-terminos': 'gestion-legal',
       'arquitectura-empresarial': 'arquitectura-empresarial',
     };
     return (mappings[sidebarModule] as ModuleView) || 'dashboard';
-  };
-
-  // Mapeo de sidebar ID a módulo SIGL específico
-  const getModuloSIGL = (sidebarModule: string): string | undefined => {
-    const moduloMapping: Record<string, string> = {
-      'gestion-legal-defensa-judicial': 'mod-01',
-      'gestion-legal-organos-control': 'mod-02',
-      'gestion-legal-asesoria': 'mod-03',
-      'gestion-legal-juzgamiento': 'mod-04',
-      'gestion-legal-coactivos': 'mod-05',
-      'gestion-legal-notificaciones': 'mod-06',
-      'gestion-legal-buzon': 'mod-07',
-      'gestion-legal-plan-accion': 'mod-08',
-      'gestion-legal-riesgos': 'mod-09',
-      'gestion-legal-mejoramiento': 'mod-10',
-      'gestion-legal-terminos': 'mod-11',
-    };
-    return moduloMapping[sidebarModule];
   };
 
   // Mock user data - en producción vendría del contexto de autenticación
@@ -283,7 +253,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return <ControlDisciplinarioFull />;
       
       case 'gestion-legal':
-        return <KanbanSIGL key={currentSidebarModule || 'gestion-legal'} moduloInicial={getModuloSIGL(currentSidebarModule)} />;
+        return <GestionLegalFull />;
       
       case 'certificados-laborales':
         return (
@@ -324,8 +294,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           onModuleChange={(sidebarModule) => {
             console.log('🔍 Sidebar module clicked:', sidebarModule);
             const mappedModule = mapSidebarToModule(sidebarModule);
-            const moduloSIGL = getModuloSIGL(sidebarModule);
-            console.log('📍 Mapped to:', mappedModule, 'SIGL Module:', moduloSIGL);
+            console.log('📍 Mapped to:', mappedModule);
             setCurrentSidebarModule(sidebarModule);
             setCurrentModule(mappedModule);
             setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
@@ -344,14 +313,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           }
         />
 
-        {/* Main Content */}
-        <div
-          className="transition-all duration-300 md:ml-20 lg:ml-20"
-          style={{
-            marginLeft: typeof window !== 'undefined' && window.innerWidth >= 768 
-              ? (sidebarCollapsed ? '80px' : '260px')
-              : '0px',
-          }}
+        {/* Main Content - Con margen izquierdo para el sidebar */}
+        <div 
+          className={`transition-all duration-300 ${
+            sidebarCollapsed 
+              ? 'md:ml-[80px]' 
+              : 'md:ml-[260px] lg:ml-[220px] xl:ml-[240px] 2xl:ml-[260px]'
+          }`}
         >
           {/* Top Bar */}
           <TopBar
@@ -376,7 +344,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
             currentSystem="backoffice"
           />
 
-          {/* Module Content - Con espacio superior para evitar superposición */}
+          {/* Module Content */}
           <main className="p-4 md:p-6 lg:p-8 min-h-screen">
             {renderModule()}
           </main>

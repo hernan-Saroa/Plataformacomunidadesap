@@ -14,10 +14,12 @@ import { DisciplinaryProfessional } from './disciplinary-professional.entity';
 import { Evidence } from './evidence.entity';
 
 export enum ProcessStage {
+  RECEPCION = 'RECEPCION',
   EVALUACION = 'EVALUACION',
-  INDAGACION_PREVIA = 'INDAGACION_PREVIA',
+  INDAGACION_PREVIA = 'INDAGACION',
   INVESTIGACION = 'INVESTIGACION',
   JUZGAMIENTO = 'JUZGAMIENTO',
+  FALLO = 'FALLO',
 }
 
 export enum ProcessStatus {
@@ -52,11 +54,16 @@ export class DisciplinaryProcess {
   abogadoAsignadoId: string;
 
   @Column({
-    type: 'enum',
-    enum: ProcessStage,
-    default: ProcessStage.EVALUACION,
+    type: 'varchar',
+    default: 'EVALUACION',
   })
   etapaActual: ProcessStage;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  kanbanStage: string;
+
+  @Column({ type: 'text', nullable: true })
+  kanbanNotice: string | null;
 
   @Column({
     type: 'enum',

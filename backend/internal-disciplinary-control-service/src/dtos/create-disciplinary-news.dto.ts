@@ -7,8 +7,9 @@ import {
   ValidateNested,
   IsUUID,
   IsArray,
+  IsDateString,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { NewsOrigin } from '../entities/disciplinary-news.entity';
 
 export class PersonInfoDto {
@@ -34,11 +35,23 @@ export class PersonInfoDto {
   @IsOptional()
   @IsString()
   direccion?: string;
+
+  @IsOptional()
+  @IsString()
+  dependencia?: string;
+
+  @IsOptional()
+  @IsString()
+  entidad?: string;
 }
 
 export class CreateDisciplinaryNewsDto {
   @IsEnum(NewsOrigin)
   origen: NewsOrigin;
+
+  @IsOptional()
+  @IsDateString()
+  fechaQueja?: string;
 
   @IsString()
   territorial: string;
@@ -46,12 +59,32 @@ export class CreateDisciplinaryNewsDto {
   @IsString()
   dependenciaDenunciado: string;
 
-  @ValidateNested()
-  @Type(() => PersonInfoDto)
+  @IsOptional()
+  @IsObject()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+    return value;
+  })
   denunciante: PersonInfoDto;
 
-  @ValidateNested()
-  @Type(() => PersonInfoDto)
+  @IsOptional()
+  @IsObject()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+    return value;
+  })
   disciplinable: PersonInfoDto;
 
   @IsString()
@@ -60,6 +93,22 @@ export class CreateDisciplinaryNewsDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  conductas?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [value];
+      } catch {
+        return [value];
+      }
+    }
+    return value;
+  })
   adjuntos?: string[];
 }
 
@@ -67,12 +116,14 @@ export class DisciplinaryNewsResponseDto {
   id: string;
   radicado: string;
   fechaRecepcion: Date;
+  fechaQueja?: Date;
   origen: string;
   territorial: string;
   dependenciaDenunciado: string;
   denunciante: object;
   disciplinable: object;
   hechos: string;
+  conductas?: string[];
   estado: string;
   adjuntos: string[];
   updatedAt: Date;

@@ -441,28 +441,16 @@ export function InformesYDocumentalCompleto() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-            <Scale className="w-7 h-7" style={{ color: '#8B5CF6' }} />
-            Informes y Gestión Documental
-          </h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Informes de Ley • Gestión Documental • Repositorio
-          </p>
-        </div>
-
-        <div className="flex gap-2">
-          <Button variant="outline">
-            <Upload className="w-4 h-4 mr-2" />
-            Cargar
-          </Button>
-          <Button style={{ background: '#003DA5' }}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nuevo Informe
-          </Button>
-        </div>
+      {/* ACCIONES PRINCIPALES */}
+      <div className="flex justify-end gap-2">
+        <Button variant="outline">
+          <Upload className="w-4 h-4 mr-2" />
+          Cargar
+        </Button>
+        <Button style={{ background: '#003DA5' }}>
+          <Plus className="w-4 h-4 mr-2" />
+          Nuevo Informe
+        </Button>
       </div>
 
       {/* FLUJO VISUAL */}

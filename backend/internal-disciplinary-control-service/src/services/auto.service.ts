@@ -34,14 +34,20 @@ export class AutoService {
   async create(createAutoDto: CreateLegalAutoDto): Promise<LegalAuto> {
     try {
       // Validar que el proceso existe
-      await this.processService.findById(createAutoDto.processId);
+      await this.processService.findById(createAutoDto.processId, false);
 
       // CORRECCIÓN AQUI: Mapeo manual de campos DTO -> Entidad
       const auto = this.autoRepository.create({
-        tipo: createAutoDto.tipoAuto,             // Asigna tipoAuto a tipo
-        contenido: createAutoDto.contenidoHtml,   // Asigna contenidoHtml a contenido
-        process: { id: createAutoDto.processId }, // Relaciona el ID del proceso
-        estado: AutoStatus.BORRADOR,              // Estado inicial
+        tipo: createAutoDto.tipoAuto,
+        numero: createAutoDto.numero,
+        contenido: createAutoDto.contenidoHtml ?? '',
+        process: { id: createAutoDto.processId },
+        estado: AutoStatus.BORRADOR,
+        documentUrl: createAutoDto.documentUrl,
+        documentName: createAutoDto.documentName,
+        documentType: createAutoDto.documentType,
+        documentSize: createAutoDto.documentSize,
+        comentarios: createAutoDto.comentarios,
       });
 
       return await this.autoRepository.save(auto);
@@ -60,16 +66,16 @@ export class AutoService {
    * Obtiene todos los autos
    */
   async findAll(): Promise<LegalAuto[]> {
-    return await this.autoRepository.find({ relations: ['process'] });
+    return await this.autoRepository.find({ relations: ['process', 'versions'] });
   }
 
   /**
    * Obtiene un auto por ID
    */
-  async findById(id: string): Promise<LegalAuto> {
+  async findById(id: string, relations: string[] = ['process', 'versions']): Promise<LegalAuto> {
     const auto = await this.autoRepository.findOne({
       where: { id },
-      relations: ['process'],
+      relations,
     });
     if (!auto) {
       throw new HttpException('Auto no encontrado', HttpStatus.NOT_FOUND);
@@ -91,7 +97,7 @@ export class AutoService {
    * Envía un auto a revisión (cambia de BORRADOR a REVISION_JEFE)
    */
   async sendToReview(id: string): Promise<LegalAuto> {
-    const auto = await this.findById(id);
+    const auto = await this.findById(id, ['process']);
 
     if (auto.estado !== AutoStatus.BORRADOR) {
       throw new HttpException(
@@ -112,7 +118,7 @@ export class AutoService {
     reviewAutoDto: ReviewAutoDto,
     aprobadoPorId: string,
   ): Promise<LegalAuto> {
-    const auto = await this.findById(id);
+    const auto = await this.findById(id, ['process']);
 
     if (auto.estado !== AutoStatus.REVISION_JEFE) {
       throw new HttpException(
@@ -121,7 +127,7 @@ export class AutoService {
       );
     }
 
-    // AUDIT LOGGING (INTEGRACIÓN SEGURIDAD)
+    // AUDIT LOGGING (System Config based)
     try {
       const config = await this.configRepository.findOne({ where: {} });
       if (config?.securitySettings?.auditEnabled) {
@@ -133,23 +139,64 @@ export class AutoService {
 
     if (reviewAutoDto.action === ReviewAction.APPROVE) {
       auto.estado = AutoStatus.APROBADO;
-      // Simular generación de firma
-      auto.firmaUrl = this.generateMockSignatureUrl(
-        auto.id,
-        'ELECTRONICA',
-      );
-      auto.estado = AutoStatus.FIRMADO;
+
+      // Registrar en Histoial (Version)
+      await this.versionRepository.save({
+        auto: { id: auto.id } as LegalAuto,
+        contenido: auto.contenido, // No cambia el contenido
+        versionNumber: auto.currentVersion,
+        createdBy: aprobadoPorId,
+        changeReason: 'Auto Aprobado por Jefe (Pendiente de Firma)',
+      });
+
     } else if (reviewAutoDto.action === ReviewAction.RETURN) {
       auto.estado = AutoStatus.DEVUELTO;
       if (reviewAutoDto.observaciones) {
         auto.rejection_comments = reviewAutoDto.observaciones;
       }
+
+      // Registrar en Historial
+      await this.versionRepository.save({
+        auto: { id: auto.id } as LegalAuto,
+        contenido: auto.contenido,
+        versionNumber: auto.currentVersion,
+        createdBy: aprobadoPorId,
+        changeReason: `Auto Devuelto: ${reviewAutoDto.observaciones || 'Sin observaciones'}`,
+      });
     }
 
     if (reviewAutoDto.observaciones) {
       auto.comentarios = reviewAutoDto.observaciones;
     }
     auto.aprobadoPorId = aprobadoPorId;
+
+    return await this.autoRepository.save(auto);
+  }
+
+  /**
+   * Firma digitalmente un auto aprobado
+   */
+  async sign(id: string, userId: string): Promise<LegalAuto> {
+    const auto = await this.findById(id, ['process']);
+
+    if (auto.estado !== AutoStatus.APROBADO) {
+      throw new HttpException(
+        'Solo se pueden firmar autos que estén aprobados',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    auto.firmaUrl = this.generateMockSignatureUrl(auto.id, 'ELECTRONICA');
+    auto.estado = AutoStatus.FIRMADO;
+
+    // Registrar en Historial
+    await this.versionRepository.save({
+      auto: { id: auto.id } as LegalAuto,
+      contenido: auto.contenido,
+      versionNumber: auto.currentVersion,
+      createdBy: userId, // Quien firma
+      changeReason: 'Auto Firmado Digitalmente',
+    });
 
     return await this.autoRepository.save(auto);
   }
@@ -162,7 +209,7 @@ export class AutoService {
    * GUARDA VERSIÓN ANTERIOR
    */
   async updateContent(id: string, nuevoContenido: string, userId?: string): Promise<LegalAuto> {
-    const auto = await this.findById(id);
+    const auto = await this.findById(id, ['process']);
 
     if (auto.estado !== AutoStatus.BORRADOR && auto.estado !== AutoStatus.DEVUELTO) {
       throw new HttpException(
@@ -174,7 +221,7 @@ export class AutoService {
     // Si hay contenido previo, guardar versión
     if (auto.contenido && auto.contenido !== nuevoContenido) {
       await this.versionRepository.save({
-        auto: auto,
+        auto: { id: auto.id } as LegalAuto,
         contenido: auto.contenido,
         versionNumber: auto.currentVersion,
         createdBy: userId,
@@ -214,6 +261,14 @@ export class AutoService {
     auto.estado = AutoStatus.NOTIFICADO;
 
     return await this.autoRepository.save(auto);
+  }
+
+  /**
+   * Elimina un auto por ID
+   */
+  async delete(id: string): Promise<void> {
+    const auto = await this.findById(id);
+    await this.autoRepository.delete(auto.id);
   }
 
   /**

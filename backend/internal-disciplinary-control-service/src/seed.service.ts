@@ -5,6 +5,9 @@ import { DisciplinaryNews, NewsOrigin, NewsStatus } from './entities/disciplinar
 import { Sequence } from './entities/sequence.entity';
 import { DisciplinaryProfessional } from './entities/disciplinary-professional.entity';
 import { DisciplinaryProcess, ProcessStage, ProcessStatus } from './entities/disciplinary-process.entity';
+import { StageConfiguration } from './entities/stage-configuration.entity';
+import { SystemConfiguration } from './entities/system-configuration.entity';
+import { LegalAuto, AutoStatus, AutoType } from './entities/legal-auto.entity';
 
 @Injectable()
 export class SeedService {
@@ -17,24 +20,27 @@ export class SeedService {
     private professionalRepository: Repository<DisciplinaryProfessional>,
     @InjectRepository(DisciplinaryProcess)
     private processRepository: Repository<DisciplinaryProcess>,
+    @InjectRepository(StageConfiguration)
+    private stageConfigRepository: Repository<StageConfiguration>,
+    @InjectRepository(SystemConfiguration)
+    private systemConfigRepository: Repository<SystemConfiguration>,
+    @InjectRepository(LegalAuto)
+    private autoRepository: Repository<LegalAuto>,
   ) { }
 
   /**
    * Ejecuta el seed con datos de prueba
    */
   async seed(): Promise<void> {
-    // Inicializar secuencias
     await this.initializeSequences();
+    await this.seedConfigurations();
 
-    // Crear profesionales
     const { abogado } = await this.createProfessionals();
-
-    // Crear noticias de prueba
     await this.createSampleNews();
 
-    // Crear procesos de prueba
     if (abogado) {
       await this.createSampleProcesses(abogado);
+      await this.createSampleAutos();
     }
 
     console.log('✅ Seed completado exitosamente');
@@ -43,7 +49,6 @@ export class SeedService {
   private async initializeSequences(): Promise<void> {
     const year = new Date().getFullYear();
 
-    // Secuencia de noticias
     let seqNews = await this.sequenceRepository.findOne({
       where: { name: `DISCIPLINARY_NEWS_${year}` },
     });
@@ -55,7 +60,6 @@ export class SeedService {
       await this.sequenceRepository.save(seqNews);
     }
 
-    // Secuencia de procesos
     let seqProcess = await this.sequenceRepository.findOne({
       where: { name: `DISCIPLINARY_PROCESS_${year}` },
     });
@@ -68,8 +72,41 @@ export class SeedService {
     }
   }
 
+  private async seedConfigurations(): Promise<void> {
+    const stages = [
+      { etapa: ProcessStage.RECEPCION, diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
+      { etapa: ProcessStage.EVALUACION, diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
+      { etapa: ProcessStage.INDAGACION_PREVIA, diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
+      { etapa: ProcessStage.INVESTIGACION, diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
+      { etapa: ProcessStage.JUZGAMIENTO, diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
+      { etapa: ProcessStage.FALLO, diasHabiles: 10, descripcion: 'Emisión de fallo', activo: true },
+    ];
+
+    for (const stage of stages) {
+      const exists = await this.stageConfigRepository.findOne({ where: { etapa: stage.etapa } });
+      if (!exists) {
+        await this.stageConfigRepository.save(stage);
+      }
+    }
+
+    const systemCount = await this.systemConfigRepository.count();
+    if (systemCount === 0) {
+      await this.systemConfigRepository.save({
+        roleCapacities: { especializado: 12, universitario: 10, coordinador: 8 },
+        notificationSettings: {
+          vencimiento7dias: true,
+          vencimiento3dias: true,
+          vencimiento1dia: true,
+          procesoVencido: true,
+          asignacionProceso: true,
+        },
+        alertSettings: { porcentajeRiesgo: 80, porcentajeCritico: 95, diasAnticipacion: 7 },
+        securitySettings: { auditEnabled: true, digitalSignature: true, backupEnabled: true },
+      });
+    }
+  }
+
   private async createProfessionals(): Promise<{ jefe: DisciplinaryProfessional, abogado: DisciplinaryProfessional }> {
-    // Jefe
     let jefe = await this.professionalRepository.findOne({ where: { email: 'jefe@esap.edu.co' } });
     if (!jefe) {
       jefe = this.professionalRepository.create({
@@ -79,10 +116,8 @@ export class SeedService {
         estado: 'ACTIVO',
       });
       await this.professionalRepository.save(jefe);
-      console.log('✅ Profesional creado: Hernán Buitrago');
     }
 
-    // Abogado
     let abogado = await this.professionalRepository.findOne({ where: { email: 'tomas@esap.edu.co' } });
     if (!abogado) {
       abogado = this.professionalRepository.create({
@@ -93,18 +128,14 @@ export class SeedService {
         estado: 'ACTIVO',
       });
       await this.professionalRepository.save(abogado);
-      console.log('✅ Profesional creado: Tomás Gutiérrez');
     }
 
-    return { jefe, abogado };
+    return { jefe, abogado: abogado! };
   }
 
   private async createSampleNews(): Promise<void> {
     const existingNews = await this.newsRepository.count();
-    if (existingNews > 0) {
-      console.log('ℹ️  Las noticias ya existen, saltando seed de noticias');
-      return;
-    }
+    if (existingNews > 0) return;
 
     const news = [
       {
@@ -164,14 +195,11 @@ export class SeedService {
 
     for (const newsData of news) {
       const year = new Date().getFullYear();
-      const seqNews = await this.sequenceRepository.findOne({
+      let seqNews = await this.sequenceRepository.findOne({
         where: { name: `DISCIPLINARY_NEWS_${year}` },
       });
 
-      if (!seqNews) {
-        console.error('Secuencia no inicializada');
-        return;
-      }
+      if (!seqNews) continue; // Should exist from initializeSequences
 
       seqNews.currentValue++;
       await this.sequenceRepository.save(seqNews);
@@ -191,17 +219,10 @@ export class SeedService {
 
   private async createSampleProcesses(abogado: DisciplinaryProfessional): Promise<void> {
     const existingProcesses = await this.processRepository.count();
-    if (existingProcesses > 0) {
-      console.log('ℹ️  Los procesos ya existen, saltando seed de procesos');
-      return;
-    }
+    if (existingProcesses > 0) return;
 
-    // Buscar noticias para asociar (asumimos que existen por el paso anterior)
     const noticias = await this.newsRepository.find({ take: 2 });
-    if (noticias.length < 2) {
-      console.log('⚠️ No hay suficientes noticias para crear procesos');
-      return;
-    }
+    if (noticias.length < 2) return;
 
     const processesData = [
       {
@@ -218,14 +239,11 @@ export class SeedService {
 
     for (const procData of processesData) {
       const year = new Date().getFullYear();
-      const seqProc = await this.sequenceRepository.findOne({
+      let seqProc = await this.sequenceRepository.findOne({
         where: { name: `DISCIPLINARY_PROCESS_${year}` },
       });
 
-      if (!seqProc) {
-        console.error('Secuencia de procesos no inicializada');
-        return;
-      }
+      if (!seqProc) continue;
 
       seqProc.currentValue++;
       await this.sequenceRepository.save(seqProc);
@@ -243,5 +261,27 @@ export class SeedService {
       await this.processRepository.save(proceso);
       console.log(`✅ Proceso creado: ${radicadoProceso}`);
     }
+  }
+
+  private async createSampleAutos(): Promise<void> {
+    const count = await this.autoRepository.count();
+    if (count > 0) return;
+
+    const processes = await this.processRepository.find({ relations: ['news'] });
+    if (processes.length === 0) return;
+
+    const autoRevision = this.autoRepository.create({
+      process: processes[0],
+      processId: processes[0].id,
+      tipo: AutoType.AUTO_APERTURA_INDAGACION,
+      contenido: '<h2>AUTO DE APERTURA</h2><p>Texto de prueba</p>',
+      estado: AutoStatus.REVISION_JEFE,
+      currentVersion: 1,
+      comentarios: 'Favor revisar',
+      createdAt: new Date(),
+    } as any);
+    await this.autoRepository.save(autoRevision);
+
+    console.log('✅ Autos de prueba creados');
   }
 }

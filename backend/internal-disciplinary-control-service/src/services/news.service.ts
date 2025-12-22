@@ -38,10 +38,22 @@ export class NewsService {
       const radicado = await this.sequenceService.generateNewsRadicado();
 
       // Procesar archivos adjuntos
-      let adjuntos: string[] = [];
+      const adjuntos: string[] = Array.isArray(createNewsDto.adjuntos)
+        ? [...createNewsDto.adjuntos]
+        : [];
       if (files && files.length > 0) {
-        adjuntos = await this.storageService.saveMultipleFiles(radicado, files);
+        const stored = await this.storageService.saveMultipleFiles(radicado, files);
+        adjuntos.push(...stored);
       }
+
+      // Crear historial inicial
+      const initialHistory = [{
+        id: Date.now().toString(),
+        tipo: 'radicacion',
+        usuario: 'Sistema', // TODO: Get actual user
+        fecha: new Date().toISOString(),
+        observaciones: 'Radicación exitosa en el sistema',
+      }];
 
       // Crear y guardar noticia
       const noticia = this.newsRepository.create({
@@ -49,6 +61,8 @@ export class NewsService {
         ...createNewsDto,
         adjuntos,
         estado: NewsStatus.RADICADA,
+        kanbanStage: 'RECEPCION',
+        historialAuditoria: initialHistory,
       });
 
       return await this.newsRepository.save(noticia);
@@ -111,6 +125,17 @@ export class NewsService {
   ): Promise<DisciplinaryNews> {
     const noticia = await this.findById(id);
     noticia.estado = nuevoEstado;
+
+    // Log history
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'edicion',
+      usuario: 'Sistema', // TODO: Get actual user
+      fecha: new Date().toISOString(),
+      observaciones: `Cambio de estado a ${nuevoEstado}`,
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
     return await this.newsRepository.save(noticia);
   }
 
@@ -121,6 +146,49 @@ export class NewsService {
     const noticia = await this.findById(id);
     noticia.estado = NewsStatus.DEVUELTA;
     noticia.observaciones = returnNewsDto.observaciones;
+
+    // Log history
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'devolucion',
+      usuario: 'Sistema',
+      fecha: new Date().toISOString(),
+      observaciones: returnNewsDto.observaciones,
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
+    return await this.newsRepository.save(noticia);
+  }
+
+  /**
+   * Archiva una noticia
+   */
+  async archive(id: string, reason: string): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(id);
+    noticia.estado = NewsStatus.ARCHIVADA;
+    noticia.observaciones = reason;
+
+    // Log history
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'archivo',
+      usuario: 'Sistema',
+      fecha: new Date().toISOString(),
+      observaciones: reason,
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
+    return await this.newsRepository.save(noticia);
+  }
+
+  /**
+   * Actualiza la etapa Kanban de una noticia
+   */
+  async updateKanbanStage(id: string, kanbanStage?: string): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(id);
+    if (kanbanStage) {
+      noticia.kanbanStage = kanbanStage;
+    }
     return await this.newsRepository.save(noticia);
   }
 

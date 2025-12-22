@@ -4,7 +4,7 @@
  * DISEÑO: Replicado del módulo Carpeta Digital para coherencia visual
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FolderOpen, FileText, Upload, Download, Eye, History,
@@ -17,10 +17,15 @@ import {
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { FlujoProcesoDisciplinario } from './FlujoProcesoDisciplinario';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { Viewer, Worker } from '@react-pdf-viewer/core';
+import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
+import '@react-pdf-viewer/core/lib/styles/index.css';
+import '@react-pdf-viewer/default-layout/lib/styles/index.css';
 
 // Interfaces
 interface Documento {
@@ -35,6 +40,8 @@ interface Documento {
   descripcion: string;
   url?: string;
   urlExterna?: string;
+  downloadUrl?: string; // URL para descargar el documento
+  processId?: string; // ID del proceso al que pertenece
   versiones: VersionDocumento[];
   metadatos: {
     firmado?: boolean;
@@ -284,46 +291,225 @@ const AUDITORIA_MOCK: ActividadAuditoria[] = [
 // Modal de Visor de Documentos
 function ModalVisorDocumento({ 
   documento, 
-  onClose 
+  onClose,
+  processId,
 }: { 
   documento: Documento;
   onClose: () => void;
+  processId?: string;
 }) {
   const [versionSeleccionada, setVersionSeleccionada] = useState(documento.version);
   const [viendoPDF, setViendoPDF] = useState(false);
+  
+  // Plugin de react-pdf-viewer con layout completo (zoom, navegación, etc.)
+  const defaultLayoutPluginInstance = defaultLayoutPlugin();
 
-  const handleDescargarVersion = () => {
-    const versionData = documento.versiones.find(v => v.numero === versionSeleccionada);
-    
-    toast.success('Descarga Iniciada', {
-      description: `Descargando versión ${versionSeleccionada} de ${documento.nombre}`
-    });
+  const handleDescargarVersion = async () => {
+    try {
+      if (!processId || !documento.id) {
+        toast.error('No se puede descargar', {
+          id: 'download',
+          description: 'Falta información del proceso o documento'
+        });
+        return;
+      }
 
-    // Simular descarga del documento
-    const link = document.createElement('a');
-    link.href = '#';
-    link.download = `${documento.nombre}_v${versionSeleccionada}.pdf`;
-    
-    // Registrar actividad de descarga
-    setTimeout(() => {
-      toast.info('Descarga Completada', {
-        description: `${documento.nombre} (Versión ${versionSeleccionada}) - ${versionData?.tamaño || documento.tamaño}`
+      toast.loading('Generando PDF...', { id: 'download' });
+
+      // Descargar el archivo original primero
+      const baseUrl = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3000';
+      const downloadUrl = `${baseUrl}/control-disciplinario/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
+      const token = localStorage.getItem('esap_access_token');
+      
+      const response = await fetch(downloadUrl, {
+        headers: token ? {
+          'Authorization': `Bearer ${token}`,
+        } : {},
       });
-    }, 1000);
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      
+      // Verificar si ya es PDF
+      const fileType = blob.type || '';
+      const isPDF = fileType === 'application/pdf' || documento.nombre.toLowerCase().endsWith('.pdf');
+
+      if (isPDF) {
+        // Si ya es PDF, descargarlo directamente
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${documento.nombre}_v${versionSeleccionada}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } else {
+        // Convertir a PDF usando jsPDF
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const pdf = new jsPDF();
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const margin = 20;
+            let yPos = margin;
+
+            // Encabezado
+            pdf.setFillColor(0, 61, 165);
+            pdf.rect(0, 0, pageWidth, 50, 'F');
+            pdf.setTextColor(255, 255, 255);
+            pdf.setFontSize(18);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text('VERSIÓN DE DOCUMENTO', pageWidth / 2, 25, { align: 'center' });
+            pdf.setFontSize(12);
+            pdf.text(`Versión ${versionSeleccionada}`, pageWidth / 2, 38, { align: 'center' });
+
+            // Información del documento
+            pdf.setTextColor(0, 0, 0);
+            yPos = 70;
+            pdf.setFontSize(14);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text('Información del Documento', margin, yPos);
+            
+            yPos += 15;
+            pdf.setFontSize(10);
+            pdf.setFont('helvetica', 'normal');
+            pdf.text(`Nombre: ${documento.nombre}`, margin, yPos);
+            
+            yPos += 10;
+            pdf.text(`Tipo: ${documento.tipo.toUpperCase()}`, margin, yPos);
+            
+            yPos += 10;
+            pdf.text(`Etapa: ${documento.etapa}`, margin, yPos);
+            
+            yPos += 10;
+            pdf.text(`Tamaño: ${documento.tamaño}`, margin, yPos);
+            
+            yPos += 10;
+            pdf.text(`Fecha de Carga: ${new Date(documento.fechaCarga).toLocaleDateString('es-ES')}`, margin, yPos);
+            
+            yPos += 10;
+            pdf.text(`Cargado por: ${documento.usuarioCarga}`, margin, yPos);
+
+            if (documento.descripcion) {
+              yPos += 15;
+              pdf.setFont('helvetica', 'bold');
+              pdf.text('Descripción:', margin, yPos);
+              yPos += 10;
+              pdf.setFont('helvetica', 'normal');
+              const descLines = pdf.splitTextToSize(documento.descripcion, pageWidth - 2 * margin);
+              pdf.text(descLines, margin, yPos);
+              yPos += descLines.length * 7;
+            }
+
+            // Información de la versión
+            const versionData = documento.versiones.find(v => v.numero === versionSeleccionada);
+            if (versionData) {
+              yPos += 15;
+              pdf.setFont('helvetica', 'bold');
+              pdf.text(`Información de la Versión ${versionSeleccionada}:`, margin, yPos);
+              yPos += 10;
+              pdf.setFont('helvetica', 'normal');
+              pdf.text(`Fecha: ${new Date(versionData.fecha).toLocaleDateString('es-ES')}`, margin, yPos);
+              yPos += 10;
+              pdf.text(`Usuario: ${versionData.usuario}`, margin, yPos);
+              if (versionData.cambios) {
+                yPos += 10;
+                pdf.text('Cambios:', margin, yPos);
+                yPos += 7;
+                const cambiosLines = pdf.splitTextToSize(versionData.cambios, pageWidth - 2 * margin);
+                pdf.text(cambiosLines, margin, yPos);
+                yPos += cambiosLines.length * 7;
+              }
+            }
+
+            // Nota sobre el contenido original
+            if (!isPDF) {
+              yPos += 15;
+              pdf.setFont('helvetica', 'bold');
+              pdf.text('Nota:', margin, yPos);
+              yPos += 10;
+              pdf.setFont('helvetica', 'normal');
+              pdf.setFontSize(9);
+              const notaText = `El contenido original del archivo no se puede mostrar en este PDF. Por favor, descargue el archivo original para ver su contenido completo.`;
+              const notaLines = pdf.splitTextToSize(notaText, pageWidth - 2 * margin);
+              pdf.text(notaLines, margin, yPos);
+            }
+
+            // Pie de página
+            pdf.setFontSize(8);
+            pdf.setTextColor(128, 128, 128);
+            pdf.text(
+              `Generado el ${new Date().toLocaleString('es-ES')}`,
+              pageWidth / 2,
+              pageHeight - 15,
+              { align: 'center' }
+            );
+
+            // Descargar el PDF generado
+            pdf.save(`${documento.nombre}_v${versionSeleccionada}.pdf`);
+            
+            toast.success('PDF generado exitosamente', {
+              id: 'download',
+              description: `${documento.nombre} (Versión ${versionSeleccionada})`
+            });
+          } catch (error: any) {
+            console.error('Error al generar PDF:', error);
+            // Si falla la generación del PDF, intentar descargar el archivo original
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${documento.nombre}_v${versionSeleccionada}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            
+            toast.success('Descarga completada', {
+              id: 'download',
+              description: `${documento.nombre} (Versión ${versionSeleccionada})`
+            });
+          }
+        };
+        reader.readAsDataURL(blob);
+        return; // Salir aquí, la descarga se manejará en el callback
+      }
+
+      toast.success('Descarga completada', {
+        id: 'download',
+        description: `${documento.nombre} (Versión ${versionSeleccionada})`
+      });
+    } catch (error: any) {
+      toast.error('Error al descargar', {
+        id: 'download',
+        description: error.message || 'No se pudo descargar el documento'
+      });
+    }
   };
 
   const handleVerPDF = () => {
-    setViendoPDF(true);
-    toast.success('Abriendo Visor PDF', {
-      description: `Cargando versión ${versionSeleccionada} del documento`
-    });
-    
-    // Simular apertura de visor PDF
-    setTimeout(() => {
-      toast.info('Documento Listo', {
-        description: 'El visor PDF está listo. En producción, se abriría el documento completo.'
+    if (!processId || !documento.id) {
+      toast.error('No se puede ver el documento', {
+        description: 'Falta información del proceso o documento'
       });
-    }, 500);
+      return;
+    }
+    setViendoPDF(true);
+  };
+
+  const handleCerrarVisor = () => {
+    setViendoPDF(false);
+  };
+
+  // Construir URL del documento para el visor
+  // Nota: onClose se pasa como prop y se usa para cerrar el modal completo
+  const getDocumentUrl = () => {
+    const baseUrl = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3000';
+    return `${baseUrl}/control-disciplinario/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
   };
 
   return (
@@ -383,31 +569,48 @@ function ModalVisorDocumento({
 
         {/* Contenido */}
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 240px)' }}>
-          {/* Vista previa del PDF si está activa */}
+          {/* Vista previa del PDF con react-pdf-viewer */}
           {viendoPDF && (
-            <Card className="p-8 mb-6 bg-gray-100 border-2 border-dashed border-gray-300">
-              <div className="text-center">
-                <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-lg font-bold text-gray-700 mb-2">
-                  Vista Previa del Documento
-                </p>
-                <p className="text-sm text-gray-600 mb-4">
-                  {documento.nombre} - Versión {versionSeleccionada}
-                </p>
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                  <p className="text-sm text-gray-700">
-                    🔍 En producción, aquí se mostraría el visor PDF completo con el documento.
-                  </p>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Se puede integrar con bibliotecas como React-PDF o PDF.js
-                  </p>
+            <Card className="mb-6 overflow-hidden">
+              {/* Header con botón de cerrar */}
+              <div className="bg-gradient-to-r from-[#003DA5] to-[#0056D6] px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-white">
+                  <Eye className="w-4 h-4" />
+                  <span className="font-medium text-sm">
+                    {documento.nombre} - Versión {versionSeleccionada}
+                  </span>
                 </div>
-                <Button 
-                  onClick={() => setViendoPDF(false)}
-                  className="mt-4 bg-gray-500"
-                >
-                  Cerrar Vista Previa
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => window.open(getDocumentUrl(), '_blank')}
+                    className="h-7 px-3 gap-1 text-white hover:bg-white/10"
+                    title="Abrir en nueva pestaña"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Nueva pestaña
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={handleCerrarVisor}
+                    className="h-7 px-3 gap-1 text-white hover:bg-white/10"
+                  >
+                    <X className="w-3 h-3" />
+                    Cerrar visor
+                  </Button>
+                </div>
+              </div>
+
+              {/* Área del visor con react-pdf-viewer (incluye su propio toolbar con zoom, páginas, etc.) */}
+              <div style={{ height: '60vh' }}>
+                <Worker workerUrl="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js">
+                  <Viewer 
+                    fileUrl={getDocumentUrl()} 
+                    plugins={[defaultLayoutPluginInstance]}
+                  />
+                </Worker>
               </div>
             </Card>
           )}
@@ -741,10 +944,16 @@ function ModalSubirDocumento({
   );
 }
 
+// Función para validar si un string es un UUID válido
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
 // Componente Principal
 export function ExpedienteElectronico() {
-  const [procesoSeleccionado, setProcesoSeleccionado] = useState<Proceso | null>(PROCESOS_MOCK[0]);
-  const [documentos, setDocumentos] = useState<Documento[]>(DOCUMENTOS_MOCK);
+  const [procesoSeleccionado, setProcesoSeleccionado] = useState<Proceso | null>(null);
+  const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTipo, setFilterTipo] = useState('all');
   const [showModalVisor, setShowModalVisor] = useState(false);
@@ -752,11 +961,111 @@ export function ExpedienteElectronico() {
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState<Documento | null>(null);
   const [vistaActual, setVistaActual] = useState<'documentos' | 'indice' | 'auditoria'>('documentos');
   const [showModalFlujo, setShowModalFlujo] = useState(false);
+  const [cargandoDocumentos, setCargandoDocumentos] = useState(false);
+  const [procesos, setProcesos] = useState<Proceso[]>([]);
+  const [cargandoProcesos, setCargandoProcesos] = useState(false);
   
   // Estados para el buscador de procesos
   const [procesoSearchQuery, setProcesoSearchQuery] = useState('');
   const [showProcesoDropdown, setShowProcesoDropdown] = useState(false);
-  const [procesosRecientes, setProcesosRecientes] = useState<Proceso[]>([PROCESOS_MOCK[0], PROCESOS_MOCK[1]]);
+  const [procesosRecientes, setProcesosRecientes] = useState<Proceso[]>([]);
+
+  // Cargar procesos desde la API
+  useEffect(() => {
+    const cargarProcesos = async () => {
+      try {
+        setCargandoProcesos(true);
+        const procesosApi = await disciplinaryService.getAllProcesos();
+        
+        // Convertir procesos de la API al formato del componente
+        const procesosConvertidos: Proceso[] = procesosApi.map(p => {
+          // Manejar disciplinable que puede ser un objeto o un array
+          let denunciadoNombre = 'Sin nombre';
+          if (p.news?.disciplinable) {
+            if (Array.isArray(p.news.disciplinable) && p.news.disciplinable.length > 0) {
+              denunciadoNombre = p.news.disciplinable[0]?.nombre || 'Sin nombre';
+            } else if (typeof p.news.disciplinable === 'object' && p.news.disciplinable.nombre) {
+              denunciadoNombre = p.news.disciplinable.nombre;
+            } else if (typeof p.news.disciplinable === 'string') {
+              denunciadoNombre = p.news.disciplinable;
+            }
+          }
+          
+          return {
+            id: p.id,
+            numero: p.radicadoProceso,
+            denunciado: denunciadoNombre,
+            etapaActual: p.etapaActual || 'Sin etapa',
+            fechaInicio: p.createdAt || new Date().toISOString(),
+            estado: p.estado || 'ACTIVO',
+          };
+        });
+        
+        setProcesos(procesosConvertidos);
+        
+        // Seleccionar el primer proceso si hay alguno
+        if (procesosConvertidos.length > 0 && !procesoSeleccionado) {
+          setProcesoSeleccionado(procesosConvertidos[0]);
+          setProcesosRecientes(procesosConvertidos.slice(0, 5));
+        }
+      } catch (error: any) {
+        console.error('Error al cargar procesos:', error);
+        toast.error('Error al cargar procesos', {
+          description: error.message || 'No se pudieron cargar los procesos'
+        });
+        // Si falla, usar datos mock como fallback
+        setProcesos(PROCESOS_MOCK);
+      } finally {
+        setCargandoProcesos(false);
+      }
+    };
+    
+    cargarProcesos();
+  }, []);
+
+  // Cargar documentos desde la BD cuando se selecciona un proceso
+  useEffect(() => {
+    const cargarDocumentos = async () => {
+      if (!procesoSeleccionado?.id) {
+        setDocumentos([]);
+        return;
+      }
+
+      // Validar que el ID sea un UUID válido
+      if (!isValidUUID(procesoSeleccionado.id)) {
+        console.warn('ID de proceso inválido (no es UUID):', procesoSeleccionado.id);
+        toast.error('ID de proceso inválido', {
+          description: 'El proceso seleccionado no tiene un ID válido. Por favor, selecciona un proceso de la lista.'
+        });
+        setDocumentos([]);
+        return;
+      }
+
+      try {
+        setCargandoDocumentos(true);
+        const respuesta = await disciplinaryService.getDocumentosExpediente(procesoSeleccionado.id);
+        
+        if (respuesta && respuesta.documentos) {
+          console.log('Documentos cargados desde BD:', respuesta.documentos.length);
+          // El backend ya devuelve el formato correcto, hacer cast explícito
+          setDocumentos(respuesta.documentos as Documento[]);
+        } else {
+          console.warn('No se recibieron documentos en la respuesta:', respuesta);
+          setDocumentos([]);
+        }
+      } catch (error: any) {
+        console.error('Error al cargar documentos:', error);
+        toast.error('Error al cargar documentos', {
+          description: error.message || 'No se pudieron cargar los documentos del expediente'
+        });
+        setDocumentos([]);
+      } finally {
+        setCargandoDocumentos(false);
+      }
+    };
+
+    cargarDocumentos();
+  }, [procesoSeleccionado?.id]);
 
   const handleVerDocumento = (doc: Documento) => {
     setDocumentoSeleccionado(doc);
@@ -768,11 +1077,140 @@ export function ExpedienteElectronico() {
     });
   };
 
-  const handleSubirDocumento = (docData: any) => {
-    setShowModalSubir(false);
-    toast.success('Documento Cargado', {
-      description: `${docData.nombre} ha sido agregado al expediente`
-    });
+  const handleDescargarDocumento = async (doc: Documento) => {
+    try {
+      if (!procesoSeleccionado?.id) {
+        toast.error('Proceso no seleccionado', {
+          description: 'Debe seleccionar un proceso para descargar documentos'
+        });
+        return;
+      }
+
+      if (!doc.id) {
+        toast.error('Documento inválido', {
+          description: 'El documento no tiene un ID válido'
+        });
+        return;
+      }
+
+      toast.loading('Descargando documento...', { id: 'download-doc' });
+
+      await disciplinaryService.downloadDocument(
+        procesoSeleccionado.id,
+        doc.id,
+        doc.nombre
+      );
+
+      toast.success('Descarga completada', {
+        id: 'download-doc',
+        description: doc.nombre
+      });
+    } catch (error: any) {
+      toast.error('Error al descargar', {
+        id: 'download-doc',
+        description: error.message || 'No se pudo descargar el documento'
+      });
+    }
+  };
+
+  const handleSubirDocumento = async (docData: any) => {
+    try {
+      if (!procesoSeleccionado?.id) {
+        toast.error('Proceso no seleccionado', {
+          description: 'Debe seleccionar un proceso para cargar documentos'
+        });
+        return;
+      }
+
+      if (!docData.archivo && !docData.urlExterna) {
+        toast.error('Archivo requerido', {
+          description: 'Debe seleccionar un archivo para cargar'
+        });
+        return;
+      }
+
+      // Si es un enlace externo, solo mostrar mensaje (no implementado en backend aún)
+      if (docData.urlExterna) {
+        toast.warning('Enlaces externos', {
+          description: 'La funcionalidad de enlaces externos aún no está disponible'
+        });
+        return;
+      }
+
+      const toastId = toast.loading('Cargando documento...', {
+        description: 'Por favor espere'
+      });
+
+      // Convertir tipoDocumento al formato esperado por el backend
+      const tipoBackend = docData.tipo === 'auto' ? 'AUTO' :
+                         docData.tipo === 'evidencia' ? 'EVIDENCIA' :
+                         docData.tipo === 'oficio' ? 'OFICIO' :
+                         docData.tipo === 'notificacion' ? 'NOTIFICACION' :
+                         docData.tipo === 'acta' ? 'ACTA' :
+                         'DOCUMENTO';
+
+      // Guardar solo la descripción simple (el backend recibe los campos por separado)
+      const descripcionFinal = docData.descripcion || '';
+
+      // Obtener información del usuario actual
+      const usuarioActual = localStorage.getItem('esap_user_name') || 'Usuario del Sistema';
+
+      // Usar el servicio para subir el documento
+      const resultado = await disciplinaryService.uploadDocumento(
+        procesoSeleccionado.id,
+        docData.archivo,
+        tipoBackend,
+        descripcionFinal,
+        docData.nombre,
+        docData.etapa || undefined,
+        usuarioActual
+      );
+
+      toast.success('Documento cargado exitosamente', {
+        id: toastId,
+        description: `${docData.nombre} ha sido agregado al expediente`
+      });
+
+      setShowModalSubir(false);
+
+      // Recargar los documentos del expediente inmediatamente
+      if (procesoSeleccionado?.id) {
+        try {
+          // Esperar un momento para que el backend procese el documento
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          const respuesta = await disciplinaryService.getDocumentosExpediente(procesoSeleccionado.id);
+          
+          if (respuesta && respuesta.documentos) {
+            setDocumentos(respuesta.documentos as Documento[]);
+            console.log('Documentos recargados:', respuesta.documentos.length);
+          } else {
+            console.warn('Respuesta de documentos vacía o inválida:', respuesta);
+            // Intentar recargar una vez más después de un segundo
+            setTimeout(async () => {
+              try {
+                const respuestaRetry = await disciplinaryService.getDocumentosExpediente(procesoSeleccionado.id);
+                if (respuestaRetry && respuestaRetry.documentos) {
+                  setDocumentos(respuestaRetry.documentos as Documento[]);
+                }
+              } catch (e) {
+                console.error('Error en retry de recarga:', e);
+              }
+            }, 1000);
+          }
+        } catch (error: any) {
+          console.error('Error al recargar documentos:', error);
+          toast.warning('Documento cargado, pero no se pudo actualizar la lista', {
+            description: 'Por favor, recargue la página para ver el nuevo documento'
+          });
+        }
+      }
+      
+    } catch (error: any) {
+      toast.error('Error al cargar documento', {
+        description: error.message || 'No se pudo cargar el documento'
+      });
+    }
   };
 
   const handleExportarExpediente = () => {
@@ -820,27 +1258,21 @@ export function ExpedienteElectronico() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.text(`Número de Proceso: ${procesoSeleccionado?.numero || 'N/A'}`, 14, 105);
-    doc.text(`Etapa Actual: ${procesoSeleccionado?.etapaActual || procesoSeleccionado?.etapa || 'N/A'}`, 14, 113);
-    doc.text(`Estado: ${procesoSeleccionado?.estado || procesoSeleccionado?.estadoActual || 'En Gestión'}`, 14, 121);
-    doc.text(`Fecha de Inicio: ${procesoSeleccionado?.fechaInicio || procesoSeleccionado?.fechaCreacion || 'N/A'}`, 14, 129);
+    doc.text(`Etapa Actual: ${procesoSeleccionado?.etapaActual || 'N/A'}`, 14, 113);
+    doc.text(`Estado: ${procesoSeleccionado?.estado || 'En Gestión'}`, 14, 121);
+    doc.text(`Fecha de Inicio: ${procesoSeleccionado?.fechaInicio || 'N/A'}`, 14, 129);
 
     doc.setFont('helvetica', 'bold');
-    doc.text('DENUNCIANTE', 14, 142);
+    doc.text('DENUNCIADO', 14, 142);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Nombre: ${procesoSeleccionado?.denunciante?.nombre || procesoSeleccionado?.denuncianteNombre || 'N/A'}`, 14, 150);
-    doc.text(`${procesoSeleccionado?.denunciante?.tipoIdentificacion || 'CC'}: ${procesoSeleccionado?.denunciante?.numeroIdentificacion || 'N/A'}`, 14, 158);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('DENUNCIADO', 14, 171);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Nombre: ${procesoSeleccionado?.denunciado?.nombre || procesoSeleccionado?.denunciadoNombre || procesoSeleccionado?.denunciado || 'N/A'}`, 14, 179);
-    doc.text(`${procesoSeleccionado?.denunciado?.tipoIdentificacion || 'CC'}: ${procesoSeleccionado?.denunciado?.numeroIdentificacion || procesoSeleccionado?.cedula || 'N/A'}`, 14, 187);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('PROFESIONAL ASIGNADO', 14, 200);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Nombre: ${procesoSeleccionado?.profesionalAsignado?.nombre || procesoSeleccionado?.profesional || 'N/A'}`, 14, 208);
-    doc.text(`${procesoSeleccionado?.profesionalAsignado?.tipoIdentificacion || 'CC'}: ${procesoSeleccionado?.profesionalAsignado?.numeroIdentificacion || 'N/A'}`, 14, 216);
+    const denunciadoStr = typeof procesoSeleccionado?.denunciado === 'string' 
+      ? procesoSeleccionado.denunciado 
+      : procesoSeleccionado?.denunciado?.nombre || 'N/A';
+    doc.text(`Nombre: ${denunciadoStr}`, 14, 150);
+    const denunciadoId = typeof procesoSeleccionado?.denunciado === 'object' 
+      ? `${procesoSeleccionado.denunciado.tipoIdentificacion || 'CC'}: ${procesoSeleccionado.denunciado.numeroIdentificacion || 'N/A'}` 
+      : 'N/A';
+    doc.text(denunciadoId, 14, 158);
 
     doc.setFont('helvetica', 'bold');
     doc.text('ESTADÍSTICAS DEL EXPEDIENTE', 14, 229);
@@ -1110,11 +1542,12 @@ export function ExpedienteElectronico() {
   };
 
   // Filtrar procesos según búsqueda
-  const procesosFiltrados = PROCESOS_MOCK.filter(p => {
+  const procesosFiltrados = procesos.filter(p => {
     const query = procesoSearchQuery.toLowerCase();
+    const denunciadoStr = typeof p.denunciado === 'string' ? p.denunciado : p.denunciado.nombre;
     return (
       p.numero.toLowerCase().includes(query) ||
-      p.denunciado.toLowerCase().includes(query) ||
+      denunciadoStr.toLowerCase().includes(query) ||
       p.etapaActual.toLowerCase().includes(query) ||
       p.estado.toLowerCase().includes(query)
     );
@@ -1325,6 +1758,20 @@ export function ExpedienteElectronico() {
       {/* Vista: Documentos - TABLA */}
       {vistaActual === 'documentos' && (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          {cargandoDocumentos && (
+            <div className="p-8 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <p className="mt-2 text-gray-600">Cargando documentos...</p>
+            </div>
+          )}
+          {!cargandoDocumentos && documentos.length === 0 && (
+            <div className="p-8 text-center">
+              <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 font-medium">No hay documentos en este expediente</p>
+              <p className="text-sm text-gray-500 mt-2">Sube un documento para comenzar</p>
+            </div>
+          )}
+          {!cargandoDocumentos && documentos.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -1412,6 +1859,7 @@ export function ExpedienteElectronico() {
                           Ver
                         </button>
                         <button
+                          onClick={() => handleDescargarDocumento(doc)}
                           className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:opacity-80 transition-opacity"
                         >
                           <Download className="w-3.5 h-3.5 inline mr-1" />
@@ -1424,6 +1872,7 @@ export function ExpedienteElectronico() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
 
@@ -1560,6 +2009,7 @@ export function ExpedienteElectronico() {
         {showModalVisor && documentoSeleccionado && (
           <ModalVisorDocumento
             documento={documentoSeleccionado}
+            processId={procesoSeleccionado?.id}
             onClose={() => {
               setShowModalVisor(false);
               setDocumentoSeleccionado(null);

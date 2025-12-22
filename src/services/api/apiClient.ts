@@ -162,13 +162,24 @@ export class ApiClient {
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
-            const response = JSON.parse(xhr.responseText);
-            resolve(response.data);
+            const responseText = xhr.responseText;
+            if (!responseText) {
+              resolve({} as T);
+              return;
+            }
+            const response = JSON.parse(responseText);
+            // Algunos backends devuelven { data: {...} }, otros devuelven directamente el objeto
+            resolve((response.data !== undefined ? response.data : response) as T);
           } catch (error) {
             reject(new Error('Error al parsear respuesta del servidor'));
           }
         } else {
-          reject(new Error(`Error ${xhr.status}: ${xhr.statusText}`));
+          try {
+            const errorResponse = JSON.parse(xhr.responseText);
+            reject(new Error(errorResponse.message || `Error ${xhr.status}: ${xhr.statusText}`));
+          } catch {
+            reject(new Error(`Error ${xhr.status}: ${xhr.statusText}`));
+          }
         }
       });
 
@@ -500,12 +511,16 @@ export class ApiClient {
         const serviceUrl = serviceUrlMap[serviceName];
 
         if (serviceUrl) {
-          // Construir URL directa al microservicio (sin el prefijo del servicio)
-          fullUrl = `${serviceUrl}${restPath || '/'}`;
+          // Construir URL directa al microservicio
+          // En modo directo, algunos servicios mantienen /api/v1, otros no
+          // Por ahora, mantenemos el path completo incluyendo /api/v1 si existe
+          const path = restPath || '/';
+          fullUrl = `${serviceUrl}${path}`;
           console.log('🔗 API Client [DIRECT MODE]:', {
             endpoint,
             serviceName,
             serviceUrl,
+            restPath: path,
             finalURL: fullUrl,
           });
         } else {

@@ -14,7 +14,9 @@ import {
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+
+
 
 import { disciplinaryService, DisciplinaryProcess } from '../../../services/api/disciplinary.service';
 
@@ -125,19 +127,19 @@ const PROFESIONALES_DATA: Profesional[] = [
 ];
 
 // ==================== MODAL VER DETALLE ====================
-function ModalDetalleProfesional({ 
-  profesional, 
+function ModalDetalleProfesional({
+  profesional,
   onClose,
   onEditar,
-  onVerProcesos 
-}: { 
-  profesional: Profesional; 
+  onVerProcesos
+}: {
+  profesional: Profesional;
   onClose: () => void;
   onEditar?: (profesional: Profesional) => void;
   onVerProcesos?: (profesional: Profesional) => void;
 }) {
   const porcentajeCarga = (profesional.procesosAsignados / profesional.capacidadMaxima) * 100;
-  const tasaEfectividad = profesional.procesosAsignados > 0 
+  const tasaEfectividad = profesional.procesosAsignados > 0
     ? ((profesional.procesosAlDia / profesional.procesosAsignados) * 100).toFixed(1)
     : '100';
 
@@ -195,7 +197,7 @@ function ModalDetalleProfesional({
                 <p className="text-sm font-medium mb-1" style={{ color: '#6B7280' }}>
                   {profesional.cargo}
                 </p>
-                <Badge 
+                <Badge
                   className="text-xs"
                   style={{
                     background: profesional.estado === 'activo' ? '#D1FAE5' : profesional.estado === 'vacaciones' ? '#FEF3C7' : '#FEE2E2',
@@ -308,7 +310,7 @@ function ModalDetalleProfesional({
             <h3 className="text-lg font-extrabold mb-4" style={{ color: '#1F2937' }}>
               Carga de Trabajo
             </h3>
-            
+
             {/* Barra de capacidad */}
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
@@ -326,11 +328,11 @@ function ModalDetalleProfesional({
                   transition={{ duration: 1 }}
                   className="h-full rounded-full"
                   style={{
-                    background: porcentajeCarga >= 90 
+                    background: porcentajeCarga >= 90
                       ? 'linear-gradient(90deg, #DC2626 0%, #EF4444 100%)'
                       : porcentajeCarga >= 70
-                      ? 'linear-gradient(90deg, #F59E0B 0%, #FFC107 100%)'
-                      : 'linear-gradient(90deg, #10B981 0%, #34D399 100%)'
+                        ? 'linear-gradient(90deg, #F59E0B 0%, #FFC107 100%)'
+                        : 'linear-gradient(90deg, #10B981 0%, #34D399 100%)'
                   }}
                 />
               </div>
@@ -410,19 +412,11 @@ function ModalDetalleProfesional({
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t flex items-center gap-3" style={{ borderColor: '#E5E7EB' }}>
-          <button
-            onClick={handleEditarProfesional}
-            className="flex-1 px-4 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-2"
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-          >
-            <Edit className="w-4 h-4" />
-            Editar Profesional
-          </button>
+        <div className="p-6 border-t flex items-center justify-center" style={{ borderColor: '#E5E7EB' }}>
           <button
             onClick={handleVerProcesos}
-            className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2"
-            style={{ background: '#F3F4F6', color: '#4B5563' }}
+            className="px-6 py-2.5 rounded-xl font-semibold flex items-center gap-2"
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
           >
             <FolderOpen className="w-4 h-4" />
             Ver Procesos
@@ -434,41 +428,134 @@ function ModalDetalleProfesional({
 }
 
 // ==================== MODAL ASIGNAR PROFESIONAL ====================
-// Mock de usuarios disponibles desde Administración de Personas
-const USUARIOS_DISPONIBLES = [
-  { id: 'u1', nombre: 'Roberto García Martínez', cargo: 'Profesional Especializado', email: 'roberto.garcia@esap.edu.co', telefono: '3001234567' },
-  { id: 'u2', nombre: 'Laura Sánchez Díaz', cargo: 'Profesional Universitario', email: 'laura.sanchez@esap.edu.co', telefono: '3109876543' },
-  { id: 'u3', nombre: 'Pedro Ramírez Castro', cargo: 'Profesional Senior', email: 'pedro.ramirez@esap.edu.co', telefono: '3205551234' },
-  { id: 'u4', nombre: 'Sandra Moreno León', cargo: 'Coordinador', email: 'sandra.moreno@esap.edu.co', telefono: '3157778899' }
-];
 
-function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => void; profesional?: Profesional }) {
-  const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<typeof USUARIOS_DISPONIBLES[0] | null>(null);
+function ModalFormularioProfesional({ onClose, profesional, onSuccess }: { onClose: () => void; profesional?: Profesional; onSuccess?: () => void }) {
+  const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<any | null>(null);
   const [searchUsuario, setSearchUsuario] = useState('');
   const [capacidadMaxima, setCapacidadMaxima] = useState(profesional?.capacidadMaxima || 10);
   const [especialidad, setEspecialidad] = useState(profesional?.especialidad || '');
   const [territorial, setTerritorial] = useState(profesional?.territorial || '');
+  const [candidatos, setCandidatos] = useState<any[]>([]);
+  const [loadingCandidatos, setLoadingCandidatos] = useState(false);
+  const [configCapacidades, setConfigCapacidades] = useState<Record<string, number>>({});
+  const [limiteDetectado, setLimiteDetectado] = useState<number | null>(null);
 
-  const usuariosFiltrados = USUARIOS_DISPONIBLES.filter(u =>
+  // Cargar configuración global y candidatos
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const config = await disciplinaryService.getGlobalConfig();
+        if (config && config.roleCapacities) {
+          setConfigCapacidades(config.roleCapacities);
+        }
+      } catch (err) {
+        console.error('Error loading config:', err);
+      }
+    };
+    loadConfig();
+
+    if (!profesional) {
+      fetchCandidatos();
+    }
+  }, [profesional]);
+
+  // Efecto para actualizar capacidad cuando cambia el usuario seleccionado
+  useEffect(() => {
+    if (usuarioSeleccionado && Object.keys(configCapacidades).length > 0) {
+      const cargoNormalizado = usuarioSeleccionado.cargo
+        .toLowerCase()
+        .replace(/ /g, '_')
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Remove accents just in case
+
+      // Try exact match, or partial match, or fallback
+      let limit = 10; // Default fallback
+
+      // Check direct key match (e.g. 'profesional_universitario')
+      if (configCapacidades[cargoNormalizado]) {
+        limit = configCapacidades[cargoNormalizado];
+      } else {
+        // Try finding a key that is contained in the cargo string
+        const matchingKey = Object.keys(configCapacidades).find(key =>
+          cargoNormalizado.includes(key) || key.includes(cargoNormalizado)
+        );
+        if (matchingKey) {
+          limit = configCapacidades[matchingKey];
+        } else {
+          // Check 'especializado', 'universitario' specifics
+          if (cargoNormalizado.includes('especializado')) limit = configCapacidades['especializado'] || 12;
+          else if (cargoNormalizado.includes('universitario')) limit = configCapacidades['universitario'] || 10;
+          else if (cargoNormalizado.includes('senior')) limit = configCapacidades['senior'] || 15;
+          else if (cargoNormalizado.includes('coordinador')) limit = configCapacidades['coordinador'] || 8;
+        }
+      }
+
+      setCapacidadMaxima(limit);
+      setLimiteDetectado(limit);
+      toast.info(`Capacidad ajustada a ${limit} según cargo: ${usuarioSeleccionado.cargo}`);
+    }
+  }, [usuarioSeleccionado, configCapacidades]);
+
+  const fetchCandidatos = async () => {
+    try {
+      setLoadingCandidatos(true);
+      const data = await disciplinaryService.getCandidates();
+      setCandidatos(data);
+    } catch (error) {
+      console.error('Error fetching candidates:', error);
+      toast.error('Error al cargar candidatos disponibles');
+    } finally {
+      setLoadingCandidatos(false);
+    }
+  };
+
+  const usuariosFiltrados = candidatos.filter(u =>
     u.nombre.toLowerCase().includes(searchUsuario.toLowerCase()) ||
     u.email.toLowerCase().includes(searchUsuario.toLowerCase()) ||
     u.cargo.toLowerCase().includes(searchUsuario.toLowerCase())
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (profesional) {
-      toast.success('Configuración actualizada exitosamente');
-    } else {
-      if (!usuarioSeleccionado) {
-        toast.error('Debe seleccionar un usuario');
-        return;
+    try {
+      if (profesional) {
+        // Actualizar profesional existente
+        await disciplinaryService.updateProfessional(profesional.id, {
+          especialidad,
+          territorial,
+          capacidadMaxima
+        });
+        toast.success('Configuración actualizada exitosamente');
+      } else {
+        if (!usuarioSeleccionado) {
+          toast.error('Debe seleccionar un usuario');
+          return;
+        }
+
+        // Crear profesional en el equipo disciplinario
+        await disciplinaryService.crearProfesional({
+          nombreCompleto: usuarioSeleccionado.nombre,
+          email: usuarioSeleccionado.email,
+          cargo: usuarioSeleccionado.cargo,
+          telefono: usuarioSeleccionado.telefono,
+          especialidad,
+          territorial,
+          capacidadMaxima,
+          estado: 'ACTIVO'
+        });
+
+        toast.success('Profesional asignado al equipo disciplinario exitosamente', {
+          description: `${usuarioSeleccionado.nombre} ha sido agregado al equipo`
+        });
       }
-      toast.success('Profesional asignado al equipo disciplinario exitosamente', {
-        description: `${usuarioSeleccionado.nombre} ha sido agregado al equipo`
-      });
+
+      if (onSuccess) {
+        onSuccess();
+      }
+      onClose();
+    } catch (error) {
+      console.error('Error saving professional:', error);
+      toast.error(profesional ? 'Error al actualizar profesional' : 'Error al asignar profesional al equipo');
     }
-    onClose();
   };
 
   return (
@@ -501,7 +588,7 @@ function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => v
               <X className="w-5 h-5" style={{ color: '#6B7280' }} />
             </button>
           </div>
-          
+
           {/* Alerta informativa */}
           {!profesional && (
             <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: '#E0EDFF' }}>
@@ -520,7 +607,7 @@ function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => v
               <h3 className="text-lg font-bold mb-4" style={{ color: '#1F2937' }}>
                 1. Seleccionar Usuario desde Administración de Personas
               </h3>
-              
+
               <div className="mb-4">
                 <div className="relative">
                   <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5" style={{ color: '#9CA3AF' }} />
@@ -560,18 +647,17 @@ function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => v
                         <tr
                           key={usuario.id}
                           onClick={() => setUsuarioSeleccionado(usuario)}
-                          className={`cursor-pointer transition-colors ${
-                            usuarioSeleccionado?.id === usuario.id 
-                              ? 'bg-blue-50' 
-                              : 'hover:bg-gray-50'
-                          }`}
+                          className={`cursor-pointer transition-colors ${usuarioSeleccionado?.id === usuario.id
+                            ? 'bg-blue-50'
+                            : 'hover:bg-gray-50'
+                            }`}
                           style={{ borderTop: index > 0 ? '1px solid #E5E7EB' : 'none' }}
                         >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               <Avatar>
                                 <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                                  {usuario.nombre.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                                  {usuario.nombre.split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
@@ -617,7 +703,7 @@ function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => v
                       ))}
                     </tbody>
                   </table>
-                  
+
                   {usuariosFiltrados.length === 0 && (
                     <div className="p-12 text-center">
                       <Users className="w-12 h-12 mx-auto mb-3" style={{ color: '#D1D5DB' }} />
@@ -707,6 +793,11 @@ function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => v
                 </div>
                 <p className="text-xs mt-2" style={{ color: '#9CA3AF' }}>
                   Basado en el cargo del usuario y la configuración establecida en el módulo de Configuración
+                  {limiteDetectado && (
+                    <span className="block mt-1 font-bold text-orange-600">
+                      * El límite configurado para este cargo es de {limiteDetectado} procesos.
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -738,14 +829,15 @@ function ModalFormularioProfesional({ onClose, profesional }: { onClose: () => v
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
-export function GestionProfesionales() {
+export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profesional: Profesional) => void }) {
+  // const [profesionales, setProfesionales] = useState(PROFESIONALES_DATA);
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState<Profesional | null>(null);
   const [showModal, setShowModal] = useState<'detalle' | 'formulario' | null>(null);
   const [profesionalEditar, setProfesionalEditar] = useState<Profesional | undefined>();
+  const [loading, setLoading] = useState(true);
 
   // Cargar profesionales del backend
   const fetchProfesionales = async () => {
@@ -785,20 +877,29 @@ export function GestionProfesionales() {
 
   const profesionalesFiltrados = profesionales.filter(p => {
     const matchSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       p.cargo.toLowerCase().includes(searchTerm.toLowerCase());
+      p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.cargo.toLowerCase().includes(searchTerm.toLowerCase());
     const matchEstado = filtroEstado === 'todos' || p.estado === filtroEstado;
-    
+
     return matchSearch && matchEstado;
   });
 
-  const handleDesasignar = (id: string) => {
+  const handleDesasignar = async (id: string) => {
     const profesional = profesionales.find(p => p.id === id);
-    if (confirm(`¿Está seguro de desasignar a ${profesional?.nombre} del equipo disciplinario?`)) {
-      setProfesionales(profesionales.filter(p => p.id !== id));
-      toast.info('Profesional desasignado del equipo disciplinario', {
-        description: 'El usuario sigue existiendo en Administración de Personas'
-      });
+    if (!profesional) return;
+
+    if (confirm(`¿Está seguro de desasignar a ${profesional.nombre} del equipo disciplinario?`)) {
+      try {
+        await disciplinaryService.deleteProfessional(id);
+        toast.success('Profesional desasignado del equipo disciplinario', {
+          description: 'El usuario sigue existiendo en Administración de Personas'
+        });
+        fetchProfesionales(); // Recargar la lista
+      } catch (error: any) {
+        console.error('Error deleting professional:', error);
+        const errorMessage = error.response?.data?.message || 'Error al desasignar profesional';
+        toast.error(errorMessage);
+      }
     }
   };
 
@@ -835,14 +936,14 @@ export function GestionProfesionales() {
             Asignar Profesional
           </button>
         </div>
-        
+
         {/* Alerta informativa */}
         <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: '#E0EDFF' }}>
           <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#003DA5' }} />
           <div>
             <p className="text-sm" style={{ color: '#003DA5' }}>
               <span className="font-bold">Importante:</span> Los usuarios se crean únicamente desde{' '}
-              <span className="font-bold">Administración de Personas</span>. 
+              <span className="font-bold">Administración de Personas</span>.
               Aquí solo se asignan profesionales existentes al equipo disciplinario y se configura su capacidad de trabajo.
             </p>
           </div>
@@ -924,13 +1025,13 @@ export function GestionProfesionales() {
             <div className="divide-y" style={{ borderColor: '#E5E7EB' }}>
               {profesionalesFiltrados.map((profesional) => {
                 const porcentajeCarga = (profesional.procesosAsignados / profesional.capacidadMaxima) * 100;
-                const tasaEfectividad = profesional.procesosAsignados > 0 
+                const tasaEfectividad = profesional.procesosAsignados > 0
                   ? ((profesional.procesosAlDia / profesional.procesosAsignados) * 100).toFixed(0)
                   : '100';
-                
+
                 return (
-                  <div 
-                    key={profesional.id} 
+                  <div
+                    key={profesional.id}
                     className="grid grid-cols-12 gap-4 p-4 hover:bg-gray-50 transition-colors"
                   >
                     {/* Columna 1: Profesional */}
@@ -980,11 +1081,11 @@ export function GestionProfesionales() {
                             className="h-full rounded-full transition-all"
                             style={{
                               width: `${porcentajeCarga}%`,
-                              background: porcentajeCarga >= 90 
+                              background: porcentajeCarga >= 90
                                 ? '#DC2626'
                                 : porcentajeCarga >= 70
-                                ? '#F59E0B'
-                                : '#10B981'
+                                  ? '#F59E0B'
+                                  : '#10B981'
                             }}
                           />
                         </div>
@@ -1127,12 +1228,7 @@ export function GestionProfesionales() {
               setProfesionalEditar(prof);
               setShowModal('formulario');
             }}
-            onVerProcesos={(prof) => {
-              toast.info(`Procesos de ${prof.nombre}`, {
-                description: `${prof.procesosAsignados} procesos asignados • ${prof.procesosAlDia} al día • ${prof.procesosEnRiesgo} en riesgo • ${prof.procesosVencidos} vencidos`,
-                duration: 5000
-              });
-            }}
+            onVerProcesos={onVerProcesos}
           />
         )}
         {showModal === 'formulario' && (
@@ -1141,6 +1237,9 @@ export function GestionProfesionales() {
             onClose={() => {
               setShowModal(null);
               setProfesionalEditar(undefined);
+            }}
+            onSuccess={() => {
+              fetchProfesionales();
             }}
           />
         )}

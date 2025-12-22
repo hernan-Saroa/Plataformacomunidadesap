@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -91,6 +92,29 @@ export class AutoController {
       throw new Error('aprobadoPorId es requerido');
     }
     return await this.autoService.approve(id, reviewAutoDto, aprobadoPorId);
+  }
+
+  /**
+   * Firmar Auto (Paso Final)
+   */
+  @Patch(':id/sign')
+  @ApiOperation({
+    summary: 'Firmar Auto',
+    description: 'Firma digitalmente un auto que ya ha sido aprobado',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Auto firmado',
+    type: LegalAuto,
+  })
+  async sign(
+    @Param('id') id: string,
+    @Query('userId') userId: string,
+  ): Promise<LegalAuto> {
+    if (!userId) {
+      throw new Error('userId es requerido');
+    }
+    return await this.autoService.sign(id, userId);
   }
 
   /**
@@ -198,5 +222,20 @@ export class AutoController {
   })
   async getVersions(@Param('id') id: string) {
     return await this.autoService.getVersions(id);
+  }
+
+  /**
+   * Eliminar auto
+   */
+  @Delete(':id')
+  @ApiOperation({
+    summary: 'Eliminar Auto',
+    description: 'Elimina un auto legal por ID',
+  })
+  @ApiResponse({ status: 204, description: 'Auto eliminado' })
+  @ApiResponse({ status: 404, description: 'Auto no encontrado' })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async delete(@Param('id') id: string): Promise<void> {
+    await this.autoService.delete(id);
   }
 }

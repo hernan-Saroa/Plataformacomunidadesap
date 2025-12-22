@@ -4,7 +4,7 @@
  * INTEGRACIÓN COMPLETA: Editor de Documentos + Gestión Documental
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
@@ -27,6 +27,7 @@ import { toast } from 'sonner@2.0.3';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { EditorDocumentos } from './EditorDocumentos';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
+import { PLANTILLAS_MOCK } from './GestionProcesosProfesionalesCompleto';
 import {
   ModalGestionAutos,
   ModalGestionEvidencias,
@@ -36,6 +37,8 @@ import {
 } from './ModalesGestionDocumental';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
 import { SistemaComentarios } from './SistemaComentarios';
+import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
+import { useConfiguration } from '../../../hooks/useConfiguration';
 
 // ==================== TIPOS ====================
 interface Persona {
@@ -44,17 +47,36 @@ interface Persona {
   numeroIdentificacion: string;
 }
 
+interface NoticiaPersonaDetalle {
+  nombre: string;
+  cedula?: string;
+  cargo?: string;
+  dependencia?: string;
+  email?: string;
+  telefono?: string;
+  direccion?: string;
+  entidad?: string;
+}
+
 interface Noticia {
   id: string;
   numero: string;
   fechaRecepcion: string;
+  fechaQueja?: string;
   origen: string;
+  territorial?: string;
+  dependenciaDenunciado?: string;
   denunciante: Persona;
   denunciado: Persona;
+  denunciantes?: NoticiaPersonaDetalle[];
+  disciplinables?: NoticiaPersonaDetalle[];
   hechos: string;
+  conductas?: string[];
+  adjuntos?: string[];
   estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada';
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
+  etapaActual?: string;
   tipo: 'noticia';
 }
 
@@ -68,6 +90,7 @@ interface Proceso {
   etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
   estadoActual: string;
   profesionalAsignado: Persona;
+  profesionalAsignadoId?: string; // ID del profesional para filtrado
   semaforo: 'verde' | 'amarillo' | 'rojo';
   diasRestantes: number;
   porcentajeTiempo: number;
@@ -81,10 +104,11 @@ interface Proceso {
   cargo?: string;
   dependencia?: string;
   historialAuditoria?: any[];
+  kanbanNotice?: string | null;
 }
 
 type Item = Noticia | Proceso;
-type ModalType = 
+type ModalType =
   | 'crear-noticia'
   | 'convertir-proceso'
   | 'devolver-noticia'
@@ -101,7 +125,70 @@ type ModalType =
   | 'historial-auditoria'
   | 'expediente-completo'
   | 'comentarios-proceso'
+  | 'editar-proceso'
   | null;
+
+const normalizeEtapa = (valor?: string) => {
+  if (!valor) return '';
+  const cleaned = valor
+    .toString()
+    .replace(/Recepci[oó]n/gi, 'Recepcion')
+    .replace(/Valoraci[oó]n/gi, 'Valoracion')
+    .replace(/Indagaci[oó]n/gi, 'Indagacion')
+    .replace(/Investigaci[oó]n/gi, 'Investigacion');
+  return cleaned
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase();
+};
+
+// More flexible UUID validation - accepts any UUID-like format (v1, v3, v4, v5)
+const isUuid = (value?: string) => {
+  if (!value) return false;
+  // Relaxed pattern: accepts any UUID format with correct structure (8-4-4-4-12 hex digits)
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+};
+
+const DEFAULT_STAGES = [
+  { nombre: 'RECEPCION', dias: 3 },
+  { nombre: 'EVALUACION', dias: 10 },
+  { nombre: 'INDAGACION_PREVIA', dias: 40 },
+  { nombre: 'INVESTIGACION', dias: 60 },
+  { nombre: 'JUZGAMIENTO', dias: 50 },
+  { nombre: 'FALLO', dias: 10 }
+];
+
+const mergeStages = (stages: { nombre: string; dias: number }[]) => {
+  const byKey = new Map<string, { nombre: string; dias: number }>();
+
+  stages.forEach(stage => {
+    const key = normalizeEtapa(stage.nombre);
+    if (!key) return;
+    byKey.set(key, stage);
+  });
+
+  DEFAULT_STAGES.forEach(stage => {
+    const key = normalizeEtapa(stage.nombre);
+    if (!byKey.has(key)) {
+      byKey.set(key, stage);
+    }
+  });
+
+  const ordered: { nombre: string; dias: number }[] = [];
+  DEFAULT_STAGES.forEach(stage => {
+    const key = normalizeEtapa(stage.nombre);
+    const value = byKey.get(key);
+    if (value) ordered.push(value);
+    byKey.delete(key);
+  });
+
+  for (const value of byKey.values()) {
+    ordered.push(value);
+  }
+
+  return ordered;
+};
 
 // ==================== MOCK DATA ====================
 const NOTICIAS_MOCK: Noticia[] = [
@@ -124,7 +211,8 @@ const NOTICIAS_MOCK: Noticia[] = [
     estado: 'pendiente',
     prioridad: 'alta',
     diasPendientes: 3,
-    tipo: 'noticia'
+    tipo: 'noticia',
+    etapaActual: 'Recepción'
   },
   {
     id: 'n2',
@@ -145,7 +233,8 @@ const NOTICIAS_MOCK: Noticia[] = [
     estado: 'pendiente',
     prioridad: 'media',
     diasPendientes: 5,
-    tipo: 'noticia'
+    tipo: 'noticia',
+    etapaActual: 'Recepción'
   },
   {
     id: 'n3',
@@ -166,7 +255,8 @@ const NOTICIAS_MOCK: Noticia[] = [
     estado: 'pendiente',
     prioridad: 'alta',
     diasPendientes: 1,
-    tipo: 'noticia'
+    tipo: 'noticia',
+    etapaActual: 'Recepción'
   }
 ];
 
@@ -193,6 +283,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '80456789'
     },
+    profesionalAsignadoId: '1',
     semaforo: 'amarillo',
     diasRestantes: 3,
     porcentajeTiempo: 70,
@@ -225,6 +316,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '52345678'
     },
+    profesionalAsignadoId: '2',
     semaforo: 'verde',
     diasRestantes: 45,
     porcentajeTiempo: 25,
@@ -257,6 +349,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '1015678901'
     },
+    profesionalAsignadoId: '3',
     semaforo: 'verde',
     diasRestantes: 28,
     porcentajeTiempo: 10,
@@ -289,6 +382,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '52345678'
     },
+    profesionalAsignadoId: '2',
     semaforo: 'amarillo',
     diasRestantes: 15,
     porcentajeTiempo: 75,
@@ -321,6 +415,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '80456789'
     },
+    profesionalAsignadoId: '1',
     semaforo: 'verde',
     diasRestantes: 30,
     porcentajeTiempo: 40,
@@ -353,6 +448,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '1015678901'
     },
+    profesionalAsignadoId: '3',
     semaforo: 'verde',
     diasRestantes: 8,
     porcentajeTiempo: 20,
@@ -400,28 +496,28 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
       animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
       className="cursor-move touch-none w-full"
     >
-      <Card 
+      <Card
         className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full"
-        style={{ 
+        style={{
           height: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px'),
           minHeight: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px'),
           maxHeight: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px')
         }}
       >
         {/* Barra superior azul ESAP */}
-        <div 
+        <div
           className="h-1 flex-shrink-0"
           style={{ background: '#003DA5' }}
         />
 
         <div className={`${isMobile ? 'p-2.5' : 'p-3'} flex-1 flex flex-col overflow-y-auto min-h-0`}>
           {/* Header */}
-          <div 
+          <div
             className={`flex items-start justify-between mb-2 ${onVerDetalles ? 'cursor-pointer hover:bg-gray-50 -mx-3 -mt-3 px-3 pt-3 pb-2 rounded-t-lg transition-colors' : ''}`}
             onClick={onVerDetalles ? () => onVerDetalles(noticia) : undefined}
           >
             <div className="flex items-center gap-2 flex-1">
-              <div 
+              <div
                 className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0 bg-orange-50`}
               >
                 <FileText className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-orange-600`} />
@@ -443,23 +539,23 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
 
           {/* Denunciante */}
           <div className="mb-2 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">👤 Denunciante:</p>
+            <p className="text-xs text-gray-500 mb-0.5">?? Denunciante:</p>
             <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-              {noticia.denunciante.nombre}
+              {(noticia.denunciante || { nombre: 'Sin denunciante', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' }).nombre}
             </p>
             <p className="text-xs text-gray-600">
-              {noticia.denunciante.tipoIdentificacion} {noticia.denunciante.numeroIdentificacion}
+              {`${(noticia.denunciante || { tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' }).tipoIdentificacion} ${(noticia.denunciante || { tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' }).numeroIdentificacion}`}
             </p>
           </div>
 
           {/* Denunciado */}
           <div className="mb-2 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">⚠️ Denunciado:</p>
+            <p className="text-xs text-gray-500 mb-0.5">?? Denunciado:</p>
             <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-              {noticia.denunciado.nombre}
+              {(noticia as any).denunciado?.nombre || 'Sin denunciado'}
             </p>
             <p className="text-xs text-gray-600">
-              {noticia.denunciado.tipoIdentificacion} {noticia.denunciado.numeroIdentificacion}
+              {`${(noticia as any).denunciado?.tipoIdentificacion || 'CC'} ${(noticia as any).denunciado?.numeroIdentificacion || 'N/A'}`}
             </p>
           </div>
 
@@ -543,6 +639,8 @@ interface TarjetaProcesoProps {
   onVerDetalles: (proceso: Proceso) => void;
   onAprobarBorrador: (proceso: Proceso) => void;
   onVerExpediente: (proceso: Proceso) => void;
+  borradoresCount?: number;
+  documentosCount?: number;
   onGestionAutos?: (proceso: Proceso) => void;
   onGestionEvidencias?: (proceso: Proceso) => void;
   onGestionOficios?: (proceso: Proceso) => void;
@@ -552,18 +650,20 @@ interface TarjetaProcesoProps {
   isMobile?: boolean;
 }
 
-function TarjetaProceso({ 
-  proceso, 
-  onVerDetalles, 
-  onAprobarBorrador, 
-  onVerExpediente, 
+function TarjetaProceso({
+  proceso,
+  onVerDetalles,
+  onAprobarBorrador,
+  onVerExpediente,
+  borradoresCount,
+  documentosCount,
   onGestionAutos,
   onGestionEvidencias,
   onGestionOficios,
   onGestionActas,
   onComentarios,
-  vistaCompacta, 
-  isMobile 
+  vistaCompacta,
+  isMobile
 }: TarjetaProcesoProps) {
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
@@ -580,6 +680,11 @@ function TarjetaProceso({
   };
 
   const semaforo = semaforoIndicator[proceso.semaforo];
+  const denunciante = proceso.denunciante || { nombre: 'Sin denunciante', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
+  const denunciado = proceso.denunciado || { nombre: 'Sin denunciado', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
+  const profesionalAsignado = typeof proceso.profesionalAsignado === 'string'
+    ? { nombre: proceso.profesionalAsignado, tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' }
+    : (proceso.profesionalAsignado || { nombre: 'Sin asignar', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' });
 
   return (
     <motion.div
@@ -588,25 +693,34 @@ function TarjetaProceso({
       animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
       className="cursor-move touch-none w-full"
     >
-      <Card 
+      <Card
         className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full"
-        style={{ 
+        style={{
           height: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px'),
           minHeight: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px'),
           maxHeight: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px')
         }}
       >
         {/* Barra superior azul ESAP */}
-        <div 
+        <div
           className="h-1 flex-shrink-0"
           style={{ background: '#003DA5' }}
         />
 
         <div className={`${isMobile ? 'p-2' : 'p-2.5'} flex-1 flex flex-col overflow-y-auto min-h-0`}>
+          {proceso.kanbanNotice && (
+            <div className="mb-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">
+              {proceso.kanbanNotice}
+            </div>
+          )}
+
           {/* Header */}
-          <div className="flex items-start justify-between mb-1.5">
+          <div
+            className="flex items-start justify-between mb-1.5 cursor-pointer hover:bg-gray-50 -mx-2.5 -mt-2.5 px-2.5 pt-2.5 pb-1.5 rounded-t-lg transition-colors"
+            onClick={() => onVerDetalles(proceso)}
+          >
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <div 
+              <div
                 className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`}
                 style={{ background: '#E0EDFF' }}
               >
@@ -625,23 +739,23 @@ function TarjetaProceso({
 
           {/* Denunciante */}
           <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">👤 Denunciante:</p>
+            <p className="text-xs text-gray-500 mb-0.5">?? Denunciante:</p>
             <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-              {proceso.denunciante.nombre}
+              {denunciante.nombre}
             </p>
             <p className="text-xs text-gray-600">
-              {proceso.denunciante.tipoIdentificacion} {proceso.denunciante.numeroIdentificacion}
+              {denunciante.tipoIdentificacion} {denunciante.numeroIdentificacion}
             </p>
           </div>
 
           {/* Denunciado */}
           <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">⚠️ Denunciado:</p>
+            <p className="text-xs text-gray-500 mb-0.5">?? Denunciado:</p>
             <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-              {proceso.denunciado.nombre}
+              {denunciado.nombre}
             </p>
             <p className="text-xs text-gray-600">
-              {proceso.denunciado.tipoIdentificacion} {proceso.denunciado.numeroIdentificacion}
+              {denunciado.tipoIdentificacion} {denunciado.numeroIdentificacion}
             </p>
           </div>
 
@@ -649,20 +763,20 @@ function TarjetaProceso({
           <div className="mb-1.5 pb-1.5 border-b border-gray-200">
             <div className="flex items-center gap-2">
               <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
-                <AvatarFallback 
+                <AvatarFallback
                   className="text-xs"
                   style={{ background: '#E0EDFF', color: '#003DA5' }}
                 >
-                  {proceso.profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                  {profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').substring(0, 2)}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500">👨‍💼 Profesional:</p>
+                <p className="text-xs text-gray-500">????? Profesional:</p>
                 <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-                  {proceso.profesionalAsignado.nombre}
+                  {profesionalAsignado.nombre}
                 </p>
                 <p className="text-xs text-gray-600">
-                  {proceso.profesionalAsignado.tipoIdentificacion} {proceso.profesionalAsignado.numeroIdentificacion}
+                  {profesionalAsignado.tipoIdentificacion} {profesionalAsignado.numeroIdentificacion}
                 </p>
               </div>
             </div>
@@ -676,11 +790,11 @@ function TarjetaProceso({
                 {isMobile ? 'Pend.' : 'Pendiente'}
               </Badge>
             )}
-            <Badge 
+            <Badge
               className={`${isMobile ? 'text-xs' : 'text-xs'} flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200`}
               style={{ color: semaforo.color }}
             >
-              <div 
+              <div
                 className={`${isMobile ? 'w-1.5 h-1.5' : 'w-2 h-2'} rounded-full`}
                 style={{ background: semaforo.color }}
               />
@@ -690,19 +804,19 @@ function TarjetaProceso({
 
           {/* Métricas */}
           <div className="grid grid-cols-3 gap-1.5 mb-1.5">
-            <div 
+            <div
               className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}
             >
-              <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-gray-700`}>{proceso.borradores.length}</p>
+              <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-gray-700`}>{borradoresCount ?? proceso.borradores.length}</p>
               <p className="text-xs text-gray-500">{isMobile ? 'B' : 'Borr.'}</p>
             </div>
-            <div 
+            <div
               className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}
             >
-              <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-gray-700`}>{proceso.documentos.length}</p>
+              <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-gray-700`}>{documentosCount ?? proceso.documentos.length}</p>
               <p className="text-xs text-gray-500">Docs</p>
             </div>
-            <div 
+            <div
               className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}
             >
               <p className={`${isMobile ? 'text-xs' : 'text-xs'} font-bold text-gray-700`}>
@@ -758,7 +872,7 @@ function TarjetaProceso({
                   <Scale className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5 flex-shrink-0`} />
                   <span className="truncate">Autos</span>
                 </Button>
-                
+
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -834,13 +948,13 @@ function TarjetaProceso({
                 }}
                 size="sm"
                 className={`w-full ${isMobile ? 'text-[10px] py-1.5' : 'text-[11px] py-2'} font-bold`}
-                style={{ 
+                style={{
                   background: '#003DA5',
                   color: '#FFFFFF'
                 }}
               >
                 <MessageSquare className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} mr-1 flex-shrink-0`} />
-                <span className="truncate">💬 Comentarios del Proceso</span>
+                <span className="truncate">?? Comentarios del Proceso</span>
               </Button>
             </div>
 
@@ -903,25 +1017,27 @@ function VistaLista({
   const [searchTerm, setSearchTerm] = useState('');
 
   const itemsFiltrados = items.filter(item => {
-    const matchSearch = item.tipo === 'noticia' 
+    const matchSearch = item.tipo === 'noticia'
       ? (item as Noticia).numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (typeof (item as Noticia).denunciado === 'string' 
-          ? (item as Noticia).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
-          : (item as Noticia).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
+      (typeof (item as Noticia).denunciado === 'string'
+        ? (item as Noticia).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
+        : (item as Noticia).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
       : (item as Proceso).numeroProceso.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (typeof (item as Proceso).denunciado === 'string'
-          ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
-          : (item as Proceso).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchEtapa = filtroEtapa === 'todos' || 
-      (item.tipo === 'noticia' && filtroEtapa === 'Recepción') ||
-      (item.tipo === 'proceso' && (item as Proceso).etapaActual === filtroEtapa);
-    
+      (typeof (item as Proceso).denunciado === 'string'
+        ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
+        : (item as Proceso).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    const etapaItem = item.tipo === 'noticia'
+      ? normalizeEtapa((item as any).etapaActual || 'Recepcion')
+      : normalizeEtapa((item as Proceso).etapaActual);
+    const etapaFiltro = normalizeEtapa(filtroEtapa);
+    const matchEtapa = filtroEtapa === 'todos' || etapaItem === etapaFiltro;
+
     return matchSearch && matchEtapa;
   });
 
   const getSemaforoColor = (semaforo?: string) => {
-    switch(semaforo) {
+    switch (semaforo) {
       case 'verde': return { bg: '#D1FAE5', color: '#059669', text: 'En término' };
       case 'amarillo': return { bg: '#FEF3C7', color: '#D97706', text: 'Próximo a vencer' };
       case 'rojo': return { bg: '#FEE2E2', color: '#DC2626', text: 'Vencido' };
@@ -975,11 +1091,11 @@ function VistaLista({
             return (
               <Card key={item.id} className="overflow-hidden border-2" style={{ borderColor: '#E5E7EB' }}>
                 {/* Barra superior con color de tipo */}
-                <div 
-                  className="h-1" 
+                <div
+                  className="h-1"
                   style={{ background: isNoticia ? '#F59E0B' : '#003DA5' }}
                 />
-                
+
                 <div className="p-3 space-y-3">
                   {/* Header */}
                   <div className="flex items-start justify-between">
@@ -1008,12 +1124,12 @@ function VistaLista({
                   <div className="pb-2 border-b border-gray-200">
                     <p className="text-xs text-gray-500 mb-1">Denunciado:</p>
                     <p className="font-bold text-sm text-gray-900">
-                      {isNoticia 
+                      {isNoticia
                         ? (typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado.nombre)
                         : (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
                     </p>
                     <p className="text-xs text-gray-600 mt-0.5">
-                      {isNoticia 
+                      {isNoticia
                         ? (typeof noticia!.denunciado !== 'string' && `${noticia!.denunciado.tipoIdentificacion} ${noticia!.denunciado.numeroIdentificacion}`)
                         : (typeof proceso!.denunciado !== 'string' ? `${proceso!.denunciado.tipoIdentificacion} ${proceso!.denunciado.numeroIdentificacion}` : proceso!.cedula ? `CC: ${proceso!.cedula}` : '')}
                     </p>
@@ -1030,7 +1146,7 @@ function VistaLista({
                     >
                       {isNoticia ? 'Recepción' : proceso!.etapaActual}
                     </Badge>
-                    
+
                     {proceso && semaforo && (
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg" style={{ background: semaforo.bg }}>
                         <div className="w-1.5 h-1.5 rounded-full" style={{ background: semaforo.color }} />
@@ -1039,7 +1155,7 @@ function VistaLista({
                         </span>
                       </div>
                     )}
-                    
+
                     {isNoticia && (
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-orange-50">
                         <Clock className="w-3 h-3 text-orange-600" />
@@ -1055,11 +1171,11 @@ function VistaLista({
                     <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
                       <Avatar className="w-6 h-6">
                         <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5', fontSize: '9px' }}>
-                          {proceso.profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                          {profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
                       <p className="text-xs font-medium text-gray-700 truncate flex-1">
-                        {proceso.profesionalAsignado.nombre}
+                        {profesionalAsignado.nombre}
                       </p>
                     </div>
                   )}
@@ -1139,310 +1255,315 @@ function VistaLista({
         /* Vista de Tabla para Desktop/Tablet */
         <Card className="border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
           <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="sticky top-0" style={{ background: '#F9FAFB' }}>
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Número / Tipo
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Denunciado
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Etapa / Estado
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Responsable
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Semáforo
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Tiempo
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Acciones
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {itemsFiltrados.map((item, index) => {
-                const isNoticia = item.tipo === 'noticia';
-                const noticia = isNoticia ? (item as Noticia) : null;
-                const proceso = !isNoticia ? (item as Proceso) : null;
-                const semaforo = proceso ? getSemaforoColor(proceso.semaforo) : null;
+            <table className="w-full">
+              <thead className="sticky top-0" style={{ background: '#F9FAFB' }}>
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Número / Tipo
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Denunciado
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Etapa / Estado
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Responsable
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Semáforo
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Tiempo
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemsFiltrados.map((item, index) => {
+                  const isNoticia = item.tipo === 'noticia';
+                  const noticia = isNoticia ? (item as Noticia) : null;
+                  const proceso = !isNoticia ? (item as Proceso) : null;
+                  const semaforo = proceso ? getSemaforoColor(proceso.semaforo) : null;
+                  const profesionalAsignado = proceso
+                    ? (typeof proceso.profesionalAsignado === 'string'
+                      ? { nombre: proceso.profesionalAsignado }
+                      : (proceso.profesionalAsignado || { nombre: 'Sin asignar' }))
+                    : { nombre: 'Sin asignar' };
 
-                return (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-gray-50 transition-colors"
-                    style={{ borderTop: index > 0 ? '1px solid #E5E7EB' : 'none' }}
-                  >
-                    {/* Número / Tipo */}
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        {isNoticia ? (
-                          <div className="p-1.5 rounded-lg bg-orange-100">
-                            <FileText className="w-4 h-4 text-orange-600" />
+                  return (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-gray-50 transition-colors"
+                      style={{ borderTop: index > 0 ? '1px solid #E5E7EB' : 'none' }}
+                    >
+                      {/* Número / Tipo */}
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-2">
+                          {isNoticia ? (
+                            <div className="p-1.5 rounded-lg bg-orange-100">
+                              <FileText className="w-4 h-4 text-orange-600" />
+                            </div>
+                          ) : (
+                            <div className="p-1.5 rounded-lg" style={{ background: '#E0EDFF' }}>
+                              <FolderOpen className="w-4 h-4" style={{ color: '#003DA5' }} />
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-bold text-sm" style={{ color: '#1F2937' }}>
+                              {isNoticia ? noticia!.numero : proceso!.numeroProceso}
+                            </p>
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                              {isNoticia ? 'Noticia' : 'Proceso'}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Denunciado */}
+                      <td className="px-4 py-4">
+                        <div>
+                          <p className="font-semibold text-sm" style={{ color: '#1F2937' }}>
+                            {isNoticia ? noticia!.denunciado.nombre : (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
+                          </p>
+                          {proceso && proceso.cedula && (
+                            <p className="text-xs" style={{ color: '#6B7280' }}>
+                              CC: {proceso.cedula}
+                            </p>
+                          )}
+                          {proceso && proceso.cargo && (
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                              {proceso.cargo}
+                            </p>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Etapa / Estado */}
+                      <td className="px-4 py-4">
+                        <div>
+                          <Badge
+                            className="mb-1"
+                            style={{
+                              background: isNoticia ? '#FEF3C7' : '#E0EDFF',
+                              color: isNoticia ? '#D97706' : '#003DA5'
+                            }}
+                          >
+                            {isNoticia ? 'Recepción' : proceso!.etapaActual}
+                          </Badge>
+                          {proceso && (
+                            <p className="text-xs" style={{ color: '#6B7280' }}>
+                              {proceso.estadoActual}
+                            </p>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Responsable */}
+                      <td className="px-4 py-4">
+                        {proceso ? (
+                          <div className="flex items-center gap-2">
+                            <Avatar className="w-7 h-7">
+                              <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5', fontSize: '10px' }}>
+                                {profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <p className="text-xs font-medium" style={{ color: '#4B5563' }}>
+                              {profesionalAsignado.nombre}
+                            </p>
                           </div>
                         ) : (
-                          <div className="p-1.5 rounded-lg" style={{ background: '#E0EDFF' }}>
-                            <FolderOpen className="w-4 h-4" style={{ color: '#003DA5' }} />
+                          <p className="text-xs" style={{ color: '#9CA3AF' }}>Sin asignar</p>
+                        )}
+                      </td>
+
+                      {/* Semáforo */}
+                      <td className="px-4 py-4 text-center">
+                        {proceso && semaforo ? (
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: semaforo.bg }}>
+                            <div className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
+                            <span className="text-xs font-semibold" style={{ color: semaforo.color }}>
+                              {semaforo.text}
+                            </span>
                           </div>
+                        ) : (
+                          <span className="text-xs" style={{ color: '#9CA3AF' }}>N/A</span>
                         )}
-                        <div>
-                          <p className="font-bold text-sm" style={{ color: '#1F2937' }}>
-                            {isNoticia ? noticia!.numero : proceso!.numeroProceso}
-                          </p>
-                          <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                            {isNoticia ? 'Noticia' : 'Proceso'}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Denunciado */}
-                    <td className="px-4 py-4">
-                      <div>
-                        <p className="font-semibold text-sm" style={{ color: '#1F2937' }}>
-                          {isNoticia ? noticia!.denunciado.nombre : (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
-                        </p>
-                        {proceso && proceso.cedula && (
-                          <p className="text-xs" style={{ color: '#6B7280' }}>
-                            CC: {proceso.cedula}
-                          </p>
-                        )}
-                        {proceso && proceso.cargo && (
-                          <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                            {proceso.cargo}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Etapa / Estado */}
-                    <td className="px-4 py-4">
-                      <div>
-                        <Badge
-                          className="mb-1"
-                          style={{
-                            background: isNoticia ? '#FEF3C7' : '#E0EDFF',
-                            color: isNoticia ? '#D97706' : '#003DA5'
-                          }}
-                        >
-                          {isNoticia ? 'Recepción' : proceso!.etapaActual}
-                        </Badge>
-                        {proceso && (
-                          <p className="text-xs" style={{ color: '#6B7280' }}>
-                            {proceso.estadoActual}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Responsable */}
-                    <td className="px-4 py-4">
-                      {proceso ? (
-                        <div className="flex items-center gap-2">
-                          <Avatar className="w-7 h-7">
-                            <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5', fontSize: '10px' }}>
-                              {proceso.profesionalAsignado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <p className="text-xs font-medium" style={{ color: '#4B5563' }}>
-                            {proceso.profesionalAsignado.nombre}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="text-xs" style={{ color: '#9CA3AF' }}>Sin asignar</p>
-                      )}
-                    </td>
-
-                    {/* Semáforo */}
-                    <td className="px-4 py-4 text-center">
-                      {proceso && semaforo ? (
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: semaforo.bg }}>
-                          <div className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
-                          <span className="text-xs font-semibold" style={{ color: semaforo.color }}>
-                            {semaforo.text}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs" style={{ color: '#9CA3AF' }}>N/A</span>
-                      )}
-                    </td>
-
-                    {/* Tiempo */}
-                    <td className="px-4 py-4 text-center">
-                      {isNoticia ? (
-                        <div>
-                          <p className="text-sm font-bold" style={{ color: '#F59E0B' }}>
-                            {noticia!.diasPendientes} días
-                          </p>
-                          <p className="text-xs" style={{ color: '#9CA3AF' }}>pendientes</p>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-sm font-bold" style={{ 
-                            color: proceso!.diasRestantes < 5 ? '#DC2626' : proceso!.diasRestantes < 10 ? '#F59E0B' : '#10B981'
-                          }}>
-                            {proceso!.diasRestantes} días
-                          </p>
-                          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                            <div
-                              className="h-full rounded-full transition-all"
-                              style={{
-                                width: `${proceso!.porcentajeTiempo}%`,
-                                background: proceso!.porcentajeTiempo >= 80 ? '#DC2626' : proceso!.porcentajeTiempo >= 60 ? '#F59E0B' : '#10B981'
-                              }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Acciones */}
-                    <td className="px-4 py-4">
-                      <div className="flex items-center justify-end gap-1 flex-wrap">
+                      {/* Tiempo */}
+                      <td className="px-4 py-4 text-center">
                         {isNoticia ? (
-                          <>
-                            {/* Ver Detalles de Noticia */}
-                            {onVerDetallesNoticia && (
+                          <div>
+                            <p className="text-sm font-bold" style={{ color: '#F59E0B' }}>
+                              {noticia!.diasPendientes} días
+                            </p>
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>pendientes</p>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-sm font-bold" style={{
+                              color: proceso!.diasRestantes < 5 ? '#DC2626' : proceso!.diasRestantes < 10 ? '#F59E0B' : '#10B981'
+                            }}>
+                              {proceso!.diasRestantes} días
+                            </p>
+                            <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${proceso!.porcentajeTiempo}%`,
+                                  background: proceso!.porcentajeTiempo >= 80 ? '#DC2626' : proceso!.porcentajeTiempo >= 60 ? '#F59E0B' : '#10B981'
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="px-4 py-4">
+                        <div className="flex items-center justify-end gap-1 flex-wrap">
+                          {isNoticia ? (
+                            <>
+                              {/* Ver Detalles de Noticia */}
+                              {onVerDetallesNoticia && (
+                                <button
+                                  onClick={() => onVerDetallesNoticia(noticia!)}
+                                  className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                                  title="Ver detalles de la noticia"
+                                >
+                                  <Eye className="w-4 h-4" style={{ color: '#003DA5' }} />
+                                </button>
+                              )}
+
+                              {/* Convertir a Proceso */}
                               <button
-                                onClick={() => onVerDetallesNoticia(noticia!)}
+                                onClick={() => onConvertirNoticia(noticia!)}
+                                className="p-2 rounded-lg hover:bg-green-50 transition-colors"
+                                title="Convertir a proceso disciplinario"
+                              >
+                                <PlusCircle className="w-4 h-4 text-green-600" />
+                              </button>
+
+                              {/* Devolver Noticia */}
+                              {onDevolverNoticia && (
+                                <button
+                                  onClick={() => onDevolverNoticia(noticia!)}
+                                  className="p-2 rounded-lg hover:bg-yellow-50 transition-colors"
+                                  title="Devolver noticia"
+                                >
+                                  <ArrowLeft className="w-4 h-4 text-yellow-600" />
+                                </button>
+                              )}
+
+                              {/* Archivar Noticia */}
+                              <button
+                                onClick={() => onArchivarNoticia(noticia!)}
+                                className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                                title="Archivar noticia"
+                              >
+                                <Archive className="w-4 h-4 text-red-600" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {/* Acción: Ver Detalles */}
+                              <button
+                                onClick={() => onVerDetalles(proceso!)}
                                 className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
-                                title="Ver detalles de la noticia"
+                                title="Ver detalles del proceso"
                               >
                                 <Eye className="w-4 h-4" style={{ color: '#003DA5' }} />
                               </button>
-                            )}
 
-                            {/* Convertir a Proceso */}
-                            <button
-                              onClick={() => onConvertirNoticia(noticia!)}
-                              className="p-2 rounded-lg hover:bg-green-50 transition-colors"
-                              title="Convertir a proceso disciplinario"
-                            >
-                              <PlusCircle className="w-4 h-4 text-green-600" />
-                            </button>
+                              {/* Acción: Ver Expediente Completo */}
+                              <button
+                                onClick={() => onVerExpediente(proceso!)}
+                                className="p-2 rounded-lg hover:bg-purple-50 transition-colors"
+                                title="Ver expediente completo"
+                              >
+                                <FolderOpen className="w-4 h-4 text-purple-600" />
+                              </button>
 
-                            {/* Devolver Noticia */}
-                            {onDevolverNoticia && (
-                              <button
-                                onClick={() => onDevolverNoticia(noticia!)}
-                                className="p-2 rounded-lg hover:bg-yellow-50 transition-colors"
-                                title="Devolver noticia"
-                              >
-                                <ArrowLeft className="w-4 h-4 text-yellow-600" />
-                              </button>
-                            )}
+                              {/* Acción: Gestionar Autos */}
+                              {onGestionAutos && (
+                                <button
+                                  onClick={() => onGestionAutos(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-green-50 transition-colors"
+                                  title="Gestionar autos"
+                                >
+                                  <Scale className="w-4 h-4 text-green-600" />
+                                </button>
+                              )}
 
-                            {/* Archivar Noticia */}
-                            <button
-                              onClick={() => onArchivarNoticia(noticia!)}
-                              className="p-2 rounded-lg hover:bg-red-50 transition-colors"
-                              title="Archivar noticia"
-                            >
-                              <Archive className="w-4 h-4 text-red-600" />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            {/* Acción: Ver Detalles */}
-                            <button
-                              onClick={() => onVerDetalles(proceso!)}
-                              className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
-                              title="Ver detalles del proceso"
-                            >
-                              <Eye className="w-4 h-4" style={{ color: '#003DA5' }} />
-                            </button>
-                            
-                            {/* Acción: Ver Expediente Completo */}
-                            <button
-                              onClick={() => onVerExpediente(proceso!)}
-                              className="p-2 rounded-lg hover:bg-purple-50 transition-colors"
-                              title="Ver expediente completo"
-                            >
-                              <FolderOpen className="w-4 h-4 text-purple-600" />
-                            </button>
-                            
-                            {/* Acción: Gestionar Autos */}
-                            {onGestionAutos && (
-                              <button
-                                onClick={() => onGestionAutos(proceso!)}
-                                className="p-2 rounded-lg hover:bg-green-50 transition-colors"
-                                title="Gestionar autos"
-                              >
-                                <Scale className="w-4 h-4 text-green-600" />
-                              </button>
-                            )}
-                            
-                            {/* Acción: Gestionar Evidencias */}
-                            {onGestionEvidencias && (
-                              <button
-                                onClick={() => onGestionEvidencias(proceso!)}
-                                className="p-2 rounded-lg hover:bg-indigo-50 transition-colors"
-                                title="Gestionar evidencias"
-                              >
-                                <Paperclip className="w-4 h-4 text-indigo-600" />
-                              </button>
-                            )}
-                            
-                            {/* Acción: Gestionar Oficios */}
-                            {onGestionOficios && (
-                              <button
-                                onClick={() => onGestionOficios(proceso!)}
-                                className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
-                                title="Gestionar oficios"
-                              >
-                                <Send className="w-4 h-4 text-blue-600" />
-                              </button>
-                            )}
-                            
-                            {/* Acción: Gestionar Actas */}
-                            {onGestionActas && (
-                              <button
-                                onClick={() => onGestionActas(proceso!)}
-                                className="p-2 rounded-lg hover:bg-teal-50 transition-colors"
-                                title="Gestionar actas"
-                              >
-                                <FileSignature className="w-4 h-4 text-teal-600" />
-                              </button>
-                            )}
-                            
-                            {/* Acción: Aprobar Borrador (condicional) */}
-                            {proceso!.pendienteAprobacion && (
-                              <button
-                                onClick={() => onAprobarBorrador(proceso!)}
-                                className="p-2 rounded-lg hover:bg-amber-50 transition-colors"
-                                title="Aprobar borrador pendiente"
-                              >
-                                <CheckCircle className="w-4 h-4 text-amber-600" />
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                              {/* Acción: Gestionar Evidencias */}
+                              {onGestionEvidencias && (
+                                <button
+                                  onClick={() => onGestionEvidencias(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-indigo-50 transition-colors"
+                                  title="Gestionar evidencias"
+                                >
+                                  <Paperclip className="w-4 h-4 text-indigo-600" />
+                                </button>
+                              )}
 
-          {itemsFiltrados.length === 0 && (
-            <div className="p-12 text-center">
-              <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: '#D1D5DB' }} />
-              <p className="text-sm font-bold" style={{ color: '#6B7280' }}>
-                No se encontraron resultados
-              </p>
-              <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                Intenta ajustar los filtros de búsqueda
-              </p>
-            </div>
-          )}
-        </div>
-      </Card>
+                              {/* Acción: Gestionar Oficios */}
+                              {onGestionOficios && (
+                                <button
+                                  onClick={() => onGestionOficios(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                                  title="Gestionar oficios"
+                                >
+                                  <Send className="w-4 h-4 text-blue-600" />
+                                </button>
+                              )}
+
+                              {/* Acción: Gestionar Actas */}
+                              {onGestionActas && (
+                                <button
+                                  onClick={() => onGestionActas(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-teal-50 transition-colors"
+                                  title="Gestionar actas"
+                                >
+                                  <FileSignature className="w-4 h-4 text-teal-600" />
+                                </button>
+                              )}
+
+                              {/* Acción: Aprobar Borrador (condicional) */}
+                              {proceso!.pendienteAprobacion && (
+                                <button
+                                  onClick={() => onAprobarBorrador(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-amber-50 transition-colors"
+                                  title="Aprobar borrador pendiente"
+                                >
+                                  <CheckCircle className="w-4 h-4 text-amber-600" />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {itemsFiltrados.length === 0 && (
+              <div className="p-12 text-center">
+                <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: '#D1D5DB' }} />
+                <p className="text-sm font-bold" style={{ color: '#6B7280' }}>
+                  No se encontraron resultados
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                  Intenta ajustar los filtros de búsqueda
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
       )}
     </div>
   );
@@ -1456,6 +1577,8 @@ interface ColumnaKanbanProps {
   icono: React.ReactNode;
   diasEstimados?: number;
   onDrop: (item: Item, nuevaEtapa: string) => void;
+  getDocStats: (proceso: Proceso) => { total: number; auto: number; evidencia: number; oficio: number; notificacion: number; acta: number; otro: number };
+  getBorradoresCount: (proceso: Proceso) => number;
   onConvertirNoticia: (noticia: Noticia) => void;
   onDevolverNoticia: (noticia: Noticia) => void;
   onDevolverCompetencia: (noticia: Noticia) => void;
@@ -1475,20 +1598,22 @@ interface ColumnaKanbanProps {
   onToggleColapso?: () => void;
 }
 
-function ColumnaKanban({ 
-  etapa, 
-  items, 
-  color, 
+function ColumnaKanban({
+  etapa,
+  items,
+  color,
   icono,
   diasEstimados,
-  onDrop, 
+  onDrop,
+  getDocStats,
+  getBorradoresCount,
   onConvertirNoticia,
   onDevolverNoticia,
   onDevolverCompetencia,
   onArchivarNoticia,
   onVerDetallesNoticia,
-  onVerDetalles, 
-  onAprobarBorrador, 
+  onVerDetalles,
+  onAprobarBorrador,
   onVerExpediente,
   onGestionAutos,
   onGestionEvidencias,
@@ -1507,12 +1632,7 @@ function ColumnaKanban({
     drop: (item: any) => {
       onDrop(item, etapa);
     },
-    canDrop: (item: any) => {
-      if (item.tipo === 'noticia') {
-        return etapa === 'Recepción';
-      }
-      return true;
-    },
+    canDrop: () => true,
     collect: (monitor) => ({
       isOver: monitor.isOver(),
       canDrop: monitor.canDrop()
@@ -1541,9 +1661,10 @@ function ColumnaKanban({
 
   const itemsFiltrados = items.filter(item => {
     if (item.tipo === 'noticia') {
-      return etapa === 'Recepción';
+      const etapaItem = normalizeEtapa((item as any).etapaActual || 'Recepcion');
+      return normalizeEtapa(etapa) === etapaItem;
     }
-    return item.tipo === 'proceso' && item.etapaActual === etapa;
+    return item.tipo === 'proceso' && normalizeEtapa(item.etapaActual) === normalizeEtapa(etapa);
   });
 
   const noticias = itemsFiltrados.filter(i => i.tipo === 'noticia') as Noticia[];
@@ -1557,20 +1678,19 @@ function ColumnaKanban({
     const procesosVerdes = procesos.filter(p => p.semaforo === 'verde').length;
 
     return (
-      <motion.div 
-        ref={drop} 
+      <motion.div
+        ref={drop}
         className={`flex-shrink-0`}
         initial={{ width: 64 }}
         animate={{ width: 64 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
       >
-        <Card 
-          className={`h-full border transition-all cursor-pointer group ${
-            isOver && canDrop ? 'shadow-lg border-blue-500 bg-blue-50' : 'hover:shadow-md hover:border-blue-300'
-          }`}
-          style={{ 
-            borderColor: isOver && canDrop ? '#3B82F6' : '#E5E7EB', 
-            background: isOver && canDrop ? '#EFF6FF' : '#FFFFFF' 
+        <Card
+          className={`h-full border transition-all cursor-pointer group ${isOver && canDrop ? 'shadow-lg border-blue-500 bg-blue-50' : 'hover:shadow-md hover:border-blue-300'
+            }`}
+          style={{
+            borderColor: isOver && canDrop ? '#3B82F6' : '#E5E7EB',
+            background: isOver && canDrop ? '#EFF6FF' : '#FFFFFF'
           }}
           onClick={onToggleColapso}
         >
@@ -1632,9 +1752,9 @@ function ColumnaKanban({
 
             {/* Nombre vertical */}
             <div className="flex-1 flex items-center justify-center py-4">
-              <h3 
+              <h3
                 className="font-black text-xs text-gray-800 whitespace-nowrap"
-                style={{ 
+                style={{
                   writingMode: 'vertical-rl',
                   textOrientation: 'mixed'
                 }}
@@ -1664,7 +1784,7 @@ function ColumnaKanban({
       animate={{ width: colapsada ? 64 : 320 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
     >
-      <Card 
+      <Card
         className="h-full border transition-all"
         style={{
           borderColor: isOver && canDrop ? color : '#E5E7EB',
@@ -1673,12 +1793,12 @@ function ColumnaKanban({
         }}
       >
         {/* Header de Columna */}
-        <div 
+        <div
           className={`${isMobile ? 'p-3' : 'p-4'} border-b sticky top-0 z-10 bg-gray-50`}
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 flex-1">
-              <div 
+              <div
                 className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg bg-white border border-gray-200`}
               >
                 {icono}
@@ -1726,8 +1846,8 @@ function ColumnaKanban({
         </div>
 
         {/* Lista de Items */}
-        <div 
-          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`} 
+        <div
+          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`}
           style={{ maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)' }}
         >
           {/* Renderizar Noticias primero */}
@@ -1762,6 +1882,8 @@ function ColumnaKanban({
               onVerDetalles={onVerDetalles}
               onAprobarBorrador={onAprobarBorrador}
               onVerExpediente={onVerExpediente}
+              borradoresCount={getBorradoresCount(proceso)}
+              documentosCount={getDocStats(proceso).total}
               onGestionAutos={onGestionAutos}
               onGestionEvidencias={onGestionEvidencias}
               onGestionOficios={onGestionOficios}
@@ -1789,7 +1911,7 @@ function ColumnaKanban({
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigateToExpediente?: () => void }) {
-  const [items, setItems] = useState<Item[]>([...NOTICIAS_MOCK, ...PROCESOS_MOCK]);
+  const [items, setItems] = useState<Item[]>([]);
   const [modalActivo, setModalActivo] = useState<ModalType>(null);
   const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
   const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
@@ -1797,6 +1919,15 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   const [isTablet, setIsTablet] = useState(false);
   const [vistaCompacta, setVistaCompacta] = useState(false);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
+  const [filtroProfesionalId, setFiltroProfesionalId] = useState<string>('');
+
+  // Hook de configuración
+  const { etapas: dynamicStages, loading: loadingConfig } = useConfiguration();
+  const mergedStages = useMemo(
+    () => mergeStages(dynamicStages.map(s => ({ nombre: s.nombre, dias: s.dias }))),
+    [dynamicStages]
+  );
+
 
   // Estados para formularios
   const [formNuevaNoticia, setFormNuevaNoticia] = useState({
@@ -1807,8 +1938,531 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   });
 
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState('');
+  const [profesionalesDisponibles, setProfesionalesDisponibles] = useState<Array<{ id: string; nombre: string }>>([]);
   const [observaciones, setObservaciones] = useState('');
+
+  useEffect(() => {
+    const cargarProfesionales = async () => {
+      try {
+        const candidatos = await disciplinaryService.getCandidates();
+        const mapped = Array.isArray(candidatos)
+          ? candidatos.map((c: any, index: number) => ({
+              id: c.id || c.uuid || c.userId || String(index + 1),
+              nombre: c.nombreCompleto || c.nombre || c.name || c.email || `Profesional ${index + 1}`
+            }))
+          : [];
+        setProfesionalesDisponibles(mapped);
+      } catch (error) {
+        console.error('Error cargando profesionales', error);
+        setProfesionalesDisponibles([]);
+      }
+    };
+
+    cargarProfesionales();
+  }, []);
   const [areaDestinoRemision, setAreaDestinoRemision] = useState('');
+  const [procesoEditando, setProcesoEditando] = useState<Proceso | null>(null);
+  const [denunciadoEditando, setDenunciadoEditando] = useState({ nombre: '', cedula: '', cargo: '' });
+  const [documentosPorProceso, setDocumentosPorProceso] = useState<Record<string, any[]>>({});
+  const [autosPorProceso, setAutosPorProceso] = useState<Record<string, any[]>>({});
+  const [borradoresPorProceso, setBorradoresPorProceso] = useState<Record<string, any[]>>({});
+  const [plantillaEditor, setPlantillaEditor] = useState<any>(PLANTILLAS_MOCK?.[0] || null);
+  const STORAGE_KEY = 'kanban-disciplinario-items';
+  const ENABLE_LOCAL_CACHE = false;
+
+  const persistItems = (data: Item[]) => {
+    if (!ENABLE_LOCAL_CACHE) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.warn('No se pudo persistir items en localStorage', e);
+    }
+  };
+
+  const loadPersistedItems = (): Item[] | null => {
+    if (!ENABLE_LOCAL_CACHE) return null;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) {
+      console.warn('No se pudo leer items persistidos', e);
+      return null;
+    }
+  };
+
+  const normalizeDocType = (doc: any) => {
+    const raw = (doc?.tipo || doc?.tipoDocumento || doc?.tipo_documento || doc?.categoria || '').toString().toLowerCase();
+    if (raw.includes('auto')) return 'auto';
+    if (raw.includes('provid')) return 'auto';
+    if (raw.includes('evid') || raw.includes('prueb')) return 'evidencia';
+    if (raw.includes('ofic') || raw.includes('comunic')) return 'oficio';
+    if (raw.includes('notif') || raw.includes('aviso')) return 'notificacion';
+    if (raw.includes('acta') || raw.includes('dilig')) return 'acta';
+    return 'otro';
+  };
+
+  const getDocStats = (proceso: Proceso) => {
+    const docs = documentosPorProceso[proceso.id] || proceso.documentos || [];
+    const autos = autosPorProceso[proceso.id] || [];
+    const stats = {
+      total: 0,
+      auto: 0,
+      evidencia: 0,
+      oficio: 0,
+      notificacion: 0,
+      acta: 0,
+      otro: 0
+    };
+    const docsArray = Array.isArray(docs) ? docs : [];
+    stats.total = docsArray.length;
+    docsArray.forEach((doc: any) => {
+      const kind = normalizeDocType(doc);
+      if (kind in stats) {
+        const key = kind as keyof typeof stats;
+        stats[key] += 1;
+      }
+    });
+    if (Array.isArray(autos)) {
+      stats.auto += autos.length;
+      stats.total += autos.length;
+      const autosNotificados = autos.filter((auto: any) => auto?.notificationEvidence || auto?.notificationDate).length;
+      stats.notificacion += autosNotificados;
+    }
+    return stats;
+  };
+
+  const getBorradoresCount = (proceso: Proceso) => {
+    const autos = autosPorProceso[proceso.id] || [];
+    const autosDrafts = Array.isArray(autos) ? autos.filter((a: any) => {
+      const estado = (a?.estado || '').toString().toUpperCase();
+      return estado === 'BORRADOR' || estado === 'DEVUELTO';
+    }).length : 0;
+    const editorDrafts = Array.isArray(proceso.borradores) ? proceso.borradores.length : 0;
+    return autosDrafts + editorDrafts;
+  };
+
+  const getDocumentosProceso = (proceso: Proceso) => {
+    const docs = documentosPorProceso[proceso.id] || proceso.documentos || [];
+    return Array.isArray(docs) ? docs : [];
+  };
+
+  const syncProcesoDocs = (procesoId: string, docs: any[]) => {
+    setDocumentosPorProceso(prev => ({ ...prev, [procesoId]: docs }));
+    setItems(prev => {
+      const updated = prev.map(item =>
+        item.id === procesoId && item.tipo === 'proceso'
+          ? { ...item, documentos: docs }
+          : item
+      );
+      persistItems(updated);
+      return updated;
+    });
+    setItemSeleccionado(prev => (prev?.id === procesoId ? { ...prev, documentos: docs } : prev));
+  };
+
+  const syncProcesoBorradores = (procesoId: string, borradores: any[]) => {
+    setBorradoresPorProceso(prev => ({ ...prev, [procesoId]: borradores }));
+    setItems(prev => {
+      const updated = prev.map(item =>
+        item.id === procesoId && item.tipo === 'proceso'
+          ? { ...item, borradores }
+          : item
+      );
+      persistItems(updated);
+      return updated;
+    });
+    setItemSeleccionado(prev => (prev?.id === procesoId ? { ...prev, borradores } : prev));
+  };
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes && bytes !== 0) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const buildProcesoEditor = (proceso: Proceso) => {
+    const denunciado: any = (proceso as any).denunciado || {};
+    const tipoConductaRaw = (proceso as any).tipoConducta || (proceso as any).conductas || [];
+    const tipoConducta = Array.isArray(tipoConductaRaw) ? tipoConductaRaw : [];
+
+    return {
+      ...proceso,
+      territorial: (proceso as any).territorial || 'N/A',
+      fechaAsignacion: (proceso as any).fechaAsignacion || proceso.fechaCreacion || new Date().toISOString(),
+      tipoConducta,
+      denunciado: {
+        ...denunciado,
+        cedula: denunciado.cedula || denunciado.numeroIdentificacion || 'N/A',
+        cargo: denunciado.cargo || (proceso as any).cargo || 'N/A',
+        dependencia: denunciado.dependencia || (proceso as any).dependencia || 'N/A'
+      }
+    };
+  };
+
+  const handleDescargarDocumento = async (procesoId: string, doc: any, nombreArchivo: string) => {
+    try {
+      // Validate inputs
+      if (!doc || !doc.id) {
+        toast.error('Documento inválido', {
+          description: 'El documento no tiene la información necesaria para descargarlo'
+        });
+        return;
+      }
+
+      // Handle blob URLs (local files)
+      if (doc?.downloadUrl && doc.downloadUrl.startsWith('blob:')) {
+        const link = document.createElement('a');
+        link.href = doc.downloadUrl;
+        link.download = nombreArchivo;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success('Descarga iniciada', { description: nombreArchivo });
+        return;
+      }
+
+      // Handle database documents
+      if (isUuid(procesoId) && doc?.id) {
+        toast.loading('Descargando documento...', { id: 'download-doc' });
+        await disciplinaryService.downloadDocument(procesoId, doc.id, nombreArchivo);
+        toast.success('Documento descargado', {
+          description: nombreArchivo,
+          id: 'download-doc'
+        });
+        return;
+      }
+
+      // Fallback: try to use downloadUrl directly
+      if (doc?.downloadUrl) {
+        const link = document.createElement('a');
+        link.href = doc.downloadUrl;
+        link.download = nombreArchivo;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success('Descarga iniciada', { description: nombreArchivo });
+        return;
+      }
+
+      toast.error('No se puede descargar', {
+        description: 'El documento no tiene una URL de descarga válida'
+      });
+    } catch (error: any) {
+      console.error('Error descargando documento', error);
+      toast.error('Error al descargar', {
+        description: error.message || 'No se pudo descargar el documento'
+      });
+    }
+  };
+
+  // Transformadores desde el backend real
+  const stageLabelMap: Record<string, string> = {
+    EVALUACION: 'Valoración',
+    INDAGACION_PREVIA: 'Indagación',
+    INVESTIGACION: 'Investigación',
+    JUZGAMIENTO: 'Juzgamiento'
+  };
+
+  const mapEstadoNoticia = (estado?: ApiNoticia['estado']) => {
+    switch (estado) {
+      case 'ASIGNADA':
+        return 'asignada';
+      case 'EN_VALORACION':
+        return 'en-valoracion';
+      case 'DEVUELTA':
+        return 'archivada';
+      default:
+        return 'pendiente';
+    }
+  };
+
+  const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
+    const fechaRecepcion = (noticia as any)?.fechaRecepcion;
+    const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
+    const hoy = new Date();
+    const dias = Math.max(1, Math.ceil((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24)));
+    const denuncianteFuente: any = (noticia as any).denunciante;
+    const disciplinableFuente: any = (noticia as any).disciplinable || (noticia as any).denunciado;
+    const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
+    const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
+    const denuncianteRaw: any = denuncianteList[0] || {};
+    const denunciadoRaw: any = disciplinableList[0] || {};
+    const fechaQuejaRaw = (noticia as any).fechaQueja;
+    const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
+
+    const mapDetalle = (rawItem: any): NoticiaPersonaDetalle => ({
+      nombre: rawItem.nombre || 'Sin nombre',
+      cedula: rawItem.cedula || rawItem.numeroIdentificacion || rawItem.identificacion,
+      cargo: rawItem.cargo,
+      dependencia: rawItem.dependencia,
+      email: rawItem.email,
+      telefono: rawItem.telefono,
+      direccion: rawItem.direccion,
+      entidad: rawItem.entidad
+    });
+
+    return {
+      id: (noticia as any).id || `n${Date.now()}`,
+      numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
+      fechaRecepcion: fecha.toISOString().split('T')[0],
+      fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
+      origen: (noticia as any).origen || 'Noticia',
+      territorial: (noticia as any).territorial,
+      dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
+      denunciante: {
+        nombre: denuncianteRaw.nombre || 'Sin denunciante',
+        tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
+        numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || denuncianteRaw.telefono || 'N/A'
+      },
+      denunciado: {
+        nombre: denunciadoRaw.nombre || 'Sin disciplinable',
+        tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
+        numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || denunciadoRaw.identificacion || 'N/A'
+      },
+      denunciantes: denuncianteList.map(mapDetalle),
+      disciplinables: disciplinableList.map(mapDetalle),
+      hechos: (noticia as any).hechos || '',
+      conductas: (noticia as any).conductas || [],
+      adjuntos: (noticia as any).adjuntos || [],
+      estado: mapEstadoNoticia((noticia as any).estado) as any,
+      prioridad: (noticia as any).prioridad || 'media',
+      diasPendientes: (noticia as any).diasPendientes ?? dias,
+      tipo: 'noticia',
+      etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion'
+    };
+  };
+
+  const normalizeNoticia = (raw: any): Noticia => {
+    // Si ya es una noticia bien formada, aplicar normalizacion defensiva
+    const denuncianteFuente = raw.denunciantes || raw.denunciante;
+    const disciplinableFuente = raw.disciplinables || raw.disciplinable || raw.denunciado;
+    const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
+    const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
+    const denuncianteRaw = denuncianteList[0] || {};
+    const denunciadoRaw = disciplinableList[0] || {};
+
+    const mapDetalle = (item: any): NoticiaPersonaDetalle => ({
+      nombre: item.nombre || 'Sin nombre',
+      cedula: item.cedula || item.numeroIdentificacion || item.identificacion,
+      cargo: item.cargo,
+      dependencia: item.dependencia,
+      email: item.email,
+      telefono: item.telefono,
+      direccion: item.direccion,
+      entidad: item.entidad
+    });
+
+    return {
+      ...raw,
+      tipo: raw.tipo || 'noticia',
+      fechaQueja: raw.fechaQueja || raw.fechaRecepcion,
+      territorial: raw.territorial,
+      dependenciaDenunciado: raw.dependenciaDenunciado,
+      denunciantes: denuncianteList.map(mapDetalle),
+      disciplinables: disciplinableList.map(mapDetalle),
+      denunciante: {
+        nombre: denuncianteRaw.nombre || 'Sin nombre',
+        tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
+        numeroIdentificacion: denuncianteRaw.numeroIdentificacion || denuncianteRaw.cedula || denuncianteRaw.identificacion || 'Sin identificacion'
+      },
+      denunciado: {
+        nombre: denunciadoRaw.nombre || raw.disciplinable?.nombre || 'Sin nombre',
+        tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
+        numeroIdentificacion: denunciadoRaw.numeroIdentificacion || denunciadoRaw.cedula || denunciadoRaw.identificacion || raw.disciplinable?.cedula || 'Sin identificacion',
+        cargo: denunciadoRaw.cargo || raw.disciplinable?.cargo || 'Sin cargo'
+      },
+      hechos: raw.hechos || raw.descripcionHechos || '',
+      conductas: raw.conductas || raw.conductasSeleccionadas || [],
+      prioridad: raw.prioridad || 'media',
+      diasPendientes: raw.diasPendientes || 0,
+      etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepcion',
+      estado: raw.estado || 'pendiente',
+      adjuntos: raw.adjuntos || []
+    };
+  };
+
+  const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
+    let etapa = proceso.kanbanStage || proceso.etapaActual;
+
+    // Normalize Stage:
+    // 1. Try to find exact or case-insensitive match in current configuration
+    const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
+    if (match) {
+      etapa = match.etapa;
+    } else {
+      // 2. Fallback to legacy map if not found (e.g. for 'EVALUACION' enum)
+      etapa = stageLabelMap[etapa] || etapa;
+      // 3. Final fallback: Title Case if it looks like an uppercase constant
+      if (etapa === etapa.toUpperCase() && etapa.length > 3) {
+        etapa = etapa.charAt(0).toUpperCase() + etapa.slice(1).toLowerCase();
+      }
+    }
+
+    const fechaVenc = proceso.fechaVencimientoEtapa ? new Date(proceso.fechaVencimientoEtapa) : null;
+    const fechaCreacion = proceso.createdAt ? new Date(proceso.createdAt) : new Date();
+    const hoy = new Date();
+    const diasRestantes = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+    // Usar porcentaje de tiempo de la base de datos si está disponible, sino calcularlo
+    const porcentajeTiempo = proceso.timePercentage !== undefined
+      ? Math.round(proceso.timePercentage)
+      : (() => {
+          const totalDias = fechaVenc ? Math.max(1, Math.round((fechaVenc.getTime() - fechaCreacion.getTime()) / (1000 * 60 * 60 * 24))) : 1;
+          const transcurridos = totalDias - diasRestantes;
+          return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
+        })();
+
+    const semaforo: 'verde' | 'amarillo' | 'rojo' = diasRestantes <= 0
+      ? 'rojo'
+      : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
+    const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
+    const denuncianteData = Array.isArray(proceso.news?.denunciante)
+      ? proceso.news?.denunciante?.[0]
+      : proceso.news?.denunciante;
+    const disciplinableData = Array.isArray(proceso.news?.disciplinable)
+      ? proceso.news?.disciplinable?.[0]
+      : proceso.news?.disciplinable;
+
+    return {
+      id: proceso.id,
+      numeroProceso: proceso.radicadoProceso,
+      noticiaOrigen: proceso.news?.radicado || 'N/A',
+      denunciante: {
+        nombre: (denuncianteData as any)?.nombre || 'Sin denunciante',
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: (denuncianteData as any)?.cedula || 'N/A'
+      },
+      denunciado: {
+        nombre: (disciplinableData as any)?.nombre || 'Sin disciplinable',
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: (disciplinableData as any)?.cedula || 'N/A'
+      },
+      cedula: (disciplinableData as any)?.cedula || 'N/A',
+      etapaActual: etapa as any,
+      estadoActual: proceso.estado || 'ACTIVO',
+      profesionalAsignado: {
+        nombre: abogado,
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: (proceso as any).abogadoAsignado?.id || '',
+      },
+      semaforo,
+      diasRestantes,
+      porcentajeTiempo,
+      // Usar estadísticas de la base de datos si están disponibles
+      borradores: proceso.draftsCount !== undefined ? Array(proceso.draftsCount).fill({}) : [],
+      documentos: proceso.documentsCount !== undefined ? Array(proceso.documentsCount).fill({}) : [],
+      pendienteAprobacion: false,
+      ultimaActuacion: 'Actualizado desde backend',
+      fechaCreacion: fechaCreacion.toISOString().split('T')[0],
+      tipo: 'proceso',
+      hechos: proceso.news?.hechos,
+      kanbanNotice: proceso.kanbanNotice || null,
+    };
+  };
+
+  // Cargar datos reales desde el microservicio (con fallback a mock)
+  // Re-run when stages are loaded to ensure correct normalization
+  useEffect(() => {
+    const cargarDatos = async () => {      // 1. Intentar cargar de localStorage primero (Items)
+      const storedItems = loadPersistedItems();
+
+      if (storedItems && storedItems.length > 0) {
+        setItems(storedItems);
+      }
+
+      // 2. Cargar desde backend para actualizar items
+      try {
+        const [noticiasApi, procesosApi] = await Promise.all([
+          disciplinaryService.getAllNoticias(),
+          disciplinaryService.getAllProcesos()
+        ]);
+
+        // Use dynamicStages from hook
+        // Mapping generic 'Etapa' to format expected by component if needed, or use directly but be careful with typing
+        // The component expects 'etapa' property. Hook returns 'nombre'.
+        // Let's map hook Etapa to component structure locally
+        const activeStages = mergedStages.map(s => ({
+          etapa: s.nombre,
+          diasHabiles: s.dias,
+          activo: true
+        }));
+
+        // 3. Ordenar etapas (hook already returns ordered, but we ensure standard order if needed or trust hook)
+        // For Kanban display order, the hook provided 'orden'.
+        // But for normalization logic, we just need the list.
+
+        // Helper para normalizar nombres de etapas (Match robusto)
+        const normalizeStageName = (inputName: string, configStages: any[]) => {
+          if (!inputName) return 'RECEPCION';
+
+          // 1. Busqueda exacta o case-insensitive
+          const cleanInput = inputName.trim();
+          const match = configStages.find(s =>
+            s.etapa === cleanInput ||
+            s.etapa.localeCompare(cleanInput, undefined, { sensitivity: 'base' }) === 0
+          );
+
+          if (match) return match.etapa;
+
+          // 2. Fallback a mapeo legacy si es necesario
+          const legacyMap: Record<string, string> = {
+            'RECEPCION': 'RECEPCION',
+            'EVALUACION': 'EVALUACION',
+            'VALORACION': 'EVALUACION',
+            'INDAGACION': 'INDAGACION_PREVIA',
+            'INDAGACION_PREVIA': 'INDAGACION_PREVIA',
+            'INVESTIGACION': 'INVESTIGACION',
+            'JUZGAMIENTO': 'JUZGAMIENTO',
+            'FALLO': 'FALLO'
+          };
+          const mapped = legacyMap[cleanInput.toUpperCase()];
+          if (mapped) {
+            const matchMapped = configStages.find(s => s.etapa.localeCompare(mapped, undefined, { sensitivity: 'base' }) === 0);
+            if (matchMapped) return matchMapped.etapa;
+          }
+
+          // 3. Si parece una constante (MAYUSCULAS), intentar convertir a Title Case y buscar de nuevo
+          const titleCase = cleanInput.charAt(0).toUpperCase() + cleanInput.slice(1).toLowerCase();
+          const matchTitle = configStages.find(s => s.etapa.localeCompare(titleCase, undefined, { sensitivity: 'base' }) === 0);
+          if (matchTitle) return matchTitle.etapa;
+
+          return cleanInput; // Default fallthrough
+        };
+
+        const mappedNoticias = (noticiasApi || []).map(n => {
+          const not = toNoticiaFromApi(n);
+          // Aplicar normalización extra a la etapa de la noticia
+          return { ...normalizeNoticia(not), etapaActual: normalizeStageName(not.etapaActual, activeStages) };
+        });
+
+        const mappedProcesos = (procesosApi || []).map(p => {
+          const proc = toProcesoFromApi(p, activeStages);
+          proc.etapaActual = normalizeStageName(p.etapaActual, activeStages) as any;
+          return proc;
+        });
+
+        const normalizedItems = [...mappedNoticias, ...mappedProcesos];
+
+        setItems(normalizedItems);
+        persistItems(normalizedItems);
+
+      } catch (error) {
+        console.error('Error cargando datos reales de disciplinario', error);
+        // Only show error if we strictly needed remote data, but we have mocks/localstorage.
+        // toast.error('Usando datos locales.');
+
+        // Fallback or keep existing items if empty. Logic remains similar to before but simpler
+      }
+    };
+
+    // Only load if we have stages or if we decide to load anyway (but normalization might fail without stages)
+    // Actually, allowing load even if stages are empty (using defaults) is safer, but 'dynamicStages' will eventually populate.
+    cargarDatos();
+  }, [mergedStages]); // Re-run when dynamicStages updates
+
 
   // Detectar tamaño de pantalla con breakpoints mejorados
   useEffect(() => {
@@ -1816,14 +2470,14 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       const width = window.innerWidth;
       setIsMobile(width < 768);
       setIsTablet(width >= 768 && width < 1024);
-      
+
       // Auto-activar vista compacta en mobile y tablet
       if (width < 1024) {
         setVistaCompacta(true);
       } else {
         setVistaCompacta(false);
       }
-      
+
       // Auto-cambiar a vista lista en mobile pequeño
       if (width < 640 && tipoVista === 'kanban') {
         setTipoVista('lista');
@@ -1840,57 +2494,269 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   };
 
-  const etapas = [
-    { nombre: 'Recepción', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 3 },
-    { nombre: 'Valoración', color: '#6B7280', icono: <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
-    { nombre: 'Indagación', color: '#6B7280', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 40 },
-    { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />, diasEstimados: 60 },
-    { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 50 },
-    { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 }
-  ];
+  // Icon mapping helper
+  const getStageIcon = (nombre: string) => {
+    const n = nombre.toLowerCase();
+    const iconClass = `${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`;
+    const activeIconClass = `${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`;
 
-  // ==================== HANDLERS ====================
-  const handleDropItem = (item: Item, nuevaEtapa: string) => {
-    if (item.tipo === 'noticia') {
-      if (nuevaEtapa !== 'Recepción') {
-        toast.error('Las noticias solo pueden estar en Recepción', {
-          description: 'Usa "Convertir a Proceso"'
-        });
-        return;
-      }
-    } else if (item.tipo === 'proceso') {
-      if (item.etapaActual !== nuevaEtapa) {
-        setItems(prev => prev.map(i => 
-          i.id === item.id && i.tipo === 'proceso'
-            ? { ...i, etapaActual: nuevaEtapa as any }
-            : i
-        ));
-        toast.success('Proceso Movido', {
-          description: `${item.numeroProceso} → ${nuevaEtapa}`
-        });
-      }
+    if (n.includes('recep')) return <FileCheck className={iconClass} />;
+    if (n.includes('valor') || n.includes('evalua')) return <Eye className={iconClass} />;
+    if (n.includes('indaga')) return <Search className={iconClass} />;
+    if (n.includes('investiga')) return <Scale className={activeIconClass} style={{ color: '#003DA5' }} />;
+    if (n.includes('juzga')) return <AlertTriangle className={iconClass} />;
+    if (n.includes('fallo')) return <CheckCircle className={iconClass} />;
+    return <FolderOpen className={iconClass} />;
+  };
+
+  // Build dynamic etapas from hook
+  const etapas = mergedStages.map(s => ({
+      nombre: s.nombre,
+      color: s.nombre.toLowerCase().includes('investiga') ? '#003DA5' : '#6B7280',
+      icono: getStageIcon(s.nombre),
+      diasEstimados: s.dias || 0
+    }));
+
+  const etapaMap: Record<string, string> = {
+    [normalizeEtapa('RECEPCION')]: 'RECEPCION',
+    [normalizeEtapa('Recepcion')]: 'RECEPCION',
+    [normalizeEtapa('Recepci?n')]: 'RECEPCION',
+    [normalizeEtapa('EVALUACION')]: 'EVALUACION',
+    [normalizeEtapa('Evaluacion')]: 'EVALUACION',
+    [normalizeEtapa('Valoracion')]: 'EVALUACION',
+    [normalizeEtapa('Valoraci?n')]: 'EVALUACION',
+    [normalizeEtapa('INDAGACION')]: 'INDAGACION',
+    [normalizeEtapa('Indagacion')]: 'INDAGACION',
+    [normalizeEtapa('Indagaci?n')]: 'INDAGACION',
+    [normalizeEtapa('Indagacion Previa')]: 'INDAGACION',
+    [normalizeEtapa('Indagaci?n Previa')]: 'INDAGACION',
+    [normalizeEtapa('INVESTIGACION')]: 'INVESTIGACION',
+    [normalizeEtapa('Investigacion')]: 'INVESTIGACION',
+    [normalizeEtapa('Investigaci?n')]: 'INVESTIGACION',
+    [normalizeEtapa('JUZGAMIENTO')]: 'JUZGAMIENTO',
+    [normalizeEtapa('Juzgamiento')]: 'JUZGAMIENTO',
+    [normalizeEtapa('FALLO')]: 'FALLO',
+    [normalizeEtapa('Fallo')]: 'FALLO'
+  };
+
+  const getStageIndex = (name?: string) => {
+    if (!name) return -1;
+    const key = normalizeEtapa(name);
+    return mergedStages.findIndex(stage => normalizeEtapa(stage.nombre) === key);
+  };
+
+  const mapearOrigenNoticia = (valor: string) => {
+    const limpio = (valor || '').toString().trim().toUpperCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    switch (limpio) {
+      case 'QUEJOSO':
+        return 'QUEJOSO';
+      case 'ANONIMO':
+        return 'ANONIMO';
+      case 'INFORMANTE':
+      case 'OFICIO':
+      case 'DE OFICIO':
+        return 'OFICIO';
+      case 'REMISION':
+      case 'REMISION POR COMPETENCIA':
+        return 'REMISION';
+      default:
+        return 'ANONIMO';
     }
   };
 
-  const handleCrearNoticia = (data: any) => {
-    const nuevaNoticia: Noticia = {
-      id: `n${Date.now()}`,
-      numero: `ND-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
-      fechaRecepcion: new Date().toISOString().split('T')[0],
-      origen: data.origen || 'Denuncia Ciudadana',
-      denunciado: data.denunciado?.nombre || '',
-      hechos: data.descripcionHechos || '',
-      estado: 'pendiente',
-      prioridad: 'media',
-      diasPendientes: 0,
-      tipo: 'noticia'
-    };
+  // ==================== HANDLERS ====================
+  const handleDropItem = async (item: Item, nuevaEtapa: string) => {
+    if (!item) return;
 
-    setItems(prev => [...prev, nuevaNoticia]);
-    toast.success('Noticia Creada', {
-      description: `${nuevaNoticia.numero} en Recepción`
+    const isBackwardsMove = item.tipo === 'proceso'
+      && getStageIndex(nuevaEtapa) !== -1
+      && getStageIndex(item.etapaActual) !== -1
+      && getStageIndex(nuevaEtapa) < getStageIndex(item.etapaActual);
+    const kanbanNotice = isBackwardsMove
+      ? `Devuelto de ${item.etapaActual} a ${nuevaEtapa}`
+      : null;
+
+    // Actualizar estado local inmediatamente
+    setItems(prev => {
+      const updated = prev.map(i =>
+        i.id === item.id
+          ? { ...i, etapaActual: nuevaEtapa as any, kanbanNotice }
+          : i
+      );
+      persistItems(updated);
+      return updated;
     });
-    setModalActivo(null);
+
+    // Si es proceso, actualizar backend
+    if (item.tipo === 'proceso') {
+      const backendStage = etapaMap[normalizeEtapa(nuevaEtapa)];
+      if (backendStage) {
+        const isValidUuid = isUuid(item.id);
+        if (!isValidUuid) {
+          toast.info('Proceso demo', { description: 'No se actualiza en el servidor' });
+          return;
+        }
+        try {
+          await disciplinaryService.cambiarEtapa(item.id, backendStage, nuevaEtapa, kanbanNotice || undefined);
+          toast.success('Proceso Movido', {
+            description: `${item.numeroProceso} ? ${nuevaEtapa}`
+          });
+        } catch (error) {
+          console.error('Error actualizando etapa en backend:', error);
+          toast.error('No se pudo actualizar en el servidor');
+        }
+      }
+    } else if (item.tipo === 'noticia') {
+      if (isUuid(item.id)) {
+        try {
+          await disciplinaryService.updateNewsKanban(item.id, nuevaEtapa);
+        } catch (error) {
+          console.error('Error actualizando Kanban de noticia:', error);
+        }
+      }
+      toast.success('Noticia Movida', {
+        description: `${item.numero} - ${nuevaEtapa}`
+      });
+    }
+  };
+
+  const handleCrearNoticia = async (data: any) => {
+    const denuncianteListFromForm = Array.isArray(data.denunciantes) ? data.denunciantes : [];
+    const disciplinablesFromForm = Array.isArray(data.disciplinable) ? data.disciplinable : [];
+    const denunciadoFromForm = disciplinablesFromForm[0] || data.denunciado || {};
+
+    try {
+      // Subir evidencias (si hay)
+      const urls: string[] = [];
+      if (data.evidencias?.length > 0) {
+        for (const file of data.evidencias) {
+          try {
+            const uploaded = await disciplinaryService.uploadFile(file);
+            if (uploaded?.url) {
+              urls.push(uploaded.url);
+            }
+          } catch (uploadError) {
+            console.error('Error uploading file:', uploadError);
+            toast.warning(`No se pudo subir el archivo: ${file.name}`);
+          }
+        }
+      }
+
+      // También revisar archivosAdjuntos por compatibilidad
+      if (data.archivosAdjuntos && Array.isArray(data.archivosAdjuntos)) {
+        for (const file of data.archivosAdjuntos as File[]) {
+          try {
+            const uploaded = await disciplinaryService.uploadFile(file);
+            if (uploaded?.url) {
+              urls.push(uploaded.url);
+            }
+          } catch (uploadError) {
+            console.error('Error uploading file:', uploadError);
+            toast.warning(`No se pudo subir el archivo: ${file.name}`);
+          }
+        }
+      }
+
+      const buildDenunciantePayload = (item: any) => {
+        const email = (item.correo || item.email || '').trim();
+        const payload: any = {
+          nombre: item.nombre || 'Sin denunciante',
+          cedula: item.identificacion || item.numeroIdentificacion || 'N/A',
+          cargo: item.cargo,
+          telefono: item.telefono,
+          direccion: item.direccion,
+          entidad: item.entidad,
+          dependencia: item.entidad
+        };
+        if (email && email.includes('@')) {
+          payload.email = email;
+        }
+        return payload;
+      };
+
+        const payload = {
+          origen: mapearOrigenNoticia(data.origen || 'QUEJOSO'),
+          fechaQueja: data.fechaQueja || undefined,
+          territorial: data.territorial || 'Direccion Nacional',
+          dependenciaDenunciado: denunciadoFromForm.dependencia || 'Por determinar',
+          hechos: data.descripcionHechos || '',
+          conductas: Array.isArray(data.conductasSeleccionadas) ? data.conductasSeleccionadas : [],
+          denunciante: buildDenunciantePayload(denuncianteListFromForm[0] || data.denunciante || {}),
+          disciplinable: disciplinablesFromForm.length > 0
+            ? {
+              nombre: disciplinablesFromForm[0].nombre || 'Sin denunciado',
+              cedula: disciplinablesFromForm[0].identificacion || disciplinablesFromForm[0].numeroIdentificacion || 'N/A',
+              cargo: disciplinablesFromForm[0].cargo,
+              dependencia: disciplinablesFromForm[0].dependencia
+            }
+            : {
+              nombre: denunciadoFromForm.nombre || 'Sin denunciado',
+              cedula: denunciadoFromForm.identificacion || denunciadoFromForm.numeroIdentificacion || 'N/A',
+              cargo: denunciadoFromForm.cargo,
+              dependencia: denunciadoFromForm.dependencia
+            },
+          adjuntos: urls,
+        };
+
+      // 1. Guardar en base de datos
+      const apiNoticia = await disciplinaryService.radicarNoticia(payload as any);
+      console.log('? Noticia creada en BD:', apiNoticia);
+
+      // 2. Normalizar la noticia creada para el tablero
+      const apiNormalized = toNoticiaFromApi(apiNoticia);
+      const fallbackNormalized = normalizeNoticia({
+        id: apiNoticia.id,
+        numero: apiNoticia.radicado,
+        fechaRecepcion: apiNoticia.fechaRecepcion,
+        fechaQueja: apiNoticia.fechaQueja || payload.fechaQueja,
+        origen: apiNoticia.origen || payload.origen,
+        territorial: apiNoticia.territorial || payload.territorial,
+        dependenciaDenunciado: apiNoticia.dependenciaDenunciado || payload.dependenciaDenunciado,
+        denunciante: apiNoticia.denunciante || payload.denunciante,
+        disciplinable: apiNoticia.disciplinable || payload.disciplinable,
+        hechos: apiNoticia.hechos || payload.hechos,
+        conductas: apiNoticia.conductas || payload.conductas,
+        adjuntos: apiNoticia.adjuntos || payload.adjuntos,
+        estado: apiNoticia.estado || 'RADICADA',
+        etapaActual: (apiNoticia as any).kanbanStage || 'Recepcion',
+        tipo: 'noticia'
+      });
+
+      let nuevaNoticia = {
+        ...fallbackNormalized,
+        ...apiNormalized,
+        denunciante: apiNormalized.denunciante?.nombre ? apiNormalized.denunciante : fallbackNormalized.denunciante,
+        denunciado: apiNormalized.denunciado?.nombre ? apiNormalized.denunciado : fallbackNormalized.denunciado,
+        denunciantes: apiNormalized.denunciantes?.length ? apiNormalized.denunciantes : fallbackNormalized.denunciantes,
+        disciplinables: apiNormalized.disciplinables?.length ? apiNormalized.disciplinables : fallbackNormalized.disciplinables,
+        territorial: apiNormalized.territorial || fallbackNormalized.territorial,
+        dependenciaDenunciado: apiNormalized.dependenciaDenunciado || fallbackNormalized.dependenciaDenunciado,
+        hechos: apiNormalized.hechos || fallbackNormalized.hechos,
+        conductas: apiNormalized.conductas?.length ? apiNormalized.conductas : fallbackNormalized.conductas,
+        adjuntos: apiNormalized.adjuntos?.length ? apiNormalized.adjuntos : fallbackNormalized.adjuntos,
+        etapaActual: apiNormalized.etapaActual || fallbackNormalized.etapaActual
+      };
+
+      console.log('? Noticia normalizada para agregar al tablero:', nuevaNoticia);
+
+      // 4. Agregar SOLO la nueva noticia al tablero, manteniendo las posiciones existentes
+      setItems(prev => {
+        const updated = [...prev, nuevaNoticia];
+        persistItems(updated);
+        return updated;
+      });
+
+      toast.success('Noticia creada correctamente', {
+        description: `${nuevaNoticia.numero} en ${nuevaNoticia.etapaActual}`
+      });
+    } catch (error) {
+      console.error('Error al crear noticia', error);
+      toast.error('Error al crear la noticia');
+    } finally {
+      setModalActivo(null);
+    }
   };
 
   const handleConvertirNoticia = (noticia: Noticia) => {
@@ -1900,21 +2766,73 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     setModalActivo('convertir-proceso');
   };
 
-  const handleConfirmarConversion = () => {
+  const handleConfirmarConversion = async () => {
     if (!profesionalSeleccionado) {
       toast.error('Error', { description: 'Selecciona un profesional' });
       return;
     }
 
+    if (!itemSeleccionado || !isUuid(itemSeleccionado.id)) {
+      toast.error('Error', { description: 'La noticia no tiene un ID v?lido en BD' });
+      return;
+    }
+
+    const profesional = profesionalesDisponibles.find(p => p.id === profesionalSeleccionado);
+    if (!profesional) {
+      toast.error('Error', { description: 'Selecciona un profesional v?lido' });
+      return;
+    }
+
+    try {
+      const procesoApi = await disciplinaryService.asignarProceso({
+        newsId: itemSeleccionado.id,
+        abogadoId: profesional.id,
+        abogadoNombre: profesional.nombre
+      });
+
+      const activeStages = mergedStages.map(s => ({
+        etapa: s.nombre,
+        diasHabiles: s.dias,
+        activo: true
+      }));
+      const nuevoProceso = toProcesoFromApi(procesoApi, activeStages);
+
+      setItems(prev => [
+        ...prev.filter(i => i.id !== itemSeleccionado.id),
+        nuevoProceso
+      ]);
+
+      toast.success('Proceso Creado', {
+        description: `${nuevoProceso.numeroProceso} - ${profesional.nombre}`
+      });
+
+      setModalActivo(null);
+      setItemSeleccionado(null);
+    } catch (error) {
+      console.error('Error convirtiendo noticia a proceso', error);
+      toast.error('No se pudo convertir la noticia');
+    }
+
+    const denunciadoFallback: Persona = itemSeleccionado?.denunciado || {
+      nombre: 'Sin denunciado',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: 'N/A'
+    };
+
     const nuevoProceso: Proceso = {
       id: `p${Date.now()}`,
       numeroProceso: `PD-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
       noticiaOrigen: itemSeleccionado.numero,
-      denunciado: itemSeleccionado.denunciado,
+      denunciante: denuncianteFallback,
+      denunciado: denunciadoFallback,
       cedula: '00000000',
       etapaActual: 'Recepción',
       estadoActual: 'En Gestión',
-      profesionalAsignado: profesionalSeleccionado,
+      profesionalAsignado: {
+        nombre: profesionalSeleccionado,
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: 'N/A'
+      },
       semaforo: 'verde',
       diasRestantes: 30,
       porcentajeTiempo: 0,
@@ -1930,9 +2848,9 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       ...prev.filter(i => i.id !== itemSeleccionado.id),
       nuevoProceso
     ]);
-    
+
     toast.success('Proceso Creado', {
-      description: `${nuevoProceso.numeroProceso} → ${profesionalSeleccionado}`
+      description: `${nuevoProceso.numeroProceso} ? ${profesionalSeleccionado}`
     });
 
     setModalActivo(null);
@@ -1978,9 +2896,9 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     }
 
     // Generar nuevo número RC (Remisión por Competencia)
-    const año = new Date().getFullYear();
-    const numeroRC = `RC-${año}-${String(Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`;
-    
+    const anio = new Date().getFullYear();
+    const numeroRC = `RC-${anio}-${String(Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`;
+
     // Obtener nombre del área
     const areas: Record<string, string> = {
       'personeria': 'Personería Municipal',
@@ -1991,13 +2909,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       'recursos-humanos': 'Recursos Humanos',
       'otra': 'Otra Entidad'
     };
-    
+
     const nombreArea = areas[areaDestinoRemision] || areaDestinoRemision;
-    
+
     toast.success('Remitido por Competencia', {
-      description: `${itemSeleccionado.numero} → ${numeroRC} (${nombreArea})`
+      description: `${itemSeleccionado.numero} ? ${numeroRC} (${nombreArea})`
     });
-    
+
     // Remover la noticia del listado (ya que fue remitida a otra área)
     setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
     setModalActivo(null);
@@ -2020,19 +2938,205 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     setItemSeleccionado(null);
   };
 
+  const cargarAutosProceso = async (proceso: Proceso, force = false) => {
+    if (!isUuid(proceso.id)) {
+      console.warn('?? ID de proceso no es UUID válido para autos:', proceso.id);
+      return;
+    }
+    if (!force && autosPorProceso[proceso.id]?.length) {
+      console.log('?? Autos ya cargados en cache para proceso:', proceso.id);
+      return;
+    }
+
+    console.log('?? Cargando autos desde BD para proceso:', proceso.id);
+    try {
+      const autos = await disciplinaryService.getAutosByProceso(proceso.id);
+      console.log('? Autos recibidos:', autos?.length || 0);
+      if (autos && autos.length > 0) {
+        console.log('?? Primer auto:', autos[0]);
+      }
+      setAutosPorProceso(prev => ({ ...prev, [proceso.id]: Array.isArray(autos) ? autos : [] }));
+    } catch (error: any) {
+      console.error('? Error cargando autos del proceso:', error);
+      console.error('? Error details:', error.message);
+    }
+  };
+
+  // Track which processes have been loaded to avoid infinite loops
+  const loadedProcessesRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const procesos = items.filter(i => i.tipo === 'proceso') as Proceso[];
+    procesos.forEach(proceso => {
+      // Only load if not already loaded
+      if (!loadedProcessesRef.current.has(proceso.id)) {
+        loadedProcessesRef.current.add(proceso.id);
+        cargarDocumentosProceso(proceso);
+        cargarAutosProceso(proceso);
+      }
+    });
+  }, [items]);
+
+  const cargarDocumentosProceso = async (proceso: Proceso, force = false) => {
+    if (!isUuid(proceso.id)) {
+      console.warn('?? ID de proceso no es UUID válido:', proceso.id);
+      return;
+    }
+    if (!force && documentosPorProceso[proceso.id]?.length) {
+      console.log('?? Documentos ya cargados en cache para proceso:', proceso.id);
+      return;
+    }
+
+    console.log('?? Cargando documentos desde BD para proceso:', proceso.id);
+    try {
+      const respuesta = await disciplinaryService.getDocumentosExpediente(proceso.id);
+      console.log('? Respuesta de documentos recibida:', respuesta);
+
+      const docs = respuesta?.documentos || [];
+      console.log(`?? Total documentos recibidos: ${docs.length}`);
+
+      if (docs.length > 0) {
+        console.log('?? Primer documento:', docs[0]);
+      }
+
+      syncProcesoDocs(proceso.id, docs);
+      console.log('? Documentos sincronizados correctamente');
+    } catch (error: any) {
+      console.error('? Error cargando documentos del proceso:', error);
+      console.error('? Error details:', error.message, error.response);
+      toast.error('No se pudieron cargar los documentos', {
+        description: error.message || 'Error desconocido'
+      });
+    }
+  };
+
   const handleVerDetallesNoticia = (noticia: Noticia) => {
     setItemSeleccionado(noticia);
     setModalActivo('ver-detalles');
   };
 
-  const handleVerDetalles = (proceso: Proceso) => {
+  const handleVerDetalles = async (proceso: Proceso) => {
     setItemSeleccionado(proceso);
     setModalActivo('ver-detalles');
+
+    // Clear cache and force reload to get fresh data
+    console.log('?? Forzando recarga de documentos y autos para proceso:', proceso.radicadoProceso || proceso.numeroProceso);
+    await cargarDocumentosProceso(proceso, true);
+    await cargarAutosProceso(proceso, true);
   };
 
   const handleAprobarBorrador = (proceso: Proceso) => {
     setItemSeleccionado(proceso);
     setModalActivo('aprobar-borrador');
+  };
+
+  const handleAbrirEditor = (proceso: Proceso) => {
+    const plantillaBase = plantillaEditor || PLANTILLAS_MOCK?.[0] || {
+      id: 'plantilla-default',
+      nombre: 'Documento',
+      descripcion: 'Documento',
+      etapa: 'General',
+      categoria: 'General',
+      contenido: '',
+      camposParametricos: []
+    };
+    setPlantillaEditor(plantillaBase);
+    setItemSeleccionado(proceso);
+    setModalActivo('editor-documentos');
+  };
+
+  const handleAbrirSubirDocumentos = (proceso: Proceso) => {
+    setItemSeleccionado(proceso);
+    setModalActivo('subir-documentos');
+  };
+
+  const handleGuardarBorrador = (contenido: string, version: number) => {
+    if (!itemSeleccionado || itemSeleccionado.tipo !== 'proceso' || !plantillaEditor) return;
+    const procesoId = itemSeleccionado.id;
+    const borradoresActuales = borradoresPorProceso[procesoId] || (itemSeleccionado as Proceso).borradores || [];
+    const nuevoBorrador = {
+      id: Date.now().toString(),
+      titulo: plantillaEditor.nombre,
+      plantilla: plantillaEditor.nombre,
+      version,
+      estado: 'borrador',
+      fechaCreacion: new Date().toISOString(),
+      contenido
+    };
+    syncProcesoBorradores(procesoId, [...borradoresActuales, nuevoBorrador]);
+    toast.success('Borrador guardado', { description: `Version ${version} guardada` });
+  };
+
+  const handleEnviarRevision = (contenido: string, observacionesEnviar: string, version: number) => {
+    if (!itemSeleccionado || itemSeleccionado.tipo !== 'proceso' || !plantillaEditor) return;
+    const procesoId = itemSeleccionado.id;
+    const borradoresActuales = borradoresPorProceso[procesoId] || (itemSeleccionado as Proceso).borradores || [];
+    const nuevoBorrador = {
+      id: Date.now().toString(),
+      titulo: plantillaEditor.nombre,
+      plantilla: plantillaEditor.nombre,
+      version,
+      estado: 'enviado',
+      fechaCreacion: new Date().toISOString(),
+      fechaEnvio: new Date().toISOString(),
+      observacionesProfesional: observacionesEnviar,
+      contenido
+    };
+    syncProcesoBorradores(procesoId, [...borradoresActuales, nuevoBorrador]);
+    setModalActivo(null);
+    toast.success('Borrador enviado', { description: 'Enviado para revision' });
+  };
+
+  const handleConfirmarDocumentos = async (documentos: any[]) => {
+    if (!itemSeleccionado || itemSeleccionado.tipo !== 'proceso') return;
+    const procesoId = itemSeleccionado.id;
+    const actuales = documentosPorProceso[procesoId] || (itemSeleccionado as Proceso).documentos || [];
+
+    if (!isUuid(procesoId)) {
+      const nuevos = documentos.map((doc: any, index: number) => {
+        const nombre = doc.archivo?.name || `Documento ${index + 1}`;
+        const ext = nombre.includes('.') ? nombre.split('.').pop() || '' : '';
+        const tipo = ext ? ext.toUpperCase() : 'DOC';
+        const url = URL.createObjectURL(doc.archivo);
+        return {
+          id: `${Date.now()}-${index}`,
+          nombre,
+          tipo,
+          tamano: formatFileSize(doc.archivo?.size) || '',
+          fechaCarga: new Date().toISOString(),
+          usuario: 'Usuario Actual',
+          etapaAsociada: doc.etapaAsociada,
+          downloadUrl: url
+        };
+      });
+      syncProcesoDocs(procesoId, [...actuales, ...nuevos]);
+      setModalActivo(null);
+      toast.success('Documentos adjuntados', { description: `${nuevos.length} documento(s) agregado(s)` });
+      return;
+    }
+
+    try {
+      for (const doc of documentos) {
+        await disciplinaryService.uploadDocumento(
+          procesoId,
+          doc.archivo,
+          doc.tipoDocumento,
+          doc.descripcion,
+          doc.archivo?.name,
+          doc.etapaAsociada
+        );
+      }
+
+      const respuesta = await disciplinaryService.getDocumentosExpediente(procesoId);
+      const docs = respuesta?.documentos || [];
+      syncProcesoDocs(procesoId, docs);
+      toast.success('Documentos adjuntados', { description: `${documentos.length} documento(s) cargado(s)` });
+    } catch (error) {
+      console.error('Error subiendo documentos', error);
+      toast.error('No se pudieron subir los documentos');
+    } finally {
+      setModalActivo(null);
+    }
   };
 
   const handleConfirmarAprobacion = () => {
@@ -2123,16 +3227,70 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   const procesosPendientesAprobacion = procesos.filter(p => p.pendienteAprobacion).length;
   const procesosEnTermino = procesos.filter(p => p.semaforo === 'verde').length;
 
+  // Filtrar por profesional si está activo el filtro
+  const itemsFiltrados = filtroProfesionalId
+    ? items.filter(item => {
+      if (item.tipo === 'proceso') {
+        return (item as Proceso).profesionalAsignadoId === filtroProfesionalId;
+      }
+      return false; // No mostrar noticias cuando hay filtro de profesional
+    })
+    : items;
+
+  // Obtener nombre del profesional filtrado
+  const profesionalFiltrado = filtroProfesionalId ? (() => {
+    const profesionales = [
+      { id: '1', nombre: 'Juan Pérez Rodríguez' },
+      { id: '2', nombre: 'María Torres Gómez' },
+      { id: '3', nombre: 'Carlos Mendoza Silva' },
+      { id: '4', nombre: 'Ana González López' }
+    ];
+    return profesionales.find(p => p.id === filtroProfesionalId);
+  })() : null;
+
   // ==================== RENDER ====================
   return (
-    <DndProvider backend={isTouchDevice() ? TouchBackend : HTML5Backend}>
+    <DndProvider
+      backend={isTouchDevice() ? TouchBackend : HTML5Backend}
+      options={isTouchDevice() ? { enableMouseEvents: true } : undefined}
+    >
       <div className="space-y-3 md:space-y-4">
+        {/* Banner de Filtro Activo por Profesional */}
+        {filtroProfesionalId && profesionalFiltrado && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-4 rounded-xl border-2 flex items-center justify-between gap-3"
+            style={{ background: '#E0EDFF', borderColor: '#003DA5' }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg" style={{ background: '#003DA5' }}>
+                <Users className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="font-bold text-sm" style={{ color: '#003DA5' }}>
+                  Filtrado por Profesional
+                </p>
+                <p className="text-xs" style={{ color: '#003DA5' }}>
+                  Mostrando solo los procesos de: <span className="font-bold">{profesionalFiltrado.nombre}</span>
+                </p>
+              </div>
+            </div>
+            <Badge
+              className="font-bold px-3 py-1"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              {itemsFiltrados.length} proceso{itemsFiltrados.length !== 1 ? 's' : ''}
+            </Badge>
+          </motion.div>
+        )}
+
         {/* Header Responsive Mejorado */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex-1">
-            <h2 
+            <h2
               className="font-black leading-tight"
-              style={{ 
+              style={{
                 color: '#003DA5',
                 fontSize: isMobile ? '1.25rem' : isTablet ? '1.375rem' : '1.5rem'
               }}
@@ -2152,12 +3310,11 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
               <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
                 <button
                   onClick={() => setTipoVista('kanban')}
-                  className={`${isTablet ? 'px-2 py-1.5' : 'px-3 py-2'} rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                    tipoVista === 'kanban'
-                      ? 'bg-white shadow-sm' 
-                      : 'hover:bg-gray-200'
-                  }`}
-                  style={{ 
+                  className={`${isTablet ? 'px-2 py-1.5' : 'px-3 py-2'} rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${tipoVista === 'kanban'
+                    ? 'bg-white shadow-sm'
+                    : 'hover:bg-gray-200'
+                    }`}
+                  style={{
                     color: tipoVista === 'kanban' ? '#003DA5' : '#6B7280'
                   }}
                 >
@@ -2166,12 +3323,11 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 </button>
                 <button
                   onClick={() => setTipoVista('lista')}
-                  className={`${isTablet ? 'px-2 py-1.5' : 'px-3 py-2'} rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                    tipoVista === 'lista'
-                      ? 'bg-white shadow-sm' 
-                      : 'hover:bg-gray-200'
-                  }`}
-                  style={{ 
+                  className={`${isTablet ? 'px-2 py-1.5' : 'px-3 py-2'} rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${tipoVista === 'lista'
+                    ? 'bg-white shadow-sm'
+                    : 'hover:bg-gray-200'
+                    }`}
+                  style={{
                     color: tipoVista === 'lista' ? '#003DA5' : '#6B7280'
                   }}
                 >
@@ -2180,13 +3336,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 </button>
               </div>
             )}
-            
+
             {/* Toggle de Vista Mobile */}
             {isMobile && (
               <button
                 onClick={() => setTipoVista(tipoVista === 'kanban' ? 'lista' : 'kanban')}
                 className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all"
-                style={{ 
+                style={{
                   background: '#F3F4F6',
                   color: '#003DA5'
                 }}
@@ -2242,13 +3398,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
           <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
             <div className={`flex items-center ${isMobile ? 'gap-2 p-2.5' : 'gap-3 p-3'}`}>
-              <div 
+              <div
                 className={`${isMobile ? 'p-2' : 'p-2.5'} rounded-lg bg-orange-50 flex-shrink-0`}
               >
                 <FileText className={`${isMobile ? 'w-4 h-4' : isTablet ? 'w-4.5 h-4.5' : 'w-5 h-5'} text-orange-600`} />
               </div>
               <div className="min-w-0">
-                <p 
+                <p
                   className="font-black text-gray-900 leading-none"
                   style={{ fontSize: isMobile ? '1.5rem' : isTablet ? '1.625rem' : '1.75rem' }}
                 >
@@ -2263,14 +3419,14 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
           <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
             <div className={`flex items-center ${isMobile ? 'gap-2 p-2.5' : 'gap-3 p-3'}`}>
-              <div 
+              <div
                 className={`${isMobile ? 'p-2' : 'p-2.5'} rounded-lg flex-shrink-0`}
                 style={{ background: '#E0EDFF' }}
               >
                 <FolderOpen className={`${isMobile ? 'w-4 h-4' : isTablet ? 'w-4.5 h-4.5' : 'w-5 h-5'}`} style={{ color: '#003DA5' }} />
               </div>
               <div className="min-w-0">
-                <p 
+                <p
                   className="font-black text-gray-900 leading-none"
                   style={{ fontSize: isMobile ? '1.5rem' : isTablet ? '1.625rem' : '1.75rem' }}
                 >
@@ -2285,13 +3441,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
           <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
             <div className={`flex items-center ${isMobile ? 'gap-2 p-2.5' : 'gap-3 p-3'}`}>
-              <div 
+              <div
                 className={`${isMobile ? 'p-2' : 'p-2.5'} rounded-lg bg-red-50 flex-shrink-0`}
               >
                 <AlertCircle className={`${isMobile ? 'w-4 h-4' : isTablet ? 'w-4.5 h-4.5' : 'w-5 h-5'} text-red-600`} />
               </div>
               <div className="min-w-0">
-                <p 
+                <p
                   className="font-black text-gray-900 leading-none"
                   style={{ fontSize: isMobile ? '1.5rem' : isTablet ? '1.625rem' : '1.75rem' }}
                 >
@@ -2306,13 +3462,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
           <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
             <div className={`flex items-center ${isMobile ? 'gap-2 p-2.5' : 'gap-3 p-3'}`}>
-              <div 
+              <div
                 className={`${isMobile ? 'p-2' : 'p-2.5'} rounded-lg bg-green-50 flex-shrink-0`}
               >
                 <CheckCircle className={`${isMobile ? 'w-4 h-4' : isTablet ? 'w-4.5 h-4.5' : 'w-5 h-5'} text-green-600`} />
               </div>
               <div className="min-w-0">
-                <p 
+                <p
                   className="font-black text-gray-900 leading-none"
                   style={{ fontSize: isMobile ? '1.5rem' : isTablet ? '1.625rem' : '1.75rem' }}
                 >
@@ -2339,8 +3495,8 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 </p>
               </div>
             )}
-            
-            <div 
+
+            <div
               className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
               style={{
                 scrollbarWidth: 'thin',
@@ -2348,39 +3504,42 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 WebkitOverflowScrolling: 'touch'
               }}
             >
-            {etapas.map((etapa) => (
-              <ColumnaKanban
-                key={etapa.nombre}
-                etapa={etapa.nombre}
-                items={items}
-                color={etapa.color}
-                icono={etapa.icono}
-                diasEstimados={etapa.diasEstimados}
-                onDrop={handleDropItem}
-                onConvertirNoticia={handleConvertirNoticia}
-                onDevolverNoticia={handleDevolverNoticia}
-                onDevolverCompetencia={handleDevolverCompetencia}
-                onArchivarNoticia={handleArchivarNoticia}
-                onVerDetallesNoticia={handleVerDetallesNoticia}
-                onVerDetalles={handleVerDetalles}
-                onAprobarBorrador={handleAprobarBorrador}
-                onVerExpediente={handleVerExpediente}
-                onGestionAutos={handleGestionAutos}
-                onGestionEvidencias={handleGestionEvidencias}
-                onGestionOficios={handleGestionOficios}
-                onGestionActas={handleGestionActas}
-                onComentarios={handleComentarios}
-                vistaCompacta={vistaCompacta}
-                isMobile={isMobile}
-                colapsada={columnasColapsadas.has(etapa.nombre)}
-                onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
-              />
-            ))}
+              {/* items={itemsFiltrados}  merge con main */}
+              {etapas.map((etapa) => (
+                <ColumnaKanban
+                  key={etapa.nombre}
+                  etapa={etapa.nombre}
+                  items={items}
+                  color={etapa.color}
+                  icono={etapa.icono}
+                  diasEstimados={etapa.diasEstimados}
+                  onDrop={handleDropItem}
+                  getDocStats={getDocStats}
+                  getBorradoresCount={getBorradoresCount}
+                  onConvertirNoticia={handleConvertirNoticia}
+                  onDevolverNoticia={handleDevolverNoticia}
+                  onDevolverCompetencia={handleDevolverCompetencia}
+                  onArchivarNoticia={handleArchivarNoticia}
+                  onVerDetallesNoticia={handleVerDetallesNoticia}
+                  onVerDetalles={handleVerDetalles}
+                  onAprobarBorrador={handleAprobarBorrador}
+                  onVerExpediente={handleVerExpediente}
+                  onGestionAutos={handleGestionAutos}
+                  onGestionEvidencias={handleGestionEvidencias}
+                  onGestionOficios={handleGestionOficios}
+                  onGestionActas={handleGestionActas}
+                  onComentarios={handleComentarios}
+                  vistaCompacta={vistaCompacta}
+                  isMobile={isMobile}
+                  colapsada={columnasColapsadas.has(etapa.nombre)}
+                  onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
+                />
+              ))}
             </div>
           </div>
         ) : (
           <VistaLista
-            items={items}
+            items={itemsFiltrados}
             onVerDetalles={handleVerDetalles}
             onAprobarBorrador={handleAprobarBorrador}
             onVerExpediente={handleVerExpediente}
@@ -2402,264 +3561,121 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
         {/* MODALES - (mantener igual pero responsive) */}
         <AnimatePresence>
-          {modalActivo && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-              onClick={() => setModalActivo(null)}
-            >
+          {modalActivo && itemSeleccionado && (() => {
+            // Normalizar item seleccionado para evitar crashes por campos undefined
+            // Solo normalizar si los campos críticos están undefined
+            const itemSeguro = (itemSeleccionado.denunciante && itemSeleccionado.denunciado)
+              ? itemSeleccionado
+              : normalizeNoticia(itemSeleccionado);
+            const noticiaDetalle = itemSeguro as Noticia;
+
+            return (
               <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                onClick={(e) => e.stopPropagation()}
-                className={`bg-white rounded-2xl ${isMobile ? 'p-4' : 'p-6'} ${isMobile ? 'max-w-full mx-2' : 'max-w-lg'} w-full shadow-2xl max-h-[90vh] overflow-y-auto`}
-                style={{
-                  maxWidth: isMobile ? 'calc(100vw - 2rem)' : '32rem'
-                }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+                onClick={() => setModalActivo(null)}
               >
-                {/* Modal: Crear Noticia */}
-                {modalActivo === 'crear-noticia' && (
-                  <CreateNoticiaModal
-                    onClose={() => setModalActivo(null)}
-                    onSave={handleCrearNoticia}
-                  />
-                )}
-
-                {/* Modal: Convertir a Proceso */}
-                {modalActivo === 'convertir-proceso' && itemSeleccionado && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-blue-100">
-                          <PlusCircle className="w-6 h-6" style={{ color: '#003DA5' }} />
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className={`bg-white rounded-2xl ${isMobile ? 'p-4' : 'p-6'} ${isMobile ? 'max-w-full mx-2' : 'max-w-lg'} w-full shadow-2xl max-h-[90vh] overflow-y-auto`}
+                  style={{
+                    maxWidth: isMobile ? 'calc(100vw - 2rem)' : '32rem'
+                  }}
+                >
+                  {/* Modal: Convertir a Proceso */}
+                  {modalActivo === 'convertir-proceso' && itemSeguro && (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-blue-100">
+                            <PlusCircle className="w-6 h-6" style={{ color: '#003DA5' }} />
+                          </div>
+                          <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black`} style={{ color: '#003DA5' }}>
+                            Convertir a Proceso
+                          </h3>
                         </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black`} style={{ color: '#003DA5' }}>
-                          Convertir a Proceso
-                        </h3>
-                      </div>
-                      <button
-                        onClick={() => setModalActivo(null)}
-                        className="p-2 hover:bg-gray-100 rounded-lg"
-                      >
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FileText className="w-4 h-4 text-orange-600" />
-                          <p className="text-sm font-bold text-orange-700">
-                            {itemSeleccionado.numero}
-                          </p>
-                        </div>
-                        <p className="font-bold text-gray-900 mb-1">
-                          {itemSeleccionado.denunciado.nombre}
-                        </p>
-                        <p className="text-xs text-gray-600 mb-2">
-                          {itemSeleccionado.denunciado.tipoIdentificacion} {itemSeleccionado.denunciado.numeroIdentificacion}
-                        </p>
-                        <p className="text-sm text-gray-600 line-clamp-2">
-                          {itemSeleccionado.hechos}
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Profesional *
-                        </label>
-                        <select
-                          value={profesionalSeleccionado}
-                          onChange={(e) => setProfesionalSeleccionado(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        <button
+                          onClick={() => setModalActivo(null)}
+                          className="p-2 hover:bg-gray-100 rounded-lg"
                         >
-                          <option value="">Seleccionar...</option>
-                          {PROFESIONALES.map((prof) => (
-                            <option key={prof} value={prof}>{prof}</option>
-                          ))}
-                        </select>
+                          <X className="w-5 h-5 text-gray-600" />
+                        </button>
                       </div>
 
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Observaciones
-                        </label>
-                        <textarea
-                          value={observaciones}
-                          onChange={(e) => setObservaciones(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          rows={3}
-                          placeholder="Observaciones..."
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <Button
-                        onClick={() => setModalActivo(null)}
-                        variant="outline"
-                        className="flex-1"
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        onClick={handleConfirmarConversion}
-                        className="flex-1 font-bold"
-                        style={{ background: '#003DA5', color: '#FFFFFF' }}
-                      >
-                        <Check className="w-4 h-4 mr-2" />
-                        Crear
-                      </Button>
-                    </div>
-                  </>
-                )}
-
-                {/* Modal: Devolver Noticia */}
-                {modalActivo === 'devolver-noticia' && itemSeleccionado && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-yellow-100">
-                          <ArrowLeft className="w-6 h-6 text-yellow-600" />
-                        </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
-                          Devolver Noticia
-                        </h3>
-                      </div>
-                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="p-4 bg-yellow-50 rounded-xl border-2 border-yellow-200">
-                        <p className="text-sm font-bold mb-1">{itemSeleccionado.numero}</p>
-                        <p className="text-sm text-gray-700">{itemSeleccionado.denunciado.nombre}</p>
-                        <p className="text-xs text-gray-600">
-                          {itemSeleccionado.denunciado.tipoIdentificacion} {itemSeleccionado.denunciado.numeroIdentificacion}
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Motivo de Devolución *
-                        </label>
-                        <textarea
-                          value={observaciones}
-                          onChange={(e) => setObservaciones(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          rows={4}
-                          placeholder="Explica el motivo de la devolución..."
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
-                        Cancelar
-                      </Button>
-                      <Button onClick={handleConfirmarDevolucion} className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white">
-                        Devolver
-                      </Button>
-                    </div>
-                  </>
-                )}
-
-                {/* Modal: Devolver por Competencia */}
-                {modalActivo === 'devolver-competencia' && itemSeleccionado && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-purple-100">
-                          <Send className="w-6 h-6 text-purple-600" />
-                        </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
-                          Remitir por Competencia
-                        </h3>
-                      </div>
-                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
-                        <p className="text-sm font-bold mb-1 text-purple-900">{itemSeleccionado.numero}</p>
-                        <p className="text-sm text-gray-700">{itemSeleccionado.denunciado.nombre}</p>
-                        <p className="text-xs text-gray-600">
-                          {itemSeleccionado.denunciado.tipoIdentificacion} {itemSeleccionado.denunciado.numeroIdentificacion}
-                        </p>
-                      </div>
-
-                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                        <div className="flex items-start gap-2">
-                          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-sm font-bold text-blue-900 mb-1">Remisión por Competencia</p>
-                            <p className="text-xs text-blue-700">
-                              Esta noticia no es competencia del área de Control Interno Disciplinario. 
-                              Se generará un nuevo número RC (Remisión por Competencia) y se remitirá al área correspondiente.
+                      <div className="space-y-4">
+                        <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <FileText className="w-4 h-4 text-orange-600" />
+                            <p className="text-sm font-bold text-orange-700">
+                              {itemSeguro.numero}
                             </p>
                           </div>
+                          <p className="font-bold text-gray-900 mb-1">
+                            {itemSeguro.denunciado.nombre}
+                          </p>
+                          <p className="text-xs text-gray-600 mb-2">
+                            {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
+                          </p>
+                          <p className="text-sm text-gray-600 line-clamp-2">
+                            {itemSeguro.hechos}
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            Profesional *
+                          </label>
+                          <select
+                            value={profesionalSeleccionado}
+                            onChange={(e) => setProfesionalSeleccionado(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Seleccionar...</option>
+                            {profesionalesDisponibles.length === 0 ? (
+                              <option value="" disabled>Sin profesionales disponibles</option>
+                            ) : (
+                              profesionalesDisponibles.map((prof) => (
+                                <option key={prof.id} value={prof.id}>{prof.nombre}</option>
+                              ))
+                            )}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            Observaciones
+                          </label>
+                          <textarea
+                            value={observaciones}
+                            onChange={(e) => setObservaciones(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            rows={3}
+                            placeholder="Observaciones..."
+                          />
                         </div>
                       </div>
 
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Área/Entidad de Destino *
-                        </label>
-                        <select
-                          value={areaDestinoRemision}
-                          onChange={(e) => setAreaDestinoRemision(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold"
-                        >
-                          <option value="">Seleccionar área...</option>
-                          <option value="personeria">Personería Municipal</option>
-                          <option value="contraloria">Contraloría</option>
-                          <option value="procuraduria">Procuraduría</option>
-                          <option value="fiscalia">Fiscalía General de la Nación</option>
-                          <option value="control-interno">Control Interno de Gestión</option>
-                          <option value="recursos-humanos">Recursos Humanos</option>
-                          <option value="otra">Otra entidad...</option>
-                        </select>
+                      <div className="flex gap-3 mt-6">
+                        <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                          Cancelar
+                        </Button>
+                        <Button onClick={handleConfirmarConversion} className="flex-1 font-bold" style={{ background: '#003DA5', color: '#FFFFFF' }}>
+                          <Check className="w-4 h-4 mr-2" />
+                          Crear
+                        </Button>
                       </div>
-
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Justificación de la Remisión *
-                        </label>
-                        <textarea
-                          value={observaciones}
-                          onChange={(e) => setObservaciones(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          rows={4}
-                          placeholder="Explica por qué esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida..."
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
-                        Cancelar
-                      </Button>
-                      <Button 
-                        onClick={handleConfirmarDevolucionCompetencia} 
-                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold"
-                      >
-                        <Send className="w-4 h-4 mr-2" />
-                        Remitir
-                      </Button>
-                    </div>
                   </>
                 )}
 
                 {/* Modal: Archivar Noticia - REEMPLAZADO POR COMPONENTE MODAL COMPLETO */}
 
                 {/* Modal: Aprobar Borrador */}
-                {modalActivo === 'aprobar-borrador' && itemSeleccionado && (
+                {modalActivo === 'aprobar-borrador' && itemSeguro && (
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
@@ -2698,7 +3714,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 )}
 
                 {/* Modal: Ver Detalles del Proceso - COMPLETO CON EDITOR */}
-                {modalActivo === 'ver-detalles' && itemSeleccionado && (
+                {modalActivo === 'ver-detalles' && itemSeguro && (
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
@@ -2706,7 +3722,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                           <Eye className="w-6 h-6" style={{ color: '#003DA5' }} />
                         </div>
                         <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black`} style={{ color: '#003DA5' }}>
-                          {itemSeleccionado.tipo === 'noticia' ? 'Detalles de la Noticia' : 'Detalles del Proceso'}
+                          {itemSeguro.tipo === 'noticia' ? 'Detalles de la Noticia' : 'Detalles del Proceso'}
                         </h3>
                       </div>
                       <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
@@ -2716,76 +3732,184 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto">
                       {/* VISTA PARA NOTICIAS */}
-                      {itemSeleccionado.tipo === 'noticia' && (
+                      {itemSeguro.tipo === 'noticia' && (
                         <>
-                          {/* Información de la Noticia */}
+                          {/* Informacion de la Noticia */}
                           <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
-                            <h4 className="font-bold text-orange-900 mb-2">{(itemSeleccionado as Noticia).numero}</h4>
+                            <h4 className="font-bold text-orange-900 mb-2">{noticiaDetalle.numero}</h4>
                             <div className="grid grid-cols-2 gap-2 text-sm">
                               <div>
                                 <p className="text-gray-600">Origen:</p>
-                                <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).origen}</p>
+                                <p className="font-bold text-gray-900">{noticiaDetalle.origen}</p>
                               </div>
                               <div>
-                                <p className="text-gray-600">Fecha Recepción:</p>
-                                <p className="font-bold text-gray-900">{new Date((itemSeleccionado as Noticia).fechaRecepcion).toLocaleDateString('es-CO')}</p>
+                                <p className="text-gray-600">Fecha Recepcion:</p>
+                                <p className="font-bold text-gray-900">
+                                  {new Date(noticiaDetalle.fechaRecepcion).toLocaleDateString('es-CO')}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-600">Fecha Queja:</p>
+                                <p className="font-bold text-gray-900">
+                                  {noticiaDetalle.fechaQueja
+                                    ? new Date(noticiaDetalle.fechaQueja).toLocaleDateString('es-CO')
+                                    : 'N/A'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-600">Territorial:</p>
+                                <p className="font-bold text-gray-900">{noticiaDetalle.territorial || 'N/A'}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-600">Dependencia:</p>
+                                <p className="font-bold text-gray-900">{noticiaDetalle.dependenciaDenunciado || 'N/A'}</p>
                               </div>
                               <div>
                                 <p className="text-gray-600">Estado:</p>
-                                <p className="font-bold text-gray-900 capitalize">{(itemSeleccionado as Noticia).estado.replace('-', ' ')}</p>
+                                <p className="font-bold text-gray-900 capitalize">{noticiaDetalle.estado.replace('-', ' ')}</p>
                               </div>
                               <div>
                                 <p className="text-gray-600">Prioridad:</p>
                                 <p className={`font-bold ${
-                                  (itemSeleccionado as Noticia).prioridad === 'alta' ? 'text-red-600' :
-                                  (itemSeleccionado as Noticia).prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
-                                } capitalize`}>{(itemSeleccionado as Noticia).prioridad}</p>
+                                  noticiaDetalle.prioridad === 'alta' ? 'text-red-600' :
+                                  noticiaDetalle.prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
+                                } capitalize`}>{noticiaDetalle.prioridad}</p>
                               </div>
                               <div>
-                                <p className="text-gray-600">Días Pendientes:</p>
-                                <p className="font-bold text-orange-600">{(itemSeleccionado as Noticia).diasPendientes} días</p>
+                                <p className="text-gray-600">Dias Pendientes:</p>
+                                <p className="font-bold text-orange-600">{noticiaDetalle.diasPendientes} dias</p>
                               </div>
                             </div>
                           </div>
 
-                          {/* Denunciante */}
+                          {/* Denunciantes */}
                           <div>
                             <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              👤 DENUNCIANTE
+                              DENUNCIANTES
                             </h5>
-                            <div className="p-3 bg-gray-50 rounded-lg space-y-1">
-                              <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).denunciante.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Noticia).denunciante.tipoIdentificacion}:</span> {(itemSeleccionado as Noticia).denunciante.numeroIdentificacion}
-                              </p>
-                            </div>
+                            {noticiaDetalle.denunciantes && noticiaDetalle.denunciantes.length > 0 ? (
+                              <div className="space-y-2">
+                                {noticiaDetalle.denunciantes.map((den, idx) => (
+                                  <div key={idx} className="p-3 bg-gray-50 rounded-lg">
+                                    <p className="font-bold text-gray-900">{den.nombre}</p>
+                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mt-1">
+                                      <p>CC: {den.cedula || 'N/A'}</p>
+                                      {den.cargo && <p>Cargo: {den.cargo}</p>}
+                                      {den.entidad && <p>Entidad: {den.entidad}</p>}
+                                      {den.dependencia && !den.entidad && <p>Dependencia: {den.dependencia}</p>}
+                                      {den.telefono && <p>Telefono: {den.telefono}</p>}
+                                      {den.email && <p>Correo: {den.email}</p>}
+                                    </div>
+                                    {den.direccion && (
+                                      <p className="text-xs text-gray-600 mt-1">Direccion: {den.direccion}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm text-gray-600">Sin denunciante registrado</p>
+                              </div>
+                            )}
                           </div>
 
-                          {/* Denunciado */}
+                          {/* Disciplinables */}
                           <div>
                             <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              ⚠️ DENUNCIADO
+                              DENUNCIADOS
                             </h5>
-                            <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
-                              <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).denunciado.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Noticia).denunciado.tipoIdentificacion}:</span> {(itemSeleccionado as Noticia).denunciado.numeroIdentificacion}
-                              </p>
-                            </div>
+                            {noticiaDetalle.disciplinables && noticiaDetalle.disciplinables.length > 0 ? (
+                              <div className="space-y-2">
+                                {noticiaDetalle.disciplinables.map((den, idx) => (
+                                  <div key={idx} className="p-3 bg-red-50 rounded-lg border border-red-200">
+                                    <p className="font-bold text-gray-900">{den.nombre}</p>
+                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mt-1">
+                                      <p>CC: {den.cedula || 'N/A'}</p>
+                                      {den.cargo && <p>Cargo: {den.cargo}</p>}
+                                      {den.dependencia && <p>Dependencia: {den.dependencia}</p>}
+                                      {den.telefono && <p>Telefono: {den.telefono}</p>}
+                                      {den.email && <p>Correo: {den.email}</p>}
+                                    </div>
+                                    {den.direccion && (
+                                      <p className="text-xs text-gray-600 mt-1">Direccion: {den.direccion}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+                                <p className="text-sm text-gray-600">Sin denunciado registrado</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Conductas */}
+                          <div>
+                            <h5 className="text-sm font-bold text-gray-700 mb-2">CONDUCTAS</h5>
+                            {noticiaDetalle.conductas && noticiaDetalle.conductas.length > 0 ? (
+                              <div className="flex flex-wrap gap-2">
+                                {noticiaDetalle.conductas.map((conducta, idx) => (
+                                  <span key={idx} className="px-3 py-1 bg-orange-100 text-orange-800 text-xs font-semibold rounded-full">
+                                    {conducta}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm text-gray-600">Sin conductas registradas</p>
+                              </div>
+                            )}
                           </div>
 
                           {/* Hechos */}
                           <div>
                             <h5 className="text-sm font-bold text-gray-700 mb-2">HECHOS</h5>
                             <div className="p-3 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-700">{(itemSeleccionado as Noticia).hechos}</p>
+                              <p className="text-sm text-gray-700">{noticiaDetalle.hechos || 'Sin descripcion'}</p>
                             </div>
+                          </div>
+
+                          {/* Adjuntos */}
+                          <div>
+                            <h5 className="text-sm font-bold text-gray-700 mb-2">ARCHIVOS ADJUNTOS</h5>
+                            {noticiaDetalle.adjuntos && noticiaDetalle.adjuntos.length > 0 ? (
+                              <div className="space-y-2">
+                                {noticiaDetalle.adjuntos.map((archivo, idx) => {
+                                  const nombre = archivo.split('/').pop() || `Archivo ${idx + 1}`;
+                                  const ext = nombre.includes('.') ? nombre.split('.').pop() || '' : '';
+                                  const tipo = ext ? ext.toUpperCase() : 'ARCHIVO';
+                                  const descargaUrl = disciplinaryService.getFileUrl(archivo);
+                                  return (
+                                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <Paperclip className="w-4 h-4 text-gray-500" />
+                                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white border border-gray-200 text-gray-600">
+                                          {tipo}
+                                        </span>
+                                        <span className="text-sm text-gray-800 truncate">{nombre}</span>
+                                      </div>
+                                      <a
+                                        href={descargaUrl}
+                                        download
+                                        className="text-sm font-semibold text-blue-700 hover:text-blue-800"
+                                      >
+                                        Descargar
+                                      </a>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm text-gray-600">Sin adjuntos</p>
+                              </div>
+                            )}
                           </div>
                         </>
                       )}
 
                       {/* VISTA PARA PROCESOS */}
-                      {itemSeleccionado.tipo === 'proceso' && (
+                      {itemSeguro.tipo === 'proceso' && (
                         <>
                           {/* Información del Proceso */}
                           <div className="p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
@@ -2809,7 +3933,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                           {/* Denunciante */}
                           <div>
                             <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              👤 DENUNCIANTE
+                              ?? DENUNCIANTE
                             </h5>
                             <div className="p-3 bg-gray-50 rounded-lg space-y-1">
                               <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).denunciante.nombre}</p>
@@ -2822,7 +3946,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                           {/* Denunciado */}
                           <div>
                             <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              ⚠️ DENUNCIADO
+                              ?? DENUNCIADO
                             </h5>
                             <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
                               <p className="font-bold text-gray-900 mb-1"> {(itemSeleccionado as Proceso).denunciado.nombre}</p>
@@ -2835,7 +3959,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                           {/* Profesional Asignado */}
                           <div>
                             <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              👨‍💼 PROFESIONAL ASIGNADO
+                              ????? PROFESIONAL ASIGNADO
                             </h5>
                             <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-1">
                               <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).profesionalAsignado.nombre}</p>
@@ -2958,91 +4082,439 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                           <Settings className="w-4 h-4" style={{ color: '#003DA5' }} />
                           ACCIONES RÁPIDAS
                         </h5>
-                        <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          onClick={() => {
-                            setModalActivo('editor-documentos');
-                          }}
-                          size="sm"
-                          className="w-full bg-purple-600 hover:bg-purple-700 text-white"
-                        >
-                          <Edit2 className="w-3.5 h-3.5 mr-2" />
-                          Editor
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            setModalActivo('subir-documentos');
-                          }}
-                          size="sm"
-                          className="w-full" style={{ background: '#003DA5', color: '#FFFFFF' }}
-                        >
-                          <Upload className="w-3.5 h-3.5 mr-2" />
-                          Subir Docs
-                        </Button>
+                        <div className="flex justify-center">
+                          <Button
+                            onClick={() => {
+                              // Abrir modal de edición de proceso
+                              const proceso = itemSeleccionado as Proceso;
+                              setProcesoEditando(proceso);
+                              setDenunciadoEditando({
+                                nombre: proceso.denunciado.nombre,
+                                cedula: proceso.denunciado.numeroIdentificacion,
+                                cargo: proceso.cargo || ''
+                              });
+                              setObservaciones(proceso.hechos || '');
+                              setModalActivo('editar-proceso');
+                            }}
+                            size="sm"
+                            className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 mr-2" />
+                            Editar Proceso
+                          </Button>
+                        </div>
                       </div>
+
+                      {/* Métricas - SOLO PROCESOS */}
+                      <div>
+                        <h5 className="text-sm font-bold text-gray-700 mb-2">ESTADÍSTICAS</h5>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="p-3 bg-purple-50 rounded-lg text-center">
+                            <p className="text-2xl font-black text-purple-700"> {getBorradoresCount(itemSeleccionado as Proceso)}</p>
+                            <p className="text-xs text-gray-600">Borradores</p>
+                          </div>
+                          <div className="p-3 bg-blue-50 rounded-lg text-center">
+                            <p className="text-2xl font-black text-blue-700"> {getDocStats(itemSeleccionado as Proceso).total}</p>
+                            <p className="text-xs text-gray-600">Documentos</p>
+                          </div>
+                          <div className="p-3 bg-green-50 rounded-lg text-center">
+                            <p className="text-2xl font-black text-green-700"> {(itemSeleccionado as Proceso).porcentajeTiempo}%</p>
+                            <p className="text-xs text-gray-600">Tiempo</p>
+                          </div>
+                        </div>
                       </div>
 
-                          {/* Métricas - SOLO PROCESOS */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">ESTADÍSTICAS</h5>
-                            <div className="grid grid-cols-3 gap-2">
-                              <div className="p-3 bg-purple-50 rounded-lg text-center">
-                                <p className="text-2xl font-black text-purple-700"> {(itemSeleccionado as Proceso).borradores?.length || 0}</p>
-                                <p className="text-xs text-gray-600">Borradores</p>
-                              </div>
-                              <div className="p-3 bg-blue-50 rounded-lg text-center">
-                                <p className="text-2xl font-black text-blue-700"> {(itemSeleccionado as Proceso).documentos?.length || 0}</p>
-                                <p className="text-xs text-gray-600">Documentos</p>
-                              </div>
-                              <div className="p-3 bg-green-50 rounded-lg text-center">
-                                <p className="text-2xl font-black text-green-700"> {(itemSeleccionado as Proceso).porcentajeTiempo}%</p>
-                                <p className="text-xs text-gray-600">Tiempo</p>
-                              </div>
-                            </div>
-                          </div>
+                      {/* Última Actuaci�n - SOLO PROCESOS */}
+                      <div>
+                        <h5 className="text-sm font-bold text-gray-700 mb-2">ÚLTIMA ACTUACIÓN</h5>
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-sm text-gray-700"> {(itemSeleccionado as Proceso).ultimaActuacion}</p>
+                          <p className="text-xs text-gray-500 mt-1"> {(itemSeleccionado as Proceso).fechaCreacion}</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
-                          {/* Última Actuación - SOLO PROCESOS */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">ÚLTIMA ACTUACIÓN</h5>
-                            <div className="p-3 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-700"> {(itemSeleccionado as Proceso).ultimaActuacion}</p>
-                              <p className="text-xs text-gray-500 mt-1"> {(itemSeleccionado as Proceso).fechaCreacion}</p>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
+                  </div>
 
-                    {/* Botones Finales */}
-                    <div className="flex gap-2 mt-4">
-                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
-                        Cerrar
+                  {/* Botones Finales */}
+                  <div className="flex gap-2 mt-4">
+                    <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                      Cerrar
+                    </Button>
+                    {itemSeleccionado.tipo === 'proceso' && (
+                      <Button
+                        onClick={() => handleVerExpediente(itemSeleccionado as Proceso)}
+                        className="flex-1"
+                        style={{ background: '#8B5CF6', color: '#FFFFFF' }}
+                      >
+                        <Archive className="w-4 h-4 mr-2" />
+                        Expediente Completo
                       </Button>
-                      {itemSeleccionado.tipo === 'proceso' && (
-                        <Button 
-                          onClick={() => handleVerExpediente(itemSeleccionado as Proceso)} 
-                          className="flex-1"
-                          style={{ background: '#8B5CF6', color: '#FFFFFF' }}
-                        >
-                          <Archive className="w-4 h-4 mr-2" />
-                          Expediente Completo
+                    )}
+                    {itemSeleccionado.tipo === 'noticia' && (
+                      <Button
+                        onClick={() => {
+                          setModalActivo(null);
+                          handleConvertirNoticia(itemSeleccionado as Noticia);
+                        }}
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <PlusCircle className="w-4 h-4 mr-2" />
+                        Convertir a Proceso
+                      </Button>
+                    )}
+                  </div>
+                </>
+              )}
+
+                  {/* Modal: Devolver Noticia */}
+                  {modalActivo === 'devolver-noticia' && itemSeguro && (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-yellow-100">
+                            <ArrowLeft className="w-6 h-6 text-yellow-600" />
+                          </div>
+                          <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
+                            Devolver Noticia
+                          </h3>
+                        </div>
+                        <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                          <X className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="p-4 bg-yellow-50 rounded-xl border-2 border-yellow-200">
+                          <p className="text-sm font-bold mb-1">{itemSeguro.numero}</p>
+                          <p className="text-sm text-gray-700">{itemSeguro.denunciado.nombre}</p>
+                          <p className="text-xs text-gray-600">
+                            {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            Motivo de Devolución *
+                          </label>
+                          <textarea
+                            value={observaciones}
+                            onChange={(e) => setObservaciones(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            rows={4}
+                            placeholder="Explica el motivo de la devoluci�n..."
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 mt-6">
+                        <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                          Cancelar
                         </Button>
-                      )}
-                      {itemSeleccionado.tipo === 'noticia' && (
-                        <Button 
-                          onClick={() => {
-                            setModalActivo(null);
-                            handleConvertirNoticia(itemSeleccionado as Noticia);
-                          }} 
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          <PlusCircle className="w-4 h-4 mr-2" />
-                          Convertir a Proceso
+                        <Button onClick={handleConfirmarDevolucion} className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white">
+                          Devolver
                         </Button>
-                      )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Modal: Devolver por Competencia */}
+                  {modalActivo === 'devolver-competencia' && itemSeguro && (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-purple-100">
+                            <Send className="w-6 h-6 text-purple-600" />
+                          </div>
+                          <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
+                            Remitir por Competencia
+                          </h3>
+                        </div>
+                        <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                          <X className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
+                          <p className="text-sm font-bold mb-1 text-purple-900">{itemSeguro.numero}</p>
+                          <p className="text-sm text-gray-700">{itemSeguro.denunciado.nombre}</p>
+                          <p className="text-xs text-gray-600">
+                            {itemSeguro.denunciado.tipoIdentificacion} {itemSeguro.denunciado.numeroIdentificacion}
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                          <div className="flex items-start gap-2">
+                            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-bold text-blue-900 mb-1">Remisión por Competencia</p>
+                              <p className="text-xs text-blue-700">
+                                Esta noticia no es competencia del área de Control Interno Disciplinario.
+                                Se generará un nuevo número RC (Remisión por Competencia) y se remitirá al área correspondiente.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            área/Entidad de Destino *
+                          </label>
+                          <select
+                            value={areaDestinoRemision}
+                            onChange={(e) => setAreaDestinoRemision(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold"
+                          >
+                            <option value="">Seleccionar área...</option>
+                            <option value="personeria">Personería Municipal</option>
+                            <option value="contraloria">Contraloría</option>
+                            <option value="procuraduria">Procuraduría</option>
+                            <option value="fiscalia">Fiscalía General de la Nación</option>
+                            <option value="control-interno">Control Interno de Gestión</option>
+                            <option value="recursos-humanos">Recursos Humanos</option>
+                            <option value="otra">Otra entidad...</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            Justificación de la Remisión *
+                          </label>
+                          <textarea
+                            value={observaciones}
+                            onChange={(e) => setObservaciones(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            rows={4}
+                            placeholder="Explica por qué esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida..."
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 mt-6">
+                        <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                          Cancelar
+                        </Button>
+                        <Button
+                          onClick={handleConfirmarDevolucionCompetencia}
+                          className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                        >
+                          <Send className="w-4 h-4 mr-2" />
+                          Remitir
+                        </Button>
+                      </div>
+                    </>
+                  )}
+
+                </motion.div>
+              </motion.div>
+            );
+          })()}
+        </AnimatePresence>
+
+        {/* MODAL: CREAR NOTICIA (sin depender de itemSeleccionado) */}
+        <AnimatePresence>
+          {modalActivo === 'crear-noticia' && (
+            <CreateNoticiaModal
+              onClose={() => setModalActivo(null)}
+              onSave={handleCrearNoticia}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* MODALES DE EDICION Y SUBIDA */}
+        <AnimatePresence>
+          {modalActivo === 'editor-documentos' && itemSeleccionado && itemSeleccionado.tipo === 'proceso' && plantillaEditor && (
+            <EditorDocumentos
+              proceso={buildProcesoEditor(itemSeleccionado as Proceso)}
+              plantilla={plantillaEditor}
+              onClose={() => setModalActivo(null)}
+              onGuardar={handleGuardarBorrador}
+              onEnviarRevision={handleEnviarRevision}
+            />
+          )}
+
+          {modalActivo === 'subir-documentos' && itemSeleccionado && itemSeleccionado.tipo === 'proceso' && (
+            <ModalSubirDocumento
+              proceso={itemSeleccionado}
+              onClose={() => setModalActivo(null)}
+              onConfirm={handleConfirmarDocumentos}
+            />
+          )}
+
+          {/* Modal de Edición de Proceso */}
+          {modalActivo === 'editar-proceso' && procesoEditando && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+              onClick={() => {
+                setModalActivo(null);
+                setProcesoEditando(null);
+              }}
+            >
+              <motion.div
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+              >
+                <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
+                      <Edit2 className="w-5 h-5 text-purple-600" />
                     </div>
-                  </>
-                )}
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900">Editar Proceso</h2>
+                      <p className="text-sm text-gray-500">{procesoEditando.numeroProceso}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setModalActivo(null);
+                      setProcesoEditando(null);
+                    }}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {/* Información del Denunciado */}
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      DENUNCIADO
+                    </h3>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+                        <input
+                          type="text"
+                          value={denunciadoEditando.nombre}
+                          onChange={(e) => setDenunciadoEditando({ ...denunciadoEditando, nombre: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Cédula</label>
+                          <input
+                            type="text"
+                            value={denunciadoEditando.cedula}
+                            onChange={(e) => setDenunciadoEditando({ ...denunciadoEditando, cedula: e.target.value })}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Cargo</label>
+                          <input
+                            type="text"
+                            value={denunciadoEditando.cargo}
+                            onChange={(e) => setDenunciadoEditando({ ...denunciadoEditando, cargo: e.target.value })}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Observaciones */}
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4" />
+                      OBSERVACIONES
+                    </h3>
+                    <textarea
+                      value={observaciones || procesoEditando.hechos || ''}
+                      onChange={(e) => setObservaciones(e.target.value)}
+                      rows={4}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="Agregar observaciones sobre el proceso..."
+                    />
+                  </div>
+
+                  {/* Información del Proceso */}
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h3 className="text-sm font-bold text-gray-700 mb-3">INFORMACIÓN DEL PROCESO</h3>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-gray-600">Estado:</p>
+                        <p className="font-semibold text-gray-900">{procesoEditando.estadoActual}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Etapa:</p>
+                        <p className="font-semibold text-gray-900">{procesoEditando.etapaActual}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Profesional:</p>
+                        <p className="font-semibold text-gray-900">{procesoEditando.profesionalAsignado.nombre}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Días restantes:</p>
+                        <p className="font-semibold text-gray-900">{procesoEditando.diasRestantes} días</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex gap-3 border-t">
+                  <Button
+                    onClick={() => {
+                      setModalActivo(null);
+                      setProcesoEditando(null);
+                      setObservaciones('');
+                    }}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      try {
+                        if (!procesoEditando) return;
+
+                        // Preparar los datos para actualizar
+                        const updateData = {
+                          hechos: observaciones,
+                          disciplinable: {
+                            nombre: denunciadoEditando.nombre,
+                            cedula: denunciadoEditando.cedula,
+                            cargo: denunciadoEditando.cargo
+                          }
+                        };
+
+                        // Llamar al servicio para actualizar el proceso
+                        await disciplinaryService.updateProcess(procesoEditando.id, updateData);
+
+                        // Recargar datos
+                        await cargarDatos();
+
+                        toast.success('Proceso actualizado', {
+                          description: 'Los cambios se han guardado correctamente'
+                        });
+                        setModalActivo(null);
+                        setProcesoEditando(null);
+                        setObservaciones('');
+                        setDenunciadoEditando({ nombre: '', cedula: '', cargo: '' });
+                      } catch (error) {
+                        console.error('Error al actualizar proceso:', error);
+                        toast.error('Error al actualizar', {
+                          description: 'No se pudieron guardar los cambios'
+                        });
+                      }
+                    }}
+                    className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
+                  >
+                    <Check className="w-4 h-4 mr-2" />
+                    Guardar Cambios
+                  </Button>
+                </div>
               </motion.div>
             </motion.div>
           )}
@@ -3127,8 +4599,8 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                         </p>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => setModalActivo(null)} 
+                    <button
+                      onClick={() => setModalActivo(null)}
                       className="p-2 hover:bg-white/10 rounded-lg transition-colors"
                     >
                       <X className="w-6 h-6 text-white" />
@@ -3147,9 +4619,9 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
                 {/* Footer */}
                 <div className="p-4 border-t bg-gray-50">
-                  <Button 
-                    onClick={() => setModalActivo(null)} 
-                    variant="outline" 
+                  <Button
+                    onClick={() => setModalActivo(null)}
+                    variant="outline"
                     className="w-full"
                   >
                     Cerrar
@@ -3189,3 +4661,4 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     </DndProvider>
   );
 }
+

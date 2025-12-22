@@ -14,17 +14,14 @@ import { toast } from 'sonner@2.0.3';
 
 interface NoticiaDisciplinaria {
   id: string;
-  numeroRadicado: string;
-  denunciado: {
-    nombre: string;
-    identificacion: string;
-  };
+  radicado: string; // Changed from numeroRadicado
+  disciplinable: any; // Can be array or object, sanitized in render
 }
 
 interface Props {
   noticia: NoticiaDisciplinaria;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (motivo: string) => void;
 }
 
 export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
@@ -32,13 +29,13 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
   const [confirmacionTexto, setConfirmacionTexto] = useState('');
 
   const handleArchivar = () => {
-    if (confirmacionTexto !== noticia.numeroRadicado) {
+    if (confirmacionTexto !== noticia.radicado) {
       toast.error('Confirmación incorrecta', {
         description: 'Debes escribir correctamente el número de radicado para confirmar'
       });
       return;
     }
-    
+
     if (!motivoArchivo.trim()) {
       toast.error('Motivo requerido', {
         description: 'Debes seleccionar el motivo del archivo'
@@ -46,7 +43,7 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
       return;
     }
 
-    onConfirm();
+    onConfirm(motivoArchivo);
   };
 
   return (
@@ -99,9 +96,13 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
                   Estás a punto de archivar permanentemente la siguiente noticia disciplinaria:
                 </p>
                 <div className="bg-white rounded-lg p-3 border border-red-200 shadow-sm">
-                  <p className="font-bold text-gray-900">{noticia.numeroRadicado}</p>
-                  <p className="text-sm text-gray-700">{noticia.denunciado.nombre}</p>
-                  <p className="text-xs text-gray-500">{noticia.denunciado.identificacion}</p>
+                  <p className="font-bold text-gray-900">{noticia.radicado}</p>
+                  <p className="text-sm text-gray-700">
+                    {(Array.isArray(noticia.disciplinable) ? noticia.disciplinable[0]?.nombre : noticia.disciplinable?.nombre) || 'Sin nombre'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {(Array.isArray(noticia.disciplinable) ? noticia.disciplinable[0]?.cedula : noticia.disciplinable?.cedula) || 'N/A'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -132,7 +133,7 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
               Confirmación de Archivo <span className="text-red-600">*</span>
             </label>
             <p className="text-xs text-gray-600 mb-2">
-              Para confirmar, escribe el número de radicado: <span className="font-mono font-semibold text-gray-900">{noticia.numeroRadicado}</span>
+              Para confirmar, escribe el número de radicado: <span className="font-mono font-semibold text-gray-900">{noticia.radicado}</span>
             </p>
             <input
               type="text"
@@ -141,10 +142,10 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
               placeholder="Escribe el radicado aquí"
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent font-mono"
             />
-            {confirmacionTexto && confirmacionTexto !== noticia.numeroRadicado && (
+            {confirmacionTexto && confirmacionTexto !== noticia.radicado && (
               <p className="text-xs text-red-600 mt-1.5">❌ El radicado no coincide</p>
             )}
-            {confirmacionTexto === noticia.numeroRadicado && (
+            {confirmacionTexto === noticia.radicado && (
               <p className="text-xs text-green-600 mt-1.5">✅ Radicado confirmado</p>
             )}
           </div>
@@ -152,7 +153,7 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
           {/* Nota */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <p className="text-xs text-gray-700">
-              <strong className="text-gray-900">Nota:</strong> La acción de archivo quedará registrada en el sistema de auditoría con tu usuario, 
+              <strong className="text-gray-900">Nota:</strong> La acción de archivo quedará registrada en el sistema de auditoría con tu usuario,
               fecha y hora exacta. Este registro es permanente y no puede ser modificado.
             </p>
           </div>
@@ -168,10 +169,10 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
           </button>
           <button
             onClick={handleArchivar}
-            disabled={confirmacionTexto !== noticia.numeroRadicado || !motivoArchivo}
+            disabled={confirmacionTexto !== noticia.radicado || !motivoArchivo}
             className="flex-1 px-4 py-2.5 rounded-lg font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-            style={{ 
-              background: confirmacionTexto === noticia.numeroRadicado && motivoArchivo ? '#DC2626' : '#9CA3AF'
+            style={{
+              background: confirmacionTexto === noticia.radicado && motivoArchivo ? '#DC2626' : '#9CA3AF'
             }}
           >
             <Archive className="w-4 h-4" />

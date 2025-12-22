@@ -21,6 +21,7 @@ import {
 import { NewsService } from '../services/news.service';
 import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto';
 import { ReturnNewsDto } from '../dtos/return-news.dto';
+import { UpdateNewsKanbanDto } from '../dtos/update-news-kanban.dto';
 import { DisciplinaryNews } from '../entities/disciplinary-news.entity';
 
 interface FileData {
@@ -152,6 +153,27 @@ export class NewsController {
   }
 
   /**
+   * Actualizar etapa Kanban de una noticia
+   */
+  @Patch(':id/kanban')
+  @ApiOperation({
+    summary: 'Actualizar Kanban de Noticia',
+    description: 'Actualiza la etapa Kanban para persistir la posicion en el tablero',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Kanban actualizado',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async updateKanban(
+    @Param('id') id: string,
+    @Body() body: UpdateNewsKanbanDto,
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.updateKanbanStage(id, body.kanbanStage);
+  }
+
+  /**
    * Eliminar noticia
    */
   @Delete(':id')
@@ -164,5 +186,25 @@ export class NewsController {
   @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
   async delete(@Param('id') id: string): Promise<void> {
     await this.newsService.delete(id);
+  }
+  /**
+   * Archivar noticia
+   */
+  @Patch(':id/archive')
+  @ApiOperation({
+    summary: 'Archivar Noticia',
+    description: 'Archiva una noticia permanentemente',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Noticia archivada',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async archive(
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.archive(id, body.reason);
   }
 }

@@ -4,7 +4,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import {
   DisciplinaryProcess,
   ProcessStage,
@@ -73,7 +73,7 @@ export class ProcessService {
         radicadoProceso,
         newsId: createProcessDto.newsId,
         abogadoAsignadoId: createProcessDto.abogadoId,
-        etapaActual: ProcessStage.EVALUACION,
+        etapaActual: ProcessStage.EVALUACION, // Default initial stage
         estado: ProcessStatus.ACTIVO,
         fechaPrescripcion,
         fechaVencimientoEtapa: fechaVencimiento,
@@ -104,23 +104,55 @@ export class ProcessService {
    * Obtiene todos los procesos (excluyendo los de noticias devueltas)
    */
   async findAll(): Promise<any[]> {
-    const processes = await this.processRepository.find({
-      relations: ['news', 'abogadoAsignado', 'evidence'],
-      where: {
-        news: {
-          estado: Not(NewsStatus.DEVUELTA)
+    try {
+      const processes = await this.processRepository.find({
+        relations: ['news', 'abogadoAsignado', 'evidence', 'autos'],
+        where: {
+          news: {
+            estado: Not(In([NewsStatus.DEVUELTA, NewsStatus.ARCHIVADA]))
+          }
+        },
+        order: {
+          updatedAt: 'DESC' // Ordenar por fecha de actualización
         }
-      },
-      order: {
-        updatedAt: 'DESC' // Ordenar por fecha de actualización
-      }
-    });
+      });
 
-    // Map to include professional name
-    return processes.map(p => ({
-      ...p,
-      abogadoAsignadoNombre: p.abogadoAsignado?.nombreCompleto || 'Sin asignar'
-    }));
+      // Map to include professional name and calculate dynamic statistics
+      return processes.map(p => {
+        // Calcular estadísticas dinámicas
+        const draftsCount = p.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
+        const documentsCount = p.evidence?.length || 0;
+
+        // Calcular porcentaje de tiempo
+        let timePercentage = 0;
+        if (p.fechaVencimientoEtapa && p.createdAt) {
+          const now = new Date();
+          const created = new Date(p.createdAt);
+          const deadline = new Date(p.fechaVencimientoEtapa);
+          const totalTime = deadline.getTime() - created.getTime();
+          const elapsedTime = now.getTime() - created.getTime();
+          if (totalTime > 0) {
+            timePercentage = Math.min(100, Math.max(0, (elapsedTime / totalTime) * 100));
+          } else {
+            timePercentage = 100;
+          }
+        }
+
+        return {
+          ...p,
+          abogadoAsignadoNombre: p.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+          draftsCount,
+          documentsCount,
+          timePercentage: Math.round(timePercentage * 100) / 100
+        };
+      });
+    } catch (error) {
+      console.error('Error en findAll:', error);
+      throw new HttpException(
+        `Error al obtener procesos: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   /**
@@ -159,43 +191,112 @@ export class ProcessService {
   /**
    * Obtiene un proceso por ID
    */
-  async findById(id: string): Promise<DisciplinaryProcess> {
+  async findById(id: string, includeAutos: boolean = false): Promise<any> {
+    const relations = ['news', 'evidence', 'autos', 'abogadoAsignado'];
+
     const proceso = await this.processRepository.findOne({
       where: { id },
-      relations: ['news', 'autos', 'evidence'],
+      relations,
     });
     if (!proceso) {
       throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
     }
-    return proceso;
+
+    // Calcular estadísticas dinámicas
+    const draftsCount = proceso.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
+    const documentsCount = proceso.evidence?.length || 0;
+
+    // Calcular porcentaje de tiempo
+    let timePercentage = 0;
+    if (proceso.fechaVencimientoEtapa && proceso.createdAt) {
+      const now = new Date();
+      const created = new Date(proceso.createdAt);
+      const deadline = new Date(proceso.fechaVencimientoEtapa);
+      const totalTime = deadline.getTime() - created.getTime();
+      const elapsedTime = now.getTime() - created.getTime();
+      if (totalTime > 0) {
+        timePercentage = Math.min(100, Math.max(0, (elapsedTime / totalTime) * 100));
+      } else {
+        timePercentage = 100;
+      }
+    }
+
+    return {
+      ...proceso,
+      draftsCount,
+      documentsCount,
+      timePercentage: Math.round(timePercentage * 100) / 100
+    };
   }
 
   /**
    * Obtiene procesos asignados a un abogado específico
    */
-  async findByAbogadoId(abogadoId: string): Promise<DisciplinaryProcess[]> {
-    return await this.processRepository.find({
+  async findByAbogadoId(abogadoId: string): Promise<any[]> {
+    const processes = await this.processRepository.find({
       where: { abogadoAsignadoId: abogadoId },
-      relations: ['news'],
+      relations: ['news', 'evidence', 'autos'],
       order: { createdAt: 'DESC' },
+    });
+
+    // Calcular estadísticas dinámicas para cada proceso
+    return processes.map(p => {
+      const draftsCount = p.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
+      const documentsCount = p.evidence?.length || 0;
+
+      let timePercentage = 0;
+      if (p.fechaVencimientoEtapa && p.createdAt) {
+        const now = new Date();
+        const created = new Date(p.createdAt);
+        const deadline = new Date(p.fechaVencimientoEtapa);
+        const totalTime = deadline.getTime() - created.getTime();
+        const elapsedTime = now.getTime() - created.getTime();
+        if (totalTime > 0) {
+          timePercentage = Math.min(100, Math.max(0, (elapsedTime / totalTime) * 100));
+        } else {
+          timePercentage = 100;
+        }
+      }
+
+      return {
+        ...p,
+        draftsCount,
+        documentsCount,
+        timePercentage: Math.round(timePercentage * 100) / 100
+      };
     });
   }
 
   /**
    * Cambia la etapa del proceso (US-009)
    */
-  async changeStage(id: string, stage: ProcessStage): Promise<DisciplinaryProcess> {
-    const proceso = await this.findById(id);
+  async changeStage(
+    id: string,
+    stage: ProcessStage,
+    kanbanStage?: string,
+    kanbanNotice?: string
+  ): Promise<DisciplinaryProcess> {
+    const proceso = await this.findById(id, false);
 
-    // Validar transición de etapa
-    this.validarTransicionEtapa(proceso.etapaActual, stage);
+    if (kanbanStage) {
+      proceso.kanbanStage = kanbanStage;
+    }
 
-    // Calcular nuevo vencimiento
-    const { fechaVencimiento } =
-      await this.terminosService.calculateVencimientoEtapa(stage);
+    if (kanbanNotice !== undefined) {
+      proceso.kanbanNotice = kanbanNotice || null;
+    }
 
-    proceso.etapaActual = stage;
-    proceso.fechaVencimientoEtapa = fechaVencimiento;
+    if (proceso.etapaActual !== stage) {
+      // Validar transicion de etapa
+      this.validarTransicionEtapa(proceso.etapaActual as ProcessStage, stage);
+
+      // Calcular nuevo vencimiento
+      const { fechaVencimiento } =
+        await this.terminosService.calculateVencimientoEtapa(stage);
+
+      proceso.etapaActual = stage;
+      proceso.fechaVencimientoEtapa = fechaVencimiento;
+    }
 
     return await this.processRepository.save(proceso);
   }
@@ -204,7 +305,7 @@ export class ProcessService {
    * Actualiza datos generales del proceso (abogado, hechos, disciplinable)
    */
   async update(id: string, updateDto: UpdateDisciplinaryProcessDto): Promise<DisciplinaryProcess> {
-    const proceso = await this.findById(id);
+    const proceso = await this.findById(id, false);
     let updated = false;
 
     // 1. Actualizar abogado asignado si se proporciona
@@ -229,11 +330,12 @@ export class ProcessService {
       if (updateDto.hechos) newsUpdate.hechos = updateDto.hechos;
 
       if (updateDto.disciplinable) {
-        // Merge con datos existentes del disciplinable
-        newsUpdate.disciplinable = {
-          ...proceso.news.disciplinable,
-          ...updateDto.disciplinable
-        };
+        // Merge con datos existentes del disciplinable (es un array)
+        const disciplinableExistente = (proceso.news.disciplinable as any) || [];
+        const disciplinableActualizado = (Array.isArray(disciplinableExistente) && disciplinableExistente.length > 0)
+          ? [{ ...disciplinableExistente[0], ...updateDto.disciplinable }]
+          : [updateDto.disciplinable];
+        newsUpdate.disciplinable = disciplinableActualizado;
       }
 
       // Actualizar noticia relacionada
@@ -270,55 +372,209 @@ export class ProcessService {
     id: string,
     nuevoEstado: ProcessStatus,
   ): Promise<DisciplinaryProcess> {
-    const proceso = await this.findById(id);
+    const proceso = await this.findById(id, false);
     proceso.estado = nuevoEstado;
     return await this.processRepository.save(proceso);
   }
 
   /**
+   * Obtener proceso por radicado del proceso
+   */
+  async findByRadicado(radicadoProceso: string): Promise<DisciplinaryProcess> {
+    const proceso = await this.processRepository.findOne({
+      where: { radicadoProceso },
+      relations: ['news'],
+    });
+
+    if (!proceso) {
+      throw new HttpException(
+        `Proceso con radicado ${radicadoProceso} no encontrado`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    return proceso;
+  }
+
+  /**
    * Agregar evidencia al proceso
    */
-  async addEvidence(id: string, url: string, originalName: string): Promise<DisciplinaryProcess> {
-    const proceso = await this.findById(id);
+  async addEvidence(
+    id: string,
+    url: string,
+    originalName: string,
+    descripcion?: string,
+    fileType?: string,
+    fileSize?: number,
+    nombreDocumento?: string,
+    tipoDocumento?: string,
+    etapa?: string,
+    usuarioCarga?: string,
+    categoria?: string,
+    destinatario?: string,
+    asunto?: string,
+    participantes?: number,
+  ): Promise<DisciplinaryProcess> {
+    try {
+      console.log('💾 addEvidence - Iniciando guardado en BD...');
+      console.log('💾 Parámetros recibidos:', {
+        id,
+        url,
+        originalName,
+        descripcion,
+        fileType,
+        fileSize,
+        nombreDocumento,
+        tipoDocumento,
+        etapa,
+        usuarioCarga,
+        categoria,
+        destinatario,
+        asunto,
+        participantes,
+      });
 
-    // Crear entidad de evidencia
-    const evidence = this.evidenceRepository.create({
-      url,
-      process: proceso,
-      processId: proceso.id,
-      description: 'Evidencia cargada desde el portal',
-      filename: originalName,
-    });
-    await this.evidenceRepository.save(evidence);
+      const proceso = await this.findById(id, false); // No cargar autos para evitar errores
+      console.log('✅ Proceso encontrado:', proceso.id, proceso.radicadoProceso);
 
-    // Mantener compatibilidad con campo legacy
-    if (!proceso.pruebas) {
-      proceso.pruebas = [];
+      // Determinar tipo de archivo desde la extensión si no se proporciona
+      const extension = originalName.split('.').pop()?.toLowerCase() || '';
+      const finalFileType = fileType || extension;
+
+      // Preparar datos para la evidencia
+      const evidenceData = {
+        url,
+        process: proceso,
+        processId: proceso.id,
+        description: descripcion || 'Documento cargado desde el portal',
+        filename: originalName,
+        fileType: finalFileType,
+        fileSize: fileSize || 0,
+        nombreDocumento: nombreDocumento || originalName,
+        tipoDocumento: tipoDocumento || 'DOCUMENTO',
+        categoria: categoria || null,
+        destinatario: destinatario || null,
+        asunto: asunto || null,
+        participantes: participantes ?? null,
+        etapa: etapa || undefined,
+        usuarioCarga: usuarioCarga || 'Sistema',
+      };
+
+      console.log('💾 Datos de evidencia a guardar:', JSON.stringify(evidenceData, null, 2));
+
+      // Crear entidad de evidencia con toda la información
+      const evidence = this.evidenceRepository.create(evidenceData);
+      console.log('✅ Entidad creada, guardando...');
+
+      const evidenceGuardada = await this.evidenceRepository.save(evidence);
+      console.log('✅ Evidencia guardada exitosamente. ID:', evidenceGuardada.id);
+      console.log('✅ Evidencia guardada completa:', JSON.stringify(evidenceGuardada, null, 2));
+
+      // Mantener compatibilidad con campo legacy
+      if (!proceso.pruebas) {
+        proceso.pruebas = [];
+      }
+      proceso.pruebas.push(url);
+
+      await this.processRepository.update(id, { pruebas: proceso.pruebas });
+      console.log('✅ Proceso actualizado con nueva prueba');
+
+      return proceso;
+    } catch (error) {
+      console.error('❌ ERROR en addEvidence:', error);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error stack:', error.stack);
+      throw error;
     }
-    proceso.pruebas.push(url);
+  }
 
-    await this.processRepository.update(id, { pruebas: proceso.pruebas });
-    return proceso;
+  /**
+   * Obtener evidencias de un proceso
+   */
+  async getEvidenceByProcessId(processId: string): Promise<any[]> {
+    const evidencias = await this.evidenceRepository.find({
+      where: { processId },
+      order: { createdAt: 'DESC' },
+    });
+
+    return evidencias;
+  }
+
+  /**
+   * Elimina una evidencia de un proceso
+   */
+  async deleteEvidence(processId: string, evidenceId: string): Promise<Evidence> {
+    const evidencia = await this.evidenceRepository.findOne({
+      where: { id: evidenceId, processId },
+    });
+
+    if (!evidencia) {
+      throw new HttpException('Evidencia no encontrada', HttpStatus.NOT_FOUND);
+    }
+
+    const proceso = await this.findById(processId, false);
+    if (proceso.pruebas?.length) {
+      const pruebasActualizadas = proceso.pruebas.filter((url) => url !== evidencia.url);
+      await this.processRepository.update(processId, { pruebas: pruebasActualizadas });
+    }
+
+    await this.evidenceRepository.delete(evidenceId);
+    return evidencia;
   }
 
   /**
    * Valida las transiciones permitidas entre etapas
    */
   private validarTransicionEtapa(etapaActual: ProcessStage, nuevaEtapa: ProcessStage): void {
-    const transicionesPermitidas: Record<ProcessStage, ProcessStage[]> = {
-      [ProcessStage.EVALUACION]: [ProcessStage.INDAGACION_PREVIA],
-      [ProcessStage.INDAGACION_PREVIA]: [ProcessStage.INVESTIGACION],
-      [ProcessStage.INVESTIGACION]: [ProcessStage.JUZGAMIENTO],
-      [ProcessStage.JUZGAMIENTO]: [], // Final
-    };
-
-    const permitidas = transicionesPermitidas[etapaActual] || [];
-    if (!permitidas.includes(nuevaEtapa)) {
+    if (etapaActual === nuevaEtapa) {
       throw new HttpException(
         `No se puede pasar de ${etapaActual} a ${nuevaEtapa}`,
         HttpStatus.BAD_REQUEST,
       );
     }
+    return;
+  }
+
+  /**
+   * Obtiene las estadísticas de un proceso específico (calculadas dinámicamente)
+   */
+  async getProcessStatistics(processId: string): Promise<{
+    draftsCount: number;
+    documentsCount: number;
+    timePercentage: number;
+  }> {
+    const proceso = await this.processRepository.findOne({
+      where: { id: processId },
+      relations: ['evidence', 'autos'],
+    });
+
+    if (!proceso) {
+      throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    // Calcular estadísticas dinámicamente
+    const draftsCount = proceso.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
+    const documentsCount = proceso.evidence?.length || 0;
+
+    let timePercentage = 0;
+    if (proceso.fechaVencimientoEtapa && proceso.createdAt) {
+      const now = new Date();
+      const created = new Date(proceso.createdAt);
+      const deadline = new Date(proceso.fechaVencimientoEtapa);
+      const totalTime = deadline.getTime() - created.getTime();
+      const elapsedTime = now.getTime() - created.getTime();
+      if (totalTime > 0) {
+        timePercentage = Math.min(100, Math.max(0, (elapsedTime / totalTime) * 100));
+      } else {
+        timePercentage = 100;
+      }
+    }
+
+    return {
+      draftsCount,
+      documentsCount,
+      timePercentage: Math.round(timePercentage * 100) / 100,
+    };
   }
 
   /**
@@ -326,7 +582,7 @@ export class ProcessService {
    */
   async delete(id: string): Promise<void> {
     // 1. Obtener proceso con noticia
-    const proceso = await this.findById(id);
+    const proceso = await this.findById(id, false);
 
     // 2. Si la noticia está ASIGNADA, cambiarla a RADICADA
     if (proceso.news && proceso.news.estado === NewsStatus.ASIGNADA) {
@@ -340,3 +596,4 @@ export class ProcessService {
     }
   }
 }
+

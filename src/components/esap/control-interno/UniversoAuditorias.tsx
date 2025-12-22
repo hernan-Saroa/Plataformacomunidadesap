@@ -1,1086 +1,1492 @@
 /**
- * RF002 - UNIVERSO DE AUDITORÍAS
- * Formulario automatizado basado en el formato DAFP (Departamento Administrativo de la Función Pública)
- * Evaluación y priorización de auditorías con cálculo automático de riesgo
+ * ============================================
+ * RF002: UNIVERSO DE AUDITORÍAS + MATRIZ DE RIESGO DAFP
+ * ============================================
+ * 
+ * Sistema de Evaluación y Priorización de Áreas Auditables
+ * Metodología: Departamento Administrativo de la Función Pública (DAFP)
+ * 
+ * INTEGRACIÓN CON ESTRUCTURA ORGANIZACIONAL:
+ * - Conectado con módulo de Gestión Personas - Estructura Organizacional
+ * - Áreas auditables basadas en unidades organizacionales reales
+ * - Sincronización con territoriales y CETAP de ESAP
+ * 
+ * FUNCIONALIDADES:
+ * - Catálogo completo de áreas auditables (9 Sede + 16 Territoriales)
+ * - Matriz de Riesgo DAFP con cálculo automático
+ * - Priorización basada en criticidad y exposición
+ * - Filtros avanzados y búsqueda inteligente
+ * - Edición inline de parámetros de riesgo
+ * - Selección de áreas para programa anual
+ * - Dashboard ejecutivo con KPIs
+ * - Historial de auditorías por área
+ * 
+ * METODOLOGÍA DAFP:
+ * Riesgo = (Criticidad × Factor_Exposición) / Factores_Mitigantes
+ * 
+ * Criticidad (Impacto potencial):
+ *   - ALTA (5): Procesos críticos misionales o financieros
+ *   - MEDIA (3): Procesos de apoyo importantes
+ *   - BAJA (1): Procesos secundarios
+ * 
+ * Factor de Exposición (Alcance):
+ *   - ALTA (5): >100 beneficiarios o stakeholders
+ *   - MEDIA (3): 50-100 beneficiarios
+ *   - BAJA (1): <50 beneficiarios
+ * 
+ * Factores Mitigantes (Controles existentes):
+ *   - Valor numérico 1-10
+ *   - Mayor valor = más controles = menor riesgo
+ * 
+ * Clasificación de Riesgo Resultante:
+ *   - CRÍTICO: Score > 10 (Requiere auditoría inmediata)
+ *   - ALTO: Score 5-10 (Auditoría prioritaria)
+ *   - MEDIO: Score 3-5 (Auditoría programada)
+ *   - BAJO: Score < 3 (Auditoría según capacidad)
+ * 
+ * ÚLTIMA ACTUALIZACIÓN: 21 Diciembre 2025
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Target,
-  AlertTriangle,
-  TrendingUp,
-  Building2,
-  MapPin,
-  Plus,
-  Edit,
-  Trash2,
-  Download,
-  FileText,
-  Eye,
-  ChevronDown,
-  ChevronUp,
-  Save,
-  X,
-  Calculator,
-  CheckCircle2,
-  Info
+  Layers, Plus, Filter, Search, Grid, List, Edit2, Save, X,
+  TrendingUp, AlertTriangle, CheckCircle, Clock, Building2,
+  MapPin, Target, BarChart3, Eye, Settings, Link2
 } from 'lucide-react';
+import { Card } from '../../ui/card';
 import { Button } from '../../ui/button';
+import { Input } from '../../ui/input';
 import { Badge } from '../../ui/badge';
-import { MetricCard } from '../shared/MetricCard';
-import { ResponsiveModal } from '../shared/ResponsiveModal';
 import { toast } from 'sonner@2.0.3';
+import { TERRITORIALES_ESAP } from '../../../data/territoriales-cetap-completo';
 
 // ============ TIPOS ============
 
-interface ProcesoAuditable {
+type TipoArea = 'Sede' | 'Territorial';
+type NivelRiesgo = 'Crítico' | 'Alto' | 'Medio' | 'Bajo';
+type EstadoSeleccion = 'seleccionada' | 'pendiente' | 'no-aplica';
+type CriticidadNivel = 5 | 3 | 1;
+type ExposicionNivel = 5 | 3 | 1;
+
+interface AreaAuditable {
   id: string;
-  nombreProceso: string;
-  tipoProceso: 'Misional' | 'Apoyo' | 'Estratégico' | 'Evaluación';
-  tipoSede: 'Sede Principal' | 'Territorial';
-  territorial?: string; // Si es territorial, cuál
-  responsableProceso: string;
-  
-  // Evaluación de Impacto (1-5)
-  impactoFinanciero: number;
-  impactoOperacional: number;
-  impactoReputacional: number;
-  impactoLegal: number;
-  impactoEstrategico: number;
-  
-  // Evaluación de Probabilidad (1-5)
-  probabilidadOcurrencia: number;
-  
-  // Resultados calculados
-  impactoTotal: number; // Promedio de impactos
-  nivelRiesgo: number; // impacto × probabilidad
-  clasificacionRiesgo: 'BAJO' | 'MEDIO' | 'ALTO' | 'CRÍTICO';
-  añoPriorizacion: string; // Año 1, Año 1-2, etc.
-  
-  // Información adicional
-  ultimaAuditoria: string; // Fecha
-  observaciones: string;
-  estado: 'Evaluado' | 'Pendiente' | 'En Revisión';
-  fechaEvaluacion: string;
-}
-
-interface UniversoAuditorias {
-  añoFiscal: number;
-  version: string;
-  fechaCreacion: string;
+  codigo: string;
+  nombre: string;
+  tipo: TipoArea;
+  descripcion: string;
   responsable: string;
-  estado: 'borrador' | 'aprobado' | 'vigente';
-  procesos: ProcesoAuditable[];
+  criticidad: CriticidadNivel;
+  factorExposicion: ExposicionNivel;
+  factoresMitigantes: number;
+  nivelRiesgo: NivelRiesgo;
+  scoreRiesgo: number;
+  estado: EstadoSeleccion;
+  ultimaAuditoria?: string;
+  proximaAuditoria?: string;
+  numeroAuditorias: number;
 }
 
-// ============ CONSTANTES ============
+// ============ DATOS MOCK - 9 PROCESOS SEDE + 16 TERRITORIALES ============
 
-const TERRITORIALES_ESAP = [
-  'Antioquia',
-  'Atlántico',
-  'Bolívar',
-  'Boyacá',
-  'Caldas',
-  'Cauca',
-  'Cesar',
-  'Córdoba',
-  'Cundinamarca',
-  'Huila',
-  'Magdalena',
-  'Meta',
-  'Nariño',
-  'Norte de Santander',
-  'Santander',
-  'Tolima'
-];
+const AREAS_AUDITABLES_MOCK: AreaAuditable[] = [
+  // ========== PROCESOS SEDE (9) ==========
+  {
+    id: 'area-001',
+    codigo: 'SEDE-001',
+    nombre: 'Gestión Financiera',
+    tipo: 'Sede',
+    descripcion: 'Presupuesto, tesorería, contabilidad y gestión financiera institucional',
+    responsable: 'Director Administrativo y Financiero',
+    criticidad: 5,
+    factorExposicion: 5,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Crítico',
+    scoreRiesgo: 12.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-03-15',
+    proximaAuditoria: '2025-03-10',
+    numeroAuditorias: 8
+  },
+  {
+    id: 'area-002',
+    codigo: 'SEDE-002',
+    nombre: 'Gestión Administrativa',
+    tipo: 'Sede',
+    descripcion: 'Servicios generales, infraestructura, correspondencia y archivo',
+    responsable: 'Subdirector Administrativo',
+    criticidad: 3,
+    factorExposicion: 5,
+    factoresMitigantes: 3,
+    nivelRiesgo: 'Alto',
+    scoreRiesgo: 5.0,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-06-20',
+    proximaAuditoria: '2025-06-15',
+    numeroAuditorias: 6
+  },
+  {
+    id: 'area-003',
+    codigo: 'SEDE-003',
+    nombre: 'Formación para la Vida Pública',
+    tipo: 'Sede',
+    descripcion: 'Programas académicos, cursos, diplomados y capacitación',
+    responsable: 'Director de Formación',
+    criticidad: 5,
+    factorExposicion: 5,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Crítico',
+    scoreRiesgo: 12.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-02-10',
+    proximaAuditoria: '2025-02-05',
+    numeroAuditorias: 10
+  },
+  {
+    id: 'area-004',
+    codigo: 'SEDE-004',
+    nombre: 'Adquisición de Bienes y Servicios',
+    tipo: 'Sede',
+    descripcion: 'Contratación, compras, licitaciones y procesos de selección',
+    responsable: 'Jefe de Contratación',
+    criticidad: 5,
+    factorExposicion: 5,
+    factoresMitigantes: 3,
+    nivelRiesgo: 'Alto',
+    scoreRiesgo: 8.3,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-05-10',
+    proximaAuditoria: '2025-05-05',
+    numeroAuditorias: 9
+  },
+  {
+    id: 'area-005',
+    codigo: 'SEDE-005',
+    nombre: 'Gestión de Talento Humano',
+    tipo: 'Sede',
+    descripcion: 'Nómina, bienestar, capacitación, evaluación de desempeño',
+    responsable: 'Jefe de Talento Humano',
+    criticidad: 3,
+    factorExposicion: 3,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Medio',
+    scoreRiesgo: 4.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-07-15',
+    proximaAuditoria: '2025-07-10',
+    numeroAuditorias: 7
+  },
+  {
+    id: 'area-006',
+    codigo: 'SEDE-006',
+    nombre: 'Efectividad Institucional',
+    tipo: 'Sede',
+    descripcion: 'Planeación estratégica, indicadores, gestión de calidad',
+    responsable: 'Jefe de Planeación',
+    criticidad: 3,
+    factorExposicion: 3,
+    factoresMitigantes: 3,
+    nivelRiesgo: 'Medio',
+    scoreRiesgo: 3.0,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-08-20',
+    proximaAuditoria: '2025-08-15',
+    numeroAuditorias: 5
+  },
+  {
+    id: 'area-007',
+    codigo: 'SEDE-007',
+    nombre: 'Evaluación de Control y Mejora',
+    tipo: 'Sede',
+    descripcion: 'Seguimiento a planes de mejoramiento y control interno',
+    responsable: 'Jefe OCI',
+    criticidad: 3,
+    factorExposicion: 3,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Medio',
+    scoreRiesgo: 4.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-09-10',
+    proximaAuditoria: '2025-09-05',
+    numeroAuditorias: 6
+  },
+  {
+    id: 'area-008',
+    codigo: 'SEDE-008',
+    nombre: 'Modelo de Seguridad y Privacidad',
+    tipo: 'Sede',
+    descripcion: 'Seguridad de información, protección de datos, ciberseguridad',
+    responsable: 'Oficial de Seguridad',
+    criticidad: 5,
+    factorExposicion: 5,
+    factoresMitigantes: 4,
+    nivelRiesgo: 'Alto',
+    scoreRiesgo: 6.25,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-04-25',
+    proximaAuditoria: '2025-04-20',
+    numeroAuditorias: 4
+  },
+  {
+    id: 'area-009',
+    codigo: 'SEDE-009',
+    nombre: 'Transformación Digital',
+    tipo: 'Sede',
+    descripcion: 'TI, innovación digital, sistemas de información',
+    responsable: 'Director de TI',
+    criticidad: 3,
+    factorExposicion: 5,
+    factoresMitigantes: 3,
+    nivelRiesgo: 'Medio',
+    scoreRiesgo: 5.0,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-10-05',
+    proximaAuditoria: '2025-10-01',
+    numeroAuditorias: 3
+  },
 
-const PROCESOS_ESAP = [
-  // Procesos Misionales
-  'Gestión de Programas Académicos',
-  'Gestión de Investigación',
-  'Gestión de Extensión y Proyección Social',
-  'Gestión de Formación Virtual',
-  
-  // Procesos de Apoyo
-  'Gestión Administrativa',
-  'Gestión Financiera',
-  'Gestión Contractual',
-  'Gestión de Talento Humano',
-  'Gestión de Tecnologías de la Información',
-  'Gestión Documental',
-  'Gestión Jurídica',
-  'Gestión de Atención al Ciudadano',
-  
-  // Procesos Estratégicos
-  'Direccionamiento Estratégico',
-  'Gestión de Planeación Institucional',
-  'Gestión de Comunicaciones',
-  'Gestión de Calidad',
-  
-  // Proceso de Evaluación
-  'Control Interno de Gestión'
-];
-
-const RESPONSABLES = [
-  'Mario Oswaldo Bernal Rodriguez',
-  'Sandra Patricia Contreras Soto',
-  'Catalina Rubio',
-  'Fernando Ávila',
-  'William Ramírez',
-  'Sandra Montero',
-  'Nubia Pimiento'
-];
-
-// ============ FUNCIONES DE CÁLCULO ============
-
-function calcularImpactoTotal(proceso: Partial<ProcesoAuditable>): number {
-  const impactos = [
-    proceso.impactoFinanciero || 0,
-    proceso.impactoOperacional || 0,
-    proceso.impactoReputacional || 0,
-    proceso.impactoLegal || 0,
-    proceso.impactoEstrategico || 0
-  ];
-  return Math.round(impactos.reduce((sum, val) => sum + val, 0) / 5);
-}
-
-function calcularNivelRiesgo(impactoTotal: number, probabilidad: number): number {
-  return impactoTotal * probabilidad;
-}
-
-function clasificarRiesgo(nivelRiesgo: number): 'BAJO' | 'MEDIO' | 'ALTO' | 'CRÍTICO' {
-  if (nivelRiesgo >= 1 && nivelRiesgo <= 4) return 'BAJO';
-  if (nivelRiesgo >= 5 && nivelRiesgo <= 9) return 'MEDIO';
-  if (nivelRiesgo >= 10 && nivelRiesgo <= 15) return 'ALTO';
-  return 'CRÍTICO'; // 16-25
-}
-
-function priorizarPorAños(clasificacion: string): string {
-  switch (clasificacion) {
-    case 'CRÍTICO': return 'Año 1';
-    case 'ALTO': return 'Año 1-2';
-    case 'MEDIO': return 'Año 2-3';
-    case 'BAJO': return 'Año 3-4';
-    default: return 'Sin priorizar';
+  // ========== TERRITORIALES (16) ==========
+  {
+    id: 'area-010',
+    codigo: 'TERR-001',
+    nombre: 'Territorial Antioquia',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial y programas académicos región Antioquia',
+    responsable: 'Director Territorial Antioquia',
+    criticidad: 3,
+    factorExposicion: 5,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Alto',
+    scoreRiesgo: 7.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-02-20',
+    numeroAuditorias: 4
+  },
+  {
+    id: 'area-011',
+    codigo: 'TERR-002',
+    nombre: 'Territorial Atlántico-Cesar',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Caribe (Atlántico y Cesar)',
+    responsable: 'Director Territorial Atlántico',
+    criticidad: 3,
+    factorExposicion: 5,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Alto',
+    scoreRiesgo: 7.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-03-10',
+    numeroAuditorias: 4
+  },
+  {
+    id: 'area-012',
+    codigo: 'TERR-003',
+    nombre: 'Territorial Bolívar-Córdoba',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Bolívar y Córdoba',
+    responsable: 'Director Territorial Bolívar',
+    criticidad: 3,
+    factorExposicion: 3,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Medio',
+    scoreRiesgo: 4.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-04-05',
+    numeroAuditorias: 3
+  },
+  {
+    id: 'area-013',
+    codigo: 'TERR-004',
+    nombre: 'Territorial Caldas',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Eje Cafetero (Caldas)',
+    responsable: 'Director Territorial Caldas',
+    criticidad: 3,
+    factorExposicion: 3,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Medio',
+    scoreRiesgo: 4.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-05-15',
+    numeroAuditorias: 3
+  },
+  {
+    id: 'area-014',
+    codigo: 'TERR-005',
+    nombre: 'Territorial Cundinamarca',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Cundinamarca',
+    responsable: 'Director Territorial Cundinamarca',
+    criticidad: 5,
+    factorExposicion: 5,
+    factoresMitigantes: 3,
+    nivelRiesgo: 'Alto',
+    scoreRiesgo: 8.3,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-01-20',
+    numeroAuditorias: 5
+  },
+  {
+    id: 'area-015',
+    codigo: 'TERR-006',
+    nombre: 'Territorial Nariño-Putumayo',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Sur (Nariño y Putumayo)',
+    responsable: 'Director Territorial Nariño',
+    criticidad: 3,
+    factorExposicion: 3,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Medio',
+    scoreRiesgo: 4.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-06-10',
+    numeroAuditorias: 3
+  },
+  {
+    id: 'area-016',
+    codigo: 'TERR-007',
+    nombre: 'Territorial Huila',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Huila',
+    responsable: 'Director Territorial Huila',
+    criticidad: 3,
+    factorExposicion: 3,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Medio',
+    scoreRiesgo: 4.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-07-05',
+    numeroAuditorias: 3
+  },
+  {
+    id: 'area-017',
+    codigo: 'TERR-008',
+    nombre: 'Territorial Meta',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Meta',
+    responsable: 'Director Territorial Meta',
+    criticidad: 3,
+    factorExposicion: 3,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Medio',
+    scoreRiesgo: 4.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-08-15',
+    numeroAuditorias: 2
+  },
+  {
+    id: 'area-018',
+    codigo: 'TERR-009',
+    nombre: 'Territorial Cauca',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Cauca',
+    responsable: 'Director Territorial Cauca',
+    criticidad: 3,
+    factorExposicion: 3,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Medio',
+    scoreRiesgo: 4.5,
+    estado: 'pendiente',
+    ultimaAuditoria: '2023-12-10',
+    numeroAuditorias: 2
+  },
+  {
+    id: 'area-019',
+    codigo: 'TERR-010',
+    nombre: 'Territorial Amazonas',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Amazonas',
+    responsable: 'Director Territorial Amazonas',
+    criticidad: 1,
+    factorExposicion: 1,
+    factoresMitigantes: 1,
+    nivelRiesgo: 'Bajo',
+    scoreRiesgo: 1.0,
+    estado: 'pendiente',
+    numeroAuditorias: 1
+  },
+  {
+    id: 'area-020',
+    codigo: 'TERR-011',
+    nombre: 'Territorial Boyacá',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Boyacá',
+    responsable: 'Director Territorial Boyacá',
+    criticidad: 3,
+    factorExposicion: 3,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Medio',
+    scoreRiesgo: 4.5,
+    estado: 'seleccionada',
+    ultimaAuditoria: '2024-09-20',
+    numeroAuditorias: 3
+  },
+  {
+    id: 'area-021',
+    codigo: 'TERR-012',
+    nombre: 'Territorial Casanare',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Casanare',
+    responsable: 'Director Territorial Casanare',
+    criticidad: 1,
+    factorExposicion: 3,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Bajo',
+    scoreRiesgo: 1.5,
+    estado: 'pendiente',
+    numeroAuditorias: 1
+  },
+  {
+    id: 'area-022',
+    codigo: 'TERR-013',
+    nombre: 'Territorial Guaviare',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Guaviare',
+    responsable: 'Director Territorial Guaviare',
+    criticidad: 1,
+    factorExposicion: 1,
+    factoresMitigantes: 1,
+    nivelRiesgo: 'Bajo',
+    scoreRiesgo: 1.0,
+    estado: 'no-aplica',
+    numeroAuditorias: 0
+  },
+  {
+    id: 'area-023',
+    codigo: 'TERR-014',
+    nombre: 'Territorial Putumayo',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Putumayo',
+    responsable: 'Director Territorial Putumayo',
+    criticidad: 1,
+    factorExposicion: 3,
+    factoresMitigantes: 2,
+    nivelRiesgo: 'Bajo',
+    scoreRiesgo: 1.5,
+    estado: 'pendiente',
+    numeroAuditorias: 1
+  },
+  {
+    id: 'area-024',
+    codigo: 'TERR-015',
+    nombre: 'Territorial Archipiélago San Andrés',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial Archipiélago de San Andrés',
+    responsable: 'Director Territorial San Andrés',
+    criticidad: 1,
+    factorExposicion: 1,
+    factoresMitigantes: 1,
+    nivelRiesgo: 'Bajo',
+    scoreRiesgo: 1.0,
+    estado: 'no-aplica',
+    numeroAuditorias: 0
+  },
+  {
+    id: 'area-025',
+    codigo: 'TERR-016',
+    nombre: 'Territorial Vichada',
+    tipo: 'Territorial',
+    descripcion: 'Dirección territorial región Vichada',
+    responsable: 'Director Territorial Vichada',
+    criticidad: 1,
+    factorExposicion: 1,
+    factoresMitigantes: 1,
+    nivelRiesgo: 'Bajo',
+    scoreRiesgo: 1.0,
+    estado: 'no-aplica',
+    numeroAuditorias: 0
   }
-}
+];
 
-function getColorRiesgo(clasificacion: string): string {
-  switch (clasificacion) {
-    case 'CRÍTICO': return '#DC2626';
-    case 'ALTO': return '#F59E0B';
-    case 'MEDIO': return '#3B82F6';
-    case 'BAJO': return '#10B981';
-    default: return '#6B7280';
-  }
-}
+// ============ UTILIDADES ============
 
-// ============ DATOS MOCK ============
+const calcularRiesgo = (criticidad: number, exposicion: number, mitigantes: number): { nivel: NivelRiesgo; score: number } => {
+  const score = (criticidad * exposicion) / mitigantes;
+  
+  let nivel: NivelRiesgo;
+  if (score > 10) nivel = 'Crítico';
+  else if (score > 5) nivel = 'Alto';
+  else if (score >= 3) nivel = 'Medio';
+  else nivel = 'Bajo';
+  
+  return { nivel, score: Math.round(score * 10) / 10 };
+};
 
-const MOCK_UNIVERSO: UniversoAuditorias = {
-  añoFiscal: 2025,
-  version: '1.0',
-  fechaCreacion: '2024-12-01',
-  responsable: 'Mario Oswaldo Bernal Rodriguez',
-  estado: 'vigente',
-  procesos: [
-    {
-      id: '1',
-      nombreProceso: 'Gestión Financiera',
-      tipoProceso: 'Apoyo',
-      tipoSede: 'Sede Principal',
-      responsableProceso: 'Sandra Montero',
-      impactoFinanciero: 5,
-      impactoOperacional: 4,
-      impactoReputacional: 5,
-      impactoLegal: 5,
-      impactoEstrategico: 4,
-      probabilidadOcurrencia: 4,
-      impactoTotal: 5,
-      nivelRiesgo: 20,
-      clasificacionRiesgo: 'CRÍTICO',
-      añoPriorizacion: 'Año 1',
-      ultimaAuditoria: '2024-06-15',
-      observaciones: 'Proceso crítico por manejo de recursos públicos',
-      estado: 'Evaluado',
-      fechaEvaluacion: '2024-12-10'
-    },
-    {
-      id: '2',
-      nombreProceso: 'Gestión Contractual',
-      tipoProceso: 'Apoyo',
-      tipoSede: 'Sede Principal',
-      responsableProceso: 'Fernando Ávila',
-      impactoFinanciero: 5,
-      impactoOperacional: 4,
-      impactoReputacional: 5,
-      impactoLegal: 5,
-      impactoEstrategico: 3,
-      probabilidadOcurrencia: 4,
-      impactoTotal: 4,
-      nivelRiesgo: 16,
-      clasificacionRiesgo: 'CRÍTICO',
-      añoPriorizacion: 'Año 1',
-      ultimaAuditoria: '2024-03-20',
-      observaciones: 'Alta rotación de contratistas',
-      estado: 'Evaluado',
-      fechaEvaluacion: '2024-12-10'
-    },
-    {
-      id: '3',
-      nombreProceso: 'Gestión de Talento Humano',
-      tipoProceso: 'Apoyo',
-      tipoSede: 'Sede Principal',
-      responsableProceso: 'William Ramírez',
-      impactoFinanciero: 3,
-      impactoOperacional: 4,
-      impactoReputacional: 3,
-      impactoLegal: 4,
-      impactoEstrategico: 3,
-      probabilidadOcurrencia: 3,
-      impactoTotal: 3,
-      nivelRiesgo: 9,
-      clasificacionRiesgo: 'MEDIO',
-      añoPriorizacion: 'Año 2-3',
-      ultimaAuditoria: '2023-09-10',
-      observaciones: 'Cumplimiento normativo general satisfactorio',
-      estado: 'Evaluado',
-      fechaEvaluacion: '2024-12-10'
-    },
-    {
-      id: '4',
-      nombreProceso: 'Gestión Administrativa',
-      tipoProceso: 'Apoyo',
-      tipoSede: 'Territorial',
-      territorial: 'Antioquia',
-      responsableProceso: 'Catalina Rubio',
-      impactoFinanciero: 4,
-      impactoOperacional: 4,
-      impactoReputacional: 3,
-      impactoLegal: 4,
-      impactoEstrategico: 3,
-      probabilidadOcurrencia: 3,
-      impactoTotal: 4,
-      nivelRiesgo: 12,
-      clasificacionRiesgo: 'ALTO',
-      añoPriorizacion: 'Año 1-2',
-      ultimaAuditoria: '2023-11-05',
-      observaciones: 'Territorial con mayor presupuesto',
-      estado: 'Evaluado',
-      fechaEvaluacion: '2024-12-10'
-    },
-    {
-      id: '5',
-      nombreProceso: 'Gestión de Programas Académicos',
-      tipoProceso: 'Misional',
-      tipoSede: 'Sede Principal',
-      responsableProceso: 'Nubia Pimiento',
-      impactoFinanciero: 3,
-      impactoOperacional: 5,
-      impactoReputacional: 5,
-      impactoLegal: 4,
-      impactoEstrategico: 5,
-      probabilidadOcurrencia: 2,
-      impactoTotal: 4,
-      nivelRiesgo: 8,
-      clasificacionRiesgo: 'MEDIO',
-      añoPriorizacion: 'Año 2-3',
-      ultimaAuditoria: '2024-02-28',
-      observaciones: 'Proceso misional estratégico',
-      estado: 'Evaluado',
-      fechaEvaluacion: '2024-12-10'
-    }
-  ]
+const getRiesgoColor = (nivel: NivelRiesgo) => {
+  const colores = {
+    'Crítico': '#DC2626',
+    'Alto': '#F59E0B',
+    'Medio': '#3B82F6',
+    'Bajo': '#10B981'
+  };
+  return colores[nivel];
+};
+
+const getEstadoInfo = (estado: EstadoSeleccion) => {
+  const info = {
+    'seleccionada': { label: 'Seleccionada', color: '#10B981', icono: <CheckCircle className="w-4 h-4" /> },
+    'pendiente': { label: 'Pendiente', color: '#F59E0B', icono: <Clock className="w-4 h-4" /> },
+    'no-aplica': { label: 'No Aplica', color: '#6B7280', icono: <X className="w-4 h-4" /> }
+  };
+  return info[estado];
 };
 
 // ============ COMPONENTE PRINCIPAL ============
 
 export function UniversoAuditorias() {
-  const [universo, setUniverso] = useState<UniversoAuditorias>(MOCK_UNIVERSO);
-  const [modalFormulario, setModalFormulario] = useState(false);
-  const [procesoSeleccionado, setProcesoSeleccionado] = useState<ProcesoAuditable | null>(null);
-  const [modoEdicion, setModoEdicion] = useState(false);
-  const [vistaActiva, setVistaActiva] = useState<'lista' | 'matriz'>('lista');
-  const [filtroRiesgo, setFiltroRiesgo] = useState<string>('todos');
-  const [filtroSede, setFiltroSede] = useState<string>('todas');
+  const [areas, setAreas] = useState<AreaAuditable[]>(AREAS_AUDITABLES_MOCK);
+  const [vistaActiva, setVistaActiva] = useState<'dashboard' | 'lista' | 'crear'>('dashboard');
+  const [modoVista, setModoVista] = useState<'grid' | 'tabla'>('grid');
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState<'Todos' | TipoArea>('Todos');
+  const [filtroRiesgo, setFiltroRiesgo] = useState<'Todos' | NivelRiesgo>('Todos');
+  const [filtroEstado, setFiltroEstado] = useState<'Todos' | EstadoSeleccion>('Todos');
+  const [areaEditando, setAreaEditando] = useState<string | null>(null);
+  const [modalNuevaArea, setModalNuevaArea] = useState(false);
 
-  // Form state
-  const [formProceso, setFormProceso] = useState<Partial<ProcesoAuditable>>({
-    nombreProceso: '',
-    tipoProceso: 'Apoyo',
-    tipoSede: 'Sede Principal',
-    territorial: '',
-    responsableProceso: '',
-    impactoFinanciero: 3,
-    impactoOperacional: 3,
-    impactoReputacional: 3,
-    impactoLegal: 3,
-    impactoEstrategico: 3,
-    probabilidadOcurrencia: 3,
-    ultimaAuditoria: '',
-    observaciones: '',
-    estado: 'Pendiente'
-  });
-
-  const resetForm = () => {
-    setFormProceso({
-      nombreProceso: '',
-      tipoProceso: 'Apoyo',
-      tipoSede: 'Sede Principal',
-      territorial: '',
-      responsableProceso: '',
-      impactoFinanciero: 3,
-      impactoOperacional: 3,
-      impactoReputacional: 3,
-      impactoLegal: 3,
-      impactoEstrategico: 3,
-      probabilidadOcurrencia: 3,
-      ultimaAuditoria: '',
-      observaciones: '',
-      estado: 'Pendiente'
+  // Filtrado de áreas
+  const areasFiltradas = useMemo(() => {
+    return areas.filter(area => {
+      const matchBusqueda = area.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+                          area.codigo.toLowerCase().includes(busqueda.toLowerCase());
+      const matchTipo = filtroTipo === 'Todos' || area.tipo === filtroTipo;
+      const matchRiesgo = filtroRiesgo === 'Todos' || area.nivelRiesgo === filtroRiesgo;
+      const matchEstado = filtroEstado === 'Todos' || area.estado === filtroEstado;
+      
+      return matchBusqueda && matchTipo && matchRiesgo && matchEstado;
     });
-    setProcesoSeleccionado(null);
-    setModoEdicion(false);
-  };
+  }, [areas, busqueda, filtroTipo, filtroRiesgo, filtroEstado]);
 
-  const handleAgregarProceso = () => {
-    if (!formProceso.nombreProceso || !formProceso.responsableProceso) {
-      toast.error('Por favor completa los campos obligatorios');
-      return;
-    }
+  // Métricas
+  const metricas = useMemo(() => {
+    const total = areas.length;
+    const sede = areas.filter(a => a.tipo === 'Sede').length;
+    const territorial = areas.filter(a => a.tipo === 'Territorial').length;
+    const critico = areas.filter(a => a.nivelRiesgo === 'Crítico').length;
+    const alto = areas.filter(a => a.nivelRiesgo === 'Alto').length;
+    const medio = areas.filter(a => a.nivelRiesgo === 'Medio').length;
+    const bajo = areas.filter(a => a.nivelRiesgo === 'Bajo').length;
+    const seleccionadas = areas.filter(a => a.estado === 'seleccionada').length;
+    
+    return { total, sede, territorial, critico, alto, medio, bajo, seleccionadas };
+  }, [areas]);
 
-    const impactoTotal = calcularImpactoTotal(formProceso);
-    const nivelRiesgo = calcularNivelRiesgo(impactoTotal, formProceso.probabilidadOcurrencia!);
-    const clasificacion = clasificarRiesgo(nivelRiesgo);
-    const añoPriorizacion = priorizarPorAños(clasificacion);
-
-    const nuevoProceso: ProcesoAuditable = {
-      id: Date.now().toString(),
-      nombreProceso: formProceso.nombreProceso!,
-      tipoProceso: formProceso.tipoProceso!,
-      tipoSede: formProceso.tipoSede!,
-      territorial: formProceso.territorial,
-      responsableProceso: formProceso.responsableProceso!,
-      impactoFinanciero: formProceso.impactoFinanciero!,
-      impactoOperacional: formProceso.impactoOperacional!,
-      impactoReputacional: formProceso.impactoReputacional!,
-      impactoLegal: formProceso.impactoLegal!,
-      impactoEstrategico: formProceso.impactoEstrategico!,
-      probabilidadOcurrencia: formProceso.probabilidadOcurrencia!,
-      impactoTotal,
-      nivelRiesgo,
-      clasificacionRiesgo: clasificacion,
-      añoPriorizacion,
-      ultimaAuditoria: formProceso.ultimaAuditoria || '',
-      observaciones: formProceso.observaciones || '',
-      estado: 'Evaluado',
-      fechaEvaluacion: new Date().toISOString().split('T')[0]
-    };
-
-    setUniverso({
-      ...universo,
-      procesos: [...universo.procesos, nuevoProceso]
+  const handleCambiarEstado = (areaId: string, nuevoEstado: EstadoSeleccion) => {
+    setAreas(prev => prev.map(area => 
+      area.id === areaId ? { ...area, estado: nuevoEstado } : area
+    ));
+    toast.success('Estado actualizado', {
+      description: `Área ${areas.find(a => a.id === areaId)?.nombre} marcada como ${nuevoEstado}`
     });
-
-    toast.success(`Proceso agregado y clasificado como ${clasificacion}`);
-    setModalFormulario(false);
-    resetForm();
   };
 
-  const handleEliminarProceso = (id: string) => {
-    setUniverso({
-      ...universo,
-      procesos: universo.procesos.filter(p => p.id !== id)
+  const handleActualizarRiesgo = (
+    areaId: string, 
+    criticidad: CriticidadNivel, 
+    exposicion: ExposicionNivel, 
+    mitigantes: number
+  ) => {
+    const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
+    
+    setAreas(prev => prev.map(area => 
+      area.id === areaId ? {
+        ...area,
+        criticidad,
+        factorExposicion: exposicion,
+        factoresMitigantes: mitigantes,
+        nivelRiesgo: nivel,
+        scoreRiesgo: score
+      } : area
+    ));
+    
+    setAreaEditando(null);
+    toast.success('Riesgo actualizado', {
+      description: `Nuevo nivel de riesgo: ${nivel} (${score})`
     });
-    toast.success('Proceso eliminado del universo');
   };
-
-  const abrirModalNuevo = () => {
-    resetForm();
-    setModoEdicion(false);
-    setModalFormulario(true);
-  };
-
-  const exportarExcel = () => {
-    // Preparar datos para CSV compatible con Excel
-    const csvRows: string[] = [];
-
-    // Encabezado
-    csvRows.push(`UNIVERSO DE AUDITORÍAS ${universo.añoFiscal} - FORMATO DAFP`);
-    csvRows.push(`Versión: ${universo.version}`);
-    csvRows.push(`Fecha: ${new Date().toLocaleDateString('es-CO')}`);
-    csvRows.push(`Responsable: ${universo.responsable}`);
-    csvRows.push('');
-
-    // Encabezados de tabla
-    csvRows.push([
-      'N°',
-      'Proceso',
-      'Tipo',
-      'Sede',
-      'Territorial',
-      'Responsable',
-      'Impacto Financiero',
-      'Impacto Operacional',
-      'Impacto Reputacional',
-      'Impacto Legal',
-      'Impacto Estratégico',
-      'Impacto Total',
-      'Probabilidad',
-      'Nivel Riesgo',
-      'Clasificación',
-      'Año Priorización',
-      'Última Auditoría',
-      'Observaciones'
-    ].join(','));
-
-    // Datos
-    universo.procesos.forEach((proceso, index) => {
-      const row = [
-        index + 1,
-        `"${proceso.nombreProceso}"`,
-        proceso.tipoProceso,
-        proceso.tipoSede,
-        proceso.territorial || 'N/A',
-        `"${proceso.responsableProceso}"`,
-        proceso.impactoFinanciero,
-        proceso.impactoOperacional,
-        proceso.impactoReputacional,
-        proceso.impactoLegal,
-        proceso.impactoEstrategico,
-        proceso.impactoTotal,
-        proceso.probabilidadOcurrencia,
-        proceso.nivelRiesgo,
-        proceso.clasificacionRiesgo,
-        proceso.añoPriorizacion,
-        proceso.ultimaAuditoria || 'N/A',
-        `"${proceso.observaciones}"`
-      ].join(',');
-      csvRows.push(row);
-    });
-
-    // Crear y descargar
-    const csvContent = csvRows.join('\n');
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Universo_Auditorias_${universo.añoFiscal}_DAF.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    toast.success('Universo exportado a Excel (formato DAFP)');
-  };
-
-  // Métricas calculadas
-  const totalProcesos = universo.procesos.length;
-  const procesosCriticos = universo.procesos.filter(p => p.clasificacionRiesgo === 'CRÍTICO').length;
-  const procesosAltos = universo.procesos.filter(p => p.clasificacionRiesgo === 'ALTO').length;
-  const procesosSedePrincipal = universo.procesos.filter(p => p.tipoSede === 'Sede Principal').length;
-  const procesosTerritoriales = universo.procesos.filter(p => p.tipoSede === 'Territorial').length;
-
-  // Filtrado
-  let procesosFiltrados = universo.procesos;
-  if (filtroRiesgo !== 'todos') {
-    procesosFiltrados = procesosFiltrados.filter(p => p.clasificacionRiesgo === filtroRiesgo);
-  }
-  if (filtroSede !== 'todas') {
-    procesosFiltrados = procesosFiltrados.filter(p => p.tipoSede === filtroSede);
-  }
-
-  // Cálculo del impacto total en tiempo real
-  const impactoCalculado = calcularImpactoTotal(formProceso);
-  const riesgoCalculado = calcularNivelRiesgo(impactoCalculado, formProceso.probabilidadOcurrencia || 3);
-  const clasificacionCalculada = clasificarRiesgo(riesgoCalculado);
-  const añoCalculado = priorizarPorAños(clasificacionCalculada);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* HEADER */}
-      <div className="flex flex-col gap-3 sm:gap-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black" style={{ color: '#1F2937' }}>
-            Universo de Auditorías {universo.añoFiscal}
-          </h2>
-          <p className="text-xs sm:text-sm mt-1" style={{ color: '#6B7280' }}>
-            Evaluación y priorización basada en formato DAFP (Departamento Administrativo de la Función Pública)
-          </p>
-        </div>
-        
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-          <Badge 
-            className="w-full sm:w-auto justify-center"
-            style={{ background: '#EFF6FF', color: '#003DA5', padding: '8px 16px' }}
+    <div className="space-y-4 md:space-y-6">
+      {/* ACCIONES PRINCIPALES */}
+      <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={vistaActiva === 'dashboard' ? 'default' : 'outline'}
+            onClick={() => setVistaActiva('dashboard')}
+            size="sm"
+            className="gap-2"
           >
-            Versión {universo.version} • {universo.estado.toUpperCase()}
-          </Badge>
-          
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              onClick={abrirModalNuevo}
-              className="flex-1 sm:flex-none"
-              style={{ background: '#F97316', color: '#FFFFFF' }}
-            >
-              <Plus className="w-4 h-4 sm:mr-2" />
-              <span>Evaluar Proceso</span>
-            </Button>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportarExcel}
-              className="flex-1 sm:flex-none border-2"
-            >
-              <Download className="w-4 h-4 sm:mr-2" />
-              <span>Exportar DAFP</span>
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* MÉTRICAS PRINCIPALES */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <MetricCard
-          title="Total Procesos"
-          value={totalProcesos.toString()}
-          icon={Target}
-          iconColor="#3B82F6"
-          iconBgColor="#EFF6FF"
-          subtitle="Evaluados"
-        />
-        <MetricCard
-          title="Riesgo Crítico"
-          value={procesosCriticos.toString()}
-          icon={AlertTriangle}
-          iconColor="#DC2626"
-          iconBgColor="#FEE2E2"
-          subtitle="Año 1 obligatorio"
-        />
-        <MetricCard
-          title="Riesgo Alto"
-          value={procesosAltos.toString()}
-          icon={TrendingUp}
-          iconColor="#F59E0B"
-          iconBgColor="#FEF3C7"
-          subtitle="Año 1-2"
-        />
-        <MetricCard
-          title="Sede Principal"
-          value={procesosSedePrincipal.toString()}
-          icon={Building2}
-          iconColor="#10B981"
-          iconBgColor="#F0FDF4"
-          subtitle={`${procesosTerritoriales} territoriales`}
-        />
-      </div>
-
-      {/* FILTROS Y VISTA */}
-      <div className="rounded-2xl border-2 p-4 sm:p-6" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 mb-4">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <select
-              value={filtroRiesgo}
-              onChange={(e) => setFiltroRiesgo(e.target.value)}
-              className="px-3 py-2 rounded-lg border-2 text-sm"
-              style={{ borderColor: '#E5E7EB' }}
-            >
-              <option value="todos">Todos los riesgos</option>
-              <option value="CRÍTICO">Solo CRÍTICO</option>
-              <option value="ALTO">Solo ALTO</option>
-              <option value="MEDIO">Solo MEDIO</option>
-              <option value="BAJO">Solo BAJO</option>
-            </select>
-
-            <select
-              value={filtroSede}
-              onChange={(e) => setFiltroSede(e.target.value)}
-              className="px-3 py-2 rounded-lg border-2 text-sm"
-              style={{ borderColor: '#E5E7EB' }}
-            >
-              <option value="todas">Todas las sedes</option>
-              <option value="Sede Principal">Sede Principal</option>
-              <option value="Territorial">Territoriales</option>
-            </select>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => setVistaActiva('lista')}
-              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                vistaActiva === 'lista' ? 'shadow-md' : 'opacity-60'
-              }`}
-              style={{
-                background: vistaActiva === 'lista' ? '#F97316' : '#F3F4F6',
-                color: vistaActiva === 'lista' ? '#FFFFFF' : '#6B7280'
-              }}
-            >
-              <FileText className="w-4 h-4 inline mr-2" />
-              Lista
-            </button>
-            <button
-              onClick={() => setVistaActiva('matriz')}
-              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                vistaActiva === 'matriz' ? 'shadow-md' : 'opacity-60'
-              }`}
-              style={{
-                background: vistaActiva === 'matriz' ? '#F97316' : '#F3F4F6',
-                color: vistaActiva === 'matriz' ? '#FFFFFF' : '#6B7280'
-              }}
-            >
-              <Target className="w-4 h-4 inline mr-2" />
-              Matriz
-            </button>
-          </div>
+            <BarChart3 className="w-4 h-4" />
+            Dashboard
+          </Button>
+          <Button
+            variant={vistaActiva === 'lista' ? 'default' : 'outline'}
+            onClick={() => setVistaActiva('lista')}
+            size="sm"
+            className="gap-2"
+          >
+            <Layers className="w-4 h-4" />
+            Áreas ({areasFiltradas.length})
+          </Button>
         </div>
 
-        {/* VISTA LISTA */}
+        <Button 
+          style={{ background: '#003DA5' }}
+          className="gap-2 w-full sm:w-auto"
+          size="sm"
+          onClick={() => setModalNuevaArea(true)}
+        >
+          <Plus className="w-4 h-4" />
+          Nueva Área
+        </Button>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {vistaActiva === 'dashboard' && (
+          <motion.div
+            key="dashboard"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <DashboardUniverso metricas={metricas} areas={areas} />
+          </motion.div>
+        )}
+
         {vistaActiva === 'lista' && (
-          <div className="space-y-3">
-            {procesosFiltrados.length === 0 ? (
-              <div className="text-center py-12">
-                <Info className="w-16 h-16 mx-auto mb-4" style={{ color: '#9CA3AF' }} />
-                <p style={{ color: '#6B7280' }}>No hay procesos que coincidan con los filtros</p>
-              </div>
-            ) : (
-              procesosFiltrados
-                .sort((a, b) => b.nivelRiesgo - a.nivelRiesgo)
-                .map((proceso, index) => (
-                  <motion.div
-                    key={proceso.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="p-4 rounded-xl border-2 hover:shadow-md transition-all"
-                    style={{ background: '#F9FAFB', borderColor: '#E5E7EB' }}
-                  >
-                    <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
-                      <div className="flex-1 w-full">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2 flex-wrap">
-                          <h4 className="text-base font-bold" style={{ color: '#1F2937' }}>
-                            {proceso.nombreProceso}
-                          </h4>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge
-                              className="text-xs"
-                              style={{
-                                background: getColorRiesgo(proceso.clasificacionRiesgo) + '20',
-                                color: getColorRiesgo(proceso.clasificacionRiesgo)
-                              }}
-                            >
-                              {proceso.clasificacionRiesgo} • Riesgo {proceso.nivelRiesgo}
-                            </Badge>
-                            <Badge className="text-xs" style={{ background: '#EFF6FF', color: '#3B82F6' }}>
-                              {proceso.añoPriorizacion}
-                            </Badge>
-                            <Badge className="text-xs" style={{ background: '#F3F4F6', color: '#6B7280' }}>
-                              {proceso.tipoProceso}
-                            </Badge>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm" style={{ color: '#6B7280' }}>
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4 flex-shrink-0" />
-                            <span>
-                              {proceso.tipoSede}
-                              {proceso.territorial && ` - ${proceso.territorial}`}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Calculator className="w-4 h-4 flex-shrink-0" />
-                            <span>Impacto: {proceso.impactoTotal} | Prob: {proceso.probabilidadOcurrencia}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <FileText className="w-4 h-4 flex-shrink-0" />
-                            <span>Última: {proceso.ultimaAuditoria || 'Sin auditorías'}</span>
-                          </div>
-                        </div>
-
-                        {proceso.observaciones && (
-                          <p className="text-xs mt-2 italic" style={{ color: '#6B7280' }}>
-                            {proceso.observaciones}
-                          </p>
-                        )}
-                      </div>
-
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEliminarProceso(proceso.id)}
-                        style={{ color: '#EF4444' }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </motion.div>
-                ))
-            )}
-          </div>
-        )}
-
-        {/* VISTA MATRIZ DE RIESGO */}
-        {vistaActiva === 'matriz' && (
-          <div className="overflow-x-auto">
-            <div className="min-w-[600px] p-4">
-              <div className="text-center mb-4">
-                <h3 className="text-lg font-bold" style={{ color: '#1F2937' }}>
-                  Matriz de Riesgo DAFP
-                </h3>
-                <p className="text-sm" style={{ color: '#6B7280' }}>
-                  Impacto (eje Y) × Probabilidad (eje X)
-                </p>
-              </div>
-
-              {/* Matriz 5x5 */}
-              <div className="grid grid-cols-6 gap-2">
-                {/* Header vacío */}
-                <div />
-                {/* Headers Probabilidad */}
-                {[1, 2, 3, 4, 5].map(prob => (
-                  <div key={`prob-${prob}`} className="text-center text-sm font-bold p-2" style={{ color: '#6B7280' }}>
-                    P={prob}
+          <motion.div
+            key="lista"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="space-y-4"
+          >
+            {/* FILTROS Y BÚSQUEDA */}
+            <Card className="p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                {/* Búsqueda */}
+                <div className="lg:col-span-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      placeholder="Buscar por nombre o código..."
+                      value={busqueda}
+                      onChange={(e) => setBusqueda(e.target.value)}
+                      className="pl-9"
+                    />
                   </div>
-                ))}
+                </div>
 
-                {/* Filas de Impacto (invertidas, 5 arriba) */}
-                {[5, 4, 3, 2, 1].map(impacto => (
-                  <>
-                    <div key={`imp-${impacto}`} className="flex items-center justify-center text-sm font-bold" style={{ color: '#6B7280' }}>
-                      I={impacto}
-                    </div>
-                    {[1, 2, 3, 4, 5].map(prob => {
-                      const riesgo = impacto * prob;
-                      const clasificacion = clasificarRiesgo(riesgo);
-                      const procesosEnCelda = procesosFiltrados.filter(
-                        p => p.impactoTotal === impacto && p.probabilidadOcurrencia === prob
-                      );
-
-                      return (
-                        <div
-                          key={`celda-${impacto}-${prob}`}
-                          className="aspect-square rounded-lg border-2 flex flex-col items-center justify-center p-2 relative"
-                          style={{
-                            background: getColorRiesgo(clasificacion) + '20',
-                            borderColor: getColorRiesgo(clasificacion)
-                          }}
-                        >
-                          <span className="text-xs font-bold" style={{ color: getColorRiesgo(clasificacion) }}>
-                            {riesgo}
-                          </span>
-                          {procesosEnCelda.length > 0 && (
-                            <span className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: '#FFFFFF', color: getColorRiesgo(clasificacion) }}>
-                              {procesosEnCelda.length}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </>
-                ))}
-              </div>
-
-              {/* Leyenda */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
-                {(['CRÍTICO', 'ALTO', 'MEDIO', 'BAJO'] as const).map(nivel => (
-                  <div key={nivel} className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded" style={{ background: getColorRiesgo(nivel) }} />
-                    <span className="text-sm" style={{ color: '#6B7280' }}>
-                      {nivel} ({nivel === 'CRÍTICO' ? '16-25' : nivel === 'ALTO' ? '10-15' : nivel === 'MEDIO' ? '5-9' : '1-4'})
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* MODAL FORMULARIO DAFP */}
-      <ResponsiveModal
-        isOpen={modalFormulario}
-        onClose={() => {
-          setModalFormulario(false);
-          resetForm();
-        }}
-        title="Formulario de Evaluación DAFP"
-        subtitle="Evaluación de riesgo para priorización de auditorías"
-        icon={<Calculator className="w-6 h-6" style={{ color: '#F97316' }} />}
-        maxWidth="4xl"
-        footer={
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleAgregarProceso}
-              className="flex-1 px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
-              style={{ background: '#F97316', color: '#FFFFFF' }}
-            >
-              <Save className="w-4 h-4" />
-              Guardar Evaluación
-            </button>
-            <button
-              onClick={() => {
-                setModalFormulario(false);
-                resetForm();
-              }}
-              className="px-6 py-3 rounded-xl font-semibold"
-              style={{ background: '#F3F4F6', color: '#4B5563' }}
-            >
-              Cancelar
-            </button>
-          </div>
-        }
-      >
-        <div className="space-y-6 p-1">
-          {/* SECCIÓN 1: Información General */}
-          <div>
-            <h3 className="text-lg font-bold mb-4" style={{ color: '#1F2937' }}>
-              1. Información General del Proceso
-            </h3>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Nombre del Proceso *
-                </label>
+                {/* Filtro Tipo */}
                 <select
-                  required
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#F97316]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formProceso.nombreProceso}
-                  onChange={(e) => setFormProceso({ ...formProceso, nombreProceso: e.target.value })}
+                  value={filtroTipo}
+                  onChange={(e) => setFiltroTipo(e.target.value as any)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 >
-                  <option value="">Seleccione un proceso...</option>
-                  {PROCESOS_ESAP.map(proc => (
-                    <option key={proc} value={proc}>{proc}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Tipo de Proceso *
-                </label>
-                <select
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#F97316]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formProceso.tipoProceso}
-                  onChange={(e) => setFormProceso({ ...formProceso, tipoProceso: e.target.value as any })}
-                >
-                  <option value="Misional">Misional</option>
-                  <option value="Apoyo">Apoyo</option>
-                  <option value="Estratégico">Estratégico</option>
-                  <option value="Evaluación">Evaluación</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Responsable del Proceso *
-                </label>
-                <select
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#F97316]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formProceso.responsableProceso}
-                  onChange={(e) => setFormProceso({ ...formProceso, responsableProceso: e.target.value })}
-                >
-                  <option value="">Seleccione...</option>
-                  {RESPONSABLES.map(resp => (
-                    <option key={resp} value={resp}>{resp}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Tipo de Sede *
-                </label>
-                <select
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#F97316]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formProceso.tipoSede}
-                  onChange={(e) => setFormProceso({ ...formProceso, tipoSede: e.target.value as any, territorial: '' })}
-                >
-                  <option value="Sede Principal">Sede Principal</option>
+                  <option value="Todos">Todos los tipos</option>
+                  <option value="Sede">Sede</option>
                   <option value="Territorial">Territorial</option>
                 </select>
+
+                {/* Filtro Riesgo */}
+                <select
+                  value={filtroRiesgo}
+                  onChange={(e) => setFiltroRiesgo(e.target.value as any)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="Todos">Todos los riesgos</option>
+                  <option value="Crítico">Crítico</option>
+                  <option value="Alto">Alto</option>
+                  <option value="Medio">Medio</option>
+                  <option value="Bajo">Bajo</option>
+                </select>
+
+                {/* Filtro Estado */}
+                <select
+                  value={filtroEstado}
+                  onChange={(e) => setFiltroEstado(e.target.value as any)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="Todos">Todos los estados</option>
+                  <option value="seleccionada">Seleccionada</option>
+                  <option value="pendiente">Pendiente</option>
+                  <option value="no-aplica">No Aplica</option>
+                </select>
               </div>
 
-              {formProceso.tipoSede === 'Territorial' && (
-                <div>
-                  <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                    Territorial *
-                  </label>
-                  <select
-                    className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#F97316]"
-                    style={{ borderColor: '#E5E7EB' }}
-                    value={formProceso.territorial}
-                    onChange={(e) => setFormProceso({ ...formProceso, territorial: e.target.value })}
+              {/* Modo de Vista */}
+              <div className="flex justify-between items-center mt-3 pt-3 border-t">
+                <p className="text-sm text-gray-600">
+                  Mostrando <strong>{areasFiltradas.length}</strong> de <strong>{areas.length}</strong> áreas
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant={modoVista === 'grid' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setModoVista('grid')}
                   >
-                    <option value="">Seleccione territorial...</option>
-                    {TERRITORIALES_ESAP.map(terr => (
-                      <option key={terr} value={terr}>{terr}</option>
-                    ))}
-                  </select>
+                    <Grid className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={modoVista === 'tabla' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setModoVista('tabla')}
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            </Card>
 
-          {/* SECCIÓN 2: Evaluación de Impacto */}
-          <div>
-            <h3 className="text-lg font-bold mb-2" style={{ color: '#1F2937' }}>
-              2. Evaluación de Impacto
-            </h3>
-            <p className="text-sm mb-4" style={{ color: '#6B7280' }}>
-              Califique de 1 (Muy Bajo) a 5 (Muy Alto) el impacto potencial del proceso
-            </p>
-
-            <div className="space-y-4">
-              {[
-                { key: 'impactoFinanciero', label: 'Impacto Financiero', desc: 'Afectación económica y presupuestal' },
-                { key: 'impactoOperacional', label: 'Impacto Operacional', desc: 'Afectación a operaciones y servicios' },
-                { key: 'impactoReputacional', label: 'Impacto Reputacional', desc: 'Afectación a imagen institucional' },
-                { key: 'impactoLegal', label: 'Impacto Legal', desc: 'Cumplimiento normativo y legal' },
-                { key: 'impactoEstrategico', label: 'Impacto Estratégico', desc: 'Afectación a objetivos institucionales' }
-              ].map(({ key, label, desc }) => (
-                <div key={key}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <label className="text-sm font-semibold" style={{ color: '#4B5563' }}>
-                        {label}
-                      </label>
-                      <p className="text-xs" style={{ color: '#9CA3AF' }}>{desc}</p>
-                    </div>
-                    <span className="text-lg font-black px-3 py-1 rounded-lg" style={{ background: '#F3F4F6', color: '#F97316' }}>
-                      {formProceso[key as keyof typeof formProceso] || 3}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="5"
-                    value={formProceso[key as keyof typeof formProceso] as number || 3}
-                    onChange={(e) => setFormProceso({ ...formProceso, [key]: parseInt(e.target.value) })}
-                    className="w-full"
+            {/* LISTA DE ÁREAS */}
+            {modoVista === 'grid' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {areasFiltradas.map(area => (
+                  <CardAreaAuditable
+                    key={area.id}
+                    area={area}
+                    onCambiarEstado={handleCambiarEstado}
+                    onEditarRiesgo={() => setAreaEditando(area.id)}
+                    editando={areaEditando === area.id}
+                    onGuardarRiesgo={handleActualizarRiesgo}
+                    onCancelarEdicion={() => setAreaEditando(null)}
                   />
-                  <div className="flex justify-between text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                    <span>1 - Muy Bajo</span>
-                    <span>3 - Medio</span>
-                    <span>5 - Muy Alto</span>
-                  </div>
+                ))}
+              </div>
+            ) : (
+              <TablaAreasAuditables
+                areas={areasFiltradas}
+                onCambiarEstado={handleCambiarEstado}
+              />
+            )}
+
+            {areasFiltradas.length === 0 && (
+              <Card className="p-12">
+                <div className="text-center">
+                  <Layers className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <h3 className="font-bold text-gray-900 mb-2">
+                    No se encontraron áreas
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Intenta ajustar los filtros de búsqueda
+                  </p>
                 </div>
-              ))}
-            </div>
-          </div>
+              </Card>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {/* SECCIÓN 3: Probabilidad */}
-          <div>
-            <h3 className="text-lg font-bold mb-2" style={{ color: '#1F2937' }}>
-              3. Evaluación de Probabilidad
+      {/* MODAL NUEVA ÁREA */}
+      {modalNuevaArea && (
+        <ModalNuevaArea
+          onClose={() => setModalNuevaArea(false)}
+          onGuardar={(nuevaArea) => {
+            setAreas(prev => [...prev, nuevaArea]);
+            setModalNuevaArea(false);
+            toast.success('¡Área creada exitosamente!', {
+              description: `${nuevaArea.nombre} agregada al universo de auditorías`
+            });
+          }}
+          ultimoCodigo={areas.length > 0 ? Math.max(...areas.map(a => {
+            const num = parseInt(a.codigo.split('-')[1]);
+            return isNaN(num) ? 0 : num;
+          })) : 0}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============ DASHBOARD ============
+
+interface DashboardUniversoProps {
+  metricas: {
+    total: number;
+    sede: number;
+    territorial: number;
+    critico: number;
+    alto: number;
+    medio: number;
+    bajo: number;
+    seleccionadas: number;
+  };
+  areas: AreaAuditable[];
+}
+
+function DashboardUniverso({ metricas, areas }: DashboardUniversoProps) {
+  return (
+    <div className="space-y-6">
+      {/* CARD INFORMATIVO DAFP */}
+      <Card className="p-6 border-2 border-orange-300 bg-gradient-to-br from-orange-50 to-amber-50">
+        <div className="flex items-start gap-4">
+          <div className="p-3 bg-orange-500 rounded-lg flex-shrink-0">
+            <Target className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-black text-gray-900 mb-2 flex items-center gap-2">
+              Metodología DAFP - Cálculo de Riesgo
+              <Badge className="bg-orange-500 text-white">Oficial</Badge>
             </h3>
-            <p className="text-sm mb-4" style={{ color: '#6B7280' }}>
-              Califique de 1 (Muy Baja) a 5 (Muy Alta) la probabilidad de ocurrencia de eventos de riesgo
+            <p className="text-sm text-gray-700 mb-3">
+              Departamento Administrativo de la Función Pública - Sistema de evaluación de riesgo para priorización de auditorías
             </p>
-
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-semibold" style={{ color: '#4B5563' }}>
-                Probabilidad de Ocurrencia
-              </label>
-              <span className="text-lg font-black px-3 py-1 rounded-lg" style={{ background: '#F3F4F6', color: '#F97316' }}>
-                {formProceso.probabilidadOcurrencia || 3}
-              </span>
-            </div>
-            <input
-              type="range"
-              min="1"
-              max="5"
-              value={formProceso.probabilidadOcurrencia || 3}
-              onChange={(e) => setFormProceso({ ...formProceso, probabilidadOcurrencia: parseInt(e.target.value) })}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs mt-1" style={{ color: '#9CA3AF' }}>
-              <span>1 - Muy Baja</span>
-              <span>3 - Media</span>
-              <span>5 - Muy Alta</span>
-            </div>
           </div>
+        </div>
+      </Card>
 
-          {/* SECCIÓN 4: Cálculo Automático */}
-          <div className="rounded-xl p-4" style={{ background: '#F0FDF4', border: '2px solid #10B981' }}>
-            <h3 className="text-lg font-bold mb-3 flex items-center gap-2" style={{ color: '#065F46' }}>
-              <Calculator className="w-5 h-5" />
-              Cálculo Automático DAFP
-            </h3>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <p className="text-xs" style={{ color: '#6B7280' }}>Impacto Promedio</p>
-                <p className="text-2xl font-black" style={{ color: '#10B981' }}>
-                  {impactoCalculado}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs" style={{ color: '#6B7280' }}>Nivel de Riesgo</p>
-                <p className="text-2xl font-black" style={{ color: '#10B981' }}>
-                  {riesgoCalculado}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs" style={{ color: '#6B7280' }}>Clasificación</p>
-                <p className="text-base font-black" style={{ color: getColorRiesgo(clasificacionCalculada) }}>
-                  {clasificacionCalculada}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs" style={{ color: '#6B7280' }}>Priorización</p>
-                <p className="text-base font-black" style={{ color: '#3B82F6' }}>
-                  {añoCalculado}
-                </p>
-              </div>
-            </div>
+      {/* INTEGRACIÓN CON ESTRUCTURA ORGANIZACIONAL */}
+      <Card className="p-6 border-2 bg-gradient-to-br from-blue-50 to-indigo-50" style={{ borderColor: '#003DA5' }}>
+        <div className="flex items-start gap-4">
+          <div className="p-3 rounded-lg flex-shrink-0" style={{ background: '#003DA5' }}>
+            <Link2 className="w-6 h-6 text-white" />
           </div>
-
-          {/* SECCIÓN 5: Información Adicional */}
-          <div>
-            <h3 className="text-lg font-bold mb-4" style={{ color: '#1F2937' }}>
-              4. Información Adicional
+          <div className="flex-1">
+            <h3 className="font-black text-gray-900 mb-2 flex items-center gap-2">
+              Integrado con Estructura Organizacional
+              <Badge style={{ background: '#003DA5', color: 'white' }}>Conectado</Badge>
             </h3>
-
-            <div className="grid grid-cols-1 gap-4">
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Fecha de Última Auditoría
-                </label>
-                <input
-                  type="date"
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#F97316]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formProceso.ultimaAuditoria}
-                  onChange={(e) => setFormProceso({ ...formProceso, ultimaAuditoria: e.target.value })}
-                />
+            <p className="text-sm text-gray-700 mb-3">
+              Las áreas auditables están sincronizadas con las <strong>{TERRITORIALES_ESAP.length} unidades organizacionales</strong> de ESAP: 
+              1 Sede Central + 17 Territoriales con 307 CETAP en todo el país
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+              <div className="bg-white p-3 rounded-lg text-center border border-blue-200">
+                <div className="font-black text-blue-600 text-2xl">{TERRITORIALES_ESAP.length}</div>
+                <div className="text-xs text-gray-600 mt-1">Unidades Totales</div>
               </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Observaciones
-                </label>
-                <textarea
-                  rows={3}
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#F97316]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={formProceso.observaciones}
-                  onChange={(e) => setFormProceso({ ...formProceso, observaciones: e.target.value })}
-                  placeholder="Observaciones relevantes sobre el proceso..."
-                />
+              <div className="bg-white p-3 rounded-lg text-center border border-purple-200">
+                <div className="font-black text-purple-600 text-2xl">
+                  {TERRITORIALES_ESAP.filter(t => t.codigo === 'ESAP-CENTRAL').length}
+                </div>
+                <div className="text-xs text-gray-600 mt-1">Sede Central</div>
+              </div>
+              <div className="bg-white p-3 rounded-lg text-center border border-green-200">
+                <div className="font-black text-green-600 text-2xl">
+                  {TERRITORIALES_ESAP.filter(t => t.codigo !== 'ESAP-CENTRAL').length}
+                </div>
+                <div className="text-xs text-gray-600 mt-1">Territoriales</div>
+              </div>
+              <div className="bg-white p-3 rounded-lg text-center border border-orange-200">
+                <div className="font-black text-orange-600 text-2xl">
+                  {TERRITORIALES_ESAP.reduce((sum, t) => sum + t.totalCetap, 0)}
+                </div>
+                <div className="text-xs text-gray-600 mt-1">CETAP Totales</div>
               </div>
             </div>
           </div>
         </div>
-      </ResponsiveModal>
+      </Card>
+
+      {/* MÉTRICAS GENERALES */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <Card className="p-4 text-center border-2" style={{ borderColor: '#003DA5' }}>
+          <div className="text-3xl font-black mb-1" style={{ color: '#003DA5' }}>
+            {metricas.total}
+          </div>
+          <p className="text-xs text-gray-600">Áreas Totales</p>
+        </Card>
+
+        <Card className="p-4 text-center border-2 border-purple-200">
+          <div className="text-3xl font-black text-purple-600 mb-1">{metricas.sede}</div>
+          <p className="text-xs text-gray-600">Procesos Sede</p>
+        </Card>
+
+        <Card className="p-4 text-center border-2 border-green-200">
+          <div className="text-3xl font-black text-green-600 mb-1">{metricas.territorial}</div>
+          <p className="text-xs text-gray-600">Territoriales</p>
+        </Card>
+
+        <Card className="p-4 text-center border-2 border-blue-200">
+          <div className="text-3xl font-black text-blue-600 mb-1">{metricas.seleccionadas}</div>
+          <p className="text-xs text-gray-600">Seleccionadas</p>
+        </Card>
+      </div>
+
+      {/* DISTRIBUCIÓN DE RIESGO DAFP */}
+      <Card className="p-6">
+        <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-orange-600" />
+          Matriz de Riesgo DAFP - Distribución por Nivel
+        </h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Clasificación según metodología del Departamento Administrativo de la Función Pública
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center p-4 bg-red-50 rounded-lg border-2 border-red-200">
+            <div className="text-3xl font-black text-red-600 mb-1">{metricas.critico}</div>
+            <Badge className="bg-red-100 text-red-800 text-xs">Crítico (&gt;10)</Badge>
+            <p className="text-xs text-gray-600 mt-2">Requiere auditoría inmediata</p>
+          </div>
+
+          <div className="text-center p-4 bg-orange-50 rounded-lg border-2 border-orange-200">
+            <div className="text-3xl font-black text-orange-600 mb-1">{metricas.alto}</div>
+            <Badge className="bg-orange-100 text-orange-800 text-xs">Alto (5-10)</Badge>
+            <p className="text-xs text-gray-600 mt-2">Auditoría prioritaria</p>
+          </div>
+
+          <div className="text-center p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+            <div className="text-3xl font-black text-blue-600 mb-1">{metricas.medio}</div>
+            <Badge className="bg-blue-100 text-blue-800 text-xs">Medio (3-5)</Badge>
+            <p className="text-xs text-gray-600 mt-2">Auditoría programada</p>
+          </div>
+
+          <div className="text-center p-4 bg-green-50 rounded-lg border-2 border-green-200">
+            <div className="text-3xl font-black text-green-600 mb-1">{metricas.bajo}</div>
+            <Badge className="bg-green-100 text-green-800 text-xs">Bajo (&lt;3)</Badge>
+            <p className="text-xs text-gray-600 mt-2">Según capacidad</p>
+          </div>
+        </div>
+      </Card>
+
+      {/* TOP ÁREAS DE RIESGO */}
+      <Card className="p-6">
+        <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-red-600" />
+          Top 5 Áreas de Mayor Riesgo (Score DAFP)
+        </h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Áreas con mayor puntuación de riesgo según cálculo DAFP
+        </p>
+
+        <div className="space-y-3">
+          {areas
+            .filter(a => a.nivelRiesgo === 'Crítico' || a.nivelRiesgo === 'Alto')
+            .sort((a, b) => b.scoreRiesgo - a.scoreRiesgo)
+            .slice(0, 5)
+            .map((area, idx) => (
+              <div key={area.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white" 
+                     style={{ background: getRiesgoColor(area.nivelRiesgo) }}>
+                  {idx + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm text-gray-900">{area.nombre}</p>
+                  <p className="text-xs text-gray-600">{area.codigo} - {area.tipo}</p>
+                </div>
+                <div className="text-right">
+                  <Badge style={{ background: getRiesgoColor(area.nivelRiesgo), color: 'white' }}>
+                    {area.nivelRiesgo}
+                  </Badge>
+                  <p className="text-xs text-gray-600 mt-1">Score DAFP: {area.scoreRiesgo}</p>
+                </div>
+              </div>
+            ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ============ CARD ÁREA AUDITABLE ============
+
+interface CardAreaAuditableProps {
+  area: AreaAuditable;
+  onCambiarEstado: (areaId: string, estado: EstadoSeleccion) => void;
+  onEditarRiesgo: () => void;
+  editando: boolean;
+  onGuardarRiesgo: (areaId: string, criticidad: CriticidadNivel, exposicion: ExposicionNivel, mitigantes: number) => void;
+  onCancelarEdicion: () => void;
+}
+
+function CardAreaAuditable({ 
+  area, 
+  onCambiarEstado, 
+  onEditarRiesgo, 
+  editando, 
+  onGuardarRiesgo,
+  onCancelarEdicion 
+}: CardAreaAuditableProps) {
+  const [criticidad, setCriticidad] = useState<CriticidadNivel>(area.criticidad);
+  const [exposicion, setExposicion] = useState<ExposicionNivel>(area.factorExposicion);
+  const [mitigantes, setMitigantes] = useState(area.factoresMitigantes);
+
+  const estadoInfo = getEstadoInfo(area.estado);
+
+  return (
+    <Card className="p-4 hover:shadow-lg transition-all">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2">
+          {area.tipo === 'Sede' ? (
+            <Building2 className="w-5 h-5 text-purple-600" />
+          ) : (
+            <MapPin className="w-5 h-5 text-green-600" />
+          )}
+          <Badge variant="outline" className="text-xs">
+            {area.codigo}
+          </Badge>
+        </div>
+        <Badge style={{ background: getRiesgoColor(area.nivelRiesgo), color: 'white' }}>
+          {area.nivelRiesgo}
+        </Badge>
+      </div>
+
+      <h4 className="font-bold text-sm text-gray-900 mb-1">{area.nombre}</h4>
+      <p className="text-xs text-gray-600 mb-3 line-clamp-2">{area.descripcion}</p>
+
+      {editando ? (
+        <div className="space-y-2 mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+          <p className="text-xs font-bold text-gray-700 mb-2 text-center">📊 Editar Parámetros DAFP</p>
+          
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Criticidad (Impacto)</label>
+            <select
+              value={criticidad}
+              onChange={(e) => setCriticidad(Number(e.target.value) as CriticidadNivel)}
+              className="w-full px-2 py-1 text-xs border rounded"
+            >
+              <option value={5}>Alta (5) - Crítico/Financiero</option>
+              <option value={3}>Media (3) - Apoyo importante</option>
+              <option value={1}>Baja (1) - Secundario</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Factor Exposición (Alcance)</label>
+            <select
+              value={exposicion}
+              onChange={(e) => setExposicion(Number(e.target.value) as ExposicionNivel)}
+              className="w-full px-2 py-1 text-xs border rounded"
+            >
+              <option value={5}>Alta (5) - &gt;100 personas</option>
+              <option value={3}>Media (3) - 50-100 personas</option>
+              <option value={1}>Baja (1) - &lt;50 personas</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Factores Mitigantes (1-10)</label>
+            <Input
+              type="number"
+              value={mitigantes}
+              onChange={(e) => setMitigantes(Number(e.target.value))}
+              min={1}
+              max={10}
+              className="text-xs"
+              placeholder="Controles existentes"
+            />
+            <p className="text-xs text-gray-500 mt-1">Mayor valor = más controles = menor riesgo</p>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button
+              size="sm"
+              onClick={() => onGuardarRiesgo(area.id, criticidad, exposicion, mitigantes)}
+              className="flex-1 gap-1"
+              style={{ background: '#003DA5' }}
+            >
+              <Save className="w-3 h-3" />
+              Guardar
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onCancelarEdicion}
+              className="flex-1 gap-1"
+            >
+              <X className="w-3 h-3" />
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2 mb-3">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-600">Score DAFP:</span>
+            <span className="font-bold" style={{ color: getRiesgoColor(area.nivelRiesgo) }}>
+              {area.scoreRiesgo}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-600">Auditorías:</span>
+            <span className="font-bold text-gray-900">{area.numeroAuditorias}</span>
+          </div>
+          {area.ultimaAuditoria && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-600">Última:</span>
+              <span className="text-gray-900">{area.ultimaAuditoria}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <select
+          value={area.estado}
+          onChange={(e) => onCambiarEstado(area.id, e.target.value as EstadoSeleccion)}
+          className="flex-1 px-2 py-1.5 text-xs border rounded-lg"
+          style={{ 
+            borderColor: estadoInfo.color,
+            backgroundColor: `${estadoInfo.color}10`
+          }}
+        >
+          <option value="seleccionada">✅ Seleccionada</option>
+          <option value="pendiente">⏳ Pendiente</option>
+          <option value="no-aplica">❌ No Aplica</option>
+        </select>
+
+        {!editando && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onEditarRiesgo}
+          >
+            <Edit2 className="w-3 h-3" />
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ============ TABLA ÁREAS AUDITABLES ============
+
+interface TablaAreasAuditablesProps {
+  areas: AreaAuditable[];
+  onCambiarEstado: (areaId: string, estado: EstadoSeleccion) => void;
+}
+
+function TablaAreasAuditables({ areas, onCambiarEstado }: TablaAreasAuditablesProps) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b-2 border-gray-200">
+            <tr>
+              <th className="px-4 py-3 text-left font-bold text-gray-700">Código</th>
+              <th className="px-4 py-3 text-left font-bold text-gray-700">Nombre</th>
+              <th className="px-4 py-3 text-left font-bold text-gray-700">Tipo</th>
+              <th className="px-4 py-3 text-left font-bold text-gray-700">Riesgo DAFP</th>
+              <th className="px-4 py-3 text-center font-bold text-gray-700">Score</th>
+              <th className="px-4 py-3 text-center font-bold text-gray-700">Auditorías</th>
+              <th className="px-4 py-3 text-left font-bold text-gray-700">Estado</th>
+              <th className="px-4 py-3 text-center font-bold text-gray-700">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {areas.map(area => {
+              const estadoInfo = getEstadoInfo(area.estado);
+              return (
+                <tr key={area.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <Badge variant="outline">{area.codigo}</Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="font-bold text-gray-900">{area.nombre}</p>
+                    <p className="text-xs text-gray-600">{area.responsable}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      {area.tipo === 'Sede' ? (
+                        <Building2 className="w-4 h-4 text-purple-600" />
+                      ) : (
+                        <MapPin className="w-4 h-4 text-green-600" />
+                      )}
+                      <span className="text-xs">{area.tipo}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge style={{ background: getRiesgoColor(area.nivelRiesgo), color: 'white' }}>
+                      {area.nivelRiesgo}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-center font-bold" style={{ color: getRiesgoColor(area.nivelRiesgo) }}>
+                    {area.scoreRiesgo}
+                  </td>
+                  <td className="px-4 py-3 text-center font-bold text-gray-900">
+                    {area.numeroAuditorias}
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={area.estado}
+                      onChange={(e) => onCambiarEstado(area.id, e.target.value as EstadoSeleccion)}
+                      className="px-2 py-1 text-xs border rounded"
+                      style={{ 
+                        borderColor: estadoInfo.color,
+                        backgroundColor: `${estadoInfo.color}10`
+                      }}
+                    >
+                      <option value="seleccionada">Seleccionada</option>
+                      <option value="pendiente">Pendiente</option>
+                      <option value="no-aplica">No Aplica</option>
+                    </select>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <Button size="sm" variant="outline">
+                      <Eye className="w-3 h-3" />
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+// ============ MODAL NUEVA ÁREA ============
+
+interface ModalNuevaAreaProps {
+  onClose: () => void;
+  onGuardar: (nuevaArea: AreaAuditable) => void;
+  ultimoCodigo: number;
+}
+
+function ModalNuevaArea({ onClose, onGuardar, ultimoCodigo }: ModalNuevaAreaProps) {
+  const [nombre, setNombre] = useState('');
+  const [tipo, setTipo] = useState<TipoArea>('Sede');
+  const [descripcion, setDescripcion] = useState('');
+  const [responsable, setResponsable] = useState('');
+  const [criticidad, setCriticidad] = useState<CriticidadNivel>(5);
+  const [exposicion, setExposicion] = useState<ExposicionNivel>(5);
+  const [mitigantes, setMitigantes] = useState(2);
+  const [unidadSeleccionada, setUnidadSeleccionada] = useState('');
+
+  // Manejar selección de unidad organizacional
+  const handleSeleccionarUnidad = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const unidadId = e.target.value;
+    setUnidadSeleccionada(unidadId);
+    
+    const unidad = TERRITORIALES_ESAP.find(t => t.id === unidadId);
+    if (unidad) {
+      setNombre(unidad.nombre);
+      setTipo(unidad.codigo === 'ESAP-CENTRAL' ? 'Sede' : 'Territorial');
+      setDescripcion(`Dirección ${unidad.nombre} - ${unidad.departamentos.join(', ')}`);
+      setResponsable(`Director ${unidad.nombreCorto}`);
+    }
+  };
+
+  const handleGuardar = () => {
+    const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
+    const nuevoCodigo = `SEDE-${ultimoCodigo + 1}`;
+    const nuevaArea: AreaAuditable = {
+      id: `area-${ultimoCodigo + 1}`,
+      codigo: nuevoCodigo,
+      nombre,
+      tipo,
+      descripcion,
+      responsable,
+      criticidad,
+      factorExposicion: exposicion,
+      factoresMitigantes: mitigantes,
+      nivelRiesgo: nivel,
+      scoreRiesgo: score,
+      estado: 'pendiente',
+      numeroAuditorias: 0
+    };
+    onGuardar(nuevaArea);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+      >
+        <Card className="p-6 shadow-2xl">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-black text-gray-900 text-lg flex items-center gap-2">
+              <Plus className="w-5 h-5" style={{ color: '#003DA5' }} />
+              Nueva Área Auditable
+            </h3>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+        <div className="space-y-4">
+          {/* SELECTOR DE ESTRUCTURA ORGANIZACIONAL */}
+          <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border-2" style={{ borderColor: '#003DA5' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <Link2 className="w-5 h-5" style={{ color: '#003DA5' }} />
+              <h4 className="font-bold text-gray-900">Importar desde Estructura Organizacional</h4>
+              <Badge style={{ background: '#003DA5', color: 'white' }} className="text-xs">
+                {TERRITORIALES_ESAP.length} Unidades
+              </Badge>
+            </div>
+            <p className="text-xs text-gray-600 mb-3">
+              Selecciona una unidad organizacional existente para auto-completar los datos
+            </p>
+            <select
+              value={unidadSeleccionada}
+              onChange={handleSeleccionarUnidad}
+              className="w-full px-3 py-2 border-2 rounded-lg text-sm"
+              style={{ borderColor: unidadSeleccionada ? '#003DA5' : '#D1D5DB' }}
+            >
+              <option value="">➕ Crear área personalizada (sin vincular)</option>
+              <optgroup label="🏛️ SEDE CENTRAL (1)">
+                {TERRITORIALES_ESAP.filter(t => t.codigo === 'ESAP-CENTRAL').map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.nombre} - {t.ciudadPrincipal} ({t.totalCetap} CETAP)
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="📍 TERRITORIALES (17)">
+                {TERRITORIALES_ESAP.filter(t => t.codigo !== 'ESAP-CENTRAL').map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.nombre} - {t.ciudadPrincipal} ({t.totalCetap} CETAP)
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            {unidadSeleccionada && (
+              <div className="mt-2 p-2 bg-white rounded border" style={{ borderColor: '#003DA5' }}>
+                <p className="text-xs font-bold" style={{ color: '#003DA5' }}>
+                  ✓ Unidad vinculada - Datos auto-completados
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Nombre</label>
+              <Input
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Nombre del área"
+                className="text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Tipo</label>
+              <select
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value as TipoArea)}
+                className="px-2 py-1 text-sm border rounded"
+              >
+                <option value="Sede">Sede</option>
+                <option value="Territorial">Territorial</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Descripción</label>
+            <Input
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="Descripción del área"
+              className="text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Responsable</label>
+            <Input
+              value={responsable}
+              onChange={(e) => setResponsable(e.target.value)}
+              placeholder="Responsable del área"
+              className="text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-white p-3 rounded-lg border border-orange-200">
+              <p className="text-xs font-bold text-gray-700 mb-1">📊 Criticidad (Impacto)</p>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li><strong>Alta (5):</strong> Crítico/Financiero</li>
+                <li><strong>Media (3):</strong> Apoyo importante</li>
+                <li><strong>Baja (1):</strong> Secundario</li>
+              </ul>
+              <select
+                value={criticidad}
+                onChange={(e) => setCriticidad(Number(e.target.value) as CriticidadNivel)}
+                className="w-full px-2 py-1 text-xs border rounded"
+              >
+                <option value={5}>Alta (5) - Crítico/Financiero</option>
+                <option value={3}>Media (3) - Apoyo importante</option>
+                <option value={1}>Baja (1) - Secundario</option>
+              </select>
+            </div>
+
+            <div className="bg-white p-3 rounded-lg border border-orange-200">
+              <p className="text-xs font-bold text-gray-700 mb-1">👥 Factor Exposición</p>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li><strong>Alta (5):</strong> &gt;100 personas</li>
+                <li><strong>Media (3):</strong> 50-100 personas</li>
+                <li><strong>Baja (1):</strong> &lt;50 personas</li>
+              </ul>
+              <select
+                value={exposicion}
+                onChange={(e) => setExposicion(Number(e.target.value) as ExposicionNivel)}
+                className="w-full px-2 py-1 text-xs border rounded"
+              >
+                <option value={5}>Alta (5) - &gt;100 personas</option>
+                <option value={3}>Media (3) - 50-100 personas</option>
+                <option value={1}>Baja (1) - &lt;50 personas</option>
+              </select>
+            </div>
+
+            <div className="bg-white p-3 rounded-lg border border-orange-200">
+              <p className="text-xs font-bold text-gray-700 mb-1">🛡️ Factores Mitigantes</p>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li><strong>1-10:</strong> Controles existentes</li>
+                <li>Mayor valor = Más controles</li>
+                <li>Más controles = Menor riesgo</li>
+              </ul>
+              <Input
+                type="number"
+                value={mitigantes}
+                onChange={(e) => setMitigantes(Number(e.target.value))}
+                min={1}
+                max={10}
+                className="text-xs"
+                placeholder="Controles existentes"
+              />
+              <p className="text-xs text-gray-500 mt-1">Mayor valor = más controles = menor riesgo</p>
+            </div>
+          </div>
+
+          {/* Preview del cálculo DAFP */}
+          <div className="mt-3 p-3 bg-white rounded-lg border-2 border-orange-300">
+            <p className="text-xs font-bold text-gray-700 mb-1">Vista Previa - Score DAFP:</p>
+            <div className="flex items-center gap-2">
+              <code className="text-lg font-black" style={{ color: getRiesgoColor(calcularRiesgo(criticidad, exposicion, mitigantes).nivel) }}>
+                {calcularRiesgo(criticidad, exposicion, mitigantes).score}
+              </code>
+              <Badge style={{ 
+                background: getRiesgoColor(calcularRiesgo(criticidad, exposicion, mitigantes).nivel),
+                color: 'white'
+              }}>
+                {calcularRiesgo(criticidad, exposicion, mitigantes).nivel}
+              </Badge>
+              <p className="text-xs text-gray-600 ml-auto">
+                ({criticidad} × {exposicion}) ÷ {mitigantes}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onClose}
+          >
+            <X className="w-4 h-4 mr-1" />
+            Cancelar
+          </Button>
+          <Button
+            size="sm"
+            style={{ background: '#003DA5' }}
+            className="gap-2"
+            onClick={handleGuardar}
+            disabled={!nombre || !descripcion || !responsable}
+          >
+            <Save className="w-4 h-4" />
+            Crear Área
+          </Button>
+        </div>
+      </Card>
+      </motion.div>
     </div>
   );
 }

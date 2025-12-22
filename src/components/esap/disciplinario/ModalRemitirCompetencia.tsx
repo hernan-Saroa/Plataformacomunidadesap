@@ -14,9 +14,9 @@ interface ModalRemitirCompetenciaProps {
   noticia: {
     id: string;
     numeroRadicado: string;
-    denunciado: {
+    disciplinable: {
       nombre: string;
-    };
+    }[];
   };
   onClose: () => void;
   onConfirm: (data: { areaDestino: string; justificacion: string; numeroRC: string }) => void;
@@ -97,7 +97,7 @@ export function ModalRemitirCompetencia({ noticia, onClose, onConfirm }: ModalRe
                   {noticia.numeroRadicado}
                 </p>
                 <p className="text-sm text-purple-700">
-                  {noticia.denunciado.nombre}
+                  {noticia.disciplinable[0]?.nombre || 'Sin nombre'}
                 </p>
               </div>
             </div>
@@ -112,7 +112,7 @@ export function ModalRemitirCompetencia({ noticia, onClose, onConfirm }: ModalRe
                   Remisión por Competencia
                 </p>
                 <p className="text-sm text-blue-700 leading-relaxed">
-                  Esta noticia no es competencia del área de Control Interno Disciplinario. Se generará 
+                  Esta noticia no es competencia del área de Control Interno Disciplinario. Se generará
                   un nuevo número <strong>RC (Remisión por Competencia)</strong> y se remitirá al área correspondiente.
                 </p>
               </div>
