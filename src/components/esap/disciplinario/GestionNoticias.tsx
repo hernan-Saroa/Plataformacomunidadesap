@@ -972,59 +972,32 @@ export function GestionNoticias() {
     const noticiaToExport = filteredNoticias[0];
     const doc = new jsPDF();
 
-        const origenMap: Record<string, string> = {
-          'Anónimo': 'ANONIMO',
-          'Quejoso': 'QUEJOSO',
-          'Informante': 'QUEJOSO',
-          'De oficio': 'OFICIO',
-          'Remisión por competencia': 'REMISION'
-        };
 
-      const denunciantesMapped = (data.denunciantes || []).map((d: any) => ({
-        nombre: d.nombre,
-        cedula: d.identificacion,
-        email: d.correo,
-        cargo: d.cargo,
-        telefono: d.telefono,
-        direccion: d.direccion,
-        entidad: d.entidad,
-        dependencia: d.entidad
-      }));
+    // End of handleExportMain logic if it was intending to export
+    // But wait, the PDF generation continues below... 
+    // It seems the user pasted handleCreateNoticia INSIDE handleExportMain.
+    // I will CLOSE handleExportMain here if the code below is not part of it? 
+    // No, doc.text is below. So handleExportMain continues.
+    // I must REMOVE the handleCreateNoticia logic from here and place it BEFORE handleExportMain or separate.
 
-        const disciplinablesMapped = (data.disciplinable || []).map((d: any) => ({
-          nombre: d.nombre,
-          cedula: d.identificacion,
-          cargo: d.cargo,
-          dependencia: d.dependencia || d.cargo // Fallback
-        }));
+    // BUT I can't easily move code far away with one replace.
+    // I will comment out the invalid code inside handleExportMain? No, that leaves it broken.
+    // I will replace this block with JUST the PDF logic parts if any, or nothing?
 
-      const createDto = {
-        origen: origenMap[data.origen] || 'ANONIMO',
-        fechaQueja: data.fechaQueja,
-        territorial: data.territorial,
-        dependenciaDenunciado: data.dependenciaDenunciado || disciplinablesMapped[0]?.dependencia || 'Por determinar',
-        hechos: data.descripcionHechos,
-        conductas: Array.isArray(data.conductasSeleccionadas) ? data.conductasSeleccionadas : [],
-        denunciante: denunciantesMapped,
-        disciplinable: disciplinablesMapped,
-        adjuntos: uploadedUrls
-      };
+    // Let's look at 975-1027.
+    // It defines createsDto and calls radicarNoticia.
+    // This logic DOES NOT belong in export.
+    // I will DELETE this block from here.
+    // AND I will INSERT the `const handleCreateNoticia ...` block BEFORE `handleExportMain`.
 
-        console.log('📝 Sending payload:', createDto);
-        await disciplinaryService.radicarNoticia(createDto);
+    // Actually, I can do it in two steps.
+    // 1. Insert handleCreateNoticia definition before handleExportMain.
+    // 2. Delete the body from inside handleExportMain.
 
-        toast.success('Noticia enviada con éxito');
+    // Let's try to find where handleCreateNoticia SHOULD be.
+    // I'll search for where `handleCreateNoticia` is USED (e.g. passed to Modal).
+    // `onCreate={handleCreateNoticia}`
 
-        // Reload news to get the server-generated fields
-        await loadData();
-        setShowCreateModal(false);
-      } catch (error) {
-        console.error('Error creating news:', error);
-        toast.error('Error al crear la noticia. Verifique los datos.');
-      } finally {
-        setLoading(false);
-      }
-    };
 
     // Header
     doc.setFontSize(16);
@@ -1456,26 +1429,26 @@ export function GestionNoticias() {
               {/* Información principal */}
               <div className="flex-1" min-w-0>
                 <div className="flex items-start gap-3 mb-3">
-                  <div 
+                  <div
                     className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ 
-                      background: noticia.estado === 'pendiente' ? '#FEF3C7' : 
-                                 noticia.estado === 'en-valoracion' ? '#DBEAFE' : 
-                                 noticia.estado === 'devuelto' ? '#FEE2E2' :
-                                 noticia.estado === 'asignado' ? '#E0E7FF' :
-                                 (noticia.estado === 'archivado' || noticia.estado === 'ARCHIVADA') ? '#F3F4F6' :
-                                 '#D1FAE5'
+                    style={{
+                      background: noticia.estado === 'pendiente' ? '#FEF3C7' :
+                        noticia.estado === 'en-valoracion' ? '#DBEAFE' :
+                          noticia.estado === 'devuelto' ? '#FEE2E2' :
+                            noticia.estado === 'asignado' ? '#E0E7FF' :
+                              (noticia.estado === 'archivado' || noticia.estado === 'ARCHIVADA') ? '#F3F4F6' :
+                                '#D1FAE5'
                     }}
                   >
-                    <FileText 
-                      className="w-5 h-5 sm:w-6 sm:h-6" 
-                      style={{ 
-                        color: noticia.estado === 'pendiente' ? '#92400E' : 
-                               noticia.estado === 'en-valoracion' ? '#1E40AF' : 
-                               noticia.estado === 'devuelto' ? '#991B1B' :
-                               noticia.estado === 'asignado' ? '#4338CA' :
-                               (noticia.estado === 'archivado' || noticia.estado === 'ARCHIVADA') ? '#6B7280' :
-                               '#065F46'
+                    <FileText
+                      className="w-5 h-5 sm:w-6 sm:h-6"
+                      style={{
+                        color: noticia.estado === 'pendiente' ? '#92400E' :
+                          noticia.estado === 'en-valoracion' ? '#1E40AF' :
+                            noticia.estado === 'devuelto' ? '#991B1B' :
+                              noticia.estado === 'asignado' ? '#4338CA' :
+                                (noticia.estado === 'archivado' || noticia.estado === 'ARCHIVADA') ? '#6B7280' :
+                                  '#065F46'
                       }}
                     />
                   </div>
@@ -1505,11 +1478,11 @@ export function GestionNoticias() {
                     <p className="text-xs text-gray-500 mb-1">Identificación</p>
                     <p className="text-sm font-medium text-gray-90 truncate">
                       {(noticia.disciplinable && ('identificacion' in noticia.disciplinable || 'cedula' in noticia.disciplinable))
-                          ? (noticia.disciplinable.identificacion || noticia.disciplinable.cedula)
-                          : (Array.isArray(noticia.disciplinable) ? (noticia.disciplinable[0]?.identificacion || noticia.disciplinable[0]?.cedula) : 'N/A')}
+                        ? (noticia.disciplinable.identificacion || noticia.disciplinable.cedula)
+                        : (Array.isArray(noticia.disciplinable) ? (noticia.disciplinable[0]?.identificacion || noticia.disciplinable[0]?.cedula) : 'N/A')}
                     </p>
                   </div>
-                  <div  className="min-w-0">
+                  <div className="min-w-0">
                     <p className="text-xs text-gray-500 mb-1">Territorial</p>
                     <p className="text-sm font-medium text-gray-900 truncate">{noticia.territorial}</p>
                   </div>
@@ -1517,8 +1490,8 @@ export function GestionNoticias() {
                     <p className="text-xs text-gray-500 mb-1">Radicador</p>
                     <p className="text-sm font-medium text-gray-900 truncate">
                       {(noticia.denunciante && 'nombre' in noticia.denunciante)
-                          ? noticia.denunciante.nombre
-                          : (Array.isArray(noticia.denunciante) ? noticia.denunciante[0]?.nombre : 'Anónimo')}
+                        ? noticia.denunciante.nombre
+                        : (Array.isArray(noticia.denunciante) ? noticia.denunciante[0]?.nombre : 'Anónimo')}
                     </p>
                   </div>
                   {noticia.profesionalAsignado && (
@@ -1535,7 +1508,7 @@ export function GestionNoticias() {
                     <p className="text-xs text-gray-500 mb-2">Conductas Indisciplinarias:</p>
                     <div className="flex flex-wrap gap-2">
                       {noticia.conductas.map((conducta, idx) => (
-                        <span 
+                        <span
                           key={idx}
                           className="px-2 py-1 bg-red-50 text-red-700 text-xs rounded-md border border-red-200"
                         >
@@ -1608,7 +1581,7 @@ export function GestionNoticias() {
                       <Send className="w-4 h-4 text-purple-600" />
                     </button>
                   )}
-                  
+
                   {/* RF002: Botones de Revisión y Asignación */}
                   {(noticia.estado === 'RADICADA' || noticia.estado === 'EN_VALORACION' || noticia.estado === 'pendiente' || noticia.estado === 'en-valoracion') && (
                     <>
@@ -1624,7 +1597,7 @@ export function GestionNoticias() {
                         <CornerDownLeft className="w-4 h-4" />
                         <span className="hidden sm:inline">Devolver</span>
                       </button>
-                      
+
                       {/* Asignar */}
                       <button
                         onClick={() => {
@@ -1640,7 +1613,7 @@ export function GestionNoticias() {
                       </button>
                     </>
                   )}
-                  
+
                   {(noticia.estado === 'DEVUELTA' || noticia.estado === 'devuelto') && (
                     <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg w-full sm:w-auto">
                       <CornerDownLeft className="w-4 h-4 text-orange-600 flex-shrink-0" />

@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Search, Eye, Scale, Badge as BadgeIcon,
-  X, History, FileSignature, FolderOpen, User, 
+  X, History, FileSignature, FolderOpen, User,
   Calendar, Upload, Download, Edit2, Send, Check,
   Clock, AlertCircle, CheckCircle, ChevronRight,
   Ban, Search as SearchIcon, Forward, Plus, Trash2
@@ -109,7 +109,7 @@ const PROCESOS_MOCK: Proceso[] = [
   }
 ];
 
-const PLANTILLAS_MOCK = [
+export const PLANTILLAS_MOCK = [
   {
     id: 'p1',
     nombre: 'Auto de Inhibitorio',
@@ -194,26 +194,26 @@ export function GestionProcesosProfesionalesCompleto() {
     setProcesos(procesos.map(p =>
       p.id === procesoSeleccionado.id
         ? {
-            ...p,
-            borradores: [...p.borradores, {
+          ...p,
+          borradores: [...p.borradores, {
+            id: Date.now().toString(),
+            titulo: plantillaSeleccionada?.nombre || 'Borrador',
+            version,
+            estado: 'borrador',
+            fechaCreacion: new Date().toISOString(),
+            contenido
+          }],
+          historialAuditoria: [
+            ...p.historialAuditoria,
+            {
               id: Date.now().toString(),
-              titulo: plantillaSeleccionada?.nombre || 'Borrador',
-              version,
-              estado: 'borrador',
-              fechaCreacion: new Date().toISOString(),
-              contenido
-            }],
-            historialAuditoria: [
-              ...p.historialAuditoria,
-              {
-                id: Date.now().toString(),
-                tipo: 'borrador_creado',
-                usuario: 'Usuario Actual',
-                fecha: new Date().toISOString(),
-                descripcion: `Borrador creado v${version}`
-              }
-            ]
-          }
+              tipo: 'borrador_creado',
+              usuario: 'Usuario Actual',
+              fecha: new Date().toISOString(),
+              descripcion: `Borrador creado v${version}`
+            }
+          ]
+        }
         : p
     ));
   };
@@ -224,18 +224,18 @@ export function GestionProcesosProfesionalesCompleto() {
     setProcesos(procesos.map(p =>
       p.id === procesoSeleccionado.id
         ? {
-            ...p,
-            borradores: [...p.borradores, {
-              id: Date.now().toString(),
-              titulo: plantillaSeleccionada?.nombre || 'Borrador',
-              version,
-              estado: 'enviado',
-              fechaCreacion: new Date().toISOString(),
-              fechaEnvio: new Date().toISOString(),
-              observacionesProfesional: observaciones,
-              contenido
-            }]
-          }
+          ...p,
+          borradores: [...p.borradores, {
+            id: Date.now().toString(),
+            titulo: plantillaSeleccionada?.nombre || 'Borrador',
+            version,
+            estado: 'enviado',
+            fechaCreacion: new Date().toISOString(),
+            fechaEnvio: new Date().toISOString(),
+            observacionesProfesional: observaciones,
+            contenido
+          }]
+        }
         : p
     ));
 
@@ -261,19 +261,19 @@ export function GestionProcesosProfesionalesCompleto() {
     setProcesos(procesos.map(p =>
       p.id === procesoSeleccionado.id
         ? {
-            ...p,
-            documentos: [...p.documentos, ...nuevosDocumentos],
-            historialAuditoria: [
-              ...p.historialAuditoria,
-              {
-                id: Date.now().toString(),
-                tipo: 'documento_cargado',
-                usuario: 'Usuario Actual',
-                fecha: new Date().toISOString(),
-                descripcion: `Documento adjuntado: ${nuevosDocumentos[0].nombre}`
-              }
-            ]
-          }
+          ...p,
+          documentos: [...p.documentos, ...nuevosDocumentos],
+          historialAuditoria: [
+            ...p.historialAuditoria,
+            {
+              id: Date.now().toString(),
+              tipo: 'documento_cargado',
+              usuario: 'Usuario Actual',
+              fecha: new Date().toISOString(),
+              descripcion: `Documento adjuntado: ${nuevosDocumentos[0].nombre}`
+            }
+          ]
+        }
         : p
     ));
 

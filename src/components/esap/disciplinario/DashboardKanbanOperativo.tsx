@@ -27,7 +27,7 @@ import { toast } from 'sonner@2.0.3';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { EditorDocumentos } from './EditorDocumentos';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
-import { PLANTILLAS_MOCK } from './GestionProcesosProfesionalesIntegrado';
+import { PLANTILLAS_MOCK } from './GestionProcesosProfesionalesCompleto';
 import {
   ModalGestionAutos,
   ModalGestionEvidencias,
@@ -961,16 +961,16 @@ function VistaLista({
         ? (item as Noticia).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
         : (item as Noticia).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
       : (item as Proceso).numeroProceso.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (typeof (item as Proceso).denunciado === 'string'
-          ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
-          : (item as Proceso).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
-    
+      (typeof (item as Proceso).denunciado === 'string'
+        ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
+        : (item as Proceso).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
+
     const etapaItem = item.tipo === 'noticia'
       ? normalizeEtapa((item as any).etapaActual || 'Recepcion')
       : normalizeEtapa((item as Proceso).etapaActual);
     const etapaFiltro = normalizeEtapa(filtroEtapa);
     const matchEtapa = filtroEtapa === 'todos' || etapaItem === etapaFiltro;
-    
+
     return matchSearch && matchEtapa;
   });
 
@@ -1837,10 +1837,10 @@ function ColumnaKanban({
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
-export function DashboardKanbanOperativo({ 
+export function DashboardKanbanOperativo({
   onNavigateToExpediente,
-  filtroProfesionalId 
-}: { 
+  filtroProfesionalId
+}: {
   onNavigateToExpediente?: () => void;
   filtroProfesionalId?: string | null;
 }) {
@@ -2354,46 +2354,46 @@ export function DashboardKanbanOperativo({
         }
       }
 
-        const buildDenunciantePayload = (item: any) => {
-          const email = (item.correo || item.email || '').trim();
-          const payload: any = {
-            nombre: item.nombre || 'Sin denunciante',
-            cedula: item.identificacion || item.numeroIdentificacion || 'N/A',
-            cargo: item.cargo,
-            telefono: item.telefono,
-            direccion: item.direccion,
-            entidad: item.entidad,
-            dependencia: item.entidad
-          };
-          if (email && email.includes('@')) {
-            payload.email = email;
-          }
-          return payload;
+      const buildDenunciantePayload = (item: any) => {
+        const email = (item.correo || item.email || '').trim();
+        const payload: any = {
+          nombre: item.nombre || 'Sin denunciante',
+          cedula: item.identificacion || item.numeroIdentificacion || 'N/A',
+          cargo: item.cargo,
+          telefono: item.telefono,
+          direccion: item.direccion,
+          entidad: item.entidad,
+          dependencia: item.entidad
         };
+        if (email && email.includes('@')) {
+          payload.email = email;
+        }
+        return payload;
+      };
 
-        const payload = {
-          origen: mapearOrigenNoticia(data.origen || 'QUEJOSO'),
-          fechaQueja: data.fechaQueja || undefined,
-          territorial: data.territorial || 'Direccion Nacional',
-          dependenciaDenunciado: denunciadoFromForm.dependencia || 'Por determinar',
-          hechos: data.descripcionHechos || '',
-          conductas: Array.isArray(data.conductasSeleccionadas) ? data.conductasSeleccionadas : [],
-          denunciante: denuncianteListFromForm.map(buildDenunciantePayload),
-          disciplinable: disciplinablesFromForm.length > 0
-            ? disciplinablesFromForm.map((d: any) => ({
-              nombre: d.nombre || 'Sin denunciado',
-              cedula: d.identificacion || d.numeroIdentificacion || 'N/A',
-              cargo: d.cargo,
-              dependencia: d.dependencia
-            }))
-            : [{
-              nombre: denunciadoFromForm.nombre || 'Sin denunciado',
-              cedula: denunciadoFromForm.identificacion || denunciadoFromForm.numeroIdentificacion || 'N/A',
-              cargo: denunciadoFromForm.cargo,
-              dependencia: denunciadoFromForm.dependencia
-            }],
-          adjuntos: urls,
-        };
+      const payload = {
+        origen: mapearOrigenNoticia(data.origen || 'QUEJOSO'),
+        fechaQueja: data.fechaQueja || undefined,
+        territorial: data.territorial || 'Direccion Nacional',
+        dependenciaDenunciado: denunciadoFromForm.dependencia || 'Por determinar',
+        hechos: data.descripcionHechos || '',
+        conductas: Array.isArray(data.conductasSeleccionadas) ? data.conductasSeleccionadas : [],
+        denunciante: denuncianteListFromForm.map(buildDenunciantePayload),
+        disciplinable: disciplinablesFromForm.length > 0
+          ? disciplinablesFromForm.map((d: any) => ({
+            nombre: d.nombre || 'Sin denunciado',
+            cedula: d.identificacion || d.numeroIdentificacion || 'N/A',
+            cargo: d.cargo,
+            dependencia: d.dependencia
+          }))
+          : [{
+            nombre: denunciadoFromForm.nombre || 'Sin denunciado',
+            cedula: denunciadoFromForm.identificacion || denunciadoFromForm.numeroIdentificacion || 'N/A',
+            cargo: denunciadoFromForm.cargo,
+            dependencia: denunciadoFromForm.dependencia
+          }],
+        adjuntos: urls,
+      };
 
       const apiNoticia = await disciplinaryService.radicarNoticia(payload as any);
       let nuevaNoticia = normalizeNoticia(apiNoticia);
@@ -2679,13 +2679,13 @@ export function DashboardKanbanOperativo({
   const procesosEnTermino = procesos.filter(p => p.semaforo === 'verde').length;
 
   // Filtrar por profesional si está activo el filtro
-  const itemsFiltrados = filtroProfesionalId 
+  const itemsFiltrados = filtroProfesionalId
     ? items.filter(item => {
-        if (item.tipo === 'proceso') {
-          return (item as Proceso).profesionalAsignadoId === filtroProfesionalId;
-        }
-        return false; // No mostrar noticias cuando hay filtro de profesional
-      })
+      if (item.tipo === 'proceso') {
+        return (item as Proceso).profesionalAsignadoId === filtroProfesionalId;
+      }
+      return false; // No mostrar noticias cuando hay filtro de profesional
+    })
     : items;
 
   // Obtener nombre del profesional filtrado
@@ -2957,7 +2957,7 @@ export function DashboardKanbanOperativo({
                 <ColumnaKanban
                   key={etapa.nombre}
                   etapa={etapa.nombre}
-                  items={items} 
+                  items={items}
                   color={etapa.color}
                   icono={etapa.icono}
                   diasEstimados={etapa.diasEstimados}
@@ -3102,459 +3102,6 @@ export function DashboardKanbanOperativo({
                         </div>
                       </div>
 
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Área/Entidad de Destino *
-                        </label>
-                        <select
-                          value={areaDestinoRemision}
-                          onChange={(e) => setAreaDestinoRemision(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold"
-                        >
-                          <option value="">Seleccionar área...</option>
-                          <option value="personeria">Personería Municipal</option>
-                          <option value="contraloria">Contraloría</option>
-                          <option value="procuraduria">Procuraduría</option>
-                          <option value="fiscalia">Fiscalía General de la Nación</option>
-                          <option value="control-interno">Control Interno de Gestión</option>
-                          <option value="recursos-humanos">Recursos Humanos</option>
-                          <option value="otra">Otra entidad...</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Justificación de la Remisión *
-                        </label>
-                        <textarea
-                          value={observaciones}
-                          onChange={(e) => setObservaciones(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          rows={4}
-                          placeholder="Explica por qué esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida..."
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
-                        Cancelar
-                      </Button>
-                      <Button 
-                        onClick={handleConfirmarDevolucionCompetencia} 
-                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold"
-                      >
-                        <Send className="w-4 h-4 mr-2" />
-                        Remitir
-                      </Button>
-                    </div>
-                  </>
-                )}
-
-                {/* Modal: Archivar Noticia - REEMPLAZADO POR COMPONENTE MODAL COMPLETO */}
-
-                {/* Modal: Aprobar Borrador */}
-                {modalActivo === 'aprobar-borrador' && itemSeguro && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-green-100">
-                          <CheckCircle className="w-6 h-6 text-green-600" />
-                        </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
-                          Aprobar Borrador
-                        </h3>
-                      </div>
-                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="p-4 bg-green-50 rounded-xl border-2 border-green-200">
-                        <p className="text-sm font-bold text-green-700 mb-1">Proceso:</p>
-                        <p className="text-sm text-gray-900"> {itemSeleccionado.numeroProceso}</p>
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        Al aprobar, el documento pasará a estado final y se notificará al profesional asignado.
-                      </p>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
-                        Cancelar
-                      </Button>
-                      <Button onClick={handleConfirmarAprobacion} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
-                        <Check className="w-4 h-4 mr-2" />
-                        Aprobar
-                      </Button>
-                    </div>
-                  </>
-                )}
-
-                {/* Modal: Ver Detalles del Proceso - COMPLETO CON EDITOR */}
-                {modalActivo === 'ver-detalles' && itemSeguro && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-blue-100">
-                          <Eye className="w-6 h-6" style={{ color: '#003DA5' }} />
-                        </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black`} style={{ color: '#003DA5' }}>
-                          {itemSeguro.tipo === 'noticia' ? 'Detalles de la Noticia' : 'Detalles del Proceso'}
-                        </h3>
-                      </div>
-                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                      {/* VISTA PARA NOTICIAS */}
-                      {itemSeguro.tipo === 'noticia' && (
-                        <>
-                          {/* Informacion de la Noticia */}
-                          <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
-                            <h4 className="font-bold text-orange-900 mb-2">{noticiaDetalle.numero}</h4>
-                            <div className="grid grid-cols-2 gap-2 text-sm">
-                              <div>
-                                <p className="text-gray-600">Origen:</p>
-                                <p className="font-bold text-gray-900">{noticiaDetalle.origen}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Fecha Recepcion:</p>
-                                <p className="font-bold text-gray-900">
-                                  {new Date(noticiaDetalle.fechaRecepcion).toLocaleDateString('es-CO')}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Fecha Queja:</p>
-                                <p className="font-bold text-gray-900">
-                                  {noticiaDetalle.fechaQueja
-                                    ? new Date(noticiaDetalle.fechaQueja).toLocaleDateString('es-CO')
-                                    : 'N/A'}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Territorial:</p>
-                                <p className="font-bold text-gray-900">{noticiaDetalle.territorial || 'N/A'}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Dependencia:</p>
-                                <p className="font-bold text-gray-900">{noticiaDetalle.dependenciaDenunciado || 'N/A'}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Estado:</p>
-                                <p className="font-bold text-gray-900 capitalize">{noticiaDetalle.estado.replace('-', ' ')}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Prioridad:</p>
-                                <p className={`font-bold ${
-                                  noticiaDetalle.prioridad === 'alta' ? 'text-red-600' :
-                                  noticiaDetalle.prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
-                                } capitalize`}>{noticiaDetalle.prioridad}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Dias Pendientes:</p>
-                                <p className="font-bold text-orange-600">{noticiaDetalle.diasPendientes} dias</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Denunciantes */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              DENUNCIANTES
-                            </h5>
-                            {noticiaDetalle.denunciantes && noticiaDetalle.denunciantes.length > 0 ? (
-                              <div className="space-y-2">
-                                {noticiaDetalle.denunciantes.map((den, idx) => (
-                                  <div key={idx} className="p-3 bg-gray-50 rounded-lg">
-                                    <p className="font-bold text-gray-900">{den.nombre}</p>
-                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mt-1">
-                                      <p>CC: {den.cedula || 'N/A'}</p>
-                                      {den.cargo && <p>Cargo: {den.cargo}</p>}
-                                      {den.entidad && <p>Entidad: {den.entidad}</p>}
-                                      {den.dependencia && !den.entidad && <p>Dependencia: {den.dependencia}</p>}
-                                      {den.telefono && <p>Telefono: {den.telefono}</p>}
-                                      {den.email && <p>Correo: {den.email}</p>}
-                                    </div>
-                                    {den.direccion && (
-                                      <p className="text-xs text-gray-600 mt-1">Direccion: {den.direccion}</p>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="p-3 bg-gray-50 rounded-lg">
-                                <p className="text-sm text-gray-600">Sin denunciante registrado</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Disciplinables */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              DENUNCIADOS
-                            </h5>
-                            {noticiaDetalle.disciplinables && noticiaDetalle.disciplinables.length > 0 ? (
-                              <div className="space-y-2">
-                                {noticiaDetalle.disciplinables.map((den, idx) => (
-                                  <div key={idx} className="p-3 bg-red-50 rounded-lg border border-red-200">
-                                    <p className="font-bold text-gray-900">{den.nombre}</p>
-                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mt-1">
-                                      <p>CC: {den.cedula || 'N/A'}</p>
-                                      {den.cargo && <p>Cargo: {den.cargo}</p>}
-                                      {den.dependencia && <p>Dependencia: {den.dependencia}</p>}
-                                      {den.telefono && <p>Telefono: {den.telefono}</p>}
-                                      {den.email && <p>Correo: {den.email}</p>}
-                                    </div>
-                                    {den.direccion && (
-                                      <p className="text-xs text-gray-600 mt-1">Direccion: {den.direccion}</p>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="p-3 bg-red-50 rounded-lg border border-red-200">
-                                <p className="text-sm text-gray-600">Sin denunciado registrado</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Conductas */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">CONDUCTAS</h5>
-                            {noticiaDetalle.conductas && noticiaDetalle.conductas.length > 0 ? (
-                              <div className="flex flex-wrap gap-2">
-                                {noticiaDetalle.conductas.map((conducta, idx) => (
-                                  <span key={idx} className="px-3 py-1 bg-orange-100 text-orange-800 text-xs font-semibold rounded-full">
-                                    {conducta}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="p-3 bg-gray-50 rounded-lg">
-                                <p className="text-sm text-gray-600">Sin conductas registradas</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Hechos */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">HECHOS</h5>
-                            <div className="p-3 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-700">{noticiaDetalle.hechos || 'Sin descripcion'}</p>
-                            </div>
-                          </div>
-
-                          {/* Adjuntos */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">ARCHIVOS ADJUNTOS</h5>
-                            {noticiaDetalle.adjuntos && noticiaDetalle.adjuntos.length > 0 ? (
-                              <div className="space-y-2">
-                                {noticiaDetalle.adjuntos.map((archivo, idx) => {
-                                  const nombre = archivo.split('/').pop() || `Archivo ${idx + 1}`;
-                                  const ext = nombre.includes('.') ? nombre.split('.').pop() || '' : '';
-                                  const tipo = ext ? ext.toUpperCase() : 'ARCHIVO';
-                                  const descargaUrl = disciplinaryService.getFileUrl(archivo);
-                                  return (
-                                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                      <div className="flex items-center gap-3 min-w-0">
-                                        <Paperclip className="w-4 h-4 text-gray-500" />
-                                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white border border-gray-200 text-gray-600">
-                                          {tipo}
-                                        </span>
-                                        <span className="text-sm text-gray-800 truncate">{nombre}</span>
-                                      </div>
-                                      <a
-                                        href={descargaUrl}
-                                        download
-                                        className="text-sm font-semibold text-blue-700 hover:text-blue-800"
-                                      >
-                                        Descargar
-                                      </a>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="p-3 bg-gray-50 rounded-lg">
-                                <p className="text-sm text-gray-600">Sin adjuntos</p>
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
-
-                      {/* VISTA PARA PROCESOS */}
-                      {itemSeguro.tipo === 'proceso' && (
-                        <>
-                          {/* Información del Proceso */}
-                          <div className="p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
-                            <h4 className="font-bold text-blue-900 mb-2"> {(itemSeleccionado as Proceso).numeroProceso}</h4>
-                            <div className="grid grid-cols-2 gap-2 text-sm">
-                              <div>
-                                <p className="text-gray-600">Noticia Origen:</p>
-                                <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).noticiaOrigen}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Etapa:</p>
-                                <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).etapaActual}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Días Restantes:</p>
-                                <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).diasRestantes}d</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Denunciante */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              👤 DENUNCIANTE
-                            </h5>
-                            <div className="p-3 bg-gray-50 rounded-lg space-y-1">
-                              <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).denunciante.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Proceso).denunciante.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciante.numeroIdentificacion}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Denunciado */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              ⚠️ DENUNCIADO
-                            </h5>
-                            <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
-                              <p className="font-bold text-gray-900 mb-1"> {(itemSeleccionado as Proceso).denunciado.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Proceso).denunciado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciado.numeroIdentificacion}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Profesional Asignado */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              👨‍💼 PROFESIONAL ASIGNADO
-                            </h5>
-                            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-1">
-                              <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).profesionalAsignado.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Proceso).profesionalAsignado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).profesionalAsignado.numeroIdentificacion}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* NUEVA SECCIÓN: Gestión Documental - SOLO PROCESOS */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                              <FileSignature className="w-4 h-4" style={{ color: '#003DA5' }} />
-                              GESTIÓN DOCUMENTAL
-                            </h5>
-                        <div className="grid grid-cols-2 gap-2">
-                          {/* Autos */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-autos');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Scale className="w-3.5 h-3.5 mr-2" style={{ color: '#8B5CF6' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Autos</p>
-                              <p className="text-xs text-gray-500">Providencias</p>
-                            </div>
-                          </Button>
-
-                          {/* Evidencias */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-evidencias');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Archive className="w-3.5 h-3.5 mr-2" style={{ color: '#F59E0B' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Evidencias</p>
-                              <p className="text-xs text-gray-500">Pruebas</p>
-                            </div>
-                          </Button>
-
-                          {/* Oficios */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-oficios');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Mail className="w-3.5 h-3.5 mr-2" style={{ color: '#06B6D4' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Oficios</p>
-                              <p className="text-xs text-gray-500">Comunicaciones</p>
-                            </div>
-                          </Button>
-
-                          {/* Notificaciones */}
-                          <Button
-                            onClick={() => {
-                              toast.info('Notificaciones', {
-                                description: 'Gestionar notificaciones del proceso'
-                              });
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Bell className="w-3.5 h-3.5 mr-2" style={{ color: '#10B981' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Notificaciones</p>
-                              <p className="text-xs text-gray-500">Avisos</p>
-                            </div>
-                          </Button>
-
-                          {/* Actas */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-actas');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <FileCheck className="w-3.5 h-3.5 mr-2" style={{ color: '#DC2626' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Actas</p>
-                              <p className="text-xs text-gray-500">Diligencias</p>
-                            </div>
-                          </Button>
-
-                          {/* Historial */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('historial-auditoria');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <History className="w-3.5 h-3.5 mr-2" style={{ color: '#6B7280' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Historial</p>
-                              <p className="text-xs text-gray-500">Auditoría</p>
-                            </div>
-                          </Button>
-                        </div>
-                      </div>
-
                       {/* Acciones Rápidas */}
                       <div>
                         <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
@@ -3562,21 +3109,22 @@ export function DashboardKanbanOperativo({
                           ACCIONES RÁPIDAS
                         </h5>
                         <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          onClick={() => setModalActivo(null)}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Cancelar
-                        </Button>
-                        <Button
-                          onClick={handleConfirmarConversion}
-                          className="flex-1 font-bold"
-                          style={{ background: '#003DA5', color: '#FFFFFF' }}
-                        >
-                          <Check className="w-4 h-4 mr-2" />
-                          Crear
-                        </Button>
+                          <Button
+                            onClick={() => setModalActivo(null)}
+                            variant="outline"
+                            className="flex-1"
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            onClick={handleConfirmarConversion}
+                            className="flex-1 font-bold"
+                            style={{ background: '#003DA5', color: '#FFFFFF' }}
+                          >
+                            <Check className="w-4 h-4 mr-2" />
+                            Crear
+                          </Button>
+                        </div>
                       </div>
                     </>
                   )}
