@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS "internal_disciplinary_control"."auto_versions" CASCADE;
+
 CREATE TABLE IF NOT EXISTS "internal_disciplinary_control"."auto_versions" (
   "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
   "autoId" uuid,
