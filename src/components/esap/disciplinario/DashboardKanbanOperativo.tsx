@@ -1919,6 +1919,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   const [isTablet, setIsTablet] = useState(false);
   const [vistaCompacta, setVistaCompacta] = useState(false);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
+  const [filtroProfesionalId, setFiltroProfesionalId] = useState<string>('');
 
   // Hook de configuración
   const { etapas: dynamicStages, loading: loadingConfig } = useConfiguration();
