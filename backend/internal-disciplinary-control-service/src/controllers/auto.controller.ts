@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -221,5 +222,20 @@ export class AutoController {
   })
   async getVersions(@Param('id') id: string) {
     return await this.autoService.getVersions(id);
+  }
+
+  /**
+   * Eliminar auto
+   */
+  @Delete(':id')
+  @ApiOperation({
+    summary: 'Eliminar Auto',
+    description: 'Elimina un auto legal por ID',
+  })
+  @ApiResponse({ status: 204, description: 'Auto eliminado' })
+  @ApiResponse({ status: 404, description: 'Auto no encontrado' })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async delete(@Param('id') id: string): Promise<void> {
+    await this.autoService.delete(id);
   }
 }

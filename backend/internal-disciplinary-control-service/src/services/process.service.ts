@@ -189,18 +189,33 @@ export class ProcessService {
   /**
    * Cambia la etapa del proceso (US-009)
    */
-  async changeStage(id: string, stage: string): Promise<DisciplinaryProcess> {
+  async changeStage(
+    id: string,
+    stage: ProcessStage,
+    kanbanStage?: string,
+    kanbanNotice?: string
+  ): Promise<DisciplinaryProcess> {
     const proceso = await this.findById(id, false);
 
-    // Validar transición de etapa
-    this.validarTransicionEtapa(proceso.etapaActual, stage);
+    if (kanbanStage) {
+      proceso.kanbanStage = kanbanStage;
+    }
 
-    // Calcular nuevo vencimiento
-    const { fechaVencimiento } =
-      await this.terminosService.calculateVencimientoEtapa(stage);
+    if (kanbanNotice !== undefined) {
+      proceso.kanbanNotice = kanbanNotice || null;
+    }
 
-    proceso.etapaActual = stage;
-    proceso.fechaVencimientoEtapa = fechaVencimiento;
+    if (proceso.etapaActual !== stage) {
+      // Validar transicion de etapa
+      this.validarTransicionEtapa(proceso.etapaActual, stage);
+
+      // Calcular nuevo vencimiento
+      const { fechaVencimiento } =
+        await this.terminosService.calculateVencimientoEtapa(stage);
+
+      proceso.etapaActual = stage;
+      proceso.fechaVencimientoEtapa = fechaVencimiento;
+    }
 
     return await this.processRepository.save(proceso);
   }
@@ -314,6 +329,10 @@ export class ProcessService {
     tipoDocumento?: string,
     etapa?: string,
     usuarioCarga?: string,
+    categoria?: string,
+    destinatario?: string,
+    asunto?: string,
+    participantes?: number,
   ): Promise<DisciplinaryProcess> {
     try {
       console.log('💾 addEvidence - Iniciando guardado en BD...');
@@ -328,6 +347,10 @@ export class ProcessService {
         tipoDocumento,
         etapa,
         usuarioCarga,
+        categoria,
+        destinatario,
+        asunto,
+        participantes,
       });
 
       const proceso = await this.findById(id, false); // No cargar autos para evitar errores
@@ -348,6 +371,10 @@ export class ProcessService {
         fileSize: fileSize || 0,
         nombreDocumento: nombreDocumento || originalName,
         tipoDocumento: tipoDocumento || 'DOCUMENTO',
+        categoria: categoria || null,
+        destinatario: destinatario || null,
+        asunto: asunto || null,
+        participantes: participantes ?? null,
         etapa: etapa || undefined,
         usuarioCarga: usuarioCarga || 'Sistema',
       };
@@ -393,18 +420,36 @@ export class ProcessService {
   }
 
   /**
-   * Valida las transiciones permitidas entre etapas
+   * Elimina una evidencia de un proceso
    */
+  async deleteEvidence(processId: string, evidenceId: string): Promise<Evidence> {
+    const evidencia = await this.evidenceRepository.findOne({
+      where: { id: evidenceId, processId },
+    });
+
+    if (!evidencia) {
+      throw new HttpException('Evidencia no encontrada', HttpStatus.NOT_FOUND);
+    }
+
+    const proceso = await this.findById(processId, false);
+    if (proceso.pruebas?.length) {
+      const pruebasActualizadas = proceso.pruebas.filter((url) => url !== evidencia.url);
+      await this.processRepository.update(processId, { pruebas: pruebasActualizadas });
+    }
+
+    await this.evidenceRepository.delete(evidenceId);
+    return evidencia;
+  }
+
   /**
    * Valida las transiciones permitidas entre etapas
    */
-  private validarTransicionEtapa(etapaActual: string, nuevaEtapa: string): void {
-    // With dynamic stages, we can't hardcode transitions easily without a complex graph.
-    // For now, we allow any transition as long as it's a change.
-    // FUTURE: Implement a dynamic transition rule engine based on StageConfiguration order.
+  private validarTransicionEtapa(etapaActual: ProcessStage, nuevaEtapa: ProcessStage): void {
     if (etapaActual === nuevaEtapa) {
-      // Optionally warn or allow. Currently allowing re-assignment or strict check?
-      // Let's behave loosely to avoid blocking the user.
+      throw new HttpException(
+        `No se puede pasar de ${etapaActual} a ${nuevaEtapa}`,
+        HttpStatus.BAD_REQUEST,
+      );
     }
     return;
   }
@@ -428,3 +473,4 @@ export class ProcessService {
     }
   }
 }
+

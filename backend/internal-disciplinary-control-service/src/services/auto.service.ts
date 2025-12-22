@@ -38,10 +38,16 @@ export class AutoService {
 
       // CORRECCIÓN AQUI: Mapeo manual de campos DTO -> Entidad
       const auto = this.autoRepository.create({
-        tipo: createAutoDto.tipoAuto,             // Asigna tipoAuto a tipo
-        contenido: createAutoDto.contenidoHtml,   // Asigna contenidoHtml a contenido
-        process: { id: createAutoDto.processId }, // Relaciona el ID del proceso
-        estado: AutoStatus.BORRADOR,              // Estado inicial
+        tipo: createAutoDto.tipoAuto,
+        numero: createAutoDto.numero,
+        contenido: createAutoDto.contenidoHtml ?? '',
+        process: { id: createAutoDto.processId },
+        estado: AutoStatus.BORRADOR,
+        documentUrl: createAutoDto.documentUrl,
+        documentName: createAutoDto.documentName,
+        documentType: createAutoDto.documentType,
+        documentSize: createAutoDto.documentSize,
+        comentarios: createAutoDto.comentarios,
       });
 
       return await this.autoRepository.save(auto);
@@ -255,6 +261,14 @@ export class AutoService {
     auto.estado = AutoStatus.NOTIFICADO;
 
     return await this.autoRepository.save(auto);
+  }
+
+  /**
+   * Elimina un auto por ID
+   */
+  async delete(id: string): Promise<void> {
+    const auto = await this.findById(id);
+    await this.autoRepository.delete(auto.id);
   }
 
   /**

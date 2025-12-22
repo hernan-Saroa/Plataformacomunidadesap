@@ -92,12 +92,18 @@ export class TerminosCalculatorService {
     }
 
     // Obtener de BD
-    this.festivosCache = await this.festivosRepo.find({
-      where: { activo: true },
-    });
-    this.cacheTimestamp = now;
-
-    return this.festivosCache;
+    try {
+      this.festivosCache = await this.festivosRepo.find({
+        where: { activo: true },
+      });
+      this.cacheTimestamp = now;
+      return this.festivosCache;
+    } catch (error) {
+      console.warn('No se pudieron cargar festivos, se asume sin festivos activos', error);
+      this.festivosCache = [];
+      this.cacheTimestamp = now;
+      return this.festivosCache;
+    }
   }
 
   /**
@@ -136,8 +142,20 @@ export class TerminosCalculatorService {
     const fechaStr = fecha.toISOString().split('T')[0]; // YYYY-MM-DD
 
     return festivosList.some(festivo => {
-      const festivoDate = new Date(festivo.fecha);
-      const festivoStr = festivoDate.toISOString().split('T')[0];
+      const rawFecha = (festivo as any).fecha;
+      let festivoStr = '';
+
+      if (rawFecha instanceof Date) {
+        festivoStr = rawFecha.toISOString().split('T')[0];
+      } else if (typeof rawFecha === 'string') {
+        festivoStr = rawFecha.split('T')[0];
+      } else if (rawFecha && typeof rawFecha.toISOString === 'function') {
+        festivoStr = rawFecha.toISOString().split('T')[0];
+      } else {
+        const parsed = new Date(rawFecha as any);
+        festivoStr = isNaN(parsed.getTime()) ? String(rawFecha) : parsed.toISOString().split('T')[0];
+      }
+
       return festivoStr === fechaStr;
     });
   }

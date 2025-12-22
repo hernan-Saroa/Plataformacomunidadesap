@@ -38,9 +38,12 @@ export class NewsService {
       const radicado = await this.sequenceService.generateNewsRadicado();
 
       // Procesar archivos adjuntos
-      let adjuntos: string[] = [];
+      const adjuntos: string[] = Array.isArray(createNewsDto.adjuntos)
+        ? [...createNewsDto.adjuntos]
+        : [];
       if (files && files.length > 0) {
-        adjuntos = await this.storageService.saveMultipleFiles(radicado, files);
+        const stored = await this.storageService.saveMultipleFiles(radicado, files);
+        adjuntos.push(...stored);
       }
 
       // Crear historial inicial

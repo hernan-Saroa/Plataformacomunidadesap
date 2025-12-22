@@ -79,28 +79,33 @@ interface NoticiaDisciplinaria {
   fechaQueja: string;
   territorial: string;
   fechaRecepcion: string;
-  disciplinable: {
+  disciplinable: Array<{
     nombre: string;
     cargo: string;
     cedula?: string;
     identificacion?: string;
     email?: string;
     telefono?: string;
-  }[];
-  denunciante: {
+  }>;
+  denunciante?: Array<{
     nombre: string;
-    identificacion: string;
-    cargo: string;
-    dependencia: string;
-  }[];
-  estado: string;
-  estadoLabel: string;
+    cedula?: string;
+    email?: string;
+    telefono?: string;
+    direccion?: string;
+    cargo?: string;
+    dependencia?: string;
+    entidad?: string;
+  }>;
+  estado: 'pendiente' | 'en-valoracion' | 'devuelto' | 'asignado' | 'convertido-proceso';
+  estadoLabel: 'Pendiente' | 'En Valoración' | 'Devuelto' | 'Asignado' | 'Convertido a Proceso';
   etapa: string;
   diasTranscurridos: number;
   radicador: string;
   fechaRegistro: string;
   conductas?: string[];
   descripcion?: string;
+  adjuntos?: string[];
   profesionalAsignado?: string;
   procesoAsociado?: string; // PD-YYYY-####
   historialAuditoria: AccionAuditoria[];
@@ -821,9 +826,55 @@ export function GestionNoticias() {
   const loadNoticias = async () => {
     try {
       setLoading(true);
-      const data = await disciplinaryService.getAllNoticias();
-      console.log('📊 Datos de noticias:', data);
-      setNoticias(data);
+      const [noticiasData, profesionalesData] = await Promise.all([
+        disciplinaryService.getAllNoticias(),
+        disciplinaryService.getProfesionales()
+      ]);
+
+      const getFrontendStatus = (backendStatus: string): any => {
+        const s = (backendStatus || '').toUpperCase();
+        if (s === 'RADICADA') return 'pendiente';
+        if (s === 'EN_VALORACION') return 'en-valoracion';
+        if (s === 'DEVUELTA' || s === 'DEVUELTO') return 'devuelto';
+        if (s === 'ASIGNADA' || s === 'ASIGNADO') return 'asignado';
+        if (s === 'CONVERTIDO_PROCESO') return 'convertido-proceso';
+        return 'pendiente';
+      };
+
+      const mappedNews: NoticiaDisciplinaria[] = noticiasData.map((news) => ({
+        id: news.id,
+        numeroRadicado: news.radicado,
+        origen: news.origen as any,
+        fechaQueja: news.fechaQueja || news.createdAt,
+        territorial: news.territorial,
+        disciplinable: Array.isArray(news.disciplinable) ? news.disciplinable : (news.disciplinable ? [news.disciplinable] : []),
+        denunciante: Array.isArray(news.denunciante) ? news.denunciante : (news.denunciante ? [news.denunciante] : []),
+        fechaRecepcion: news.fechaRecepcion?.toString() || news.createdAt,
+        estado: getFrontendStatus(news.estado),
+        estadoLabel: (news.estado || 'Pendiente') as any,
+        etapa: 'En Evaluación',
+        diasTranscurridos: 0,
+        radicador: 'Sistema',
+        fechaRegistro: news.createdAt,
+        conductas: news.conductas || [],
+        descripcion: news.hechos,
+        adjuntos: (news as any).adjuntos || [],
+        historialAuditoria: []
+      }));
+
+      setNoticias(mappedNews);
+
+      const mappedProfesionales: Profesional[] = (profesionalesData || []).map((p: any) => ({
+        id: p.id,
+        nombre: p.nombreCompleto || p.nombre || 'Sin Nombre',
+        cargo: p.cargo || 'Sin Cargo',
+        email: p.email || '',
+        procesosAsignados: p.procesosAsignados || 0,
+        capacidadMaxima: p.capacidadMaxima || 10
+      }));
+
+      setProfesionales(mappedProfesionales.length > 0 ? mappedProfesionales : PROFESIONALES_MOCK_FALLBACK);
+
     } catch (error) {
       console.error(error);
       toast.error('Error al cargar noticias');
@@ -921,15 +972,57 @@ export function GestionNoticias() {
     const noticiaToExport = filteredNoticias[0];
     const doc = new jsPDF();
 
-    const getActionTitle = (tipo: string) => {
-      switch (tipo) {
-        case 'creacion': return 'Noticia Creada';
-        case 'devolucion': return 'Devuelto al Radicador';
-        case 'asignacion': return 'Asignado a Profesional';
-        case 'conversion': return 'Convertido a Proceso';
-        case 'edicion': return 'Noticia Editada';
-        case 'archivo': return 'Noticia Archivada';
-        default: return 'Acción Registrada';
+        const origenMap: Record<string, string> = {
+          'Anónimo': 'ANONIMO',
+          'Quejoso': 'QUEJOSO',
+          'Informante': 'QUEJOSO',
+          'De oficio': 'OFICIO',
+          'Remisión por competencia': 'REMISION'
+        };
+
+      const denunciantesMapped = (data.denunciantes || []).map((d: any) => ({
+        nombre: d.nombre,
+        cedula: d.identificacion,
+        email: d.correo,
+        cargo: d.cargo,
+        telefono: d.telefono,
+        direccion: d.direccion,
+        entidad: d.entidad,
+        dependencia: d.entidad
+      }));
+
+        const disciplinablesMapped = (data.disciplinable || []).map((d: any) => ({
+          nombre: d.nombre,
+          cedula: d.identificacion,
+          cargo: d.cargo,
+          dependencia: d.dependencia || d.cargo // Fallback
+        }));
+
+      const createDto = {
+        origen: origenMap[data.origen] || 'ANONIMO',
+        fechaQueja: data.fechaQueja,
+        territorial: data.territorial,
+        dependenciaDenunciado: data.dependenciaDenunciado || disciplinablesMapped[0]?.dependencia || 'Por determinar',
+        hechos: data.descripcionHechos,
+        conductas: Array.isArray(data.conductasSeleccionadas) ? data.conductasSeleccionadas : [],
+        denunciante: denunciantesMapped,
+        disciplinable: disciplinablesMapped,
+        adjuntos: uploadedUrls
+      };
+
+        console.log('📝 Sending payload:', createDto);
+        await disciplinaryService.radicarNoticia(createDto);
+
+        toast.success('Noticia enviada con éxito');
+
+        // Reload news to get the server-generated fields
+        await loadData();
+        setShowCreateModal(false);
+      } catch (error) {
+        console.error('Error creating news:', error);
+        toast.error('Error al crear la noticia. Verifique los datos.');
+      } finally {
+        setLoading(false);
       }
     };
 

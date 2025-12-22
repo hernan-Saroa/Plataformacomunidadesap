@@ -35,6 +35,18 @@ export class Evidence {
     tipoDocumento: string;
 
     @Column({ nullable: true, type: 'varchar' })
+    categoria: string | null;
+
+    @Column({ nullable: true, type: 'varchar' })
+    destinatario: string | null;
+
+    @Column({ nullable: true, type: 'varchar' })
+    asunto: string | null;
+
+    @Column({ nullable: true, type: 'int' })
+    participantes: number | null;
+
+    @Column({ nullable: true, type: 'varchar' })
     etapa: string | null;
 
     @Column({ name: 'usuarioCarga', nullable: true })

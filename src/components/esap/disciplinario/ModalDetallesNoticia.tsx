@@ -12,45 +12,50 @@ import {
   AlertCircle,
   MessageSquare,
   UserCheck,
-  Clock
+  Clock,
+  Users,
+  Paperclip,
+  Download
 } from 'lucide-react';
 import { Card } from '../../ui/card';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
-// Helper for dias transcurridos
-const getDiasTranscurridos = (dateString?: string) => {
-  if (!dateString) return 0;
-  const fecha = new Date(dateString);
-  const hoy = new Date();
-  const diffTime = Math.abs(hoy.getTime() - fecha.getTime());
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-};
-
-// Helper for status label
-const getEstadoLabel = (estado: string) => {
-  const map: Record<string, string> = {
-    'RADICADA': 'Radicada',
-    'ASIGNADA': 'Asignada',
-    'DEVUELTA': 'Devuelta',
-    'EN_VALORACION': 'En Valoración',
-    'CONVERTIDO_PROCESO': 'Convertido a Proceso',
-    // Fallbacks
-    'Pendiente': 'Radicada',
-    'Asignado': 'Asignada',
-    'Devuelto': 'Devuelta'
-  };
-  return map[estado] || estado;
-};
-
-// Helper for origin label
-const getOrigenLabel = (origen: string) => {
-  const map: Record<string, string> = {
-    'ANONIMO': 'Anónimo',
-    'QUEJOSO': 'Quejoso',
-    'INFORMANTE': 'Informante',
-    'OFICIO': 'De oficio',
-    'REMISION': 'Remisión por competencia'
-  };
-  return map[origen] || origen;
+interface NoticiaDisciplinaria {
+  id: string;
+  numeroRadicado: string;
+  origen: string;
+  fechaQueja: string;
+  territorial: string;
+  disciplinable: {
+    nombre: string;
+    cedula?: string;
+    cargo?: string;
+    dependencia?: string;
+    email?: string;
+    telefono?: string;
+    direccion?: string;
+  }[];
+  denunciante?: {
+    nombre: string;
+    cedula?: string;
+    cargo?: string;
+    email?: string;
+    telefono?: string;
+    direccion?: string;
+    dependencia?: string;
+  }[];
+  adjuntos?: string[];
+  estado: string;
+  estadoLabel: string;
+  etapa: string;
+  diasTranscurridos: number;
+  radicador: string;
+  fechaRegistro: string;
+  conductas?: string[];
+  descripcion?: string;
+  profesionalAsignado?: string;
+  procesoAsociado?: string;
+  historialAuditoria: any[];
 }
 
 // Helper for safe date formatting
@@ -242,6 +247,96 @@ export function ModalDetallesNoticia({ noticia, onClose }: { noticia: any; onClo
               </h3>
               <Card className="p-5 border-2 border-gray-200 bg-gray-50">
                 <p className="text-sm text-gray-700 leading-relaxed">{noticia.hechos || noticia.descripcion}</p>
+              </Card>
+            </div>
+          )}
+
+          {/* Denunciantes */}
+          {noticia.denunciante && noticia.denunciante.length > 0 && (
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
+                <Users className="w-5 h-5" style={{ color: '#003DA5' }} />
+                Información de Denunciantes
+              </h3>
+              <div className="space-y-4">
+                {noticia.denunciante.map((person, idx) => (
+                  <Card key={idx} className="p-5 border-2 border-blue-200 bg-blue-50">
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs text-blue-600 font-semibold mb-1">NOMBRE COMPLETO</p>
+                        <p className="text-sm font-semibold text-gray-900">{person.nombre}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-blue-600 font-semibold mb-1">IDENTIFICACIÓN</p>
+                        <p className="text-sm font-semibold text-gray-900">{person.cedula || 'N/A'}</p>
+                      </div>
+                      {person.cargo && (
+                        <div>
+                          <p className="text-xs text-blue-600 font-semibold mb-1">CARGO</p>
+                          <p className="text-sm font-semibold text-gray-900">{person.cargo}</p>
+                        </div>
+                      )}
+                      {person.dependencia && (
+                        <div>
+                          <p className="text-xs text-blue-600 font-semibold mb-1">DEPENDENCIA</p>
+                          <p className="text-sm font-semibold text-gray-900">{person.dependencia}</p>
+                        </div>
+                      )}
+                      {person.email && (
+                        <div>
+                          <p className="text-xs text-blue-600 font-semibold mb-1">CORREO ELECTRÓNICO</p>
+                          <p className="text-sm font-semibold text-gray-900">{person.email}</p>
+                        </div>
+                      )}
+                      {person.telefono && (
+                        <div>
+                          <p className="text-xs text-blue-600 font-semibold mb-1">TELÉFONO</p>
+                          <p className="text-sm font-semibold text-gray-900">{person.telefono}</p>
+                        </div>
+                      )}
+                      {person.direccion && (
+                        <div className="md:col-span-2">
+                          <p className="text-xs text-blue-600 font-semibold mb-1">DIRECCIÓN</p>
+                          <p className="text-sm font-semibold text-gray-900">{person.direccion}</p>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Archivos Adjuntos */}
+          {noticia.adjuntos && noticia.adjuntos.length > 0 && (
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
+                <Paperclip className="w-5 h-5" style={{ color: '#003DA5' }} />
+                Archivos Adjuntos ({noticia.adjuntos.length})
+              </h3>
+              <Card className="p-5 border-2 border-gray-200">
+                <div className="space-y-2">
+                  {noticia.adjuntos.map((archivo, idx) => {
+                    const nombreArchivo = archivo.split('/').pop() || `Archivo ${idx + 1}`;
+                    const descargaUrl = disciplinaryService.getFileUrl(archivo);
+                    return (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <Paperclip className="w-4 h-4 text-gray-500" />
+                          <span className="text-sm font-medium text-gray-900">{nombreArchivo}</span>
+                        </div>
+                        <a
+                          href={descargaUrl}
+                          download
+                          className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-700 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                        >
+                          <Download className="w-4 h-4" />
+                          Descargar
+                        </a>
+                      </div>
+                    );
+                  })}
+                </div>
               </Card>
             </div>
           )}
