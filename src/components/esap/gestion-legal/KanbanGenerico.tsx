@@ -182,12 +182,40 @@ export function KanbanGenerico({ config }: { config: ConfigKanban }) {
   const [vistaActual, setVistaActual] = useState<'kanban' | 'lista'>('kanban');
 
   const handleDrop = (item: ItemKanban, nuevaEtapa: string) => {
+    const etapaAnterior = item.etapa;
+    const etapaAnteriorLabel = config.etapas.find(e => e.id === etapaAnterior)?.label;
+    const etapaNuevaLabel = config.etapas.find(e => e.id === nuevaEtapa)?.label;
+    const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
+    
     setItems(prevItems =>
       prevItems.map(i =>
-        i.id === item.id ? { ...i, etapa: nuevaEtapa } : i
+        i.id === item.id ? { 
+          ...i, 
+          etapa: nuevaEtapa,
+          ultimaModificacion: new Date()
+        } : i
       )
     );
-    toast.success(`${item.titulo} movido a ${config.etapas.find(e => e.id === nuevaEtapa)?.label}`);
+    
+    // Registrar en trazabilidad/historial
+    const eventoTrazabilidad = {
+      id: `evt-${Date.now()}`,
+      tipo: 'cambio-estado' as const,
+      titulo: `Cambio de etapa: ${etapaAnteriorLabel} → ${etapaNuevaLabel}`,
+      descripcion: `El item fue movido de "${etapaAnteriorLabel}" a "${etapaNuevaLabel}" mediante arrastrar y soltar`,
+      usuario: usuario,
+      fecha: new Date(),
+      itemId: item.id,
+      etapaAnterior: etapaAnterior,
+      etapaNueva: nuevaEtapa
+    };
+    
+    // En producción, esto se guardaría en el backend
+    console.log('📋 Trazabilidad - Movimiento de item:', eventoTrazabilidad);
+    
+    toast.success(`${item.titulo} movido a ${etapaNuevaLabel}`, {
+      description: 'Cambio registrado en trazabilidad'
+    });
   };
 
   const itemsPorEtapa = (etapaId: string) => items.filter(item => item.etapa === etapaId);

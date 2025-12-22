@@ -1,19 +1,32 @@
 /**
- * ÚLTIMA ACTUALIZACIÓN: 20 Diciembre 2025
+ * RF015 - ROLES Y PERMISOS - CONTROL INTERNO DE GESTIÓN
+ * 
+ * Módulo sincronizado con el sistema general de Roles y Permisos
+ * Fuente de datos: /utils/rolesPermisosSync.ts
+ * 
+ * ÚLTIMA ACTUALIZACIÓN: 22 Diciembre 2025
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield, ShieldCheck, ShieldAlert, Users, User, Key, Lock,
   Unlock, Eye, Edit, Trash2, Plus, X, Check, Search, Filter,
-  Settings, AlertCircle, CheckCircle, Clock, Save, Copy
+  Settings, AlertCircle, CheckCircle, Clock, Save, Copy, Info
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/Button';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { InputSIGL } from '../gestion-legal/design-system/Input';
 import { toast } from 'sonner';
+import { 
+  obtenerRolesPorCategoria, 
+  obtenerPermisosRolModulo,
+  obtenerModulosPorCategoria,
+  tienePermiso,
+  type Rol as RolSync,
+  type Permiso as PermisoSync
+} from '../../../utils/rolesPermisosSync';
 
 // Avatar simple para mostrar iniciales
 const Avatar = ({ children, className }: { children: React.ReactNode; className?: string }) => (
@@ -451,6 +464,27 @@ export function RolesYPermisos() {
 
   return (
     <div className="space-y-6">
+      {/* BANNER DE SINCRONIZACIÓN */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-blue-100">
+            <Info className="w-5 h-5 text-blue-600" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-sm text-gray-900 mb-1">
+              Sistema Sincronizado con Gestión de Personas
+            </h3>
+            <p className="text-xs text-gray-600 leading-relaxed">
+              Los roles y permisos de Control Interno están integrados con el módulo principal de 
+              <span className="font-semibold text-blue-700"> Roles y Permisos de Gestión de Personas</span>. 
+              Todos los cambios se reflejan automáticamente en ambos sistemas. Los roles específicos de Control Interno 
+              (Jefe OCI, Auditor Líder, Auditor Operativo, Área Auditada) son gestionados de forma centralizada 
+              y se sincronizan con el sistema general de seguridad de ESAP.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* HEADER MEJORADO */}
       <div className="bg-gradient-to-r from-red-50 via-white to-red-50 rounded-xl p-6 border border-red-100">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">

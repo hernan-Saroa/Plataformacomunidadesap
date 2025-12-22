@@ -230,12 +230,38 @@ export function KanbanDefensaJudicial() {
   const [formularioAbierto, setFormularioAbierto] = useState(false);
 
   const handleDrop = (item: Expediente, nuevaEtapa: Etapa) => {
+    const etapaAnterior = item.etapa;
+    const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
+    
     setExpedientes(prevExpedientes =>
       prevExpedientes.map(exp =>
-        exp.id === item.id ? { ...exp, etapa: nuevaEtapa } : exp
+        exp.id === item.id ? { 
+          ...exp, 
+          etapa: nuevaEtapa,
+          ultimaModificacion: new Date()
+        } : exp
       )
     );
-    toast.success(`Expediente ${item.id} movido a ${nuevaEtapa}`);
+    
+    // Registrar en trazabilidad/historial
+    const eventoTrazabilidad = {
+      id: `evt-${Date.now()}`,
+      tipo: 'cambio-estado' as const,
+      titulo: `Cambio de etapa: ${etapaAnterior} → ${nuevaEtapa}`,
+      descripcion: `El expediente fue movido de "${etapaAnterior}" a "${nuevaEtapa}" mediante arrastrar y soltar`,
+      usuario: usuario,
+      fecha: new Date(),
+      expedienteId: item.id,
+      etapaAnterior: etapaAnterior,
+      etapaNueva: nuevaEtapa
+    };
+    
+    // En producción, esto se guardaría en el backend
+    console.log('📋 Trazabilidad - Movimiento de expediente:', eventoTrazabilidad);
+    
+    toast.success(`Expediente ${item.id} movido a ${nuevaEtapa}`, {
+      description: 'Cambio registrado en trazabilidad'
+    });
   };
 
   const expedientesPorEtapa = (etapa: Etapa) => expedientes.filter(exp => exp.etapa === etapa);

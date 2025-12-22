@@ -42,7 +42,8 @@ export const ButtonSIGL = forwardRef<HTMLButtonElement, ButtonSIGLProps>(
           border: 'none',
         },
         hover: {
-          background: DESIGN_TOKENS.colors.primary.blueHover,
+          background: '#0052CC',
+          transform: 'translateY(-1px)',
         },
         active: {
           background: DESIGN_TOKENS.colors.primary.blueActive,
@@ -56,6 +57,7 @@ export const ButtonSIGL = forwardRef<HTMLButtonElement, ButtonSIGLProps>(
         },
         hover: {
           background: DESIGN_TOKENS.colors.primary.light,
+          borderColor: '#0052CC',
         },
         active: {
           background: '#D0E2F5',
@@ -68,7 +70,8 @@ export const ButtonSIGL = forwardRef<HTMLButtonElement, ButtonSIGLProps>(
           border: 'none',
         },
         hover: {
-          background: '#c82333',
+          background: '#d32f2f',
+          transform: 'translateY(-1px)',
         },
         active: {
           background: '#a01828',
@@ -81,7 +84,8 @@ export const ButtonSIGL = forwardRef<HTMLButtonElement, ButtonSIGLProps>(
           border: 'none',
         },
         hover: {
-          background: '#218838',
+          background: '#2e7d32',
+          transform: 'translateY(-1px)',
         },
         active: {
           background: '#1a6628',
@@ -95,6 +99,7 @@ export const ButtonSIGL = forwardRef<HTMLButtonElement, ButtonSIGLProps>(
         },
         hover: {
           background: DESIGN_TOKENS.colors.primary.light,
+          borderColor: '#0052CC',
         },
         active: {
           background: '#D0E2F5',
@@ -118,22 +123,22 @@ export const ButtonSIGL = forwardRef<HTMLButtonElement, ButtonSIGLProps>(
     // Estilos según tamaño
     const sizeStyles = {
       small: {
-        height: '32px',
-        padding: '8px 12px',
-        fontSize: '12px',
-        minWidth: '80px',
+        height: '36px',
+        padding: '8px 16px',
+        fontSize: '13px',
+        minWidth: '100px',
       },
       medium: {
-        height: DESIGN_TOKENS.componentSizes.button.height,
-        padding: `${DESIGN_TOKENS.padding.button.vertical} ${DESIGN_TOKENS.padding.button.horizontal}`,
-        fontSize: DESIGN_TOKENS.typography.fontSize.button,
-        minWidth: DESIGN_TOKENS.componentSizes.button.minWidth,
+        height: '42px',
+        padding: '10px 20px',
+        fontSize: '14px',
+        minWidth: '120px',
       },
       large: {
         height: '48px',
-        padding: '14px 20px',
-        fontSize: '16px',
-        minWidth: '120px',
+        padding: '12px 24px',
+        fontSize: '15px',
+        minWidth: '140px',
       },
     };
 
@@ -153,17 +158,20 @@ export const ButtonSIGL = forwardRef<HTMLButtonElement, ButtonSIGLProps>(
         transition={{ duration: 0.15, ease: 'easeOut' }}
         className={`
           inline-flex items-center justify-center gap-2
-          font-semibold rounded
+          font-semibold rounded-xl
           transition-all duration-200
           focus:outline-none focus:ring-2 focus:ring-offset-2
           disabled:opacity-60 disabled:cursor-not-allowed
           ${fullWidth ? 'w-full' : ''}
+          ${variant === 'primary' ? 'shadow-md hover:shadow-lg' : ''}
+          ${variant === 'danger' ? 'shadow-md hover:shadow-lg' : ''}
+          ${variant === 'success' ? 'shadow-md hover:shadow-lg' : ''}
           ${className}
         `}
         style={{
           ...styles.normal,
           ...sizing,
-          borderRadius: DESIGN_TOKENS.borderRadius.small,
+          borderRadius: '12px',
           fontWeight: DESIGN_TOKENS.typography.fontWeight.semibold,
           lineHeight: DESIGN_TOKENS.typography.lineHeight.button,
           cursor: disabled || isLoading ? 'not-allowed' : 'pointer',

@@ -52,7 +52,7 @@ import {
   LayoutGrid, List, Plus, MoreVertical, Calendar, User, Clock,
   AlertCircle, CheckCircle, FileText, Eye, MessageSquare, History,
   Filter, Search, ChevronDown, TrendingUp, Target, Shield,
-  Download, Columns3, ClipboardCheck, Square, CheckSquare as CheckSquareIcon,
+  Download, Columns3, ClipboardCheck, CheckSquare,
   Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2
 } from 'lucide-react';
 import { Button } from '../../ui/button';
@@ -67,8 +67,7 @@ import { ModalHistorialAuditoria } from './ModalHistorialAuditoria';
 import { ModalAprobacionAuditoria } from './ModalAprobacionAuditoria';
 import { ModalFormularioAuditoria } from './ModalFormularioAuditoria';
 import { InicioAuditoriaWizard } from './InicioAuditoriaWizard';
-import { BarraAccionesLote } from './BarraAccionesLote';
-import { ModalAsignarAuditorLote } from './ModalAsignarAuditorLote';
+import { ExpedienteAuditoriaCompleto } from './ExpedienteAuditoriaCompleto';
 import { LoadingSpinner, CardLoading } from '../../ui/loading-spinner';
 import { SkeletonAuditoriaCard, SkeletonKanbanColumn } from '../../ui/skeleton';
 import { EmptyState } from '../../ui/empty-state';
@@ -649,10 +648,7 @@ interface TarjetaAuditoriaProps {
   onVerNotas: (aud: Auditoria) => void;
   onVerHistorial: (aud: Auditoria) => void;
   onAprobar?: (aud: Auditoria) => void;
-  seleccionada: boolean;
-  onToggleSeleccion: (aud: Auditoria) => void;
-  modoSeleccion: boolean;
-  // Nuevas acciones individuales
+  // Acciones individuales
   onCambiarEstado: (aud: Auditoria) => void;
   onAsignarAuditor: (aud: Auditoria) => void;
   onEnviarAprobacion: (aud: Auditoria) => void;
@@ -667,9 +663,6 @@ function TarjetaAuditoria({
   onVerNotas, 
   onVerHistorial, 
   onAprobar,
-  seleccionada,
-  onToggleSeleccion,
-  modoSeleccion,
   onCambiarEstado,
   onAsignarAuditor,
   onEnviarAprobacion,
@@ -701,44 +694,17 @@ function TarjetaAuditoria({
       className="cursor-move touch-none w-full relative"
     >
       <Card 
-        className={`bg-white border-2 hover:shadow-md transition-all flex flex-col w-full ${
-          seleccionada 
-            ? 'border-blue-500 bg-blue-50/30' 
-            : 'border-gray-200'
-        }`}
+        className="bg-white border-2 hover:shadow-md transition-all flex flex-col w-full border-gray-200"
         style={{
           height: '560px',
           minHeight: '560px',
           maxHeight: '560px'
         }}
       >
-        {/* CHECKBOX DE SELECCIÓN */}
-        {modoSeleccion && (
-          <div 
-            className="absolute top-3 right-3 z-10"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => onToggleSeleccion(auditoria)}
-              className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
-                seleccionada
-                  ? 'bg-blue-600 border-blue-600'
-                  : 'bg-white border-gray-300 hover:border-blue-400'
-              }`}
-            >
-              {seleccionada && (
-                <CheckSquareIcon className="w-4 h-4 text-white" />
-              )}
-            </motion.button>
-          </div>
-        )}
-
         {/* Barra superior azul ESAP */}
         <div 
           className="h-1 flex-shrink-0"
-          style={{ background: seleccionada ? '#003DA5' : '#003DA5' }}
+          style={{ background: '#003DA5' }}
         />
 
         <div className="p-2.5 flex-1 flex flex-col overflow-y-auto min-h-0">
@@ -844,7 +810,7 @@ function TarjetaAuditoria({
             )}
             {/* Badge de Tareas */}
             <Badge className="text-xs bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1 font-semibold">
-              <CheckSquareIcon className="w-3 h-3" />
+              <CheckSquare className="w-3 h-3" />
               {auditoria.tareas} tareas
             </Badge>
           </div>
@@ -1093,12 +1059,9 @@ interface ColumnaKanbanProps {
   onVerNotas: (aud: Auditoria) => void;
   onVerHistorial: (aud: Auditoria) => void;
   onDrop: (item: Auditoria, nuevoEstado: EstadoAuditoria) => void;
-  auditoriasSeleccionadas: Auditoria[];
-  onToggleSeleccion: (aud: Auditoria) => void;
-  onSeleccionarTodas: (auditorias: Auditoria[]) => void;
   colapsada?: boolean;
   onToggleColapso?: () => void;
-  // Nuevas acciones individuales
+  // Acciones individuales
   onCambiarEstado: (aud: Auditoria) => void;
   onAsignarAuditor: (aud: Auditoria) => void;
   onEnviarAprobacion: (aud: Auditoria) => void;
@@ -1114,9 +1077,6 @@ function ColumnaKanban({
   onVerNotas, 
   onVerHistorial, 
   onDrop,
-  auditoriasSeleccionadas,
-  onToggleSeleccion,
-  onSeleccionarTodas,
   colapsada = false,
   onToggleColapso,
   onCambiarEstado,
@@ -1134,25 +1094,6 @@ function ColumnaKanban({
     })
   }));
 
-  const todasSeleccionadas = auditorias.length > 0 && 
-    auditorias.every(aud => auditoriasSeleccionadas.some(s => s.id === aud.id));
-
-  const handleSeleccionarTodas = () => {
-    if (todasSeleccionadas) {
-      // Deseleccionar todas de esta columna
-      const idsColumna = auditorias.map(a => a.id);
-      const nuevasSeleccionadas = auditoriasSeleccionadas.filter(a => !idsColumna.includes(a.id));
-      // Necesitamos pasar las auditorías a deseleccionar
-      auditorias.forEach(aud => {
-        if (auditoriasSeleccionadas.some(s => s.id === aud.id)) {
-          onToggleSeleccion(aud);
-        }
-      });
-    } else {
-      onSeleccionarTodas(auditorias);
-    }
-  };
-
   // Contar auditorías por semáforo
   const auditoriasVerdes = auditorias.filter(a => a.semaforo === 'verde').length;
   const auditoriasAmarillas = auditorias.filter(a => a.semaforo === 'amarillo').length;
@@ -1163,7 +1104,7 @@ function ColumnaKanban({
     return (
       <motion.div
         ref={drop}
-        className="flex-shrink-0"
+        className="flex-shrink-0 h-full"
         initial={{ width: 64 }}
         animate={{ width: 64 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
@@ -1287,27 +1228,6 @@ function ColumnaKanban({
                 <Minimize2 className="w-3.5 h-3.5 text-gray-600" />
               </button>
             )}
-            
-            {/* Botón Seleccionar Todas */}
-            {auditorias.length > 0 && (
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleSeleccionarTodas}
-                className={`p-1.5 rounded-lg border-2 transition-all ${
-                  todasSeleccionadas
-                    ? 'bg-blue-600 border-blue-600'
-                    : 'bg-white border-gray-300 hover:border-blue-400'
-                }`}
-                title={todasSeleccionadas ? 'Deseleccionar todas' : 'Seleccionar todas'}
-              >
-                {todasSeleccionadas ? (
-                  <CheckSquareIcon className="w-4 h-4 text-white" />
-                ) : (
-                  <Square className="w-4 h-4 text-gray-600" />
-                )}
-              </motion.button>
-            )}
           </div>
         </div>
       </div>
@@ -1326,9 +1246,6 @@ function ColumnaKanban({
               onVerDetalle={onVerDetalle}
               onVerNotas={onVerNotas}
               onVerHistorial={onVerHistorial}
-              seleccionada={auditoriasSeleccionadas.some(s => s.id === auditoria.id)}
-              onToggleSeleccion={onToggleSeleccion}
-              modoSeleccion={auditoriasSeleccionadas.length > 0}
               onCambiarEstado={onCambiarEstado}
               onAsignarAuditor={onAsignarAuditor}
               onEnviarAprobacion={onEnviarAprobacion}
@@ -1364,9 +1281,7 @@ export function GestionAuditoriasKanbanSimple() {
   const [modalHistorialOpen, setModalHistorialOpen] = useState(false);
   const [modalAprobacionOpen, setModalAprobacionOpen] = useState(false);
   const [modalFormularioOpen, setModalFormularioOpen] = useState(false);
-  const [modalAsignarAuditorLoteOpen, setModalAsignarAuditorLoteOpen] = useState(false);
   const [modalInicioAuditoriaOpen, setModalInicioAuditoriaOpen] = useState(false);
-  const [auditoriasSeleccionadas, setAuditoriasSeleccionadas] = useState<Auditoria[]>([]);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
 
   // Filtrar auditorías
@@ -1378,48 +1293,6 @@ export function GestionAuditoriasKanbanSimple() {
   });
 
   // Handlers de acciones por lote
-  const handleCambiarEstadoLote = (nuevoEstado: string) => {
-    setAuditorias(prev =>
-      prev.map(aud =>
-        auditoriasSeleccionadas.find(s => s.id === aud.id)
-          ? { ...aud, estado: nuevoEstado as EstadoAuditoria }
-          : aud
-      )
-    );
-    toast.success(`${auditoriasSeleccionadas.length} auditoría(s) movida(s) a ${nuevoEstado}`);
-    setAuditoriasSeleccionadas([]);
-  };
-
-  const handleAsignarAuditorLote = async (auditorId: string) => {
-    // Simulación de asignación
-    console.log('Asignar auditor', auditorId, 'a', auditoriasSeleccionadas.length, 'auditorías');
-    // En producción haría un POST al backend
-  };
-
-  const handleEliminarLote = async () => {
-    setAuditorias(prev =>
-      prev.filter(aud => !auditoriasSeleccionadas.find(s => s.id === aud.id))
-    );
-    setAuditoriasSeleccionadas([]);
-  };
-
-  const handleExportarLote = () => {
-    console.log('Exportar', auditoriasSeleccionadas.length, 'auditorías');
-    toast.success(`Exportando ${auditoriasSeleccionadas.length} auditorías...`);
-  };
-
-  const handleArchivarLote = async () => {
-    console.log('Archivar', auditoriasSeleccionadas.length, 'auditorías');
-    toast.success(`${auditoriasSeleccionadas.length} auditoría(s) archivada(s)`);
-    setAuditoriasSeleccionadas([]);
-  };
-
-  const handleEnviarAprobacionLote = () => {
-    console.log('Enviar a aprobación', auditoriasSeleccionadas.length, 'auditorías');
-    toast.success(`${auditoriasSeleccionadas.length} auditoría(s) enviada(s) a aprobación`);
-    setAuditoriasSeleccionadas([]);
-  };
-
   // Handlers individuales
   const handleVerDetalle = (auditoria: Auditoria) => {
     setAuditoriaSeleccionada(auditoria);
@@ -1456,25 +1329,59 @@ export function GestionAuditoriasKanbanSimple() {
     // Aquí iría la lógica real de solicitud de modificación
   };
 
-  const handleCrearAuditoria = (data: AuditoriaFormData) => {
+  const handleCrearAuditoria = async (data: AuditoriaFormData) => {
     console.log('Crear auditoría:', data);
+    
+    // Simulación de delay (para testing de estados de carga)
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     // Aquí iría la lógica real de creación
     // Simulación: agregar a la lista de auditorías
     // En producción esto haría un POST al backend
+    
+    toast.success('Auditoría creada correctamente', {
+      description: `"${data.titulo}" ha sido agregada exitosamente`
+    });
   };
 
   const handleDrop = (item: Auditoria, nuevoEstado: EstadoAuditoria) => {
     if (item.estado === nuevoEstado) return;
 
+    const estadoAnterior = item.estado;
+    const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
+    
     setAuditorias(prev =>
       prev.map(aud =>
         aud.id === item.id
-          ? { ...aud, estado: nuevoEstado }
+          ? { 
+              ...aud, 
+              estado: nuevoEstado,
+              // Agregar evento de trazabilidad al historial
+              ultimaModificacion: new Date()
+            }
           : aud
       )
     );
 
-    toast.success(`${item.codigo} movido a ${nuevoEstado}`);
+    // Registrar en trazabilidad/historial
+    const eventoTrazabilidad = {
+      id: `evt-${Date.now()}`,
+      tipo: 'cambio-estado' as const,
+      titulo: `Cambio de estado: ${estadoAnterior} → ${nuevoEstado}`,
+      descripcion: `La auditoría fue movida de "${estadoAnterior}" a "${nuevoEstado}" mediante arrastrar y soltar`,
+      usuario: usuario,
+      fecha: new Date(),
+      auditoriaId: item.id,
+      estadoAnterior: estadoAnterior,
+      estadoNuevo: nuevoEstado
+    };
+    
+    // En producción, esto se guardaría en el backend
+    console.log('📋 Trazabilidad - Movimiento de tarjeta:', eventoTrazabilidad);
+
+    toast.success(`${item.codigo} movido a ${nuevoEstado}`, {
+      description: `Cambio registrado en trazabilidad`
+    });
   };
 
   // ============ HANDLERS INDIVIDUALES PARA ACCIONES DE TARJETA ============
@@ -1507,9 +1414,10 @@ export function GestionAuditoriasKanbanSimple() {
 
   // Asignar auditor individual
   const handleAsignarAuditor = (auditoria: Auditoria) => {
-    setAuditoriaSeleccionada(auditoria);
-    setAuditoriasSeleccionadas([auditoria]);
-    setModalAsignarAuditorLoteOpen(true);
+    toast.info('Asignar auditor', {
+      description: `Funcionalidad de asignación para ${auditoria.codigo}`
+    });
+    // En producción esto abriría un modal de asignación individual
   };
 
   // Enviar a aprobación individual
@@ -1570,18 +1478,6 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // ============ FIN HANDLERS INDIVIDUALES ============
-
-  const handleToggleSeleccion = (auditoria: Auditoria) => {
-    if (auditoriasSeleccionadas.includes(auditoria)) {
-      setAuditoriasSeleccionadas(prev => prev.filter(a => a.id !== auditoria.id));
-    } else {
-      setAuditoriasSeleccionadas(prev => [...prev, auditoria]);
-    }
-  };
-
-  const handleSeleccionarTodas = (auditorias: Auditoria[]) => {
-    setAuditoriasSeleccionadas(prev => [...prev, ...auditorias]);
-  };
 
   // Toggle colapsar/expandir columna
   const toggleColumnaColapsada = (nombreEtapa: string) => {
@@ -1771,9 +1667,6 @@ export function GestionAuditoriasKanbanSimple() {
                     onVerNotas={handleVerNotas}
                     onVerHistorial={handleVerHistorial}
                     onDrop={handleDrop}
-                    auditoriasSeleccionadas={auditoriasSeleccionadas}
-                    onToggleSeleccion={handleToggleSeleccion}
-                    onSeleccionarTodas={handleSeleccionarTodas}
                     colapsada={columnasColapsadas.has(columna.id)}
                     onToggleColapso={() => toggleColumnaColapsada(columna.id)}
                     onCambiarEstado={handleCambiarEstado}
@@ -1841,10 +1734,10 @@ export function GestionAuditoriasKanbanSimple() {
           </Card>
         )}
 
-        {/* MODAL DE EXPEDIENTE */}
-        <ModalExpedienteAuditoria
-          auditoria={auditoriaSeleccionada}
-          open={modalExpedienteOpen}
+        {/* MODAL DE EXPEDIENTE COMPLETO */}
+        <ExpedienteAuditoriaCompleto
+          auditoriaId={auditoriaSeleccionada?.id}
+          isOpen={modalExpedienteOpen}
           onClose={() => {
             setModalExpedienteOpen(false);
             setAuditoriaSeleccionada(null);
@@ -1893,34 +1786,6 @@ export function GestionAuditoriasKanbanSimple() {
           }}
           onSubmit={handleCrearAuditoria}
           mode="create"
-        />
-
-        {/* MODAL DE ASIGNAR AUDITOR LOTE */}
-        <ModalAsignarAuditorLote
-          open={modalAsignarAuditorLoteOpen}
-          onClose={() => {
-            setModalAsignarAuditorLoteOpen(false);
-            setAuditoriasSeleccionadas([]);
-          }}
-          auditorias={auditoriasSeleccionadas.map(aud => ({
-            id: aud.id,
-            codigo: aud.codigo,
-            titulo: aud.titulo,
-            auditorActual: aud.auditorAsignado.nombre
-          }))}
-          onAsignar={handleAsignarAuditorLote}
-        />
-
-        {/* BARRA DE ACCIONES LOTE */}
-        <BarraAccionesLote
-          cantidadSeleccionados={auditoriasSeleccionadas.length}
-          onCancelarSeleccion={() => setAuditoriasSeleccionadas([])}
-          onCambiarEstado={handleCambiarEstadoLote}
-          onAsignarAuditor={() => setModalAsignarAuditorLoteOpen(true)}
-          onEliminar={handleEliminarLote}
-          onExportar={handleExportarLote}
-          onArchivar={handleArchivarLote}
-          onEnviarAprobacion={handleEnviarAprobacionLote}
         />
 
         {/* MODAL INICIO DE AUDITORÍA - RF004 */}

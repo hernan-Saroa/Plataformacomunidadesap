@@ -45,9 +45,16 @@ import { toast } from 'sonner@2.0.3';
 
 // Design system
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
+import { ButtonSIGL } from '../gestion-legal/design-system/Button';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
+
+// Componentes de Ejecución
+import {
+  DashboardEjecucion,
+  SeccionListasChequeo,
+  SeccionHallazgos
+} from './EjecucionAuditoriaComponents';
 
 // ============ TIPOS ============
 
@@ -959,4 +966,372 @@ export function EjecucionAuditoriaModule({
 
 // ============ COMPONENTES DE SECCIONES ============
 
-// [CONTINÚA EN EL SIGUIENTE MENSAJE DEBIDO AL LÍMITE DE CARACTERES]
+// COMPONENTES STUB TEMPORALES
+// TODO: Implementar componentes completos
+
+function SeccionEvidencias({ evidencias, onNuevaEvidencia }: any) {
+  return (
+    <CardSIGL>
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg text-gray-900">Evidencias</h3>
+          <ButtonSIGL onClick={onNuevaEvidencia}>
+            <Plus className="w-4 h-4 mr-2" />
+            Nueva Evidencia
+          </ButtonSIGL>
+        </div>
+        <p className="text-sm text-gray-600">
+          Total de evidencias cargadas: {evidencias.length}
+        </p>
+        {evidencias.length === 0 && (
+          <div className="mt-4 text-center py-8 bg-gray-50 rounded-lg">
+            <Camera className="w-12 h-12 mx-auto text-gray-400 mb-2" />
+            <p className="text-sm text-gray-600">No hay evidencias cargadas</p>
+          </div>
+        )}
+      </div>
+    </CardSIGL>
+  );
+}
+
+function SeccionCronograma({ actividades, onActualizarActividad }: any) {
+  return (
+    <CardSIGL>
+      <div className="p-6">
+        <h3 className="text-lg text-gray-900 mb-4">Cronograma de Actividades</h3>
+        <p className="text-sm text-gray-600">
+          Total de actividades: {actividades.length}
+        </p>
+        <div className="mt-4 space-y-2">
+          {actividades.map((act: any) => (
+            <div key={act.id} className="border border-gray-200 rounded-lg p-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-gray-900">{act.titulo}</p>
+                  <p className="text-xs text-gray-600">{act.responsable}</p>
+                </div>
+                <BadgeSIGL variant={act.estado === 'completada' ? 'success' : 'warning'}>
+                  {act.estado}
+                </BadgeSIGL>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </CardSIGL>
+  );
+}
+
+function SeccionReunionCierre({ reunion, hallazgos, onProgramar, onActualizarReunion }: any) {
+  return (
+    <CardSIGL>
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg text-gray-900">Reunión de Cierre</h3>
+          {!reunion.programada && (
+            <ButtonSIGL onClick={onProgramar}>
+              <Calendar className="w-4 h-4 mr-2" />
+              Programar Reunión
+            </ButtonSIGL>
+          )}
+        </div>
+        {!reunion.programada ? (
+          <div className="text-center py-8 bg-gray-50 rounded-lg">
+            <Users className="w-12 h-12 mx-auto text-gray-400 mb-2" />
+            <p className="text-sm text-gray-600">Aún no se ha programado la reunión de cierre</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <p className="text-sm text-gray-900">
+                Reunión programada para el {reunion.fecha?.toLocaleDateString()} a las {reunion.hora}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">
+                Modalidad: {reunion.modalidad} | Lugar: {reunion.lugar}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-700 mb-2">Estado:</p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  {reunion.actaElaborada ? (
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <Clock className="w-4 h-4 text-gray-400" />
+                  )}
+                  <span className="text-sm text-gray-600">Acta elaborada</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {reunion.actaFirmada ? (
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <Clock className="w-4 h-4 text-gray-400" />
+                  )}
+                  <span className="text-sm text-gray-600">Acta firmada</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </CardSIGL>
+  );
+}
+
+function FormularioHallazgo({ onCrear, onCancelar, evidenciasDisponibles }: any) {
+  const [titulo, setTitulo] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+  const [gravedad, setGravedad] = useState<GravedadHallazgo>('moderado');
+  const [criterioIncumplido, setCriterioIncumplido] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onCrear({
+      titulo,
+      descripcion,
+      gravedad,
+      criterioIncumplido,
+      causas: [],
+      efectos: [],
+      recomendaciones: [],
+      evidencias: []
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm text-gray-700 mb-1">Título del Hallazgo *</label>
+        <input
+          type="text"
+          value={titulo}
+          onChange={(e) => setTitulo(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-700 mb-1">Descripción *</label>
+        <textarea
+          value={descripcion}
+          onChange={(e) => setDescripcion(e.target.value)}
+          rows={4}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-700 mb-1">Criterio Incumplido *</label>
+        <input
+          type="text"
+          value={criterioIncumplido}
+          onChange={(e) => setCriterioIncumplido(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-700 mb-2">Gravedad *</label>
+        <div className="grid grid-cols-3 gap-3">
+          {(['leve', 'moderado', 'grave'] as const).map((nivel) => (
+            <button
+              key={nivel}
+              type="button"
+              onClick={() => setGravedad(nivel)}
+              className={`p-3 rounded-lg border-2 transition-all ${
+                gravedad === nivel
+                  ? nivel === 'grave'
+                    ? 'border-red-500 bg-red-50'
+                    : nivel === 'moderado'
+                    ? 'border-yellow-500 bg-yellow-50'
+                    : 'border-green-500 bg-green-50'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <div className="text-center text-sm capitalize">{nivel}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-3 pt-4">
+        <ButtonSIGL variant="secondary" onClick={onCancelar} className="flex-1">
+          Cancelar
+        </ButtonSIGL>
+        <ButtonSIGL type="submit" variant="primary" className="flex-1">
+          <Save className="w-4 h-4 mr-2" />
+          Crear Hallazgo
+        </ButtonSIGL>
+      </div>
+    </form>
+  );
+}
+
+function FormularioEvidencia({ onCargar, onCancelar }: any) {
+  const [nombre, setNombre] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+  const [tipo, setTipo] = useState<'documento' | 'fotografia' | 'video' | 'captura' | 'otro'>('documento');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onCargar({
+      nombre,
+      descripcion,
+      tipo,
+      tags: []
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm text-gray-700 mb-1">Nombre de la Evidencia *</label>
+        <input
+          type="text"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-700 mb-1">Descripción *</label>
+        <textarea
+          value={descripcion}
+          onChange={(e) => setDescripcion(e.target.value)}
+          rows={3}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-700 mb-1">Tipo de Evidencia *</label>
+        <select
+          value={tipo}
+          onChange={(e) => setTipo(e.target.value as any)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+        >
+          <option value="documento">Documento</option>
+          <option value="fotografia">Fotografía</option>
+          <option value="video">Video</option>
+          <option value="captura">Captura de Pantalla</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+
+      <div className="flex gap-3 pt-4">
+        <ButtonSIGL variant="secondary" onClick={onCancelar} className="flex-1">
+          Cancelar
+        </ButtonSIGL>
+        <ButtonSIGL type="submit" variant="primary" className="flex-1">
+          <Upload className="w-4 h-4 mr-2" />
+          Cargar Evidencia
+        </ButtonSIGL>
+      </div>
+    </form>
+  );
+}
+
+function FormularioReunionCierre({ auditoria, onProgramar, onCancelar }: any) {
+  const [fecha, setFecha] = useState('');
+  const [hora, setHora] = useState('');
+  const [lugar, setLugar] = useState('');
+  const [modalidad, setModalidad] = useState<'presencial' | 'virtual' | 'hibrida'>('virtual');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onProgramar({
+      fecha: new Date(fecha),
+      hora,
+      lugar,
+      modalidad,
+      participantes: [
+        {
+          nombre: auditoria.responsableArea.nombre,
+          rol: auditoria.responsableArea.cargo,
+          confirmado: false
+        },
+        {
+          nombre: auditoria.auditorLider.nombre,
+          rol: 'Auditor Líder',
+          confirmado: true
+        }
+      ],
+      temasPresentados: [
+        'Presentación de hallazgos identificados',
+        'Explicación de evidencias recopiladas',
+        'Recomendaciones preliminares',
+        'Solicitud de aclaraciones al área',
+        'Próximos pasos: Informe preliminar'
+      ],
+      actaElaborada: false,
+      actaFirmada: false
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm text-gray-700 mb-1">Fecha *</label>
+        <input
+          type="date"
+          value={fecha}
+          onChange={(e) => setFecha(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-700 mb-1">Hora *</label>
+        <input
+          type="time"
+          value={hora}
+          onChange={(e) => setHora(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-700 mb-1">Modalidad *</label>
+        <select
+          value={modalidad}
+          onChange={(e) => setModalidad(e.target.value as any)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+        >
+          <option value="presencial">Presencial</option>
+          <option value="virtual">Virtual</option>
+          <option value="hibrida">Híbrida</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-700 mb-1">Lugar *</label>
+        <input
+          type="text"
+          value={lugar}
+          onChange={(e) => setLugar(e.target.value)}
+          placeholder={modalidad === 'virtual' ? 'Ej: Microsoft Teams' : 'Ej: Sala de Reuniones 301'}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+          required
+        />
+      </div>
+
+      <div className="flex gap-3 pt-4">
+        <ButtonSIGL variant="secondary" onClick={onCancelar} className="flex-1">
+          Cancelar
+        </ButtonSIGL>
+        <ButtonSIGL type="submit" variant="primary" className="flex-1">
+          <Calendar className="w-4 h-4 mr-2" />
+          Programar Reunión
+        </ButtonSIGL>
+      </div>
+    </form>
+  );
+}

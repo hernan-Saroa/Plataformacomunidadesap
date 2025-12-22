@@ -1566,7 +1566,7 @@ function ColumnaKanban({
     return (
       <motion.div 
         ref={drop} 
-        className={`flex-shrink-0`}
+        className={`flex-shrink-0 h-full`}
         initial={{ width: 64 }}
         animate={{ width: 64 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
@@ -1873,13 +1873,37 @@ export function DashboardKanbanOperativo({
       }
     } else if (item.tipo === 'proceso') {
       if (item.etapaActual !== nuevaEtapa) {
+        const etapaAnterior = item.etapaActual;
+        const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
+        
         setItems(prev => prev.map(i => 
           i.id === item.id && i.tipo === 'proceso'
-            ? { ...i, etapaActual: nuevaEtapa as any }
+            ? { 
+                ...i, 
+                etapaActual: nuevaEtapa as any,
+                ultimaModificacion: new Date()
+              }
             : i
         ));
+        
+        // Registrar en trazabilidad/historial
+        const eventoTrazabilidad = {
+          id: `evt-${Date.now()}`,
+          tipo: 'cambio-estado' as const,
+          titulo: `Cambio de etapa: ${etapaAnterior} → ${nuevaEtapa}`,
+          descripcion: `El proceso fue movido de "${etapaAnterior}" a "${nuevaEtapa}" mediante arrastrar y soltar`,
+          usuario: usuario,
+          fecha: new Date(),
+          procesoId: item.id,
+          etapaAnterior: etapaAnterior,
+          etapaNueva: nuevaEtapa
+        };
+        
+        // En producción, esto se guardaría en el backend
+        console.log('📋 Trazabilidad - Movimiento de proceso:', eventoTrazabilidad);
+        
         toast.success('Proceso Movido', {
-          description: `${item.numeroProceso} → ${nuevaEtapa}`
+          description: `${item.numeroProceso} → ${nuevaEtapa} (registrado en trazabilidad)`
         });
       }
     }

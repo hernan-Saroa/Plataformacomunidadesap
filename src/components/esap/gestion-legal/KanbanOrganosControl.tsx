@@ -495,10 +495,32 @@ export function KanbanOrganosControl() {
   );
 
   const handleDrop = (item: Requerimiento, nuevoEstado: EstadoRequerimiento) => {
+    const estadoAnterior = item.estado;
+    const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
+    
     setRequerimientos((prev) =>
       prev.map((req) => (req.id === item.id ? { ...req, estado: nuevoEstado, updatedAt: new Date() } : req))
     );
-    toast.success(`Requerimiento ${item.id} movido a ${nuevoEstado.replace('_', ' ')}`);
+    
+    // Registrar en trazabilidad/historial
+    const eventoTrazabilidad = {
+      id: `evt-${Date.now()}`,
+      tipo: 'cambio-estado' as const,
+      titulo: `Cambio de estado: ${estadoAnterior.replace('_', ' ')} → ${nuevoEstado.replace('_', ' ')}`,
+      descripcion: `El requerimiento fue movido de "${estadoAnterior.replace('_', ' ')}" a "${nuevoEstado.replace('_', ' ')}" mediante arrastrar y soltar`,
+      usuario: usuario,
+      fecha: new Date(),
+      requerimientoId: item.id,
+      estadoAnterior: estadoAnterior,
+      estadoNuevo: nuevoEstado
+    };
+    
+    // En producción, esto se guardaría en el backend
+    console.log('📋 Trazabilidad - Movimiento de requerimiento:', eventoTrazabilidad);
+    
+    toast.success(`Requerimiento ${item.id} movido a ${nuevoEstado.replace('_', ' ')}`, {
+      description: 'Cambio registrado en trazabilidad'
+    });
   };
 
   const handleActualizarEstado = (nuevoEstado: EstadoRequerimiento) => {

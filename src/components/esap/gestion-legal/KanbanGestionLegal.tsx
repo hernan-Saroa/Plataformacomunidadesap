@@ -331,17 +331,40 @@ export function KanbanGestionLegal({
       return;
     }
 
+    const estadoAnterior = caso.estado;
+    const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
+
     // Actualizar estado del caso
     setCasos((prev) =>
       prev.map((c) =>
-        c.id === casoArrastrado ? { ...c, estado: nuevoEstado } : c
+        c.id === casoArrastrado ? { 
+          ...c, 
+          estado: nuevoEstado,
+          ultimaModificacion: new Date()
+        } : c
       )
     );
 
     onActualizarCaso(casoArrastrado, nuevoEstado);
     
+    // Registrar en trazabilidad/historial
+    const eventoTrazabilidad = {
+      id: `evt-${Date.now()}`,
+      tipo: 'cambio-estado' as const,
+      titulo: `Cambio de estado: ${estadoAnterior} → ${nuevoEstado}`,
+      descripcion: `El caso fue movido de "${columnasBase.find(c => c.id === estadoAnterior)?.titulo}" a "${columnasBase.find(c => c.id === nuevoEstado)?.titulo}" mediante arrastrar y soltar`,
+      usuario: usuario,
+      fecha: new Date(),
+      casoId: caso.id,
+      estadoAnterior: estadoAnterior,
+      estadoNuevo: nuevoEstado
+    };
+    
+    // En producción, esto se guardaría en el backend
+    console.log('📋 Trazabilidad - Movimiento de caso:', eventoTrazabilidad);
+    
     toast.success(`Caso movido a "${columnasBase.find((c) => c.id === nuevoEstado)?.titulo}"`, {
-      description: `${caso.radicado} - ${caso.asunto}`,
+      description: `${caso.radicado} - Registrado en trazabilidad`,
     });
 
     setCasoArrastrado(null);
