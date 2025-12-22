@@ -5,7 +5,6 @@ import {
     UploadedFile,
     ParseFilePipe,
     MaxFileSizeValidator,
-    FileTypeValidator,
     Get,
     Param,
     Res,
@@ -39,9 +38,26 @@ export class FilesController {
                     cb(null, `${randomName}${extname(file.originalname)}`);
                 },
             }),
+            fileFilter: (req, file, cb) => {
+                const allowedMimes = [
+                    'application/pdf',
+                ];
+                const allowedExts = /\.(pdf)$/i;
+                if (allowedMimes.includes(file.mimetype) || allowedExts.test(file.originalname)) {
+                    cb(null, true);
+                    return;
+                }
+                cb(new HttpException('Tipo de archivo no permitido', HttpStatus.BAD_REQUEST), false);
+            },
         }),
     )
-    uploadFile(@UploadedFile() file: Express.Multer.File) {
+    uploadFile(
+        @UploadedFile(new ParseFilePipe({
+            validators: [
+                new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
+            ],
+        })) file: Express.Multer.File
+    ) {
         if (!file) {
             throw new HttpException('No file uploaded', HttpStatus.BAD_REQUEST);
         }

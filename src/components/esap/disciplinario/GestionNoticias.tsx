@@ -83,19 +83,23 @@ interface NoticiaDisciplinaria {
   fechaQueja: string;
   territorial: string;
   fechaRecepcion: string;
-  disciplinable: {
+  disciplinable: Array<{
     nombre: string;
     cargo: string;
     cedula?: string;
     email?: string;
     telefono?: string;
-  };
-  denunciado: {
+  }>;
+  denunciante?: Array<{
     nombre: string;
-    identificacion: string;
-    cargo: string;
-    dependencia: string;
-  };
+    cedula?: string;
+    email?: string;
+    telefono?: string;
+    direccion?: string;
+    cargo?: string;
+    dependencia?: string;
+    entidad?: string;
+  }>;
   estado: 'pendiente' | 'en-valoracion' | 'devuelto' | 'asignado' | 'convertido-proceso';
   estadoLabel: 'Pendiente' | 'En Valoración' | 'Devuelto' | 'Asignado' | 'Convertido a Proceso';
   etapa: string;
@@ -104,6 +108,7 @@ interface NoticiaDisciplinaria {
   fechaRegistro: string;
   conductas?: string[];
   descripcion?: string;
+  adjuntos?: string[];
   profesionalAsignado?: string;
   procesoAsociado?: string; // PD-YYYY-####
   historialAuditoria: AccionAuditoria[];
@@ -814,7 +819,7 @@ export function GestionNoticias() {
         id: news.id,
         numeroRadicado: news.radicado,
         origen: news.origen as any,
-        fechaQueja: news.createdAt,
+        fechaQueja: news.fechaQueja || news.createdAt,
         territorial: news.territorial,
         disciplinable: Array.isArray(news.disciplinable) ? news.disciplinable : (news.disciplinable ? [news.disciplinable] : []),
         denunciante: Array.isArray(news.denunciante) ? news.denunciante : (news.denunciante ? [news.denunciante] : []),
@@ -825,8 +830,9 @@ export function GestionNoticias() {
         diasTranscurridos: 0,
         radicador: 'Sistema',
         fechaRegistro: news.createdAt,
-        conductas: [],
+        conductas: news.conductas || [],
         descripcion: news.hechos,
+        adjuntos: (news as any).adjuntos || [],
         historialAuditoria: []
       }));
 
@@ -891,14 +897,16 @@ export function GestionNoticias() {
           'Remisión por competencia': 'REMISION'
         };
 
-        const denunciantesMapped = (data.denunciantes || []).map((d: any) => ({
-          nombre: d.nombre,
-          cedula: d.identificacion,
-          email: d.correo,
-          cargo: d.cargo,
-          telefono: d.telefono,
-          direccion: d.direccion
-        }));
+      const denunciantesMapped = (data.denunciantes || []).map((d: any) => ({
+        nombre: d.nombre,
+        cedula: d.identificacion,
+        email: d.correo,
+        cargo: d.cargo,
+        telefono: d.telefono,
+        direccion: d.direccion,
+        entidad: d.entidad,
+        dependencia: d.entidad
+      }));
 
         const disciplinablesMapped = (data.disciplinable || []).map((d: any) => ({
           nombre: d.nombre,
@@ -907,15 +915,17 @@ export function GestionNoticias() {
           dependencia: d.dependencia || d.cargo // Fallback
         }));
 
-        const createDto = {
-          origen: origenMap[data.origen] || 'ANONIMO',
-          territorial: data.territorial,
-          dependenciaDenunciado: data.dependenciaDenunciado || disciplinablesMapped[0]?.dependencia || 'Por determinar',
-          hechos: data.descripcionHechos,
-          denunciante: denunciantesMapped,
-          disciplinable: disciplinablesMapped,
-          adjuntos: uploadedUrls
-        };
+      const createDto = {
+        origen: origenMap[data.origen] || 'ANONIMO',
+        fechaQueja: data.fechaQueja,
+        territorial: data.territorial,
+        dependenciaDenunciado: data.dependenciaDenunciado || disciplinablesMapped[0]?.dependencia || 'Por determinar',
+        hechos: data.descripcionHechos,
+        conductas: Array.isArray(data.conductasSeleccionadas) ? data.conductasSeleccionadas : [],
+        denunciante: denunciantesMapped,
+        disciplinable: disciplinablesMapped,
+        adjuntos: uploadedUrls
+      };
 
         console.log('📝 Sending payload:', createDto);
         await disciplinaryService.radicarNoticia(createDto);

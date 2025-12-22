@@ -7,6 +7,7 @@ import {
   ValidateNested,
   IsUUID,
   IsArray,
+  IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { NewsOrigin } from '../entities/disciplinary-news.entity';
@@ -38,11 +39,19 @@ export class PersonInfoDto {
   @IsOptional()
   @IsString()
   dependencia?: string;
+
+  @IsOptional()
+  @IsString()
+  entidad?: string;
 }
 
 export class CreateDisciplinaryNewsDto {
   @IsEnum(NewsOrigin)
   origen: NewsOrigin;
+
+  @IsOptional()
+  @IsDateString()
+  fechaQueja?: string;
 
   @IsString()
   territorial: string;
@@ -68,6 +77,11 @@ export class CreateDisciplinaryNewsDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  conductas?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   adjuntos?: string[];
 }
 
@@ -75,12 +89,14 @@ export class DisciplinaryNewsResponseDto {
   id: string;
   radicado: string;
   fechaRecepcion: Date;
+  fechaQueja?: Date;
   origen: string;
   territorial: string;
   dependenciaDenunciado: string;
   denunciante: object;
   disciplinable: object;
   hechos: string;
+  conductas?: string[];
   estado: string;
   adjuntos: string[];
   updatedAt: Date;

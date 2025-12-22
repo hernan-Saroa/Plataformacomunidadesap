@@ -1,13 +1,13 @@
 /**
  * Disciplinary Service
- * Servicio para gestión de control disciplinario interno
+ * Servicio para gestion de control disciplinario interno
  *
  * Nota: Todos los endpoints van al servicio 'control-disciplinario' del API Gateway
  * URL: /control-disciplinario/api/v1/* -> internal-disciplinary-control-service:3005/*
  */
 
 import { apiClient } from './apiClient';
-import { buildApiUrl } from '../../config/environment';
+import { API_MODE, MICROSERVICE_URLS, buildApiUrl, getServiceUrl } from '../../config/environment';
 
 // Prefijo del servicio en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
@@ -21,22 +21,31 @@ export interface DisciplinaryNews {
     id: string;
     radicado: string;
     origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
+    fechaQueja?: string;
+    fechaRecepcion?: string;
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
-    denunciante: {
+    conductas?: string[];
+    adjuntos?: string[];
+    denunciante: Array<{
         nombre: string;
         email: string;
         telefono?: string;
         direccion?: string;
-    };
-    disciplinable: {
+        cargo?: string;
+        cedula?: string;
+        dependencia?: string;
+        entidad?: string;
+    }>;
+    disciplinable: Array<{
         nombre: string;
         cargo: string;
         cedula?: string;
         email?: string;
         telefono?: string;
-    };
+        dependencia?: string;
+    }>;
     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
     createdAt: string;
     updatedAt: string;
@@ -46,6 +55,8 @@ export interface DisciplinaryProcess {
     id: string;
     radicadoProceso: string;
     etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO';
+    kanbanStage?: string;
+    kanbanNotice?: string;
     estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
     abogadoAsignadoId: string;
     abogadoAsignadoNombre: string; // Backend might need to return this or we fetch it
@@ -61,19 +72,28 @@ export interface LegalAuto {
     id: string;
     tipo: string;
     contenido: string;
-    estado: 'BORRADOR' | 'REVISION_JEFE' | 'APROBADO' | 'FIRMADO';
+    estado: 'BORRADOR' | 'REVISION_JEFE' | 'APROBADO' | 'FIRMADO' | 'DEVUELTO' | 'NOTIFICADO';
     firmaUrl?: string;
+    numero?: string;
+    documentUrl?: string;
+    documentName?: string;
+    documentType?: string;
+    documentSize?: number;
+    comentarios?: string;
     processId: string;
     createdAt: string;
 }
 
 export interface CreateNewsDto {
     origen: string;
+    fechaQueja?: string;
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
-    denunciante: any;
-    disciplinable: any;
+    conductas?: string[];
+    adjuntos?: string[];
+    denunciante: any[];
+    disciplinable: any[];
 }
 
 export interface AssignProcessDto {
@@ -87,6 +107,11 @@ export interface CreateAutoDto {
     tipoAuto: string;
     contenidoHtml: string;
     comentarios?: string;
+    numero?: string;
+    documentUrl?: string;
+    documentName?: string;
+    documentType?: string;
+    documentSize?: number;
 }
 
 export interface DocumentoExpediente {
@@ -141,8 +166,12 @@ class DisciplinaryService {
         return apiClient.post<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/assign`, data);
     }
 
-    async cambiarEtapa(id: string, nuevaEtapa: string): Promise<DisciplinaryProcess> {
-        return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/stage`, { stage: nuevaEtapa });
+    async cambiarEtapa(id: string, nuevaEtapa: string, kanbanStage?: string, kanbanNotice?: string): Promise<DisciplinaryProcess> {
+        return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/stage`, {
+            stage: nuevaEtapa,
+            kanbanStage,
+            kanbanNotice,
+        });
     }
 
     async getStats(): Promise<{ procesosActivos: number; proximosAVencer: number; vencidos: number; profesionales: number }> {
@@ -170,6 +199,10 @@ class DisciplinaryService {
         nombre?: string,
         etapa?: string,
         usuarioCarga?: string,
+        categoria?: string,
+        destinatario?: string,
+        asunto?: string,
+        participantes?: number,
     ): Promise<{ message: string; url: string; filename: string }> {
         const formData = new FormData();
         formData.append('file', file);
@@ -178,6 +211,12 @@ class DisciplinaryService {
         if (nombre) formData.append('nombre', nombre);
         if (etapa) formData.append('etapa', etapa);
         if (usuarioCarga) formData.append('usuarioCarga', usuarioCarga);
+        if (categoria) formData.append('categoria', categoria);
+        if (destinatario) formData.append('destinatario', destinatario);
+        if (asunto) formData.append('asunto', asunto);
+        if (participantes !== undefined) {
+            formData.append('participantes', String(participantes));
+        }
 
         return apiClient.upload<{ message: string; url: string; filename: string }>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
@@ -202,16 +241,16 @@ class DisciplinaryService {
      * Descargar documento del expediente
      */
     async downloadDocument(processId: string, documentId: string, filename: string): Promise<void> {
-        // Construir URL usando buildApiUrl para respetar el modo de conexión (gateway/direct)
+        // Construir URL usando buildApiUrl para respetar el modo de conexion (gateway/direct)
         const endpoint = `/api/v1/disciplinary-processes/${processId}/documents/${documentId}/download`;
         const url = buildApiUrl('control-disciplinario', endpoint);
-        
-        // Obtener token de autenticación
+
+        // Obtener token de autenticacion
         const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/octet-stream',
         };
-        
+
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
@@ -245,12 +284,35 @@ class DisciplinaryService {
     }
 
     /**
+     * Eliminar documento del expediente
+     */
+    async deleteDocumento(processId: string, documentId: string): Promise<void> {
+        return apiClient.delete<void>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents/${documentId}`
+        );
+    }
+
+    /**
      * Obtener URL para descargar documento
      */
     getDocumentoUrl(urlRelativa: string): string {
         // La URL relativa viene del backend, necesitamos construir la URL completa
-        // Por ahora asumimos que está en el mismo dominio
+        // Por ahora asumimos que esta en el mismo dominio
         return `${window.location.origin}/control-disciplinario/api/v1/files/${urlRelativa}`;
+    }
+
+    /**
+     * Obtener URL completa para archivos adjuntos de noticias
+     */
+    getFileUrl(urlRelativa: string): string {
+        if (!urlRelativa) return '';
+        if (/^https?:\/\//i.test(urlRelativa)) return urlRelativa;
+
+        const normalized = urlRelativa.startsWith('/') ? urlRelativa : `/${urlRelativa}`;
+        if (API_MODE === 'direct') {
+            return `${MICROSERVICE_URLS['control-disciplinario']}${normalized}`;
+        }
+        return `${getServiceUrl('control-disciplinario')}${SERVICE_PREFIX}${normalized}`;
     }
 
     // --- AUTOS ---
@@ -267,12 +329,21 @@ class DisciplinaryService {
         return apiClient.post<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos`, data);
     }
 
+    async deleteAuto(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-autos/${id}`);
+    }
+
     async updateAutoContent(id: string, contenidoHtml: string): Promise<LegalAuto> {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/content`, { contenidoHtml });
     }
 
     async updateProcess(id: string, data: Partial<DisciplinaryProcess> & { abogadoId?: string; hechos?: string; disciplinable?: any }): Promise<DisciplinaryProcess> {
         return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}`, data);
+    }
+
+    async getProcesoByRadicado(radicado: string): Promise<DisciplinaryProcess> {
+        const safeRadicado = encodeURIComponent(radicado);
+        return apiClient.get<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/by-radicado/${safeRadicado}`);
     }
 
     async sendToReview(id: string): Promise<LegalAuto> {
@@ -336,7 +407,7 @@ class DisciplinaryService {
         return apiClient.upload<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData);
     }
 
-    // ==================== CONFIGURACIÓN ====================
+    // ==================== CONFIGURACION ====================
     async getStageConfiguration() {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/configuration/stages`);
     }

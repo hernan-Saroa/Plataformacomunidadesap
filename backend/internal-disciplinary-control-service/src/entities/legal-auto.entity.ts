@@ -13,7 +13,13 @@ import { AutoVersion } from './auto-version.entity';
 
 export enum AutoType {
   AUTO_APERTURA = 'AUTO_APERTURA',
+  AUTO_INDAGACION_PRELIMINAR = 'AUTO_INDAGACION_PRELIMINAR',
+  AUTO_APERTURA_INVESTIGACION = 'AUTO_APERTURA_INVESTIGACION',
+  AUTO_FORMULACION_PLIEGO = 'AUTO_FORMULACION_PLIEGO',
+  AUTO_CIERRE = 'AUTO_CIERRE',
   AUTO_ARCHIVO = 'AUTO_ARCHIVO',
+  FALLO_SANCION = 'FALLO_SANCION',
+  FALLO_ABSOLUTORIO = 'FALLO_ABSOLUTORIO',
   PLIEGO_CARGOS = 'PLIEGO_CARGOS',
   AUTO_APERTURA_INDAGACION = 'AUTO_APERTURA_INDAGACION',
   RESOLUCION = 'RESOLUCION',
@@ -49,6 +55,9 @@ export class LegalAuto {
   })
   tipo: AutoType;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  numero: string;
+
   @Column({ type: 'text' })
   contenido: string; // HTML/Rich Text
 
@@ -61,6 +70,18 @@ export class LegalAuto {
 
   @Column({ type: 'text', nullable: true })
   firmaUrl: string; // URL del PDF firmado
+
+  @Column({ type: 'text', nullable: true })
+  documentUrl: string;
+
+  @Column({ type: 'text', nullable: true })
+  documentName: string;
+
+  @Column({ type: 'text', nullable: true })
+  documentType: string;
+
+  @Column({ type: 'int', nullable: true })
+  documentSize: number;
 
   @Column({ type: 'timestamp', nullable: true })
   notificationDate: Date;

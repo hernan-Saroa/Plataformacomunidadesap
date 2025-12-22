@@ -30,6 +30,7 @@ export interface PersonInfo {
   telefono?: string;
   direccion?: string;
   dependencia?: string;
+  entidad?: string;
 }
 
 @Entity('disciplinary_news')
@@ -42,6 +43,9 @@ export class DisciplinaryNews {
 
   @CreateDateColumn()
   fechaRecepcion: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  fechaQueja?: Date;
 
   @Column({
     type: 'enum',
@@ -63,6 +67,9 @@ export class DisciplinaryNews {
 
   @Column({ type: 'text' })
   hechos: string;
+
+  @Column({ type: 'text', array: true, nullable: true })
+  conductas?: string[];
 
   @Column({
     type: 'enum',

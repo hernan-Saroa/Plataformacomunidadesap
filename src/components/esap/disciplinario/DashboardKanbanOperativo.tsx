@@ -27,6 +27,7 @@ import { toast } from 'sonner@2.0.3';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { EditorDocumentos } from './EditorDocumentos';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
+import { PLANTILLAS_MOCK } from './GestionProcesosProfesionalesIntegrado';
 import {
   ModalGestionAutos,
   ModalGestionEvidencias,
@@ -45,14 +46,32 @@ interface Persona {
   numeroIdentificacion: string;
 }
 
+interface NoticiaPersonaDetalle {
+  nombre: string;
+  cedula?: string;
+  cargo?: string;
+  dependencia?: string;
+  email?: string;
+  telefono?: string;
+  direccion?: string;
+  entidad?: string;
+}
+
 interface Noticia {
   id: string;
   numero: string;
   fechaRecepcion: string;
+  fechaQueja?: string;
   origen: string;
+  territorial?: string;
+  dependenciaDenunciado?: string;
   denunciante: Persona;
   denunciado: Persona;
+  denunciantes?: NoticiaPersonaDetalle[];
+  disciplinables?: NoticiaPersonaDetalle[];
   hechos: string;
+  conductas?: string[];
+  adjuntos?: string[];
   estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada';
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
@@ -104,6 +123,18 @@ type ModalType =
   | 'expediente-completo'
   | 'comentarios-proceso'
   | null;
+
+const normalizeEtapa = (valor?: string) => {
+  if (!valor) return '';
+  return valor
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase();
+};
+
+const isUuid = (value?: string) => !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 // ==================== MOCK DATA ====================
 const NOTICIAS_MOCK: Noticia[] = [
@@ -926,9 +957,11 @@ function VistaLista({
           ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
           : (item as Proceso).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    const matchEtapa = filtroEtapa === 'todos' || 
-      (item.tipo === 'noticia' && filtroEtapa === 'Recepción') ||
-      (item.tipo === 'proceso' && (item as Proceso).etapaActual === filtroEtapa);
+    const etapaItem = item.tipo === 'noticia'
+      ? normalizeEtapa((item as any).etapaActual || 'Recepcion')
+      : normalizeEtapa((item as Proceso).etapaActual);
+    const etapaFiltro = normalizeEtapa(filtroEtapa);
+    const matchEtapa = filtroEtapa === 'todos' || etapaItem === etapaFiltro;
     
     return matchSearch && matchEtapa;
   });
@@ -1549,10 +1582,10 @@ function ColumnaKanban({
 
   const itemsFiltrados = items.filter(item => {
     if (item.tipo === 'noticia') {
-      const etapaItem = (item as any).etapaActual || 'Recepción';
-      return etapa === etapaItem;
+      const etapaItem = normalizeEtapa((item as any).etapaActual || 'Recepcion');
+      return normalizeEtapa(etapa) === etapaItem;
     }
-    return item.tipo === 'proceso' && item.etapaActual === etapa;
+    return item.tipo === 'proceso' && normalizeEtapa(item.etapaActual) === normalizeEtapa(etapa);
   });
 
   const noticias = itemsFiltrados.filter(i => i.tipo === 'noticia') as Noticia[];
@@ -1818,6 +1851,9 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [areaDestinoRemision, setAreaDestinoRemision] = useState('');
+  const [documentosPorProceso, setDocumentosPorProceso] = useState<Record<string, any[]>>({});
+  const [borradoresPorProceso, setBorradoresPorProceso] = useState<Record<string, any[]>>({});
+  const [plantillaEditor, setPlantillaEditor] = useState<any>(PLANTILLAS_MOCK?.[0] || null);
   const STORAGE_KEY = 'kanban-disciplinario-items';
 
   const persistItems = (data: Item[]) => {
@@ -1867,58 +1903,99 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     const dias = Math.max(1, Math.ceil((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24)));
     const denuncianteFuente: any = (noticia as any).denunciante;
     const disciplinableFuente: any = (noticia as any).disciplinable || (noticia as any).denunciado;
-    const denuncianteRaw: any = Array.isArray(denuncianteFuente) ? (denuncianteFuente[0] || {}) : (denuncianteFuente || {});
-    const denunciadoRaw: any = Array.isArray(disciplinableFuente) ? (disciplinableFuente[0] || {}) : (disciplinableFuente || {});
+    const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
+    const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
+    const denuncianteRaw: any = denuncianteList[0] || {};
+    const denunciadoRaw: any = disciplinableList[0] || {};
+    const fechaQuejaRaw = (noticia as any).fechaQueja;
+    const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
+
+    const mapDetalle = (rawItem: any): NoticiaPersonaDetalle => ({
+      nombre: rawItem.nombre || 'Sin nombre',
+      cedula: rawItem.cedula || rawItem.numeroIdentificacion || rawItem.identificacion,
+      cargo: rawItem.cargo,
+      dependencia: rawItem.dependencia,
+      email: rawItem.email,
+      telefono: rawItem.telefono,
+      direccion: rawItem.direccion,
+      entidad: rawItem.entidad
+    });
 
     return {
       id: (noticia as any).id || `n${Date.now()}`,
       numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
       fechaRecepcion: fecha.toISOString().split('T')[0],
+      fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
       origen: (noticia as any).origen || 'Noticia',
+      territorial: (noticia as any).territorial,
+      dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
       denunciante: {
         nombre: denuncianteRaw.nombre || 'Sin denunciante',
         tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.telefono || 'N/A'
+        numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || denuncianteRaw.telefono || 'N/A'
       },
       denunciado: {
         nombre: denunciadoRaw.nombre || 'Sin disciplinable',
         tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || 'N/A'
+        numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || denunciadoRaw.identificacion || 'N/A'
       },
+      denunciantes: denuncianteList.map(mapDetalle),
+      disciplinables: disciplinableList.map(mapDetalle),
       hechos: (noticia as any).hechos || '',
+      conductas: (noticia as any).conductas || [],
+      adjuntos: (noticia as any).adjuntos || [],
       estado: mapEstadoNoticia((noticia as any).estado) as any,
       prioridad: (noticia as any).prioridad || 'media',
       diasPendientes: (noticia as any).diasPendientes ?? dias,
       tipo: 'noticia',
-      etapaActual: (noticia as any).etapaActual || 'Recepción'
+      etapaActual: (noticia as any).etapaActual || 'Recepcion'
     };
   };
 
   const normalizeNoticia = (raw: any): Noticia => {
-    // Si ya es una noticia bien formada, aplicar normalización defensiva
-    const denuncianteFuente = raw.denunciante;
-    const disciplinableFuente = raw.disciplinable || raw.denunciado;
-    const denuncianteRaw = Array.isArray(denuncianteFuente) ? (denuncianteFuente[0] || {}) : (denuncianteFuente || {});
-    const denunciadoRaw = Array.isArray(disciplinableFuente) ? (disciplinableFuente[0] || {}) : (disciplinableFuente || {});
+    // Si ya es una noticia bien formada, aplicar normalizacion defensiva
+    const denuncianteFuente = raw.denunciantes || raw.denunciante;
+    const disciplinableFuente = raw.disciplinables || raw.disciplinable || raw.denunciado;
+    const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
+    const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
+    const denuncianteRaw = denuncianteList[0] || {};
+    const denunciadoRaw = disciplinableList[0] || {};
+
+    const mapDetalle = (item: any): NoticiaPersonaDetalle => ({
+      nombre: item.nombre || 'Sin nombre',
+      cedula: item.cedula || item.numeroIdentificacion || item.identificacion,
+      cargo: item.cargo,
+      dependencia: item.dependencia,
+      email: item.email,
+      telefono: item.telefono,
+      direccion: item.direccion,
+      entidad: item.entidad
+    });
 
     return {
       ...raw,
       tipo: raw.tipo || 'noticia',
+      fechaQueja: raw.fechaQueja || raw.fechaRecepcion,
+      territorial: raw.territorial,
+      dependenciaDenunciado: raw.dependenciaDenunciado,
+      denunciantes: denuncianteList.map(mapDetalle),
+      disciplinables: disciplinableList.map(mapDetalle),
       denunciante: {
         nombre: denuncianteRaw.nombre || 'Sin nombre',
         tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denuncianteRaw.numeroIdentificacion || denuncianteRaw.cedula || 'Sin identificación'
+        numeroIdentificacion: denuncianteRaw.numeroIdentificacion || denuncianteRaw.cedula || denuncianteRaw.identificacion || 'Sin identificacion'
       },
       denunciado: {
         nombre: denunciadoRaw.nombre || raw.disciplinable?.nombre || 'Sin nombre',
         tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denunciadoRaw.numeroIdentificacion || denunciadoRaw.cedula || raw.disciplinable?.cedula || 'Sin identificación',
+        numeroIdentificacion: denunciadoRaw.numeroIdentificacion || denunciadoRaw.cedula || denunciadoRaw.identificacion || raw.disciplinable?.cedula || 'Sin identificacion',
         cargo: denunciadoRaw.cargo || raw.disciplinable?.cargo || 'Sin cargo'
       },
-      hechos: raw.hechos || '',
+      hechos: raw.hechos || raw.descripcionHechos || '',
+      conductas: raw.conductas || raw.conductasSeleccionadas || [],
       prioridad: raw.prioridad || 'media',
       diasPendientes: raw.diasPendientes || 0,
-      etapaActual: raw.etapaActual || 'Recepción',
+      etapaActual: raw.etapaActual || 'Recepcion',
       estado: raw.estado || 'pendiente',
       adjuntos: raw.adjuntos || []
     };
@@ -1937,22 +2014,28 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       ? 'rojo'
       : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
     const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
+    const denuncianteData = Array.isArray(proceso.news?.denunciante)
+      ? proceso.news?.denunciante?.[0]
+      : proceso.news?.denunciante;
+    const disciplinableData = Array.isArray(proceso.news?.disciplinable)
+      ? proceso.news?.disciplinable?.[0]
+      : proceso.news?.disciplinable;
 
     return {
       id: proceso.id,
       numeroProceso: proceso.radicadoProceso,
       noticiaOrigen: proceso.news?.radicado || 'N/A',
       denunciante: {
-        nombre: proceso.news?.denunciante?.nombre || 'Sin denunciante',
+        nombre: (denuncianteData as any)?.nombre || 'Sin denunciante',
         tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso.news?.denunciante as any)?.cedula || 'N/A'
+        numeroIdentificacion: (denuncianteData as any)?.cedula || 'N/A'
       },
       denunciado: {
-        nombre: proceso.news?.disciplinable?.nombre || 'Sin disciplinable',
+        nombre: (disciplinableData as any)?.nombre || 'Sin disciplinable',
         tipoIdentificacion: 'CC',
-        numeroIdentificacion: proceso.news?.disciplinable?.cedula || 'N/A'
+        numeroIdentificacion: (disciplinableData as any)?.cedula || 'N/A'
       },
-      cedula: proceso.news?.disciplinable?.cedula || 'N/A',
+      cedula: (disciplinableData as any)?.cedula || 'N/A',
       etapaActual: etapa as any,
       estadoActual: proceso.estado || 'ACTIVO',
       profesionalAsignado: {
@@ -2104,6 +2187,11 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     if (item.tipo === 'proceso') {
       const backendStage = etapaMap[nuevaEtapa];
       if (backendStage) {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.id);
+        if (!isUuid) {
+          toast.info('Proceso demo', { description: 'No se actualiza en el servidor' });
+          return;
+        }
         try {
           await disciplinaryService.cambiarEtapa(item.id, backendStage);
           toast.success('Proceso Movido', {
@@ -2122,7 +2210,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   };
 
   const handleCrearNoticia = async (data: any) => {
-    const denuncianteFromForm = data.denunciantes?.[0] || {};
+    const denuncianteListFromForm = Array.isArray(data.denunciantes) ? data.denunciantes : [];
     const disciplinablesFromForm = Array.isArray(data.disciplinable) ? data.disciplinable : [];
     const denunciadoFromForm = disciplinablesFromForm[0] || data.denunciado || {};
 
@@ -2158,37 +2246,46 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
         }
       }
 
-      const emailDen = (denuncianteFromForm.correo || denuncianteFromForm.email || '').trim();
-      const denunciantePayload: any = {
-        nombre: denuncianteFromForm.nombre || 'Sin denunciante',
-        cedula: denuncianteFromForm.identificacion || denuncianteFromForm.numeroIdentificacion || 'N/A',
-        cargo: denuncianteFromForm.cargo,
-      };
-      if (emailDen && emailDen.includes('@')) {
-        denunciantePayload.email = emailDen;
-      }
+        const buildDenunciantePayload = (item: any) => {
+          const email = (item.correo || item.email || '').trim();
+          const payload: any = {
+            nombre: item.nombre || 'Sin denunciante',
+            cedula: item.identificacion || item.numeroIdentificacion || 'N/A',
+            cargo: item.cargo,
+            telefono: item.telefono,
+            direccion: item.direccion,
+            entidad: item.entidad,
+            dependencia: item.entidad
+          };
+          if (email && email.includes('@')) {
+            payload.email = email;
+          }
+          return payload;
+        };
 
-      const payload = {
-        origen: mapearOrigenNoticia(data.origen || 'QUEJOSO'),
-        territorial: data.territorial || 'Dirección Nacional',
-        dependenciaDenunciado: denunciadoFromForm.dependencia || 'Por determinar',
-        hechos: data.descripcionHechos || '',
-        denunciante: [denunciantePayload],
-        disciplinable: disciplinablesFromForm.length > 0
-          ? disciplinablesFromForm.map((d: any) => ({
-            nombre: d.nombre || 'Sin denunciado',
-            cedula: d.identificacion || d.numeroIdentificacion || 'N/A',
-            cargo: d.cargo,
-            dependencia: d.dependencia
-          }))
-          : [{
-            nombre: denunciadoFromForm.nombre || 'Sin denunciado',
-            cedula: denunciadoFromForm.identificacion || denunciadoFromForm.numeroIdentificacion || 'N/A',
-            cargo: denunciadoFromForm.cargo,
-            dependencia: denunciadoFromForm.dependencia
-          }],
-        adjuntos: urls,
-      };
+        const payload = {
+          origen: mapearOrigenNoticia(data.origen || 'QUEJOSO'),
+          fechaQueja: data.fechaQueja || undefined,
+          territorial: data.territorial || 'Direccion Nacional',
+          dependenciaDenunciado: denunciadoFromForm.dependencia || 'Por determinar',
+          hechos: data.descripcionHechos || '',
+          conductas: Array.isArray(data.conductasSeleccionadas) ? data.conductasSeleccionadas : [],
+          denunciante: denuncianteListFromForm.map(buildDenunciantePayload),
+          disciplinable: disciplinablesFromForm.length > 0
+            ? disciplinablesFromForm.map((d: any) => ({
+              nombre: d.nombre || 'Sin denunciado',
+              cedula: d.identificacion || d.numeroIdentificacion || 'N/A',
+              cargo: d.cargo,
+              dependencia: d.dependencia
+            }))
+            : [{
+              nombre: denunciadoFromForm.nombre || 'Sin denunciado',
+              cedula: denunciadoFromForm.identificacion || denunciadoFromForm.numeroIdentificacion || 'N/A',
+              cargo: denunciadoFromForm.cargo,
+              dependencia: denunciadoFromForm.dependencia
+            }],
+          adjuntos: urls,
+        };
 
       const apiNoticia = await disciplinaryService.radicarNoticia(payload as any);
       let nuevaNoticia = normalizeNoticia(apiNoticia);
@@ -2758,6 +2855,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
             const itemSeguro = (itemSeleccionado.denunciante && itemSeleccionado.denunciado)
               ? itemSeleccionado
               : normalizeNoticia(itemSeleccionado);
+            const noticiaDetalle = itemSeguro as Noticia;
 
             return (
             <motion.div
@@ -3067,82 +3165,176 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                       {/* VISTA PARA NOTICIAS */}
                       {itemSeguro.tipo === 'noticia' && (
                         <>
-                          {/* Información de la Noticia */}
+                          {/* Informacion de la Noticia */}
                           <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
-                            <h4 className="font-bold text-orange-900 mb-2">{(itemSeguro as Noticia).numero}</h4>
+                            <h4 className="font-bold text-orange-900 mb-2">{noticiaDetalle.numero}</h4>
                             <div className="grid grid-cols-2 gap-2 text-sm">
                               <div>
                                 <p className="text-gray-600">Origen:</p>
-                                <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).origen}</p>
+                                <p className="font-bold text-gray-900">{noticiaDetalle.origen}</p>
                               </div>
                               <div>
-                                <p className="text-gray-600">Fecha Recepción:</p>
-                                <p className="font-bold text-gray-900">{new Date((itemSeleccionado as Noticia).fechaRecepcion).toLocaleDateString('es-CO')}</p>
+                                <p className="text-gray-600">Fecha Recepcion:</p>
+                                <p className="font-bold text-gray-900">
+                                  {new Date(noticiaDetalle.fechaRecepcion).toLocaleDateString('es-CO')}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-600">Fecha Queja:</p>
+                                <p className="font-bold text-gray-900">
+                                  {noticiaDetalle.fechaQueja
+                                    ? new Date(noticiaDetalle.fechaQueja).toLocaleDateString('es-CO')
+                                    : 'N/A'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-600">Territorial:</p>
+                                <p className="font-bold text-gray-900">{noticiaDetalle.territorial || 'N/A'}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-600">Dependencia:</p>
+                                <p className="font-bold text-gray-900">{noticiaDetalle.dependenciaDenunciado || 'N/A'}</p>
                               </div>
                               <div>
                                 <p className="text-gray-600">Estado:</p>
-                                <p className="font-bold text-gray-900 capitalize">{(itemSeleccionado as Noticia).estado.replace('-', ' ')}</p>
+                                <p className="font-bold text-gray-900 capitalize">{noticiaDetalle.estado.replace('-', ' ')}</p>
                               </div>
                               <div>
                                 <p className="text-gray-600">Prioridad:</p>
                                 <p className={`font-bold ${
-                                  (itemSeleccionado as Noticia).prioridad === 'alta' ? 'text-red-600' :
-                                  (itemSeleccionado as Noticia).prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
-                                } capitalize`}>{(itemSeleccionado as Noticia).prioridad}</p>
+                                  noticiaDetalle.prioridad === 'alta' ? 'text-red-600' :
+                                  noticiaDetalle.prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
+                                } capitalize`}>{noticiaDetalle.prioridad}</p>
                               </div>
                               <div>
-                                <p className="text-gray-600">Días Pendientes:</p>
-                                <p className="font-bold text-orange-600">{(itemSeleccionado as Noticia).diasPendientes} días</p>
+                                <p className="text-gray-600">Dias Pendientes:</p>
+                                <p className="font-bold text-orange-600">{noticiaDetalle.diasPendientes} dias</p>
                               </div>
                             </div>
                           </div>
 
-                          {/* Denunciante */}
+                          {/* Denunciantes */}
                           <div>
                             <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              👤 DENUNCIANTE
+                              DENUNCIANTES
                             </h5>
-                            <div className="p-3 bg-gray-50 rounded-lg space-y-1">
-                              {(() => {
-                                const den = (itemSeleccionado as Noticia).denunciante || { nombre: 'Sin denunciante', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
-                                return (
-                                  <>
+                            {noticiaDetalle.denunciantes && noticiaDetalle.denunciantes.length > 0 ? (
+                              <div className="space-y-2">
+                                {noticiaDetalle.denunciantes.map((den, idx) => (
+                                  <div key={idx} className="p-3 bg-gray-50 rounded-lg">
                                     <p className="font-bold text-gray-900">{den.nombre}</p>
-                                    <p className="text-sm text-gray-600">
-                                      <span className="font-semibold">{den.tipoIdentificacion}:</span> {den.numeroIdentificacion}
-                                    </p>
-                                  </>
-                                );
-                              })()}
-                            </div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mt-1">
+                                      <p>CC: {den.cedula || 'N/A'}</p>
+                                      {den.cargo && <p>Cargo: {den.cargo}</p>}
+                                      {den.entidad && <p>Entidad: {den.entidad}</p>}
+                                      {den.dependencia && !den.entidad && <p>Dependencia: {den.dependencia}</p>}
+                                      {den.telefono && <p>Telefono: {den.telefono}</p>}
+                                      {den.email && <p>Correo: {den.email}</p>}
+                                    </div>
+                                    {den.direccion && (
+                                      <p className="text-xs text-gray-600 mt-1">Direccion: {den.direccion}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm text-gray-600">Sin denunciante registrado</p>
+                              </div>
+                            )}
                           </div>
 
-                          {/* Denunciado */}
+                          {/* Disciplinables */}
                           <div>
                             <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              ⚠️ DENUNCIADO
+                              DENUNCIADOS
                             </h5>
-                            <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
-                              {(() => {
-                                const den = (itemSeleccionado as Noticia).denunciado || { nombre: 'Sin denunciado', tipoIdentificacion: 'CC', numeroIdentificacion: 'N/A' };
-                                return (
-                                  <>
+                            {noticiaDetalle.disciplinables && noticiaDetalle.disciplinables.length > 0 ? (
+                              <div className="space-y-2">
+                                {noticiaDetalle.disciplinables.map((den, idx) => (
+                                  <div key={idx} className="p-3 bg-red-50 rounded-lg border border-red-200">
                                     <p className="font-bold text-gray-900">{den.nombre}</p>
-                                    <p className="text-sm text-gray-600">
-                                      <span className="font-semibold">{den.tipoIdentificacion}:</span> {den.numeroIdentificacion}
-                                    </p>
-                                  </>
-                                );
-                              })()}
-                            </div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mt-1">
+                                      <p>CC: {den.cedula || 'N/A'}</p>
+                                      {den.cargo && <p>Cargo: {den.cargo}</p>}
+                                      {den.dependencia && <p>Dependencia: {den.dependencia}</p>}
+                                      {den.telefono && <p>Telefono: {den.telefono}</p>}
+                                      {den.email && <p>Correo: {den.email}</p>}
+                                    </div>
+                                    {den.direccion && (
+                                      <p className="text-xs text-gray-600 mt-1">Direccion: {den.direccion}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+                                <p className="text-sm text-gray-600">Sin denunciado registrado</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Conductas */}
+                          <div>
+                            <h5 className="text-sm font-bold text-gray-700 mb-2">CONDUCTAS</h5>
+                            {noticiaDetalle.conductas && noticiaDetalle.conductas.length > 0 ? (
+                              <div className="flex flex-wrap gap-2">
+                                {noticiaDetalle.conductas.map((conducta, idx) => (
+                                  <span key={idx} className="px-3 py-1 bg-orange-100 text-orange-800 text-xs font-semibold rounded-full">
+                                    {conducta}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm text-gray-600">Sin conductas registradas</p>
+                              </div>
+                            )}
                           </div>
 
                           {/* Hechos */}
                           <div>
                             <h5 className="text-sm font-bold text-gray-700 mb-2">HECHOS</h5>
                             <div className="p-3 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-700">{(itemSeleccionado as Noticia).hechos}</p>
+                              <p className="text-sm text-gray-700">{noticiaDetalle.hechos || 'Sin descripcion'}</p>
                             </div>
+                          </div>
+
+                          {/* Adjuntos */}
+                          <div>
+                            <h5 className="text-sm font-bold text-gray-700 mb-2">ARCHIVOS ADJUNTOS</h5>
+                            {noticiaDetalle.adjuntos && noticiaDetalle.adjuntos.length > 0 ? (
+                              <div className="space-y-2">
+                                {noticiaDetalle.adjuntos.map((archivo, idx) => {
+                                  const nombre = archivo.split('/').pop() || `Archivo ${idx + 1}`;
+                                  const ext = nombre.includes('.') ? nombre.split('.').pop() || '' : '';
+                                  const tipo = ext ? ext.toUpperCase() : 'ARCHIVO';
+                                  const descargaUrl = disciplinaryService.getFileUrl(archivo);
+                                  return (
+                                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <Paperclip className="w-4 h-4 text-gray-500" />
+                                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white border border-gray-200 text-gray-600">
+                                          {tipo}
+                                        </span>
+                                        <span className="text-sm text-gray-800 truncate">{nombre}</span>
+                                      </div>
+                                      <a
+                                        href={descargaUrl}
+                                        download
+                                        className="text-sm font-semibold text-blue-700 hover:text-blue-800"
+                                      >
+                                        Descargar
+                                      </a>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm text-gray-600">Sin adjuntos</p>
+                              </div>
+                            )}
                           </div>
                         </>
                       )}
@@ -3563,7 +3755,3 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     </DndProvider>
   );
 }
-
-
-
-

@@ -175,6 +175,14 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
     }
   };
 
+  const setFechaQuejaMode = (usarAuto: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      usarFechaActual: usarAuto,
+      fechaQueja: usarAuto ? new Date().toISOString().split('T')[0] : prev.fechaQueja
+    }));
+  };
+
   const handleConductaToggle = (conducta: string) => {
     const isSelected = formData.conductasSeleccionadas.includes(conducta);
     if (isSelected) {
@@ -430,16 +438,17 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                   Fecha de la Queja *
                 </label>
                 <div className="space-y-3">
-                  <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50"
+                  <label
+                    className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50"
+                    onClick={() => setFechaQuejaMode(true)}
                     style={{ borderColor: formData.usarFechaActual ? '#003DA5' : '#D1D5DB' }}
                   >
                     <input
                       type="radio"
+                      name="fechaQuejaMode"
+                      value="auto"
                       checked={formData.usarFechaActual}
-                      onChange={() => {
-                        handleChange('usarFechaActual', true);
-                        handleChange('fechaQueja', new Date().toISOString().split('T')[0]);
-                      }}
+                      onChange={() => setFechaQuejaMode(true)}
                     />
                     <div>
                       <p className="font-medium text-gray-900">Fecha actual (automática)</p>
@@ -447,13 +456,17 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                     </div>
                   </label>
 
-                  <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50"
+                  <label
+                    className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50"
+                    onClick={() => setFechaQuejaMode(false)}
                     style={{ borderColor: !formData.usarFechaActual ? '#003DA5' : '#D1D5DB' }}
                   >
                     <input
                       type="radio"
+                      name="fechaQuejaMode"
+                      value="manual"
                       checked={!formData.usarFechaActual}
-                      onChange={() => handleChange('usarFechaActual', false)}
+                      onChange={() => setFechaQuejaMode(false)}
                     />
                     <div className="flex-1">
                       <p className="font-medium text-gray-900 mb-2">Fecha específica</p>

@@ -3,23 +3,40 @@
  * Permite agregar comentarios en cada fase del proceso para trazabilidad
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MessageCircle, Send, Pin, AlertCircle, Info, CheckCircle,
   User, Clock, X, Edit2, Trash2, Flag, Search, Filter,
   FileText, Scale, Users, Calendar, Tag, ChevronDown, ChevronUp,
-  Paperclip, Download
+  Paperclip, Download, History
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogAction,
+  AlertDialogCancel
+} from '../../ui/alert-dialog';
 import { toast } from 'sonner@2.0.3';
 
 interface Persona {
   nombre: string;
   tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT';
   numeroIdentificacion: string;
+}
+
+interface ComentarioAdjunto {
+  nombre: string;
+  size: number;
+  type: string;
+  dataUrl: string;
 }
 
 interface Comentario {
@@ -29,14 +46,15 @@ interface Comentario {
   hora: string;
   etapa: string;
   contenido: string;
-  tipo: 'normal' | 'importante' | 'guia' | 'alerta';
+  tipo: 'normal' | 'importante' | 'guia' | 'alerta' | 'sistema';
   categoria?: 'juridico' | 'administrativo' | 'probatorio' | 'general';
-  adjuntos?: string[];
+  adjuntos?: ComentarioAdjunto[];
   fijado?: boolean;
   editado?: boolean;
 }
 
 interface SistemaComentariosProps {
+  procesoId: string;
   numeroProceso: string;
   etapaActual: string;
   comentariosIniciales?: Comentario[];
@@ -44,83 +62,133 @@ interface SistemaComentariosProps {
 }
 
 export function SistemaComentarios({ 
+  procesoId,
   numeroProceso, 
   etapaActual,
   comentariosIniciales = [],
   profesionalActual 
 }: SistemaComentariosProps) {
-  const [comentarios, setComentarios] = useState<Comentario[]>(comentariosIniciales.length > 0 ? comentariosIniciales : [
-    {
-      id: 'c1',
-      autor: {
-        nombre: 'Juan Pérez Gómez',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: '1234567890'
-      },
-      fecha: '2025-01-08',
-      hora: '09:30',
-      etapa: 'Recepción',
-      contenido: 'Se recibe la noticia disciplinaria proveniente de la Contraloría General. Se verifica que cumple con los requisitos formales establecidos en el artículo 67 de la Ley 734 de 2002. Se procede a radicar con número ND-2025-0120.',
-      tipo: 'importante',
-      categoria: 'juridico',
-      fijado: true
-    },
-    {
-      id: 'c2',
-      autor: {
-        nombre: 'María Torres Silva',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: '9876543210'
-      },
-      fecha: '2025-01-09',
-      hora: '14:15',
-      etapa: 'Indagación Previa',
-      contenido: 'Se realiza estudio preliminar de la documentación aportada. Los hechos descritos podrían configurar falta disciplinaria grave según el artículo 48 del CDU. Se recomienda iniciar indagación preliminar para determinar competencia y verificar prescripción.',
-      tipo: 'guia',
-      categoria: 'juridico',
-      fijado: false
-    },
-    {
-      id: 'c3',
-      autor: {
-        nombre: 'Carlos Ramírez',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: '5555555555'
-      },
-      fecha: '2025-01-10',
-      hora: '11:20',
-      etapa: 'Indagación Previa',
-      contenido: 'IMPORTANTE: Verificar término de caducidad. Los hechos ocurrieron el 15/08/2023. Según artículo 30 Ley 734, tenemos 6 meses para formular pliego de cargos desde que tuvimos conocimiento (08/01/2025). Plazo vence: 08/07/2025.',
-      tipo: 'alerta',
-      categoria: 'juridico',
-      fijado: true
-    },
-    {
-      id: 'c4',
-      autor: {
-        nombre: 'Ana María Castillo',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: '7777777777'
-      },
-      fecha: '2025-01-11',
-      hora: '16:45',
-      etapa: 'Valoración',
-      contenido: 'Se solicitaron documentos adicionales a la dependencia involucrada mediante oficio OCID-025-2025. Pendiente respuesta. Se requieren: 1) Informes de gestión del periodo, 2) Actas de comité, 3) Soportes de las transacciones observadas.',
-      tipo: 'normal',
-      categoria: 'probatorio',
-      fijado: false
+  const STORAGE_PREFIX = 'disciplinario-comentarios:';
+  const getUserKey = () => {
+    try {
+      const rawSesion = localStorage.getItem('esap-sesion-activa');
+      if (rawSesion) {
+        const sesion = JSON.parse(rawSesion);
+        const usuario = sesion?.usuario || {};
+        return usuario.id || usuario.email || 'anon';
+      }
+    } catch (e) {
+      console.warn('No se pudo leer sesion activa', e);
     }
-  ]);
+    try {
+      const rawUser = localStorage.getItem('esap_user_data');
+      if (rawUser) {
+        const data = JSON.parse(rawUser);
+        return data.personId || data.email || data.name || 'anon';
+      }
+    } catch (e) {
+      console.warn('No se pudo leer user_data', e);
+    }
+    return 'anon';
+  };
+
+  const userKey = getUserKey();
+  const storageKey = `${STORAGE_PREFIX}${procesoId}:${userKey}`;
+  const legacyStorageKey = `${STORAGE_PREFIX}${procesoId}`;
+
+  const getAutorActual = (): Persona => {
+    try {
+      const rawSesion = localStorage.getItem('esap-sesion-activa');
+      if (rawSesion) {
+        const sesion = JSON.parse(rawSesion);
+        const usuario = sesion?.usuario || {};
+        if (usuario?.nombre || usuario?.email || usuario?.id) {
+          return {
+            nombre: usuario.nombre || usuario.email || 'Usuario',
+            tipoIdentificacion: 'CC',
+            numeroIdentificacion: usuario.id || usuario.email || 'N/A'
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('No se pudo leer autor actual', e);
+    }
+    return profesionalActual;
+  };
+
+  const loadPersistedComments = () => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+      const legacyRaw = localStorage.getItem(legacyStorageKey);
+      if (legacyRaw) {
+        const parsedLegacy = JSON.parse(legacyRaw);
+        const legacy = Array.isArray(parsedLegacy) ? parsedLegacy : [];
+        localStorage.setItem(storageKey, JSON.stringify(legacy));
+        return legacy;
+      }
+      return [];
+    } catch (e) {
+      console.warn('No se pudieron leer comentarios persistidos', e);
+      return [];
+    }
+  };
+
+  const [comentarios, setComentarios] = useState<Comentario[]>(() => {
+    const persisted = loadPersistedComments();
+    if (persisted.length > 0) return persisted;
+    return comentariosIniciales;
+  });
   
   const [nuevoComentario, setNuevoComentario] = useState('');
-  const [tipoSeleccionado, setTipoSeleccionado] = useState<'normal' | 'importante' | 'guia' | 'alerta'>('normal');
+  const [tipoSeleccionado, setTipoSeleccionado] = useState<'normal' | 'importante' | 'guia' | 'alerta' | 'sistema'>('normal');
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState<'juridico' | 'administrativo' | 'probatorio' | 'general'>('general');
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todas');
   const [filtroTipo, setFiltroTipo] = useState<string>('todos');
+  const [filtroCategoria, setFiltroCategoria] = useState<string>('todas');
+  const [filtroFijados, setFiltroFijados] = useState<'todos' | 'fijados' | 'no-fijados'>('todos');
+  const [comentarioParaEliminar, setComentarioParaEliminar] = useState<Comentario | null>(null);
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
+  const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(comentarios));
+    } catch (e) {
+      console.warn('No se pudieron guardar comentarios persistidos', e);
+    }
+  }, [comentarios, storageKey]);
+
+  const formatFileSize = (size: number) => {
+    if (size >= 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    return `${Math.max(1, Math.round(size / 1024))} KB`;
+  };
+
+  const getEtapaColor = (etapa: string) => {
+    const key = (etapa || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (key.includes('investigacion')) return '#003DA5';
+    if (key.includes('juzgamiento')) return '#2563EB';
+    if (key.includes('fallo')) return '#16A34A';
+    if (key.includes('indagacion')) return '#0F766E';
+    if (key.includes('valoracion')) return '#6B7280';
+    if (key.includes('recepcion')) return '#4B5563';
+    return '#6B7280';
+  };
+
+  const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 
   const etapas = [
     'Recepción',
@@ -136,8 +204,9 @@ export function SistemaComentarios({
   const tiposComentario = [
     { id: 'normal', nombre: 'Normal', color: '#6B7280', icon: MessageCircle },
     { id: 'importante', nombre: 'Importante', color: '#F59E0B', icon: Flag },
-    { id: 'guia', nombre: 'Guía', color: '#3B82F6', icon: Info },
-    { id: 'alerta', nombre: 'Alerta', color: '#DC2626', icon: AlertCircle }
+    { id: 'guia', nombre: 'Guia', color: '#3B82F6', icon: Info },
+    { id: 'alerta', nombre: 'Alerta', color: '#DC2626', icon: AlertCircle },
+    { id: 'sistema', nombre: 'Sistema', color: '#0F172A', icon: History }
   ];
 
   const categorias = [
@@ -147,7 +216,7 @@ export function SistemaComentarios({
     { id: 'probatorio', nombre: 'Probatorio', icon: Users }
   ];
 
-  const handleAgregarComentario = () => {
+  const handleAgregarComentario = async () => {
     if (!nuevoComentario.trim()) {
       toast.error('Error', {
         description: 'Debes escribir un comentario'
@@ -155,14 +224,34 @@ export function SistemaComentarios({
       return;
     }
 
+    const archivosGrandes = archivosAdjuntos.filter((file) => file.size > MAX_FILE_SIZE);
+    if (archivosGrandes.length > 0) {
+      toast.error('Archivo demasiado grande', {
+        description: 'Cada archivo debe ser de maximo 10 MB'
+      });
+      return;
+    }
+
     const ahora = new Date();
-    const adjuntos = archivosAdjuntos.length > 0 
-      ? archivosAdjuntos.map(f => f.name) 
-      : undefined;
+    let adjuntos: ComentarioAdjunto[] | undefined;
+    if (archivosAdjuntos.length > 0) {
+      try {
+        adjuntos = await Promise.all(archivosAdjuntos.map(async (file) => ({
+          nombre: file.name,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          dataUrl: await readFileAsDataUrl(file)
+        })));
+      } catch (error) {
+        console.error('Error leyendo archivos adjuntos', error);
+        toast.error('No se pudieron cargar los archivos adjuntos');
+        return;
+      }
+    }
 
     const comentario: Comentario = {
       id: `c${Date.now()}`,
-      autor: profesionalActual,
+      autor: getAutorActual(),
       fecha: ahora.toISOString().split('T')[0],
       hora: ahora.toTimeString().split(' ')[0].substring(0, 5),
       etapa: etapaActual,
@@ -183,21 +272,23 @@ export function SistemaComentarios({
 
     toast.success('Comentario agregado', {
       description: adjuntos 
-        ? `Comentario con ${adjuntos.length} archivo(s) adjunto(s)` 
+        ? `Comentario con ${adjuntos.length} archivo(s) adjunto(s)`
         : `Se agregó comentario en etapa: ${etapaActual}`
     });
   };
 
   const handleFijarComentario = (id: string) => {
-    setComentarios(comentarios.map(c => 
+    const updated = comentarios.map(c =>
       c.id === id ? { ...c, fijado: !c.fijado } : c
-    ));
-    const comentario = comentarios.find(c => c.id === id);
+    );
+    setComentarios(updated);
+    const comentario = updated.find(c => c.id === id);
     toast.success(
-      comentario?.fijado ? 'Comentario desfijado' : 'Comentario fijado',
-      { description: comentario?.fijado ? 'El comentario ya no está destacado' : 'El comentario se mostrará en la parte superior' }
+      comentario?.fijado ? 'Comentario fijado' : 'Comentario desfijado',
+      { description: comentario?.fijado ? 'El comentario se mostrara en la parte superior' : 'El comentario ya no esta destacado' }
     );
   };
+
 
   const handleEliminarComentario = (id: string) => {
     setComentarios(comentarios.filter(c => c.id !== id));
@@ -206,27 +297,41 @@ export function SistemaComentarios({
     });
   };
 
+  const handleConfirmarEliminar = () => {
+    if (!comentarioParaEliminar) return;
+    handleEliminarComentario(comentarioParaEliminar.id);
+    setComentarioParaEliminar(null);
+  };
+
   // Filtrar comentarios
   const comentariosFiltrados = comentarios.filter(c => {
-    const coincideBusqueda = c.contenido.toLowerCase().includes(busqueda.toLowerCase()) ||
-                            c.autor.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-                            c.etapa.toLowerCase().includes(busqueda.toLowerCase());
+    const textoBusqueda = busqueda.trim().toLowerCase();
+    const tipoLabel = getTipoConfig(c.tipo).nombre.toLowerCase();
+    const categoriaLabel = getCategoriaConfig(c.categoria).nombre.toLowerCase();
+    const coincideBusqueda = !textoBusqueda ||
+      c.contenido.toLowerCase().includes(textoBusqueda) ||
+      c.autor.nombre.toLowerCase().includes(textoBusqueda) ||
+      c.etapa.toLowerCase().includes(textoBusqueda) ||
+      tipoLabel.includes(textoBusqueda) ||
+      categoriaLabel.includes(textoBusqueda);
     const coincideEtapa = filtroEtapa === 'todas' || c.etapa === filtroEtapa;
     const coincideTipo = filtroTipo === 'todos' || c.tipo === filtroTipo;
-    return coincideBusqueda && coincideEtapa && coincideTipo;
+    const coincideCategoria = filtroCategoria === 'todas' || c.categoria === filtroCategoria;
+    const coincideFijado = filtroFijados === 'todos' || (filtroFijados === 'fijados' ? c.fijado : !c.fijado);
+    return coincideBusqueda && coincideEtapa && coincideTipo && coincideCategoria && coincideFijado;
   });
 
-  // Separar fijados y no fijados
+// Separar fijados y no fijados
   const comentariosFijados = comentariosFiltrados.filter(c => c.fijado);
   const comentariosNormales = comentariosFiltrados.filter(c => !c.fijado);
 
-  const getTipoConfig = (tipo: string) => {
+  function getTipoConfig(tipo: string) {
     return tiposComentario.find(t => t.id === tipo) || tiposComentario[0];
-  };
+  }
 
-  const getCategoriaConfig = (categoria?: string) => {
+  function getCategoriaConfig(categoria?: string) {
     return categorias.find(c => c.id === categoria) || categorias[0];
-  };
+  }
 
   return (
     <div className="space-y-4">
@@ -354,7 +459,7 @@ export function SistemaComentarios({
                 {/* Adjuntar Archivos */}
                 <div>
                   <label className="text-sm font-bold text-gray-700 mb-2 block">
-                    Archivos Adjuntos (Opcional)
+                    Archivos Adjuntos (Opcional, max 10 MB c/u)
                   </label>
                   <div className="relative">
                     <input
@@ -364,7 +469,18 @@ export function SistemaComentarios({
                       accept="*/*"
                       onChange={(e) => {
                         if (e.target.files) {
-                          setArchivosAdjuntos(Array.from(e.target.files));
+                          const files = Array.from(e.target.files);
+                          const valid: File[] = [];
+                          files.forEach((file) => {
+                            if (file.size > MAX_FILE_SIZE) {
+                              toast.error('Archivo demasiado grande', {
+                                description: `${file.name} supera 10 MB`
+                              });
+                              return;
+                            }
+                            valid.push(file);
+                          });
+                          setArchivosAdjuntos(valid);
                         }
                       }}
                       className="hidden"
@@ -390,7 +506,7 @@ export function SistemaComentarios({
                                       variant="outline" 
                                       className="text-xs bg-white border-green-300 text-green-700"
                                     >
-                                      {file.name}
+                                      {file.name} ({formatFileSize(file.size)})
                                     </Badge>
                                   ))}
                                 </div>
@@ -521,11 +637,68 @@ export function SistemaComentarios({
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-700 mb-2 block">
+                    Filtrar por Categoria
+                  </label>
+                  <select
+                    value={filtroCategoria}
+                    onChange={(e) => setFiltroCategoria(e.target.value)}
+                    className="w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="todas">Todas las categorias</option>
+                    {categorias.map((categoria) => (
+                      <option key={categoria.id} value={categoria.id}>{categoria.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-700 mb-2 block">
+                    Filtrar por Fijados
+                  </label>
+                  <select
+                    value={filtroFijados}
+                    onChange={(e) => setFiltroFijados(e.target.value as 'todos' | 'fijados' | 'no-fijados')}
+                    className="w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="fijados">Solo fijados</option>
+                    <option value="no-fijados">Sin fijar</option>
+                  </select>
+                </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </Card>
+
+      <AlertDialog open={!!comentarioParaEliminar} onOpenChange={(open) => {
+        if (!open) setComentarioParaEliminar(null);
+      }}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar comentario</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta accion no se puede deshacer. El comentario y sus adjuntos se eliminaran del historial.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {comentarioParaEliminar && (
+            <div className="rounded-lg border bg-gray-50 p-3 text-sm text-gray-700">
+              <p className="font-semibold text-gray-900">{comentarioParaEliminar.autor.nombre}</p>
+              <p className="mt-1 max-h-12 overflow-hidden whitespace-pre-wrap">{comentarioParaEliminar.contenido}</p>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-700"
+              onClick={handleConfirmarEliminar}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Lista de Comentarios */}
       <div className="space-y-3">
@@ -541,9 +714,11 @@ export function SistemaComentarios({
                 key={comentario.id}
                 comentario={comentario}
                 onFijar={handleFijarComentario}
-                onEliminar={handleEliminarComentario}
+                onRequestEliminar={setComentarioParaEliminar}
                 getTipoConfig={getTipoConfig}
                 getCategoriaConfig={getCategoriaConfig}
+                getEtapaColor={getEtapaColor}
+                formatFileSize={formatFileSize}
               />
             ))}
           </div>
@@ -556,16 +731,18 @@ export function SistemaComentarios({
               key={comentario.id}
               comentario={comentario}
               onFijar={handleFijarComentario}
-              onEliminar={handleEliminarComentario}
+              onRequestEliminar={setComentarioParaEliminar}
               getTipoConfig={getTipoConfig}
               getCategoriaConfig={getCategoriaConfig}
+              getEtapaColor={getEtapaColor}
+              formatFileSize={formatFileSize}
             />
           ))
         ) : comentariosFijados.length === 0 ? (
           <Card className="p-8 text-center">
             <MessageCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
             <p className="text-sm text-gray-600">
-              {busqueda || filtroEtapa !== 'todas' || filtroTipo !== 'todos'
+              {busqueda || filtroEtapa !== 'todas' || filtroTipo !== 'todos' || filtroCategoria !== 'todas' || filtroFijados !== 'todos'
                 ? 'No se encontraron comentarios con los filtros aplicados'
                 : 'No hay comentarios en este proceso'}
             </p>
@@ -607,20 +784,31 @@ export function SistemaComentarios({
 interface ComentarioItemProps {
   comentario: Comentario;
   onFijar: (id: string) => void;
-  onEliminar: (id: string) => void;
+  onRequestEliminar: (comentario: Comentario) => void;
   getTipoConfig: (tipo: string) => any;
   getCategoriaConfig: (categoria?: string) => any;
+  getEtapaColor: (etapa: string) => string;
+  formatFileSize: (size: number) => string;
 }
 
 function ComentarioItem({ 
   comentario, 
   onFijar, 
-  onEliminar,
+  onRequestEliminar,
   getTipoConfig,
-  getCategoriaConfig 
+  getCategoriaConfig,
+  getEtapaColor,
+  formatFileSize
 }: ComentarioItemProps) {
   const tipoConfig = getTipoConfig(comentario.tipo);
   const categoriaConfig = getCategoriaConfig(comentario.categoria);
+  const etapaColor = getEtapaColor(comentario.etapa);
+  const [expanded, setExpanded] = useState(false);
+  const MAX_CHARS = 220;
+  const isLong = comentario.contenido.length > MAX_CHARS;
+  const contenidoMostrado = expanded || !isLong
+    ? comentario.contenido
+    : `${comentario.contenido.slice(0, MAX_CHARS).trimEnd()}...`;
 
   return (
     <motion.div
@@ -629,9 +817,10 @@ function ComentarioItem({
       exit={{ opacity: 0, y: -10 }}
     >
       <Card 
-        className={`p-4 hover:shadow-md transition-shadow ${
+        className={`p-4 hover:shadow-md transition-shadow border-l-4 ${
           comentario.fijado ? 'border-2 border-orange-300 bg-orange-50' : ''
         }`}
+        style={{ borderLeftColor: tipoConfig.color }}
       >
         {/* Header del comentario */}
         <div className="flex items-start justify-between mb-3">
@@ -682,7 +871,15 @@ function ComentarioItem({
                   <Clock className="w-3 h-3" />
                   {comentario.hora}
                 </span>
-                <Badge variant="outline" className="text-xs" style={{ color: '#003DA5' }}>
+                <Badge
+                  variant="outline"
+                  className="text-xs"
+                  style={{
+                    color: etapaColor,
+                    borderColor: etapaColor + '40',
+                    background: etapaColor + '10'
+                  }}
+                >
                   {comentario.etapa}
                 </Badge>
               </div>
@@ -705,11 +902,7 @@ function ComentarioItem({
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => {
-                if (confirm('¿Estás seguro de eliminar este comentario?')) {
-                  onEliminar(comentario.id);
-                }
-              }}
+              onClick={() => onRequestEliminar(comentario)}
               title="Eliminar comentario"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -719,9 +912,22 @@ function ComentarioItem({
 
         {/* Contenido */}
         <div className="pl-14">
-          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-            {comentario.contenido}
+          <p
+            className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap cursor-pointer"
+            onClick={() => isLong && setExpanded(!expanded)}
+            aria-expanded={expanded}
+          >
+            {contenidoMostrado}
           </p>
+          {isLong && (
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              className="mt-1 text-xs font-semibold text-blue-700 hover:text-blue-900"
+            >
+              {expanded ? 'Ver menos' : 'Ver mas'}
+            </button>
+          )}
 
           {/* Archivos Adjuntos */}
           {comentario.adjuntos && comentario.adjuntos.length > 0 && (
@@ -734,19 +940,18 @@ function ComentarioItem({
               </div>
               <div className="flex flex-wrap gap-2">
                 {comentario.adjuntos.map((archivo, index) => (
-                  <button
+                  <a
                     key={index}
-                    onClick={() => {
-                      toast.info('Descargar archivo', {
-                        description: archivo
-                      });
-                    }}
+                    href={archivo.dataUrl}
+                    download={archivo.nombre}
                     className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-300 transition-colors"
+                    title={archivo.nombre}
                   >
                     <FileText className="w-3.5 h-3.5 text-gray-600" />
-                    <span className="text-xs text-gray-700">{archivo}</span>
+                    <span className="text-xs text-gray-700 max-w-[160px] truncate">{archivo.nombre}</span>
+                    <span className="text-[10px] text-gray-500">{formatFileSize(archivo.size)}</span>
                     <Download className="w-3 h-3 text-gray-500" />
-                  </button>
+                  </a>
                 ))}
               </div>
             </div>
