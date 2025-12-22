@@ -288,7 +288,7 @@ export class ProcessService {
 
     if (proceso.etapaActual !== stage) {
       // Validar transicion de etapa
-      this.validarTransicionEtapa(proceso.etapaActual, stage);
+      this.validarTransicionEtapa(proceso.etapaActual as ProcessStage, stage);
 
       // Calcular nuevo vencimiento
       const { fechaVencimiento } =

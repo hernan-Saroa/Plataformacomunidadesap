@@ -1,147 +1,164 @@
 /**
  * Hook: useAccessibility
- * Sistema completo de accesibilidad ARIA y gestión de focus
+ * Sistema completo de accesibilidad ARIA para ESAP
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import {
-  generateId,
-  getButtonAriaProps,
-  getInputAriaProps,
-  getRegionAriaProps,
-  getExpandableAriaProps,
-  getTabAriaProps,
-  getDialogAriaProps,
-  getLiveRegionAriaProps,
-  announceToScreenReader,
-  trapFocus,
-  detectKeyboardNavigation,
-  AriaAttributes,
-} from '../utils/accessibility';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
-export const useAccessibility = () => {
-  const [isKeyboardUser, setIsKeyboardUser] = useState(false);
+// ============================================
+// UTILIDADES
+// ============================================
 
-  useEffect(() => {
-    // Detectar si usuario navega con teclado
-    const cleanup = detectKeyboardNavigation();
-    
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Tab') {
-        setIsKeyboardUser(true);
-      }
-    };
+let idCounter = 0;
 
-    const handleMouseDown = () => {
-      setIsKeyboardUser(false);
-    };
+const generateId = (prefix: string): string => {
+  idCounter += 1;
+  return `${prefix}-${idCounter}-${Date.now()}`;
+};
 
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleMouseDown);
+// ============================================
+// HOOK PRINCIPAL: useAccessibility
+// ============================================
 
-    return () => {
-      cleanup();
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleMouseDown);
-    };
-  }, []);
+/**
+ * Hook principal de accesibilidad
+ * Proporciona props ARIA básicas para cualquier componente
+ */
+export const useAccessibility = (options: {
+  label?: string;
+  description?: string;
+  role?: string;
+  live?: 'off' | 'polite' | 'assertive';
+} = {}) => {
+  const { label, description, role, live } = options;
+  
+  const [labelId] = useState(() => label ? generateId('label') : undefined);
+  const [descId] = useState(() => description ? generateId('desc') : undefined);
 
-  /**
-   * Generar props ARIA para diferentes tipos de componentes
-   */
   const ariaProps = {
-    button: getButtonAriaProps,
-    input: getInputAriaProps,
-    region: getRegionAriaProps,
-    expandable: getExpandableAriaProps,
-    tab: getTabAriaProps,
-    dialog: getDialogAriaProps,
-    liveRegion: getLiveRegionAriaProps,
+    role,
+    'aria-label': label,
+    'aria-labelledby': labelId,
+    'aria-describedby': descId,
+    'aria-live': live,
   };
 
-  /**
-   * Anunciar mensaje
-   */
-  const announce = useCallback((message: string, level: 'polite' | 'assertive' = 'polite') => {
-    announceToScreenReader(message, level);
-  }, []);
-
-  /**
-   * Generar ID único
-   */
-  const createId = useCallback((prefix: string) => {
-    return generateId(prefix);
-  }, []);
+  // Filtrar props undefined
+  const filteredAriaProps = Object.fromEntries(
+    Object.entries(ariaProps).filter(([_, value]) => value !== undefined)
+  );
 
   return {
-    isKeyboardUser,
-    ariaProps,
-    announce,
-    createId,
+    ariaProps: filteredAriaProps,
+    labelId,
+    descId,
   };
 };
 
+// ============================================
+// useFocusTrap
+// ============================================
+
 /**
- * Hook para gestionar focus trap (modales, dropdowns)
+ * Hook para atrapar el foco dentro de un contenedor (modales, diálogos)
  */
-export const useFocusTrap = (isActive: boolean) => {
-  const containerRef = useRef<HTMLElement | null>(null);
+export const useFocusTrap = (isActive: boolean = true) => {
+  const containerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!isActive || !containerRef.current) return;
 
-    const cleanup = trapFocus(containerRef.current);
-    return cleanup;
+    const container = containerRef.current;
+    const focusableElements = container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+
+      if (e.shiftKey) {
+        // Shift + Tab
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement?.focus();
+        }
+      } else {
+        // Tab
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement?.focus();
+        }
+      }
+    };
+
+    container.addEventListener('keydown', handleTabKey);
+
+    // Enfocar el primer elemento al activar
+    firstElement?.focus();
+
+    return () => {
+      container.removeEventListener('keydown', handleTabKey);
+    };
   }, [isActive]);
 
   return containerRef;
 };
 
+// ============================================
+// useFocusRestoration
+// ============================================
+
 /**
- * Hook para gestionar focus restoration
- * Útil para modales que deben restaurar focus al elemento que los abrió
+ * Hook para restaurar el foco cuando se cierra un modal/diálogo
  */
 export const useFocusRestoration = () => {
-  const previousActiveElementRef = useRef<HTMLElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const saveFocus = useCallback(() => {
-    previousActiveElementRef.current = document.activeElement as HTMLElement;
+    previousFocusRef.current = document.activeElement as HTMLElement;
   }, []);
 
   const restoreFocus = useCallback(() => {
-    previousActiveElementRef.current?.focus();
-    previousActiveElementRef.current = null;
+    if (previousFocusRef.current) {
+      previousFocusRef.current.focus();
+      previousFocusRef.current = null;
+    }
   }, []);
 
   return { saveFocus, restoreFocus };
 };
 
+// ============================================
+// useLiveAnnouncements
+// ============================================
+
 /**
- * Hook para anuncios de estado en vivo
- * Útil para notificaciones, mensajes de error, confirmaciones
+ * Hook para anuncios en vivo (screen readers)
  */
 export const useLiveAnnouncements = () => {
   const [announcement, setAnnouncement] = useState('');
+  const [politeness, setPoliteness] = useState<'polite' | 'assertive'>('polite');
   const timeoutRef = useRef<NodeJS.Timeout>();
 
-  const announce = useCallback((message: string, level: 'polite' | 'assertive' = 'polite', duration: number = 3000) => {
-    // Limpiar timeout anterior
+  const announce = useCallback((
+    message: string, 
+    priority: 'polite' | 'assertive' = 'polite'
+  ) => {
+    // Limpiar anuncio anterior
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
 
-    setAnnouncement(''); // Reset para forzar re-anuncio
+    setPoliteness(priority);
+    setAnnouncement(message);
 
-    // Pequeño delay para asegurar que el cambio se detecte
-    setTimeout(() => {
-      setAnnouncement(message);
-      announceToScreenReader(message, level);
-    }, 10);
-
-    // Auto-limpiar después de duración
+    // Limpiar después de un tiempo
     timeoutRef.current = setTimeout(() => {
       setAnnouncement('');
-    }, duration);
+    }, 5000);
   }, []);
 
   useEffect(() => {
@@ -152,8 +169,16 @@ export const useLiveAnnouncements = () => {
     };
   }, []);
 
-  return { announcement, announce };
+  return {
+    announcement,
+    politeness,
+    announce,
+  };
 };
+
+// ============================================
+// useAriaDescription
+// ============================================
 
 /**
  * Hook para gestionar descripción de elementos
@@ -161,55 +186,49 @@ export const useLiveAnnouncements = () => {
 export const useAriaDescription = (description: string) => {
   const [id] = useState(() => generateId('desc'));
 
-  const descriptionElement = description ? (
-    <span id={id} className="sr-only">
-      {description}
-    </span>
-  ) : null;
-
   const ariaDescribedBy = description ? id : undefined;
 
-  return { descriptionElement, ariaDescribedBy };
+  return { 
+    descriptionId: id,
+    ariaDescribedBy,
+    hasDescription: !!description 
+  };
 };
+
+// ============================================
+// useAriaExpanded
+// ============================================
 
 /**
  * Hook para gestionar expansión de elementos (acordeones, dropdowns)
  */
 export const useAriaExpanded = (initialState: boolean = false) => {
   const [isExpanded, setIsExpanded] = useState(initialState);
+  const [buttonId] = useState(() => generateId('toggle'));
   const [contentId] = useState(() => generateId('content'));
-  const [triggerId] = useState(() => generateId('trigger'));
 
   const toggle = useCallback(() => {
-    setIsExpanded(prev => {
-      const newState = !prev;
-      announceToScreenReader(
-        newState ? 'Expandido' : 'Contraído',
-        'polite'
-      );
-      return newState;
-    });
+    setIsExpanded((prev) => !prev);
   }, []);
 
   const expand = useCallback(() => {
     setIsExpanded(true);
-    announceToScreenReader('Expandido', 'polite');
   }, []);
 
   const collapse = useCallback(() => {
     setIsExpanded(false);
-    announceToScreenReader('Contraído', 'polite');
   }, []);
 
-  const triggerProps: AriaAttributes = {
+  const buttonProps = {
+    id: buttonId,
     'aria-expanded': isExpanded,
     'aria-controls': contentId,
   };
 
-  const contentProps: AriaAttributes & { id: string } = {
+  const contentProps = {
     id: contentId,
-    role: 'region',
-    'aria-labelledby': triggerId,
+    'aria-labelledby': buttonId,
+    hidden: !isExpanded,
   };
 
   return {
@@ -217,9 +236,138 @@ export const useAriaExpanded = (initialState: boolean = false) => {
     toggle,
     expand,
     collapse,
-    triggerProps,
+    buttonProps,
     contentProps,
-    contentId,
-    triggerId,
+  };
+};
+
+// ============================================
+// useAriaLabel
+// ============================================
+
+/**
+ * Hook para gestionar etiquetas ARIA
+ */
+export const useAriaLabel = (label: string, description?: string) => {
+  const [labelId] = useState(() => generateId('label'));
+  const [descId] = useState(() => description ? generateId('desc') : undefined);
+
+  const ariaProps = {
+    'aria-labelledby': labelId,
+    'aria-describedby': descId,
+  };
+
+  return {
+    labelId,
+    descId,
+    ariaProps,
+  };
+};
+
+// ============================================
+// useAriaInvalid
+// ============================================
+
+/**
+ * Hook para gestionar estados de validación
+ */
+export const useAriaInvalid = (isInvalid: boolean, errorMessage?: string) => {
+  const [errorId] = useState(() => generateId('error'));
+
+  const ariaProps = {
+    'aria-invalid': isInvalid,
+    'aria-describedby': isInvalid && errorMessage ? errorId : undefined,
+  };
+
+  return {
+    errorId,
+    ariaProps,
+  };
+};
+
+// ============================================
+// useKeyboardHandler
+// ============================================
+
+/**
+ * Hook para manejar eventos de teclado de forma accesible
+ */
+export const useKeyboardHandler = (
+  onEnter?: () => void,
+  onEscape?: () => void,
+  onSpace?: () => void
+) => {
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      switch (e.key) {
+        case 'Enter':
+          if (onEnter) {
+            e.preventDefault();
+            onEnter();
+          }
+          break;
+        case 'Escape':
+          if (onEscape) {
+            e.preventDefault();
+            onEscape();
+          }
+          break;
+        case ' ':
+        case 'Space':
+          if (onSpace) {
+            e.preventDefault();
+            onSpace();
+          }
+          break;
+      }
+    },
+    [onEnter, onEscape, onSpace]
+  );
+
+  return { handleKeyDown };
+};
+
+// ============================================
+// useSkipLink
+// ============================================
+
+/**
+ * Hook para enlaces de salto (skip to content)
+ */
+export const useSkipLink = (targetId: string) => {
+  const skipToContent = useCallback(() => {
+    const target = document.getElementById(targetId);
+    if (target) {
+      target.focus();
+      target.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [targetId]);
+
+  return { skipToContent };
+};
+
+// ============================================
+// useScreenReaderOnly
+// ============================================
+
+/**
+ * Hook para contenido visible solo para lectores de pantalla
+ */
+export const useScreenReaderOnly = () => {
+  const srOnlyClass = 'sr-only';
+  
+  return {
+    srOnlyClass,
+    srOnlyStyle: {
+      position: 'absolute' as const,
+      width: '1px',
+      height: '1px',
+      padding: '0',
+      margin: '-1px',
+      overflow: 'hidden',
+      clip: 'rect(0, 0, 0, 0)',
+      whiteSpace: 'nowrap' as const,
+      borderWidth: '0',
+    },
   };
 };

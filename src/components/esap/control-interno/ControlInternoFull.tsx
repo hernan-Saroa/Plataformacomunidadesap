@@ -1,123 +1,142 @@
 /**
- * CONTROL INTERNO DE GESTIÓN - Sistema Consolidado
- * 8 Módulos Robustos e Integrados
- * Oficina de Control Interno - ESAP
+ * CONTROL INTERNO DE GESTIÓN - OPTIMIZADO
+ * ACTUALIZADO: 22 Diciembre 2025
+ * Consolidación: De 14 módulos a 6 módulos gruesos con tabs
  */
 
 import { useState } from "react";
 import {
   Shield,
+  LayoutDashboard,
+  ClipboardList,
   Target,
   AlertTriangle,
-  Scale,
   FolderOpen,
-  Bell,
   Settings,
-  MapPin,
-  Layers,
-  ListChecks,  // ✅ Agregado
+  Sliders,
 } from "lucide-react";
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
-import { GestionAuditoriasKanban } from "./GestionAuditoriasKanban";  // ✅ MÓDULO 1 CONSOLIDADO
-import { PlanificacionAnualIntegrada } from "./PlanificacionAnualIntegrada";  // ✅ MÓDULO 2 CONSOLIDADO
-import { HallazgosYMejoramientoCompleto } from "./HallazgosYMejoramientoCompleto";  // ✅ MÓDULO 3 CONSOLIDADO
-import { InformesYDocumentalCompleto } from "./InformesYDocumentalCompleto";  // ✅ MÓDULO 4 CONSOLIDADO
-import { AprobacionesYNotificacionesCompleto } from "./AprobacionesYNotificacionesCompleto";  // ✅ MÓDULO 5 CONSOLIDADO
-import { GestionAuditoriasTerritoriales } from "./GestionAuditoriasTerritoriales";  // ✅ MÓDULO 6 (RF018)
-import { ConfiguracionSistemaCompleto } from "./ConfiguracionSistemaCompleto";  // ✅ MÓDULO 7 (RF020)
+
+// ━━━━━━━━━━━ MÓDULOS CONSOLIDADOS ━━━━━━━━━━━
+import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";  // DASHBOARD PRINCIPAL
+import { PlanificacionModule } from "./PlanificacionModule";  // RF001-004 (Plan Anual + Universo + Programa + Inicio)
+import { ProcesoAuditoriaModule } from "./ProcesoAuditoriaModule";  // RF005-009 (Planeación + Ejecución + Comunicación)
+import { PlanesMejoramientoModule } from "./PlanesMejoramientoModule";  // RF010-011 (Formulación + Seguimiento)
+import { SoporteModule } from "./SoporteModule";  // RF012-014 (Informes + Documental + Notificaciones)
+import { ModulosAvanzadosModule } from "./ModulosAvanzadosModule";  // RF015-018 (Roles + Reportes + Territoriales + Especiales)
+import { ConfiguracionSistemaCompleto } from "./ConfiguracionSistemaCompleto";  // RF019 (General + Auditorías + Informes + Notificaciones)
 
 type SeccionActiva =
-  | "auditorias-kanban"  // ✅ MÓDULO 1
-  | "planificacion-anual-integrada"  // ✅ MÓDULO 2
-  | "hallazgos-mejoramiento-completo"  // ✅ MÓDULO 3
-  | "informes-documental-completo"  // ✅ MÓDULO 4
-  | "aprobaciones-notificaciones-completo"  // ✅ MÓDULO 5
-  | "auditorias-territoriales"  // ✅ MÓDULO 6
-  | "configuracion";  // ✅ MÓDULO 7
+  | "dashboard"              // KANBAN DASHBOARD - CENTRO DE COMANDO
+  | "planificacion"          // RF001-004 (4 tabs)
+  | "proceso-auditoria"      // RF005-009 (3 tabs)
+  | "planes-mejoramiento"    // RF010-011 (2 tabs)
+  | "soporte"                // RF012-014 (3 tabs)
+  | "modulos-avanzados"      // RF015-018 (4 tabs)
+  | "configuracion";         // Configuración del sistema
 
 export function ControlInternoFull() {
   const [seccionActiva, setSeccionActiva] =
-    useState<SeccionActiva>("auditorias-kanban");
+    useState<SeccionActiva>("dashboard"); // 🎯 DASHBOARD DE PRIMERAS
 
   const menuItems: MenuItem[] = [
+    // ━━━━━━━━━━━ 1. CENTRO DE COMANDO ━━━━━━━━━━━
     {
-      id: "auditorias-kanban",  // ✅ MÓDULO 1
-      label: "Auditorías Kanban (RF018)",
-      icon: <MapPin className="w-5 h-5" />,  // ✅ Ícono de mapa
-      color: "#10B981",  // Verde para diferenciar
+      id: "dashboard",
+      label: "Dashboard Kanban",
+      subtitle: "Centro de comando integrado",
+      icon: <LayoutDashboard className="w-5 h-5" />,
+      color: "#10B981", // Verde - Principal
     },
+    
+    // ━━━━━━━━━━━ 2. PLANIFICACIÓN (RF001-004) ━━━━━━━━━━━
     {
-      id: "planificacion-anual-integrada",  // ✅ MÓDULO 2
-      label: "Planificación Anual Integrada",
+      id: "planificacion",
+      label: "Planificación",
+      subtitle: "Plan Anual • Universo • Programa • Inicio",
+      icon: <ClipboardList className="w-5 h-5" />,
+      color: "#003DA5", // Azul ESAP
+    },
+    
+    // ━━━━━━━━━━━ 3. PROCESO DE AUDITORÍA (RF005-009) ━━━━━━━━━━━
+    {
+      id: "proceso-auditoria",
+      label: "Proceso de Auditoría",
+      subtitle: "Planeación • Ejecución • Comunicación",
       icon: <Target className="w-5 h-5" />,
-      color: "#3B82F6",
+      color: "#F59E0B", // Naranja - En proceso
     },
+    
+    // ━━━━━━━━━━━ 4. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
     {
-      id: "hallazgos-mejoramiento-completo",  // ✅ MÓDULO 3
-      label: "Hallazgos y Mejoramiento Completo",
-      icon: <ListChecks className="w-5 h-5" />,
-      color: "#3B82F6",
+      id: "planes-mejoramiento",
+      label: "Planes de Mejoramiento",
+      subtitle: "Formulación • Seguimiento",
+      icon: <AlertTriangle className="w-5 h-5" />,
+      color: "#EF4444", // Rojo - Hallazgos
     },
+    
+    // ━━━━━━━━━━━ 5. MÓDULOS DE SOPORTE (RF012-014) ━━━━━━━━━━━
     {
-      id: "informes-documental-completo",  // ✅ MÓDULO 4
-      label: "Informes y Documental Completo",
+      id: "soporte",
+      label: "Módulos de Soporte",
+      subtitle: "Informes • Documental • Notificaciones",
       icon: <FolderOpen className="w-5 h-5" />,
-      color: "#3B82F6",
+      color: "#8B5CF6", // Púrpura - Soporte
     },
+    
+    // ━━━━━━━━━━━ 6. MÓDULOS AVANZADOS (RF015-018) ━━━━━━━━━━━
     {
-      id: "aprobaciones-notificaciones-completo",  // ✅ MÓDULO 5
-      label: "Aprobaciones y Notificaciones Completo",
-      icon: <Bell className="w-5 h-5" />,
-      color: "#3B82F6",
-    },
-    {
-      id: "auditorias-territoriales",  // ✅ MÓDULO 6
-      label: "Auditorías Territoriales (RF018)",
-      icon: <MapPin className="w-5 h-5" />,  // ✅ Ícono de mapa
-      color: "#10B981",  // Verde para diferenciar
-    },
-    {
-      id: "configuracion",  // ✅ MÓDULO 7
-      label: "Configuración",
+      id: "modulos-avanzados",
+      label: "Módulos Avanzados",
+      subtitle: "Roles • Reportes • Territoriales • Especiales",
       icon: <Settings className="w-5 h-5" />,
-      color: "#6B7280",
+      color: "#6B7280", // Gris - Admin
+    },
+    
+    // ━━━━━━━━━━━ 7. CONFIGURACIÓN (RF019) ━━━━━━━━━━━
+    {
+      id: "configuracion",
+      label: "Configuración",
+      subtitle: "General • Auditorías • Informes • Notificaciones",
+      icon: <Sliders className="w-5 h-5" />,
+      color: "#059669", // Verde oscuro - Config
     },
   ];
 
   const renderSeccion = () => {
-    const handleNavegar = (seccion: string) =>
-      setSeccionActiva(seccion as SeccionActiva);
-
     switch (seccionActiva) {
-      case "auditorias-kanban":  // ✅ MÓDULO 1
-        return <GestionAuditoriasKanban />;
-      case "planificacion-anual-integrada":  // ✅ MÓDULO 2
-        return <PlanificacionAnualIntegrada />;
-      case "hallazgos-mejoramiento-completo":  // ✅ MÓDULO 3
-        return <HallazgosYMejoramientoCompleto />;
-      case "informes-documental-completo":  // ✅ MÓDULO 4
-        return <InformesYDocumentalCompleto />;
-      case "aprobaciones-notificaciones-completo":  // ✅ MÓDULO 5
-        return <AprobacionesYNotificacionesCompleto />;
-      case "auditorias-territoriales":  // ✅ MÓDULO 6
-        return <GestionAuditoriasTerritoriales />;
-      case "configuracion":  // ✅ MÓDULO 7
+      case "dashboard":
+        return <GestionAuditoriasKanbanSimple />;
+      
+      case "planificacion":
+        return <PlanificacionModule />;
+      
+      case "proceso-auditoria":
+        return <ProcesoAuditoriaModule />;
+      
+      case "planes-mejoramiento":
+        return <PlanesMejoramientoModule />;
+      
+      case "soporte":
+        return <SoporteModule />;
+      
+      case "modulos-avanzados":
+        return <ModulosAvanzadosModule />;
+      
+      case "configuracion":
         return <ConfiguracionSistemaCompleto />;
+      
       default:
-        return <GestionAuditoriasKanban />;  // ✅ Por defecto, mostrar Auditorías Kanban
+        return <GestionAuditoriasKanbanSimple />;
     }
-  };
-
-  const getTitleForSection = () => {
-    const item = menuItems.find((m) => m.id === seccionActiva);
-    return item?.label || "Control Interno Gestión";
   };
 
   return (
     <ModuleLayout
-      moduleName="CONTROL INTERNO"
-      moduleDescription="Gestión"
+      moduleName="CONTROL INTERNO DE GESTIÓN"
+      moduleDescription="Sistema de Gestión"
       moduleIcon={<Shield className="w-6 h-6" />}
       moduleColor="#F97316"
       menuItems={menuItems}
@@ -125,11 +144,6 @@ export function ControlInternoFull() {
       onSectionChange={(section) =>
         setSeccionActiva(section as SeccionActiva)
       }
-      breadcrumb={[
-        "Backoffice",
-        "Control Interno Gestión",
-        getTitleForSection(),
-      ]}
     >
       <ControlInternoProvider>
         {/* Contenido de la sección */}

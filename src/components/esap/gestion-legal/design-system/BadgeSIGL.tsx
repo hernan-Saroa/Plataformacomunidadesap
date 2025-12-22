@@ -7,9 +7,10 @@ import { HTMLAttributes } from 'react';
 import DESIGN_TOKENS, { getStatusColor } from './tokens';
 
 export interface BadgeSIGLProps extends HTMLAttributes<HTMLSpanElement> {
-  variant?: 'recibida' | 'enDefensa' | 'respondida' | 'vencida' | 'sentenciada' | 'enProceso' | 'extendida' | 'custom';
+  variant?: 'recibida' | 'enDefensa' | 'respondida' | 'vencida' | 'sentenciada' | 'enProceso' | 'extendida' | 'custom' | 
+            'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
   customColor?: { bg: string; text: string };
-  size?: 'small' | 'medium' | 'large';
+  size?: 'small' | 'medium' | 'large' | 'sm';
   rounded?: boolean;
 }
 
@@ -23,10 +24,34 @@ export function BadgeSIGL({
   style,
   ...props
 }: BadgeSIGLProps) {
+  // Normalizar tamaños
+  const normalizedSize = size === 'sm' ? 'small' : size;
+
   // Obtener colores según variante
-  const colors = variant === 'custom' && customColor
-    ? customColor
-    : getStatusColor(variant);
+  const getColorsByVariant = (v: string) => {
+    // Variantes estándar (genéricas)
+    const standardVariants: Record<string, { bg: string; text: string }> = {
+      default: { bg: '#F3F4F6', text: '#374151' },
+      primary: { bg: '#003DA5', text: '#FFFFFF' },
+      success: { bg: '#10B981', text: '#FFFFFF' },
+      warning: { bg: '#F59E0B', text: '#FFFFFF' },
+      danger: { bg: '#EF4444', text: '#FFFFFF' },
+      info: { bg: '#3B82F6', text: '#FFFFFF' },
+    };
+
+    if (standardVariants[v]) {
+      return standardVariants[v];
+    }
+
+    // Variantes SIGL originales
+    if (v === 'custom' && customColor) {
+      return customColor;
+    }
+
+    return getStatusColor(v);
+  };
+
+  const colors = getColorsByVariant(variant);
 
   // Tamaños
   const sizeStyles = {
@@ -47,7 +72,7 @@ export function BadgeSIGL({
     },
   };
 
-  const sizing = sizeStyles[size];
+  const sizing = sizeStyles[normalizedSize];
 
   return (
     <span

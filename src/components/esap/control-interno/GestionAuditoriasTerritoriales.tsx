@@ -509,28 +509,16 @@ export function GestionAuditoriasTerritoriales() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-            <MapPin className="w-7 h-7" style={{ color: '#003DA5' }} />
-            Auditorías Territoriales
-          </h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Gestión diferenciada de auditorías en 16 territoriales ESAP
-          </p>
-        </div>
-
-        <div className="flex gap-2">
-          <Button onClick={() => setModalCrear(true)} style={{ background: '#003DA5' }}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nueva Auditoría Territorial
-          </Button>
-          <Button variant="outline">
-            <Download className="w-4 h-4 mr-2" />
-            Exportar
-          </Button>
-        </div>
+      {/* ACCIONES PRINCIPALES */}
+      <div className="flex justify-end gap-2">
+        <Button onClick={() => setModalCrear(true)} style={{ background: '#003DA5' }}>
+          <Plus className="w-4 h-4 mr-2" />
+          Nueva Auditoría Territorial
+        </Button>
+        <Button variant="outline">
+          <Download className="w-4 h-4 mr-2" />
+          Exportar
+        </Button>
       </div>
 
       {/* TABS */}

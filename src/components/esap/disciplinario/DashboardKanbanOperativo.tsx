@@ -27,7 +27,7 @@ import { toast } from 'sonner@2.0.3';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { EditorDocumentos } from './EditorDocumentos';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
-import { PLANTILLAS_MOCK } from './GestionProcesosProfesionalesIntegrado';
+import { PLANTILLAS_MOCK } from './GestionProcesosProfesionalesCompleto';
 import {
   ModalGestionAutos,
   ModalGestionEvidencias,
@@ -90,6 +90,7 @@ interface Proceso {
   etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
   estadoActual: string;
   profesionalAsignado: Persona;
+  profesionalAsignadoId?: string; // ID del profesional para filtrado
   semaforo: 'verde' | 'amarillo' | 'rojo';
   diasRestantes: number;
   porcentajeTiempo: number;
@@ -282,6 +283,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '80456789'
     },
+    profesionalAsignadoId: '1',
     semaforo: 'amarillo',
     diasRestantes: 3,
     porcentajeTiempo: 70,
@@ -314,6 +316,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '52345678'
     },
+    profesionalAsignadoId: '2',
     semaforo: 'verde',
     diasRestantes: 45,
     porcentajeTiempo: 25,
@@ -346,6 +349,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '1015678901'
     },
+    profesionalAsignadoId: '3',
     semaforo: 'verde',
     diasRestantes: 28,
     porcentajeTiempo: 10,
@@ -378,6 +382,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '52345678'
     },
+    profesionalAsignadoId: '2',
     semaforo: 'amarillo',
     diasRestantes: 15,
     porcentajeTiempo: 75,
@@ -410,6 +415,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '80456789'
     },
+    profesionalAsignadoId: '1',
     semaforo: 'verde',
     diasRestantes: 30,
     porcentajeTiempo: 40,
@@ -442,6 +448,7 @@ const PROCESOS_MOCK: Proceso[] = [
       tipoIdentificacion: 'CC',
       numeroIdentificacion: '1015678901'
     },
+    profesionalAsignadoId: '3',
     semaforo: 'verde',
     diasRestantes: 8,
     porcentajeTiempo: 20,
@@ -1016,16 +1023,16 @@ function VistaLista({
         ? (item as Noticia).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
         : (item as Noticia).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
       : (item as Proceso).numeroProceso.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (typeof (item as Proceso).denunciado === 'string'
-          ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
-          : (item as Proceso).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
-    
+      (typeof (item as Proceso).denunciado === 'string'
+        ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
+        : (item as Proceso).denunciado.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
+
     const etapaItem = item.tipo === 'noticia'
       ? normalizeEtapa((item as any).etapaActual || 'Recepcion')
       : normalizeEtapa((item as Proceso).etapaActual);
     const etapaFiltro = normalizeEtapa(filtroEtapa);
     const matchEtapa = filtroEtapa === 'todos' || etapaItem === etapaFiltro;
-    
+
     return matchSearch && matchEtapa;
   });
 
@@ -2651,22 +2658,22 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
         }
       }
 
-        const buildDenunciantePayload = (item: any) => {
-          const email = (item.correo || item.email || '').trim();
-          const payload: any = {
-            nombre: item.nombre || 'Sin denunciante',
-            cedula: item.identificacion || item.numeroIdentificacion || 'N/A',
-            cargo: item.cargo,
-            telefono: item.telefono,
-            direccion: item.direccion,
-            entidad: item.entidad,
-            dependencia: item.entidad
-          };
-          if (email && email.includes('@')) {
-            payload.email = email;
-          }
-          return payload;
+      const buildDenunciantePayload = (item: any) => {
+        const email = (item.correo || item.email || '').trim();
+        const payload: any = {
+          nombre: item.nombre || 'Sin denunciante',
+          cedula: item.identificacion || item.numeroIdentificacion || 'N/A',
+          cargo: item.cargo,
+          telefono: item.telefono,
+          direccion: item.direccion,
+          entidad: item.entidad,
+          dependencia: item.entidad
         };
+        if (email && email.includes('@')) {
+          payload.email = email;
+        }
+        return payload;
+      };
 
         const payload = {
           origen: mapearOrigenNoticia(data.origen || 'QUEJOSO'),
@@ -3219,6 +3226,27 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   const procesosPendientesAprobacion = procesos.filter(p => p.pendienteAprobacion).length;
   const procesosEnTermino = procesos.filter(p => p.semaforo === 'verde').length;
 
+  // Filtrar por profesional si está activo el filtro
+  const itemsFiltrados = filtroProfesionalId
+    ? items.filter(item => {
+      if (item.tipo === 'proceso') {
+        return (item as Proceso).profesionalAsignadoId === filtroProfesionalId;
+      }
+      return false; // No mostrar noticias cuando hay filtro de profesional
+    })
+    : items;
+
+  // Obtener nombre del profesional filtrado
+  const profesionalFiltrado = filtroProfesionalId ? (() => {
+    const profesionales = [
+      { id: '1', nombre: 'Juan Pérez Rodríguez' },
+      { id: '2', nombre: 'María Torres Gómez' },
+      { id: '3', nombre: 'Carlos Mendoza Silva' },
+      { id: '4', nombre: 'Ana González López' }
+    ];
+    return profesionales.find(p => p.id === filtroProfesionalId);
+  })() : null;
+
   // ==================== RENDER ====================
   return (
     <DndProvider
@@ -3226,6 +3254,36 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       options={isTouchDevice() ? { enableMouseEvents: true } : undefined}
     >
       <div className="space-y-3 md:space-y-4">
+        {/* Banner de Filtro Activo por Profesional */}
+        {filtroProfesionalId && profesionalFiltrado && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-4 rounded-xl border-2 flex items-center justify-between gap-3"
+            style={{ background: '#E0EDFF', borderColor: '#003DA5' }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg" style={{ background: '#003DA5' }}>
+                <Users className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="font-bold text-sm" style={{ color: '#003DA5' }}>
+                  Filtrado por Profesional
+                </p>
+                <p className="text-xs" style={{ color: '#003DA5' }}>
+                  Mostrando solo los procesos de: <span className="font-bold">{profesionalFiltrado.nombre}</span>
+                </p>
+              </div>
+            </div>
+            <Badge
+              className="font-bold px-3 py-1"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              {itemsFiltrados.length} proceso{itemsFiltrados.length !== 1 ? 's' : ''}
+            </Badge>
+          </motion.div>
+        )}
+
         {/* Header Responsive Mejorado */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex-1">
@@ -3445,6 +3503,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 WebkitOverflowScrolling: 'touch'
               }}
             >
+              {/* items={itemsFiltrados}  merge con main */}
               {etapas.map((etapa) => (
                 <ColumnaKanban
                   key={etapa.nombre}
@@ -3479,7 +3538,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
           </div>
         ) : (
           <VistaLista
-            items={items}
+            items={itemsFiltrados}
             onVerDetalles={handleVerDetalles}
             onAprobarBorrador={handleAprobarBorrador}
             onVerExpediente={handleVerExpediente}

@@ -700,7 +700,8 @@ function DashboardEjecutivo({ onNavigate, procesos = PROCESOS_MOCK }: { onNaviga
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ControlDisciplinarioFull() {
-  const [currentSection, setCurrentSection] = useState<'dashboard' | 'noticias' | 'procesos' | 'profesionales' | 'reportes' | 'config'>('dashboard');
+  const [currentSection, setCurrentSection] = useState<'dashboard' | 'noticias' | 'aprobacion' | 'procesos' | 'expediente' | 'terminos' | 'reportes' | 'profesionales' | 'config'>('dashboard');
+  const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
   const [dashboardView, setDashboardView] = useState<'lista' | 'kanban'>('lista');
   // Estados de Negocio
   const [procesos, setProcesos] = useState<Proceso[]>([]);
@@ -748,6 +749,11 @@ export function ControlDisciplinarioFull() {
     return item?.label || 'Control Interno Disciplinario';
   };
 
+  const handleVerProcesosProfesional = (profesional: any) => {
+    setFiltroProfesional(profesional.id);
+    setCurrentSection('dashboard');
+  };
+
   return (
     <ModuleLayout
       moduleName="CONTROL INTERNO DISCIPLINARIO"
@@ -760,12 +766,12 @@ export function ControlDisciplinarioFull() {
       breadcrumb={['Backoffice', 'Control Interno Disciplinario', getTitleForSection()]}
     >
       {/* Contenido Principal */}
-      {currentSection === 'dashboard' && <DashboardKanbanOperativo onNavigateToExpediente={() => setCurrentSection('expediente')} />}
+      {currentSection === 'dashboard' && <DashboardKanbanOperativo onNavigateToExpediente={() => setCurrentSection('expediente')} filtroProfesionalId={filtroProfesional} />}
       {currentSection === 'noticias' && <GestionNoticias />}
       {currentSection === 'aprobacion' && <RevisionAprobacionJefe />}
       {currentSection === 'expediente' && <ExpedienteElectronico />}
       {currentSection === 'terminos' && <GestionTerminosAlertas />}
-      {currentSection === 'profesionales' && <GestionProfesionales />}
+      {currentSection === 'profesionales' && <GestionProfesionales onVerProcesos={handleVerProcesosProfesional} />}
       {currentSection === 'config' && <ModuloConfiguracion />}
     </ModuleLayout>
   );

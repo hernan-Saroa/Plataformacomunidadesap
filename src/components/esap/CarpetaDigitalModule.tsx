@@ -180,7 +180,14 @@ export function CarpetaDigitalModule() {
 
   // Contar documentos por categoría
   const categoryCounts = useMemo(() => {
-    if (!selectedUserId) return {};
+    if (!selectedUserId) return {
+      all: 0,
+      personal: 0,
+      academico: 0,
+      certificador: 0,
+      laboral: 0,
+      otros: 0
+    };
     return {
       all: userDocuments.length,
       personal: userDocuments.filter(d => d.category === 'personal').length,

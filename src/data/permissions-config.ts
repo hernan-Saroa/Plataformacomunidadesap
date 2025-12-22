@@ -29,7 +29,10 @@ import {
   Activity,
   Database,
   Settings,
-  Bell
+  Bell,
+  Scale,
+  CheckCircle,
+  Clock
 } from 'lucide-react';
 
 export interface Permission {
@@ -2210,6 +2213,750 @@ export const PERMISSION_MODULES: PermissionModule[] = [
         name: 'Ver Analíticas de Moderación', 
         description: 'Ver métricas y estadísticas de moderación', 
         module: 'portal_moderation' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // CONTROL INTERNO DISCIPLINARIO - MÓDULO COMPLETO (106 permisos)
+  // ==========================================================================
+  
+  // ==========================================================================
+  // 30. DISCIPLINARIO - PROCESOS (20 permisos)
+  // ==========================================================================
+  {
+    id: 'disciplinario_procesos',
+    name: '⚖️ Disciplinario: Procesos',
+    icon: Scale,
+    color: 'text-blue-700',
+    bgColor: 'bg-blue-50',
+    permissions: [
+      { 
+        id: 'disciplinario.procesos.view', 
+        name: 'Ver Procesos', 
+        description: 'Consultar lista de procesos disciplinarios', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.view_assigned', 
+        name: 'Ver Procesos Asignados', 
+        description: 'Ver solo procesos asignados al usuario', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.view_all', 
+        name: 'Ver Todos los Procesos', 
+        description: 'Acceso completo a todos los procesos del sistema', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.create', 
+        name: 'Crear Proceso', 
+        description: 'Iniciar nuevo proceso disciplinario', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.edit', 
+        name: 'Editar Proceso', 
+        description: 'Modificar datos del proceso', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.delete', 
+        name: 'Eliminar Proceso', 
+        description: 'Eliminar proceso disciplinario (requiere justificación)', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.assign', 
+        name: 'Asignar Proceso', 
+        description: 'Asignar proceso a profesional', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.reassign', 
+        name: 'Reasignar Proceso', 
+        description: 'Cambiar asignación de profesional', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.change_stage', 
+        name: 'Cambiar Etapa', 
+        description: 'Avanzar/retroceder etapa del proceso', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.archive', 
+        name: 'Archivar Proceso', 
+        description: 'Archivar proceso finalizado', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.unarchive', 
+        name: 'Desarchivar Proceso', 
+        description: 'Restaurar proceso archivado', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.export', 
+        name: 'Exportar Procesos', 
+        description: 'Descargar datos de procesos', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.view_details', 
+        name: 'Ver Detalles Completos', 
+        description: 'Acceso a información detallada del proceso', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.view_timeline', 
+        name: 'Ver Línea de Tiempo', 
+        description: 'Consultar historial de actuaciones', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.add_observation', 
+        name: 'Agregar Observación', 
+        description: 'Registrar observaciones en el proceso', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.view_parties', 
+        name: 'Ver Partes del Proceso', 
+        description: 'Acceso a datos de denunciante, denunciado y profesional', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.manage_terms', 
+        name: 'Gestionar Términos', 
+        description: 'Administrar plazos y términos procesales', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.extend_term', 
+        name: 'Prorrogar Términos', 
+        description: 'Extender plazos procesales', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.close', 
+        name: 'Cerrar Proceso', 
+        description: 'Finalizar proceso con resolución', 
+        module: 'disciplinario_procesos' 
+      },
+      { 
+        id: 'disciplinario.procesos.remit', 
+        name: 'Remitir por Competencia', 
+        description: 'Enviar proceso a otra entidad competente', 
+        module: 'disciplinario_procesos' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 31. DISCIPLINARIO - NOTICIAS DISCIPLINARIAS (16 permisos)
+  // ==========================================================================
+  {
+    id: 'disciplinario_noticias',
+    name: '📋 Disciplinario: Noticias',
+    icon: FileText,
+    color: 'text-purple-700',
+    bgColor: 'bg-purple-50',
+    permissions: [
+      { 
+        id: 'disciplinario.noticias.view', 
+        name: 'Ver Noticias', 
+        description: 'Consultar noticias disciplinarias', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.view_all', 
+        name: 'Ver Todas las Noticias', 
+        description: 'Acceso completo a todas las noticias', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.create', 
+        name: 'Crear Noticia', 
+        description: 'Registrar nueva noticia disciplinaria', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.edit', 
+        name: 'Editar Noticia', 
+        description: 'Modificar noticia existente', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.delete', 
+        name: 'Eliminar Noticia', 
+        description: 'Eliminar noticia disciplinaria', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.archive', 
+        name: 'Archivar Noticia', 
+        description: 'Archivar noticia sin proceso', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.convert_to_process', 
+        name: 'Convertir a Proceso', 
+        description: 'Iniciar proceso formal desde noticia', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.assign', 
+        name: 'Asignar Noticia', 
+        description: 'Asignar noticia a profesional para valoración', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.reassign', 
+        name: 'Reasignar Noticia', 
+        description: 'Cambiar asignación de valoración', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.change_status', 
+        name: 'Cambiar Estado', 
+        description: 'Actualizar estado de la noticia', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.add_comment', 
+        name: 'Agregar Comentario', 
+        description: 'Registrar comentarios en la noticia', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.view_details', 
+        name: 'Ver Detalles', 
+        description: 'Acceso a información completa de la noticia', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.export', 
+        name: 'Exportar Noticias', 
+        description: 'Descargar datos de noticias', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.remit', 
+        name: 'Remitir por Competencia', 
+        description: 'Enviar noticia a otra entidad', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.view_timeline', 
+        name: 'Ver Historial', 
+        description: 'Consultar historial de la noticia', 
+        module: 'disciplinario_noticias' 
+      },
+      { 
+        id: 'disciplinario.noticias.attach_evidence', 
+        name: 'Adjuntar Evidencia', 
+        description: 'Cargar documentos de soporte', 
+        module: 'disciplinario_noticias' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 32. DISCIPLINARIO - EXPEDIENTE ELECTRÓNICO (14 permisos)
+  // ==========================================================================
+  {
+    id: 'disciplinario_expediente',
+    name: '📁 Disciplinario: Expediente',
+    icon: FolderOpen,
+    color: 'text-amber-700',
+    bgColor: 'bg-amber-50',
+    permissions: [
+      { 
+        id: 'disciplinario.expediente.view', 
+        name: 'Ver Expediente', 
+        description: 'Acceso al expediente electrónico', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.view_documents', 
+        name: 'Ver Documentos', 
+        description: 'Consultar documentos del expediente', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.upload_document', 
+        name: 'Subir Documento', 
+        description: 'Cargar documentos al expediente', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.download_document', 
+        name: 'Descargar Documento', 
+        description: 'Descargar archivos del expediente', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.delete_document', 
+        name: 'Eliminar Documento', 
+        description: 'Eliminar documentos del expediente', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.edit_metadata', 
+        name: 'Editar Metadatos', 
+        description: 'Modificar información de documentos', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.organize', 
+        name: 'Organizar Expediente', 
+        description: 'Ordenar y clasificar documentos', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.search', 
+        name: 'Buscar en Expediente', 
+        description: 'Búsqueda avanzada de documentos', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.export', 
+        name: 'Exportar Expediente', 
+        description: 'Descargar expediente completo', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.version_control', 
+        name: 'Control de Versiones', 
+        description: 'Gestionar versiones de documentos', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.view_history', 
+        name: 'Ver Historial', 
+        description: 'Consultar historial de cambios', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.stamp_document', 
+        name: 'Sellar Documento', 
+        description: 'Aplicar sello digital a documentos', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.share', 
+        name: 'Compartir Expediente', 
+        description: 'Compartir acceso a expediente', 
+        module: 'disciplinario_expediente' 
+      },
+      { 
+        id: 'disciplinario.expediente.lock', 
+        name: 'Bloquear Expediente', 
+        description: 'Proteger expediente contra modificaciones', 
+        module: 'disciplinario_expediente' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 33. DISCIPLINARIO - REVISIÓN Y APROBACIÓN (12 permisos)
+  // ==========================================================================
+  {
+    id: 'disciplinario_revision',
+    name: '✓ Disciplinario: Revisión',
+    icon: CheckCircle,
+    color: 'text-green-700',
+    bgColor: 'bg-green-50',
+    permissions: [
+      { 
+        id: 'disciplinario.revision.view_pending', 
+        name: 'Ver Pendientes', 
+        description: 'Consultar documentos pendientes de revisión', 
+        module: 'disciplinario_revision' 
+      },
+      { 
+        id: 'disciplinario.revision.approve_document', 
+        name: 'Aprobar Documento', 
+        description: 'Aprobar documentos jurídicos', 
+        module: 'disciplinario_revision' 
+      },
+      { 
+        id: 'disciplinario.revision.reject_document', 
+        name: 'Rechazar Documento', 
+        description: 'Rechazar documentos con observaciones', 
+        module: 'disciplinario_revision' 
+      },
+      { 
+        id: 'disciplinario.revision.request_corrections', 
+        name: 'Solicitar Correcciones', 
+        description: 'Pedir ajustes en documentos', 
+        module: 'disciplinario_revision' 
+      },
+      { 
+        id: 'disciplinario.revision.add_observations', 
+        name: 'Agregar Observaciones', 
+        description: 'Registrar comentarios de revisión', 
+        module: 'disciplinario_revision' 
+      },
+      { 
+        id: 'disciplinario.revision.view_history', 
+        name: 'Ver Historial de Revisiones', 
+        description: 'Consultar historial de aprobaciones', 
+        module: 'disciplinario_revision' 
+      },
+      { 
+        id: 'disciplinario.revision.delegate', 
+        name: 'Delegar Revisión', 
+        description: 'Asignar revisión a otro profesional', 
+        module: 'disciplinario_revision' 
+      },
+      { 
+        id: 'disciplinario.revision.priority', 
+        name: 'Establecer Prioridad', 
+        description: 'Marcar documentos como urgentes', 
+        module: 'disciplinario_revision' 
+      },
+      { 
+        id: 'disciplinario.revision.view_metrics', 
+        name: 'Ver Métricas', 
+        description: 'Consultar tiempos de revisión', 
+        module: 'disciplinario_revision' 
+      },
+      { 
+        id: 'disciplinario.revision.batch_approve', 
+        name: 'Aprobación Masiva', 
+        description: 'Aprobar múltiples documentos', 
+        module: 'disciplinario_revision' 
+      },
+      { 
+        id: 'disciplinario.revision.final_approval', 
+        name: 'Aprobación Final', 
+        description: 'Aprobación definitiva de jefe', 
+        module: 'disciplinario_revision' 
+      },
+      { 
+        id: 'disciplinario.revision.export', 
+        name: 'Exportar Revisiones', 
+        description: 'Descargar datos de revisiones', 
+        module: 'disciplinario_revision' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 34. DISCIPLINARIO - TÉRMINOS Y ALERTAS (10 permisos)
+  // ==========================================================================
+  {
+    id: 'disciplinario_terminos',
+    name: '⏰ Disciplinario: Términos',
+    icon: Clock,
+    color: 'text-red-700',
+    bgColor: 'bg-red-50',
+    permissions: [
+      { 
+        id: 'disciplinario.terminos.view', 
+        name: 'Ver Términos', 
+        description: 'Consultar términos y plazos', 
+        module: 'disciplinario_terminos' 
+      },
+      { 
+        id: 'disciplinario.terminos.view_alerts', 
+        name: 'Ver Alertas', 
+        description: 'Recibir notificaciones de vencimientos', 
+        module: 'disciplinario_terminos' 
+      },
+      { 
+        id: 'disciplinario.terminos.configure', 
+        name: 'Configurar Términos', 
+        description: 'Establecer plazos por etapa', 
+        module: 'disciplinario_terminos' 
+      },
+      { 
+        id: 'disciplinario.terminos.extend', 
+        name: 'Prorrogar Términos', 
+        description: 'Extender plazos procesales', 
+        module: 'disciplinario_terminos' 
+      },
+      { 
+        id: 'disciplinario.terminos.suspend', 
+        name: 'Suspender Términos', 
+        description: 'Pausar conteo de plazos', 
+        module: 'disciplinario_terminos' 
+      },
+      { 
+        id: 'disciplinario.terminos.resume', 
+        name: 'Reanudar Términos', 
+        description: 'Reactivar conteo de plazos', 
+        module: 'disciplinario_terminos' 
+      },
+      { 
+        id: 'disciplinario.terminos.view_dashboard', 
+        name: 'Ver Dashboard de Términos', 
+        description: 'Consultar semáforo de plazos', 
+        module: 'disciplinario_terminos' 
+      },
+      { 
+        id: 'disciplinario.terminos.export', 
+        name: 'Exportar Términos', 
+        description: 'Descargar reporte de vencimientos', 
+        module: 'disciplinario_terminos' 
+      },
+      { 
+        id: 'disciplinario.terminos.configure_notifications', 
+        name: 'Configurar Notificaciones', 
+        description: 'Ajustar alertas automáticas', 
+        module: 'disciplinario_terminos' 
+      },
+      { 
+        id: 'disciplinario.terminos.view_history', 
+        name: 'Ver Historial', 
+        description: 'Consultar historial de prórrogas', 
+        module: 'disciplinario_terminos' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 35. DISCIPLINARIO - PROFESIONALES (12 permisos)
+  // ==========================================================================
+  {
+    id: 'disciplinario_profesionales',
+    name: '👨‍⚖️ Disciplinario: Profesionales',
+    icon: Users,
+    color: 'text-indigo-700',
+    bgColor: 'bg-indigo-50',
+    permissions: [
+      { 
+        id: 'disciplinario.profesionales.view', 
+        name: 'Ver Profesionales', 
+        description: 'Consultar equipo de profesionales', 
+        module: 'disciplinario_profesionales' 
+      },
+      { 
+        id: 'disciplinario.profesionales.create', 
+        name: 'Crear Profesional', 
+        description: 'Registrar nuevo profesional', 
+        module: 'disciplinario_profesionales' 
+      },
+      { 
+        id: 'disciplinario.profesionales.edit', 
+        name: 'Editar Profesional', 
+        description: 'Modificar datos de profesional', 
+        module: 'disciplinario_profesionales' 
+      },
+      { 
+        id: 'disciplinario.profesionales.delete', 
+        name: 'Eliminar Profesional', 
+        description: 'Dar de baja profesional', 
+        module: 'disciplinario_profesionales' 
+      },
+      { 
+        id: 'disciplinario.profesionales.assign_capacity', 
+        name: 'Asignar Capacidad', 
+        description: 'Establecer capacidad máxima de casos', 
+        module: 'disciplinario_profesionales' 
+      },
+      { 
+        id: 'disciplinario.profesionales.view_workload', 
+        name: 'Ver Carga Laboral', 
+        description: 'Consultar casos asignados', 
+        module: 'disciplinario_profesionales' 
+      },
+      { 
+        id: 'disciplinario.profesionales.view_performance', 
+        name: 'Ver Desempeño', 
+        description: 'Consultar métricas de rendimiento', 
+        module: 'disciplinario_profesionales' 
+      },
+      { 
+        id: 'disciplinario.profesionales.assign_role', 
+        name: 'Asignar Rol', 
+        description: 'Configurar rol del profesional', 
+        module: 'disciplinario_profesionales' 
+      },
+      { 
+        id: 'disciplinario.profesionales.activate_deactivate', 
+        name: 'Activar/Desactivar', 
+        description: 'Cambiar estado del profesional', 
+        module: 'disciplinario_profesionales' 
+      },
+      { 
+        id: 'disciplinario.profesionales.export', 
+        name: 'Exportar Profesionales', 
+        description: 'Descargar datos del equipo', 
+        module: 'disciplinario_profesionales' 
+      },
+      { 
+        id: 'disciplinario.profesionales.view_statistics', 
+        name: 'Ver Estadísticas', 
+        description: 'Consultar métricas del equipo', 
+        module: 'disciplinario_profesionales' 
+      },
+      { 
+        id: 'disciplinario.profesionales.manage_permissions', 
+        name: 'Gestionar Permisos', 
+        description: 'Administrar accesos del profesional', 
+        module: 'disciplinario_profesionales' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 36. DISCIPLINARIO - CONFIGURACIÓN (10 permisos)
+  // ==========================================================================
+  {
+    id: 'disciplinario_config',
+    name: '⚙️ Disciplinario: Configuración',
+    icon: Settings,
+    color: 'text-gray-700',
+    bgColor: 'bg-gray-50',
+    permissions: [
+      { 
+        id: 'disciplinario.config.view', 
+        name: 'Ver Configuración', 
+        description: 'Acceso a configuración del sistema', 
+        module: 'disciplinario_config' 
+      },
+      { 
+        id: 'disciplinario.config.edit_stages', 
+        name: 'Configurar Etapas', 
+        description: 'Modificar tiempos por etapa procesal', 
+        module: 'disciplinario_config' 
+      },
+      { 
+        id: 'disciplinario.config.edit_capacity', 
+        name: 'Configurar Capacidad', 
+        description: 'Ajustar capacidad máxima por cargo', 
+        module: 'disciplinario_config' 
+      },
+      { 
+        id: 'disciplinario.config.edit_workflows', 
+        name: 'Configurar Flujos', 
+        description: 'Modificar flujos de trabajo', 
+        module: 'disciplinario_config' 
+      },
+      { 
+        id: 'disciplinario.config.edit_templates', 
+        name: 'Gestionar Plantillas', 
+        description: 'Administrar plantillas de documentos', 
+        module: 'disciplinario_config' 
+      },
+      { 
+        id: 'disciplinario.config.edit_notifications', 
+        name: 'Configurar Notificaciones', 
+        description: 'Ajustar alertas del sistema', 
+        module: 'disciplinario_config' 
+      },
+      { 
+        id: 'disciplinario.config.backup', 
+        name: 'Respaldar Configuración', 
+        description: 'Crear backup de configuración', 
+        module: 'disciplinario_config' 
+      },
+      { 
+        id: 'disciplinario.config.restore', 
+        name: 'Restaurar Configuración', 
+        description: 'Recuperar configuración previa', 
+        module: 'disciplinario_config' 
+      },
+      { 
+        id: 'disciplinario.config.export', 
+        name: 'Exportar Configuración', 
+        description: 'Descargar configuración del sistema', 
+        module: 'disciplinario_config' 
+      },
+      { 
+        id: 'disciplinario.config.audit', 
+        name: 'Auditar Cambios', 
+        description: 'Ver historial de cambios de configuración', 
+        module: 'disciplinario_config' 
+      },
+    ]
+  },
+
+  // ==========================================================================
+  // 37. DISCIPLINARIO - DASHBOARD Y REPORTES (12 permisos)
+  // ==========================================================================
+  {
+    id: 'disciplinario_dashboard',
+    name: '📊 Disciplinario: Dashboard',
+    icon: BarChart3,
+    color: 'text-teal-700',
+    bgColor: 'bg-teal-50',
+    permissions: [
+      { 
+        id: 'disciplinario.dashboard.view', 
+        name: 'Ver Dashboard', 
+        description: 'Acceso al dashboard principal', 
+        module: 'disciplinario_dashboard' 
+      },
+      { 
+        id: 'disciplinario.dashboard.view_kanban', 
+        name: 'Ver Kanban Operativo', 
+        description: 'Acceso al tablero Kanban', 
+        module: 'disciplinario_dashboard' 
+      },
+      { 
+        id: 'disciplinario.dashboard.view_ejecutivo', 
+        name: 'Dashboard Ejecutivo', 
+        description: 'Métricas y KPIs ejecutivos', 
+        module: 'disciplinario_dashboard' 
+      },
+      { 
+        id: 'disciplinario.dashboard.view_metrics', 
+        name: 'Ver Métricas', 
+        description: 'Consultar indicadores del sistema', 
+        module: 'disciplinario_dashboard' 
+      },
+      { 
+        id: 'disciplinario.dashboard.view_charts', 
+        name: 'Ver Gráficos', 
+        description: 'Acceso a gráficos y visualizaciones', 
+        module: 'disciplinario_dashboard' 
+      },
+      { 
+        id: 'disciplinario.dashboard.export_reports', 
+        name: 'Exportar Reportes', 
+        description: 'Descargar reportes estadísticos', 
+        module: 'disciplinario_dashboard' 
+      },
+      { 
+        id: 'disciplinario.dashboard.create_report', 
+        name: 'Crear Reporte', 
+        description: 'Generar reportes personalizados', 
+        module: 'disciplinario_dashboard' 
+      },
+      { 
+        id: 'disciplinario.dashboard.schedule_report', 
+        name: 'Programar Reportes', 
+        description: 'Automatizar generación de reportes', 
+        module: 'disciplinario_dashboard' 
+      },
+      { 
+        id: 'disciplinario.dashboard.view_by_sede', 
+        name: 'Filtrar por Sede', 
+        description: 'Ver métricas por sede', 
+        module: 'disciplinario_dashboard' 
+      },
+      { 
+        id: 'disciplinario.dashboard.view_by_territorial', 
+        name: 'Filtrar por Territorial', 
+        description: 'Ver métricas por territorial', 
+        module: 'disciplinario_dashboard' 
+      },
+      { 
+        id: 'disciplinario.dashboard.real_time', 
+        name: 'Datos en Tiempo Real', 
+        description: 'Actualización automática de métricas', 
+        module: 'disciplinario_dashboard' 
+      },
+      { 
+        id: 'disciplinario.dashboard.analytics', 
+        name: 'Analíticas Avanzadas', 
+        description: 'Acceso a análisis predictivo', 
+        module: 'disciplinario_dashboard' 
       },
     ]
   },
