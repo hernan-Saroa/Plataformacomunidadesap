@@ -61,6 +61,7 @@ export class NewsService {
         ...createNewsDto,
         adjuntos,
         estado: NewsStatus.RADICADA,
+        kanbanStage: 'RECEPCION',
         historialAuditoria: initialHistory,
       });
 
@@ -177,6 +178,17 @@ export class NewsService {
     };
     noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
 
+    return await this.newsRepository.save(noticia);
+  }
+
+  /**
+   * Actualiza la etapa Kanban de una noticia
+   */
+  async updateKanbanStage(id: string, kanbanStage?: string): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(id);
+    if (kanbanStage) {
+      noticia.kanbanStage = kanbanStage;
+    }
     return await this.newsRepository.save(noticia);
   }
 

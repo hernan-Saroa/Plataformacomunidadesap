@@ -104,23 +104,55 @@ export class ProcessService {
    * Obtiene todos los procesos (excluyendo los de noticias devueltas)
    */
   async findAll(): Promise<any[]> {
-    const processes = await this.processRepository.find({
-      relations: ['news', 'abogadoAsignado', 'evidence'],
-      where: {
-        news: {
-          estado: Not(In([NewsStatus.DEVUELTA, NewsStatus.ARCHIVADA]))
+    try {
+      const processes = await this.processRepository.find({
+        relations: ['news', 'abogadoAsignado', 'evidence', 'autos'],
+        where: {
+          news: {
+            estado: Not(In([NewsStatus.DEVUELTA, NewsStatus.ARCHIVADA]))
+          }
+        },
+        order: {
+          updatedAt: 'DESC' // Ordenar por fecha de actualización
         }
-      },
-      order: {
-        updatedAt: 'DESC' // Ordenar por fecha de actualización
-      }
-    });
+      });
 
-    // Map to include professional name
-    return processes.map(p => ({
-      ...p,
-      abogadoAsignadoNombre: p.abogadoAsignado?.nombreCompleto || 'Sin asignar'
-    }));
+      // Map to include professional name and calculate dynamic statistics
+      return processes.map(p => {
+        // Calcular estadísticas dinámicas
+        const draftsCount = p.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
+        const documentsCount = p.evidence?.length || 0;
+
+        // Calcular porcentaje de tiempo
+        let timePercentage = 0;
+        if (p.fechaVencimientoEtapa && p.createdAt) {
+          const now = new Date();
+          const created = new Date(p.createdAt);
+          const deadline = new Date(p.fechaVencimientoEtapa);
+          const totalTime = deadline.getTime() - created.getTime();
+          const elapsedTime = now.getTime() - created.getTime();
+          if (totalTime > 0) {
+            timePercentage = Math.min(100, Math.max(0, (elapsedTime / totalTime) * 100));
+          } else {
+            timePercentage = 100;
+          }
+        }
+
+        return {
+          ...p,
+          abogadoAsignadoNombre: p.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+          draftsCount,
+          documentsCount,
+          timePercentage: Math.round(timePercentage * 100) / 100
+        };
+      });
+    } catch (error) {
+      console.error('Error en findAll:', error);
+      throw new HttpException(
+        `Error al obtener procesos: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   /**
@@ -159,11 +191,8 @@ export class ProcessService {
   /**
    * Obtiene un proceso por ID
    */
-  async findById(id: string, includeAutos: boolean = false): Promise<DisciplinaryProcess> {
-    const relations = ['news', 'evidence'];
-    if (includeAutos) {
-      relations.push('autos');
-    }
+  async findById(id: string, includeAutos: boolean = false): Promise<any> {
+    const relations = ['news', 'evidence', 'autos', 'abogadoAsignado'];
 
     const proceso = await this.processRepository.findOne({
       where: { id },
@@ -172,17 +201,69 @@ export class ProcessService {
     if (!proceso) {
       throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
     }
-    return proceso;
+
+    // Calcular estadísticas dinámicas
+    const draftsCount = proceso.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
+    const documentsCount = proceso.evidence?.length || 0;
+
+    // Calcular porcentaje de tiempo
+    let timePercentage = 0;
+    if (proceso.fechaVencimientoEtapa && proceso.createdAt) {
+      const now = new Date();
+      const created = new Date(proceso.createdAt);
+      const deadline = new Date(proceso.fechaVencimientoEtapa);
+      const totalTime = deadline.getTime() - created.getTime();
+      const elapsedTime = now.getTime() - created.getTime();
+      if (totalTime > 0) {
+        timePercentage = Math.min(100, Math.max(0, (elapsedTime / totalTime) * 100));
+      } else {
+        timePercentage = 100;
+      }
+    }
+
+    return {
+      ...proceso,
+      draftsCount,
+      documentsCount,
+      timePercentage: Math.round(timePercentage * 100) / 100
+    };
   }
 
   /**
    * Obtiene procesos asignados a un abogado específico
    */
-  async findByAbogadoId(abogadoId: string): Promise<DisciplinaryProcess[]> {
-    return await this.processRepository.find({
+  async findByAbogadoId(abogadoId: string): Promise<any[]> {
+    const processes = await this.processRepository.find({
       where: { abogadoAsignadoId: abogadoId },
-      relations: ['news'],
+      relations: ['news', 'evidence', 'autos'],
       order: { createdAt: 'DESC' },
+    });
+
+    // Calcular estadísticas dinámicas para cada proceso
+    return processes.map(p => {
+      const draftsCount = p.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
+      const documentsCount = p.evidence?.length || 0;
+
+      let timePercentage = 0;
+      if (p.fechaVencimientoEtapa && p.createdAt) {
+        const now = new Date();
+        const created = new Date(p.createdAt);
+        const deadline = new Date(p.fechaVencimientoEtapa);
+        const totalTime = deadline.getTime() - created.getTime();
+        const elapsedTime = now.getTime() - created.getTime();
+        if (totalTime > 0) {
+          timePercentage = Math.min(100, Math.max(0, (elapsedTime / totalTime) * 100));
+        } else {
+          timePercentage = 100;
+        }
+      }
+
+      return {
+        ...p,
+        draftsCount,
+        documentsCount,
+        timePercentage: Math.round(timePercentage * 100) / 100
+      };
     });
   }
 
@@ -452,6 +533,48 @@ export class ProcessService {
       );
     }
     return;
+  }
+
+  /**
+   * Obtiene las estadísticas de un proceso específico (calculadas dinámicamente)
+   */
+  async getProcessStatistics(processId: string): Promise<{
+    draftsCount: number;
+    documentsCount: number;
+    timePercentage: number;
+  }> {
+    const proceso = await this.processRepository.findOne({
+      where: { id: processId },
+      relations: ['evidence', 'autos'],
+    });
+
+    if (!proceso) {
+      throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    // Calcular estadísticas dinámicamente
+    const draftsCount = proceso.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
+    const documentsCount = proceso.evidence?.length || 0;
+
+    let timePercentage = 0;
+    if (proceso.fechaVencimientoEtapa && proceso.createdAt) {
+      const now = new Date();
+      const created = new Date(proceso.createdAt);
+      const deadline = new Date(proceso.fechaVencimientoEtapa);
+      const totalTime = deadline.getTime() - created.getTime();
+      const elapsedTime = now.getTime() - created.getTime();
+      if (totalTime > 0) {
+        timePercentage = Math.min(100, Math.max(0, (elapsedTime / totalTime) * 100));
+      } else {
+        timePercentage = 100;
+      }
+    }
+
+    return {
+      draftsCount,
+      documentsCount,
+      timePercentage: Math.round(timePercentage * 100) / 100,
+    };
   }
 
   /**

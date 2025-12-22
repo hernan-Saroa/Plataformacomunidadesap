@@ -57,7 +57,7 @@ export class DisciplinaryProcess {
     type: 'varchar',
     default: 'EVALUACION',
   })
-  etapaActual: string;
+  etapaActual: ProcessStage;
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   kanbanStage: string;

@@ -47,6 +47,7 @@ export interface DisciplinaryNews {
         dependencia?: string;
     }>;
     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
+    kanbanStage?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -79,6 +80,16 @@ export interface DisciplinaryProcess {
     createdAt: string;
     updatedAt: string;
     evidence?: any[];
+    // Estadísticas dinámicas
+    draftsCount?: number;
+    documentsCount?: number;
+    timePercentage?: number;
+}
+
+export interface ProcessStatistics {
+    draftsCount: number;
+    documentsCount: number;
+    timePercentage: number;
 }
 
 export interface LegalAuto {
@@ -105,8 +116,8 @@ export interface CreateNewsDto {
     hechos: string;
     conductas?: string[];
     adjuntos?: string[];
-    denunciante: any[];
-    disciplinable: any[];
+    denunciante: any;
+    disciplinable: any;
 }
 
 export interface AssignProcessDto {
@@ -152,8 +163,11 @@ class DisciplinaryService {
         formData.append('territorial', data.territorial);
         formData.append('dependenciaDenunciado', data.dependenciaDenunciado);
         formData.append('hechos', data.hechos);
-        formData.append('denunciante', data.denunciante);
-        formData.append('disciplinable', data.disciplinable);
+        formData.append('denunciante', JSON.stringify(data.denunciante));
+        formData.append('disciplinable', JSON.stringify(data.disciplinable));
+        if (data.adjuntos && data.adjuntos.length > 0) {
+            formData.append('adjuntos', JSON.stringify(data.adjuntos));
+        }
 
         // Archivos con el campo correcto que espera el backend
         if (files && files.length > 0) {
@@ -177,6 +191,10 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
     }
 
+    async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/kanban`, { kanbanStage });
+    }
+
     async changeNewsStatus(id: string, newStatus: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/status`, { status: newStatus });
     }
@@ -191,6 +209,10 @@ class DisciplinaryService {
 
     async getAllProcesos(): Promise<DisciplinaryProcess[]> {
         return apiClient.get<DisciplinaryProcess[]>(`${SERVICE_PREFIX}/disciplinary-processes`);
+    }
+
+    async getAutosByProceso(processId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-autos/by-process/${processId}`);
     }
 
     async getMisProcesos(abogadoId: string): Promise<DisciplinaryProcess[]> {
@@ -461,6 +483,17 @@ class DisciplinaryService {
 
     async updateGlobalConfig(config: any) {
         return apiClient.put<any>(`${SERVICE_PREFIX}/configuration/global`, config);
+    }
+
+    // ==================== ESTADÍSTICAS DEL PROCESO ====================
+
+    /**
+     * Obtener estadísticas dinámicas de un proceso específico
+     */
+    async getProcessStatistics(processId: string): Promise<ProcessStatistics> {
+        return apiClient.get<ProcessStatistics>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/statistics`
+        );
     }
 }
 

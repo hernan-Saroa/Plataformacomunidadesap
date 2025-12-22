@@ -636,7 +636,7 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
   const handleExportPDF = () => {
     const doc = new jsPDF();
 
-    // Header
+// Header
     doc.setFontSize(16);
     doc.setTextColor(0, 61, 165); // ESAP Blue
     doc.text('Historial de Auditoría - Noticia Disciplinaria', 14, 20);
@@ -972,61 +972,7 @@ export function GestionNoticias() {
     const noticiaToExport = filteredNoticias[0];
     const doc = new jsPDF();
 
-        const origenMap: Record<string, string> = {
-          'Anónimo': 'ANONIMO',
-          'Quejoso': 'QUEJOSO',
-          'Informante': 'QUEJOSO',
-          'De oficio': 'OFICIO',
-          'Remisión por competencia': 'REMISION'
-        };
-
-      const denunciantesMapped = (data.denunciantes || []).map((d: any) => ({
-        nombre: d.nombre,
-        cedula: d.identificacion,
-        email: d.correo,
-        cargo: d.cargo,
-        telefono: d.telefono,
-        direccion: d.direccion,
-        entidad: d.entidad,
-        dependencia: d.entidad
-      }));
-
-        const disciplinablesMapped = (data.disciplinable || []).map((d: any) => ({
-          nombre: d.nombre,
-          cedula: d.identificacion,
-          cargo: d.cargo,
-          dependencia: d.dependencia || d.cargo // Fallback
-        }));
-
-      const createDto = {
-        origen: origenMap[data.origen] || 'ANONIMO',
-        fechaQueja: data.fechaQueja,
-        territorial: data.territorial,
-        dependenciaDenunciado: data.dependenciaDenunciado || disciplinablesMapped[0]?.dependencia || 'Por determinar',
-        hechos: data.descripcionHechos,
-        conductas: Array.isArray(data.conductasSeleccionadas) ? data.conductasSeleccionadas : [],
-        denunciante: denunciantesMapped,
-        disciplinable: disciplinablesMapped,
-        adjuntos: uploadedUrls
-      };
-
-        console.log('📝 Sending payload:', createDto);
-        await disciplinaryService.radicarNoticia(createDto);
-
-        toast.success('Noticia enviada con éxito');
-
-        // Reload news to get the server-generated fields
-        await loadData();
-        setShowCreateModal(false);
-      } catch (error) {
-        console.error('Error creating news:', error);
-        toast.error('Error al crear la noticia. Verifique los datos.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // Header
+        // Header
     doc.setFontSize(16);
     doc.setTextColor(0, 61, 165); // ESAP Blue
     doc.text('Reporte Detallado - Noticia Disciplinaria', 14, 20);

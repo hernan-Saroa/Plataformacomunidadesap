@@ -76,8 +76,8 @@ export class ConfigurationController {
 
                     // Update all processes that are currently in the old stage
                     await this.processRepo.update(
-                        { etapaActual: oldName },
-                        { etapaActual: newName }
+                        { etapaActual: oldName as any },
+                        { etapaActual: newName as any }
                     );
                 }
 

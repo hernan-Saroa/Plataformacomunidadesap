@@ -92,7 +92,7 @@ interface Plantilla {
 }
 
 // ==================== MOCK DATA ====================
-const PLANTILLAS_MOCK: Plantilla[] = [
+export const PLANTILLAS_MOCK: Plantilla[] = [
   {
     id: 'p1',
     nombre: 'Auto de Inhibitorio',
@@ -257,7 +257,7 @@ NOTIFÍQUESE Y CÚMPLASE`,
   }
 ];
 
-const PROCESOS_MOCK: Proceso[] = [
+export const PROCESOS_MOCK: Proceso[] = [
   {
     id: '1',
     numeroProceso: 'P-120-2025',
@@ -368,7 +368,7 @@ const PROCESOS_MOCK: Proceso[] = [
 ];
 
 // ==================== MODAL VER PROCESO ====================
-function ModalVerProceso({ proceso, onClose, onEditarEtapa, onSubirDocumento }: {
+export function ModalVerProceso({ proceso, onClose, onEditarEtapa, onSubirDocumento }: {
   proceso: Proceso;
   onClose: () => void;
   onEditarEtapa: () => void;
@@ -795,7 +795,7 @@ function ModalVerProceso({ proceso, onClose, onEditarEtapa, onSubirDocumento }: 
 }
 
 // ==================== MODAL SELECCIONAR ETAPA ====================
-function ModalSeleccionarEtapa({ proceso, onClose, onSeleccionar }: {
+export function ModalSeleccionarEtapa({ proceso, onClose, onSeleccionar }: {
   proceso: Proceso;
   onClose: () => void;
   onSeleccionar: (etapa: string, plantilla: Plantilla) => void;

@@ -59,6 +59,24 @@ export class ProcessController {
   }
 
   /**
+   * Obtener estadísticas dinámicas de un proceso específico
+   */
+  @Get(':id/statistics')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Obtener estadísticas del proceso',
+    description: 'Retorna las estadísticas dinámicas del proceso: borradores, documentos y porcentaje de tiempo',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Estadísticas del proceso',
+  })
+  @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
+  async getProcessStatistics(@Param('id') id: string) {
+    return await this.processService.getProcessStatistics(id);
+  }
+
+  /**
    * H2: Asignar un profesional a una noticia (crear proceso)
    */
   @Post('assign')

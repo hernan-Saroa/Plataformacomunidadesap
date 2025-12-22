@@ -138,9 +138,15 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     const nombreTipo = tiposAuto.find(t => t.id === auto.tipo)?.nombre || auto.tipo;
     const documentUrl = buildAutoDocumentUrl(auto.documentUrl);
 
+    // Get actual filename and extension
+    const documentName = auto.documentName || auto.numero || 'Auto Sin Nombre';
+    const fileExtension = documentName.includes('.') ? documentName.split('.').pop()?.toUpperCase() || 'PDF' : auto.documentType?.toUpperCase() || 'PDF';
+
     return {
       id: auto.id,
       numero: auto.numero || 'Auto Sin Número',
+      documentName: documentName,
+      fileExtension: fileExtension,
       tipo: nombreTipo,
       fecha: (auto.createdAt || '').split('T')[0],
       firmado: auto.estado === 'FIRMADO' || auto.estado === 'NOTIFICADO',
@@ -434,7 +440,12 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                             <p className="font-bold text-gray-900">{auto.estado}</p>
                           </div>
                         </div>
-                        <div className="text-xs text-gray-500 mt-2">Tamaño: {auto.tamanio}</div>
+                        <div className="text-xs text-gray-700 mt-2 flex items-center gap-2">
+                          <Paperclip className="w-3 h-3 text-gray-500" />
+                          <span className="font-semibold">{auto.documentName}</span>
+                          <Badge variant="outline" className="text-xs px-1.5 py-0 bg-gray-100">{auto.fileExtension}</Badge>
+                          <span className="text-gray-500">• {auto.tamanio}</span>
+                        </div>
                       </div>
                       <div className="flex gap-1">
                         <Button

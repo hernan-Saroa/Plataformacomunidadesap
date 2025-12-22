@@ -21,6 +21,7 @@ import {
 import { NewsService } from '../services/news.service';
 import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto';
 import { ReturnNewsDto } from '../dtos/return-news.dto';
+import { UpdateNewsKanbanDto } from '../dtos/update-news-kanban.dto';
 import { DisciplinaryNews } from '../entities/disciplinary-news.entity';
 
 interface FileData {
@@ -149,6 +150,27 @@ export class NewsController {
     @Body() body: { status: string },
   ): Promise<DisciplinaryNews> {
     return await this.newsService.updateStatus(id, body.status as any);
+  }
+
+  /**
+   * Actualizar etapa Kanban de una noticia
+   */
+  @Patch(':id/kanban')
+  @ApiOperation({
+    summary: 'Actualizar Kanban de Noticia',
+    description: 'Actualiza la etapa Kanban para persistir la posicion en el tablero',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Kanban actualizado',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async updateKanban(
+    @Param('id') id: string,
+    @Body() body: UpdateNewsKanbanDto,
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.updateKanbanStage(id, body.kanbanStage);
   }
 
   /**

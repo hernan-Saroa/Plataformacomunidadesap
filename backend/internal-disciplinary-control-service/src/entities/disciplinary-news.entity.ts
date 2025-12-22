@@ -85,6 +85,9 @@ export class DisciplinaryNews {
   @Column({ type: 'text', nullable: true })
   observaciones: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: true, default: 'RECEPCION' })
+  kanbanStage: string;
+
   @UpdateDateColumn()
   updatedAt: Date;
 

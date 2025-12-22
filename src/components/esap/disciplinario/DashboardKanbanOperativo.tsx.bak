@@ -2804,6 +2804,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       console.error('Error convirtiendo noticia a proceso', error);
       toast.error('No se pudo convertir la noticia');
     }
+  };
 
     const denunciadoFallback: Persona = itemSeleccionado?.denunciado || {
       nombre: 'Sin denunciado',
