@@ -349,35 +349,24 @@ export function ListasChequeoEstandarizadas() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900">
-            Listas de Chequeo Estandarizadas
-          </h1>
-          <p className="text-sm text-gray-600 mt-1">
-            RF007 - Biblioteca de listas reutilizables
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={() => setVistaActual('biblioteca')}
-            variant={vistaActual === 'biblioteca' ? 'default' : 'outline'}
-            size="sm"
-          >
-            <BookOpen className="w-4 h-4 mr-2" />
-            Biblioteca
-          </Button>
-          <Button
-            onClick={handleCrearNueva}
-            size="sm"
-            style={{ background: '#8B5CF6' }}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Nueva Lista
-          </Button>
-        </div>
+      {/* ACCIONES PRINCIPALES */}
+      <div className="flex justify-end gap-2">
+        <Button
+          onClick={() => setVistaActual('biblioteca')}
+          variant={vistaActual === 'biblioteca' ? 'default' : 'outline'}
+          size="sm"
+        >
+          <BookOpen className="w-4 h-4 mr-2" />
+          Biblioteca
+        </Button>
+        <Button
+          onClick={handleCrearNueva}
+          size="sm"
+          style={{ background: '#8B5CF6' }}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Nueva Lista
+        </Button>
       </div>
 
       {/* ESTADÍSTICAS */}

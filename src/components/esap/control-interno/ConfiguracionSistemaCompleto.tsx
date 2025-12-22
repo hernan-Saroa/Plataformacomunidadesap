@@ -1,16 +1,19 @@
 /**
- * RF020 - CONFIGURACIÓN DEL SISTEMA
- * Control Interno de Gestión - ESAP
+ * ============================================
+ * CONFIGURACIÓN DEL SISTEMA - REDISEÑADA
+ * ============================================
  * 
- * Funcionalidades:
- * 1. Edición de nombres de los cinco roles del Decreto 648
- * 2. Creación, edición y eliminación de actividades por rol
- * 3. Gestión de tipos de auditoría
- * 4. Configuración de periodicidades para informes de ley
- * 5. Personalización de formatos de documentos
- * 6. Gestión de listas de chequeo estándar
- * 7. Configuración de umbrales de alertas
- * 8. Gestión de plantillas de correo electrónico
+ * Nueva arquitectura de navegación con sidebar
+ * Agrupa configuraciones relacionadas lógicamente
+ * Reduce carga visual y mejora usabilidad
+ * 
+ * ESTRUCTURA:
+ * 1. General: Roles, Normatividad
+ * 2. Auditorías: Tipos, Listas de Chequeo
+ * 3. Informes: Informes Ley, Formatos
+ * 4. Notificaciones: Alertas, Correos
+ * 
+ * ÚLTIMA ACTUALIZACIÓN: 22 Diciembre 2025
  */
 
 import { useState } from 'react';
@@ -20,14 +23,144 @@ import {
   CheckSquare, AlertTriangle, Mail, Edit, Plus, Trash2,
   Save, X, Eye, Copy, Download, Upload, Search, Filter,
   ChevronRight, Clock, Target, Activity, Database, Code,
-  Layers, BookOpen, Briefcase, Award, List, BarChart3
+  Layers, BookOpen, Briefcase, Award, List, BarChart3, Scale,
+  Home, Building2, Sliders, Zap, Globe, Lock, ChevronLeft
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { toast } from 'sonner@2.0.3';
+import { NormatividadAplicable } from './NormatividadAplicable';
 
-// ============ TIPOS ============
+// ====================================
+// TIPOS
+// ====================================
+
+type SeccionPrincipal = 'general' | 'auditorias' | 'informes' | 'notificaciones';
+type SubseccionGeneral = 'roles' | 'normatividad';
+type SubseccionAuditorias = 'tipos' | 'listas';
+type SubseccionInformes = 'informes-ley' | 'formatos';
+type SubseccionNotificaciones = 'alertas' | 'correos';
+
+interface MenuItem {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  badge?: number;
+  description: string;
+}
+
+interface SeccionConfig {
+  id: SeccionPrincipal;
+  titulo: string;
+  descripcion: string;
+  icono: React.ElementType;
+  color: string;
+  subsecciones: MenuItem[];
+}
+
+// ====================================
+// CONFIGURACIÓN DE NAVEGACIÓN
+// ====================================
+
+const SECCIONES_CONFIG: SeccionConfig[] = [
+  {
+    id: 'general',
+    titulo: 'Configuración General',
+    descripcion: 'Parámetros fundamentales del sistema',
+    icono: Settings,
+    color: '#3B82F6',
+    subsecciones: [
+      {
+        id: 'roles',
+        label: 'Roles Decreto 648',
+        icon: Shield,
+        badge: 5,
+        description: 'Gestión de los 5 roles oficiales'
+      },
+      {
+        id: 'normatividad',
+        label: 'Normatividad',
+        icon: Scale,
+        badge: 17,
+        description: 'Marco normativo aplicable'
+      }
+    ]
+  },
+  {
+    id: 'auditorias',
+    titulo: 'Configuración de Auditorías',
+    descripcion: 'Tipos, listas y parámetros de auditoría',
+    icono: Target,
+    color: '#10B981',
+    subsecciones: [
+      {
+        id: 'tipos',
+        label: 'Tipos de Auditoría',
+        icon: CheckSquare,
+        badge: 5,
+        description: 'Gestión, Financiera, Cumplimiento, TI, Territorial'
+      },
+      {
+        id: 'listas',
+        label: 'Listas de Chequeo',
+        icon: List,
+        badge: 8,
+        description: 'Plantillas de verificación estándar'
+      }
+    ]
+  },
+  {
+    id: 'informes',
+    titulo: 'Informes y Documentos',
+    descripcion: 'Configuración de reportes y formatos',
+    icono: FileText,
+    color: '#8B5CF6',
+    subsecciones: [
+      {
+        id: 'informes-ley',
+        label: 'Informes de Ley',
+        icon: FileText,
+        badge: 3,
+        description: 'Periodicidades y destinatarios obligatorios'
+      },
+      {
+        id: 'formatos',
+        label: 'Formatos de Documentos',
+        icon: Layers,
+        badge: 12,
+        description: 'Plantillas de planes, actas e informes'
+      }
+    ]
+  },
+  {
+    id: 'notificaciones',
+    titulo: 'Notificaciones y Alertas',
+    descripcion: 'Sistema de notificaciones automáticas',
+    icono: Bell,
+    color: '#F59E0B',
+    subsecciones: [
+      {
+        id: 'alertas',
+        label: 'Umbrales de Alertas',
+        icon: AlertTriangle,
+        badge: 4,
+        description: 'Límites para activación automática'
+      },
+      {
+        id: 'correos',
+        label: 'Plantillas de Email',
+        icon: Mail,
+        badge: 3,
+        description: 'Notificaciones por correo electrónico'
+      }
+    ]
+  }
+];
+
+// ====================================
+// DATOS MOCK (mantener los mismos)
+// ====================================
 
 interface RolDecreto648 {
   id: string;
@@ -40,107 +173,6 @@ interface RolDecreto648 {
   actividadesAsignadas: number;
   usuariosAsignados: number;
 }
-
-interface ActividadRol {
-  id: string;
-  rolId: string;
-  codigo: string;
-  nombre: string;
-  descripcion: string;
-  obligatoria: boolean;
-  frecuencia: 'Única' | 'Mensual' | 'Trimestral' | 'Semestral' | 'Anual';
-  duracionEstimada: number; // en días
-  orden: number;
-}
-
-interface TipoAuditoria {
-  id: string;
-  codigo: string;
-  nombre: string;
-  descripcion: string;
-  alcance: string;
-  duracionPromedio: number; // en días
-  equipoPromedio: number; // número de personas
-  color: string;
-  activa: boolean;
-  auditoriasProgramadas: number;
-}
-
-interface InformeLey {
-  id: string;
-  codigo: string;
-  nombre: string;
-  normaLegal: string;
-  entidadDestino: string;
-  periodicidad: 'Mensual' | 'Trimestral' | 'Semestral' | 'Anual';
-  mesEntrega: number;
-  diaEntrega: number;
-  diasAnticipacion: number;
-  responsable: string;
-  plantillaAsociada: string;
-  activo: boolean;
-}
-
-interface FormatoDocumento {
-  id: string;
-  codigo: string;
-  nombre: string;
-  tipo: 'Plan' | 'Programa' | 'Acta' | 'Informe' | 'Certificación' | 'Memorando';
-  descripcion: string;
-  version: string;
-  fechaVersion: string;
-  encabezado: {
-    incluirLogo: boolean;
-    incluirFecha: boolean;
-    incluirCodigo: boolean;
-  };
-  piePagina: {
-    incluirNumeracion: boolean;
-    incluirFirmas: boolean;
-    numeroFirmas: number;
-  };
-  formatoArchivo: 'DOCX' | 'PDF' | 'XLSX';
-  activo: boolean;
-}
-
-interface ListaChequeo {
-  id: string;
-  codigo: string;
-  nombre: string;
-  tipoAuditoriaAsociada: string;
-  categoria: string;
-  numeroItems: number;
-  version: string;
-  fechaVersion: string;
-  activa: boolean;
-}
-
-interface UmbralAlerta {
-  id: string;
-  concepto: string;
-  tipoMetrica: 'Porcentaje' | 'Días' | 'Número' | 'Monto';
-  valorMinimo: number;
-  valorMaximo: number;
-  nivelAlerta: 'Info' | 'Advertencia' | 'Crítico';
-  accionAutomatica: string;
-  notificarA: string[];
-  activo: boolean;
-}
-
-interface PlantillaCorreo {
-  id: string;
-  codigo: string;
-  nombre: string;
-  asunto: string;
-  cuerpo: string;
-  variablesDisponibles: string[];
-  evento: string;
-  destinatarios: 'Manual' | 'Automático';
-  copiaA: string[];
-  activa: boolean;
-}
-
-// ============ DATOS - ROLES DECRETO 648 ============
 
 const ROLES_DECRETO_648: RolDecreto648[] = [
   {
@@ -200,7 +232,18 @@ const ROLES_DECRETO_648: RolDecreto648[] = [
   }
 ];
 
-// ============ DATOS - TIPOS DE AUDITORÍA ============
+interface TipoAuditoria {
+  id: string;
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  alcance: string;
+  duracionPromedio: number;
+  equipoPromedio: number;
+  color: string;
+  activa: boolean;
+  auditoriasProgramadas: number;
+}
 
 const TIPOS_AUDITORIA: TipoAuditoria[] = [
   {
@@ -265,7 +308,20 @@ const TIPOS_AUDITORIA: TipoAuditoria[] = [
   }
 ];
 
-// ============ DATOS - INFORMES DE LEY ============
+interface InformeLey {
+  id: string;
+  codigo: string;
+  nombre: string;
+  normaLegal: string;
+  entidadDestino: string;
+  periodicidad: 'Mensual' | 'Trimestral' | 'Semestral' | 'Anual';
+  mesEntrega: number;
+  diaEntrega: number;
+  diasAnticipacion: number;
+  responsable: string;
+  plantillaAsociada: string;
+  activo: boolean;
+}
 
 const INFORMES_LEY: InformeLey[] = [
   {
@@ -275,7 +331,7 @@ const INFORMES_LEY: InformeLey[] = [
     normaLegal: 'Ley 1474 de 2011 - Art. 9',
     entidadDestino: 'DAFP - Departamento Administrativo de la Función Pública',
     periodicidad: 'Semestral',
-    mesEntrega: 7, // Julio
+    mesEntrega: 7,
     diaEntrega: 31,
     diasAnticipacion: 15,
     responsable: 'Jefe OCI',
@@ -289,7 +345,7 @@ const INFORMES_LEY: InformeLey[] = [
     normaLegal: 'Decreto 648 de 2017',
     entidadDestino: 'Dirección Nacional ESAP',
     periodicidad: 'Anual',
-    mesEntrega: 2, // Febrero
+    mesEntrega: 2,
     diaEntrega: 28,
     diasAnticipacion: 20,
     responsable: 'Jefe OCI',
@@ -303,7 +359,7 @@ const INFORMES_LEY: InformeLey[] = [
     normaLegal: 'Decreto 1083 de 2015',
     entidadDestino: 'Dirección Nacional ESAP',
     periodicidad: 'Trimestral',
-    mesEntrega: 3, // Marzo, Junio, Septiembre, Diciembre
+    mesEntrega: 3,
     diaEntrega: 15,
     diasAnticipacion: 10,
     responsable: 'Profesional Especializado',
@@ -312,7 +368,17 @@ const INFORMES_LEY: InformeLey[] = [
   }
 ];
 
-// ============ DATOS - UMBRALES DE ALERTAS ============
+interface UmbralAlerta {
+  id: string;
+  concepto: string;
+  tipoMetrica: 'Porcentaje' | 'Días' | 'Número' | 'Monto';
+  valorMinimo: number;
+  valorMaximo: number;
+  nivelAlerta: 'Info' | 'Advertencia' | 'Crítico';
+  accionAutomatica: string;
+  notificarA: string[];
+  activo: boolean;
+}
 
 const UMBRALES_ALERTAS: UmbralAlerta[] = [
   {
@@ -361,7 +427,18 @@ const UMBRALES_ALERTAS: UmbralAlerta[] = [
   }
 ];
 
-// ============ DATOS - PLANTILLAS DE CORREO ============
+interface PlantillaCorreo {
+  id: string;
+  codigo: string;
+  nombre: string;
+  asunto: string;
+  cuerpo: string;
+  variablesDisponibles: string[];
+  evento: string;
+  destinatarios: 'Manual' | 'Automático';
+  copiaA: string[];
+  activa: boolean;
+}
 
 const PLANTILLAS_CORREO: PlantillaCorreo[] = [
   {
@@ -369,19 +446,7 @@ const PLANTILLAS_CORREO: PlantillaCorreo[] = [
     codigo: 'EMAIL-ASIGNACION',
     nombre: 'Asignación de Auditoría',
     asunto: 'Asignación a Auditoría {{CODIGO_AUDITORIA}} - {{NOMBRE_AUDITORIA}}',
-    cuerpo: `Estimado/a {{NOMBRE_AUDITOR}},
-
-Se le ha asignado como {{ROL_AUDITORIA}} para la auditoría:
-
-Código: {{CODIGO_AUDITORIA}}
-Nombre: {{NOMBRE_AUDITORIA}}
-Período: {{FECHA_INICIO}} al {{FECHA_FIN}}
-Área a auditar: {{AREA_AUDITADA}}
-
-Por favor, revise el Plan Individual de Auditoría en el sistema.
-
-Saludos cordiales,
-Oficina de Control Interno`,
+    cuerpo: `Estimado/a {{NOMBRE_AUDITOR}},\n\nSe le ha asignado como {{ROL_AUDITORIA}} para la auditoría:\n\nCódigo: {{CODIGO_AUDITORIA}}\nNombre: {{NOMBRE_AUDITORIA}}\nPeríodo: {{FECHA_INICIO}} al {{FECHA_FIN}}\nÁrea a auditar: {{AREA_AUDITADA}}\n\nPor favor, revise el Plan Individual de Auditoría en el sistema.\n\nSaludos cordiales,\nOficina de Control Interno`,
     variablesDisponibles: ['NOMBRE_AUDITOR', 'CODIGO_AUDITORIA', 'NOMBRE_AUDITORIA', 'ROL_AUDITORIA', 'FECHA_INICIO', 'FECHA_FIN', 'AREA_AUDITADA'],
     evento: 'Asignación de auditoría',
     destinatarios: 'Automático',
@@ -393,18 +458,7 @@ Oficina de Control Interno`,
     codigo: 'EMAIL-HALLAZGO',
     nombre: 'Notificación de Hallazgo',
     asunto: 'Hallazgo Identificado - {{TIPO_HALLAZGO}} - {{CODIGO_HALLAZGO}}',
-    cuerpo: `Estimado/a {{NOMBRE_RESPONSABLE}},
-
-Se ha identificado un hallazgo en la auditoría {{CODIGO_AUDITORIA}}:
-
-Tipo: {{TIPO_HALLAZGO}}
-Nivel de Riesgo: {{NIVEL_RIESGO}}
-Descripción: {{DESCRIPCION_HALLAZGO}}
-
-Se requiere formular un plan de mejoramiento dentro de los próximos {{DIAS_PLAZO}} días.
-
-Saludos cordiales,
-Oficina de Control Interno`,
+    cuerpo: `Estimado/a {{NOMBRE_RESPONSABLE}},\n\nSe ha identificado un hallazgo en la auditoría {{CODIGO_AUDITORIA}}:\n\nTipo: {{TIPO_HALLAZGO}}\nNivel de Riesgo: {{NIVEL_RIESGO}}\nDescripción: {{DESCRIPCION_HALLAZGO}}\n\nSe requiere formular un plan de mejoramiento dentro de los próximos {{DIAS_PLAZO}} días.\n\nSaludos cordiales,\nOficina de Control Interno`,
     variablesDisponibles: ['NOMBRE_RESPONSABLE', 'CODIGO_AUDITORIA', 'TIPO_HALLAZGO', 'NIVEL_RIESGO', 'DESCRIPCION_HALLAZGO', 'CODIGO_HALLAZGO', 'DIAS_PLAZO'],
     evento: 'Comunicación de hallazgo',
     destinatarios: 'Automático',
@@ -416,19 +470,7 @@ Oficina de Control Interno`,
     codigo: 'EMAIL-VENCIMIENTO',
     nombre: 'Recordatorio de Vencimiento',
     asunto: 'RECORDATORIO: Vencimiento de {{TIPO_ACTIVIDAD}} en {{DIAS_RESTANTES}} días',
-    cuerpo: `Estimado/a {{NOMBRE_DESTINATARIO}},
-
-Le recordamos que tiene una actividad próxima a vencer:
-
-Actividad: {{TIPO_ACTIVIDAD}}
-Descripción: {{DESCRIPCION_ACTIVIDAD}}
-Fecha límite: {{FECHA_LIMITE}}
-Días restantes: {{DIAS_RESTANTES}}
-
-Por favor, gestione esta actividad a la brevedad.
-
-Saludos cordiales,
-Oficina de Control Interno - Sistema Automatizado`,
+    cuerpo: `Estimado/a {{NOMBRE_DESTINATARIO}},\n\nLe recordamos que tiene una actividad próxima a vencer:\n\nActividad: {{TIPO_ACTIVIDAD}}\nDescripción: {{DESCRIPCION_ACTIVIDAD}}\nFecha límite: {{FECHA_LIMITE}}\nDías restantes: {{DIAS_RESTANTES}}\n\nPor favor, gestione esta actividad a la brevedad.\n\nSaludos cordiales,\nOficina de Control Interno - Sistema Automatizado`,
     variablesDisponibles: ['NOMBRE_DESTINATARIO', 'TIPO_ACTIVIDAD', 'DESCRIPCION_ACTIVIDAD', 'FECHA_LIMITE', 'DIAS_RESTANTES'],
     evento: 'Recordatorio automático',
     destinatarios: 'Automático',
@@ -437,137 +479,211 @@ Oficina de Control Interno - Sistema Automatizado`,
   }
 ];
 
-// ============ COMPONENTE PRINCIPAL ============
+// ====================================
+// COMPONENTE PRINCIPAL
+// ====================================
 
 export function ConfiguracionSistemaCompleto() {
-  const [seccionActiva, setSeccionActiva] = useState<
-    'roles' | 'actividades' | 'auditorias' | 'informes' | 'formatos' | 'listas' | 'alertas' | 'correos'
-  >('roles');
+  const [seccionActiva, setSeccionActiva] = useState<SeccionPrincipal>('general');
+  const [subseccionActiva, setSubseccionActiva] = useState<string>('roles');
+  const [sidebarColapsado, setSidebarColapsado] = useState(false);
+
+  const seccionConfig = SECCIONES_CONFIG.find(s => s.id === seccionActiva);
+  const IconoSeccion = seccionConfig?.icono || Settings;
 
   return (
-    <div className="space-y-6">
-      {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-            <Settings className="w-7 h-7" style={{ color: '#003DA5' }} />
-            Configuración del Sistema
-          </h1>
-          <p className="text-sm text-gray-600 mt-1">
-            RF020 - Personalización completa del módulo de Control Interno
-          </p>
+    <div className="flex gap-6 min-h-screen">
+      
+      {/* SIDEBAR DE NAVEGACIÓN */}
+      <motion.div
+        initial={false}
+        animate={{ width: sidebarColapsado ? 80 : 320 }}
+        className="bg-white rounded-xl shadow-lg p-4 flex-shrink-0 h-fit sticky top-6"
+      >
+        {/* Header del Sidebar */}
+        <div className="flex items-center justify-between mb-6">
+          {!sidebarColapsado && (
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-[#003DA5] to-[#0052CC] rounded-lg flex items-center justify-center">
+                <Settings className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="font-bold text-gray-900">Configuración</h2>
+                <p className="text-xs text-gray-500">Sistema CIG</p>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setSidebarColapsado(!sidebarColapsado)}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            {sidebarColapsado ? (
+              <ChevronRight className="w-4 h-4 text-gray-600" />
+            ) : (
+              <ChevronLeft className="w-4 h-4 text-gray-600" />
+            )}
+          </button>
         </div>
 
-        <Button style={{ background: '#003DA5' }}>
-          <Save className="w-4 h-4 mr-2" />
-          Guardar Todos los Cambios
-        </Button>
-      </div>
+        {/* Navegación Principal */}
+        <div className="space-y-2">
+          {SECCIONES_CONFIG.map((seccion) => {
+            const Icono = seccion.icono;
+            const isActive = seccionActiva === seccion.id;
 
-      {/* TABS */}
-      <div className="flex items-center gap-2 border-b overflow-x-auto">
-        <TabButton
-          active={seccionActiva === 'roles'}
-          onClick={() => setSeccionActiva('roles')}
-          icon={<Shield className="w-4 h-4" />}
-          label="Roles Decreto 648"
-          badge={5}
-        />
-        <TabButton
-          active={seccionActiva === 'actividades'}
-          onClick={() => setSeccionActiva('actividades')}
-          icon={<CheckSquare className="w-4 h-4" />}
-          label="Actividades"
-          badge={51}
-        />
-        <TabButton
-          active={seccionActiva === 'auditorias'}
-          onClick={() => setSeccionActiva('auditorias')}
-          icon={<Target className="w-4 h-4" />}
-          label="Tipos de Auditoría"
-          badge={5}
-        />
-        <TabButton
-          active={seccionActiva === 'informes'}
-          onClick={() => setSeccionActiva('informes')}
-          icon={<FileText className="w-4 h-4" />}
-          label="Informes de Ley"
-          badge={3}
-        />
-        <TabButton
-          active={seccionActiva === 'formatos'}
-          onClick={() => setSeccionActiva('formatos')}
-          icon={<Layers className="w-4 h-4" />}
-          label="Formatos"
-          badge={12}
-        />
-        <TabButton
-          active={seccionActiva === 'listas'}
-          onClick={() => setSeccionActiva('listas')}
-          icon={<List className="w-4 h-4" />}
-          label="Listas Chequeo"
-          badge={8}
-        />
-        <TabButton
-          active={seccionActiva === 'alertas'}
-          onClick={() => setSeccionActiva('alertas')}
-          icon={<AlertTriangle className="w-4 h-4" />}
-          label="Umbrales Alertas"
-          badge={4}
-        />
-        <TabButton
-          active={seccionActiva === 'correos'}
-          onClick={() => setSeccionActiva('correos')}
-          icon={<Mail className="w-4 h-4" />}
-          label="Plantillas Email"
-          badge={3}
-        />
-      </div>
+            return (
+              <div key={seccion.id}>
+                <button
+                  onClick={() => {
+                    setSeccionActiva(seccion.id);
+                    setSubseccionActiva(seccion.subsecciones[0].id);
+                  }}
+                  className={`
+                    w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all
+                    ${isActive
+                      ? 'bg-gradient-to-r from-[#003DA5] to-[#0052CC] text-white shadow-lg'
+                      : 'hover:bg-gray-100 text-gray-700'
+                    }
+                  `}
+                >
+                  <div className={`
+                    w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0
+                    ${isActive ? 'bg-white/20' : 'bg-gray-100'}
+                  `}>
+                    <Icono className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-600'}`} />
+                  </div>
+                  
+                  {!sidebarColapsado && (
+                    <div className="flex-1 text-left">
+                      <p className={`text-sm font-semibold ${isActive ? 'text-white' : 'text-gray-900'}`}>
+                        {seccion.titulo.replace('Configuración de ', '').replace('Configuración ', '')}
+                      </p>
+                    </div>
+                  )}
+                </button>
 
-      {/* CONTENIDO */}
-      <AnimatePresence mode="wait">
-        {seccionActiva === 'roles' && <SeccionRoles />}
-        {seccionActiva === 'actividades' && <SeccionActividades />}
-        {seccionActiva === 'auditorias' && <SeccionTiposAuditoria />}
-        {seccionActiva === 'informes' && <SeccionInformesLey />}
-        {seccionActiva === 'formatos' && <SeccionFormatos />}
-        {seccionActiva === 'listas' && <SeccionListasChequeo />}
-        {seccionActiva === 'alertas' && <SeccionUmbrales />}
-        {seccionActiva === 'correos' && <SeccionPlantillasCorreo />}
-      </AnimatePresence>
+                {/* Subsecciones */}
+                {isActive && !sidebarColapsado && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="ml-3 mt-2 space-y-1 border-l-2 border-gray-200 pl-3"
+                  >
+                    {seccion.subsecciones.map((sub) => {
+                      const SubIcono = sub.icon;
+                      const isSubActive = subseccionActiva === sub.id;
+
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => setSubseccionActiva(sub.id)}
+                          className={`
+                            w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all text-sm
+                            ${isSubActive
+                              ? 'bg-blue-50 text-[#003DA5] font-semibold'
+                              : 'hover:bg-gray-50 text-gray-600'
+                            }
+                          `}
+                        >
+                          <div className="flex items-center gap-2">
+                            <SubIcono className="w-4 h-4" />
+                            <span>{sub.label}</span>
+                          </div>
+                          {sub.badge && (
+                            <Badge
+                              variant={isSubActive ? 'default' : 'outline'}
+                              className="text-xs"
+                            >
+                              {sub.badge}
+                            </Badge>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer del Sidebar */}
+        {!sidebarColapsado && (
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <div className="p-3 bg-blue-50 rounded-lg">
+              <p className="text-xs font-semibold text-blue-900 mb-1">
+                💡 Consejo
+              </p>
+              <p className="text-xs text-blue-700">
+                Usa Cmd+S para guardar cambios rápidamente
+              </p>
+            </div>
+          </div>
+        )}
+      </motion.div>
+
+      {/* ÁREA DE CONTENIDO */}
+      <div className="flex-1 space-y-6">
+        
+        {/* Header del Contenido */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-xl shadow-lg p-6"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div
+                className="w-14 h-14 rounded-xl flex items-center justify-center shadow-md"
+                style={{ background: `linear-gradient(135deg, ${seccionConfig?.color}20, ${seccionConfig?.color}10)` }}
+              >
+                <IconoSeccion className="w-7 h-7" style={{ color: seccionConfig?.color }} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {seccionConfig?.titulo}
+                </h1>
+                <p className="text-sm text-gray-600 mt-1">
+                  {seccionConfig?.descripcion}
+                </p>
+              </div>
+            </div>
+
+            <Button style={{ background: '#003DA5' }}>
+              <Save className="w-4 h-4 mr-2" />
+              Guardar Cambios
+            </Button>
+          </div>
+        </motion.div>
+
+        {/* Contenido Dinámico */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={subseccionActiva}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.2 }}
+          >
+            {subseccionActiva === 'roles' && <SeccionRoles />}
+            {subseccionActiva === 'normatividad' && <NormatividadAplicable />}
+            {subseccionActiva === 'tipos' && <SeccionTiposAuditoria />}
+            {subseccionActiva === 'listas' && <SeccionListasChequeo />}
+            {subseccionActiva === 'informes-ley' && <SeccionInformesLey />}
+            {subseccionActiva === 'formatos' && <SeccionFormatos />}
+            {subseccionActiva === 'alertas' && <SeccionUmbrales />}
+            {subseccionActiva === 'correos' && <SeccionPlantillasCorreo />}
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
 
-// ============ COMPONENTE: TAB BUTTON ============
-
-function TabButton({ active, onClick, icon, label, badge }: any) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2 font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
-        active
-          ? 'border-blue-600 text-blue-600'
-          : 'border-transparent text-gray-600 hover:text-gray-900'
-      }`}
-    >
-      {icon}
-      {label}
-      {badge && (
-        <Badge
-          style={{
-            background: active ? '#3B82F6' : '#6B7280',
-            color: 'white'
-          }}
-        >
-          {badge}
-        </Badge>
-      )}
-    </button>
-  );
-}
-
-// ============ SECCIÓN: ROLES DECRETO 648 ============
+// ====================================
+// SECCIONES DE CONTENIDO
+// ====================================
 
 function SeccionRoles() {
   const [roles, setRoles] = useState(ROLES_DECRETO_648);
@@ -575,15 +691,10 @@ function SeccionRoles() {
   const [rolSeleccionado, setRolSeleccionado] = useState<RolDecreto648 | null>(null);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
+    <div className="space-y-4">
       <Card className="p-6">
         <div className="mb-6">
-          <h3 className="text-lg font-black text-gray-900 mb-2">
+          <h3 className="text-lg font-bold text-gray-900 mb-2">
             Roles del Decreto 648 de 2017
           </h3>
           <p className="text-sm text-gray-600">
@@ -662,108 +773,26 @@ function SeccionRoles() {
           />
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }
-
-// ============ SECCIÓN: ACTIVIDADES ============
-
-function SeccionActividades() {
-  const [busqueda, setBusqueda] = useState('');
-  const [filtroRol, setFiltroRol] = useState('Todos');
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-black text-gray-900">
-              Actividades por Rol
-            </h3>
-            <p className="text-sm text-gray-600 mt-1">
-              Crea, edita y elimina actividades asignadas a cada rol
-            </p>
-          </div>
-          <Button style={{ background: '#003DA5' }}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nueva Actividad
-          </Button>
-        </div>
-
-        {/* Filtros */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">
-              <Search className="w-4 h-4 inline mr-1" />
-              Buscar actividad
-            </label>
-            <input
-              type="text"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar por nombre o código..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">
-              <Filter className="w-4 h-4 inline mr-1" />
-              Filtrar por rol
-            </label>
-            <select
-              value={filtroRol}
-              onChange={(e) => setFiltroRol(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="Todos">Todos los roles</option>
-              {ROLES_DECRETO_648.map(rol => (
-                <option key={rol.id} value={rol.id}>{rol.nombrePersonalizado}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Mensaje informativo */}
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-900">
-            <strong>Total de actividades:</strong> 51 actividades distribuidas en 5 roles
-          </p>
-        </div>
-      </Card>
-    </motion.div>
-  );
-}
-
-// ============ SECCIÓN: TIPOS DE AUDITORÍA ============
 
 function SeccionTiposAuditoria() {
   const [tipos, setTipos] = useState(TIPOS_AUDITORIA);
-  const [modalCrear, setModalCrear] = useState(false);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
+    <div className="space-y-4">
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-black text-gray-900">
+            <h3 className="text-lg font-bold text-gray-900">
               Tipos de Auditoría
             </h3>
             <p className="text-sm text-gray-600 mt-1">
               Gestiona los tipos de auditoría disponibles en el sistema
             </p>
           </div>
-          <Button onClick={() => setModalCrear(true)} style={{ background: '#003DA5' }}>
+          <Button style={{ background: '#003DA5' }}>
             <Plus className="w-4 h-4 mr-2" />
             Nuevo Tipo
           </Button>
@@ -793,9 +822,6 @@ function SeccionTiposAuditoria() {
                 <div className="flex gap-1">
                   <Button variant="outline" size="sm">
                     <Edit className="w-3 h-3" />
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    <Trash2 className="w-3 h-3" />
                   </Button>
                 </div>
               </div>
@@ -830,295 +856,265 @@ function SeccionTiposAuditoria() {
           ))}
         </div>
       </Card>
-    </motion.div>
+    </div>
   );
 }
-
-// ============ SECCIÓN: INFORMES DE LEY ============
-
-function SeccionInformesLey() {
-  const [informes, setInformes] = useState(INFORMES_LEY);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-black text-gray-900">
-              Informes de Ley
-            </h3>
-            <p className="text-sm text-gray-600 mt-1">
-              Configura periodicidades y destinatarios de informes obligatorios
-            </p>
-          </div>
-          <Button style={{ background: '#003DA5' }}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nuevo Informe
-          </Button>
-        </div>
-
-        <div className="space-y-3">
-          {informes.map((informe) => (
-            <div
-              key={informe.id}
-              className="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-300 transition-colors"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <Badge variant="outline" className="mb-2">
-                    {informe.codigo}
-                  </Badge>
-                  <h4 className="font-bold text-gray-900">{informe.nombre}</h4>
-                  <p className="text-sm text-gray-600 mt-1">
-                    <strong>Norma:</strong> {informe.normaLegal}
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  <Button variant="outline" size="sm">
-                    <Edit className="w-3 h-3" />
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    <Eye className="w-3 h-3" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div>
-                  <p className="text-gray-500 text-xs mb-1">Periodicidad</p>
-                  <Badge style={{ background: '#DBEAFE', color: '#1E40AF' }}>
-                    {informe.periodicidad}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-gray-500 text-xs mb-1">Fecha Entrega</p>
-                  <p className="font-bold text-gray-900">
-                    {informe.diaEntrega}/{informe.mesEntrega}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-500 text-xs mb-1">Anticipación</p>
-                  <p className="font-bold text-gray-900">{informe.diasAnticipacion} días</p>
-                </div>
-                <div>
-                  <p className="text-gray-500 text-xs mb-1">Responsable</p>
-                  <p className="font-bold text-gray-900">{informe.responsable}</p>
-                </div>
-              </div>
-
-              <div className="mt-3 pt-3 border-t">
-                <p className="text-sm text-gray-600">
-                  <strong>Destino:</strong> {informe.entidadDestino}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-    </motion.div>
-  );
-}
-
-// ============ SECCIÓN: FORMATOS ============
-
-function SeccionFormatos() {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-black text-gray-900">
-              Formatos de Documentos
-            </h3>
-            <p className="text-sm text-gray-600 mt-1">
-              Personaliza plantillas y formatos de documentos oficiales
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline">
-              <Upload className="w-4 h-4 mr-2" />
-              Importar
-            </Button>
-            <Button style={{ background: '#003DA5' }}>
-              <Plus className="w-4 h-4 mr-2" />
-              Nuevo Formato
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {['Plan', 'Programa', 'Acta', 'Informe', 'Certificación', 'Memorando'].map((tipo, idx) => (
-            <div
-              key={tipo}
-              className="p-4 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer"
-            >
-              <FileText className="w-8 h-8 text-blue-600 mb-3" />
-              <h4 className="font-bold text-gray-900 mb-1">{tipo}</h4>
-              <p className="text-sm text-gray-600 mb-3">
-                2 plantillas disponibles
-              </p>
-              <Button variant="outline" size="sm" className="w-full">
-                <Settings className="w-3 h-3 mr-1" />
-                Configurar
-              </Button>
-            </div>
-          ))}
-        </div>
-      </Card>
-    </motion.div>
-  );
-}
-
-// ============ SECCIÓN: LISTAS DE CHEQUEO ============
 
 function SeccionListasChequeo() {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-black text-gray-900">
-              Listas de Chequeo Estándar
-            </h3>
-            <p className="text-sm text-gray-600 mt-1">
-              Administra listas de verificación para cada tipo de auditoría
-            </p>
-          </div>
-          <Button style={{ background: '#003DA5' }}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nueva Lista
-          </Button>
-        </div>
-
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-900">
-            <strong>8 listas de chequeo estándar</strong> disponibles para diferentes tipos de auditoría
+    <Card className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900">
+            Listas de Chequeo Estándar
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Administra listas de verificación para cada tipo de auditoría
           </p>
         </div>
-      </Card>
-    </motion.div>
+        <Button style={{ background: '#003DA5' }}>
+          <Plus className="w-4 h-4 mr-2" />
+          Nueva Lista
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[1, 2, 3, 4, 5, 6, 7, 8].map((idx) => (
+          <div
+            key={idx}
+            className="p-4 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer"
+          >
+            <CheckSquare className="w-8 h-8 text-blue-600 mb-3" />
+            <h4 className="font-bold text-gray-900 mb-1">Lista de Chequeo #{idx}</h4>
+            <p className="text-sm text-gray-600 mb-3">
+              Auditoría de Gestión
+            </p>
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <span>15 ítems</span>
+              <Button variant="outline" size="sm">
+                <Eye className="w-3 h-3" />
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
-// ============ SECCIÓN: UMBRALES DE ALERTAS ============
-
-function SeccionUmbrales() {
-  const [umbrales, setUmbrales] = useState(UMBRALES_ALERTAS);
+function SeccionInformesLey() {
+  const [informes] = useState(INFORMES_LEY);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-black text-gray-900">
-              Umbrales de Alertas
-            </h3>
-            <p className="text-sm text-gray-600 mt-1">
-              Define límites para activación automática de alertas
-            </p>
-          </div>
-          <Button style={{ background: '#003DA5' }}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nuevo Umbral
-          </Button>
+    <Card className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900">
+            Informes de Ley
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Configura periodicidades y destinatarios de informes obligatorios
+          </p>
         </div>
+        <Button style={{ background: '#003DA5' }}>
+          <Plus className="w-4 h-4 mr-2" />
+          Nuevo Informe
+        </Button>
+      </div>
 
-        <div className="space-y-3">
-          {umbrales.map((umbral) => (
-            <div
-              key={umbral.id}
-              className="p-4 border-2 rounded-xl"
-              style={{
-                borderColor: 
-                  umbral.nivelAlerta === 'Crítico' ? '#EF4444' :
-                  umbral.nivelAlerta === 'Advertencia' ? '#F59E0B' : '#3B82F6',
-                background:
-                  umbral.nivelAlerta === 'Crítico' ? '#FEE2E2' :
-                  umbral.nivelAlerta === 'Advertencia' ? '#FEF3C7' : '#DBEAFE'
-              }}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge
-                      style={{
-                        background:
-                          umbral.nivelAlerta === 'Crítico' ? '#DC2626' :
-                          umbral.nivelAlerta === 'Advertencia' ? '#F59E0B' : '#3B82F6',
-                        color: 'white'
-                      }}
-                    >
-                      {umbral.nivelAlerta}
-                    </Badge>
-                    <h4 className="font-bold text-gray-900">{umbral.concepto}</h4>
-                  </div>
-                  <p className="text-sm text-gray-700 mb-2">
-                    <strong>Tipo:</strong> {umbral.tipoMetrica} • 
-                    <strong> Rango:</strong> {umbral.valorMinimo} - {umbral.valorMaximo}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    <strong>Acción:</strong> {umbral.accionAutomatica}
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  <Button variant="outline" size="sm">
-                    <Edit className="w-3 h-3" />
-                  </Button>
-                </div>
+      <div className="space-y-3">
+        {informes.map((informe) => (
+          <div
+            key={informe.id}
+            className="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-300 transition-colors"
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <Badge variant="outline" className="mb-2">
+                  {informe.codigo}
+                </Badge>
+                <h4 className="font-bold text-gray-900">{informe.nombre}</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  <strong>Norma:</strong> {informe.normaLegal}
+                </p>
               </div>
-
-              <div className="flex flex-wrap gap-1 mt-2">
-                {umbral.notificarA.map((destinatario, idx) => (
-                  <Badge key={idx} variant="outline" className="text-xs">
-                    {destinatario}
-                  </Badge>
-                ))}
+              <div className="flex gap-1">
+                <Button variant="outline" size="sm">
+                  <Edit className="w-3 h-3" />
+                </Button>
+                <Button variant="outline" size="sm">
+                  <Eye className="w-3 h-3" />
+                </Button>
               </div>
             </div>
-          ))}
-        </div>
-      </Card>
-    </motion.div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div>
+                <p className="text-gray-500 text-xs mb-1">Periodicidad</p>
+                <Badge style={{ background: '#DBEAFE', color: '#1E40AF' }}>
+                  {informe.periodicidad}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-gray-500 text-xs mb-1">Fecha Entrega</p>
+                <p className="font-bold text-gray-900">
+                  {informe.diaEntrega}/{informe.mesEntrega}
+                </p>
+              </div>
+              <div>
+                <p className="text-gray-500 text-xs mb-1">Anticipación</p>
+                <p className="font-bold text-gray-900">{informe.diasAnticipacion} días</p>
+              </div>
+              <div>
+                <p className="text-gray-500 text-xs mb-1">Responsable</p>
+                <p className="font-bold text-gray-900">{informe.responsable}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 pt-3 border-t">
+              <p className="text-sm text-gray-600">
+                <strong>Destino:</strong> {informe.entidadDestino}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
-// ============ SECCIÓN: PLANTILLAS DE CORREO ============
+function SeccionFormatos() {
+  return (
+    <Card className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900">
+            Formatos de Documentos
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Personaliza plantillas y formatos de documentos oficiales
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline">
+            <Upload className="w-4 h-4 mr-2" />
+            Importar
+          </Button>
+          <Button style={{ background: '#003DA5' }}>
+            <Plus className="w-4 h-4 mr-2" />
+            Nuevo Formato
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {['Plan', 'Programa', 'Acta', 'Informe', 'Certificación', 'Memorando'].map((tipo) => (
+          <div
+            key={tipo}
+            className="p-4 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer"
+          >
+            <FileText className="w-8 h-8 text-blue-600 mb-3" />
+            <h4 className="font-bold text-gray-900 mb-1">{tipo}</h4>
+            <p className="text-sm text-gray-600 mb-3">
+              2 plantillas disponibles
+            </p>
+            <Button variant="outline" size="sm" className="w-full">
+              <Settings className="w-3 h-3 mr-1" />
+              Configurar
+            </Button>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function SeccionUmbrales() {
+  const [umbrales] = useState(UMBRALES_ALERTAS);
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900">
+            Umbrales de Alertas
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Define límites para activación automática de alertas
+          </p>
+        </div>
+        <Button style={{ background: '#003DA5' }}>
+          <Plus className="w-4 h-4 mr-2" />
+          Nuevo Umbral
+        </Button>
+      </div>
+
+      <div className="space-y-3">
+        {umbrales.map((umbral) => (
+          <div
+            key={umbral.id}
+            className="p-4 border-2 rounded-xl"
+            style={{
+              borderColor: 
+                umbral.nivelAlerta === 'Crítico' ? '#EF4444' :
+                umbral.nivelAlerta === 'Advertencia' ? '#F59E0B' : '#3B82F6',
+              background:
+                umbral.nivelAlerta === 'Crítico' ? '#FEE2E2' :
+                umbral.nivelAlerta === 'Advertencia' ? '#FEF3C7' : '#DBEAFE'
+            }}
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge
+                    style={{
+                      background:
+                        umbral.nivelAlerta === 'Crítico' ? '#DC2626' :
+                        umbral.nivelAlerta === 'Advertencia' ? '#F59E0B' : '#3B82F6',
+                      color: 'white'
+                    }}
+                  >
+                    {umbral.nivelAlerta}
+                  </Badge>
+                  <h4 className="font-bold text-gray-900">{umbral.concepto}</h4>
+                </div>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Tipo:</strong> {umbral.tipoMetrica} • 
+                  <strong> Rango:</strong> {umbral.valorMinimo} - {umbral.valorMaximo}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Acción:</strong> {umbral.accionAutomatica}
+                </p>
+              </div>
+              <Button variant="outline" size="sm">
+                <Edit className="w-3 h-3" />
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-1 mt-2">
+              {umbral.notificarA.map((destinatario, idx) => (
+                <Badge key={idx} variant="outline" className="text-xs">
+                  {destinatario}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 function SeccionPlantillasCorreo() {
-  const [plantillas, setPlantillas] = useState(PLANTILLAS_CORREO);
+  const [plantillas] = useState(PLANTILLAS_CORREO);
   const [plantillaSeleccionada, setPlantillaSeleccionada] = useState<PlantillaCorreo | null>(null);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
+    <div className="space-y-4">
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-black text-gray-900">
+            <h3 className="text-lg font-bold text-gray-900">
               Plantillas de Correo Electrónico
             </h3>
             <p className="text-sm text-gray-600 mt-1">
@@ -1230,11 +1226,13 @@ function SeccionPlantillasCorreo() {
           </Card>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }
 
-// ============ MODAL: EDITAR ROL ============
+// ====================================
+// MODAL: EDITAR ROL
+// ====================================
 
 function ModalEditarRol({ rol, onGuardar, onCerrar }: any) {
   const [nombrePersonalizado, setNombrePersonalizado] = useState(rol.nombrePersonalizado);
@@ -1249,7 +1247,7 @@ function ModalEditarRol({ rol, onGuardar, onCerrar }: any) {
         className="bg-white rounded-xl shadow-2xl max-w-2xl w-full"
       >
         <div className="p-6 border-b">
-          <h3 className="text-lg font-black text-gray-900">
+          <h3 className="text-lg font-bold text-gray-900">
             Editar Rol: {rol.codigo}
           </h3>
           <p className="text-sm text-gray-600 mt-1">
@@ -1307,3 +1305,5 @@ function ModalEditarRol({ rol, onGuardar, onCerrar }: any) {
     </div>
   );
 }
+
+export default ConfiguracionSistemaCompleto;

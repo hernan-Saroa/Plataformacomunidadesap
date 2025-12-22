@@ -13,6 +13,7 @@ import { useState, useEffect } from 'react';
 import { SelectorModuloKanban } from './SelectorModuloKanban';
 import { KanbanGestionLegal } from './KanbanGestionLegal';
 import { ModuloDefensaJudicial } from './ModuloDefensaJudicial';
+import { ModuloOrganosControl } from './ModuloOrganosControl';
 import { ToastProvider } from './design-system/ToastSIGL';
 import { CASOS_MOCK, USUARIOS_MOCK } from './datosMockSIGL';
 import { toast } from 'sonner';
@@ -139,7 +140,7 @@ export function KanbanSIGL({
 }) {
   const [moduloSeleccionado, setModuloSeleccionado] = useState<string | null>(moduloInicial || null);
   const [casos, setCasos] = useState(CASOS_MOCK);
-  const [vistaModuloCompleto, setVistaModuloCompleto] = useState(false); // Nueva: vista completa MOD-01
+  const [vistaModuloCompleto, setVistaModuloCompleto] = useState(false); // Vista completa para módulos especiales
 
   // Actualizar el módulo seleccionado cuando cambie moduloInicial
   useEffect(() => {
@@ -202,6 +203,28 @@ export function KanbanSIGL({
   }
 
   // ============================================
+  // VISTA MÓDULO COMPLETO MOD-01
+  // ============================================
+  if (vistaModuloCompleto && moduloSeleccionado === 'mod-01') {
+    return (
+      <ModuloDefensaJudicial
+        onVolverKanban={() => setVistaModuloCompleto(false)}
+      />
+    );
+  }
+
+  // ============================================
+  // VISTA MÓDULO COMPLETO MOD-02
+  // ============================================
+  if (vistaModuloCompleto && moduloSeleccionado === 'mod-02') {
+    return (
+      <ModuloOrganosControl
+        onVolverKanban={() => setVistaModuloCompleto(false)}
+      />
+    );
+  }
+
+  // ============================================
   // VISTA KANBAN (Default)
   // ============================================
   const moduloConfig = MODULOS_CONFIG[moduloSeleccionado];
@@ -256,9 +279,9 @@ export function KanbanSIGL({
       casos={casosDelModulo}
       onVolverSelector={handleVolverSelector}
       onActualizarCaso={handleActualizarCaso}
-      // Prop adicional para MOD-01: botón para abrir vista completa
+      // Prop adicional para MOD-01 y MOD-02: botón para abrir vista completa
       onAbrirModuloCompleto={
-        moduloSeleccionado === 'mod-01' 
+        (moduloSeleccionado === 'mod-01' || moduloSeleccionado === 'mod-02')
           ? () => setVistaModuloCompleto(true)
           : undefined
       }

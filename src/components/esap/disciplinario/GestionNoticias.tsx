@@ -1356,224 +1356,221 @@ export function GestionNoticias() {
       </div >
 
       {/* Lista de Noticias */}
-      < div className="space-y-4" >
-        {
-          filteredNoticias.map((noticia) => (
-            <Card key={noticia.id} className="p-5 hover:shadow-lg transition-all">
-              <div className="flex items-start justify-between">
-                {/* Información principal */}
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center"
-                      style={{
-                        background: noticia.estado === 'pendiente' ? '#FEF3C7' :
-                          noticia.estado === 'en-valoracion' ? '#DBEAFE' :
-                            noticia.estado === 'devuelto' ? '#FEE2E2' :
-                              noticia.estado === 'asignado' ? '#E0E7FF' :
-                                (noticia.estado === 'archivado' || noticia.estado === 'ARCHIVADA') ? '#F3F4F6' :
-                                  '#D1FAE5'
+      <div className="space-y-4">
+        {filteredNoticias.map((noticia) => (
+          <Card key={noticia.id} className="p-3 sm:p-5 hover:shadow-lg transition-all">
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+              {/* Información principal */}
+              <div className="flex-1" min-w-0>
+                <div className="flex items-start gap-3 mb-3">
+                  <div 
+                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ 
+                      background: noticia.estado === 'pendiente' ? '#FEF3C7' : 
+                                 noticia.estado === 'en-valoracion' ? '#DBEAFE' : 
+                                 noticia.estado === 'devuelto' ? '#FEE2E2' :
+                                 noticia.estado === 'asignado' ? '#E0E7FF' :
+                                 (noticia.estado === 'archivado' || noticia.estado === 'ARCHIVADA') ? '#F3F4F6' :
+                                 '#D1FAE5'
+                    }}
+                  >
+                    <FileText 
+                      className="w-5 h-5 sm:w-6 sm:h-6" 
+                      style={{ 
+                        color: noticia.estado === 'pendiente' ? '#92400E' : 
+                               noticia.estado === 'en-valoracion' ? '#1E40AF' : 
+                               noticia.estado === 'devuelto' ? '#991B1B' :
+                               noticia.estado === 'asignado' ? '#4338CA' :
+                               (noticia.estado === 'archivado' || noticia.estado === 'ARCHIVADA') ? '#6B7280' :
+                               '#065F46'
                       }}
-                    >
-                      <FileText
-                        className="w-6 h-6"
-                        style={{
-                          color: noticia.estado === 'pendiente' ? '#92400E' :
-                            noticia.estado === 'en-valoracion' ? '#1E40AF' :
-                              noticia.estado === 'devuelto' ? '#991B1B' :
-                                noticia.estado === 'asignado' ? '#4338CA' :
-                                  (noticia.estado === 'archivado' || noticia.estado === 'ARCHIVADA') ? '#6B7280' :
-                                    '#065F46'
-                        }}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="font-bold text-lg" style={{ color: '#003DA5' }}>
-                          {noticia.radicado}
-                        </h3>
-                        {getEstadoBadge(noticia.estado)}
-                        {getOrigenBadge(noticia.origen)}
-                      </div>
-                      {/* Handle both object and array for backward compatibility */}
-                      <p className="text-sm font-semibold text-gray-900">
-                        {(noticia.disciplinable && 'nombre' in noticia.disciplinable)
-                          ? noticia.disciplinable.nombre
-                          : (Array.isArray(noticia.disciplinable) ? noticia.disciplinable[0]?.nombre : 'Sin nombre')}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {noticia.estado} • {noticia.territorial}
-                      </p>
-                    </div>
+                    />
                   </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h3 className="font-bold text-lg" style={{ color: '#003DA5' }}>
+                        {noticia.numeroRadicado}
+                      </h3>
+                      {getEstadoBadge(noticia.estadoLabel)}
+                      {getOrigenBadge(noticia.origen)}
+                    </div>
+                    {/* Handle both object and array for backward compatibility */}
+                    <p className="text-sm font-semibold text-gray-900 break-words">
+                      {(noticia.disciplinable && 'nombre' in noticia.disciplinable)
+                        ? noticia.disciplinable.nombre
+                        : (Array.isArray(noticia.disciplinable) ? noticia.disciplinable[0]?.nombre : 'Sin nombre')}
+                    </p>
+                    <p className="text-xs text-gray-500 break-words">
+                      {noticia.estado} • {noticia.territorial}
+                    </p>
+                  </div>
+                </div>
 
-                  {/* Detalles adicionales */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pl-15">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                      <p className="text-sm font-medium text-gray-900">
-                        {(noticia.disciplinable && ('identificacion' in noticia.disciplinable || 'cedula' in noticia.disciplinable))
+                {/* Detalles adicionales */}
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 sm:pl-15">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Identificación</p>
+                    <p className="text-sm font-medium text-gray-90 truncate">
+                      {(noticia.disciplinable && ('identificacion' in noticia.disciplinable || 'cedula' in noticia.disciplinable))
                           ? (noticia.disciplinable.identificacion || noticia.disciplinable.cedula)
                           : (Array.isArray(noticia.disciplinable) ? (noticia.disciplinable[0]?.identificacion || noticia.disciplinable[0]?.cedula) : 'N/A')}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Territorial</p>
-                      <p className="text-sm font-medium text-gray-900">{noticia.territorial}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Radicador</p>
-                      <p className="text-sm font-medium text-gray-900">
-                        {(noticia.denunciante && 'nombre' in noticia.denunciante)
+                    </p>
+                  </div>
+                  <div  className="min-w-0">
+                    <p className="text-xs text-gray-500 mb-1">Territorial</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{noticia.territorial}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Radicador</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {(noticia.denunciante && 'nombre' in noticia.denunciante)
                           ? noticia.denunciante.nombre
                           : (Array.isArray(noticia.denunciante) ? noticia.denunciante[0]?.nombre : 'Anónimo')}
-                      </p>
-                    </div>
-                    {noticia.profesionalAsignado && (
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Asignado a</p>
-                        <p className="text-sm font-medium text-green-700">{noticia.profesionalAsignado}</p>
-                      </div>
-                    )}
+                    </p>
                   </div>
-
-                  {/* Conductas */}
-                  {noticia.conductas && noticia.conductas.length > 0 && (
-                    <div className="mt-4 pl-15">
-                      <p className="text-xs text-gray-500 mb-2">Conductas Indisciplinarias:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {noticia.conductas.map((conducta, idx) => (
-                          <span
-                            key={idx}
-                            className="px-2 py-1 bg-red-50 text-red-700 text-xs rounded-md border border-red-200"
-                          >
-                            {conducta}
-                          </span>
-                        ))}
-                      </div>
+                  {noticia.profesionalAsignado && (
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Asignado a</p>
+                      <p className="text-sm font-medium text-green-700">{noticia.profesionalAsignado}</p>
                     </div>
                   )}
                 </div>
 
-                {/* Acciones y días */}
-                <div className="flex flex-col items-end gap-3 ml-4">
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500 mb-1">Hace</p>
-                    <p className="text-xl font-bold" style={{ color: '#003DA5' }}>
-                      {diasTranscurridos(noticia.fechaRecepcion)} días
-                    </p>
+                {/* Conductas */}
+                {noticia.conductas && noticia.conductas.length > 0 && (
+                  <div className="mt-4 pl-15">
+                    <p className="text-xs text-gray-500 mb-2">Conductas Indisciplinarias:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {noticia.conductas.map((conducta, idx) => (
+                        <span 
+                          key={idx}
+                          className="px-2 py-1 bg-red-50 text-red-700 text-xs rounded-md border border-red-200"
+                        >
+                          {conducta}
+                        </span>
+                      ))}
+                    </div>
                   </div>
+                )}
+              </div>
 
-                  <div className="flex gap-2">
-                    {/* Botón Ver Historial */}
+              {/* Acciones y días */}
+              <div className="flex flex-col lg:items-end gap-3 lg:ml-4">
+                <div className="flex items-center justify-between lg:block lg:text-right">
+                  <p className="text-xs text-gray-500 mb-0 lg:mb-1">Hace</p>
+                  <p className="text-lg sm:text-xl font-bold" style={{ color: '#003DA5' }}>
+                    {diasTranscurridos(noticia.fechaRecepcion)} días
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {/* Botón Ver Historial */}
+                  <button
+                    onClick={() => {
+                      setNoticiaSeleccionada(noticia);
+                      setShowHistorialModal(true);
+                    }}
+                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors flex-shrink-0"
+                    title="Ver historial de auditoría"
+                  >
+                    <History className="w-4 h-4 text-purple-600" />
+                  </button>
+
+                  {/* Botón Ver Detalles */}
+                  <button
+                    onClick={() => {
+                      setNoticiaSeleccionada(noticia);
+                      setShowDetallesModal(true);
+                    }}
+                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors flex-shrink-0"
+                    title="Ver detalles completos"
+                  >
+                    <Eye className="w-4 h-4 text-gray-600" />
+                  </button>
+
+                  {/* Botón Archivar */}
+                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && (
                     <button
                       onClick={() => {
                         setNoticiaSeleccionada(noticia);
-                        setShowHistorialModal(true);
+                        setShowArchivarModal(true);
+                      }}
+                      className="w-9 h-9 flex items-center justify-center rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 transition-colors flex-shrink-0"
+                      title="Archivar noticia"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-600" />
+                    </button>
+                  )}
+
+                  {/* Botón Remitir por Competencia */}
+                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && (
+                    <button
+                      onClick={() => {
+                        setNoticiaSeleccionada(noticia);
+                        setShowRemitirCompetenciaModal(true);
                       }}
                       className="w-9 h-9 flex items-center justify-center rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors"
-                      title="Ver historial de auditoría"
+                      title="Remitir por competencia"
                     >
-                      <History className="w-4 h-4 text-purple-600" />
+                      <Send className="w-4 h-4 text-purple-600" />
                     </button>
-
-                    {/* Botón Ver Detalles */}
-                    <button
-                      onClick={() => {
-                        setNoticiaSeleccionada(noticia);
-                        setShowDetallesModal(true);
-                      }}
-                      className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
-                      title="Ver detalles completos"
-                    >
-                      <Eye className="w-4 h-4 text-gray-600" />
-                    </button>
-
-
-                    {/* Botón Archivar */}
-                    {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && (
+                  )}
+                  
+                  {/* RF002: Botones de Revisión y Asignación */}
+                  {(noticia.estado === 'RADICADA' || noticia.estado === 'EN_VALORACION' || noticia.estado === 'pendiente' || noticia.estado === 'en-valoracion') && (
+                    <>
+                      {/* Devolver */}
                       <button
                         onClick={() => {
                           setNoticiaSeleccionada(noticia);
-                          setShowArchivarModal(true);
+                          setShowDevolucionModal(true);
                         }}
-                        className="w-9 h-9 flex items-center justify-center rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 transition-colors"
-                        title="Archivar noticia"
+                        className="px-3 h-9 flex items-center justify-center gap-1.5 rounded-lg border-2 border-orange-500 text-orange-700 font-semibold text-sm hover:bg-orange-50 transition-colors flex-shrink-0"
+                        title="Devolver al radicador"
                       >
-                        <Trash2 className="w-4 h-4 text-red-600" />
+                        <CornerDownLeft className="w-4 h-4" />
+                        <span className="hidden sm:inline">Devolver</span>
                       </button>
-                    )}
-
-                    {/* Botón Remitir por Competencia */}
-                    {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && (
+                      
+                      {/* Asignar */}
                       <button
                         onClick={() => {
                           setNoticiaSeleccionada(noticia);
-                          setShowRemitirCompetenciaModal(true);
+                          setShowAsignacionModal(true);
                         }}
-                        className="w-9 h-9 flex items-center justify-center rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors"
-                        title="Remitir por competencia"
+                        className="px-3 sm:px-4 h-9 flex items-center justify-center gap-1.5 rounded-lg text-white font-semibold text-sm hover:opacity-90 transition-colors flex-shrink-0"
+                        style={{ background: '#10B981' }}
+                        title="Asignar a profesional"
                       >
-                        <Send className="w-4 h-4 text-purple-600" />
+                        <UserCheck className="w-4 h-4" />
+                        <span className="hidden sm:inline">Asignar</span>
                       </button>
-                    )}
+                    </>
+                  )}
+                  
+                  {(noticia.estado === 'DEVUELTA' || noticia.estado === 'devuelto') && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg w-full sm:w-auto">
+                      <CornerDownLeft className="w-4 h-4 text-orange-600 flex-shrink-0" />
+                      <span className="text-sm font-semibold text-orange-700">
+                        Pendiente de Corrección
+                      </span>
+                    </div>
+                  )}
 
-                    {/* RF002: Botones de Revisión y Asignación */}
-                    {(noticia.estado === 'RADICADA' || noticia.estado === 'EN_VALORACION' || noticia.estado === 'pendiente' || noticia.estado === 'en-valoracion') && (
-                      <>
-                        {/* Devolver */}
-                        <button
-                          onClick={() => {
-                            setNoticiaSeleccionada(noticia);
-                            setShowDevolucionModal(true);
-                          }}
-                          className="px-3 h-9 flex items-center justify-center gap-2 rounded-lg border-2 border-orange-500 text-orange-700 font-semibold text-sm hover:bg-orange-50 transition-colors"
-                          title="Devolver al radicador"
-                        >
-                          <CornerDownLeft className="w-4 h-4" />
-                          Devolver
-                        </button>
-
-                        {/* Asignar */}
-                        <button
-                          onClick={() => {
-                            setNoticiaSeleccionada(noticia);
-                            setShowAsignacionModal(true);
-                          }}
-                          className="px-4 h-9 flex items-center justify-center gap-2 rounded-lg text-white font-semibold text-sm hover:opacity-90 transition-colors"
-                          style={{ background: '#10B981' }}
-                          title="Asignar a profesional"
-                        >
-                          <UserCheck className="w-4 h-4" />
-                          Asignar
-                        </button>
-                      </>
-                    )}
-
-                    {(noticia.estado === 'DEVUELTA' || noticia.estado === 'devuelto') && (
-                      <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
-                        <CornerDownLeft className="w-4 h-4 text-orange-600" />
-                        <span className="text-sm font-semibold text-orange-700">
-                          Pendiente de Corrección
-                        </span>
-                      </div>
-                    )}
-
-                    {(noticia.estado === 'ASIGNADA' || noticia.estado === 'asignado' || noticia.estado === 'CONVERTIDO_PROCESO' || noticia.estado === 'convertido-proceso') && (
-                      <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span className="text-sm font-semibold text-green-700">
-                          Asignado
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                  {(noticia.estado === 'ASIGNADA' || noticia.estado === 'asignado' || noticia.estado === 'CONVERTIDO_PROCESO' || noticia.estado === 'convertido-proceso') && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg  w-full sm:w-auto">
+                      <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      <span className="text-sm font-semibold text-green-700">
+                        {noticia.procesoAsociado || 'Asignado'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
-            </Card>
-          ))
-        }
-      </div >
+            </div>
+          </Card>
+        ))}
+      </div>
 
       {/* Estado vacío */}
       {

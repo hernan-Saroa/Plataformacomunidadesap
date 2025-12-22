@@ -455,7 +455,7 @@ export function KanbanGestionLegal({
             {mostrarPanelLateral ? 'Ocultar' : 'Mostrar'} Panel
           </Button>
 
-          {/* Botón Vista Completa (solo MOD-01) */}
+          {/* Botón Vista Completa (solo MOD-01 y MOD-02) */}
           {onAbrirModuloCompleto && (
             <Button
               variant="default"
@@ -463,8 +463,8 @@ export function KanbanGestionLegal({
               onClick={onAbrirModuloCompleto}
               className="bg-blue-600 hover:bg-blue-700"
             >
-              <Scale className="w-4 h-4 mr-2" />
-              Vista Completa
+              <Eye className="w-4 h-4 mr-2" />
+              Ver Módulo
             </Button>
           )}
 

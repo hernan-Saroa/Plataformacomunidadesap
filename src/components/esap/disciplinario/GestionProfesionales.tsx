@@ -829,14 +829,15 @@ function ModalFormularioProfesional({ onClose, profesional, onSuccess }: { onClo
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
-export function GestionProfesionales() {
+export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profesional: Profesional) => void }) {
+  // const [profesionales, setProfesionales] = useState(PROFESIONALES_DATA);
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState<Profesional | null>(null);
   const [showModal, setShowModal] = useState<'detalle' | 'formulario' | null>(null);
   const [profesionalEditar, setProfesionalEditar] = useState<Profesional | undefined>();
+  const [loading, setLoading] = useState(true);
 
   // Cargar profesionales del backend
   const fetchProfesionales = async () => {
@@ -1227,12 +1228,7 @@ export function GestionProfesionales() {
               setProfesionalEditar(prof);
               setShowModal('formulario');
             }}
-            onVerProcesos={(prof) => {
-              toast.info(`Procesos de ${prof.nombre}`, {
-                description: `${prof.procesosAsignados} procesos asignados • ${prof.procesosAlDia} al día • ${prof.procesosEnRiesgo} en riesgo • ${prof.procesosVencidos} vencidos`,
-                duration: 5000
-              });
-            }}
+            onVerProcesos={onVerProcesos}
           />
         )}
         {showModal === 'formulario' && (
