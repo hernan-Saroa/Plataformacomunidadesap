@@ -16,6 +16,24 @@ export { FormularioExpedienteCompleto } from './FormularioExpedienteCompleto';
 export { SistemaAlertasExpedientes } from './SistemaAlertasExpedientes';
 export { GestionDocumentosExpediente } from './GestionDocumentosExpediente';
 
+// Exportar Kanbans individuales
+export { KanbanDefensaJudicial } from './KanbanDefensaJudicial';
+export { KanbanOrganosControl } from './KanbanOrganosControl';
+export { KanbanGenerico } from './KanbanGenerico';
+
+// Exportar configuraciones de Kanban
+export {
+  kanbanAsesoriaJuridica,
+  kanbanJuzgamiento,
+  kanbanCoactivos,
+  kanbanNotificaciones,
+  kanbanBuzonJuridica,
+  kanbanPlanAccion,
+  kanbanRiesgos,
+  kanbanMejoramiento,
+  kanbanTerminos,
+} from './kanban-configs';
+
 // Exportar constantes útiles
 export const MODULOS_SIGL = {
   DEFENSA_JUDICIAL: 'mod-01',

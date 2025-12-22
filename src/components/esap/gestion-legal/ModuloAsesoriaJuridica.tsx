@@ -1,78 +1,43 @@
 /**
  * ============================================
- * MOD-03: ASESORÍA JURÍDICA - SIGL
+ * MÓDULO ASESORÍA JURÍDICA - MOD-03
  * ============================================
  * 
- * ESPECIFICACIÓN: REQ-MOD03-001
- * DECRETO: 019/2012 (Gobierno en Línea)
- * PLAZO CRÍTICO: 30 días hábiles MÁXIMO
- * EXTENSIÓN PERMITIDA: +20 días (máx 50 total)
+ * Gestión de consultas jurídicas internas
+ * Término estándar: 30 días hábiles
  * 
  * FUNCIONALIDADES:
- * ✅ Crear solicitudes de asesoría jurídica
- * ✅ Control automático de 30 días hábiles (Decreto 019/2012)
- * ✅ Alertas automáticas Día 25, Día 28, Vencimiento
- * ✅ Sistema de extensiones controladas (+20 días máx)
- * ✅ Escalación a MOD-08 (Plan de Acción) si vence
- * ✅ Dashboard ejecutivo con métricas
- * ✅ Vista Kanban, Tabla, Timeline
- * ✅ Filtros avanzados multi-criterio
- * ✅ Exportación Excel/PDF
- * ✅ Integración con MOD-07 (Buzón OJ)
- * 
- * TIPOS DE ASESORÍA:
- * - Contratación (contratos, pólizas)
- * - Normativo (cumplimiento leyes/decretos)
- * - Riesgos (evaluación exposición legal)
- * - Resoluciones (análisis actos administrativos)
- * - Litigios (análisis demandas, defensas)
- * - Especializadas (otras áreas)
- * 
- * ESTADOS:
- * - RECIBIDA: Asesoría creada, asignada a abogado
- * - EN_RESPUESTA: Abogado está trabajando
- * - RESPONDIDA: Respuesta completada
- * - VENCIDA: Más de 30 días sin respuesta
- * - EXTENSION_PENDIENTE: Solicitó extensión, esperando aprobación
- * - EXTENDIDA: Extensión aprobada, nuevo plazo
- * 
- * ALERTAS (Decreto 019/2012):
- * - VERDE: > 50% del plazo (> 15 días)
- * - AMARILLO: 25-50% del plazo (8-15 días) + Alerta Día 25
- * - ROJO: < 25% del plazo (< 8 días) + Alerta Día 28
- * - VENCIDO: >= Día 30 + Escalación a Dirección Nacional
+ * ✅ Registro de consultas jurídicas
+ * ✅ Asignación a profesionales
+ * ✅ Sistema de alertas (30 días hábiles)
+ * ✅ Seguimiento y conceptos jurídicos
+ * ✅ Estadísticas y filtros avanzados
  * 
  * Oficina Asesora Jurídica - ESAP
- * Desarrollado: Diciembre 2025
- * Versión: 1.0.0
  */
 
-import { useState } from 'react';
-import { 
+import { useState, useMemo } from 'react';
+import {
   FileQuestion,
-  Search, 
-  Download, 
-  Filter,
   Plus,
-  TrendingUp,
-  AlertTriangle,
+  Search,
+  Download,
+  AlertCircle,
   Clock,
   CheckCircle,
   XCircle,
-  Calendar,
-  Users,
-  BarChart3,
-  List,
-  Kanban,
-  TimerReset,
+  Eye,
+  Edit,
   FileText,
-  Scale,
-  Shield,
+  Calendar,
+  TrendingUp,
+  Users,
+  Send,
+  Paperclip,
   Building2,
-  UserCheck,
 } from 'lucide-react';
 
-// ⭐ IMPORTAR DESIGN SYSTEM SIGL
+// Componentes del Design System SIGL
 import {
   ButtonSIGL,
   InputSIGL,
@@ -80,938 +45,840 @@ import {
   BadgeSIGL,
   CardSIGL,
   ModalSIGL,
-  TableSIGL,
-  AlertBanner,
-  AvatarSIGL,
-  TooltipSIGL,
-  PlazoBadge,
-  Column,
+  useToast,
 } from './design-system';
 
 // ============================================
-// TIPOS Y ESTADOS
+// TIPOS
 // ============================================
 
-type EstadoAsesoria = 
-  | 'RECIBIDA'
-  | 'EN_RESPUESTA'
-  | 'RESPONDIDA'
-  | 'VENCIDA'
-  | 'EXTENSION_PENDIENTE'
-  | 'EXTENDIDA';
+type TipoConsulta = 'CONTRACTUAL' | 'LABORAL' | 'ADMINISTRATIVO' | 'DISCIPLINARIO' | 'OTROS';
+type EstadoConsulta = 'RADICADA' | 'EN_ESTUDIO' | 'RESPONDIDA' | 'VENCIDA' | 'ARCHIVADA';
+type ColorAlerta = 'VERDE' | 'AMARILLO' | 'ROJO' | 'VENCIDO';
+type Prioridad = 'ALTA' | 'MEDIA' | 'BAJA';
 
-type TipoAsesoria =
-  | 'Contratación'
-  | 'Normativo'
-  | 'Riesgos'
-  | 'Resoluciones'
-  | 'Litigios'
-  | 'Especializadas';
-
-type NivelUrgencia = 'NORMAL' | 'URGENTE';
-
-type NivelAlerta = 'VERDE' | 'AMARILLO' | 'ROJO' | 'VENCIDO';
-
-interface Asesoria {
-  id: string;
-  numero: string; // AS-YYYY-NNNNN
-  tipo: TipoAsesoria;
-  descripcion: string;
+interface Consulta {
+  id: string; // AJ-YYYY-NNNNN
+  tipo: TipoConsulta;
+  solicitante: string;
   dependenciaSolicitante: string;
-  solicitanteNombre: string;
-  solicitanteEmail: string;
-  urgencia: NivelUrgencia;
-  abogadoAsignado: {
-    nombre: string;
-    email: string;
-    status?: 'online' | 'offline' | 'busy' | 'away';
-  };
-  estado: EstadoAsesoria;
-  nivelAlerta: NivelAlerta;
-  
-  // Fechas y plazos
-  fechaCreacion: string;
-  fechaVencimiento: string;
-  fechaRespuesta?: string;
+  territorial: string;
+  asunto: string;
+  descripcion: string;
+  prioridad: Prioridad;
+  fechaRadicacion: Date;
+  fechaVencimiento: Date;
+  plazo: number; // días hábiles (generalmente 30)
   diasRestantes: number;
-  diasTranscurridos: number;
-  plazoTotal: number; // 30 o 50 si extendida
-  
-  // Extensiones
-  extensionSolicitada: boolean;
-  extensionAprobada: boolean;
-  extensionDias?: number;
-  extensionJustificacion?: string;
-  
-  // Respuesta
-  respuesta?: string;
+  colorAlerta: ColorAlerta;
+  estado: EstadoConsulta;
+  abogadoAsignado: string;
+  fechaRespuesta?: Date;
+  conceptoEmitido?: string;
   documentosAdjuntos: number;
-  
-  // Metadata
-  creadoPor: string;
-  ultimaModificacion: string;
+  observaciones?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // ============================================
 // DATOS MOCK
 // ============================================
 
-const ASESORIAS_MOCK: Asesoria[] = [
+const CONSULTAS_MOCK: Consulta[] = [
   {
-    id: '1',
-    numero: 'AS-2025-001',
-    tipo: 'Contratación',
-    descripcion: 'Revisión de contrato de prestación de servicios profesionales para consultoría en transformación digital. Se requiere concepto sobre cláusulas de propiedad intelectual.',
-    dependenciaSolicitante: 'Dirección TIC',
-    solicitanteNombre: 'María Fernanda López',
-    solicitanteEmail: 'mflopez@esap.edu.co',
-    urgencia: 'URGENTE',
-    abogadoAsignado: {
-      nombre: 'Dr. Carlos Mendoza',
-      email: 'cmendoza@esap.edu.co',
-      status: 'online',
-    },
-    estado: 'EN_RESPUESTA',
-    nivelAlerta: 'ROJO',
-    fechaCreacion: '05/12/2024',
-    fechaVencimiento: '15/01/2025',
-    diasRestantes: 3,
-    diasTranscurridos: 27,
-    plazoTotal: 30,
-    extensionSolicitada: false,
-    extensionAprobada: false,
-    documentosAdjuntos: 3,
-    creadoPor: 'María Fernanda López',
-    ultimaModificacion: '16/12/2024 10:30',
-  },
-  {
-    id: '2',
-    numero: 'AS-2025-002',
-    tipo: 'Normativo',
-    descripcion: 'Concepto sobre aplicabilidad de la Ley 2213 de 2022 en procesos de contratación pública para territoriales ESAP.',
-    dependenciaSolicitante: 'Territorial Antioquia',
-    solicitanteNombre: 'Jorge Alberto Ruiz',
-    solicitanteEmail: 'jaruiz@esap.edu.co',
-    urgencia: 'NORMAL',
-    abogadoAsignado: {
-      nombre: 'Dra. Ana Patricia Gómez',
-      email: 'apgomez@esap.edu.co',
-      status: 'busy',
-    },
-    estado: 'EN_RESPUESTA',
-    nivelAlerta: 'AMARILLO',
-    fechaCreacion: '01/12/2024',
-    fechaVencimiento: '10/01/2025',
-    diasRestantes: 10,
-    diasTranscurridos: 20,
-    plazoTotal: 30,
-    extensionSolicitada: false,
-    extensionAprobada: false,
-    documentosAdjuntos: 2,
-    creadoPor: 'Jorge Alberto Ruiz',
-    ultimaModificacion: '15/12/2024 14:20',
-  },
-  {
-    id: '3',
-    numero: 'AS-2025-003',
-    tipo: 'Litigios',
-    descripcion: 'Análisis de viabilidad de acción de repetición contra exfuncionario por sentencia condenatoria en proceso laboral.',
-    dependenciaSolicitante: 'Dirección Administrativa',
-    solicitanteNombre: 'Luis Eduardo Torres',
-    solicitanteEmail: 'letorres@esap.edu.co',
-    urgencia: 'URGENTE',
-    abogadoAsignado: {
-      nombre: 'Dr. Roberto Sánchez',
-      email: 'rsanchez@esap.edu.co',
-      status: 'online',
-    },
-    estado: 'RECIBIDA',
-    nivelAlerta: 'VERDE',
-    fechaCreacion: '10/12/2024',
-    fechaVencimiento: '20/01/2025',
-    diasRestantes: 20,
-    diasTranscurridos: 10,
-    plazoTotal: 30,
-    extensionSolicitada: false,
-    extensionAprobada: false,
+    id: 'AJ-2025-00001',
+    tipo: 'CONTRACTUAL',
+    solicitante: 'Dra. María Fernanda González',
+    dependenciaSolicitante: 'Subdirección de Contratación',
+    territorial: 'Nacional',
+    asunto: 'Adición y prórroga de contrato de obra - Convenio 2024-089',
+    descripcion: 'Solicito concepto sobre viabilidad jurídica de adicionar en un 50% el valor del contrato y prorrogar el plazo por 3 meses adicionales, considerando que el supervisor certifica cumplimiento satisfactorio.',
+    prioridad: 'ALTA',
+    fechaRadicacion: new Date('2024-12-05'),
+    fechaVencimiento: new Date('2025-01-15'),
+    plazo: 30,
+    diasRestantes: 29,
+    colorAlerta: 'VERDE',
+    estado: 'EN_ESTUDIO',
+    abogadoAsignado: 'Dr. Carlos Mendoza López',
     documentosAdjuntos: 5,
-    creadoPor: 'Luis Eduardo Torres',
-    ultimaModificacion: '10/12/2024 09:15',
+    createdAt: new Date('2024-12-05'),
+    updatedAt: new Date('2024-12-18'),
   },
   {
-    id: '4',
-    numero: 'AS-2024-089',
-    tipo: 'Resoluciones',
-    descripcion: 'Revisión de proyecto de resolución sobre modificación del reglamento interno de personal académico.',
-    dependenciaSolicitante: 'Dirección Académica',
-    solicitanteNombre: 'Sandra Milena Castro',
-    solicitanteEmail: 'smcastro@esap.edu.co',
-    urgencia: 'NORMAL',
-    abogadoAsignado: {
-      nombre: 'Dra. Patricia Rojas',
-      email: 'projas@esap.edu.co',
-      status: 'offline',
-    },
-    estado: 'RESPONDIDA',
-    nivelAlerta: 'VERDE',
-    fechaCreacion: '15/11/2024',
-    fechaVencimiento: '20/12/2024',
-    fechaRespuesta: '18/12/2024',
-    diasRestantes: 0,
-    diasTranscurridos: 33,
-    plazoTotal: 30,
-    extensionSolicitada: false,
-    extensionAprobada: false,
-    respuesta: 'Se emite concepto favorable sobre el proyecto de resolución. Se recomienda ajustar los artículos 5 y 7 según jurisprudencia del Consejo de Estado...',
-    documentosAdjuntos: 4,
-    creadoPor: 'Sandra Milena Castro',
-    ultimaModificacion: '18/12/2024 16:45',
+    id: 'AJ-2025-00002',
+    tipo: 'LABORAL',
+    solicitante: 'Dr. Jorge Luis Parra',
+    dependenciaSolicitante: 'Subdirección de Talento Humano',
+    territorial: 'Nacional',
+    asunto: 'Procedimiento para terminación de contrato por justa causa',
+    descripcion: 'Se requiere concepto sobre el procedimiento a seguir para dar por terminado un contrato laboral por justa causa, específicamente por inasistencia injustificada superior a 3 días.',
+    prioridad: 'ALTA',
+    fechaRadicacion: new Date('2024-12-10'),
+    fechaVencimiento: new Date('2024-12-28'),
+    plazo: 30,
+    diasRestantes: 11,
+    colorAlerta: 'AMARILLO',
+    estado: 'EN_ESTUDIO',
+    abogadoAsignado: 'Dra. Patricia González',
+    documentosAdjuntos: 3,
+    createdAt: new Date('2024-12-10'),
+    updatedAt: new Date('2024-12-17'),
   },
   {
-    id: '5',
-    numero: 'AS-2024-088',
-    tipo: 'Riesgos',
-    descripcion: 'Evaluación de riesgo legal por cambio normativo en requisitos para certificación de programas académicos.',
-    dependenciaSolicitante: 'Vicerrectoría Académica',
-    solicitanteNombre: 'Carlos Andrés Pineda',
-    solicitanteEmail: 'capineda@esap.edu.co',
-    urgencia: 'NORMAL',
-    abogadoAsignado: {
-      nombre: 'Dr. Mauricio Valencia',
-      email: 'mvalencia@esap.edu.co',
-      status: 'away',
-    },
-    estado: 'VENCIDA',
-    nivelAlerta: 'VENCIDO',
-    fechaCreacion: '01/11/2024',
-    fechaVencimiento: '10/12/2024',
-    diasRestantes: -7,
-    diasTranscurridos: 37,
-    plazoTotal: 30,
-    extensionSolicitada: false,
-    extensionAprobada: false,
+    id: 'AJ-2024-00234',
+    tipo: 'ADMINISTRATIVO',
+    solicitante: 'Directora Territorial Antioquia',
+    dependenciaSolicitante: 'Territorial Antioquia',
+    territorial: 'Antioquia',
+    asunto: 'Competencia para expedir certificados de asistencia a eventos',
+    descripcion: 'Consulta sobre la competencia de la territorial para expedir certificaciones de asistencia a eventos de capacitación organizados por entidades externas.',
+    prioridad: 'MEDIA',
+    fechaRadicacion: new Date('2024-11-20'),
+    fechaVencimiento: new Date('2024-12-20'),
+    plazo: 30,
+    diasRestantes: 3,
+    colorAlerta: 'ROJO',
+    estado: 'EN_ESTUDIO',
+    abogadoAsignado: 'Dr. Andrés Castillo',
     documentosAdjuntos: 2,
-    creadoPor: 'Carlos Andrés Pineda',
-    ultimaModificacion: '10/12/2024 17:00',
+    createdAt: new Date('2024-11-20'),
+    updatedAt: new Date('2024-12-17'),
   },
   {
-    id: '6',
-    numero: 'AS-2025-004',
-    tipo: 'Contratación',
-    descripcion: 'Concepto sobre interpretación de cláusula de multas en contrato de interventoría de obras civiles.',
-    dependenciaSolicitante: 'Dirección Administrativa',
-    solicitanteNombre: 'Diego Armando Silva',
-    solicitanteEmail: 'dasilva@esap.edu.co',
-    urgencia: 'NORMAL',
-    abogadoAsignado: {
-      nombre: 'Dra. Laura Martínez',
-      email: 'lmartinez@esap.edu.co',
-      status: 'online',
-    },
-    estado: 'EXTENDIDA',
-    nivelAlerta: 'AMARILLO',
-    fechaCreacion: '25/11/2024',
-    fechaVencimiento: '05/01/2025',
+    id: 'AJ-2024-00189',
+    tipo: 'CONTRACTUAL',
+    solicitante: 'Coordinador de Proyectos Especiales',
+    dependenciaSolicitante: 'Vicerrectoría Académica',
+    territorial: 'Nacional',
+    asunto: 'Requisitos para contratar con ONGS internacionales',
+    descripcion: 'Se requiere concepto sobre los requisitos legales y procedimentales para suscribir convenio de cooperación internacional con ONG extranjera.',
+    prioridad: 'MEDIA',
+    fechaRadicacion: new Date('2024-10-15'),
+    fechaVencimiento: new Date('2024-11-14'),
+    plazo: 30,
+    diasRestantes: -33,
+    colorAlerta: 'VENCIDO',
+    estado: 'VENCIDA',
+    abogadoAsignado: 'Dr. Luis Ramírez',
+    documentosAdjuntos: 4,
+    observaciones: 'Vencida - Se solicitó prórroga por complejidad del tema',
+    createdAt: new Date('2024-10-15'),
+    updatedAt: new Date('2024-11-30'),
+  },
+  {
+    id: 'AJ-2024-00210',
+    tipo: 'DISCIPLINARIO',
+    solicitante: 'Jefe Oficina Control Interno Disciplinario',
+    dependenciaSolicitante: 'Control Interno Disciplinario',
+    territorial: 'Nacional',
+    asunto: 'Procedimiento para archivo de noticia disciplinaria',
+    descripcion: 'Consulta sobre requisitos formales y sustanciales para el archivo de noticia disciplinaria cuando no hay conducta disciplinable.',
+    prioridad: 'BAJA',
+    fechaRadicacion: new Date('2024-11-25'),
+    fechaVencimiento: new Date('2024-12-25'),
+    plazo: 30,
     diasRestantes: 8,
-    diasTranscurridos: 32,
-    plazoTotal: 40,
-    extensionSolicitada: true,
-    extensionAprobada: true,
-    extensionDias: 10,
-    extensionJustificacion: 'Se requiere análisis jurisprudencial adicional sobre aplicación de multas en contratos de interventoría según sentencias recientes del Consejo de Estado.',
-    documentosAdjuntos: 6,
-    creadoPor: 'Diego Armando Silva',
-    ultimaModificacion: '14/12/2024 11:20',
+    colorAlerta: 'AMARILLO',
+    estado: 'RESPONDIDA',
+    abogadoAsignado: 'Dra. Ana Torres',
+    fechaRespuesta: new Date('2024-12-10'),
+    conceptoEmitido: 'Se emitió concepto favorable indicando el procedimiento conforme al Código Disciplinario Único.',
+    documentosAdjuntos: 2,
+    createdAt: new Date('2024-11-25'),
+    updatedAt: new Date('2024-12-10'),
   },
 ];
-
-const TIPOS_ASESORIA: TipoAsesoria[] = [
-  'Contratación',
-  'Normativo',
-  'Riesgos',
-  'Resoluciones',
-  'Litigios',
-  'Especializadas',
-];
-
-const DEPENDENCIAS_ESAP = [
-  'Dirección Nacional',
-  'Dirección Administrativa',
-  'Dirección Académica',
-  'Dirección TIC',
-  'Vicerrectoría Académica',
-  'Territorial Antioquia',
-  'Territorial Atlántico',
-  'Territorial Boyacá',
-  'Territorial Caldas',
-  'Territorial Cauca',
-  'Territorial Cesar',
-  'Territorial Cundinamarca',
-  'Territorial Huila',
-  'Territorial Magdalena',
-  'Territorial Meta',
-  'Territorial Nariño',
-  'Territorial Norte de Santander',
-  'Territorial Quindío',
-  'Territorial Risaralda',
-  'Territorial Santander',
-  'Territorial Tolima',
-  'Territorial Valle del Cauca',
-];
-
-// ============================================
-// COMPONENTE STATCARD
-// ============================================
-
-interface StatCardProps {
-  title: string;
-  value: number | string;
-  icon: React.ReactNode;
-  trend?: { value: number; isPositive: boolean };
-  subtitle?: string;
-  color: string;
-}
-
-function StatCard({ title, value, icon, trend, subtitle, color }: StatCardProps) {
-  return (
-    <div className="bg-white rounded-xl p-6 border-2 border-gray-200 shadow-sm">
-      <div className="flex items-center justify-between mb-3">
-        <div 
-          className="w-12 h-12 rounded-lg flex items-center justify-center"
-          style={{ backgroundColor: `${color}20` }}
-        >
-          <div style={{ color }}>{icon}</div>
-        </div>
-        {trend && (
-          <span className={`text-sm font-semibold ${trend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
-            {trend.isPositive ? '↑' : '↓'} {trend.value}
-          </span>
-        )}
-      </div>
-      <h3 className="text-3xl font-black text-gray-900 mb-1">{value}</h3>
-      <p className="text-sm font-semibold text-gray-700">{title}</p>
-      {subtitle && (
-        <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
-      )}
-    </div>
-  );
-}
 
 // ============================================
 // COMPONENTE PRINCIPAL
 // ============================================
 
 export function ModuloAsesoriaJuridica() {
-  // Estados principales
-  const [asesorias] = useState<Asesoria[]>(ASESORIAS_MOCK);
-  const [vistaActiva, setVistaActiva] = useState<'tabla' | 'kanban' | 'timeline'>('tabla');
+  const { addToast } = useToast();
+  const [consultas, setConsultas] = useState<Consulta[]>(CONSULTAS_MOCK);
+  const [vista, setVista] = useState<'lista' | 'detalle'>('lista');
+  const [consultaSeleccionada, setConsultaSeleccionada] = useState<Consulta | null>(null);
+  
+  // Modal formulario
+  const [mostrarFormulario, setMostrarFormulario] = useState(false);
   
   // Filtros
   const [busqueda, setBusqueda] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState<EstadoAsesoria | 'TODOS'>('TODOS');
-  const [filtroTipo, setFiltroTipo] = useState<TipoAsesoria | 'TODOS'>('TODOS');
-  const [filtroAlerta, setFiltroAlerta] = useState<NivelAlerta | 'TODOS'>('TODOS');
-  const [filtroDependencia, setFiltroDependencia] = useState('TODOS');
-  
-  // Modales
-  const [modalCrear, setModalCrear] = useState(false);
-  const [modalDetalle, setModalDetalle] = useState(false);
-  const [asesoriaSeleccionada, setAsesoriaSeleccionada] = useState<Asesoria | null>(null);
+  const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
+  const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
+  const [filtroPrioridad, setFiltroPrioridad] = useState<string>('TODAS');
 
   // ============================================
-  // MÉTRICAS
+  // ESTADÍSTICAS
   // ============================================
 
-  const totalAsesorias = asesorias.length;
-  const porEstado = {
-    RECIBIDA: asesorias.filter(a => a.estado === 'RECIBIDA').length,
-    EN_RESPUESTA: asesorias.filter(a => a.estado === 'EN_RESPUESTA').length,
-    RESPONDIDA: asesorias.filter(a => a.estado === 'RESPONDIDA').length,
-    VENCIDA: asesorias.filter(a => a.estado === 'VENCIDA').length,
-    EXTENSION_PENDIENTE: asesorias.filter(a => a.estado === 'EXTENSION_PENDIENTE').length,
-    EXTENDIDA: asesorias.filter(a => a.estado === 'EXTENDIDA').length,
-  };
-  
-  const porAlerta = {
-    VERDE: asesorias.filter(a => a.nivelAlerta === 'VERDE').length,
-    AMARILLO: asesorias.filter(a => a.nivelAlerta === 'AMARILLO').length,
-    ROJO: asesorias.filter(a => a.nivelAlerta === 'ROJO').length,
-    VENCIDO: asesorias.filter(a => a.nivelAlerta === 'VENCIDO').length,
-  };
-
-  const activas = asesorias.filter(a => 
-    a.estado !== 'RESPONDIDA' && a.estado !== 'VENCIDA'
-  ).length;
-
-  const tasaRespuesta = totalAsesorias > 0
-    ? Math.round((porEstado.RESPONDIDA / totalAsesorias) * 100)
-    : 0;
+  const estadisticas = useMemo(() => {
+    return {
+      total: consultas.length,
+      radicadas: consultas.filter(c => c.estado === 'RADICADA').length,
+      enEstudio: consultas.filter(c => c.estado === 'EN_ESTUDIO').length,
+      respondidas: consultas.filter(c => c.estado === 'RESPONDIDA').length,
+      vencidas: consultas.filter(c => c.estado === 'VENCIDA').length,
+      criticas: consultas.filter(c => c.colorAlerta === 'ROJO').length,
+    };
+  }, [consultas]);
 
   // ============================================
   // FILTRADO
   // ============================================
 
-  const asesoriasFiltradas = asesorias.filter(asesoria => {
-    // Búsqueda
-    if (busqueda && !asesoria.numero.toLowerCase().includes(busqueda.toLowerCase()) &&
-        !asesoria.descripcion.toLowerCase().includes(busqueda.toLowerCase()) &&
-        !asesoria.solicitanteNombre.toLowerCase().includes(busqueda.toLowerCase())) {
-      return false;
-    }
-    
-    // Estado
-    if (filtroEstado !== 'TODOS' && asesoria.estado !== filtroEstado) {
-      return false;
-    }
-    
-    // Tipo
-    if (filtroTipo !== 'TODOS' && asesoria.tipo !== filtroTipo) {
-      return false;
-    }
-    
-    // Alerta
-    if (filtroAlerta !== 'TODOS' && asesoria.nivelAlerta !== filtroAlerta) {
-      return false;
-    }
-    
-    // Dependencia
-    if (filtroDependencia !== 'TODOS' && asesoria.dependenciaSolicitante !== filtroDependencia) {
-      return false;
-    }
-    
-    return true;
-  });
+  const consultasFiltradas = useMemo(() => {
+    return consultas.filter(con => {
+      const matchBusqueda = busqueda === '' || 
+        con.id.toLowerCase().includes(busqueda.toLowerCase()) ||
+        con.asunto.toLowerCase().includes(busqueda.toLowerCase()) ||
+        con.solicitante.toLowerCase().includes(busqueda.toLowerCase()) ||
+        con.dependenciaSolicitante.toLowerCase().includes(busqueda.toLowerCase());
+
+      const matchTipo = filtroTipo === 'TODOS' || con.tipo === filtroTipo;
+      const matchEstado = filtroEstado === 'TODOS' || con.estado === filtroEstado;
+      const matchPrioridad = filtroPrioridad === 'TODAS' || con.prioridad === filtroPrioridad;
+
+      return matchBusqueda && matchTipo && matchEstado && matchPrioridad;
+    });
+  }, [consultas, busqueda, filtroTipo, filtroEstado, filtroPrioridad]);
 
   // ============================================
   // HANDLERS
   // ============================================
 
-  const handleCrearAsesoria = () => {
-    setModalCrear(true);
+  const handleCrearConsulta = () => {
+    setMostrarFormulario(true);
   };
 
-  const handleVerDetalle = (asesoria: Asesoria) => {
-    setAsesoriaSeleccionada(asesoria);
-    setModalDetalle(true);
+  const handleGuardarConsulta = (data: any) => {
+    const año = new Date().getFullYear();
+    const numero = (consultas.length + 1).toString().padStart(5, '0');
+    const nuevoId = `AJ-${año}-${numero}`;
+    
+    const nuevaConsulta: Consulta = {
+      id: nuevoId,
+      tipo: data.tipo || 'CONTRACTUAL',
+      solicitante: data.solicitante || '',
+      dependenciaSolicitante: data.dependenciaSolicitante || '',
+      territorial: data.territorial || 'Nacional',
+      asunto: data.asunto || '',
+      descripcion: data.descripcion || '',
+      prioridad: data.prioridad || 'MEDIA',
+      fechaRadicacion: new Date(),
+      fechaVencimiento: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // +30 días
+      plazo: 30,
+      diasRestantes: 30,
+      colorAlerta: 'VERDE',
+      estado: 'RADICADA',
+      abogadoAsignado: 'Por asignar',
+      documentosAdjuntos: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    setConsultas([nuevaConsulta, ...consultas]);
+    
+    addToast({
+      type: 'success',
+      title: '✅ Consulta radicada',
+      message: `Consulta ${nuevoId} creada exitosamente`,
+    });
+    
+    setMostrarFormulario(false);
+  };
+
+  const handleVerDetalle = (consulta: Consulta) => {
+    setConsultaSeleccionada(consulta);
+    setVista('detalle');
+  };
+
+  const handleVolverLista = () => {
+    setVista('lista');
+    setConsultaSeleccionada(null);
   };
 
   const handleExportar = () => {
-    console.log('Exportando asesorías...');
+    addToast({
+      type: 'info',
+      title: 'Exportando datos',
+      message: 'Se está generando el reporte en Excel...',
+    });
   };
 
-  const limpiarFiltros = () => {
-    setBusqueda('');
-    setFiltroEstado('TODOS');
-    setFiltroTipo('TODOS');
-    setFiltroAlerta('TODOS');
-    setFiltroDependencia('TODOS');
+  const handleEmitirConcepto = (consulta: Consulta) => {
+    addToast({
+      type: 'info',
+      title: 'Emitir Concepto',
+      message: `Preparando formulario para emitir concepto jurídico sobre ${consulta.id}`,
+    });
   };
 
   // ============================================
-  // COLUMNAS TABLA
+  // FUNCIONES AUXILIARES
   // ============================================
 
-  const columnas: Column<Asesoria>[] = [
-    {
-      key: 'numero',
-      label: 'Número',
-      sortable: true,
-      width: '120px',
-      render: (asesoria) => (
-        <span className="font-mono font-bold text-sm" style={{ color: '#1F4788' }}>
-          {asesoria.numero}
-        </span>
-      ),
-    },
-    {
-      key: 'tipo',
-      label: 'Tipo',
-      sortable: true,
-      width: '140px',
-      render: (asesoria) => {
-        const iconos = {
-          'Contratación': <FileText size={14} />,
-          'Normativo': <Scale size={14} />,
-          'Riesgos': <Shield size={14} />,
-          'Resoluciones': <FileQuestion size={14} />,
-          'Litigios': <Scale size={14} />,
-          'Especializadas': <Building2 size={14} />,
-        };
-        
-        return (
-          <div className="flex items-center gap-2">
-            {iconos[asesoria.tipo]}
-            <span className="text-sm">{asesoria.tipo}</span>
-          </div>
-        );
-      },
-    },
-    {
-      key: 'descripcion',
-      label: 'Descripción',
-      sortable: false,
-      width: 'auto',
-      render: (asesoria) => {
-        if (!asesoria) {
-          return <span className="text-sm text-gray-400">-</span>;
-        }
-        return (
-          <div>
-            <p className="text-sm text-gray-900 line-clamp-1 mb-1">
-              {asesoria.descripcion || 'Sin descripción'}
-            </p>
-            <p className="text-xs text-gray-500">
-              {asesoria.dependenciaSolicitante || 'N/A'} • {asesoria.solicitanteNombre || 'N/A'}
-            </p>
-          </div>
-        );
-      },
-    },
-    {
-      key: 'abogado',
-      label: 'Abogado',
-      sortable: true,
-      width: '180px',
-      render: (asesoria) => {
-        if (!asesoria?.abogadoAsignado) {
-          return <span className="text-sm text-gray-400">Sin asignar</span>;
-        }
-        return (
-          <div className="flex items-center gap-2">
-            <AvatarSIGL 
-              name={asesoria.abogadoAsignado.nombre} 
-              size="sm"
-              status={asesoria.abogadoAsignado.status}
-            />
-            <div>
-              <p className="text-sm font-semibold text-gray-900">
-                {asesoria.abogadoAsignado.nombre.split(' ').slice(0, 2).join(' ')}
-              </p>
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      key: 'estado',
-      label: 'Estado',
-      sortable: true,
-      width: '160px',
-      render: (asesoria) => {
-        const config = {
-          'RECIBIDA': { variant: 'info' as const, label: 'Recibida' },
-          'EN_RESPUESTA': { variant: 'warning' as const, label: 'En Respuesta' },
-          'RESPONDIDA': { variant: 'success' as const, label: 'Respondida' },
-          'VENCIDA': { variant: 'danger' as const, label: 'Vencida' },
-          'EXTENSION_PENDIENTE': { variant: 'warning' as const, label: 'Extensión Pendiente' },
-          'EXTENDIDA': { variant: 'info' as const, label: 'Extendida' },
-        };
-        const estadoConfig = config[asesoria?.estado as keyof typeof config];
-        if (!estadoConfig) {
-          return <BadgeSIGL variant="default">{asesoria?.estado || 'Desconocido'}</BadgeSIGL>;
-        }
-        const { variant, label } = estadoConfig;
-        return <BadgeSIGL variant={variant}>{label}</BadgeSIGL>;
-      },
-    },
-    {
-      key: 'plazo',
-      label: 'Plazo (Decreto 019/2012)',
-      sortable: true,
-      width: '200px',
-      render: (asesoria) => {
-        if (!asesoria) {
-          return <span className="text-sm text-gray-400">-</span>;
-        }
-        return (
-          <div className="space-y-1">
-            <PlazoBadge 
-              diasRestantes={asesoria.diasRestantes ?? 0} 
-              vencido={asesoria.nivelAlerta === 'VENCIDO'} 
-            />
-            <div className="text-xs text-gray-500">
-              Vence: {asesoria.fechaVencimiento || '-'}
-            </div>
-            {asesoria.extensionAprobada && (
-              <div className="text-xs text-purple-600 font-semibold">
-                ⏱️ Ext. +{asesoria.extensionDias}d
+  const getColorAlerta = (color: ColorAlerta) => {
+    switch (color) {
+      case 'VERDE':
+        return { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircle };
+      case 'AMARILLO':
+        return { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: Clock };
+      case 'ROJO':
+        return { bg: 'bg-red-100', text: 'text-red-800', icon: AlertCircle };
+      case 'VENCIDO':
+        return { bg: 'bg-red-900', text: 'text-white', icon: XCircle };
+      default:
+        return { bg: 'bg-gray-100', text: 'text-gray-800', icon: AlertCircle };
+    }
+  };
+
+  const getColorPrioridad = (prioridad: Prioridad) => {
+    switch (prioridad) {
+      case 'ALTA':
+        return 'bg-red-100 text-red-800';
+      case 'MEDIA':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'BAJA':
+        return 'bg-green-100 text-green-800';
+    }
+  };
+
+  const formatDate = (date: Date) => {
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const dia = date.getDate();
+    const mes = meses[date.getMonth()];
+    const año = date.getFullYear();
+    return `${dia} ${mes} ${año}`;
+  };
+
+  // ============================================
+  // RENDER: VISTA DETALLE
+  // ============================================
+
+  if (vista === 'detalle' && consultaSeleccionada) {
+    const alertaColor = getColorAlerta(consultaSeleccionada.colorAlerta);
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-indigo-50 p-6">
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <ButtonSIGL
+                variant="outline"
+                onClick={handleVolverLista}
+              >
+                ← Volver a la lista
+              </ButtonSIGL>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {consultaSeleccionada.id}
+                </h1>
+                <p className="text-gray-600">
+                  {consultaSeleccionada.tipo} - {consultaSeleccionada.solicitante}
+                </p>
               </div>
-            )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${getColorPrioridad(consultaSeleccionada.prioridad)}`}>
+                {consultaSeleccionada.prioridad}
+              </span>
+              <BadgeSIGL
+                variant={consultaSeleccionada.colorAlerta === 'VENCIDO' ? 'danger' : 
+                        consultaSeleccionada.colorAlerta === 'ROJO' ? 'danger' :
+                        consultaSeleccionada.colorAlerta === 'AMARILLO' ? 'warning' : 'success'}
+              >
+                {consultaSeleccionada.colorAlerta}
+              </BadgeSIGL>
+            </div>
           </div>
-        );
-      },
-    },
-  ];
+
+          {/* Contenido */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Columna principal */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Información general */}
+              <CardSIGL>
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <FileQuestion className="w-5 h-5 text-purple-600" />
+                  Información de la Consulta
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-gray-500">Asunto</p>
+                    <p className="font-medium text-lg">{consultaSeleccionada.asunto}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-500">Tipo de Consulta</p>
+                      <p className="font-medium">{consultaSeleccionada.tipo}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Prioridad</p>
+                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium mt-1 ${getColorPrioridad(consultaSeleccionada.prioridad)}`}>
+                        {consultaSeleccionada.prioridad}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Territorial</p>
+                      <p className="font-medium">{consultaSeleccionada.territorial}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Estado</p>
+                      <BadgeSIGL variant={consultaSeleccionada.estado === 'VENCIDA' ? 'danger' : 
+                                          consultaSeleccionada.estado === 'RESPONDIDA' ? 'success' : 'warning'}>
+                        {consultaSeleccionada.estado}
+                      </BadgeSIGL>
+                    </div>
+                  </div>
+                </div>
+              </CardSIGL>
+
+              {/* Solicitante */}
+              <CardSIGL>
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-600" />
+                  Información del Solicitante
+                </h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-500">Nombre Completo</p>
+                    <p className="font-medium">{consultaSeleccionada.solicitante}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Dependencia</p>
+                    <p className="font-medium">{consultaSeleccionada.dependenciaSolicitante}</p>
+                  </div>
+                </div>
+              </CardSIGL>
+
+              {/* Descripción */}
+              <CardSIGL>
+                <h3 className="text-lg font-semibold mb-3">Descripción de la Consulta</h3>
+                <p className="text-gray-700">{consultaSeleccionada.descripcion}</p>
+              </CardSIGL>
+
+              {/* Concepto emitido */}
+              {consultaSeleccionada.conceptoEmitido && (
+                <CardSIGL>
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    Concepto Jurídico Emitido
+                  </h3>
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-green-900">{consultaSeleccionada.conceptoEmitido}</p>
+                    {consultaSeleccionada.fechaRespuesta && (
+                      <p className="text-sm text-green-700 mt-2">
+                        Fecha de respuesta: {formatDate(consultaSeleccionada.fechaRespuesta)}
+                      </p>
+                    )}
+                  </div>
+                </CardSIGL>
+              )}
+
+              {/* Observaciones */}
+              {consultaSeleccionada.observaciones && (
+                <CardSIGL>
+                  <h3 className="text-lg font-semibold mb-3">Observaciones</h3>
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-sm text-yellow-800">{consultaSeleccionada.observaciones}</p>
+                  </div>
+                </CardSIGL>
+              )}
+
+              {/* Documentos */}
+              <CardSIGL>
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <Paperclip className="w-5 h-5 text-blue-600" />
+                  Documentos Adjuntos ({consultaSeleccionada.documentosAdjuntos})
+                </h3>
+                <div className="space-y-2">
+                  {Array.from({ length: consultaSeleccionada.documentosAdjuntos }).map((_, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <FileText className="w-4 h-4 text-gray-500" />
+                        <span className="text-sm">Documento_consulta_{idx + 1}.pdf</span>
+                      </div>
+                      <ButtonSIGL variant="ghost" size="sm">
+                        <Eye className="w-4 h-4" />
+                      </ButtonSIGL>
+                    </div>
+                  ))}
+                </div>
+              </CardSIGL>
+            </div>
+
+            {/* Columna lateral */}
+            <div className="space-y-6">
+              {/* Asignación */}
+              <CardSIGL>
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-purple-600" />
+                  Asignación
+                </h3>
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <p className="text-gray-500">Abogado Asignado</p>
+                    <p className="font-medium">{consultaSeleccionada.abogadoAsignado}</p>
+                  </div>
+                </div>
+              </CardSIGL>
+
+              {/* Plazos */}
+              <CardSIGL>
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-purple-600" />
+                  Plazos
+                </h3>
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <p className="text-gray-500">Radicación</p>
+                    <p className="font-medium">{formatDate(consultaSeleccionada.fechaRadicacion)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Vencimiento</p>
+                    <p className="font-medium text-purple-600">{formatDate(consultaSeleccionada.fechaVencimiento)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Plazo (días hábiles)</p>
+                    <p className="font-medium">{consultaSeleccionada.plazo} días</p>
+                  </div>
+                  <div className="pt-3 border-t">
+                    <p className="text-gray-500">Días restantes</p>
+                    <p className={`text-2xl font-bold ${
+                      consultaSeleccionada.diasRestantes < 0 ? 'text-red-600' :
+                      consultaSeleccionada.diasRestantes < 10 ? 'text-yellow-600' :
+                      'text-green-600'
+                    }`}>
+                      {consultaSeleccionada.diasRestantes < 0 ? 
+                        `Vencida hace ${Math.abs(consultaSeleccionada.diasRestantes)} días` :
+                        `${consultaSeleccionada.diasRestantes} días`
+                      }
+                    </p>
+                  </div>
+                </div>
+              </CardSIGL>
+
+              {/* Acciones rápidas */}
+              <CardSIGL>
+                <h3 className="text-lg font-semibold mb-4">Acciones</h3>
+                <div className="space-y-2">
+                  <ButtonSIGL variant="primary" fullWidth onClick={() => handleEmitirConcepto(consultaSeleccionada)}>
+                    <Send className="w-4 h-4" />
+                    Emitir Concepto
+                  </ButtonSIGL>
+                  <ButtonSIGL variant="outline" fullWidth>
+                    <Edit className="w-4 h-4" />
+                    Editar Consulta
+                  </ButtonSIGL>
+                  <ButtonSIGL variant="outline" fullWidth>
+                    <Paperclip className="w-4 h-4" />
+                    Adjuntar Documento
+                  </ButtonSIGL>
+                  <ButtonSIGL variant="outline" fullWidth>
+                    <Download className="w-4 h-4" />
+                    Descargar Expediente
+                  </ButtonSIGL>
+                </div>
+              </CardSIGL>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ============================================
-  // RENDER
+  // RENDER: VISTA LISTA
   // ============================================
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      {/* HEADER */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-4">
-            <div 
-              className="w-14 h-14 rounded-xl flex items-center justify-center"
-              style={{
-                background: 'linear-gradient(135deg, #1F4788 0%, #6F42C1 100%)',
-              }}
-            >
-              <FileQuestion className="w-7 h-7 text-white" />
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-indigo-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-purple-100 rounded-lg">
+              <FileQuestion className="w-6 h-6 text-purple-600" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-gray-900">
-                MOD-03: Asesoría Jurídica
+              <h1 className="text-2xl font-bold text-gray-900">
+                Asesoría Jurídica
               </h1>
-              <p className="text-sm text-gray-600">
-                Control de 30 días hábiles • Decreto 019/2012 (Gobierno en Línea)
+              <p className="text-gray-600">
+                Gestión de consultas jurídicas internas - 30 días hábiles
               </p>
             </div>
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={handleExportar}
-              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-2"
-              title="Exportar a Excel"
-            >
-              <Download size={18} />
-            </button>
-            <ButtonSIGL
-              icon={<Plus size={18} />}
-              onClick={handleCrearAsesoria}
-            >
-              Nueva Asesoría
-            </ButtonSIGL>
-          </div>
+          <ButtonSIGL
+            variant="primary"
+            onClick={handleCrearConsulta}
+          >
+            <Plus className="w-4 h-4" />
+            Nueva Consulta
+          </ButtonSIGL>
         </div>
 
-        {/* Breadcrumb */}
-        <div className="text-sm text-gray-600">
-          <span className="hover:text-blue-600 cursor-pointer">SIGL</span>
-          <span className="mx-2">/</span>
-          <span className="hover:text-blue-600 cursor-pointer">Gestión Legal</span>
-          <span className="mx-2">/</span>
-          <span className="font-semibold text-gray-900">Asesoría Jurídica</span>
-        </div>
-      </div>
-
-      {/* ALERTAS CRÍTICAS (Decreto 019/2012) */}
-      {porEstado.VENCIDA > 0 && (
-        <AlertBanner
-          variant="critical"
-          title={`⚠️ ${porEstado.VENCIDA} Asesoría${porEstado.VENCIDA > 1 ? 's' : ''} Vencida${porEstado.VENCIDA > 1 ? 's' : ''}`}
-          message="Decreto 019/2012 requiere respuesta en 30 días hábiles. Se ha escalado a Plan de Acción y Dirección Nacional."
-          dismissible
-        />
-      )}
-
-      {porAlerta.ROJO > 0 && (
-        <AlertBanner
-          variant="warning"
-          title={`🔥 ${porAlerta.ROJO} Asesoría${porAlerta.ROJO > 1 ? 's' : ''} en Estado Crítico`}
-          message="Menos del 25% del plazo restante. Se requiere respuesta urgente para cumplir Decreto 019/2012."
-          dismissible
-        />
-      )}
-
-      {/* MÉTRICAS PRINCIPALES */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          title="Total Asesorías"
-          value={totalAsesorias}
-          icon={<FileQuestion size={24} />}
-          trend={{ value: 12, isPositive: true }}
-          subtitle="Últimos 30 días"
-          color="#1F4788"
-        />
-        <StatCard
-          title="Activas"
-          value={activas}
-          icon={<Clock size={24} />}
-          subtitle="En proceso"
-          color="#6F42C1"
-        />
-        <StatCard
-          title="Vencidas"
-          value={porEstado.VENCIDA}
-          icon={<AlertTriangle size={24} />}
-          trend={{ value: porEstado.VENCIDA, isPositive: false }}
-          subtitle="Requieren acción"
-          color="#DC3545"
-        />
-        <StatCard
-          title="Tasa Respuesta"
-          value={`${tasaRespuesta}%`}
-          icon={<CheckCircle size={24} />}
-          trend={{ value: 5, isPositive: true }}
-          subtitle="Cumplimiento Decreto 019"
-          color="#28A745"
-        />
-      </div>
-
-      {/* DISTRIBUCIÓN POR ESTADO */}
-      <CardSIGL className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-gray-900">📊 Distribución por Estado</h3>
-          <BadgeSIGL variant="info">{totalAsesorias} total</BadgeSIGL>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {[
-            { key: 'RECIBIDA', label: 'Recibidas', color: '#3B82F6', icon: FileText },
-            { key: 'EN_RESPUESTA', label: 'En Respuesta', color: '#6F42C1', icon: Clock },
-            { key: 'RESPONDIDA', label: 'Respondidas', color: '#28A745', icon: CheckCircle },
-            { key: 'VENCIDA', label: 'Vencidas', color: '#DC3545', icon: XCircle },
-            { key: 'EXTENSION_PENDIENTE', label: 'Ext. Pendiente', color: '#FFC107', icon: TimerReset },
-            { key: 'EXTENDIDA', label: 'Extendidas', color: '#17A2B8', icon: Calendar },
-          ].map(({ key, label, color, icon: Icon }) => {
-            const count = porEstado[key as keyof typeof porEstado];
-            return (
-              <div
-                key={key}
-                className="p-4 rounded-lg border-2 transition-all hover:shadow-md cursor-pointer"
-                style={{
-                  backgroundColor: `${color}08`,
-                  borderColor: `${color}30`,
-                }}
-                onClick={() => setFiltroEstado(key as EstadoAsesoria)}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <Icon size={20} style={{ color }} />
-                  <span className="text-2xl font-black" style={{ color }}>
-                    {count}
-                  </span>
-                </div>
-                <p className="text-xs font-semibold text-gray-700">{label}</p>
+        {/* Estadísticas */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+          <CardSIGL className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <FileText className="w-5 h-5 text-blue-600" />
               </div>
-            );
-          })}
-        </div>
-      </CardSIGL>
+              <div>
+                <p className="text-xs text-gray-500">Total</p>
+                <p className="text-2xl font-bold text-gray-900">{estadisticas.total}</p>
+              </div>
+            </div>
+          </CardSIGL>
 
-      {/* FILTROS */}
-      <CardSIGL className="mb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Filter size={20} className="text-gray-600" />
-          <h3 className="font-bold text-gray-900">Filtros</h3>
-          <button
-            onClick={limpiarFiltros}
-            className="ml-auto text-sm text-blue-600 hover:text-blue-700 font-semibold"
-          >
-            Limpiar filtros
-          </button>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <InputSIGL
-            label="Buscar"
-            placeholder="Número, descripción, solicitante..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            icon={<Search size={18} />}
-          />
-          
-          <SelectSIGL
-            label="Estado"
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value as EstadoAsesoria | 'TODOS')}
-            options={[
-              { value: 'TODOS', label: 'Todos los estados' },
-              { value: 'RECIBIDA', label: 'Recibida' },
-              { value: 'EN_RESPUESTA', label: 'En Respuesta' },
-              { value: 'RESPONDIDA', label: 'Respondida' },
-              { value: 'VENCIDA', label: 'Vencida' },
-              { value: 'EXTENSION_PENDIENTE', label: 'Extensión Pendiente' },
-              { value: 'EXTENDIDA', label: 'Extendida' },
-            ]}
-          />
-          
-          <SelectSIGL
-            label="Tipo de Asesoría"
-            value={filtroTipo}
-            onChange={(e) => setFiltroTipo(e.target.value as TipoAsesoria | 'TODOS')}
-            options={[
-              { value: 'TODOS', label: 'Todos los tipos' },
-              ...TIPOS_ASESORIA.map(tipo => ({ value: tipo, label: tipo })),
-            ]}
-          />
-          
-          <SelectSIGL
-            label="Nivel de Alerta"
-            value={filtroAlerta}
-            onChange={(e) => setFiltroAlerta(e.target.value as NivelAlerta | 'TODOS')}
-            options={[
-              { value: 'TODOS', label: 'Todos los niveles' },
-              { value: 'VERDE', label: '🟢 Verde (>50% plazo)' },
-              { value: 'AMARILLO', label: '🟡 Amarillo (25-50%)' },
-              { value: 'ROJO', label: '🔴 Rojo (<25%)' },
-              { value: 'VENCIDO', label: '⛔ Vencido' },
-            ]}
-          />
-          
-          <SelectSIGL
-            label="Dependencia"
-            value={filtroDependencia}
-            onChange={(e) => setFiltroDependencia(e.target.value)}
-            options={[
-              { value: 'TODOS', label: 'Todas las dependencias' },
-              ...DEPENDENCIAS_ESAP.map(dep => ({ value: dep, label: dep })),
-            ]}
-          />
-        </div>
-        
-        <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-          <p className="text-sm text-blue-900">
-            📊 <strong>{asesoriasFiltradas.length}</strong> asesoría{asesoriasFiltradas.length !== 1 ? 's' : ''} {asesoriasFiltradas.length !== totalAsesorias && `de ${totalAsesorias}`}
-          </p>
-        </div>
-      </CardSIGL>
+          <CardSIGL className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Clock className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Radicadas</p>
+                <p className="text-2xl font-bold text-purple-600">{estadisticas.radicadas}</p>
+              </div>
+            </div>
+          </CardSIGL>
 
-      {/* SELECTOR DE VISTA */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-bold text-gray-900">
-          {vistaActiva === 'tabla' && '📋 Vista de Tabla'}
-          {vistaActiva === 'kanban' && '📊 Vista Kanban'}
-          {vistaActiva === 'timeline' && '📅 Vista Timeline'}
-        </h3>
-        <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
-          <button
-            onClick={() => setVistaActiva('tabla')}
-            className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${
-              vistaActiva === 'tabla'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <List size={16} className="inline mr-2" />
-            Tabla
-          </button>
-          <button
-            onClick={() => setVistaActiva('kanban')}
-            className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${
-              vistaActiva === 'kanban'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Kanban size={16} className="inline mr-2" />
-            Kanban
-          </button>
-          <button
-            onClick={() => setVistaActiva('timeline')}
-            className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${
-              vistaActiva === 'timeline'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Calendar size={16} className="inline mr-2" />
-            Timeline
-          </button>
+          <CardSIGL className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-yellow-100 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-yellow-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">En Estudio</p>
+                <p className="text-2xl font-bold text-yellow-600">{estadisticas.enEstudio}</p>
+              </div>
+            </div>
+          </CardSIGL>
+
+          <CardSIGL className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Respondidas</p>
+                <p className="text-2xl font-bold text-green-600">{estadisticas.respondidas}</p>
+              </div>
+            </div>
+          </CardSIGL>
+
+          <CardSIGL className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Críticas</p>
+                <p className="text-2xl font-bold text-red-600">{estadisticas.criticas}</p>
+              </div>
+            </div>
+          </CardSIGL>
+
+          <CardSIGL className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-900 rounded-lg">
+                <XCircle className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Vencidas</p>
+                <p className="text-2xl font-bold text-red-900">{estadisticas.vencidas}</p>
+              </div>
+            </div>
+          </CardSIGL>
         </div>
+
+        {/* Filtros */}
+        <CardSIGL className="p-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="md:col-span-2">
+              <InputSIGL
+                placeholder="Buscar por ID, asunto, solicitante o dependencia..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                icon={<Search className="w-4 h-4" />}
+              />
+            </div>
+            <SelectSIGL
+              value={filtroTipo}
+              onChange={(e) => setFiltroTipo(e.target.value)}
+              options={[
+                { value: 'TODOS', label: 'Todos los tipos' },
+                { value: 'CONTRACTUAL', label: 'Contractual' },
+                { value: 'LABORAL', label: 'Laboral' },
+                { value: 'ADMINISTRATIVO', label: 'Administrativo' },
+                { value: 'DISCIPLINARIO', label: 'Disciplinario' },
+                { value: 'OTROS', label: 'Otros' },
+              ]}
+            />
+            <div className="flex gap-2">
+              <SelectSIGL
+                value={filtroPrioridad}
+                onChange={(e) => setFiltroPrioridad(e.target.value)}
+                options={[
+                  { value: 'TODAS', label: 'Todas las prioridades' },
+                  { value: 'ALTA', label: 'Alta' },
+                  { value: 'MEDIA', label: 'Media' },
+                  { value: 'BAJA', label: 'Baja' },
+                ]}
+              />
+              <ButtonSIGL
+                variant="outline"
+                onClick={handleExportar}
+              >
+                <Download className="w-4 h-4" />
+              </ButtonSIGL>
+            </div>
+          </div>
+        </CardSIGL>
+
+        {/* Tabla */}
+        <CardSIGL>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    ID / Tipo
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Asunto
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Solicitante
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Prioridad
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Días Restantes
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Alerta
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Estado
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {consultasFiltradas.map((consulta) => {
+                  const alertaColor = getColorAlerta(consulta.colorAlerta);
+                  const AlertIcon = alertaColor.icon;
+                  
+                  return (
+                    <tr key={consulta.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-4">
+                        <div>
+                          <p className="font-medium text-gray-900">{consulta.id}</p>
+                          <p className="text-sm text-gray-500">{consulta.tipo}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <p className="text-sm text-gray-900 max-w-xs truncate">{consulta.asunto}</p>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div>
+                          <p className="text-sm text-gray-900">{consulta.solicitante}</p>
+                          <p className="text-xs text-gray-500">{consulta.dependenciaSolicitante}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getColorPrioridad(consulta.prioridad)}`}>
+                          {consulta.prioridad}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <p className={`font-bold text-lg ${
+                          consulta.diasRestantes < 0 ? 'text-red-600' :
+                          consulta.diasRestantes < 10 ? 'text-yellow-600' :
+                          'text-green-600'
+                        }`}>
+                          {consulta.diasRestantes < 0 ? 
+                            `${Math.abs(consulta.diasRestantes)} (venc.)` :
+                            consulta.diasRestantes
+                          }
+                        </p>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className={`p-2 rounded-lg ${alertaColor.bg} inline-flex`}>
+                          <AlertIcon className={`w-5 h-5 ${alertaColor.text}`} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <BadgeSIGL
+                          variant={consulta.estado === 'VENCIDA' ? 'danger' : 
+                                  consulta.estado === 'RESPONDIDA' ? 'success' : 'warning'}
+                        >
+                          {consulta.estado}
+                        </BadgeSIGL>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-2">
+                          <ButtonSIGL
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleVerDetalle(consulta)}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </ButtonSIGL>
+                          <ButtonSIGL
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEmitirConcepto(consulta)}
+                          >
+                            <Send className="w-4 h-4" />
+                          </ButtonSIGL>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {consultasFiltradas.length === 0 && (
+            <div className="text-center py-12">
+              <FileQuestion className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-500">No se encontraron consultas</p>
+            </div>
+          )}
+        </CardSIGL>
       </div>
 
-      {/* CONTENIDO SEGÚN VISTA */}
-      {vistaActiva === 'tabla' && (
-        <CardSIGL>
-          <TableSIGL
-            columns={columnas}
-            data={asesoriasFiltradas}
-            onRowClick={handleVerDetalle}
-            striped
-            hoverable
-          />
-        </CardSIGL>
-      )}
-
-      {vistaActiva === 'kanban' && (
-        <div className="text-center py-20 bg-white rounded-lg border-2 border-dashed border-gray-300">
-          <Kanban size={48} className="mx-auto text-gray-400 mb-4" />
-          <p className="text-gray-600 font-semibold">Vista Kanban</p>
-          <p className="text-sm text-gray-500 mt-2">Próximamente disponible</p>
-        </div>
-      )}
-
-      {vistaActiva === 'timeline' && (
-        <div className="text-center py-20 bg-white rounded-lg border-2 border-dashed border-gray-300">
-          <Calendar size={48} className="mx-auto text-gray-400 mb-4" />
-          <p className="text-gray-600 font-semibold">Vista Timeline</p>
-          <p className="text-sm text-gray-500 mt-2">Próximamente disponible</p>
-        </div>
-      )}
-
-      {/* MODAL CREAR (placeholder) */}
-      {modalCrear && (
+      {/* Modal Formulario - Placeholder */}
+      {mostrarFormulario && (
         <ModalSIGL
-          isOpen={modalCrear}
-          onClose={() => setModalCrear(false)}
-          title="📝 Nueva Solicitud de Asesoría Jurídica"
-          size="large"
-        >
-          <div className="p-6 text-center">
-            <FileQuestion size={64} className="mx-auto text-gray-400 mb-4" />
-            <p className="text-gray-600 font-semibold mb-2">Formulario de Creación</p>
-            <p className="text-sm text-gray-500">Funcionalidad completa próximamente</p>
-          </div>
-        </ModalSIGL>
-      )}
-
-      {/* MODAL DETALLE (placeholder) */}
-      {modalDetalle && asesoriaSeleccionada && (
-        <ModalSIGL
-          isOpen={modalDetalle}
-          onClose={() => {
-            setModalDetalle(false);
-            setAsesoriaSeleccionada(null);
-          }}
-          title={`📋 Asesoría ${asesoriaSeleccionada.numero}`}
+          isOpen={mostrarFormulario}
+          onClose={() => setMostrarFormulario(false)}
+          title="Nueva Consulta Jurídica"
           size="large"
         >
           <div className="p-6">
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <h4 className="font-bold text-gray-900 mb-2">Información General</h4>
-                <div className="space-y-2 text-sm">
-                  <p><strong>Tipo:</strong> {asesoriaSeleccionada.tipo}</p>
-                  <p><strong>Dependencia:</strong> {asesoriaSeleccionada.dependenciaSolicitante}</p>
-                  <p><strong>Solicitante:</strong> {asesoriaSeleccionada.solicitanteNombre}</p>
-                  <p><strong>Email:</strong> {asesoriaSeleccionada.solicitanteEmail}</p>
-                  <p><strong>Urgencia:</strong> <BadgeSIGL variant={asesoriaSeleccionada.urgencia === 'URGENTE' ? 'danger' : 'info'}>{asesoriaSeleccionada.urgencia}</BadgeSIGL></p>
-                </div>
-              </div>
-              <div>
-                <h4 className="font-bold text-gray-900 mb-2">Plazos (Decreto 019/2012)</h4>
-                <div className="space-y-2 text-sm">
-                  <p><strong>Fecha Creación:</strong> {asesoriaSeleccionada.fechaCreacion}</p>
-                  <p><strong>Fecha Vencimiento:</strong> {asesoriaSeleccionada.fechaVencimiento}</p>
-                  <p><strong>Días Restantes:</strong> <PlazoBadge diasRestantes={asesoriaSeleccionada.diasRestantes} vencido={asesoriaSeleccionada.nivelAlerta === 'VENCIDO'} /></p>
-                  <p><strong>Plazo Total:</strong> {asesoriaSeleccionada.plazoTotal} días hábiles</p>
-                  {asesoriaSeleccionada.extensionAprobada && (
-                    <p className="text-purple-600"><strong>Extensión:</strong> +{asesoriaSeleccionada.extensionDias} días aprobados</p>
-                  )}
-                </div>
-              </div>
+            <p className="text-gray-600 mb-4">
+              Formulario de registro de consulta jurídica (funcionalidad completa próximamente)
+            </p>
+            <div className="flex justify-end gap-2">
+              <ButtonSIGL variant="outline" onClick={() => setMostrarFormulario(false)}>
+                Cancelar
+              </ButtonSIGL>
+              <ButtonSIGL variant="primary" onClick={() => handleGuardarConsulta({})}>
+                Radicar Consulta
+              </ButtonSIGL>
             </div>
-            
-            <div className="mt-6">
-              <h4 className="font-bold text-gray-900 mb-2">Descripción</h4>
-              <p className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg">
-                {asesoriaSeleccionada.descripcion}
-              </p>
-            </div>
-
-            {asesoriaSeleccionada.respuesta && (
-              <div className="mt-6">
-                <h4 className="font-bold text-gray-900 mb-2">Respuesta Emitida</h4>
-                <p className="text-sm text-gray-700 bg-green-50 p-4 rounded-lg border border-green-200">
-                  {asesoriaSeleccionada.respuesta}
-                </p>
-                <p className="text-xs text-gray-500 mt-2">
-                  Respondida el: {asesoriaSeleccionada.fechaRespuesta}
-                </p>
-              </div>
-            )}
           </div>
         </ModalSIGL>
       )}

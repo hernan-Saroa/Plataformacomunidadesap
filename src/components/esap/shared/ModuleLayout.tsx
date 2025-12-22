@@ -22,8 +22,8 @@ export interface MenuItem {
 
 interface ModuleLayoutProps {
   // Configuración del módulo
-  moduleName: string;
-  moduleDescription: string;
+  moduleName?: string; // Opcional para ocultar header
+  moduleDescription?: string; // Opcional para ocultar header
   moduleIcon: ReactNode;
   moduleColor: string; // Color principal del módulo (#F97316, #003DA5, #8B5CF6)
   
@@ -31,9 +31,6 @@ interface ModuleLayoutProps {
   menuItems: MenuItem[];
   activeSection: string;
   onSectionChange: (section: string) => void;
-  
-  // Breadcrumb
-  breadcrumb: string[];
   
   // Contenido
   children: ReactNode;
@@ -50,7 +47,6 @@ export function ModuleLayout({
   menuItems,
   activeSection,
   onSectionChange,
-  breadcrumb,
   children,
   initialSidebarCollapsed = false
 }: ModuleLayoutProps) {
@@ -130,21 +126,29 @@ export function ModuleLayout({
             {/* Header del Sidebar Mobile */}
             <div className="p-4 border-b-2" style={{ borderColor: '#E5E7EB' }}>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 flex-1">
-                  <div className="p-2 rounded-xl" style={{ background: `${moduleColor}15` }}>
+                {moduleName ? (
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="p-2 rounded-xl" style={{ background: `${moduleColor}15` }}>
+                      <div style={{ color: moduleColor }}>
+                        {moduleIcon}
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <h2 className="font-black text-sm leading-tight" style={{ color: moduleColor }}>
+                        {moduleName}
+                      </h2>
+                      <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                        {moduleDescription}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2 rounded-xl flex-1 flex justify-center" style={{ background: `${moduleColor}15` }}>
                     <div style={{ color: moduleColor }}>
                       {moduleIcon}
                     </div>
                   </div>
-                  <div className="flex-1">
-                    <h2 className="font-black text-sm leading-tight" style={{ color: moduleColor }}>
-                      {moduleName}
-                    </h2>
-                    <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                      {moduleDescription}
-                    </p>
-                  </div>
-                </div>
+                )}
                 <Button
                   onClick={() => setMobileMenuOpen(false)}
                   variant="ghost"
@@ -382,49 +386,31 @@ export function ModuleLayout({
 
       {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 overflow-hidden flex flex-col w-full">
-        {/* Breadcrumb Unificado CON BOTÓN HAMBURGUESA MOBILE */}
-        <div className="p-3 sm:p-4 md:p-6 border-b-2" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
-          <div className="flex items-center gap-3">
-            {/* Botón Hamburguesa - Solo Mobile */}
-            {isMobile && (
-              <Button
-                onClick={() => setMobileMenuOpen(true)}
-                variant="ghost"
-                size="sm"
-                className="flex-shrink-0 md:hidden -ml-2"
-                style={{ color: moduleColor }}
-              >
-                <Menu className="w-6 h-6" />
-              </Button>
-            )}
-            
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm overflow-x-auto flex-1">
-              {breadcrumb.map((item, index) => (
-                <div key={index} className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                  {index > 0 && <span style={{ color: '#D1D5DB' }}>/</span>}
-                  <span 
-                    className={index === breadcrumb.length - 1 ? 'font-bold' : ''}
-                    style={{ color: index === breadcrumb.length - 1 ? moduleColor : '#9CA3AF' }}
-                  >
-                    {item}
-                  </span>
-                </div>
-              ))}
-            </div>
+        {/* Header CON BOTÓN HAMBURGUESA MOBILE */}
+        {isMobile && (
+          <div className="p-3 border-b-2" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
+            <Button
+              onClick={() => setMobileMenuOpen(true)}
+              variant="ghost"
+              size="sm"
+              className="flex-shrink-0 -ml-2"
+              style={{ color: moduleColor }}
+            >
+              <Menu className="w-6 h-6" />
+            </Button>
           </div>
-        </div>
+        )}
 
-        {/* Área de Contenido con Scroll */}
+        {/* Área de Contenido con Scroll - PADDING REDUCIDO */}
         <div className="flex-1 overflow-y-auto">
-          <div className="p-3 sm:p-4 md:p-6 h-full">
+          <div className="p-3 sm:p-4 md:p-5 lg:p-6 h-full">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeSection}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
                 className="h-full"
               >
                 {children}

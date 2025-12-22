@@ -288,6 +288,165 @@ const ACTIVIDADES_EJEMPLO: ActividadRol[] = [
     responsable: 'Laura Sofía Díaz',
     estado: 'en-progreso',
     progreso: 80
+  },
+  // Más actividades Jefe OCI
+  {
+    id: 'act-010',
+    rolId: 'jefe-oci',
+    codigo: 'ACT-JO-004',
+    nombre: 'Comité de Coordinación de Control Interno',
+    descripcion: 'Presidir reuniones del comité de control interno',
+    obligatoria: true,
+    frecuencia: 'Trimestral',
+    duracionDias: 1,
+    mes: 3,
+    responsable: 'Dra. María Fernanda Gómez',
+    estado: 'pendiente',
+    progreso: 0
+  },
+  {
+    id: 'act-011',
+    rolId: 'jefe-oci',
+    codigo: 'ACT-JO-005',
+    nombre: 'Seguimiento a Entes de Control',
+    descripcion: 'Atender requerimientos de Contraloría y Procuraduría',
+    obligatoria: true,
+    frecuencia: 'Trimestral',
+    duracionDias: 3,
+    mes: 4,
+    responsable: 'Dra. María Fernanda Gómez',
+    estado: 'pendiente',
+    progreso: 0
+  },
+  // Más actividades Profesional Especializado
+  {
+    id: 'act-012',
+    rolId: 'profesional-especializado',
+    codigo: 'ACT-PE-003',
+    nombre: 'Evaluación MIPG Anual',
+    descripcion: 'Liderar evaluación anual del Modelo Integrado de Gestión',
+    obligatoria: true,
+    frecuencia: 'Anual',
+    duracionDias: 20,
+    mes: 11,
+    responsable: 'Carlos Andrés Rodríguez',
+    estado: 'pendiente',
+    progreso: 0
+  },
+  {
+    id: 'act-013',
+    rolId: 'profesional-especializado',
+    codigo: 'ACT-PE-004',
+    nombre: 'Actualización de Mapas de Riesgos',
+    descripcion: 'Actualizar mapas de riesgos institucionales',
+    obligatoria: true,
+    frecuencia: 'Semestral',
+    duracionDias: 5,
+    mes: 6,
+    responsable: 'Carlos Andrés Rodríguez',
+    estado: 'pendiente',
+    progreso: 0
+  },
+  // Más actividades Profesional Universitario
+  {
+    id: 'act-014',
+    rolId: 'profesional-universitario',
+    codigo: 'ACT-PU-003',
+    nombre: 'Verificación de Controles',
+    descripcion: 'Verificar efectividad de controles en procesos auditados',
+    obligatoria: true,
+    frecuencia: 'Trimestral',
+    duracionDias: 10,
+    mes: 3,
+    responsable: 'Ana Patricia Martínez',
+    estado: 'pendiente',
+    progreso: 0
+  },
+  {
+    id: 'act-015',
+    rolId: 'profesional-universitario',
+    codigo: 'ACT-PU-004',
+    nombre: 'Elaborar Informes de Auditoría',
+    descripcion: 'Consolidar informes de auditoría para aprobación',
+    obligatoria: true,
+    frecuencia: 'Mensual',
+    duracionDias: 3,
+    mes: 2,
+    responsable: 'Ana Patricia Martínez',
+    estado: 'en-progreso',
+    progreso: 40
+  },
+  // Más actividades Técnico
+  {
+    id: 'act-016',
+    rolId: 'tecnico',
+    codigo: 'ACT-TA-002',
+    nombre: 'Actualizar Sistema de Información',
+    descripcion: 'Mantener actualizado el sistema de gestión de auditorías',
+    obligatoria: true,
+    frecuencia: 'Mensual',
+    duracionDias: 2,
+    mes: 2,
+    responsable: 'Jorge Luis Herrera',
+    estado: 'en-progreso',
+    progreso: 60
+  },
+  {
+    id: 'act-017',
+    rolId: 'tecnico',
+    codigo: 'ACT-TA-003',
+    nombre: 'Consolidar Estadísticas',
+    descripcion: 'Elaborar estadísticas de gestión de la OCI',
+    obligatoria: true,
+    frecuencia: 'Trimestral',
+    duracionDias: 2,
+    mes: 3,
+    responsable: 'Jorge Luis Herrera',
+    estado: 'pendiente',
+    progreso: 0
+  },
+  // Más actividades Auxiliar
+  {
+    id: 'act-018',
+    rolId: 'auxiliar',
+    codigo: 'ACT-AA-002',
+    nombre: 'Radicación de Documentos',
+    descripcion: 'Radicar y controlar documentos de entrada y salida',
+    obligatoria: true,
+    frecuencia: 'Mensual',
+    duracionDias: 1,
+    mes: 2,
+    responsable: 'Laura Sofía Díaz',
+    estado: 'en-progreso',
+    progreso: 90
+  },
+  {
+    id: 'act-019',
+    rolId: 'auxiliar',
+    codigo: 'ACT-AA-003',
+    nombre: 'Archivo y Custodia',
+    descripcion: 'Mantener archivo organizado según TRD',
+    obligatoria: true,
+    frecuencia: 'Mensual',
+    duracionDias: 2,
+    mes: 2,
+    responsable: 'Laura Sofía Díaz',
+    estado: 'completada',
+    progreso: 100
+  },
+  {
+    id: 'act-020',
+    rolId: 'jefe-oci',
+    codigo: 'ACT-JO-006',
+    nombre: 'Capacitación Equipo OCI',
+    descripcion: 'Planificar y ejecutar capacitaciones para el equipo',
+    obligatoria: false,
+    frecuencia: 'Semestral',
+    duracionDias: 2,
+    mes: 5,
+    responsable: 'Dra. María Fernanda Gómez',
+    estado: 'pendiente',
+    progreso: 0
   }
 ];
 
@@ -443,6 +602,81 @@ const UNIVERSO_AUDITORIAS: AreaAuditable[] = [
     estado: 'pendiente',
     observaciones: 'Seguimiento a PDI',
     puntuacionRiesgo: 70
+  },
+  {
+    id: 'area-011',
+    codigo: 'UA-011',
+    nombre: 'Control Interno Disciplinario',
+    dependencia: 'Oficina Control Disciplinario',
+    proceso: 'Gestión Disciplinaria',
+    nivelRiesgo: 'Alto',
+    factoresRiesgo: ['Debido proceso', 'Términos legales', 'Derechos del investigado'],
+    ultimaAuditoria: '2024-08-10',
+    frecuenciaRecomendada: 1,
+    responsableArea: 'Jefe Oficina Disciplinaria',
+    estado: 'seleccionada',
+    observaciones: 'Auditoría anual obligatoria',
+    puntuacionRiesgo: 80
+  },
+  {
+    id: 'area-012',
+    codigo: 'UA-012',
+    nombre: 'Gestión Ambiental',
+    dependencia: 'Coordinación Ambiental',
+    proceso: 'Sostenibilidad Ambiental',
+    nivelRiesgo: 'Medio',
+    factoresRiesgo: ['Cumplimiento normativo ambiental', 'Residuos', 'Huella de carbono'],
+    ultimaAuditoria: '2023-04-20',
+    frecuenciaRecomendada: 2,
+    responsableArea: 'Coordinador Ambiental',
+    estado: 'pendiente',
+    observaciones: 'Verificar plan de manejo ambiental',
+    puntuacionRiesgo: 58
+  },
+  {
+    id: 'area-013',
+    codigo: 'UA-013',
+    nombre: 'Investigación Institucional',
+    dependencia: 'Dirección de Investigación',
+    proceso: 'Gestión de Investigación',
+    nivelRiesgo: 'Medio',
+    factoresRiesgo: ['Producción académica', 'Recursos de investigación', 'Ética investigativa'],
+    ultimaAuditoria: '2024-05-15',
+    frecuenciaRecomendada: 2,
+    responsableArea: 'Director de Investigación',
+    estado: 'seleccionada',
+    observaciones: 'Evaluar cumplimiento de política investigativa',
+    puntuacionRiesgo: 68
+  },
+  {
+    id: 'area-014',
+    codigo: 'UA-014',
+    nombre: 'Extensión y Proyección Social',
+    dependencia: 'Dirección de Extensión',
+    proceso: 'Proyección Social',
+    nivelRiesgo: 'Bajo',
+    factoresRiesgo: ['Convenios interinstitucionales', 'Impacto social', 'Sostenibilidad proyectos'],
+    ultimaAuditoria: '2023-11-05',
+    frecuenciaRecomendada: 3,
+    responsableArea: 'Director de Extensión',
+    estado: 'no-aplica',
+    observaciones: 'Auditar según disponibilidad de recursos',
+    puntuacionRiesgo: 45
+  },
+  {
+    id: 'area-015',
+    codigo: 'UA-015',
+    nombre: 'Internacionalización',
+    dependencia: 'Oficina de Relaciones Internacionales',
+    proceso: 'Cooperación Internacional',
+    nivelRiesgo: 'Bajo',
+    factoresRiesgo: ['Movilidad académica', 'Convenios internacionales', 'Doble titulación'],
+    ultimaAuditoria: null,
+    frecuenciaRecomendada: 4,
+    responsableArea: 'Jefe Relaciones Internacionales',
+    estado: 'no-aplica',
+    observaciones: 'Primera auditoría programada para 2026',
+    puntuacionRiesgo: 38
   }
 ];
 
@@ -562,6 +796,120 @@ const PROGRAMA_ANUAL_2025: AuditoriaPrograma[] = [
     fechaInicio: null,
     fechaFin: null,
     prioridad: 'media'
+  },
+  {
+    id: 'prog-007',
+    codigo: 'AUD-2025-007',
+    nombre: 'Auditoría de Gestión - Talento Humano',
+    areaAuditableId: 'area-005',
+    tipo: 'Gestión',
+    alcance: 'Procesos de selección, evaluación y capacitación 2024',
+    objetivoGeneral: 'Evaluar la eficiencia de la gestión del talento humano',
+    trimestre: 'Q2',
+    mes: 6,
+    duracionDias: 22,
+    liderAsignado: 'Patricia Gómez',
+    equipoAsignado: ['Sofía Vargas', 'Roberto Díaz'],
+    presupuesto: 14000000,
+    estado: 'programada',
+    fechaInicio: null,
+    fechaFin: null,
+    prioridad: 'media'
+  },
+  {
+    id: 'prog-008',
+    codigo: 'AUD-2025-008',
+    nombre: 'Auditoría de Cumplimiento - Control Disciplinario',
+    areaAuditableId: 'area-011',
+    tipo: 'Cumplimiento',
+    alcance: 'Procesos disciplinarios tramitados en 2024',
+    objetivoGeneral: 'Verificar cumplimiento del debido proceso disciplinario',
+    trimestre: 'Q3',
+    mes: 8,
+    duracionDias: 25,
+    liderAsignado: 'Luis Fernando Mora',
+    equipoAsignado: ['Carolina Jiménez', 'Andrés Torres'],
+    presupuesto: 16000000,
+    estado: 'programada',
+    fechaInicio: null,
+    fechaFin: null,
+    prioridad: 'alta'
+  },
+  {
+    id: 'prog-009',
+    codigo: 'AUD-2025-009',
+    nombre: 'Auditoría de Gestión - Investigación',
+    areaAuditableId: 'area-013',
+    tipo: 'Gestión',
+    alcance: 'Gestión de proyectos de investigación y producción académica',
+    objetivoGeneral: 'Evaluar la productividad y ética en investigación',
+    trimestre: 'Q3',
+    mes: 9,
+    duracionDias: 18,
+    liderAsignado: 'Diana Marcela Silva',
+    equipoAsignado: ['Felipe Moreno'],
+    presupuesto: 11000000,
+    estado: 'programada',
+    fechaInicio: null,
+    fechaFin: null,
+    prioridad: 'media'
+  },
+  {
+    id: 'prog-010',
+    codigo: 'AUD-2025-010',
+    nombre: 'Auditoría Territorial - Antioquia',
+    areaAuditableId: 'area-003',
+    tipo: 'Territorial',
+    alcance: 'Procesos académicos y administrativos Territorial Antioquia',
+    objetivoGeneral: 'Evaluar gestión integral de la territorial',
+    trimestre: 'Q4',
+    mes: 11,
+    duracionDias: 35,
+    liderAsignado: null,
+    equipoAsignado: [],
+    presupuesto: 22000000,
+    estado: 'programada',
+    fechaInicio: null,
+    fechaFin: null,
+    prioridad: 'alta'
+  },
+  {
+    id: 'prog-011',
+    codigo: 'AUD-2025-011',
+    nombre: 'Auditoría de Gestión Documental',
+    areaAuditableId: 'area-007',
+    tipo: 'Cumplimiento',
+    alcance: 'Gestión de TRD, archivo y digitalización',
+    objetivoGeneral: 'Verificar cumplimiento de normativa archivística',
+    trimestre: 'Q4',
+    mes: 12,
+    duracionDias: 15,
+    liderAsignado: null,
+    equipoAsignado: [],
+    presupuesto: 9000000,
+    estado: 'programada',
+    fechaInicio: null,
+    fechaFin: null,
+    prioridad: 'baja'
+  },
+  {
+    id: 'prog-012',
+    codigo: 'AUD-2025-012',
+    nombre: 'Auditoría de Cumplimiento - Gestión Ambiental',
+    areaAuditableId: 'area-012',
+    tipo: 'Cumplimiento',
+    alcance: 'Plan de Manejo Ambiental y disposición de residuos',
+    objetivoGeneral: 'Verificar cumplimiento normativa ambiental',
+    trimestre: 'Q1',
+    mes: 3,
+    duracionDias: 12,
+    liderAsignado: 'Claudia Rojas',
+    equipoAsignado: ['Mario Bernal'],
+    presupuesto: 7500000,
+    estado: 'programada',
+    fechaInicio: null,
+    fechaFin: null,
+    prioridad: 'media'
   }
 ];
 
@@ -604,28 +952,16 @@ export function PlanificacionAnualIntegrada() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-            <Target className="w-7 h-7" style={{ color: '#003DA5' }} />
-            Planificación Anual Integrada {year}
-          </h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Plan Anual • Universo de Auditorías • Programa Anual
-          </p>
-        </div>
-
-        <div className="flex gap-2">
-          <Button variant="outline">
-            <Download className="w-4 h-4 mr-2" />
-            Exportar
-          </Button>
-          <Button style={{ background: '#003DA5' }}>
-            <Save className="w-4 h-4 mr-2" />
-            Guardar Cambios
-          </Button>
-        </div>
+      {/* ACCIONES PRINCIPALES */}
+      <div className="flex justify-end gap-2">
+        <Button variant="outline">
+          <Download className="w-4 h-4 mr-2" />
+          Exportar
+        </Button>
+        <Button style={{ background: '#003DA5' }}>
+          <Save className="w-4 h-4 mr-2" />
+          Guardar Cambios
+        </Button>
       </div>
 
       {/* FLUJO VISUAL */}
@@ -705,10 +1041,7 @@ function TabPlanAnual() {
     >
       {/* RESUMEN DE ROLES */}
       <Card className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-black text-gray-900">
-            Plan Anual por Roles del Decreto 648 de 2017
-          </h3>
+        <div className="flex items-center justify-end mb-4">
           <Badge style={{ background: '#003DA5', color: 'white' }}>
             {ROLES_DECRETO_648.length} Roles
           </Badge>
