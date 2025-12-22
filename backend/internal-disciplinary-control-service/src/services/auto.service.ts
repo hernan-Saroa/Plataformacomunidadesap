@@ -66,10 +66,10 @@ export class AutoService {
   /**
    * Obtiene un auto por ID
    */
-  async findById(id: string): Promise<LegalAuto> {
+  async findById(id: string, relations: string[] = ['process', 'versions']): Promise<LegalAuto> {
     const auto = await this.autoRepository.findOne({
       where: { id },
-      relations: ['process', 'versions'],
+      relations,
     });
     if (!auto) {
       throw new HttpException('Auto no encontrado', HttpStatus.NOT_FOUND);
@@ -91,7 +91,7 @@ export class AutoService {
    * Envía un auto a revisión (cambia de BORRADOR a REVISION_JEFE)
    */
   async sendToReview(id: string): Promise<LegalAuto> {
-    const auto = await this.findById(id);
+    const auto = await this.findById(id, ['process']);
 
     if (auto.estado !== AutoStatus.BORRADOR) {
       throw new HttpException(
@@ -112,7 +112,7 @@ export class AutoService {
     reviewAutoDto: ReviewAutoDto,
     aprobadoPorId: string,
   ): Promise<LegalAuto> {
-    const auto = await this.findById(id);
+    const auto = await this.findById(id, ['process']);
 
     if (auto.estado !== AutoStatus.REVISION_JEFE) {
       throw new HttpException(
@@ -136,7 +136,7 @@ export class AutoService {
 
       // Registrar en Histoial (Version)
       await this.versionRepository.save({
-        auto: auto,
+        auto: { id: auto.id } as LegalAuto,
         contenido: auto.contenido, // No cambia el contenido
         versionNumber: auto.currentVersion,
         createdBy: aprobadoPorId,
@@ -151,7 +151,7 @@ export class AutoService {
 
       // Registrar en Historial
       await this.versionRepository.save({
-        auto: auto,
+        auto: { id: auto.id } as LegalAuto,
         contenido: auto.contenido,
         versionNumber: auto.currentVersion,
         createdBy: aprobadoPorId,
@@ -171,7 +171,7 @@ export class AutoService {
    * Firma digitalmente un auto aprobado
    */
   async sign(id: string, userId: string): Promise<LegalAuto> {
-    const auto = await this.findById(id);
+    const auto = await this.findById(id, ['process']);
 
     if (auto.estado !== AutoStatus.APROBADO) {
       throw new HttpException(
@@ -185,7 +185,7 @@ export class AutoService {
 
     // Registrar en Historial
     await this.versionRepository.save({
-      auto: auto,
+      auto: { id: auto.id } as LegalAuto,
       contenido: auto.contenido,
       versionNumber: auto.currentVersion,
       createdBy: userId, // Quien firma
@@ -203,7 +203,7 @@ export class AutoService {
    * GUARDA VERSIÓN ANTERIOR
    */
   async updateContent(id: string, nuevoContenido: string, userId?: string): Promise<LegalAuto> {
-    const auto = await this.findById(id);
+    const auto = await this.findById(id, ['process']);
 
     if (auto.estado !== AutoStatus.BORRADOR && auto.estado !== AutoStatus.DEVUELTO) {
       throw new HttpException(
@@ -215,7 +215,7 @@ export class AutoService {
     // Si hay contenido previo, guardar versión
     if (auto.contenido && auto.contenido !== nuevoContenido) {
       await this.versionRepository.save({
-        auto: auto,
+        auto: { id: auto.id } as LegalAuto,
         contenido: auto.contenido,
         versionNumber: auto.currentVersion,
         createdBy: userId,
