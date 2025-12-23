@@ -5,6 +5,7 @@ import { StageConfiguration } from '../entities/stage-configuration.entity';
 import { SystemConfiguration } from '../entities/system-configuration.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { ReglaAlerta } from '../entities/regla-alerta.entity';
+import { DisciplinaryProfessional } from '../entities/disciplinary-professional.entity';
 
 @Controller('configuration')
 export class ConfigurationController {
@@ -17,7 +18,24 @@ export class ConfigurationController {
         private processRepo: Repository<DisciplinaryProcess>,
         @InjectRepository(ReglaAlerta)
         private reglasRepo: Repository<ReglaAlerta>,
+        @InjectRepository(DisciplinaryProfessional)
+        private professionalRepo: Repository<DisciplinaryProfessional>,
     ) { }
+
+    // --- AVAILABLE ROLES (Punto 1: Dinámico) ---
+    @Get('available-roles')
+    async getAvailableRoles() {
+        // Query distinct 'cargo' from active professionals
+        const result = await this.professionalRepo
+            .createQueryBuilder('professional')
+            .select('DISTINCT professional.cargo', 'cargo')
+            .where("professional.estado = 'ACTIVO'")
+            .andWhere("professional.cargo IS NOT NULL")
+            .andWhere("professional.cargo != ''")
+            .getRawMany();
+
+        return result.map(r => r.cargo);
+    }
 
     // --- STAGE CONFIGURATION (Punto 1) ---
 

@@ -152,11 +152,12 @@ const isUuid = (value?: string) => {
 
 const DEFAULT_STAGES = [
   { nombre: 'RECEPCION', dias: 3 },
-  { nombre: 'EVALUACION', dias: 10 },
-  { nombre: 'INDAGACION_PREVIA', dias: 40 },
+  { nombre: 'VALORACION', dias: 10 },
+  { nombre: 'INDAGACION PREVIA', dias: 40 },
   { nombre: 'INVESTIGACION', dias: 60 },
+  { nombre: 'EVALUACION', dias: 10 },
   { nombre: 'JUZGAMIENTO', dias: 50 },
-  { nombre: 'FALLO', dias: 10 }
+  { nombre: 'SEGUNDA INSTANCIA', dias: 10 }
 ];
 
 // Helper para calcular días transcurridos
@@ -323,7 +324,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '77385960'
     },
     cedula: '77385960',
-    etapaActual: 'Indagación',
+    etapaActual: 'Indagación Previa',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'María García Londoño',
@@ -455,7 +456,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '79223344'
     },
     cedula: '79223344',
-    etapaActual: 'Fallo',
+    etapaActual: 'Segunda Instancia',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'Carlos Mendoza Ramírez',
@@ -1959,12 +1960,32 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     const cargarProfesionales = async () => {
       try {
         const candidatos = await disciplinaryService.getCandidates();
-        const mapped = Array.isArray(candidatos)
-          ? candidatos.map((c: any, index: number) => ({
-            id: c.id || c.uuid || c.userId || String(index + 1),
-            nombre: c.nombreCompleto || c.nombre || c.name || c.email || `Profesional ${index + 1}`
-          }))
-          : [];
+<<<<<<< HEAD
+        const filtered = Array.isArray(candidatos) ? candidatos.filter((c: any) => {
+          // 1. Check Active Status (defensive)
+          const isActive = !c.estado || c.estado === 'ACTIVO';
+
+          // 2. Check Role
+          const cargo = (c.cargo || '').toLowerCase().trim();
+
+          // Precise Filtering based on user request: "menos sin cargo, admin o estudiante"
+          // - Estudiante: includes (covers 'Estudiante Tesista', etc.)
+          // - Sin Cargo: exact or includes? 'Sin Cargo' is usually distinct. Using includes to be safe.
+          // - Admin: MUST be strict or careful to not exclude 'Auxiliar Administrativo'
+
+          if (cargo.includes('estudiante')) return false;
+          if (cargo.includes('sin cargo')) return false;
+          if (cargo === 'admin') return false;
+          if (cargo === 'administrador') return false;
+          if (cargo.includes('super administrador')) return false;
+
+          return isActive;
+        }) : [];
+
+        const mapped = filtered.map((c: any, index: number) => ({
+          id: c.id || c.uuid || c.userId || String(index + 1),
+          nombre: c.nombreCompleto || c.nombre || c.name || c.email || `Profesional ${index + 1}`
+        }));
         setProfesionalesDisponibles(mapped);
       } catch (error) {
         console.error('Error cargando profesionales', error);

@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Shield, 
-  GraduationCap, 
-  BookOpen, 
-  Briefcase, 
-  Award, 
-  UserCircle, 
-  Building2, 
+import {
+  Shield,
+  GraduationCap,
+  BookOpen,
+  Briefcase,
+  Award,
+  UserCircle,
+  Building2,
   FileText,
   Plus,
   Search,
@@ -25,7 +25,8 @@ import {
   ChevronDown,
   Cog,
   Eye,
-  Filter
+  Filter,
+  Loader2
 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -36,34 +37,13 @@ import { RolePermissionsEditor } from './RolePermissionsEditor';
 import { useConfirmation } from './ConfirmationModal';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import { PaginationPremium } from '../shared/PaginationPremium';
+import { rolesService, type SystemRole, type RoleStats, type RoleFilters } from '../../services/api';
 
 // ============================================================================
 // TIPOS
 // ============================================================================
 
-interface SystemRole {
-  id: string;
-  nombre: string;
-  descripcion: string;
-  icono: string;
-  color: string;
-  tipo: 'sistema' | 'personalizado';
-  usuarios_count: number;
-  permisos_count: number;
-  esta_activo: boolean;
-  requiere_2fa: boolean;
-  fecha_creacion: string;
-  creado_por: string;
-  ultima_modificacion?: string;
-  modificado_por?: string;
-}
-
-interface RoleStats {
-  total_roles: number;
-  roles_sistema: number;
-  usuarios_asignados: number;
-  permisos_disponibles: number;
-}
+// Usar tipos del servicio API
 
 // ============================================================================
 // DATA MOCK
@@ -220,8 +200,14 @@ const getIconComponent = (iconName: string) => {
 // ============================================================================
 
 export function RolesAdministrationModulePremium() {
-  const [roles, setRoles] = useState<SystemRole[]>(MOCK_ROLES);
-  const [stats, setStats] = useState<RoleStats>(MOCK_STATS);
+  const [roles, setRoles] = useState<SystemRole[]>([]);
+  const [stats, setStats] = useState<RoleStats>({
+    total_roles: 0,
+    roles_sistema: 0,
+    usuarios_asignados: 0,
+    permisos_disponibles: 0
+  });
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'todos' | 'sistema' | 'personalizado'>('todos');
   const [filterStatus, setFilterStatus] = useState<'todos' | 'activo' | 'inactivo'>('todos');
@@ -232,22 +218,52 @@ export function RolesAdministrationModulePremium() {
   const [isPermissionsEditorOpen, setIsPermissionsEditorOpen] = useState(false);
   const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   const itemsPerPage = 10;
   const { confirm, ConfirmationDialog } = useConfirmation();
 
-  // Filtrado de roles
-  const filteredRoles = roles.filter(role => {
-    const matchesSearch = role.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          role.descripcion?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = filterType === 'todos' || role.tipo === filterType;
-    const matchesStatus = filterStatus === 'todos' || 
-                         (filterStatus === 'activo' && role.esta_activo) ||
-                         (filterStatus === 'inactivo' && !role.esta_activo);
-    const matches2FA = filter2FA === 'todos' ||
-                      (filter2FA === 'con2fa' && role.requiere_2fa) ||
-                      (filter2FA === 'sin2fa' && !role.requiere_2fa);
-    return matchesSearch && matchesType && matchesStatus && matches2FA;
-  });
+  // Cargar datos iniciales
+  useEffect(() => {
+    loadRoles();
+    loadStats();
+  }, [currentPage, searchTerm, filterType, filterStatus, filter2FA]);
+
+  const loadRoles = async () => {
+    try {
+      setLoading(true);
+      const filters: RoleFilters = {
+        search: searchTerm || undefined,
+        type: filterType !== 'todos' ? filterType : undefined,
+        status: filterStatus !== 'todos' ? filterStatus : undefined,
+        requires_2fa: filter2FA !== 'todos' ? filter2FA : undefined,
+        page: currentPage,
+        limit: itemsPerPage,
+      };
+
+      const response = await rolesService.getRoles(filters);
+      setRoles(response.roles);
+      setTotalItems(response.total);
+    } catch (error) {
+      console.error('Error loading roles:', error);
+      toast.error('Error al cargar roles', {
+        description: 'No se pudieron cargar los roles del sistema'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStats = async () => {
+    try {
+      const statsData = await rolesService.getStats();
+      setStats(statsData);
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    }
+  };
+
+  // Filtrado de roles (ahora se hace en el backend, pero mantenemos compatibilidad)
+  const filteredRoles = roles;
 
   // Paginación
   const totalPages = Math.ceil(filteredRoles.length / itemsPerPage);
@@ -257,59 +273,63 @@ export function RolesAdministrationModulePremium() {
   );
 
   // Crear nuevo rol
-  const handleCreateRole = (roleData: any) => {
-    const newRole: SystemRole = {
-      id: (roles.length + 1).toString(),
-      nombre: roleData.nombre,
-      descripcion: roleData.descripcion,
-      icono: roleData.icono,
-      color: roleData.color,
-      tipo: 'personalizado',
-      usuarios_count: 0,
-      permisos_count: 0,
-      esta_activo: true,
-      requiere_2fa: roleData.requiere_2fa || false,
-      fecha_creacion: new Date().toISOString(),
-      creado_por: 'Usuario Actual'
-    };
+  const handleCreateRole = async (roleData: any) => {
+    try {
+      const newRole = await rolesService.createRole({
+        name: roleData.nombre,
+        description: roleData.descripcion,
+        icon: roleData.icono,
+        color: roleData.color,
+        type: 'personalizado',
+        requires_2fa: roleData.requiere_2fa || false,
+        permissionIds: roleData.permissionIds || []
+      });
 
-    setRoles([...roles, newRole]);
-    setStats({
-      ...stats,
-      total_roles: stats.total_roles + 1
-    });
+      // Recargar datos
+      await loadRoles();
+      await loadStats();
 
-    toast.success('Rol Creado', {
-      description: `El rol "${roleData.nombre}" ha sido creado exitosamente`
-    });
+      toast.success('Rol Creado', {
+        description: `El rol "${roleData.nombre}" ha sido creado exitosamente`
+      });
 
-    // Abrir editor de permisos
-    setSelectedRole(newRole);
-    setIsPermissionsEditorOpen(true);
+      // Abrir editor de permisos
+      setSelectedRole(newRole);
+      setIsPermissionsEditorOpen(true);
+    } catch (error: any) {
+      console.error('Error creating role:', error);
+      toast.error('Error al crear rol', {
+        description: error.message || 'No se pudo crear el rol'
+      });
+    }
   };
 
   // Editar rol
-  const handleEditRole = (roleData: any) => {
+  const handleEditRole = async (roleData: any) => {
     if (!selectedRole) return;
 
-    const updatedRoles = roles.map(role =>
-      role.id === selectedRole.id
-        ? {
-            ...role,
-            nombre: roleData.nombre,
-            descripcion: roleData.descripcion,
-            icono: roleData.icono,
-            color: roleData.color,
-            ultima_modificacion: new Date().toISOString(),
-            modificado_por: 'Usuario Actual'
-          }
-        : role
-    );
+    try {
+      await rolesService.updateRole(selectedRole.id, {
+        name: roleData.nombre,
+        description: roleData.descripcion,
+        icon: roleData.icono,
+        color: roleData.color,
+        requires_2fa: roleData.requiere_2fa,
+        permissionIds: roleData.permissionIds
+      });
 
-    setRoles(updatedRoles);
-    toast.success('Rol Actualizado', {
-      description: `Los cambios en "${roleData.nombre}" se han guardado`
-    });
+      // Recargar datos
+      await loadRoles();
+
+      toast.success('Rol Actualizado', {
+        description: `Los cambios en "${roleData.nombre}" se han guardado`
+      });
+    } catch (error: any) {
+      console.error('Error updating role:', error);
+      toast.error('Error al actualizar rol', {
+        description: error.message || 'No se pudo actualizar el rol'
+      });
+    }
   };
 
   // Eliminar rol
@@ -317,22 +337,29 @@ export function RolesAdministrationModulePremium() {
     const confirmed = await confirm({
       onConfirm: () => {},
       title: '¿Eliminar rol?',
-      description: `¿Estás seguro de que deseas eliminar el rol "${role.nombre}"? Esta acción afectará a ${role.usuarios_count} usuarios.`,
+      description: `¿Estás seguro de que deseas eliminar el rol "${role.name}"? Esta acción afectará a ${role.usuarios_count} usuarios.`,
       confirmText: 'Eliminar',
       cancelText: 'Cancelar',
       type: 'danger'
     });
 
     if (confirmed) {
-      setRoles(roles.filter(r => r.id !== role.id));
-      setStats({
-        ...stats,
-        total_roles: stats.total_roles - 1
-      });
+      try {
+        await rolesService.deleteRole(role.id);
 
-      toast.success('Rol Eliminado', {
-        description: `El rol "${role.nombre}" ha sido eliminado`
-      });
+        // Recargar datos
+        await loadRoles();
+        await loadStats();
+
+        toast.success('Rol Eliminado', {
+          description: `El rol "${role.name}" ha sido eliminado`
+        });
+      } catch (error: any) {
+        console.error('Error deleting role:', error);
+        toast.error('Error al eliminar rol', {
+          description: error.message || 'No se pudo eliminar el rol'
+        });
+      }
     }
   };
 
@@ -341,47 +368,42 @@ export function RolesAdministrationModulePremium() {
     const confirmed = await confirm({
       onConfirm: () => {},
       title: '¿Duplicar rol?',
-      description: `Se creará una copia de "${role.nombre}" con los mismos permisos. Podrás editarlo después de la duplicación.`,
+      description: `Se creará una copia de "${role.name}" con los mismos permisos. Podrás editarlo después de la duplicación.`,
       confirmText: 'Duplicar',
       cancelText: 'Cancelar',
       type: 'info'
     });
 
     if (confirmed) {
-      const duplicatedRole: SystemRole = {
-        ...role,
-        id: (roles.length + 1).toString(),
-        nombre: `${role.nombre} (Copia)`,
-        tipo: 'personalizado',
-        usuarios_count: 0,
-        fecha_creacion: new Date().toISOString(),
-        creado_por: 'Usuario Actual',
-        ultima_modificacion: undefined,
-        modificado_por: undefined
-      };
+      try {
+        const duplicatedRole = await rolesService.duplicateRole(role.id);
 
-      setRoles([...roles, duplicatedRole]);
-      setStats({
-        ...stats,
-        total_roles: stats.total_roles + 1
-      });
+        // Recargar datos
+        await loadRoles();
+        await loadStats();
 
-      toast.success('Rol Duplicado Exitosamente', {
-        description: `Se ha creado "${duplicatedRole.nombre}" con ${role.permisos_count} permisos`
-      });
+        toast.success('Rol Duplicado Exitosamente', {
+          description: `Se ha creado "${duplicatedRole.name}" con ${role.permisos_count} permisos`
+        });
 
-      // Abrir automáticamente el editor para personalizar
-      setTimeout(() => {
-        setSelectedRole(duplicatedRole);
-        setIsEditModalOpen(true);
-      }, 500);
+        // Abrir automáticamente el editor para personalizar
+        setTimeout(() => {
+          setSelectedRole(duplicatedRole);
+          setIsEditModalOpen(true);
+        }, 500);
+      } catch (error: any) {
+        console.error('Error duplicating role:', error);
+        toast.error('Error al duplicar rol', {
+          description: error.message || 'No se pudo duplicar el rol'
+        });
+      }
     }
   };
 
   // Toggle estado activo con validación
   const handleToggleActive = async (role: SystemRole) => {
     // Si está desactivando un rol con usuarios, pedir confirmación
-    if (role.esta_activo && role.usuarios_count > 0) {
+    if (role.is_active && role.usuarios_count > 0) {
       const confirmed = await confirm({
         onConfirm: () => {},
         title: '¿Desactivar rol con usuarios asignados?',
@@ -394,34 +416,36 @@ export function RolesAdministrationModulePremium() {
       if (!confirmed) return;
     }
 
-    const updatedRoles = roles.map(r =>
-      r.id === role.id ? { 
-        ...r, 
-        esta_activo: !r.esta_activo,
-        ultima_modificacion: new Date().toISOString(),
-        modificado_por: 'Usuario Actual'
-      } : r
-    );
-    setRoles(updatedRoles);
+    try {
+      await rolesService.toggleActive(role.id);
 
-    toast.info(
-      role.esta_activo ? 'Rol Desactivado' : 'Rol Activado',
-      {
-        description: role.esta_activo 
-          ? `El rol "${role.nombre}" ha sido desactivado. Los ${role.usuarios_count} usuarios asignados no tendrán acceso.`
-          : `El rol "${role.nombre}" ha sido activado y está disponible para asignación.`
-      }
-    );
+      // Recargar datos
+      await loadRoles();
+
+      toast.info(
+        role.is_active ? 'Rol Desactivado' : 'Rol Activado',
+        {
+          description: role.is_active
+            ? `El rol "${role.name}" ha sido desactivado. Los ${role.usuarios_count} usuarios asignados no tendrán acceso.`
+            : `El rol "${role.name}" ha sido activado y está disponible para asignación.`
+        }
+      );
+    } catch (error: any) {
+      console.error('Error toggling role active status:', error);
+      toast.error('Error al cambiar estado del rol', {
+        description: error.message || 'No se pudo cambiar el estado del rol'
+      });
+    }
   };
 
   // Toggle 2FA con validación
   const handleToggle2FA = async (role: SystemRole) => {
     // Si está desactivando 2FA en rol administrativo, advertir
-    if (role.requiere_2fa && (role.nombre.toLowerCase().includes('admin') || role.nombre.toLowerCase().includes('super'))) {
+    if (role.requires_2fa && (role.name.toLowerCase().includes('admin') || role.name.toLowerCase().includes('super'))) {
       const confirmed = await confirm({
         onConfirm: () => {},
         title: '⚠️ Desactivar 2FA en rol de seguridad',
-        description: `"${role.nombre}" es un rol de alto privilegio. Desactivar la autenticación de dos factores puede comprometer la seguridad del sistema. ¿Estás seguro?`,
+        description: `"${role.name}" es un rol de alto privilegio. Desactivar la autenticación de dos factores puede comprometer la seguridad del sistema. ¿Estás seguro?`,
         confirmText: 'Desactivar 2FA',
         cancelText: 'Mantener 2FA',
         type: 'danger'
@@ -430,38 +454,40 @@ export function RolesAdministrationModulePremium() {
       if (!confirmed) return;
     }
 
-    const updatedRoles = roles.map(r =>
-      r.id === role.id ? { 
-        ...r, 
-        requiere_2fa: !r.requiere_2fa,
-        ultima_modificacion: new Date().toISOString(),
-        modificado_por: 'Usuario Actual'
-      } : r
-    );
-    setRoles(updatedRoles);
+    try {
+      await rolesService.toggle2FA(role.id);
 
-    toast.success(
-      role.requiere_2fa ? '2FA Desactivado' : '2FA Activado',
-      {
-        description: role.requiere_2fa 
-          ? `La autenticación de dos factores para "${role.nombre}" ha sido desactivada. Los usuarios ya no necesitarán código 2FA.`
-          : `La autenticación de dos factores para "${role.nombre}" ha sido activada. Los usuarios deberán configurar 2FA en su próximo login.`
-      }
-    );
+      // Recargar datos
+      await loadRoles();
+
+      toast.success(
+        role.requires_2fa ? '2FA Desactivado' : '2FA Activado',
+        {
+          description: role.requires_2fa
+            ? `La autenticación de dos factores para "${role.name}" ha sido desactivada. Los usuarios ya no necesitarán código 2FA.`
+            : `La autenticación de dos factores para "${role.name}" ha sido activada. Los usuarios deberán configurar 2FA en su próximo login.`
+        }
+      );
+    } catch (error: any) {
+      console.error('Error toggling 2FA:', error);
+      toast.error('Error al cambiar 2FA del rol', {
+        description: error.message || 'No se pudo cambiar la configuración de 2FA'
+      });
+    }
   };
 
   // Gestionar permisos con preparación
   const handleManagePermissions = (role: SystemRole) => {
     setSelectedRole(role);
     setIsPermissionsEditorOpen(true);
-    
+
     toast.info('Editor de Permisos', {
-      description: `Gestionando ${role.permisos_count} permisos para "${role.nombre}"`
+      description: `Gestionando ${role.permisos_count} permisos para "${role.name}"`
     });
   };
 
   const getRoleIcon = (role: SystemRole) => {
-    const IconComponent = getIconComponent(role.icono);
+    const IconComponent = getIconComponent(role.icon);
     return (
       <div
         className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -477,7 +503,7 @@ export function RolesAdministrationModulePremium() {
   };
 
   const getStatusBadge = (role: SystemRole) => {
-    if (role.esta_activo) {
+    if (role.is_active) {
       return (
         <Badge className="bg-green-100 text-green-700 border-green-300 hover:bg-green-100">
           <div className="flex items-center gap-1.5">
@@ -672,265 +698,274 @@ export function RolesAdministrationModulePremium() {
 
           {/* Vista Desktop - Tabla */}
           <div className="hidden lg:block overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b-2 border-gray-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Rol
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Tipo
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Usuarios
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Permisos
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Estado
-                  </th>
-                  <th className="px-6 py-4 text-right text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
-                <AnimatePresence mode="popLayout">
-                  {paginatedRoles.map((role, index) => (
-                    <React.Fragment key={`role-fragment-${role.id}`}>
-                      <motion.tr
-                        key={`role-row-${role.id}`}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2, delay: index * 0.05 }}
-                        className="hover:bg-gray-50 transition-colors cursor-pointer group"
-                        onClick={() => setExpandedRoleId(expandedRoleId === role.id ? null : role.id)}
-                      >
-                        {/* Rol */}
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            {getRoleIcon(role)}
-                            <div>
-                              <p className="font-bold text-gray-900 text-sm group-hover:text-[#003DA5] transition-colors">
-                                {role.nombre}
-                              </p>
-                              <p className="text-xs text-gray-500 line-clamp-1">
-                                {role.descripcion}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Tipo */}
-                        <td className="px-6 py-4">
-                          <Badge
-                            variant={role.tipo === 'sistema' ? 'default' : 'secondary'}
-                            className={`font-semibold text-xs ${
-                              role.tipo === 'sistema'
-                                ? 'bg-purple-100 text-purple-700 border-purple-300'
-                                : 'bg-blue-100 text-blue-700 border-blue-300'
-                            }`}
-                          >
-                            {role.tipo === 'sistema' ? 'Sistema' : 'Personalizado'}
-                          </Badge>
-                        </td>
-
-                        {/* Usuarios */}
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm font-bold text-gray-900">
-                              {role.usuarios_count.toLocaleString()}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Permisos */}
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <Shield className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm font-bold text-gray-900">
-                              {role.permisos_count}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Estado */}
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col gap-1.5">
-                            {getStatusBadge(role)}
-                            {role.requiere_2fa && (
-                              <Badge className="bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-100 text-xs">
-                                <Lock className="w-3 h-3 mr-1" />
-                                2FA
-                              </Badge>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Acciones */}
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                                  <MoreVertical className="w-5 h-5 text-gray-600" />
-                                </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuItem onClick={() => handleManagePermissions(role)}>
-                                  <Shield className="w-4 h-4 mr-2" />
-                                  Gestionar Permisos
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => {
-                                  setSelectedRole(role);
-                                  setIsEditModalOpen(true);
-                                }}>
-                                  <Edit className="w-4 h-4 mr-2" />
-                                  Editar Rol
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDuplicateRole(role)}>
-                                  <Copy className="w-4 h-4 mr-2" />
-                                  Duplicar Rol
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => handleToggleActive(role)}>
-                                  {role.esta_activo ? (
-                                    <>
-                                      <X className="w-4 h-4 mr-2" />
-                                      Desactivar
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Check className="w-4 h-4 mr-2" />
-                                      Activar
-                                    </>
-                                  )}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleToggle2FA(role)}>
-                                  {role.requiere_2fa ? (
-                                    <>
-                                      <Unlock className="w-4 h-4 mr-2" />
-                                      Desactivar 2FA
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Lock className="w-4 h-4 mr-2" />
-                                      Activar 2FA
-                                    </>
-                                  )}
-                                </DropdownMenuItem>
-                                {role.tipo === 'personalizado' && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem 
-                                      onClick={() => handleDeleteRole(role)}
-                                      className="text-red-600"
-                                    >
-                                      <Trash2 className="w-4 h-4 mr-2" />
-                                      Eliminar Rol
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                            <button
-                              onClick={() => setExpandedRoleId(expandedRoleId === role.id ? null : role.id)}
-                              className="p-2 hover:bg-[#003DA5] hover:text-white rounded-lg transition-all"
-                            >
-                              <ChevronDown 
-                                className={`w-5 h-5 transition-transform ${expandedRoleId === role.id ? 'rotate-180' : ''}`}
-                              />
-                            </button>
-                          </div>
-                        </td>
-                      </motion.tr>
-
-                      {/* Detalle Expandido */}
-                      <AnimatePresence>
-                        {expandedRoleId === role.id && (
+            {loading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-[#003DA5]" />
+                <span className="ml-3 text-gray-600">Cargando roles...</span>
+              </div>
+            ) : (
+              <React.Fragment>
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b-2 border-gray-200">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
+                        Rol
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
+                        Tipo
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
+                        Usuarios
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
+                        Permisos
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
+                        Estado
+                      </th>
+                      <th className="px-6 py-4 text-right text-xs font-black text-gray-700 uppercase tracking-wider">
+                        Acciones
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    <AnimatePresence mode="popLayout">
+                      {paginatedRoles.map((role, index) => (
+                        <React.Fragment key={`role-fragment-${role.id}`}>
                           <motion.tr
-                            key={`${role.id}-expanded`}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2 }}
+                            key={`role-row-${role.id}`}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2, delay: index * 0.05 }}
+                            className="hover:bg-gray-50 transition-colors cursor-pointer group"
+                            onClick={() => setExpandedRoleId(expandedRoleId === role.id ? null : role.id)}
                           >
-                            <td colSpan={6} className="px-0 py-0">
-                              <motion.div
-                                initial={{ height: 0 }}
-                                animate={{ height: 'auto' }}
-                                exit={{ height: 0 }}
-                                transition={{ duration: 0.3 }}
-                                className="overflow-hidden"
-                              >
-                                <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-t border-b-2 border-[#003DA5]/20 p-6">
-                                  <div className="grid md:grid-cols-2 gap-4">
-                                    {/* Información */}
-                                    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-                                      <h4 className="font-black text-gray-900 text-sm mb-3">Información del Rol</h4>
-                                      <div className="space-y-2 text-sm">
-                                        <div>
-                                          <span className="text-gray-600">Descripción:</span>
-                                          <p className="text-gray-900 font-medium">{role.descripcion}</p>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                          <div>
-                                            <span className="text-gray-600 text-xs">Creado:</span>
-                                            <p className="text-gray-900 font-medium text-xs">
-                                              {new Date(role.fecha_creacion).toLocaleDateString('es-CO')}
-                                            </p>
-                                            <p className="text-gray-600 text-xs">por {role.creado_por}</p>
-                                          </div>
-                                          {role.ultima_modificacion && (
-                                            <div>
-                                              <span className="text-gray-600 text-xs">Modificado:</span>
-                                              <p className="text-gray-900 font-medium text-xs">
-                                                {new Date(role.ultima_modificacion).toLocaleDateString('es-CO')}
-                                              </p>
-                                              <p className="text-gray-600 text-xs">por {role.modificado_por}</p>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* Configuración */}
-                                    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-                                      <h4 className="font-black text-gray-900 text-sm mb-3">Configuración</h4>
-                                      <div className="space-y-3">
-                                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                          <span className="text-sm text-gray-700">Estado</span>
-                                          {getStatusBadge(role)}
-                                        </div>
-                                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                          <span className="text-sm text-gray-700">Autenticación 2FA</span>
-                                          <Badge className={role.requiere_2fa ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-gray-100 text-gray-700 border-gray-300'}>
-                                            {role.requiere_2fa ? 'Activa' : 'Inactiva'}
-                                          </Badge>
-                                        </div>
-                                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                          <span className="text-sm text-gray-700">Tipo de rol</span>
-                                          <Badge className={role.tipo === 'sistema' ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-blue-100 text-blue-700 border-blue-300'}>
-                                            {role.tipo === 'sistema' ? 'Sistema' : 'Personalizado'}
-                                          </Badge>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
+                            {/* Rol */}
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                {getRoleIcon(role)}
+                                <div>
+                                  <p className="font-bold text-gray-900 text-sm group-hover:text-[#003DA5] transition-colors">
+                                    {role.name}
+                                  </p>
+                                  <p className="text-xs text-gray-500 line-clamp-1">
+                                    {role.description}
+                                  </p>
                                 </div>
-                              </motion.div>
+                              </div>
+                            </td>
+
+                            {/* Tipo */}
+                            <td className="px-6 py-4">
+                              <Badge
+                                variant={role.type === 'sistema' ? 'default' : 'secondary'}
+                                className={`font-semibold text-xs ${
+                                  role.type === 'sistema'
+                                    ? 'bg-purple-100 text-purple-700 border-purple-300'
+                                    : 'bg-blue-100 text-blue-700 border-blue-300'
+                                }`}
+                              >
+                                {role.type === 'sistema' ? 'Sistema' : 'Personalizado'}
+                              </Badge>
+                            </td>
+
+                            {/* Usuarios */}
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <Users className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm font-bold text-gray-900">
+                                  {role.usuarios_count.toLocaleString()}
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Permisos */}
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <Shield className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm font-bold text-gray-900">
+                                  {role.permisos_count}
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Estado */}
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col gap-1.5">
+                                {getStatusBadge(role)}
+                                {role.requires_2fa && (
+                                  <Badge className="bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-100 text-xs">
+                                    <Lock className="w-3 h-3 mr-1" />
+                                    2FA
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Acciones */}
+                            <td className="px-6 py-4">
+                              <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                                      <MoreVertical className="w-5 h-5 text-gray-600" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-48">
+                                    <DropdownMenuItem onClick={() => handleManagePermissions(role)}>
+                                      <Shield className="w-4 h-4 mr-2" />
+                                      Gestionar Permisos
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => {
+                                      setSelectedRole(role);
+                                      setIsEditModalOpen(true);
+                                    }}>
+                                      <Edit className="w-4 h-4 mr-2" />
+                                      Editar Rol
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleDuplicateRole(role)}>
+                                      <Copy className="w-4 h-4 mr-2" />
+                                      Duplicar Rol
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => handleToggleActive(role)}>
+                                      {role.is_active ? (
+                                        <>
+                                          <X className="w-4 h-4 mr-2" />
+                                          Desactivar
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Check className="w-4 h-4 mr-2" />
+                                          Activar
+                                        </>
+                                      )}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleToggle2FA(role)}>
+                                      {role.requires_2fa ? (
+                                        <>
+                                          <Unlock className="w-4 h-4 mr-2" />
+                                          Desactivar 2FA
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Lock className="w-4 h-4 mr-2" />
+                                          Activar 2FA
+                                        </>
+                                      )}
+                                    </DropdownMenuItem>
+                                    {role.type === 'personalizado' && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => handleDeleteRole(role)}
+                                          className="text-red-600"
+                                        >
+                                          <Trash2 className="w-4 h-4 mr-2" />
+                                          Eliminar Rol
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                                <button
+                                  onClick={() => setExpandedRoleId(expandedRoleId === role.id ? null : role.id)}
+                                  className="p-2 hover:bg-[#003DA5] hover:text-white rounded-lg transition-all"
+                                >
+                                  <ChevronDown
+                                    className={`w-5 h-5 transition-transform ${expandedRoleId === role.id ? 'rotate-180' : ''}`}
+                                  />
+                                </button>
+                              </div>
                             </td>
                           </motion.tr>
-                        )}
-                      </AnimatePresence>
-                    </React.Fragment>
-                  ))}
-                </AnimatePresence>
-              </tbody>
-            </table>
+
+                          {/* Detalle Expandido */}
+                          <AnimatePresence>
+                            {expandedRoleId === role.id && (
+                              <motion.tr
+                                key={`${role.id}-expanded`}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                              >
+                                <td colSpan={6} className="px-0 py-0">
+                                  <motion.div
+                                    initial={{ height: 0 }}
+                                    animate={{ height: 'auto' }}
+                                    exit={{ height: 0 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="overflow-hidden"
+                                  >
+                                    <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-t border-b-2 border-[#003DA5]/20 p-6">
+                                      <div className="grid md:grid-cols-2 gap-4">
+                                        {/* Información */}
+                                        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+                                          <h4 className="font-black text-gray-900 text-sm mb-3">Información del Rol</h4>
+                                          <div className="space-y-2 text-sm">
+                                            <div>
+                                              <span className="text-gray-600">Descripción:</span>
+                                              <p className="text-gray-900 font-medium">{role.description}</p>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                              <div>
+                                                <span className="text-gray-600 text-xs">Creado:</span>
+                                                <p className="text-gray-900 font-medium text-xs">
+                                                  {new Date(role.created_at).toLocaleDateString('es-CO')}
+                                                </p>
+                                                <p className="text-gray-600 text-xs">por {role.created_by}</p>
+                                              </div>
+                                              {role.updated_at && (
+                                                <div>
+                                                  <span className="text-gray-600 text-xs">Modificado:</span>
+                                                  <p className="text-gray-900 font-medium text-xs">
+                                                    {new Date(role.updated_at).toLocaleDateString('es-CO')}
+                                                  </p>
+                                                  <p className="text-gray-600 text-xs">por {role.updated_by}</p>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Configuración */}
+                                        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+                                          <h4 className="font-black text-gray-900 text-sm mb-3">Configuración</h4>
+                                          <div className="space-y-3">
+                                            <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                              <span className="text-sm text-gray-700">Estado</span>
+                                              {getStatusBadge(role)}
+                                            </div>
+                                            <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                              <span className="text-sm text-gray-700">Autenticación 2FA</span>
+                                              <Badge className={role.requires_2fa ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-gray-100 text-gray-700 border-gray-300'}>
+                                                {role.requires_2fa ? 'Activa' : 'Inactiva'}
+                                              </Badge>
+                                            </div>
+                                            <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                              <span className="text-sm text-gray-700">Tipo de rol</span>
+                                              <Badge className={role.type === 'sistema' ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-blue-100 text-blue-700 border-blue-300'}>
+                                                {role.type === 'sistema' ? 'Sistema' : 'Personalizado'}
+                                              </Badge>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </motion.div>
+                                </td>
+                              </motion.tr>
+                            )}
+                          </AnimatePresence>
+                        </React.Fragment>
+                      ))}
+                    </AnimatePresence>
+                  </tbody>
+                </table>
+              </React.Fragment>
+            )}
           </div>
 
           {/* Vista Mobile - Cards */}
@@ -949,15 +984,15 @@ export function RolesAdministrationModulePremium() {
                   <div className="flex items-start gap-3 mb-3">
                     {getRoleIcon(role)}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-gray-900 text-sm">{role.nombre}</h3>
-                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{role.descripcion}</p>
+                      <h3 className="font-bold text-gray-900 text-sm">{role.name}</h3>
+                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{role.description}</p>
                       <div className="mt-2 flex gap-1.5">
-                        <Badge variant={role.tipo === 'sistema' ? 'default' : 'secondary'} className={`text-xs ${
-                          role.tipo === 'sistema'
+                        <Badge variant={role.type === 'sistema' ? 'default' : 'secondary'} className={`text-xs ${
+                          role.type === 'sistema'
                             ? 'bg-purple-100 text-purple-700 border-purple-300'
                             : 'bg-blue-100 text-blue-700 border-blue-300'
                         }`}>
-                          {role.tipo === 'sistema' ? 'Sistema' : 'Personalizado'}
+                          {role.type === 'sistema' ? 'Sistema' : 'Personalizado'}
                         </Badge>
                         {getStatusBadge(role)}
                       </div>
@@ -986,7 +1021,7 @@ export function RolesAdministrationModulePremium() {
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => handleToggleActive(role)}>
-                          {role.esta_activo ? (
+                          {role.is_active ? (
                             <>
                               <X className="w-4 h-4 mr-2" />
                               Desactivar
@@ -999,7 +1034,7 @@ export function RolesAdministrationModulePremium() {
                           )}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleToggle2FA(role)}>
-                          {role.requiere_2fa ? (
+                          {role.requires_2fa ? (
                             <>
                               <Unlock className="w-4 h-4 mr-2" />
                               Desactivar 2FA
@@ -1011,7 +1046,7 @@ export function RolesAdministrationModulePremium() {
                             </>
                           )}
                         </DropdownMenuItem>
-                        {role.tipo === 'personalizado' && (
+                        {role.type === 'personalizado' && (
                           <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
@@ -1039,7 +1074,7 @@ export function RolesAdministrationModulePremium() {
                       <span className="font-bold text-gray-900">{role.permisos_count}</span>
                       <span className="text-gray-500">permisos</span>
                     </div>
-                    {role.requiere_2fa && (
+                    {role.requires_2fa && (
                       <Badge className="bg-purple-100 text-purple-700 border-purple-300">
                         <Lock className="w-3 h-3 mr-1" />
                         2FA
@@ -1116,6 +1151,10 @@ export function RolesAdministrationModulePremium() {
             open={isPermissionsEditorOpen}
             onOpenChange={setIsPermissionsEditorOpen}
             role={selectedRole}
+            onSaved={() => {
+              loadRoles();
+              loadStats();
+            }}
           />
         </>
       )}

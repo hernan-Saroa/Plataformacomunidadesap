@@ -215,19 +215,31 @@ export class ProfessionalController {
                     {
                         email: 'candidato1@esap.edu.co',
                         full_name: 'Ana Maria Candidata',
-                        user: { id_user: 'mock-1', is_active: true },
+                        user: {
+                            id_user: 'mock-1',
+                            is_active: true,
+                            roles: [{ name: 'Profesional Especializado' }]
+                        },
                         phone: '3001112233'
                     },
                     {
                         email: 'pedro.postulante@esap.edu.co',
                         full_name: 'Pedro Postulante',
-                        user: { id_user: 'mock-2', is_active: true },
+                        user: {
+                            id_user: 'mock-2',
+                            is_active: true,
+                            roles: [{ name: 'Profesional Universitario' }]
+                        },
                         phone: '3105556677'
                     },
                     {
                         email: 'luisa.abogada@esap.edu.co',
                         full_name: 'Luisa Abogada',
-                        user: { id_user: 'mock-3', is_active: true },
+                        user: {
+                            id_user: 'mock-3',
+                            is_active: true,
+                            roles: [{ name: 'Auxiliar Administrativo' }]
+                        },
                         phone: '3209990000'
                     }
                 ];
@@ -239,13 +251,24 @@ export class ProfessionalController {
                     const userEmail = user.email?.toLowerCase();
                     return userEmail && !assignedEmails.has(userEmail) && user.user?.is_active;
                 })
-                .map((user: any) => ({
-                    id: user.user?.id_user || `top-user-${Math.random()}`,
-                    nombre: user.full_name || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
-                    cargo: 'Profesional Universitario', // Mock default cargo for assignment testing
-                    email: user.email,
-                    telefono: user.phone || 'N/A'
-                }));
+                .map((user: any) => {
+                    let cargo = 'Sin Cargo';
+                    if (user.user && Array.isArray(user.user.roles) && user.user.roles.length > 0) {
+                        cargo = user.user.roles[0].name;
+                    } else if (user.cargo) {
+                        cargo = user.cargo;
+                    } else if (user.role) { // flatten backup
+                        cargo = user.role;
+                    }
+
+                    return {
+                        id: user.user?.id_user || `top-user-${Math.random()}`,
+                        nombre: user.full_name || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+                        cargo: cargo,
+                        email: user.email,
+                        telefono: user.phone || 'N/A'
+                    };
+                });
 
             return candidates;
 
