@@ -3,9 +3,8 @@ import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.
 import esapStudentsReal from 'figma:asset/9366aaa7d27856d9aef10bd134f20dbe9d256906.png';
 import { 
   ArrowRight, GraduationCap, Users, BookOpen, Calendar, FileText, 
-  Award, Zap, Star, Phone, Mail, MapPin, ChevronRight, 
-  Shield, Sparkles, TrendingUp, CheckCircle, Play, Globe,
-  Brain, Rocket, Target, BarChart3, Lock, Clock, Check, X, Layers, Megaphone, QrCode, Briefcase, Menu
+  Award, Zap, Star, Shield, Sparkles, TrendingUp, CheckCircle, Globe,
+  Rocket, Target, BarChart3, Clock, Check, Layers, Briefcase
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
@@ -41,7 +40,6 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       onLoginClick();
     }
   };
-  const [selectedTestimonial, setSelectedTestimonial] = useState(0);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -136,7 +134,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       icon: <FileText className="w-7 h-7" />,
       title: 'Formulario de Vinculaciones',
       description: 'Proceso 100% digital. Recibe respuesta en menos de 24 horas sobre programas disponibles. Sin papeleos ni filas.',
-      action: () => onNavigate('vinculaciones'),
+      action: handleLoginClick,
       gradient: 'from-blue-600 to-blue-700',
       badge: 'Rápido'
     },
@@ -144,7 +142,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       icon: <Award className="w-7 h-7" />,
       title: 'Validación de Certificados de Graduados',
       description: 'Cada certificado tiene un QR único para validación pública. Sistema de trazabilidad completa que registra cada validación.',
-      action: () => onNavigate('verificacion'),
+      action: handleLoginClick,
       gradient: 'from-emerald-600 to-emerald-700',
       badge: 'Seguro'
     },
@@ -152,7 +150,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       icon: <Briefcase className="w-7 h-7" />,
       title: 'Certificados Laborales',
       description: 'Solicita tu certificado laboral de forma automática. Validamos tu identidad por correo y generas tu certificado al instante.',
-      action: () => onNavigate('solicitar-certificados-laborales'),
+      action: handleLoginClick,
       gradient: 'from-sky-600 to-blue-700',
       badge: 'Abierto'
     }
@@ -414,7 +412,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
               <div className="flex flex-col xs:flex-row gap-3 justify-center lg:justify-start">
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button
-                    onClick={() => onNavigate('enrollment-qr')}
+                    onClick={handleLoginClick}
                     size="lg"
                     className="w-full xs:w-auto px-6 py-3 xs:px-7 xs:py-4 sm:px-8 sm:py-6 bg-white text-[#1e5da8] hover:bg-blue-50 shadow-2xl shadow-blue-500/50 group relative overflow-hidden"
                   >
@@ -849,116 +847,11 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
         </div>
       </section>
 
-      {/* Testimonials Section - Carousel */}
-      <section id="testimonios" className="py-8 sm:py-10 lg:py-12 xl:py-16 bg-gradient-to-b from-white via-blue-50 to-white scroll-mt-24">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-          
-          {/* Section Header */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-8 sm:mb-10 lg:mb-12"
-          >
-            <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-purple-100 text-purple-700 rounded-full mb-4 sm:mb-6 font-semibold text-xs sm:text-sm">
-              <Star className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current" />
-              Testimonios
-            </div>
-            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black text-gray-900 mb-4 sm:mb-6 leading-tight">
-              Historias de éxito
-              <span className="block bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                de nuestra comunidad
-              </span>
-            </h2>
-          </motion.div>
-
-          {/* Testimonials Carousel */}
-          <div className="max-w-6xl mx-auto">
-            <motion.div
-              key={selectedTestimonial}
-              initial={{ opacity: 0, x: 100 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -100 }}
-              transition={{ duration: 0.5 }}
-            >
-              <Card className="bg-white/80 backdrop-blur-xl border-2 border-gray-200 shadow-2xl overflow-hidden">
-                <CardContent className="p-8 lg:p-12">
-                  <div className="grid lg:grid-cols-[200px_1fr] gap-8 items-start">
-                    
-                    {/* Avatar & Info */}
-                    <div className="flex flex-col items-center lg:items-start">
-                      <div className="relative mb-4">
-                        <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-xl">
-                          <img 
-                            src={testimonials[selectedTestimonial].avatar} 
-                            alt={testimonials[selectedTestimonial].name}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="absolute -bottom-2 -right-2 w-12 h-12 bg-gradient-to-br from-[#1e5da8] to-blue-600 rounded-full flex items-center justify-center border-4 border-white">
-                          <Award className="w-6 h-6 text-white" />
-                        </div>
-                      </div>
-                      <h4 className="font-bold text-gray-900 text-lg text-center lg:text-left">
-                        {testimonials[selectedTestimonial].name}
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-2 text-center lg:text-left">
-                        {testimonials[selectedTestimonial].role}
-                      </p>
-                      <div className="flex items-center gap-1 text-yellow-500 mb-2">
-                        {[...Array(testimonials[selectedTestimonial].rating)].map((_, i) => (
-                          <Star key={i} className="w-4 h-4 fill-current" />
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-1 text-gray-500 text-xs">
-                        <MapPin className="w-3 h-3" />
-                        {testimonials[selectedTestimonial].location}
-                      </div>
-                    </div>
-
-                    {/* Testimonial Content */}
-                    <div className="flex-1">
-                      <div className="mb-6">
-                        <svg className="w-12 h-12 text-[#1e5da8] opacity-20" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
-                        </svg>
-                      </div>
-                      <p className="text-xl lg:text-2xl text-gray-700 leading-relaxed mb-8 font-medium">
-                        {testimonials[selectedTestimonial].content}
-                      </p>
-                      
-                      {/* Navigation Dots */}
-                      <div className="flex gap-2">
-                        {testimonials.map((_, index) => (
-                          <button
-                            key={index}
-                            onClick={() => setSelectedTestimonial(index)}
-                            className={`h-2 rounded-full transition-all duration-300 ${
-                              index === selectedTestimonial
-                                ? 'w-12 bg-[#1e5da8]'
-                                : 'w-2 bg-gray-300 hover:bg-gray-400'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
       {/* CTA Section - Final Push */}
       <section className="py-6 sm:py-8 lg:py-12 xl:py-16 relative overflow-hidden">
         {/* Background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0f172a] via-[#1e5da8] to-[#2563eb]" />
-        <div className="absolute inset-0 opacity-10" style={{
-          backgroundImage: `radial-gradient(circle at 50% 50%, white 1px, transparent 1px)`,
-          backgroundSize: '50px 50px'
-        }} />
-
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0f172a] via-[#1e5da8] to-[#2563eb]\" />'
+        
         {/* Content */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <motion.div

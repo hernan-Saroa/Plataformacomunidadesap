@@ -1,12 +1,6 @@
-import { useState, useEffect } from 'react';
-import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
-import esapLogoSimple from 'figma:asset/e2a71b7a4ef26af8502b5fee60dbf1b1cca6e90a.png';
-import { Users, Shield, Activity, FolderOpen, BarChart3, FileText, ClipboardList, Settings, TrendingUp, GraduationCap, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Zap, MessageSquare, Briefcase, Calendar, Newspaper, Megaphone, CheckCircle, Award, UserPlus, FolderKanban, BookOpen, FileCheck, Building2, Scale, Layout, FileQuestion, Gavel, DollarSign, Mail, Target, AlertTriangle, LayoutDashboard, Archive, Clock, Bell } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
-import { motion, AnimatePresence, useAnimationControls } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
-type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'aspirantes' | 'community' | 'community-posts' | 'community-events' | 'community-announcements' | 'teacher-calls-management' | 'teacher-calls-applications' | 'teacher-calls-evaluation' | 'job-board' | 'certificate-requests' | 'gestion-profesoral' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial';
+type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'aspirantes' | 'gestion-profesoral' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -42,14 +36,10 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   // Determinar si el sidebar debe estar colapsado (manual o forzado)
   const effectiveCollapsed = isCollapsed || forceCollapse;
   
-  // Verificar si el usuario es Gestor de Certificados Laborales (solo ve ese módulo)
-  const isCertificadosOnly = userRole === 'Gestor Certificados Laborales';
-  
   // Estado para controlar qué menús padre están expandidos
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
     users: false,           // Menú Usuarios Admin cerrado por defecto
     graduates: false,       // Menú Graduados cerrado por defecto
-    community: false,       // Menú Comunidad cerrado por defecto
     'roles-security': false, // Menú Roles y Permisos cerrado por defecto
     'users-management-menu': false, // Menú Gestión Personas cerrado por defecto
   });
@@ -1083,47 +1073,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       <Layout className="w-5 h-5" strokeWidth={2} />,
                       'Arquitectura Empresarial',
                       'MRAE MinTIC Colombia'
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Comunidad */}
-            <div className="mb-8">
-              <AnimatePresence mode="wait">
-                {!effectiveCollapsed && renderSectionHeader('portal-comunitario', <MessageSquare className="w-3 h-3" />, 'PORTAL COMUNITARIO', 1)}
-              </AnimatePresence>
-              
-              <AnimatePresence>
-                {(effectiveCollapsed || expandedSections['portal-comunitario']) && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                    className="overflow-hidden"
-                  >
-                    {/* Items directos sin nivel intermedio */}
-                    {renderMenuItem(
-                      'community-posts',
-                      <FileText className="w-5 h-5" strokeWidth={2} />,
-                      'Posts y Publicaciones',
-                      'Artículos e investigaciones'
-                    )}
-                    
-                    {renderMenuItem(
-                      'community-events',
-                      <Calendar className="w-5 h-5" strokeWidth={2} />,
-                      'Eventos',
-                      'Académicos y sociales'
-                    )}
-                    
-                    {renderMenuItem(
-                      'certificate-requests',
-                      <FileText className="w-5 h-5" strokeWidth={2} />,
-                      'Certificados Académicos',
-                      'Solicitudes generales'
                     )}
                   </motion.div>
                 )}
