@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { LandingPage } from './components/portal/LandingPage';
 import { LoginPage } from './components/portal/LoginPage';
 import { PortalDashboard } from './components/portal/PortalDashboard';
@@ -331,7 +332,7 @@ export default function App() {
   };
 
   return (
-    <>
+    <ErrorBoundary>
       <style>{`
         [data-sonner-toaster] { position: fixed !important; z-index: 9999 !important; }
         [data-sonner-toast] { background: white !important; border: 1px solid #e5e7eb !important; border-radius: 12px !important; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important; padding: 16px !important; }
@@ -396,6 +397,6 @@ export default function App() {
       )}
       
       <Toaster position="top-right" richColors expand={true} />
-    </>
+    </ErrorBoundary>
   );
 }

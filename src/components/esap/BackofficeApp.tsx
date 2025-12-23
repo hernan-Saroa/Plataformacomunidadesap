@@ -28,9 +28,6 @@ import { GestionProfesoralModule } from '../gestion-profesoral/GestionProfesoral
 // Importar módulo de Control Interno
 import { ControlInternoFull } from './control-interno/ControlInternoFull';
 
-// Importar módulo de Control Disciplinario Completo (Sistema Full)
-import { ControlDisciplinarioFull } from './disciplinario/ControlDisciplinarioFull';
-
 // ✅ NUEVO: Módulo de Gestión Legal SIGL v5.0
 import { GestionLegalFull } from './gestion-legal/core/GestionLegalFull';
 
@@ -73,7 +70,6 @@ type ModuleView =
   | 'verification-certificates'
   | 'gestion-profesoral'
   | 'control-interno'
-  | 'control-disciplinario'
   | 'gestion-legal'
   | 'certificados-laborales'
   | 'estructura-organizacional'
@@ -153,7 +149,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       'programas-academicos': 'programas-academicos',
       'gestion-profesoral': 'gestion-profesoral',
       'control-interno': 'control-interno',
-      'control-disciplinario': 'control-disciplinario',
       'gestion-legal': 'gestion-legal',
       'arquitectura-empresarial': 'arquitectura-empresarial',
     };
@@ -252,9 +247,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       
       case 'control-interno':
         return <ControlInternoFull />;
-      
-      case 'control-disciplinario':
-        return <ControlDisciplinarioFull />;
       
       case 'gestion-legal':
         return <GestionLegalFull />;

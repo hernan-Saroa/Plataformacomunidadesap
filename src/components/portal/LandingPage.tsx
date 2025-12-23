@@ -1,38 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import esapStudentsReal from 'figma:asset/9366aaa7d27856d9aef10bd134f20dbe9d256906.png';
 import { 
-  ArrowRight, GraduationCap, Users, BookOpen, Calendar, FileText, 
-  Award, Zap, Star, Shield, Sparkles, TrendingUp, CheckCircle, Globe,
-  Rocket, Target, BarChart3, Clock, Check, Layers, Briefcase
+  ArrowRight, Users, Award, Zap, Star, Shield, Sparkles, TrendingUp, 
+  CheckCircle, Globe, Rocket, Clock, Briefcase, Layers, Check
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { motion, useScroll, useTransform, useReducedMotion } from 'motion/react';
-import { ImageWithFallback } from '../figma/ImageWithFallback';
-import { useMicrointeractions, useAccessibility } from '../../hooks';
 import { FooterGovCo } from './FooterGovCo';
 
 interface LandingPageProps {
-  onIrALogin?: () => void; // Callback para ir al login
-  onLoginClick?: () => void; // Retrocompatibilidad
-  onNavigate?: (section: string) => void; // Retrocompatibilidad
+  onIrALogin?: () => void;
+  onLoginClick?: () => void;
 }
 
-// Utility: Throttle function para optimizar eventos de alta frecuencia
-function throttle<T extends (...args: any[]) => any>(func: T, limit: number): T {
-  let inThrottle: boolean;
-  return ((...args: any[]) => {
-    if (!inThrottle) {
-      func(...args);
-      inThrottle = true;
-      setTimeout(() => (inThrottle = false), limit);
-    }
-  }) as T;
-}
-
-export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPageProps) {
-  // Función unificada para manejar el click en login
+export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
   const handleLoginClick = () => {
     if (onIrALogin) {
       onIrALogin();
@@ -40,104 +23,14 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       onLoginClick();
     }
   };
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
   
-  // Detectar preferencia de movimiento reducido
   const prefersReducedMotion = useReducedMotion();
   
   const { scrollY } = useScroll();
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
-  
-  // UX Premium hooks
-  const { triggerFeedback } = useMicrointeractions();
-  const { ariaProps } = useAccessibility();
-
-  // Throttled mouse move handler - reduce de cientos a ~16 updates/segundo
-  const handleMouseMove = useCallback(
-    throttle((e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY });
-    }, 60), // 60ms = ~16fps, suficiente para parallax suave
-    []
-  );
-
-  // Throttled scroll handler
-  const handleScroll = useCallback(
-    throttle(() => {
-      setIsScrolled(window.scrollY > 50);
-    }, 100),
-    []
-  );
-
-  useEffect(() => {
-    // Solo agregar listener si no prefiere movimiento reducido
-    if (!prefersReducedMotion) {
-      window.addEventListener('mousemove', handleMouseMove);
-    }
-    window.addEventListener('scroll', handleScroll);
-    
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('scroll', handleScroll);
-    };
-  }, [handleMouseMove, handleScroll, prefersReducedMotion]);
-
-  const features = [
-    {
-      icon: <Zap className="w-8 h-8" />,
-      title: 'Un Solo Sistema Integrado',
-      description: 'Ya no necesitas 5-10 aplicaciones diferentes. Calificaciones, certificados, pagos, horarios... todo conectado en un solo lugar.',
-      color: 'from-blue-500 to-cyan-500',
-      stats: '80% más rápido'
-    },
-    {
-      icon: <BarChart3 className="w-8 h-8" />,
-      title: 'Trazabilidad Completa en Tiempo Real',
-      description: 'Ve exactamente en qué estado está tu solicitud. Notificaciones automáticas cuando hay cambios. Ya no tendrás que llamar para preguntar.',
-      color: 'from-purple-500 to-pink-500',
-      stats: 'Transparencia total'
-    },
-    {
-      icon: <Calendar className="w-8 h-8" />,
-      title: 'Perfil y Portafolio Digital',
-      description: 'Tu hoja de vida universitaria completa. Historial académico, certificaciones, documentos y proyectos en un solo portafolio digital.',
-      color: 'from-emerald-500 to-teal-500',
-      stats: 'Trayectoria completa'
-    },
-    {
-      icon: <Users className="w-8 h-8" />,
-      title: 'Experiencia Unificada por Rol',
-      description: 'Interfaz personalizada para cada rol. Estudiantes ven su portal académico, docentes sus cursos, coordinadores sus programas. Cada quien ve exactamente lo que necesita.',
-      color: 'from-orange-500 to-red-500',
-      stats: 'Personalizado'
-    },
-    {
-      icon: <Target className="w-8 h-8" />,
-      title: 'Conveniencia y Eficiencia Total',
-      description: 'Trámites que tomaban 2-3 horas se resuelven en 5 minutos desde tu celular. Acceso 24/7 desde cualquier lugar. Transparencia total del estado de tus solicitudes.',
-      color: 'from-indigo-500 to-blue-500',
-      stats: 'Disponible 24/7'
-    },
-    {
-      icon: <Shield className="w-8 h-8" />,
-      title: 'Validación con QR Único',
-      description: 'Cada certificado genera un QR único e irrepetible. Al escanearlo, cualquier entidad puede validar su autenticidad. Trazabilidad completa de cada validación.',
-      color: 'from-violet-500 to-purple-500',
-      stats: 'QR Único y Seguro'
-    }
-  ];
 
   const services = [
-    {
-      icon: <FileText className="w-7 h-7" />,
-      title: 'Formulario de Vinculaciones',
-      description: 'Proceso 100% digital. Recibe respuesta en menos de 24 horas sobre programas disponibles. Sin papeleos ni filas.',
-      action: handleLoginClick,
-      gradient: 'from-blue-600 to-blue-700',
-      badge: 'Rápido'
-    },
     {
       icon: <Award className="w-7 h-7" />,
       title: 'Validación de Certificados de Graduados',
@@ -388,7 +281,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
 
               {/* Subtitle */}
               <p className="text-sm xs:text-base sm:text-lg md:text-xl lg:text-xl xl:text-2xl text-blue-100 mb-4 sm:mb-6 lg:mb-8 leading-relaxed max-w-2xl mx-auto lg:mx-0">
-                La primera <span className="font-semibold text-white">ComUNIdad Universitaria</span> de Colombia. 
+                En la  <span className="font-semibold text-white">ComUNIdad ESAP</span> de Colombia. 
                 Todos tus trámites, servicios académicos y comunidad <span className="font-semibold text-white">en un solo lugar</span>.
               </p>
 
@@ -850,7 +743,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       {/* CTA Section - Final Push */}
       <section className="py-6 sm:py-8 lg:py-12 xl:py-16 relative overflow-hidden">
         {/* Background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0f172a] via-[#1e5da8] to-[#2563eb]\" />'
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0f172a] via-[#1e5da8] to-[#2563eb]\" />''
         
         {/* Content */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -866,9 +759,8 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
             </div>
 
             <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black text-white mb-4 sm:mb-6 leading-tight">
-              ¿Listo para una experiencia
+              ¿Ya haces parte de la comunidad ESAP ?
               <span className="block bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                universitaria moderna?
               </span>
             </h2>
 
@@ -883,7 +775,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                   size="lg"
                   className="px-8 py-5 sm:px-10 sm:py-7 bg-white text-[#1e5da8] hover:bg-blue-50 shadow-2xl shadow-blue-500/50 font-bold text-base sm:text-lg group"
                 >
-                  Vincúlate Ahora
+                  Activa tu cuenta ahora
                   <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2 group-hover:translate-x-1 transition-transform" />
                 </Button>
               </motion.div>

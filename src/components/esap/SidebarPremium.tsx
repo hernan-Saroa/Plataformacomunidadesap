@@ -1,6 +1,16 @@
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Users, Shield, Activity, BarChart3, TrendingUp, Zap, 
+  GraduationCap, CheckCircle, Award, FolderOpen, FileCheck, 
+  BookOpen, ClipboardList, Scale, Bell, Layout, Building2,
+  ChevronDown, ChevronLeft, Briefcase
+} from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
+import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import esapLogoSimple from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 
-type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'aspirantes' | 'gestion-profesoral' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas';
+type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'aspirantes' | 'gestion-profesoral' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -962,7 +972,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             {/* Gestión Académica */}
             <div className="mb-8">
               <AnimatePresence mode="wait">
-                {!effectiveCollapsed && renderSectionHeader('gestion-usuarios', <GraduationCap className="w-3 h-3" />, 'GESTIÓN ACADÉMICA', 9)}
+                {!effectiveCollapsed && renderSectionHeader('gestion-usuarios', <GraduationCap className="w-3 h-3" />, 'GESTIÓN ACADÉMICA', 7)}
               </AnimatePresence>
               
               <AnimatePresence>
@@ -1024,13 +1034,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       <ClipboardList className="w-5 h-5" strokeWidth={2} />,
                       'Control Interno Gestión',
                       'Auditorías y hallazgos'
-                    )}
-
-                    {renderMenuItem(
-                      'control-disciplinario',
-                      <Shield className="w-5 h-5" strokeWidth={2} />,
-                      'Control Interno Disciplinario',
-                      'Procesos disciplinarios'
                     )}
                     
                     {/* ✅ NUEVO: Gestión Legal (SIGL) v5.0 */}
