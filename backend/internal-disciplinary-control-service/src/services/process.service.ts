@@ -47,6 +47,7 @@ export class ProcessService {
     try {
       // Validar que la noticia existe
       const noticia = await this.newsService.findById(createProcessDto.newsId);
+      console.log('Attempting to assign process to news', createProcessDto.newsId, 'estado', noticia.estado);
 
       // Validar que la noticia esté en estado RADICADA
       if (noticia.estado !== NewsStatus.RADICADA) {
@@ -54,6 +55,49 @@ export class ProcessService {
           'La noticia debe estar en estado RADICADA para asignar proceso',
           HttpStatus.BAD_REQUEST,
         );
+      }
+
+      // Buscar el profesional asignado
+      let abogado = await this.professionalRepository.findOne({
+        where: { id: createProcessDto.abogadoId }
+      });
+
+      if (!abogado) {
+        // Si no existe en la tabla de profesionales, crearlo con los datos proporcionados
+        console.log('⚠️ Profesional no existe en BD, creando nuevo con datos:', {
+          abogadoId: createProcessDto.abogadoId,
+          abogadoNombre: createProcessDto.abogadoNombre
+        });
+
+        abogado = this.professionalRepository.create({
+          id: createProcessDto.abogadoId, // Usar el mismo ID del candidato
+          nombreCompleto: createProcessDto.abogadoNombre || 'Profesional Asignado',
+          email: `${createProcessDto.abogadoNombre?.toLowerCase().replace(/\s+/g, '.')}@esap.edu.co`,
+          cargo: 'Profesional Universitario',
+          estado: 'ACTIVO',
+          capacidadMaxima: 10,
+        });
+
+        try {
+          await this.professionalRepository.save(abogado);
+          console.log('✅ Profesional creado exitosamente:', {
+            id: abogado.id,
+            nombre: abogado.nombreCompleto,
+            cargo: abogado.cargo
+          });
+        } catch (saveError) {
+          console.error('❌ Error guardando profesional:', saveError);
+          throw new HttpException(
+            `Error al crear el profesional: ${saveError.message}`,
+            HttpStatus.INTERNAL_SERVER_ERROR
+          );
+        }
+      } else {
+        console.log('✅ Profesional encontrado en BD:', {
+          id: abogado.id,
+          nombre: abogado.nombreCompleto,
+          cargo: abogado.cargo
+        });
       }
 
       // Generar radicado del proceso
@@ -64,20 +108,60 @@ export class ProcessService {
       const fechaPrescripcion =
         this.terminosService.calculateFechaPrescripcion(noticia.fechaRecepcion);
 
-      // Calcular fecha de vencimiento de la etapa inicial (EVALUACION)
-      const { fechaVencimiento } =
-        await this.terminosService.calculateVencimientoEtapa(ProcessStage.EVALUACION);
+      // Determinar etapa inicial basada en la columna kanban de la noticia
+      let etapaInicial = ProcessStage.EVALUACION; // Default
+      if (noticia.kanbanStage) {
+        // Mapear kanbanStage a ProcessStage
+        switch (noticia.kanbanStage.toUpperCase()) {
+          case 'EVALUACION':
+          case 'EVALUACIÓN':
+            etapaInicial = ProcessStage.EVALUACION;
+            break;
+          case 'INDAGACION':
+          case 'INDAGACION_PREVIA':
+          case 'INDAGACIÓN':
+          case 'INDAGACIÓN_PREVIA':
+            etapaInicial = ProcessStage.INDAGACION_PREVIA;
+            break;
+          case 'INVESTIGACION':
+          case 'INVESTIGACIÓN':
+            etapaInicial = ProcessStage.INVESTIGACION;
+            break;
+          case 'JUZGAMIENTO':
+            etapaInicial = ProcessStage.JUZGAMIENTO;
+            break;
+          case 'FALLO':
+            etapaInicial = ProcessStage.FALLO;
+            break;
+          default:
+            etapaInicial = ProcessStage.EVALUACION;
+        }
+      }
 
-      // Crear proceso
+      // Calcular fecha de vencimiento de la etapa inicial
+      const { fechaVencimiento } =
+        await this.terminosService.calculateVencimientoEtapa(etapaInicial);
+
+      // Crear proceso con la relación del abogado
       const proceso = this.processRepository.create({
         radicadoProceso,
         newsId: createProcessDto.newsId,
-        abogadoAsignadoId: createProcessDto.abogadoId,
-        etapaActual: ProcessStage.EVALUACION, // Default initial stage
+        abogadoAsignado: abogado, // Establecer la relación directamente
+        abogadoAsignadoId: abogado.id,
+        etapaActual: etapaInicial,
+        kanbanStage: noticia.kanbanStage, // ✅ Mantener la misma columna kanban de la noticia
         estado: ProcessStatus.ACTIVO,
         fechaPrescripcion,
         fechaVencimientoEtapa: fechaVencimiento,
         observaciones: createProcessDto.observaciones,
+      });
+
+      console.log('💾 Guardando proceso con abogado:', {
+        abogadoId: abogado.id,
+        abogadoNombre: abogado.nombreCompleto,
+        abogadoCargo: abogado.cargo,
+        etapaActual: etapaInicial,
+        kanbanStage: noticia.kanbanStage
       });
 
       const procesoConcreado = await this.processRepository.save(proceso);
@@ -88,7 +172,35 @@ export class ProcessService {
         NewsStatus.ASIGNADA,
       );
 
-      return procesoConcreado;
+      // Cargar la relación del abogado asignado para incluir el nombre en la respuesta
+      const procesoConRelacion = await this.processRepository.findOne({
+        where: { id: procesoConcreado.id },
+        relations: ['abogadoAsignado', 'news'],
+      });
+
+      if (!procesoConRelacion) {
+        throw new HttpException('Error al cargar el proceso creado', HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      const resultado = {
+        ...procesoConRelacion,
+        abogadoAsignadoNombre: procesoConRelacion.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+      };
+
+      console.log('✅ Proceso creado con abogado:', {
+        procesoId: resultado.id,
+        radicado: resultado.radicadoProceso,
+        abogadoAsignadoId: resultado.abogadoAsignadoId,
+        abogadoAsignadoNombre: resultado.abogadoAsignadoNombre,
+        abogadoAsignado: {
+          id: resultado.abogadoAsignado?.id,
+          nombreCompleto: resultado.abogadoAsignado?.nombreCompleto,
+          cargo: resultado.abogadoAsignado?.cargo,
+          email: resultado.abogadoAsignado?.email
+        }
+      });
+
+      return resultado as any;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -136,6 +248,15 @@ export class ProcessService {
           } else {
             timePercentage = 100;
           }
+          console.log('Time percentage calculation', {
+            procesoId: p.id,
+            createdAt: created,
+            deadline,
+            now,
+            totalTime,
+            elapsedTime,
+            timePercentage
+          });
         }
 
         return {
@@ -293,6 +414,8 @@ export class ProcessService {
       // Calcular nuevo vencimiento
       const { fechaVencimiento } =
         await this.terminosService.calculateVencimientoEtapa(stage);
+
+      console.log('Changing stage for process', id, 'from', proceso.etapaActual, 'to', stage, 'new deadline', fechaVencimiento);
 
       proceso.etapaActual = stage;
       proceso.fechaVencimientoEtapa = fechaVencimiento;
@@ -526,6 +649,7 @@ export class ProcessService {
    * Valida las transiciones permitidas entre etapas
    */
   private validarTransicionEtapa(etapaActual: ProcessStage, nuevaEtapa: ProcessStage): void {
+    console.log('Validating transition from', etapaActual, 'to', nuevaEtapa);
     if (etapaActual === nuevaEtapa) {
       throw new HttpException(
         `No se puede pasar de ${etapaActual} a ${nuevaEtapa}`,
