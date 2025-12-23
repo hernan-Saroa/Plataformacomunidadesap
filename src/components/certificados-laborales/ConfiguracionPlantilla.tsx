@@ -5616,9 +5616,6 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
                   onInput={(e) => {
-
-
-
                     setBorrador({
 
 
