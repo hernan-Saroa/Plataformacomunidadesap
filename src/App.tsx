@@ -44,7 +44,7 @@ type AppView =
 
 type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | null;
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'solicitar-certificados-laborales';
 
 interface Usuario {
   id: string;
@@ -305,7 +305,7 @@ export default function App() {
       const userEmail = user?.person?.email || user?.email || '';
       const userName = user?.person?.first_name
         ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
-        : user?.username || 'Usuario ESAP';
+        : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
 
       console.log('👤 User info extracted:', { userEmail, userName });
 
@@ -325,6 +325,12 @@ export default function App() {
           email: userEmail,
           personId: user?.person?.id || user?.id
         });
+        setUsuarioActual({
+          id: user?.id || user?.person?.id || 'unknown',
+          nombre: userName,
+          email: userEmail,
+          tipo: 'interno'
+        });
         setUserRoles(['Administrativo']);
         setCurrentView('backoffice');
         setVistaActual('backoffice');
@@ -333,6 +339,7 @@ export default function App() {
         // });
       } else {
         console.log('🎓 Redirecting to portal');
+        let vistaActualCurrent: Vista = 'portal'
         // Usuario Estudiante/Graduado/Docente → Portal Transaccional
         // Determinar tipo basado en el email o roles
         const emailLower = userEmail.toLowerCase();
@@ -343,7 +350,7 @@ export default function App() {
         if (emailLower.includes('cerlaboral')) {
           userType = 'administrativo';
           currentView = 'backoffice'
-          setVistaActual('backoffice');
+          vistaActualCurrent = 'backoffice';
           setUserData({ 
             name: userName, 
             email: userEmail, 
@@ -396,7 +403,13 @@ export default function App() {
         setIsAuthenticated(true);
         setUserRoles(portalRoles);
         setCurrentView(currentView);
-        setVistaActual('portal');
+        setVistaActual(vistaActualCurrent);
+        setUsuarioActual({
+          id: user?.id || user?.person?.id || 'unknown',
+          nombre: userName,
+          email: userEmail,
+          tipo: currentView === 'backoffice' ? 'interno' : 'externo'
+        });
         toast.success('¡Bienvenido al Portal Transaccional!', {
           description: `Hola ${userName}`,
         });
@@ -434,6 +447,7 @@ export default function App() {
     setVistaActual('landing');
     localStorage.removeItem('esap-sesion-activa');
     localStorage.removeItem('esap-remember-session');
+    localStorage.clear();
     // Limpiar timers
     if (timerInactividadRef.current) {
       clearTimeout(timerInactividadRef.current);
@@ -461,6 +475,7 @@ export default function App() {
 
   // Handler para cambio directo de sistema (sin pasar por selector)
   const handleSystemChange = (system: 'backoffice' | 'portal') => {
+    console.log('🔄 System change requested:', system); 
     if (system === 'backoffice') {
       setCurrentView('backoffice');
       setUserType('administrativo');
@@ -558,7 +573,7 @@ export default function App() {
   const renderVista = () => {
     switch (vistaActual) {
       case 'landing':
-        return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;
+        return renderViewLanding();
       
       case 'login':
         return (
@@ -579,11 +594,40 @@ export default function App() {
       case 'backoffice':
         return (
           <BackofficeApp
-            usuario={usuarioActual!}
             onLogout={handleLogout}
+            onBackToSystemSelector={handleBackToSystemSelector}
+            onSystemChange={handleSystemChange}
+            userData={userData}
+            userRoles={userRoles}
           />
         );
       
+      default:
+        return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;
+    }
+  };
+
+  const renderViewLanding = () => {
+    console.log('🔍 Vista actual:', vistaActual, currentView); 
+    switch (currentView) {
+      case 'solicitar-certificados-laborales':
+        return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />
+      case 'enrollment-qr':
+        return (
+          <EnrollmentQRLandingUnified
+            onBeginActivation={() => {
+              // En producción iniciaría el flujo de activación
+              console.log('Iniciando proceso de enrolamiento');
+            }}
+            onBackToHome={handleBackToHome}
+            onLoginClick={handleLoginClick}
+          />
+        );
+      case 'vinculaciones':
+        return <VinculacionForm onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
+      case 'verificacion':
+        return <PublicTitleVerification onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
+
       default:
         return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;
     }
@@ -601,7 +645,10 @@ export default function App() {
         [data-description] { color: #6b7280 !important; font-size: 13px !important; margin-top: 4px !important; }
       `}</style>
       
-      {renderVista()}
+      <Routes>
+        <Route path="/verificar-certificado/:codigo" element={<VerificarCertificado />} />
+        <Route path="*" element={renderVista()} />
+      </Routes>
       
       {/* Modal de Alerta de Inactividad */}
       {mostrarAlertaInactividad && (

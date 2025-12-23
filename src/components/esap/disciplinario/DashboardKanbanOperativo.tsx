@@ -600,15 +600,17 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
 
           {/* Acciones */}
           <div className="space-y-1.5 mt-auto pt-2">
-            <Button
-              onClick={() => onConvertir(noticia)}
-              size="sm"
-              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
-            >
-              <PlusCircle className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} mr-1.5`} />
-              Convertir
-            </Button>
+            {noticia.estado === 'pendiente' && (
+              <Button
+                onClick={() => onConvertir(noticia)}
+                size="sm"
+                className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                <PlusCircle className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} mr-1.5`} />
+                Convertir
+              </Button>
+            )}
             <div className={`grid grid-cols-3 gap-1`}>
               <Button
                 onClick={() => onDevolver(noticia)}
@@ -1943,6 +1945,108 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     [dynamicStages]
   );
 
+  // Función para cargar datos - movida fuera del useEffect para ser accesible desde otros handlers
+  const cargarDatos = async () => {
+    // 1. Intentar cargar de localStorage primero (Items)
+    const storedItems = loadPersistedItems();
+
+    if (storedItems && storedItems.length > 0) {
+      setItems(storedItems);
+    }
+
+    // 2. Cargar desde backend para actualizar items
+    try {
+      const [noticiasApi, procesosApi] = await Promise.all([
+        disciplinaryService.getNoticiasPendientes(),
+        disciplinaryService.getAllProcesos()
+      ]);
+
+      // Use dynamicStages from hook
+      // Mapping generic 'Etapa' to format expected by component if needed, or use directly but be careful with typing
+      // The component expects 'etapa' property. Hook returns 'nombre'.
+      // Let's map hook Etapa to component structure locally
+      const activeStages = mergedStages.map(s => ({
+        etapa: s.nombre,
+        diasHabiles: s.dias,
+        activo: true
+      }));
+
+      // 3. Ordenar etapas (hook already returns ordered, but we ensure standard order if needed or trust hook)
+      // For Kanban display order, the hook provided 'orden'.
+      // But for normalization logic, we just need the list.
+
+      // Helper para normalizar nombres de etapas (Match robusto)
+      const normalizeStageName = (inputName: string, configStages: any[]) => {
+        if (!inputName) return 'RECEPCION';
+
+        // 1. Busqueda exacta o case-insensitive
+        const cleanInput = inputName.trim();
+        const match = configStages.find(s =>
+          s.etapa === cleanInput ||
+          s.etapa.localeCompare(cleanInput, undefined, { sensitivity: 'base' }) === 0
+        );
+
+        if (match) return match.etapa;
+
+        // 2. Fallback a mapeo legacy si es necesario
+        const legacyMap: Record<string, string> = {
+          'RECEPCION': 'RECEPCION',
+          'EVALUACION': 'EVALUACION',
+          'VALORACION': 'EVALUACION',
+          'INDAGACION': 'INDAGACION_PREVIA',
+          'INDAGACION_PREVIA': 'INDAGACION_PREVIA',
+          'INVESTIGACION': 'INVESTIGACION',
+          'JUZGAMIENTO': 'JUZGAMIENTO',
+          'FALLO': 'FALLO'
+        };
+        const mapped = legacyMap[cleanInput.toUpperCase()];
+        if (mapped) {
+          const matchMapped = configStages.find(s => s.etapa.localeCompare(mapped, undefined, { sensitivity: 'base' }) === 0);
+          if (matchMapped) return matchMapped.etapa;
+        }
+
+        // 3. Si parece una constante (MAYUSCULAS), intentar convertir a Title Case y buscar de nuevo
+        const titleCase = cleanInput.charAt(0).toUpperCase() + cleanInput.slice(1).toLowerCase();
+        const matchTitle = configStages.find(s => s.etapa.localeCompare(titleCase, undefined, { sensitivity: 'base' }) === 0);
+        if (matchTitle) return matchTitle.etapa;
+
+        return cleanInput; // Default fallthrough
+      };
+
+      const mappedNoticias = (noticiasApi || []).map(n => {
+        const not = toNoticiaFromApi(n);
+        // Aplicar normalización extra a la etapa de la noticia
+        return { ...normalizeNoticia(not), etapaActual: normalizeStageName(not.etapaActual, activeStages) };
+      });
+
+      const mappedProcesos = (procesosApi || []).map(p => {
+        const proc = toProcesoFromApi(p, activeStages);
+        // ✅ Usar kanbanStage si existe, sino usar etapaActual como fallback
+        const stageToUse = p.kanbanStage || p.etapaActual;
+        console.log('📍 Posicionando proceso en Kanban:', {
+          id: p.id,
+          radicado: p.radicadoProceso,
+          kanbanStage: p.kanbanStage,
+          etapaActual: p.etapaActual,
+          columnaFinal: stageToUse
+        });
+        proc.etapaActual = normalizeStageName(stageToUse, activeStages) as any;
+        return proc;
+      });
+
+      const normalizedItems = [...mappedNoticias, ...mappedProcesos];
+
+      setItems(normalizedItems);
+      persistItems(normalizedItems);
+
+    } catch (error) {
+      console.error('Error cargando datos reales de disciplinario', error);
+      // Only show error if we strictly needed remote data, but we have mocks/localstorage.
+      // toast.error('Usando datos locales.');
+
+      // Fallback or keep existing items if empty. Logic remains similar to before but simpler
+    }
+  };
 
   // Estados para formularios
   const [formNuevaNoticia, setFormNuevaNoticia] = useState({
@@ -1959,6 +2063,19 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   useEffect(() => {
     const cargarProfesionales = async () => {
       try {
+        // const profesionales = await disciplinaryService.getProfesionales();
+        // console.log('👥 Profesionales cargados desde el backend:', profesionales);
+
+        // const mapped = Array.isArray(profesionales)
+        //   ? profesionales.map((p: any) => ({
+        //       id: p.id,
+        //       nombre: p.nombreCompleto,
+        //       cargo: p.cargo,
+        //       email: p.email
+        //     }))
+        //   : [];
+
+        // console.log('👥 Profesionales mapeados para el dropdown:', mapped);
         const candidatos = await disciplinaryService.getCandidates();
         const filtered = Array.isArray(candidatos) ? candidatos.filter((c: any) => {
           // 1. Check Active Status (defensive)
@@ -1987,7 +2104,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
         }));
         setProfesionalesDisponibles(mapped);
       } catch (error) {
-        console.error('Error cargando profesionales', error);
+        console.error('❌ Error cargando profesionales', error);
         setProfesionalesDisponibles([]);
       }
     };
@@ -2320,6 +2437,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   };
 
   const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
+    console.log('🔍 toProcesoFromApi - Proceso recibido del backend:', proceso);
+    console.log('📋 Datos del abogado:', {
+      abogadoAsignadoNombre: proceso.abogadoAsignadoNombre,
+      abogadoAsignadoId: proceso.abogadoAsignadoId,
+      abogadoAsignado: (proceso as any).abogadoAsignado
+    });
+
     let etapa = proceso.kanbanStage || proceso.etapaActual;
 
     // Normalize Stage:
@@ -2353,13 +2477,60 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     const semaforo: 'verde' | 'amarillo' | 'rojo' = diasRestantes <= 0
       ? 'rojo'
       : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
-    const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
-    const denuncianteData = Array.isArray(proceso.news?.denunciante)
-      ? proceso.news?.denunciante?.[0]
-      : proceso.news?.denunciante;
-    const disciplinableData = Array.isArray(proceso.news?.disciplinable)
-      ? proceso.news?.disciplinable?.[0]
-      : proceso.news?.disciplinable;
+
+    // Obtener información del abogado asignado
+    const abogadoNombre = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
+    const abogadoObjeto = (proceso as any).abogadoAsignado;
+    const abogadoEmail = abogadoObjeto?.email || '';
+    const abogadoCargo = abogadoObjeto?.cargo || 'Profesional Universitario';
+
+    // Usar cargo del objeto si existe, sino usar un valor por defecto
+    let abogadoCC = 'Profesional Asignado';
+    if (abogadoObjeto) {
+      abogadoCC = abogadoCargo || abogadoEmail || 'Profesional Asignado';
+    }
+
+    console.log('👤 Profesional asignado procesado:', {
+      nombre: abogadoNombre,
+      identificacion: abogadoCC,
+      objetoCompleto: abogadoObjeto,
+      tieneNombre: !!proceso.abogadoAsignadoNombre,
+      tieneObjeto: !!abogadoObjeto
+    });
+
+    // Parse JSON strings for denunciante and disciplinable
+    let denuncianteData: any = null;
+    let disciplinableData: any = null;
+
+    try {
+      if (proceso.news?.denunciante) {
+        if (typeof proceso.news.denunciante === 'string') {
+          denuncianteData = JSON.parse(proceso.news.denunciante);
+        } else if (Array.isArray(proceso.news.denunciante)) {
+          denuncianteData = proceso.news.denunciante[0];
+        } else {
+          denuncianteData = proceso.news.denunciante;
+        }
+      }
+    } catch (e) {
+      console.warn('Error parsing denunciante data:', e);
+      denuncianteData = null;
+    }
+
+    try {
+      if (proceso.news?.disciplinable) {
+        if (typeof proceso.news.disciplinable === 'string') {
+          disciplinableData = JSON.parse(proceso.news.disciplinable);
+        } else if (Array.isArray(proceso.news.disciplinable)) {
+          disciplinableData = proceso.news.disciplinable[0];
+        } else {
+          disciplinableData = proceso.news.disciplinable;
+        }
+      }
+    } catch (e) {
+      console.warn('Error parsing disciplinable data:', e);
+      disciplinableData = null;
+    }
 
     return {
       id: proceso.id,
@@ -2379,9 +2550,9 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       etapaActual: etapa as any,
       estadoActual: proceso.estado || 'ACTIVO',
       profesionalAsignado: {
-        nombre: abogado,
+        nombre: abogadoNombre,
         tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso as any).abogadoAsignado?.id || '',
+        numeroIdentificacion: abogadoCC,
       },
       semaforo,
       diasRestantes,
@@ -2401,98 +2572,6 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   // Cargar datos reales desde el microservicio (con fallback a mock)
   // Re-run when stages are loaded to ensure correct normalization
   useEffect(() => {
-    const cargarDatos = async () => {      // 1. Intentar cargar de localStorage primero (Items)
-      const storedItems = loadPersistedItems();
-
-      if (storedItems && storedItems.length > 0) {
-        setItems(storedItems);
-      }
-
-      // 2. Cargar desde backend para actualizar items
-      try {
-        const [noticiasApi, procesosApi] = await Promise.all([
-          disciplinaryService.getAllNoticias(),
-          disciplinaryService.getAllProcesos()
-        ]);
-
-        // Use dynamicStages from hook
-        // Mapping generic 'Etapa' to format expected by component if needed, or use directly but be careful with typing
-        // The component expects 'etapa' property. Hook returns 'nombre'.
-        // Let's map hook Etapa to component structure locally
-        const activeStages = mergedStages.map(s => ({
-          etapa: s.nombre,
-          diasHabiles: s.dias,
-          activo: true
-        }));
-
-        // 3. Ordenar etapas (hook already returns ordered, but we ensure standard order if needed or trust hook)
-        // For Kanban display order, the hook provided 'orden'.
-        // But for normalization logic, we just need the list.
-
-        // Helper para normalizar nombres de etapas (Match robusto)
-        const normalizeStageName = (inputName: string, configStages: any[]) => {
-          if (!inputName) return 'RECEPCION';
-
-          // 1. Busqueda exacta o case-insensitive
-          const cleanInput = inputName.trim();
-          const match = configStages.find(s =>
-            s.etapa === cleanInput ||
-            s.etapa.localeCompare(cleanInput, undefined, { sensitivity: 'base' }) === 0
-          );
-
-          if (match) return match.etapa;
-
-          // 2. Fallback a mapeo legacy si es necesario
-          const legacyMap: Record<string, string> = {
-            'RECEPCION': 'RECEPCION',
-            'EVALUACION': 'EVALUACION',
-            'VALORACION': 'EVALUACION',
-            'INDAGACION': 'INDAGACION_PREVIA',
-            'INDAGACION_PREVIA': 'INDAGACION_PREVIA',
-            'INVESTIGACION': 'INVESTIGACION',
-            'JUZGAMIENTO': 'JUZGAMIENTO',
-            'FALLO': 'FALLO'
-          };
-          const mapped = legacyMap[cleanInput.toUpperCase()];
-          if (mapped) {
-            const matchMapped = configStages.find(s => s.etapa.localeCompare(mapped, undefined, { sensitivity: 'base' }) === 0);
-            if (matchMapped) return matchMapped.etapa;
-          }
-
-          // 3. Si parece una constante (MAYUSCULAS), intentar convertir a Title Case y buscar de nuevo
-          const titleCase = cleanInput.charAt(0).toUpperCase() + cleanInput.slice(1).toLowerCase();
-          const matchTitle = configStages.find(s => s.etapa.localeCompare(titleCase, undefined, { sensitivity: 'base' }) === 0);
-          if (matchTitle) return matchTitle.etapa;
-
-          return cleanInput; // Default fallthrough
-        };
-
-        const mappedNoticias = (noticiasApi || []).map(n => {
-          const not = toNoticiaFromApi(n);
-          // Aplicar normalización extra a la etapa de la noticia
-          return { ...normalizeNoticia(not), etapaActual: normalizeStageName(not.etapaActual, activeStages) };
-        });
-
-        const mappedProcesos = (procesosApi || []).map(p => {
-          const proc = toProcesoFromApi(p, activeStages);
-          proc.etapaActual = normalizeStageName(p.etapaActual, activeStages) as any;
-          return proc;
-        });
-
-        const normalizedItems = [...mappedNoticias, ...mappedProcesos];
-
-        setItems(normalizedItems);
-        persistItems(normalizedItems);
-
-      } catch (error) {
-        console.error('Error cargando datos reales de disciplinario', error);
-        // Only show error if we strictly needed remote data, but we have mocks/localstorage.
-        // toast.error('Usando datos locales.');
-
-        // Fallback or keep existing items if empty. Logic remains similar to before but simpler
-      }
-    };
-
     // Only load if we have stages or if we decide to load anyway (but normalization might fail without stages)
     // Actually, allowing load even if stages are empty (using defaults) is safer, but 'dynamicStages' will eventually populate.
     cargarDatos();
@@ -2560,11 +2639,13 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     [normalizeEtapa('Evaluacion')]: 'EVALUACION',
     [normalizeEtapa('Valoracion')]: 'EVALUACION',
     [normalizeEtapa('Valoraci?n')]: 'EVALUACION',
-    [normalizeEtapa('INDAGACION')]: 'INDAGACION',
-    [normalizeEtapa('Indagacion')]: 'INDAGACION',
-    [normalizeEtapa('Indagaci?n')]: 'INDAGACION',
-    [normalizeEtapa('Indagacion Previa')]: 'INDAGACION',
-    [normalizeEtapa('Indagaci?n Previa')]: 'INDAGACION',
+    [normalizeEtapa('INDAGACION')]: 'INDAGACION_PREVIA',
+    [normalizeEtapa('Indagacion')]: 'INDAGACION_PREVIA',
+    [normalizeEtapa('Indagaci?n')]: 'INDAGACION_PREVIA',
+    [normalizeEtapa('INDAGACION_PREVIA')]: 'INDAGACION_PREVIA',
+    [normalizeEtapa('Indagacion_Previa')]: 'INDAGACION_PREVIA',
+    [normalizeEtapa('Indagacion Previa')]: 'INDAGACION_PREVIA',
+    [normalizeEtapa('Indagaci?n Previa')]: 'INDAGACION_PREVIA',
     [normalizeEtapa('INVESTIGACION')]: 'INVESTIGACION',
     [normalizeEtapa('Investigacion')]: 'INVESTIGACION',
     [normalizeEtapa('Investigaci?n')]: 'INVESTIGACION',
@@ -2603,6 +2684,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
   // ==================== HANDLERS ====================
   const handleDropItem = async (item: Item, nuevaEtapa: string) => {
+    console.log('🔄 handleDropItem: Dropping item', item.id, 'to stage', nuevaEtapa);
     if (!item) return;
 
     const isBackwardsMove = item.tipo === 'proceso'
@@ -2613,7 +2695,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       ? `Devuelto de ${item.etapaActual} a ${nuevaEtapa}`
       : null;
 
-    // Actualizar estado local inmediatamente
+    // Actualizar estado local inmediatamente para feedback visual rápido
     setItems(prev => {
       const updated = prev.map(i =>
         i.id === item.id
@@ -2627,33 +2709,85 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     // Si es proceso, actualizar backend
     if (item.tipo === 'proceso') {
       const backendStage = etapaMap[normalizeEtapa(nuevaEtapa)];
-      if (backendStage) {
-        const isValidUuid = isUuid(item.id);
-        if (!isValidUuid) {
-          toast.info('Proceso demo', { description: 'No se actualiza en el servidor' });
-          return;
-        }
-        try {
-          await disciplinaryService.cambiarEtapa(item.id, backendStage, nuevaEtapa, kanbanNotice || undefined);
-          toast.success('Proceso Movido', {
-            description: `${item.numeroProceso} ? ${nuevaEtapa}`
-          });
-        } catch (error) {
-          console.error('Error actualizando etapa en backend:', error);
-          toast.error('No se pudo actualizar en el servidor');
-        }
+      console.log('🔍 handleDropItem: Mapeo de etapa:', {
+        nuevaEtapa,
+        normalized: normalizeEtapa(nuevaEtapa),
+        backendStage
+      });
+
+      if (!backendStage) {
+        console.error('❌ No se encontró mapeo para la etapa:', nuevaEtapa);
+        toast.error('Error', {
+          description: `No se puede mover a la etapa: ${nuevaEtapa}`
+        });
+        // Revertir cambio local
+        setItems(prev => {
+          const reverted = prev.map(i =>
+            i.id === item.id
+              ? { ...i, etapaActual: item.etapaActual }
+              : i
+          );
+          persistItems(reverted);
+          return reverted;
+        });
+        return;
+      }
+
+      const isValidUuid = isUuid(item.id);
+      if (!isValidUuid) {
+        toast.info('Proceso demo', { description: 'No se actualiza en el servidor' });
+        return;
+      }
+
+      try {
+        await disciplinaryService.cambiarEtapa(item.id, backendStage, nuevaEtapa, kanbanNotice || undefined);
+        // Reload data to reflect changes
+        console.log('🔄 handleDropItem: Recargando datos después del cambio de etapa');
+        await cargarDatos();
+        console.log('✅ handleDropItem: Datos recargados exitosamente');
+        toast.success('Proceso Movido', {
+          description: `${item.numeroProceso} → ${nuevaEtapa}`
+        });
+      } catch (error) {
+        console.error('Error actualizando etapa en backend:', error);
+        toast.error('No se pudo actualizar en el servidor');
+        // Revertir cambio local en caso de error
+        setItems(prev => {
+          const reverted = prev.map(i =>
+            i.id === item.id
+              ? { ...i, etapaActual: item.etapaActual }
+              : i
+          );
+          persistItems(reverted);
+          return reverted;
+        });
       }
     } else if (item.tipo === 'noticia') {
       if (isUuid(item.id)) {
         try {
           await disciplinaryService.updateNewsKanban(item.id, nuevaEtapa);
+          toast.success('Noticia Movida', {
+            description: `${item.numero} - ${nuevaEtapa}`
+          });
         } catch (error) {
           console.error('Error actualizando Kanban de noticia:', error);
+          toast.error('No se pudo actualizar la noticia');
+          // Revertir cambio local en caso de error
+          setItems(prev => {
+            const reverted = prev.map(i =>
+              i.id === item.id
+                ? { ...i, etapaActual: item.etapaActual }
+                : i
+            );
+            persistItems(reverted);
+            return reverted;
+          });
         }
+      } else {
+        toast.success('Noticia Movida', {
+          description: `${item.numero} - ${nuevaEtapa}`
+        });
       }
-      toast.success('Noticia Movida', {
-        description: `${item.numero} - ${nuevaEtapa}`
-      });
     }
   };
 
@@ -2814,9 +2948,15 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
     const profesional = profesionalesDisponibles.find(p => p.id === profesionalSeleccionado);
     if (!profesional) {
-      toast.error('Error', { description: 'Selecciona un profesional v?lido' });
+      toast.error('Error', { description: 'Selecciona un profesional válido' });
       return;
     }
+
+    console.log('👨‍💼 Profesional seleccionado para asignar:', {
+      id: profesional.id,
+      nombre: profesional.nombre,
+      noticiaId: itemSeleccionado.id
+    });
 
     try {
       const procesoApi = await disciplinaryService.asignarProceso({
@@ -2825,6 +2965,8 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
         abogadoNombre: profesional.nombre
       });
 
+      console.log('📥 Respuesta del backend al crear proceso:', procesoApi);
+
       const activeStages = mergedStages.map(s => ({
         etapa: s.nombre,
         diasHabiles: s.dias,
@@ -2832,64 +2974,29 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       }));
       const nuevoProceso = toProcesoFromApi(procesoApi, activeStages);
 
+      console.log('✅ Proceso creado exitosamente:', {
+        id: nuevoProceso.id,
+        numeroProceso: nuevoProceso.numeroProceso,
+        profesional: nuevoProceso.profesionalAsignado.nombre
+      });
+
       setItems(prev => [
         ...prev.filter(i => i.id !== itemSeleccionado.id),
         nuevoProceso
       ]);
 
-      toast.success('Proceso Creado', {
-        description: `${nuevoProceso.numeroProceso} - ${profesional.nombre}`
+      toast.success('✅ Proceso Creado Exitosamente', {
+        description: `${nuevoProceso.numeroProceso} - ${profesional.nombre}`,
+        duration: 5000
       });
 
+      // Cerrar el modal de conversión
       setModalActivo(null);
       setItemSeleccionado(null);
     } catch (error) {
       console.error('Error convirtiendo noticia a proceso', error);
       toast.error('No se pudo convertir la noticia');
     }
-
-    const denunciadoFallback: Persona = itemSeleccionado?.denunciado || {
-      nombre: 'Sin denunciado',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: 'N/A'
-    };
-
-    const nuevoProceso: Proceso = {
-      id: `p${Date.now()}`,
-      numeroProceso: `PD-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
-      noticiaOrigen: itemSeleccionado.numero,
-      denunciante: denuncianteFallback,
-      denunciado: denunciadoFallback,
-      cedula: '00000000',
-      etapaActual: 'Recepción',
-      estadoActual: 'En Gestión',
-      profesionalAsignado: {
-        nombre: profesionalSeleccionado,
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: 'N/A'
-      },
-      semaforo: 'verde',
-      diasRestantes: 30,
-      porcentajeTiempo: 0,
-      borradores: [],
-      documentos: [],
-      pendienteAprobacion: false,
-      ultimaActuacion: 'Noticia convertida',
-      fechaCreacion: new Date().toISOString().split('T')[0],
-      tipo: 'proceso'
-    };
-
-    setItems(prev => [
-      ...prev.filter(i => i.id !== itemSeleccionado.id),
-      nuevoProceso
-    ]);
-
-    toast.success('Proceso Creado', {
-      description: `${nuevoProceso.numeroProceso} ? ${profesionalSeleccionado}`
-    });
-
-    setModalActivo(null);
-    setItemSeleccionado(null);
   };
 
   const handleDevolverNoticia = (noticia: Noticia) => {

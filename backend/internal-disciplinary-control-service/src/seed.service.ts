@@ -84,9 +84,19 @@ export class SeedService {
     ];
 
     for (const stage of stages) {
-      const exists = await this.stageConfigRepository.findOne({ where: { etapa: stage.etapa } });
-      if (!exists) {
-        await this.stageConfigRepository.save(stage);
+      try {
+        const exists = await this.stageConfigRepository.findOne({ where: { etapa: stage.etapa } });
+        if (!exists) {
+          await this.stageConfigRepository.save(stage);
+        }
+      } catch (error) {
+        // Si el enum no existe en la BD, intentar crearlo directamente
+        console.warn(`⚠️ No se pudo verificar si existe la etapa ${stage.etapa}, intentando crear...`);
+        try {
+          await this.stageConfigRepository.save(stage);
+        } catch (saveError) {
+          console.error(`❌ Error guardando etapa ${stage.etapa}:`, saveError.message);
+        }
       }
     }
 

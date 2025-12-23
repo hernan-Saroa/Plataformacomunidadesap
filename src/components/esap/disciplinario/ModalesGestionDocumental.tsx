@@ -53,6 +53,12 @@ interface ModalAutosProps {
 }
 
 export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosProps) {
+  console.log('🚀 ModalGestionAutos abierto con proceso:', {
+    id: proceso?.id,
+    numeroProceso: proceso?.numeroProceso,
+    esUUID: proceso?.id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(proceso.id) : false
+  });
+
   const [vistaActual, setVistaActual] = useState<'lista' | 'crear'>('lista');
   const [visorDocumento, setVisorDocumento] = useState<{ show: boolean; documento: any | null }>({ show: false, documento: null });
   const [autos, setAutos] = useState<any[]>([]);
@@ -179,23 +185,42 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     let activo = true;
     const resolverProceso = async () => {
       const directId = proceso?.id || '';
+
+      // Primero intentar usar el ID directamente si es un UUID válido
       if (directId && isUuidLike(directId)) {
+        console.log('✅ Usando ID directo del proceso:', directId);
         if (activo) setProcessId(directId);
         return;
       }
+
+      // Si no hay ID directo, intentar buscar por radicado
       const radicado = proceso?.numeroProceso;
       if (!radicado) {
+        console.warn('⚠️ No hay ID ni radicado para el proceso');
         if (activo) setProcessId('');
         return;
       }
+
       try {
+        console.log('🔍 Buscando proceso por radicado:', radicado);
         const found = await disciplinaryService.getProcesoByRadicado(radicado);
-        if (activo) setProcessId(found?.id || '');
-      } catch (error) {
-        console.error('Error resolviendo proceso', error);
+        if (activo) {
+          console.log('✅ Proceso encontrado por radicado:', found?.id);
+          setProcessId(found?.id || '');
+        }
+      } catch (error: any) {
+        console.error('❌ Error resolviendo proceso por radicado:', error);
         if (activo) {
           setProcessId('');
-          toast.error('No se pudo identificar el proceso para autos');
+          // Solo mostrar error si no es un 404 de proceso recién creado
+          if (error?.message?.includes('404') || error?.message?.includes('no encontrado')) {
+            console.warn('⚠️ Proceso no encontrado aún, puede estar recién creado');
+            toast.warning('El proceso está siendo procesado', {
+              description: 'Por favor espera un momento e intenta nuevamente'
+            });
+          } else {
+            toast.error('No se pudo identificar el proceso para autos');
+          }
         }
       }
     };
