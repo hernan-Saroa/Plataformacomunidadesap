@@ -75,17 +75,28 @@ export class SeedService {
   private async seedConfigurations(): Promise<void> {
     const stages = [
       { etapa: ProcessStage.RECEPCION, diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
-      { etapa: ProcessStage.EVALUACION, diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
+      { etapa: ProcessStage.VALORACION, diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
       { etapa: ProcessStage.INDAGACION_PREVIA, diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
       { etapa: ProcessStage.INVESTIGACION, diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
+      { etapa: ProcessStage.EVALUACION, diasHabiles: 10, descripcion: 'Evaluación de investigación', activo: true },
       { etapa: ProcessStage.JUZGAMIENTO, diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
-      { etapa: ProcessStage.FALLO, diasHabiles: 10, descripcion: 'Emisión de fallo', activo: true },
+      { etapa: ProcessStage.SEGUNDA_INSTANCIA, diasHabiles: 10, descripcion: 'Segunda instancia', activo: true },
     ];
 
     for (const stage of stages) {
-      const exists = await this.stageConfigRepository.findOne({ where: { etapa: stage.etapa } });
-      if (!exists) {
-        await this.stageConfigRepository.save(stage);
+      try {
+        const exists = await this.stageConfigRepository.findOne({ where: { etapa: stage.etapa } });
+        if (!exists) {
+          await this.stageConfigRepository.save(stage);
+        }
+      } catch (error) {
+        // Si el enum no existe en la BD, intentar crearlo directamente
+        console.warn(`⚠️ No se pudo verificar si existe la etapa ${stage.etapa}, intentando crear...`);
+        try {
+          await this.stageConfigRepository.save(stage);
+        } catch (saveError) {
+          console.error(`❌ Error guardando etapa ${stage.etapa}:`, saveError.message);
+        }
       }
     }
 
