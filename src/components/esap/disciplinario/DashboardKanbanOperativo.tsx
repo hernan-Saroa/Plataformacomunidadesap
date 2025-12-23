@@ -1927,7 +1927,19 @@ function ColumnaKanban({
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
-export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigateToExpediente?: () => void }) {
+interface DashboardKanbanProps {
+  onNavigateToExpediente?: () => void;
+  filtroProfesionalId?: string | null;
+  filtroProfesionalNombre?: string | null;
+  onLimpiarFiltro?: () => void;
+}
+
+export function DashboardKanbanOperativo({
+  onNavigateToExpediente,
+  filtroProfesionalId: initialFiltroId,
+  filtroProfesionalNombre,
+  onLimpiarFiltro
+}: DashboardKanbanProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [modalActivo, setModalActivo] = useState<ModalType>(null);
   const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
@@ -1936,7 +1948,14 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
   const [isTablet, setIsTablet] = useState(false);
   const [vistaCompacta, setVistaCompacta] = useState(false);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
-  const [filtroProfesionalId, setFiltroProfesionalId] = useState<string>('');
+  const [filtroProfesionalId, setFiltroProfesionalId] = useState<string>(initialFiltroId || '');
+
+  // Efecto para sincronizar el filtro desde props
+  useEffect(() => {
+    if (initialFiltroId !== undefined) {
+      setFiltroProfesionalId(initialFiltroId || '');
+    }
+  }, [initialFiltroId]);
 
   // Hook de configuración
   const { etapas: dynamicStages, loading: loadingConfig } = useConfiguration();
@@ -2566,6 +2585,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       tipo: 'proceso',
       hechos: proceso.news?.hechos,
       kanbanNotice: proceso.kanbanNotice || null,
+      profesionalAsignadoId: proceso.abogadoAsignadoId // ✅ Fix: Map the ID for filtering
     };
   };
 
@@ -3380,15 +3400,10 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     : items;
 
   // Obtener nombre del profesional filtrado
-  const profesionalFiltrado = filtroProfesionalId ? (() => {
-    const profesionales = [
-      { id: '1', nombre: 'Juan Pérez Rodríguez' },
-      { id: '2', nombre: 'María Torres Gómez' },
-      { id: '3', nombre: 'Carlos Mendoza Silva' },
-      { id: '4', nombre: 'Ana González López' }
-    ];
-    return profesionales.find(p => p.id === filtroProfesionalId);
-  })() : null;
+  const profesionalFiltrado = filtroProfesionalId ? {
+    id: filtroProfesionalId,
+    nombre: filtroProfesionalNombre || 'Profesional Seleccionado'
+  } : null;
 
   // ==================== RENDER ====================
   return (
@@ -3418,12 +3433,26 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 </p>
               </div>
             </div>
-            <Badge
-              className="font-bold px-3 py-1"
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
-            >
-              {itemsFiltrados.length} proceso{itemsFiltrados.length !== 1 ? 's' : ''}
-            </Badge>
+
+            <div className="flex items-center gap-2">
+              <Badge
+                className="font-bold px-3 py-1"
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                {itemsFiltrados.length} proceso{itemsFiltrados.length !== 1 ? 's' : ''}
+              </Badge>
+              {onLimpiarFiltro && (
+                <Button
+                  onClick={onLimpiarFiltro}
+                  variant="ghost"
+                  size="sm"
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 ml-2"
+                >
+                  <XCircle className="w-4 h-4 mr-1" />
+                  Limpiar
+                </Button>
+              )}
+            </div>
           </motion.div>
         )}
 
@@ -3651,7 +3680,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                 <ColumnaKanban
                   key={etapa.nombre}
                   etapa={etapa.nombre}
-                  items={items}
+                  items={itemsFiltrados}
                   color={etapa.color}
                   icono={etapa.icono}
                   diasEstimados={etapa.diasEstimados}
