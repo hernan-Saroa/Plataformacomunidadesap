@@ -434,6 +434,7 @@ export default function App() {
     setVistaActual('landing');
     localStorage.removeItem('esap-sesion-activa');
     localStorage.removeItem('esap-remember-session');
+    localStorage.clear();
     // Limpiar timers
     if (timerInactividadRef.current) {
       clearTimeout(timerInactividadRef.current);

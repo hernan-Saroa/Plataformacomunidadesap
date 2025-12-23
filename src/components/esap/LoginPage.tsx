@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, GraduationCap, TrendingUp, Users, Award, Sparkles, Home, ArrowLeft, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
@@ -6,6 +6,7 @@ import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { authService } from '../../services/api/authService';
+import { config } from '../../config/environment';
 
 interface LoginPageProps {
   onLogin: (user: any, accessToken: string, rememberMe?: boolean) => void;
@@ -21,6 +22,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
+  const autoLoginAttemptedRef = useRef(false);
 
   // IMPORTANTE: Forzar tema claro en el login SIEMPRE
   useEffect(() => {
@@ -40,6 +42,27 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (autoLoginAttemptedRef.current) return;
+    if (!authService.isAuthenticated()) return;
+
+    const token = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    const storedUser = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
+    if (!token || !storedUser) return;
+
+    try {
+      const user = JSON.parse(storedUser);
+      autoLoginAttemptedRef.current = true;
+      toast.success('⭐ ¡Bienvenido de vuelta!', {
+        description: 'Estas conectado como ' + user.username,
+        duration: 5000,
+      });
+      onLogin(user, token, true);
+    } catch (error) {
+      console.error('Error al auto-iniciar sesión:', error);
+    }
+  }, [onLogin]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -65,10 +88,10 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    console.log('🚀 Starting login process');
+    // console.log('🚀 Starting login process');
 
     if (!validateForm()) {
-      console.log('❌ Form validation failed');
+      // console.log('❌ Form validation failed');
       toast.error('Por favor corrija los errores en el formulario');
       return;
     }
@@ -76,11 +99,11 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     setIsLoading(true);
 
     try {
-      console.log('📡 Calling authService.login with:', {
+      /* console.log('📡 Calling authService.login with:', {
         email: email.toLowerCase(),
         password: password ? '***' : '',
         rememberMe
-      });
+      });*/
 
       // Llamar a la API de autenticación real
       const response = await authService.login({
@@ -89,7 +112,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         rememberMe,
       });
 
-      console.log('✅ Auth service response:', response);
+      // console.log('✅ Auth service response:', response);
 
       // Determinar el tipo de usuario basado en el email para mostrar mensaje personalizado
       const emailLower = email.toLowerCase();
@@ -176,10 +199,10 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         });
       }
 
-      console.log('🔄 Calling onLogin handler with user data');
+      // console.log('🔄 Calling onLogin handler with user data');
       // Pasar los datos del usuario autenticado al handler de login
       onLogin(response.user, response.accessToken, rememberMe);
-      console.log('✅ onLogin handler completed');
+      // console.log('✅ onLogin handler completed');
 
     } catch (error: any) {
       console.error('❌ Error de autenticación:', error);
