@@ -7,9 +7,11 @@ import {
   Star, 
   ChevronRight,
   UserCheck,
-  ClipboardCheck
+  ClipboardCheck,
+  Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import { DashboardGestionProfesoral } from './DashboardGestionProfesoral';
 import { Modulo1PlanificacionAcademica } from './Modulo1PlanificacionAcademica';
 import { Modulo2Convocatorias } from './Modulo2Convocatorias';
@@ -17,6 +19,7 @@ import { Modulo4HoraCatedra } from './Modulo4HoraCatedra';
 import { Modulo5EvaluacionDocente } from './Modulo5EvaluacionDocente';
 import { PTAsList } from './PTAsList';
 import { CalendarioAcademicoModule } from './CalendarioAcademicoModule';
+import { ModalEnviarPTA } from './ModalEnviarPTA';
 
 // Tabs del módulo - 6 MÓDULOS PRINCIPALES
 type TabType = 'dashboard' | 'calendario' | 'planificacion' | 'convocatorias' | 'ptas' | 'hora-catedra' | 'evaluacion';
@@ -83,7 +86,7 @@ export function GestionProfesoralModule({ className = '' }: GestionProfesoralMod
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardGestionProfesoral />;
+        return <DashboardGestionProfesoral onNavigate={setActiveTab} />;
       case 'calendario':
         return <CalendarioAcademicoModule />;
       case 'planificacion':
@@ -97,7 +100,7 @@ export function GestionProfesoralModule({ className = '' }: GestionProfesoralMod
       case 'evaluacion':
         return <Modulo5EvaluacionWrapper />;
       default:
-        return <DashboardGestionProfesoral />;
+        return <DashboardGestionProfesoral onNavigate={setActiveTab} />;
     }
   };
 
@@ -187,12 +190,80 @@ function Modulo2ConvocatoriasWrapper() {
 
 // MÓDULO 3: PTA (COMPONENTE CENTRAL)
 function Modulo3PTAs() {
+  const [showModalEnviar, setShowModalEnviar] = useState(false);
+  
+  // PTAs de ejemplo - En producción vendrían de una API o estado global
+  const ptasEjemplo = [
+    {
+      id: '1',
+      codigo: 'PTA-DEMO-BOR-001',
+      docente: {
+        nombre: 'Dra. Ana María Torres',
+        email: 'ana.torres@esap.edu.co',
+        documento: '52.123.456',
+        programa: 'Administración Pública'
+      },
+      periodo: '2025-I',
+      estado: 'EN_CONSTRUCCION',
+      fecha_creacion: '10 de enero de 2025',
+      horas_totales: 800,
+      horas_programables: 800
+    },
+    {
+      id: '2',
+      codigo: 'PTA-DEMO-BOR-002',
+      docente: {
+        nombre: 'Dr. Carlos Eduardo Mendoza',
+        email: 'carlos.mendoza@esap.edu.co',
+        documento: '79.456.789',
+        programa: 'Gestión Territorial'
+      },
+      periodo: '2025-I',
+      estado: 'BORRADOR',
+      fecha_creacion: '8 de enero de 2025',
+      horas_totales: 400,
+      horas_programables: 400
+    },
+    {
+      id: '3',
+      codigo: 'PTA-DEMO-BOR-003',
+      docente: {
+        nombre: 'Dra. Patricia López García',
+        email: 'patricia.lopez@esap.edu.co',
+        documento: '41.234.567',
+        programa: 'Ciencias Políticas'
+      },
+      periodo: '2025-I',
+      estado: 'EN_CONSTRUCCION',
+      fecha_creacion: '12 de enero de 2025',
+      horas_totales: 800,
+      horas_programables: 800
+    }
+  ];
+  
+  const handleEnviarPTA = (pta: any) => {
+    // Aquí iría la lógica para enviar el PTA a revisión
+    toast.success(`PTA ${pta.codigo} enviado exitosamente`, {
+      description: `Se notificó al docente ${pta.docente.nombre}`,
+      duration: 4000
+    });
+  };
+  
   return (
     <div className="space-y-6">
       <div className="bg-gradient-to-br from-[#003DA5] to-[#1e5da8] rounded-2xl p-6 text-white">
-        <div className="flex items-center gap-3 mb-2">
-          <FileText className="w-8 h-8" />
-          <h1 className="text-3xl font-bold">Módulo 3: Plan de Trabajo Académico (PTA)</h1>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <FileText className="w-8 h-8" />
+            <h1 className="text-3xl font-bold">Módulo 3: Plan de Trabajo Académico (PTA)</h1>
+          </div>
+          <button
+            onClick={() => setShowModalEnviar(true)}
+            className="px-6 py-2.5 bg-white text-[#003DA5] rounded-lg font-medium hover:bg-blue-50 transition-colors flex items-center gap-2"
+          >
+            <Send className="w-4 h-4" />
+            Enviar
+          </button>
         </div>
         <p className="text-sm opacity-90">
           ⭐ COMPONENTE CENTRAL - Gestión completa del PTA con 4 componentes: Docencia, Investigación, Extensión, Complementarias
@@ -212,7 +283,16 @@ function Modulo3PTAs() {
           </div>
         </div>
       </div>
+      
       <PTAsList />
+      
+      {/* Modal para enviar PTA */}
+      <ModalEnviarPTA
+        isOpen={showModalEnviar}
+        onClose={() => setShowModalEnviar(false)}
+        ptas={ptasEjemplo}
+        onEnviar={handleEnviarPTA}
+      />
     </div>
   );
 }

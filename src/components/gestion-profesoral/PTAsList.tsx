@@ -1,23 +1,20 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Search, 
-  Filter, 
+import {
   FileText,
+  Search,
+  Download,
   CheckCircle,
   Clock,
-  AlertCircle,
-  XCircle,
-  Eye,
+  TrendingUp,
   Edit,
-  Download,
-  Send,
-  MoreVertical,
-  Calendar,
+  AlertCircle,
   User,
   Building2,
-  TrendingUp,
-  Plus
+  Calendar,
+  Eye,
+  MoreVertical,
+  Send
 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Input } from '../ui/input';
@@ -32,12 +29,19 @@ import {
 } from '../ui/dropdown-menu';
 import { toast } from 'sonner';
 
+// Importar nuevos tipos y configuraciones oficiales
+import { ESTADOS_PTA, EstadoPTA } from '../../data/ptaEstadosYFlujo';
+
 // Importar mock data
 import { ptasMock } from '../../mock-data/profesoral-mock-completo';
+import { ptaDemoAjustesSolicitados } from '../../data/ptaDemoAjustesSolicitados';
+import { ptasDemoPorEstado, esPTADemo, getEstiloBordeDemo } from '../../data/ptasDemoPorEstado';
 
 // Importar nuevos componentes
 import { PTAFormModal } from './PTAFormModal';
 import { PTARevisionModal } from './PTARevisionModal';
+import { PTADetallesModal } from './PTADetallesModal';
+import { VisualizadorPTAAjustes } from './VisualizadorPTAAjustes';
 
 interface PTAsListProps {
   className?: string;
@@ -51,11 +55,31 @@ export function PTAsList({ className = '' }: PTAsListProps) {
   // Estado para modales
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
+  const [isDetallesModalOpen, setIsDetallesModalOpen] = useState(false);
+  const [isVisualizadorDemoOpen, setIsVisualizadorDemoOpen] = useState(false);
   const [ptaSeleccionado, setPtaSeleccionado] = useState<any>(null);
   const [modoEdicion, setModoEdicion] = useState(false);
   
-  // Estado local de PTAs
-  const [ptas, setPtas] = useState(ptasMock);
+  // Estado local de PTAs - incluir TODOS los PTAs demo
+  const ptaDemoConverted = {
+    id: ptaDemoAjustesSolicitados.id,
+    codigo: '🔴 ' + ptaDemoAjustesSolicitados.id,
+    docente_nombre: '🔴 DEMO: ' + ptaDemoAjustesSolicitados.docenteNombre,
+    estado: 'ajustes_solicitados',
+    periodo_nombre: ptaDemoAjustesSolicitados.periodo,
+    territorial: ptaDemoAjustesSolicitados.territorial,
+    departamento: ptaDemoAjustesSolicitados.facultad,
+    componente_ensenanza: { horas: ptaDemoAjustesSolicitados.horasDocencia, porcentaje: 50 },
+    componente_investigacion: { horas: ptaDemoAjustesSolicitados.horasInvestigacion, porcentaje: 27.5 },
+    componente_extension: { horas: ptaDemoAjustesSolicitados.horasExtension, porcentaje: 16 },
+    componente_apoyo_institucional: { horas: ptaDemoAjustesSolicitados.horasAdministrativo, porcentaje: 19 },
+    created_at: ptaDemoAjustesSolicitados.fechaCreacion,
+    fecha_envio: '2024-11-15T09:00:00Z',
+    cumplimiento_global: 0,
+    esDemo: true
+  };
+  
+  const [ptas, setPtas] = useState([...ptasDemoPorEstado, ptaDemoConverted, ...ptasMock]);
 
   // Filtrar PTAs
   const ptasFiltrados = ptas.filter(pta => {
@@ -193,6 +217,32 @@ export function PTAsList({ className = '' }: PTAsListProps) {
 
   const handleDescargarPDF = (pta: any) => {
     toast.info(`Generando PDF del PTA ${pta.codigo}...`);
+  };
+
+  const handleVerDetalles = (pta: any) => {
+    if (pta.esDemo) {
+      // Si es el PTA demo, abrir el visualizador especial
+      setIsVisualizadorDemoOpen(true);
+    } else {
+      // Si no, abrir el modal normal de detalles
+      setPtaSeleccionado(pta);
+      setIsDetallesModalOpen(true);
+    }
+  };
+
+  const handleAprobarDirecto = (pta: any) => {
+    if (confirm(`¿Está seguro de aprobar el PTA ${pta.codigo}?`)) {
+      setPtas(prev => prev.map(p => 
+        p.id === pta.id 
+          ? { 
+              ...p, 
+              estado: 'aprobado', 
+              fecha_aprobacion: new Date().toISOString()
+            }
+          : p
+      ));
+      toast.success(`PTA ${pta.codigo} aprobado exitosamente`);
+    }
   };
 
   return (
@@ -335,6 +385,8 @@ export function PTAsList({ className = '' }: PTAsListProps) {
             {ptasFiltrados.map((pta, index) => {
               const estadoConfig = getEstadoConfig(pta.estado);
               const IconEstado = estadoConfig.icon;
+              const esDemo = esPTADemo(pta);
+              const claseBordeDemo = esDemo ? getEstiloBordeDemo() : '';
 
               return (
                 <motion.div
@@ -345,7 +397,7 @@ export function PTAsList({ className = '' }: PTAsListProps) {
                   transition={{ delay: index * 0.05 }}
                   layout
                 >
-                  <Card className="p-6 hover:shadow-lg transition-shadow group">
+                  <Card className={`p-6 hover:shadow-lg transition-shadow group ${claseBordeDemo}`}>
                     <div className="flex flex-col lg:flex-row lg:items-center gap-6">
                       {/* Left Section - Info */}
                       <div className="flex-1 space-y-4">
@@ -472,10 +524,18 @@ export function PTAsList({ className = '' }: PTAsListProps) {
 
                         {/* Actions */}
                         <div className="space-y-2">
-                          <Button variant="outline" size="sm" className="w-full">
+                          {/* Botón Ver Detalles - siempre visible */}
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="w-full" 
+                            onClick={() => handleVerDetalles(pta)}
+                          >
                             <Eye className="w-4 h-4 mr-1" />
                             Ver Detalles
                           </Button>
+
+                          {/* Botón Enviar - solo para borradores */}
                           {pta.estado === 'borrador' && (
                             <Button 
                               size="sm" 
@@ -486,14 +546,29 @@ export function PTAsList({ className = '' }: PTAsListProps) {
                               Enviar
                             </Button>
                           )}
+
+                          {/* Botón Revisar - solo para PTAs en revisión */}
                           {pta.estado === 'en_revision' && (
+                            <Button 
+                              variant="outline"
+                              size="sm" 
+                              className="w-full"
+                              onClick={() => handleRevisarPTA(pta)}
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              Revisar
+                            </Button>
+                          )}
+
+                          {/* Botón Aprobar - para PTAs en revisión o con ajustes solicitados */}
+                          {(pta.estado === 'en_revision' || pta.estado === 'ajustes_solicitados') && (
                             <Button 
                               size="sm" 
                               className="w-full bg-green-600 hover:bg-green-700"
-                              onClick={() => handleRevisarPTA(pta)}
+                              onClick={() => handleAprobarDirecto(pta)}
                             >
                               <CheckCircle className="w-4 h-4 mr-1" />
-                              Revisar
+                              Aprobar
                             </Button>
                           )}
                         </div>
@@ -523,6 +598,18 @@ export function PTAsList({ className = '' }: PTAsListProps) {
         onAprobar={handleAprobarPTA}
         onRechazar={handleRechazarPTA}
         onSolicitarAjustes={handleSolicitarAjustes}
+      />
+      
+      <PTADetallesModal
+        isOpen={isDetallesModalOpen}
+        onClose={() => setIsDetallesModalOpen(false)}
+        pta={ptaSeleccionado}
+      />
+      
+      <VisualizadorPTAAjustes
+        isOpen={isVisualizadorDemoOpen}
+        onClose={() => setIsVisualizadorDemoOpen(false)}
+        pta={ptaDemoConverted}
       />
     </div>
   );

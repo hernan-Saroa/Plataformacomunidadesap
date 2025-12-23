@@ -11,8 +11,6 @@ import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { motion, useScroll, useTransform, useReducedMotion } from 'motion/react';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
-import { DemoVideoModal } from './DemoVideoModal';
-import { ContactForm, MicrointeractionWrapper } from '../shared';
 import { useMicrointeractions, useAccessibility } from '../../hooks';
 import { FooterGovCo } from './FooterGovCo';
 
@@ -45,7 +43,6 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
   };
   const [selectedTestimonial, setSelectedTestimonial] = useState(0);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   
@@ -429,18 +426,6 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                       className="absolute inset-0 bg-gradient-to-r from-blue-400 to-cyan-400 opacity-0 group-hover:opacity-20"
                       initial={false}
                     />
-                  </Button>
-                </motion.div>
-
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button
-                    onClick={() => setIsDemoModalOpen(true)}
-                    size="lg"
-                    variant="outline"
-                    className="w-full xs:w-auto px-6 py-3 xs:px-7 xs:py-4 sm:px-8 sm:py-6 bg-white/10 backdrop-blur-md border-2 border-white/30 text-white hover:bg-white/20 group"
-                  >
-                    <Play className="w-4 h-4 sm:w-5 sm:h-5 mr-2 group-hover:scale-110 transition-transform" />
-                    <span className="font-bold text-sm xs:text-base sm:text-lg">Ver Demo</span>
                   </Button>
                 </motion.div>
               </div>
@@ -1032,12 +1017,6 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
 
       {/* Footer GOV.CO - Conforme a Normativas del Gobierno Colombiano */}
       <FooterGovCo />
-
-      {/* Demo Video Modal */}
-      <DemoVideoModal 
-        isOpen={isDemoModalOpen} 
-        onClose={() => setIsDemoModalOpen(false)} 
-      />
     </div>
   );
 }

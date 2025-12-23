@@ -53,7 +53,7 @@ import {
   AlertCircle, CheckCircle, FileText, Eye, MessageSquare, History,
   Filter, Search, ChevronDown, TrendingUp, Target, Shield,
   Download, Columns3, ClipboardCheck, CheckSquare,
-  Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2
+  Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2, Edit
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
@@ -695,11 +695,6 @@ function TarjetaAuditoria({
     >
       <Card 
         className="bg-white border-2 hover:shadow-md transition-all flex flex-col w-full border-gray-200"
-        style={{
-          height: '560px',
-          minHeight: '560px',
-          maxHeight: '560px'
-        }}
       >
         {/* Barra superior azul ESAP */}
         <div 
@@ -707,7 +702,7 @@ function TarjetaAuditoria({
           style={{ background: '#003DA5' }}
         />
 
-        <div className="p-2.5 flex-1 flex flex-col overflow-y-auto min-h-0">
+        <div className="p-2.5 flex flex-col">
           {/* Header */}
           <div className="flex items-start justify-between mb-1.5">
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -834,20 +829,36 @@ function TarjetaAuditoria({
           </div>
 
           {/* Acciones de Gestión */}
-          <div className="pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
-            {/* Acción Principal: Ver Expediente */}
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                onVerDetalle(auditoria);
-              }}
-              size="sm"
-              className="w-full text-xs font-bold truncate mb-2"
-              style={{ background: '#FF6B2C', color: '#FFFFFF' }}
-            >
-              <Eye className="w-3 h-3 mr-1 flex-shrink-0" />
-              <span className="truncate">Expediente</span>
-            </Button>
+          <div className="pt-2 border-t border-gray-200 mt-2">
+            {/* Acciones Principales */}
+            <div className="grid grid-cols-2 gap-1.5 mb-2">
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onVerDetalle(auditoria);
+                }}
+                size="sm"
+                className="text-xs font-bold truncate"
+                style={{ background: '#FF6B2C', color: '#FFFFFF' }}
+              >
+                <Eye className="w-3 h-3 mr-1 flex-shrink-0" />
+                <span className="truncate">Ver</span>
+              </Button>
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Aquí iría la lógica para editar
+                  toast.info('Función de edición - En desarrollo');
+                }}
+                size="sm"
+                variant="outline"
+                className="text-xs font-bold truncate"
+                disabled={auditoria.estado === 'Finalizada'}
+              >
+                <Edit className="w-3 h-3 mr-1 flex-shrink-0" />
+                <span className="truncate">Editar</span>
+              </Button>
+            </div>
 
             {/* Menú de Acciones Horizontales - CONDICIONAL SEGÚN ESTADO */}
             <div className="flex items-center justify-between gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
@@ -1236,7 +1247,7 @@ function ColumnaKanban({
       <div
         ref={drop}
         className={`p-3 space-y-3 overflow-y-auto ${isOver ? 'bg-blue-50' : ''}`}
-        style={{ maxHeight: 'calc(100vh - 280px)' }}
+        style={{ minHeight: 'calc(100vh - 280px)' }}
       >
         <AnimatePresence>
           {auditorias.map((auditoria) => (
@@ -1721,8 +1732,35 @@ export function GestionAuditoriasKanbanSimple() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => handleVerDetalle(auditoria)}>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => handleVerDetalle(auditoria)}
+                            title="Ver detalle"
+                          >
                             <Eye className="w-3 h-3" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => {
+                              setAuditoriaSeleccionada(auditoria);
+                              setModalFormularioOpen(true);
+                            }}
+                            title="Editar"
+                          >
+                            <Edit className="w-3 h-3" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => {
+                              setAuditoriaSeleccionada(auditoria);
+                              setModalHistorialOpen(true);
+                            }}
+                            title="Ver historial"
+                          >
+                            <History className="w-3 h-3" />
                           </Button>
                         </div>
                       </td>

@@ -21,6 +21,7 @@ import { TeacherView } from './TeacherView';
 import { GraduateView } from './GraduateView';
 import { AdminView } from './AdminView';
 import { AspirantView } from './AspirantView';
+import { AuthenticatedPortalNavbar } from './AuthenticatedPortalNavbar';
 
 interface PortalDashboardProps {
   userName: string;
@@ -29,6 +30,7 @@ interface PortalDashboardProps {
   userRoles: string[];
   userData?: any; // Datos completos del usuario del backend
   onActiveRoleChange?: (role: string) => void;
+  onLogout?: () => void;
 }
 
 export function PortalDashboard({
@@ -38,6 +40,7 @@ export function PortalDashboard({
   userRoles,
   userData,
   onActiveRoleChange,
+  onLogout,
 }: PortalDashboardProps) {
   // Determinar rol inicial (principal o primero de la lista)
   const initialRole = userData?.rol_principal || userRoles[0] || 'Estudiante';
@@ -81,6 +84,18 @@ export function PortalDashboard({
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navbar Autenticado */}
+      {onLogout && (
+        <AuthenticatedPortalNavbar
+          userName={userName}
+          userEmail={userEmail}
+          userRoles={userRoles}
+          activeRole={activeRole}
+          onLogout={onLogout}
+          currentSection="inicio"
+        />
+      )}
+
       {/* Selector de roles (solo si tiene múltiples) */}
       <RoleSelector
         userRoles={userRoles}

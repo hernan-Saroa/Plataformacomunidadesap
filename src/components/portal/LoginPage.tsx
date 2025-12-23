@@ -69,7 +69,13 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
       const emailLower = email.toLowerCase();
       
       // Usuarios externos (Portal Transaccional)
-      const usuariosExternos = ['estudiantes@esap.edu.co', 'egresados@esap.edu.co', 'docentes@esap.edu.co'];
+      const usuariosExternos = [
+        'estudiantes@esap.edu.co', 
+        'egresados@esap.edu.co', 
+        'docentes@esap.edu.co',
+        'funcionario@esap.edu.co',  // Usuario externo - Portal
+        'planta@esap.edu.co',        // Usuario externo - Portal
+      ];
       
       // Usuarios internos (Backoffice)
       const usuariosInternos = [
@@ -78,12 +84,11 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
         'director@esap.edu.co',
         'admin@esap.edu.co',
         'cerlaboral@esap.edu.co',
-        'funcionario@esap.edu.co',
         'ar.empresarial@esap.edu.co',
         'arqempresarial@esap.edu.co',
-        'planta@esap.edu.co',
         'gestion.legal@esap.edu.co',
         'c.internoge@esap.edu.co',
+        'gestion.profesoral@esap.edu.co', // Usuario específico para Gestión Profesoral
       ];
 
       const todosLosUsuarios = [...usuariosExternos, ...usuariosInternos];
@@ -135,10 +140,9 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
           'gestion.legal@esap.edu.co': 'Gestión Legal',
           'c.internoge@esap.edu.co': 'Control Interno',
           'cerlaboral@esap.edu.co': 'Certificados Laborales',
-          'planta@esap.edu.co': 'Docente Planta',
           'arqempresarial@esap.edu.co': 'Arquitectura Empresarial',
           'ar.empresarial@esap.edu.co': 'Arquitectura Empresarial',
-          'funcionario@esap.edu.co': 'Funcionario',
+          'gestion.profesoral@esap.edu.co': 'Gestión Profesoral',
         };
 
         usuario = {
@@ -425,12 +429,38 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
               >
                 <div className="px-3 pb-3 space-y-1.5 text-xs text-blue-800">
                   <p className="font-semibold text-blue-900 mb-2">📧 Email: cualquier correo válido</p>
-                  <p className="font-semibold text-blue-900 mb-2">🔒 Contraseña: cualquier texto</p>
+                  <p className="font-semibold text-blue-900 mb-2">🔒 Contraseña: cualquier texto (min. 6 caracteres)</p>
+                  
+                  {/* Usuarios Externos - Portal */}
                   <div className="pt-2 border-t border-blue-200">
-                    <p className="text-xs text-blue-700 mb-1">Ejemplos de correos:</p>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">admin@esap.edu.co (Backoffice)</code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">estudiantes@esap.edu.co (Portal)</code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px]">gestion.legal@esap.edu.co (Legal)</code>
+                    <p className="font-bold text-blue-900 mb-1.5 flex items-center gap-1">
+                      👥 PORTAL TRANSACCIONAL (Externos)
+                    </p>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">estudiantes@esap.edu.co</code>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">egresados@esap.edu.co</code>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">docentes@esap.edu.co</code>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">funcionario@esap.edu.co <span className="text-blue-600">(Funcionario)</span></code>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px]">planta@esap.edu.co <span className="text-blue-600">(Docente Planta)</span></code>
+                  </div>
+
+                  {/* Usuarios Internos - Backoffice */}
+                  <div className="pt-2 border-t border-blue-200">
+                    <p className="font-bold text-blue-900 mb-1.5 flex items-center gap-1">
+                      🏢 BACKOFFICE ADMINISTRATIVO (Internos)
+                    </p>
+                    <p className="text-[10px] text-blue-700 mb-1.5 italic">✅ Acceso total a todos los módulos:</p>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">superuser@esap.edu.co <span className="text-blue-600">(Super Admin)</span></code>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">rector@esap.edu.co <span className="text-blue-600">(Rector)</span></code>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">director@esap.edu.co <span className="text-blue-600">(Director)</span></code>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">admin@esap.edu.co <span className="text-blue-600">(Administrador)</span></code>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">cerlaboral@esap.edu.co <span className="text-blue-600">(Certificados)</span></code>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">ar.empresarial@esap.edu.co <span className="text-blue-600">(Arq. Empresarial)</span></code>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">arqempresarial@esap.edu.co <span className="text-blue-600">(Arq. Empresarial)</span></code>
+                    <code className="block px-2 py-1 bg-white rounded text-[10px]">c.internoge@esap.edu.co <span className="text-blue-600">(Control Interno)</span></code>
+                    
+                    <p className="text-[10px] text-orange-700 mb-1.5 mt-3 italic">⚠️ Acceso exclusivo a un solo módulo:</p>
+                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.profesoral@esap.edu.co <span className="text-orange-700">(📚 Solo Gestión Profesoral)</span></code>
+                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.legal@esap.edu.co <span className="text-orange-700">(⚖️ Solo Gestión Legal)</span></code>
                   </div>
                 </div>
               </motion.div>

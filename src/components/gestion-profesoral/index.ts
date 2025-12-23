@@ -32,6 +32,19 @@ export { PTAFormModal } from './PTAFormModal';
 export { PTARevisionView } from './PTARevisionView';
 export { PTARevisionModal } from './PTARevisionModal';
 export { PTASeguimiento } from './PTASeguimiento';
+export { PTAResumenVisual } from './PTAResumenVisual';
+export { PTADistribucionChart } from './PTADistribucionChart';
+export { PTAFlujoAprobacion } from './PTAFlujoAprobacion';
+export { PTAAprobacionView } from './PTAAprobacionView';
+export { PTAHistorialAprobacion } from './PTAHistorialAprobacion';
+export { PTADashboard } from './PTADashboard';
+export { PTAEstadisticas } from './PTAEstadisticas';
+export { FormularioPTA } from './FormularioPTA';
+export { FormularioDocencia } from './FormularioDocencia';
+export { FormularioInvestigacion } from './FormularioInvestigacion';
+export { FormularioExtension } from './FormularioExtension';
+export { FormularioComplementarias } from './FormularioComplementarias';
+export { FormularioAdministrativas } from './FormularioAdministrativas';
 
 // Evaluación
 export { EvaluacionForm } from './EvaluacionForm';

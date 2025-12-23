@@ -21,7 +21,6 @@ import {
   Search,
   Home,
   UserPlus,
-  Briefcase,
   Send,
   Share2,
   Star,
@@ -31,7 +30,6 @@ import {
   ExternalLink,
   Building2,
   MapPin,
-  DollarSign,
   Newspaper,
   PartyPopper,
   Megaphone,
@@ -65,10 +63,6 @@ import { VerificationCertificateDisplay } from './VerificationCertificateDisplay
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { NewsEventDetailView } from './NewsEventDetailView';
 import { CommunitySection } from './CommunitySection';
-import { DocentesSection } from './DocentesSection';
-import { SolicitarCertificadoLaboral } from './SolicitarCertificadoLaboral';
-import { ApplyToJobModal } from './ApplyToJobModal';
-import { UploadCVModal } from './UploadCVModal';
 import { ProfilePage } from './ProfilePage';
 import type { VerificationCertificate } from '../../types';
 import { toast } from 'sonner@2.0.3';
@@ -84,13 +78,9 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
   const [activeSection, setActiveSection] = useState<string>('inicio');
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [generatedCertificate, setGeneratedCertificate] = useState<VerificationCertificate | null>(null);
-  const [activeEventIndex, setActiveEventIndex] = useState(0);
   const [selectedNewsEvent, setSelectedNewsEvent] = useState<any | null>(null);
   
-  // Estados para modales
-  const [showApplyJobModal, setShowApplyJobModal] = useState(false);
-  const [selectedJob, setSelectedJob] = useState<any | null>(null);
-  const [showUploadCVModal, setShowUploadCVModal] = useState(false);
+
 
   // Datos mock del estudiante
   const studentData = {
@@ -112,7 +102,6 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
 
   // Servicios principales (Quick Actions)
   // SINCRONIZADO CON BACKOFFICE: Solo servicios implementados
-  // Bolsa de Empleo tiene más relevancia (2da posición)
   const mainServices = [
     {
       id: 'certificado-titulo',
@@ -122,42 +111,6 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
       color: 'from-blue-500 to-blue-600',
       badge: 'Seguro',
       action: 'request',
-    },
-    {
-      id: 'bolsa-empleo',
-      title: 'Ofertas Laborales',
-      description: 'Explora oportunidades laborales exclusivas para la comunidad ESAP',
-      icon: Briefcase,
-      color: 'from-indigo-500 to-indigo-600',
-      badge: 'Destacado',
-      action: 'explore',
-    },
-    {
-      id: 'certificado-estudios',
-      title: 'Certificado de Estudios',
-      description: 'Solicita certificado de estudios en curso',
-      icon: BookMarked,
-      color: 'from-purple-500 to-purple-600',
-      badge: 'Disponible',
-      action: 'request',
-    },
-    {
-      id: 'certificado-laboral',
-      title: 'Certificado Laboral',
-      description: 'Solicita tu certificado laboral en 5 minutos',
-      icon: FileText,
-      color: 'from-emerald-500 to-emerald-600',
-      badge: 'Automático',
-      action: 'request',
-    },
-    {
-      id: 'convocatorias-docentes',
-      title: 'Convocatorias Docentes',
-      description: 'Consulta las convocatorias abiertas para docentes',
-      icon: Users,
-      color: 'from-pink-500 to-pink-600',
-      badge: 'Público',
-      action: 'explore',
     },
   ];
 
@@ -276,30 +229,7 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
     },
   ];
 
-  // Próximos eventos
-  const upcomingEvents = [
-    {
-      title: 'Taller de Investigación Social',
-      date: '18 Nov',
-      time: '10:00 AM',
-      type: 'Presencial',
-      location: 'Auditorio Principal',
-    },
-    {
-      title: 'Foro: Administración Pública 2030',
-      date: '22 Nov',
-      time: '2:00 PM',
-      type: 'Virtual',
-      location: 'Zoom',
-    },
-    {
-      title: 'Conferencia: Liderazgo en el Sector Público',
-      date: '25 Nov',
-      time: '4:00 PM',
-      type: 'Híbrido',
-      location: 'Campus + Virtual',
-    },
-  ];
+
 
   // Blogs académicos y documentos de investigación
   const academicBlogs = [
@@ -438,8 +368,6 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
       setActiveSection('certificados');
     } else if (serviceId === 'certificado-laboral') {
       setActiveSection('certificado-laboral');
-    } else if (serviceId === 'bolsa-empleo') {
-      setActiveSection('empleo');
     } else if (serviceId === 'convocatorias-docentes') {
       setActiveSection('convocatorias');
     }
@@ -653,204 +581,6 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
                 </div>
               </CardContent>
             </Card>
-
-            {/* Ofertas de Empleo - Sidebar */}
-            <Card className="hidden lg:block border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300">
-              <CardHeader className="pb-5 border-b border-gray-100">
-                <div className="flex items-center gap-2.5 mb-3">
-                  <div className="w-9 h-9 rounded-lg bg-[#003DA5] flex items-center justify-center">
-                    <Briefcase className="w-4.5 h-4.5 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <CardTitle className="text-base text-gray-900">
-                      Ofertas Laborales
-                    </CardTitle>
-                    <CardDescription className="text-xs mt-0.5">
-                      Oportunidades para egresados y estudiantes
-                    </CardDescription>
-                  </div>
-                </div>
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-200 rounded-md">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                  <span className="text-xs font-medium text-green-700">6 ofertas activas</span>
-                </div>
-              </CardHeader>
-              
-              <CardContent className="space-y-3 pt-4">
-                {/* Oferta Destacada 1 - SINCRONIZADO */}
-                <div
-                  className="p-3.5 rounded-lg bg-gray-50 border border-gray-200 hover:border-[#003DA5] hover:bg-blue-50/50 transition-all cursor-pointer group"
-                  onClick={() => setActiveSection('empleo')}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-[#003DA5] flex items-center justify-center flex-shrink-0">
-                      <Building2 className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-sm text-gray-900 mb-1 group-hover:text-[#003DA5] transition-colors">
-                        Analista de Políticas Públicas
-                      </h4>
-                      <p className="text-xs text-gray-600 mb-2">
-                        Ministerio del Interior
-                      </p>
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <Badge variant="secondary" className="bg-white border border-gray-300 text-gray-700 text-[10px] px-2 py-0.5">
-                          Políticas Públicas
-                        </Badge>
-                        <Badge variant="secondary" className="bg-white border border-gray-300 text-gray-700 text-[10px] px-2 py-0.5">
-                          Análisis
-                        </Badge>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1 text-gray-500">
-                          <MapPin className="w-3 h-3" />
-                          <span>Bogotá D.C.</span>
-                        </div>
-                        <span className="text-[#003DA5] font-semibold">
-                          $4.5M - $6M
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Oferta Destacada 2 - SINCRONIZADO */}
-                <div
-                  className="p-3.5 rounded-lg bg-gray-50 border border-gray-200 hover:border-[#003DA5] hover:bg-blue-50/50 transition-all cursor-pointer group"
-                  onClick={() => setActiveSection('empleo')}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-[#1e5da8] flex items-center justify-center flex-shrink-0">
-                      <Building className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-sm text-gray-900 mb-1 group-hover:text-[#003DA5] transition-colors">
-                        Coordinador de Proyectos Sociales
-                      </h4>
-                      <p className="text-xs text-gray-600 mb-2">
-                        Departamento de Planeación
-                      </p>
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <Badge variant="secondary" className="bg-white border border-gray-300 text-gray-700 text-[10px] px-2 py-0.5">
-                          Proyectos
-                        </Badge>
-                        <Badge variant="secondary" className="bg-white border border-gray-300 text-gray-700 text-[10px] px-2 py-0.5">
-                          Social
-                        </Badge>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1 text-gray-500">
-                          <MapPin className="w-3 h-3" />
-                          <span>Medellín</span>
-                        </div>
-                        <span className="text-[#003DA5] font-semibold">
-                          $5M - $7M
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Oferta Destacada 3 - SINCRONIZADO */}
-                <div
-                  className="p-3.5 rounded-lg bg-gray-50 border border-gray-200 hover:border-[#003DA5] hover:bg-blue-50/50 transition-all cursor-pointer group"
-                  onClick={() => setActiveSection('empleo')}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-[#003DA5] flex items-center justify-center flex-shrink-0">
-                      <GraduationCap className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-sm text-gray-900 mb-1 group-hover:text-[#003DA5] transition-colors">
-                        Practicante de Administración Pública
-                      </h4>
-                      <p className="text-xs text-gray-600 mb-2">
-                        Alcaldía de Bogotá
-                      </p>
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <Badge variant="secondary" className="bg-white border border-gray-300 text-gray-700 text-[10px] px-2 py-0.5">
-                          Práctica
-                        </Badge>
-                        <Badge variant="secondary" className="bg-white border border-gray-300 text-gray-700 text-[10px] px-2 py-0.5">
-                          Estudiantes
-                        </Badge>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1 text-gray-500">
-                          <MapPin className="w-3 h-3" />
-                          <span>Bogotá D.C.</span>
-                        </div>
-                        <span className="text-[#003DA5] font-semibold">
-                          $1.5M
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Botón Ver Todas */}
-                <Button 
-                  className="w-full gap-2 bg-[#003DA5] hover:bg-[#002d7a] text-white transition-all"
-                  onClick={() => setActiveSection('empleo')}
-                >
-                  Ver todas las ofertas
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-                
-                {/* Stats footer */}
-                <div className="pt-3 border-t border-gray-200">
-                  <div className="flex items-center justify-center gap-4 text-xs text-gray-600">
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-gray-400" />
-                      <span>12 nuevas esta semana</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Próximos Eventos - Sidebar */}
-            <Card className="hidden lg:block shadow-sm hover:shadow-md transition-all duration-300">
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Calendar className="w-5 h-5 text-[#1e5da8]" />
-                  Próximos Eventos
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {upcomingEvents.map((event, idx) => (
-                  <div
-                    key={idx}
-                    className="p-4 rounded-xl border border-gray-200 hover:border-[#1e5da8] hover:shadow-lg transition-all duration-300 cursor-pointer group"
-                  >
-                    <div className="flex gap-4">
-                      <div className="text-center flex-shrink-0">
-                        <div className="w-14 h-14 bg-gradient-to-br from-[#003DA5] to-[#1e5da8] rounded-xl flex flex-col items-center justify-center text-white shadow-md group-hover:shadow-lg group-hover:scale-105 transition-all duration-300">
-                          <span className="text-xs font-black">{event.date.split(' ')[0]}</span>
-                          <span className="text-[11px] opacity-90 font-semibold">{event.date.split(' ')[1]}</span>
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h5 className="font-bold text-sm text-gray-900 mb-2 line-clamp-2 group-hover:text-[#1e5da8] transition-colors">
-                          {event.title}
-                        </h5>
-                        <div className="flex items-center gap-2 text-xs text-gray-600 mb-1.5">
-                          <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span>{event.time}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-600 mb-2.5">
-                          <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="truncate">{event.location}</span>
-                        </div>
-                        <Badge variant="secondary" className="text-xs font-semibold">
-                          {event.type}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
           </div>
 
           {/* Contenido Principal */}
@@ -887,116 +617,6 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
               </CardContent>
             </Card>
 
-            {/* Próximos Eventos - Carrusel Mobile */}
-            <div className="lg:hidden">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <h3 className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-[#1e5da8]" />
-                    <span>Próximos Eventos</span>
-                  </h3>
-                  <span className="text-xs text-gray-400 hidden sm:inline">
-                    Desliza →
-                  </span>
-                </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  className="text-[#1e5da8] hover:text-[#1e5da8] hover:bg-blue-50"
-                  onClick={() => {
-                    toast.info('Calendario Completo', {
-                      description: 'Próximamente podrás ver todos los eventos del semestre en el calendario académico.',
-                    });
-                  }}
-                >
-                  Ver todos
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
-              </div>
-              
-              {/* Carrusel Horizontal con Scroll */}
-              <div className="relative -mx-4 px-4">
-                {/* Gradient fade en el borde derecho */}
-                <div className="absolute right-0 top-0 bottom-4 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none z-10" />
-                
-                <div 
-                  className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide"
-                  onScroll={(e) => {
-                    const scrollLeft = e.currentTarget.scrollLeft;
-                    const isMobile = window.innerWidth < 640;
-                    const cardWidth = (isMobile ? 280 : 320) + 16; // width + gap
-                    const index = Math.round(scrollLeft / cardWidth);
-                    setActiveEventIndex(index);
-                  }}
-                >
-                  {upcomingEvents.map((event, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.1 }}
-                      className="flex-shrink-0 w-[280px] sm:w-[320px] snap-start"
-                    >
-                      <Card className="h-full hover:shadow-lg transition-all cursor-pointer border-2 border-transparent hover:border-[#1e5da8]">
-                        <CardContent className="p-4">
-                          <div className="flex gap-3">
-                            {/* Date Badge */}
-                            <div className="flex-shrink-0">
-                              <div className="w-14 h-14 bg-gradient-to-br from-[#1e5da8] to-blue-600 rounded-xl flex flex-col items-center justify-center text-white shadow-md">
-                                <span className="text-xs font-bold leading-none">
-                                  {event.date.split(' ')[0]}
-                                </span>
-                                <span className="text-[10px] mt-0.5 opacity-90">
-                                  {event.date.split(' ')[1]}
-                                </span>
-                              </div>
-                            </div>
-                            
-                            {/* Event Info */}
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-sm text-gray-900 mb-2 line-clamp-2">
-                                {event.title}
-                              </h4>
-                              <div className="space-y-1.5">
-                                <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                                  <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-                                  <span className="truncate">{event.time}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                                  <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                                  <span className="truncate">{event.location}</span>
-                                </div>
-                              </div>
-                              <Badge 
-                                variant="secondary" 
-                                className="mt-2 text-xs h-5"
-                              >
-                                {event.type}
-                              </Badge>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-                
-                {/* Scroll Indicators - Mobile */}
-                <div className="flex justify-center gap-1.5 mt-2">
-                  {upcomingEvents.map((_, idx) => (
-                    <div 
-                      key={idx}
-                      className={`h-1.5 rounded-full transition-all duration-300 ${
-                        idx === activeEventIndex 
-                          ? 'w-6 bg-[#1e5da8]' 
-                          : 'w-1.5 bg-gray-300'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
             {/* Navegación Principal - Diseño tipo Notion/Linear */}
             <div className="space-y-8">
               {/* Pills de Navegación */}
@@ -1019,42 +639,6 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
                 >
                   <Award className="w-4 h-4" />
                   <span>Certificados</span>
-                </Button>
-                <Button
-                  variant={activeSection === 'empleo' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="gap-2 flex-shrink-0"
-                  onClick={() => setActiveSection('empleo')}
-                >
-                  <Briefcase className="w-4 h-4" />
-                  <span>Empleo</span>
-                </Button>
-                <Button
-                  variant={activeSection === 'convocatorias' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="gap-2 flex-shrink-0"
-                  onClick={() => setActiveSection('convocatorias')}
-                >
-                  <GraduationCap className="w-4 h-4" />
-                  <span>Docentes</span>
-                </Button>
-                <Button
-                  variant={activeSection === 'investigacion' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="gap-2 flex-shrink-0"
-                  onClick={() => setActiveSection('investigacion')}
-                >
-                  <BookOpen className="w-4 h-4" />
-                  <span>Investigación</span>
-                </Button>
-                <Button
-                  variant={activeSection === 'eventos' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="gap-2 flex-shrink-0"
-                  onClick={() => setActiveSection('eventos')}
-                >
-                  <Calendar className="w-4 h-4" />
-                  <span>Eventos</span>
                 </Button>
                 <Button
                   variant={activeSection === 'comunidad' ? 'default' : 'ghost'}
@@ -1117,23 +701,6 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
                             </motion.div>
                           );
                         })}
-                      </div>
-                    </div>
-
-                    {/* Noticias y Eventos */}
-                    <div>
-                      <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-2xl font-black text-gray-900 flex items-center gap-3">
-                          <Newspaper className="w-6 h-6 text-[#1e5da8]" />
-                          Noticias y Eventos
-                        </h3>
-                        <Button variant="ghost" size="sm" className="text-[#1e5da8] font-semibold">
-                          Ver todo
-                          <ChevronRight className="w-4 h-4 ml-1" />
-                        </Button>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {newsAndEvents.slice(0, 4).map((item) => renderNewsCard(item))}
                       </div>
                     </div>
 
@@ -1205,105 +772,6 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
                   </motion.div>
                 )}
 
-                {activeSection === 'empleo' && (
-                  <motion.div
-                    key="empleo"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.2 }}
-                    className="space-y-8"
-                  >
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-2xl font-black text-gray-900 flex items-center gap-3">
-                        <Briefcase className="w-6 h-6 text-[#1e5da8]" />
-                        Bolsa de Empleo
-                      </h3>
-                      <Button 
-                        className="gap-2 bg-[#1e5da8] hover:bg-[#003DA5] font-semibold transition-all duration-300"
-                        onClick={() => setShowUploadCVModal(true)}
-                      >
-                        <Upload className="w-4 h-4" />
-                        Subir Hoja de Vida
-                      </Button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                      {jobOffers.map((job) => (
-                        <Card key={job.id} className="hover:shadow-xl transition-all duration-300 cursor-pointer group shadow-sm h-full">
-                          <CardContent className="p-6">
-                            <div className="flex items-start gap-4 mb-4">
-                              <div className="w-14 h-14 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 shadow-md group-hover:scale-105 transition-transform duration-300">
-                                <ImageWithFallback
-                                  src={job.logo}
-                                  alt={job.company}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="text-lg font-black text-gray-900 group-hover:text-[#1e5da8] transition-colors line-clamp-2 mb-1">
-                                  {job.title}
-                                </h4>
-                                <p className="text-sm text-gray-600 font-semibold">{job.company}</p>
-                              </div>
-                            </div>
-                            <div className="space-y-2.5 mb-4">
-                              <div className="flex items-center gap-2.5 text-sm text-gray-600">
-                                <MapPin className="w-4 h-4 flex-shrink-0" />
-                                <span>{job.location}</span>
-                              </div>
-                              <div className="flex items-center gap-2.5 text-sm text-gray-600">
-                                <DollarSign className="w-4 h-4 flex-shrink-0" />
-                                <span className="font-semibold text-green-600">{job.salary}</span>
-                              </div>
-                              <div className="flex items-center gap-2.5 text-sm text-gray-600">
-                                <Clock className="w-4 h-4 flex-shrink-0" />
-                                <span>{job.posted}</span>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5 mb-4">
-                              {job.tags.map((tag, idx) => (
-                                <Badge key={idx} variant="secondary" className="text-xs font-semibold">
-                                  {tag}
-                                </Badge>
-                              ))}
-                            </div>
-                            
-                            {/* Estadísticas de la oferta */}
-                            {(job.applicationsCount || job.viewsCount) && (
-                              <div className="flex items-center gap-4 mb-4 pt-4 border-t border-gray-100">
-                                {job.applicationsCount && (
-                                  <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                                    <Users className="w-3.5 h-3.5" />
-                                    <span className="font-semibold">{job.applicationsCount} aplicaciones</span>
-                                  </div>
-                                )}
-                                {job.viewsCount && (
-                                  <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                                    <Eye className="w-3.5 h-3.5" />
-                                    <span className="font-semibold">{job.viewsCount} vistas</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            
-                            <Button 
-                              className="w-full bg-[#1e5da8] hover:bg-[#003DA5] gap-2 font-semibold transition-all duration-300"
-                              onClick={() => {
-                                setSelectedJob(job);
-                                setShowApplyJobModal(true);
-                              }}
-                            >
-                              Aplicar Ahora
-                              <Send className="w-4 h-4" />
-                            </Button>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-
                 {activeSection === 'convocatorias' && (
                   <motion.div
                     key="convocatorias"
@@ -1312,140 +780,13 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
                     exit={{ opacity: 0, y: -20 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <DocentesSection />
-                  </motion.div>
-                )}
-
-                {activeSection === 'investigacion' && (
-                  <motion.div
-                    key="investigacion"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.2 }}
-                    className="space-y-8"
-                  >
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-2xl font-black text-gray-900 flex items-center gap-3">
-                        <BookOpen className="w-6 h-6 text-[#1e5da8]" />
-                        Investigación y Publicaciones
-                      </h3>
-                    </div>
-
-                    {/* Categorías de Investigación */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-                      {researchCategories.map((category, idx) => (
-                        <Card
-                          key={idx}
-                          className={`cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-105 group bg-gradient-to-br ${category.color}`}
-                        >
-                          <CardContent className="p-5 text-center">
-                            <p className="text-2xl font-black text-white mb-1.5">{category.count}</p>
-                            <p className="text-xs text-white/90 font-semibold">{category.name}</p>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-
-                    {/* Publicaciones Destacadas */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {academicBlogs.map((blog) => (
-                        <Card key={blog.id} className="hover:shadow-xl transition-all duration-300 cursor-pointer group overflow-hidden shadow-sm">
-                          <div className="relative h-52">
-                            <ImageWithFallback
-                              src={blog.image}
-                              alt={blog.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
-                            <div className="absolute top-4 left-4">
-                              <Badge className="bg-white/90 backdrop-blur-sm text-gray-900 font-semibold">
-                                {blog.category}
-                              </Badge>
-                            </div>
-                          </div>
-                          <CardContent className="p-6">
-                            <h4 className="text-lg font-black text-gray-900 mb-2 line-clamp-2 group-hover:text-[#1e5da8] transition-colors">
-                              {blog.title}
-                            </h4>
-                            <p className="text-sm text-gray-600 mb-4 line-clamp-2 leading-relaxed">{blog.excerpt}</p>
-
-                            <div className="flex items-center gap-3 mb-4">
-                              <Avatar className="w-9 h-9">
-                                <AvatarImage src={blog.authorAvatar} alt={blog.author} />
-                                <AvatarFallback className="text-xs">{blog.author.substring(0, 2)}</AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-gray-900">{blog.author}</p>
-                                <p className="text-xs text-gray-600">{blog.authorRole}</p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between text-sm text-gray-600 pt-4 border-t border-gray-100">
-                              <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-1.5">
-                                  <Eye className="w-4 h-4" />
-                                  <span className="font-semibold">{blog.views}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <Star className="w-4 h-4" />
-                                  <span className="font-semibold">{blog.likes}</span>
-                                </div>
-                              </div>
-                              <span className="text-xs font-semibold text-gray-500">{blog.readTime}</span>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-
-                {activeSection === 'eventos' && (
-                  <motion.div
-                    key="eventos"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.2 }}
-                    className="space-y-8"
-                  >
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-2xl font-black text-gray-900 flex items-center gap-3">
-                        <Calendar className="w-6 h-6 text-[#1e5da8]" />
-                        Eventos Universitarios
-                      </h3>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {newsAndEvents.filter(item => item.type === 'event').map((item) => renderNewsCard(item))}
-                    </div>
+                    <CommunitySection />
                   </motion.div>
                 )}
 
                 {activeSection === 'certificado-laboral' && (
                   <motion.div
                     key="certificado-laboral"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <SolicitarCertificadoLaboral
-                      onBack={() => setActiveSection('inicio')}
-                      userData={{
-                        nombre: userName,
-                        documento: '52.345.678',
-                        email: userEmail,
-                        cargo: 'Docente Tiempo Completo',
-                        dependencia: 'Dirección Territorial Bogotá'
-                      }}
-                    />
-                  </motion.div>
-                )}
-
-                {activeSection === 'comunidad' && (
-                  <motion.div
-                    key="comunidad"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
@@ -1473,6 +814,18 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
                       isOwnProfile={true}
                       onBack={() => setActiveSection('inicio')}
                     />
+                  </motion.div>
+                )}
+
+                {activeSection === 'comunidad' && (
+                  <motion.div
+                    key="comunidad"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <CommunitySection />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1668,18 +1021,6 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
             <Home className={`w-5 h-5 ${activeSection === 'inicio' ? 'scale-110' : ''}`} strokeWidth={2} />
             <span>Inicio</span>
           </button>
-
-          <button 
-            onClick={() => setActiveSection('comunidad')}
-            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-[10px] font-semibold transition-all active:scale-95 ${
-              activeSection === 'comunidad' 
-                ? 'text-[#1e5da8] bg-blue-50' 
-                : 'text-gray-500'
-            }`}
-          >
-            <Users className={`w-5 h-5 ${activeSection === 'comunidad' ? 'scale-110' : ''}`} strokeWidth={2} />
-            <span>Comunidad</span>
-          </button>
           
           <button 
             onClick={() => setActiveSection('certificados')}
@@ -1691,18 +1032,6 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
           >
             <Award className={`w-5 h-5 ${activeSection === 'certificados' ? 'scale-110' : ''}`} strokeWidth={2} />
             <span>Servicios</span>
-          </button>
-          
-          <button 
-            onClick={() => setActiveSection('empleo')}
-            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-[10px] font-semibold transition-all active:scale-95 ${
-              activeSection === 'empleo' 
-                ? 'text-[#1e5da8] bg-blue-50' 
-                : 'text-gray-500'
-            }`}
-          >
-            <Briefcase className={`w-5 h-5 ${activeSection === 'empleo' ? 'scale-110' : ''}`} strokeWidth={2} />
-            <span>Empleo</span>
           </button>
 
           <button 
@@ -1719,20 +1048,7 @@ export function StudentDashboard({ userName, userEmail, onLogout }: StudentDashb
         </div>
       </nav>
 
-      {/* Modales */}
-      <ApplyToJobModal
-        job={selectedJob}
-        isOpen={showApplyJobModal}
-        onClose={() => {
-          setShowApplyJobModal(false);
-          setSelectedJob(null);
-        }}
-      />
 
-      <UploadCVModal
-        isOpen={showUploadCVModal}
-        onClose={() => setShowUploadCVModal(false)}
-      />
     </div>
   );
 }

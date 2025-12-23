@@ -19,7 +19,7 @@ interface SidebarProps {
   forceCollapse?: boolean; // Auto-colapsar cuando modal de perfil esté abierto
   userRole?: string; // Rol del usuario para permisos
   certificatesPendingCount?: number; // Número de solicitudes pendientes en Certificados
-  restrictedMode?: 'certificados-laborales' | 'arquitectura-empresarial' | 'gestion-legal' | 'control-interno'; // Modo restringido para usuarios especiales
+  restrictedMode?: 'certificados-laborales' | 'arquitectura-empresarial' | 'control-interno' | 'gestion-profesoral' | 'gestion-legal'; // Modo restringido para usuarios especiales
 }
 
 const STORAGE_KEY = 'esap-sidebar-collapsed';
@@ -59,7 +59,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     dashboard: true,            // Dashboard siempre visible
     'estructura-org': true,     // Estructura Organizacional ABIERTA por defecto
     'gestion-usuarios': false,  // Gestión Académica CERRADA por defecto
-    'portal-comunitario': false, // Portal Comunitario CERRADO por defecto
     'arquitectura': false,      // Arquitectura Empresarial CERRADA por defecto
   });
   
@@ -783,58 +782,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   )}
                 </div>
               </>
-            ) : restrictedMode === 'gestion-legal' ? (
-              <>
-                {/* Dashboard Ejecutivo - Solo estadísticas de gestión legal */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <Zap className="w-3 h-3" />
-                        Principal
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  
-                  {renderMenuItem(
-                    'executive',
-                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Dashboard Ejecutivo',
-                    'Métricas de Gestión Legal'
-                  )}
-                </div>
-
-                {/* Módulo de Gestión Legal */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <Scale className="w-3 h-3" />
-                        Gestión Legal
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  
-                  {renderMenuItem(
-                    'gestion-legal',
-                    <Scale className="w-5 h-5" strokeWidth={2} />,
-                    'Gestión Legal (SIGL)',
-                    'Sistema integral'
-                  )}
-                </div>
-              </>
             ) : restrictedMode === 'control-interno' ? (
               <>
                 {/* Módulo de Control Interno - Único módulo visible */}
@@ -859,6 +806,60 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     <ClipboardList className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
                     'Control Interno Gestión',
                     'Auditorías y hallazgos'
+                  )}
+                </div>
+              </>
+            ) : restrictedMode === 'gestion-profesoral' ? (
+              <>
+                {/* Módulo de Gestión Profesoral - Único módulo visible */}
+                <div className="mb-8">
+                  <AnimatePresence mode="wait">
+                    {!effectiveCollapsed && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={contentTransition}
+                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
+                      >
+                        <BookOpen className="w-3 h-3" />
+                        Gestión Profesoral
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  
+                  {renderMenuItem(
+                    'gestion-profesoral',
+                    <BookOpen className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                    'Gestión Profesoral',
+                    'Administrar profesores'
+                  )}
+                </div>
+              </>
+            ) : restrictedMode === 'gestion-legal' ? (
+              <>
+                {/* Módulo de Gestión Legal - Único módulo visible */}
+                <div className="mb-8">
+                  <AnimatePresence mode="wait">
+                    {!effectiveCollapsed && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={contentTransition}
+                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
+                      >
+                        <Scale className="w-3 h-3" />
+                        Gestión Legal
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  
+                  {renderMenuItem(
+                    'gestion-legal',
+                    <Scale className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                    'Gestión Legal (SIGL)',
+                    'Sistema Integrado Legal'
                   )}
                 </div>
               </>
@@ -1015,13 +1016,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     )}
 
                     {renderMenuItem(
-                      'job-board',
-                      <Briefcase className="w-5 h-5" strokeWidth={2} />,
-                      'Bolsa de Empleo',
-                      'Ofertas laborales'
-                    )}
-
-                    {renderMenuItem(
                       'certificados-laborales',
                       <FileCheck className="w-5 h-5" strokeWidth={2} />,
                       'Certificados Laborales',
@@ -1048,12 +1042,13 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       'Control Interno Disciplinario',
                       'Procesos disciplinarios'
                     )}
-
+                    
+                    {/* ✅ NUEVO: Gestión Legal (SIGL) v5.0 */}
                     {renderMenuItem(
                       'gestion-legal',
                       <Scale className="w-5 h-5" strokeWidth={2} />,
                       'Gestión Legal (SIGL)',
-                      'Sistema integral'
+                      'Sistema Integrado Legal'
                     )}
                     
                     {renderMenuItem(

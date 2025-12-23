@@ -31,8 +31,8 @@ import { ControlInternoFull } from './control-interno/ControlInternoFull';
 // Importar módulo de Control Disciplinario Completo (Sistema Full)
 import { ControlDisciplinarioFull } from './disciplinario/ControlDisciplinarioFull';
 
-// Importar módulo de Gestión Legal (Sistema Full con ModuleLayout)
-import { GestionLegalFull } from './gestion-legal/GestionLegalFull';
+// ✅ NUEVO: Módulo de Gestión Legal SIGL v5.0
+import { GestionLegalFull } from './gestion-legal/core/GestionLegalFull';
 
 // Importar módulo de Certificados Laborales
 import { CertificadosLaboralesRouter } from '../certificados-laborales/CertificadosLaboralesRouter';
@@ -112,8 +112,10 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     ? 'certificados-laborales' 
     : userData?.module === 'arquitectura-empresarial'
     ? 'dashboard' // Abrir en Dashboard Ejecutivo que muestra métricas de Arquitectura
-    : userData?.module === 'gestion-legal'
-    ? 'gestion-legal' // Abrir directamente el módulo de Gestión Legal
+    : userData?.module === 'gestion-legal' 
+    ? 'gestion-legal'
+    : userData?.module === 'gestion-profesoral'
+    ? 'gestion-profesoral'
     : 'dashboard';
   const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(''); // Nuevo: Guardar el módulo del sidebar
@@ -166,12 +168,15 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     personId: 'admin-001'
   };
 
+  // Extraer nombre del usuario, priorizando userData.name, luego usuario.nombre
+  const userName = currentUser.name || usuario?.nombre || 'Administrador ESAP';
+
   const mockUser = {
-    name: currentUser.name,
+    name: userName,
     role: 'super-admin' as const,
     email: currentUser.email,
     avatar: undefined,
-    initials: currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    initials: userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
   };
 
   // Handlers
@@ -303,6 +308,8 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               ? 'arquitectura-empresarial'
               : userData?.module === 'gestion-legal'
               ? 'gestion-legal'
+              : userData?.module === 'gestion-profesoral'
+              ? 'gestion-profesoral'
               : undefined
           }
         />

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { LandingPage } from './components/portal/LandingPage';
 import { LoginPage } from './components/portal/LoginPage';
-import { PortalTransaccional } from './components/portal/PortalTransaccional';
+import { PortalDashboard } from './components/portal/PortalDashboard';
 import { BackofficeApp } from './components/esap/BackofficeApp';
+import { VisualizadorPTAAjustes } from './components/gestion-profesoral/VisualizadorPTAAjustes';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
@@ -18,13 +19,16 @@ import { AlertTriangle, Clock } from 'lucide-react';
  * 3. Portal Transaccional (usuarios externos)
  * 4. Backoffice Administrativo (usuarios internos)
  * 
+ * DEMO ESPECIAL:
+ * - Vista 'pta-demo': Visualizador de PTA con Ajustes Solicitados
+ * 
  * Features:
  * - Persistencia de sesión en localStorage
  * - Auto-logout por inactividad (15 minutos)
  * - Alerta previa antes de cerrar sesión
  */
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo';
 
 interface Usuario {
   id: string;
@@ -255,16 +259,67 @@ export default function App() {
         );
       
       case 'portal':
+        // Determinar roles según el email del usuario
+        const userRoles = usuarioActual?.email === 'gestion.profesoral@esap.edu.co' 
+          ? ['Docente']
+          : usuarioActual?.email === 'estudiantes@esap.edu.co'
+          ? ['Estudiante']
+          : ['Estudiante']; // Default
+
+        const teacherData = usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
+          ? {
+              tipo_vinculacion: 'Carrera',
+              dedicacion: 'Tiempo Completo',
+              area: 'Administración Pública',
+              codigo_docente: 'DOC-GP-001',
+              clases_asignadas: 5,
+              estudiantes_totales: 120,
+              nivel_educativo: 'Doctorado',
+              anos_experiencia: 12,
+            }
+          : undefined;
+
         return (
-          <PortalTransaccional
-            usuario={usuarioActual!}
+          <PortalDashboard
+            userName={usuarioActual!.nombre}
+            userEmail={usuarioActual!.email}
+            userPersonId={usuarioActual!.id}
+            userRoles={userRoles}
+            userData={{
+              rol_principal: userRoles[0],
+              datos_por_rol: {
+                Docente: teacherData
+              }
+            }}
             onLogout={handleLogout}
           />
         );
       
       case 'backoffice':
+        // Determinar si el usuario tiene acceso restringido a un módulo específico
+        const userData = usuarioActual?.email === 'c.internoge@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ci-001', restrictedAccess: true, module: 'control-interno' }
+          : usuarioActual?.email === 'cerlaboral@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cl-001', restrictedAccess: true, module: 'certificados-laborales' }
+          : usuarioActual?.email === 'arqempresarial@esap.edu.co' || usuarioActual?.email === 'ar.empresarial@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ae-001', restrictedAccess: true, module: 'arquitectura-empresarial' }
+          : usuarioActual?.email === 'gestion.legal@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gl-001', restrictedAccess: true, module: 'gestion-legal' }
+          : usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gp-001', restrictedAccess: true, module: 'gestion-profesoral' }
+          : undefined;
+
         return (
           <BackofficeApp
+            usuario={usuarioActual!}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        );
+      
+      case 'pta-demo':
+        return (
+          <VisualizadorPTAAjustes
             usuario={usuarioActual!}
             onLogout={handleLogout}
           />

@@ -25,6 +25,11 @@ import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { toast } from 'sonner@2.0.3';
+import { WizardAuditoriaTerritorial } from './WizardAuditoriaTerritorial';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, LineChart, Line
+} from 'recharts';
 
 // ============ TIPOS ============
 
@@ -637,15 +642,63 @@ export function GestionAuditoriasTerritoriales() {
       {/* MODALES */}
       <AnimatePresence>
         {modalCrear && (
-          <ModalCrearAuditoriaTerritorial
+          <WizardAuditoriaTerritorial
             territoriales={TERRITORIALES}
-            cronogramas={CRONOGRAMAS}
-            onCrear={(nuevaAuditoria) => {
+            onSubmit={(data) => {
+              // Crear nueva auditoría con los datos del wizard
+              const nuevaAuditoria: AuditoriaTerritorial = {
+                id: `aud-terr-${Date.now()}`,
+                codigo: `AUD-TERR-${auditorias.length + 1}`,
+                territorialId: data.territorialId,
+                territorial: data.territorial?.nombre || '',
+                tipo: 'Territorial',
+                titulo: data.titulo,
+                objetivoGeneral: data.objetivoGeneral,
+                alcance: data.alcance,
+                estado: 'Planeación',
+                progreso: 0,
+                fechaInicio: data.fechaInicio,
+                fechaFin: data.fechaFinComunicacion,
+                cronograma: {
+                  tipo: 'Territorial',
+                  etapas: {
+                    planeacion: {
+                      dias: 5,
+                      descripcion: 'Preparación y planificación de la auditoría'
+                    },
+                    ejecucion: {
+                      dias: 4,
+                      descripcion: 'Ejecución presencial en la territorial',
+                      modalidad: 'Presencial'
+                    },
+                    comunicacion: {
+                      dias: 10,
+                      descripcion: 'Elaboración y comunicación del informe'
+                    }
+                  },
+                  totalDias: 19
+                },
+                equipo: {
+                  lider: data.lider,
+                  miembros: data.miembros,
+                  totalPersonas: 1 + data.miembros.length
+                },
+                hallazgosEncontrados: 0,
+                riesgo: 'Medio',
+                cumplimiento: 0,
+                presupuesto: data.presupuestoEstimado,
+                gastoReal: 0,
+                etapaActual: {
+                  nombre: 'Planeación',
+                  diasRestantes: 5,
+                  alertas: 0
+                }
+              };
+              
               setAuditorias([...auditorias, nuevaAuditoria]);
               setModalCrear(false);
-              toast.success('Auditoría territorial creada exitosamente');
             }}
-            onCerrar={() => setModalCrear(false)}
+            onClose={() => setModalCrear(false)}
           />
         )}
       </AnimatePresence>
