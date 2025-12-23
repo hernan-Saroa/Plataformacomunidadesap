@@ -17,7 +17,9 @@ import { LoginPage } from './components/esap/LoginPage';
 import { SystemSelector } from './components/esap/SystemSelector';
 import { Toaster } from 'sonner';
 import { toast } from 'sonner@2.0.3';
+import { AlertTriangle, Clock } from 'lucide-react';
 import { authService } from './services/api/authService';
+import { config } from './config/environment';
 
 // Importar Demo de Control Disciplinario
 import { ControlDisciplinarioDemo } from './components/esap/ControlDisciplinarioDemo';
@@ -109,7 +111,7 @@ interface UserData {
 }
 
 // Configuración de timeout (15 minutos en milisegundos)
-const TIMEOUT_INACTIVIDAD = 2 * 60 * 1000; // 15 minutos
+const TIMEOUT_INACTIVIDAD = 15 * 60 * 1000; // 15 minutos
 const TIEMPO_ALERTA = 1 * 60 * 1000; // 1 minuto antes de cerrar sesión
 
 export default function App() {
@@ -152,27 +154,100 @@ export default function App() {
 
   // Cargar sesión guardada al iniciar
   useEffect(() => {
+    const applySessionFromUser = (user: any) => {
+      const userEmail = user?.person?.email || user?.email || '';
+      const userName = user?.person?.first_name
+        ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
+        : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
+
+      const roles = Array.isArray(user?.roles)
+        ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
+        : [];
+      const hasAdminRole = roles.includes('ADMIN');
+      const hasCertLaboralRole = roles.includes('COORDINADOR_CERT_LABORAL');
+      const emailLower = userEmail.toLowerCase();
+
+      let nextView: Vista = 'portal';
+      let nextCurrentView: AppView = 'portal-transaccional';
+      let nextUserType: 'portal' | 'administrativo' = 'portal';
+      let module: string | undefined;
+      const portalRoles: string[] = [];
+
+      if (hasAdminRole) {
+        nextView = 'backoffice';
+        nextCurrentView = 'backoffice';
+        nextUserType = 'administrativo';
+        portalRoles.push('Administrativo');
+      } else if (hasCertLaboralRole) {
+        nextView = 'backoffice';
+        nextCurrentView = 'backoffice';
+        nextUserType = 'administrativo';
+        module = 'certificados-laborales';
+        portalRoles.push('Coordinador de Certificados Laborales');
+      } else {
+        if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
+          portalRoles.push('Docente');
+        } else if (emailLower.includes('graduado') || emailLower.includes('egresado')) {
+          portalRoles.push('Graduado');
+        } else {
+          portalRoles.push('Estudiante');
+        }
+      }
+
+      setIsAuthenticated(true);
+      setUserType(nextUserType);
+      setUserRoles(portalRoles);
+      setCurrentView(nextCurrentView);
+      setVistaActual(nextView);
+      setUserData({
+        name: userName,
+        email: userEmail,
+        personId: user?.person?.id || user?.id,
+        module
+      });
+      setUsuarioActual({
+        id: user?.id || user?.person?.id || 'unknown',
+        nombre: userName,
+        email: userEmail,
+        tipo: nextView === 'backoffice' ? 'interno' : 'externo'
+      });
+    };
+
+    const authToken = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    const storedAuthUser = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
+    if (authToken && storedAuthUser) {
+      try {
+        applySessionFromUser(JSON.parse(storedAuthUser));
+        return;
+      } catch (error) {
+        console.error('Error al restaurar sesión de auth:', error);
+      }
+    }
+
     const sesionGuardada = localStorage.getItem('esap-sesion-activa');
     if (sesionGuardada) {
       try {
-        const sesion: SesionGuardada = JSON.parse(sesionGuardada);
+        const sesionParsed = JSON.parse(sesionGuardada);
+        if (sesionParsed?.usuario && sesionParsed?.vista && sesionParsed?.timestamp) {
+          const sesion: SesionGuardada = sesionParsed;
         
-        // Verificar que la sesión no haya expirado (24 horas)
-        const tiempoTranscurrido = Date.now() - sesion.timestamp;
-        const EXPIRACION_SESION = 24 * 60 * 60 * 1000; // 24 horas
-        
-        if (tiempoTranscurrido < EXPIRACION_SESION) {
-          setUsuarioActual(sesion.usuario);
-          setVistaActual(sesion.vista);
-          console.log('✅ Sesión restaurada:', sesion.usuario.nombre);
-          
-          toast.success('Sesión restaurada', {
-            description: `Bienvenido de nuevo, ${sesion.usuario.nombre}`,
-          });
-        } else {
-          // Sesión expirada
-          localStorage.removeItem('esap-sesion-activa');
-          console.log('⏰ Sesión expirada');
+          const tiempoTranscurrido = Date.now() - sesion.timestamp;
+
+          if (tiempoTranscurrido < TIMEOUT_INACTIVIDAD) {
+            setUsuarioActual(sesion.usuario);
+            setVistaActual(sesion.vista);
+            console.log('✅ Sesión restaurada:', sesion.usuario.nombre);
+
+            toast.success('Sesión restaurada', {
+              description: `Bienvenido de nuevo, ${sesion.usuario.nombre}`,
+            });
+          } else {
+            // Sesión expirada
+            localStorage.removeItem('esap-sesion-activa');
+            console.log('⏰ Sesión expirada');
+          }
+        } else if (sesionParsed?.email || sesionParsed?.person?.email) {
+          applySessionFromUser(sesionParsed);
         }
       } catch (error) {
         console.error('Error al restaurar sesión:', error);
@@ -262,7 +337,7 @@ export default function App() {
     
     setUsuarioActual(null);
     setVistaActual('landing');
-    localStorage.removeItem('esap-sesion-activa');
+    handleLogout();
     setMostrarAlertaInactividad(false);
     
     console.log('⏰ Sesión cerrada por inactividad');
@@ -296,7 +371,6 @@ export default function App() {
       console.log('🔐 Login handler called with rememberMe:', rememberMe);
       user.accessToken = accessToken;
       user.rememberMe = rememberMe || false;
-      localStorage.setItem('esap-sesion-activa', JSON.stringify(user));
 
       // Guardar token JWT
       localStorage.setItem('esap_auth_token', accessToken);
@@ -312,6 +386,7 @@ export default function App() {
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
       const hasAdminRole = roles.includes('ADMIN');
+      const hasCertLaboralRole = roles.includes('COORDINADOR_CERT_LABORAL');
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -347,7 +422,7 @@ export default function App() {
         let currentView: AppView = 'portal-transaccional';
         const portalRoles: string[] = [];
 
-        if (emailLower.includes('cerlaboral')) {
+        if (hasCertLaboralRole) {
           userType = 'administrativo';
           currentView = 'backoffice'
           vistaActualCurrent = 'backoffice';
@@ -422,6 +497,23 @@ export default function App() {
           token: accessToken
         }));
       }
+
+      localStorage.setItem('esap-sesion-activa', JSON.stringify({
+        usuario: {
+          id: user?.id || user?.person?.id || 'unknown',
+          nombre: userName,
+          email: userEmail,
+          tipo: (hasAdminRole || currentView === 'backoffice') ? 'interno' : 'externo'
+        },
+        vista: (hasAdminRole || currentView === 'backoffice') ? 'backoffice' : 'portal',
+        timestamp: Date.now(),
+        user: {
+          id: user?.id,
+          email: userEmail,
+          person: user?.person,
+          roles: user?.roles
+        }
+      }));
 
       // Iniciar sistema de detección de inactividad
       resetearTimerInactividad();
@@ -564,6 +656,14 @@ export default function App() {
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });
     }
+  };
+
+  const handleContinuarSesion = () => {
+    setMostrarAlertaInactividad(false);
+    resetearTimerInactividad();
+    toast.success('Sesión extendida', {
+      description: 'Has renovado tu sesión exitosamente',
+    });
   };
 
   // ============================================

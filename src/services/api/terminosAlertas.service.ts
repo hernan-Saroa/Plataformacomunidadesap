@@ -172,10 +172,22 @@ class TerminosAlertasService {
    * Listar términos con filtros y paginación
    */
   async listarTerminos(params?: ListarTerminosParams): Promise<PaginatedResponse<Termino>> {
-    return apiClient.get<PaginatedResponse<Termino>>(
+    const response = await apiClient.get<any>(
       `${SERVICE_PREFIX}/terminos-procesales`,
       params
     );
+    
+    // El backend devuelve { terminos: [...], pagination: {...}, stats: {...} }
+    // pero el frontend espera { items: [...], pagination: {...}, stats: {...} }
+    if (response.terminos && !response.items) {
+      return {
+        items: response.terminos,
+        pagination: response.pagination,
+        stats: response.stats,
+      };
+    }
+    
+    return response;
   }
 
   /**

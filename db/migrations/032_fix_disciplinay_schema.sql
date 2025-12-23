@@ -328,15 +328,8 @@ CREATE TABLE IF NOT EXISTS internal_disciplinary_control.dias_festivos (
     fecha_actualizacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Índice único que maneja NULLs correctamente usando COALESCE
--- Esto asegura que solo haya un registro por (fecha, tipo, territorio)
--- donde territorio puede ser NULL. El índice usa COALESCE para convertir NULL a ''
-CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_festivo_fecha_tipo_territorio
-ON internal_disciplinary_control.dias_festivos (
-    fecha, 
-    tipo, 
-    COALESCE(territorio, '')
-);
+-- NOTA: El índice único se crea después de limpiar duplicados (ver sección de migraciones)
+-- para evitar errores si ya existen duplicados en la tabla
 
 CREATE INDEX IF NOT EXISTS idx_festivos_fecha ON internal_disciplinary_control.dias_festivos(fecha);
 CREATE INDEX IF NOT EXISTS idx_festivos_tipo ON internal_disciplinary_control.dias_festivos(tipo);
@@ -396,21 +389,21 @@ CREATE INDEX IF NOT EXISTS idx_alertas_fecha_envio ON internal_disciplinary_cont
 -- y ON CONFLICT no puede usar expresiones directamente
 INSERT INTO internal_disciplinary_control.dias_festivos (fecha, descripcion, tipo, territorio, activo, creado_por_id)
 SELECT * FROM (VALUES
-    ('2025-01-01', 'Año Nuevo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-01-06', 'Día de los Reyes Magos', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-03-24', 'Día de San José', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-04-17', 'Jueves Santo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-04-18', 'Viernes Santo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-05-01', 'Día del Trabajo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-06-23', 'Día de San Pedro y San Pablo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-07-20', 'Día de la Independencia', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-08-07', 'Batalla de Boyacá', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-08-18', 'Asunción de la Virgen', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-10-13', 'Día de la Raza', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-11-03', 'Todos los Santos', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-11-17', 'Independencia de Cartagena', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-12-08', 'Inmaculada Concepción', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-12-25', 'Navidad', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000')
+    ('2025-01-01'::DATE, 'Año Nuevo', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-01-06'::DATE, 'Día de los Reyes Magos', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-03-24'::DATE, 'Día de San José', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-04-17'::DATE, 'Jueves Santo', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-04-18'::DATE, 'Viernes Santo', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-05-01'::DATE, 'Día del Trabajo', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-06-23'::DATE, 'Día de San Pedro y San Pablo', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-07-20'::DATE, 'Día de la Independencia', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-08-07'::DATE, 'Batalla de Boyacá', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-08-18'::DATE, 'Asunción de la Virgen', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-10-13'::DATE, 'Día de la Raza', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-11-03'::DATE, 'Todos los Santos', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-11-17'::DATE, 'Independencia de Cartagena', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-12-08'::DATE, 'Inmaculada Concepción', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-12-25'::DATE, 'Navidad', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID)
 ) AS v(fecha, descripcion, tipo, territorio, activo, creado_por_id)
 WHERE NOT EXISTS (
     SELECT 1 FROM internal_disciplinary_control.dias_festivos df
@@ -655,6 +648,72 @@ BEGIN
 END $$;
 
 -- ============================================
+-- FIX: Agregar columna telefono a disciplinary_professional
+-- ============================================
+DO $$
+BEGIN
+    -- Verificamos si disciplinary_professional tiene telefono
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_professional'
+        AND column_name = 'telefono'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_professional
+        ADD COLUMN "telefono" VARCHAR(50);
+        RAISE NOTICE 'Columna telefono agregada a tabla disciplinary_professional';
+    END IF;
+
+    -- Verificamos si disciplinary_professional tiene especialidad
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_professional'
+        AND column_name = 'especialidad'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_professional
+        ADD COLUMN "especialidad" VARCHAR(100);
+        RAISE NOTICE 'Columna especialidad agregada a tabla disciplinary_professional';
+    END IF;
+
+    -- Verificamos si disciplinary_professional tiene tipo_contrato
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_professional'
+        AND column_name = 'tipo_contrato'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_professional
+        ADD COLUMN "tipo_contrato" VARCHAR(50);
+        RAISE NOTICE 'Columna tipo_contrato agregada a tabla disciplinary_professional';
+    END IF;
+
+    -- Verificamos si disciplinary_professional tiene territorial
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_professional'
+        AND column_name = 'territorial'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_professional
+        ADD COLUMN "territorial" VARCHAR(100);
+        RAISE NOTICE 'Columna territorial agregada a tabla disciplinary_professional';
+    END IF;
+
+    -- Verificamos si disciplinary_professional tiene capacidad_maxima
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_professional'
+        AND column_name = 'capacidad_maxima'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_professional
+        ADD COLUMN "capacidad_maxima" INTEGER DEFAULT 10;
+        RAISE NOTICE 'Columna capacidad_maxima agregada a tabla disciplinary_professional';
+    END IF;
+END $$;
+
+-- ============================================
 -- MIGRACIONES: Actualizar tablas existentes
 -- ============================================
 -- Estas migraciones actualizan tablas existentes para soportar nuevas funcionalidades
@@ -663,28 +722,122 @@ END $$;
 -- para soportar URLs externas largas (http:// o https://)
 DO $$
 BEGIN
-    -- Verificar si la columna 'url' existe y es VARCHAR(255)
-    IF EXISTS (
-        SELECT 1 
-        FROM information_schema.columns
-        WHERE table_schema = 'internal_disciplinary_control'
-        AND table_name = 'evidence'
-        AND column_name = 'url'
-        AND data_type = 'character varying'
-        AND character_maximum_length = 255
-    ) THEN
-        -- Cambiar el tipo de VARCHAR(255) a TEXT
-        ALTER TABLE internal_disciplinary_control.evidence
-        ALTER COLUMN url TYPE TEXT;
-        
-        RAISE NOTICE 'Campo url en tabla evidence actualizado de VARCHAR(255) a TEXT';
-    ELSE
-        -- Si la columna no existe o ya es TEXT, no hacer nada
-        RAISE NOTICE 'Campo url en tabla evidence ya es TEXT o no existe';
+    -- 1. url (TEXT)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'url') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "url" TEXT;
+        RAISE NOTICE 'Columna url agregada a tabla evidence';
     END IF;
+    -- Ajustar tipo url a TEXT si existe
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'url' AND data_type = 'character varying' AND character_maximum_length = 255) THEN
+        ALTER TABLE internal_disciplinary_control.evidence ALTER COLUMN url TYPE TEXT;
+        RAISE NOTICE 'Campo url actualizado a TEXT';
+    END IF;
+
+    -- 2. archivoUrl (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'archivoUrl') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "archivoUrl" VARCHAR;
+        RAISE NOTICE 'Columna archivoUrl agregada';
+    END IF;
+
+    -- 3. nombreArchivo (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'nombreArchivo') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "nombreArchivo" VARCHAR;
+        RAISE NOTICE 'Columna nombreArchivo agregada';
+    END IF;
+
+    -- 4. filename (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'filename') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "filename" VARCHAR;
+        RAISE NOTICE 'Columna filename agregada';
+    END IF;
+
+    -- 5. description (VARCHAR/TEXT)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'description') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "description" TEXT;
+        RAISE NOTICE 'Columna description agregada';
+    END IF;
+
+    -- 6. fileType (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'fileType') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "fileType" VARCHAR;
+        RAISE NOTICE 'Columna fileType agregada';
+    END IF;
+
+    -- 7. fileSize (INTEGER)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'fileSize') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "fileSize" INTEGER;
+        RAISE NOTICE 'Columna fileSize agregada';
+    END IF;
+
+    -- 8. nombreDocumento (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'nombreDocumento') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "nombreDocumento" VARCHAR;
+        RAISE NOTICE 'Columna nombreDocumento agregada';
+    END IF;
+
+    -- 9. tipoDocumento (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'tipoDocumento') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "tipoDocumento" VARCHAR;
+        RAISE NOTICE 'Columna tipoDocumento agregada';
+    END IF;
+
+    -- 10. tipo (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'tipo') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "tipo" VARCHAR DEFAULT 'DOCUMENTO';
+        RAISE NOTICE 'Columna tipo agregada';
+    END IF;
+
+    -- 11. categoria (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'categoria') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "categoria" VARCHAR;
+        RAISE NOTICE 'Columna categoria agregada';
+    END IF;
+
+    -- 12. destinatario (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'destinatario') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "destinatario" VARCHAR;
+        RAISE NOTICE 'Columna destinatario agregada';
+    END IF;
+
+    -- 13. asunto (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'asunto') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "asunto" VARCHAR;
+        RAISE NOTICE 'Columna asunto agregada';
+    END IF;
+
+    -- 14. participantes (INTEGER) - Int type inferred from entity
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'participantes') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "participantes" INTEGER;
+        RAISE NOTICE 'Columna participantes agregada';
+    END IF;
+
+    -- 15. etapa (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'etapa') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "etapa" VARCHAR;
+        RAISE NOTICE 'Columna etapa agregada';
+    END IF;
+
+    -- 16. usuarioCarga (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'usuarioCarga') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "usuarioCarga" VARCHAR;
+        RAISE NOTICE 'Columna usuarioCarga agregada';
+    END IF;
+
+    -- 17. createdAt (TIMESTAMP)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'createdAt') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "createdAt" TIMESTAMP DEFAULT now();
+        RAISE NOTICE 'Columna createdAt agregada';
+    END IF;
+
+    -- 18. processId (UUID)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'processId') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "processId" UUID;
+        RAISE NOTICE 'Columna processId agregada';
+    END IF;
+
 EXCEPTION
     WHEN OTHERS THEN
-        RAISE NOTICE 'Error al actualizar campo url: %', SQLERRM;
+        RAISE NOTICE 'Error al actualizar columnas de evidence: %', SQLERRM;
 END $$;
 
 -- Migración: Agregar columnas archivoUrl y nombreArchivo si no existen
@@ -808,12 +961,12 @@ BEGIN
 
     -- Crear función del trigger si no existe
     CREATE OR REPLACE FUNCTION internal_disciplinary_control.update_updated_at_column()
-    RETURNS TRIGGER AS $$
+    RETURNS TRIGGER AS $func$
     BEGIN
         NEW."updatedAt" = CURRENT_TIMESTAMP;
         RETURN NEW;
     END;
-    $$ language 'plpgsql';
+    $func$ language 'plpgsql';
 
     -- Crear trigger si no existe
     IF NOT EXISTS (
@@ -845,11 +998,20 @@ DO $$
 DECLARE
     duplicados_count INTEGER;
 BEGIN
-    -- Eliminar duplicados, manteniendo solo el más reciente (o el primero si tienen la misma fecha)
+    -- PASO 1: Eliminar el índice único si existe (para poder limpiar duplicados)
+    BEGIN
+        DROP INDEX IF EXISTS internal_disciplinary_control.idx_unique_festivo_fecha_tipo_territorio;
+        RAISE NOTICE 'Índice único eliminado temporalmente para limpiar duplicados';
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE NOTICE 'No se pudo eliminar el índice (puede que no exista): %', SQLERRM;
+    END;
+
+    -- PASO 2: Eliminar duplicados, manteniendo solo el más reciente (o el primero si tienen la misma fecha)
     WITH duplicados AS (
         SELECT id,
                ROW_NUMBER() OVER (
-                   PARTITION BY fecha, tipo, COALESCE(territorio::text, 'NULL')
+                   PARTITION BY fecha, tipo, COALESCE(territorio::text, '')
                    ORDER BY fecha_creacion DESC, id
                ) as rn
         FROM internal_disciplinary_control.dias_festivos
@@ -865,8 +1027,7 @@ BEGIN
         RAISE NOTICE 'Eliminados % días festivos duplicados', duplicados_count;
     END IF;
 
-    -- Asegurar que la restricción única funcione correctamente
-    -- Eliminar la restricción existente si existe
+    -- PASO 3: Eliminar cualquier restricción única existente si existe
     BEGIN
         ALTER TABLE internal_disciplinary_control.dias_festivos
         DROP CONSTRAINT IF EXISTS uq_festivo_fecha_tipo_territorio;
@@ -875,16 +1036,10 @@ BEGIN
             NULL;
     END;
 
-    -- Crear un índice único que maneje NULLs correctamente usando COALESCE
+    -- PASO 4: Crear el índice único después de limpiar duplicados
     -- Esto asegura que solo haya un registro por (fecha, tipo, territorio)
     -- donde territorio puede ser NULL
-    IF NOT EXISTS (
-        SELECT 1 
-        FROM pg_indexes 
-        WHERE schemaname = 'internal_disciplinary_control'
-        AND tablename = 'dias_festivos'
-        AND indexname = 'idx_unique_festivo_fecha_tipo_territorio'
-    ) THEN
+    BEGIN
         CREATE UNIQUE INDEX idx_unique_festivo_fecha_tipo_territorio
         ON internal_disciplinary_control.dias_festivos (
             fecha, 
@@ -893,7 +1048,12 @@ BEGIN
         );
         
         RAISE NOTICE 'Índice único creado para días festivos';
-    END IF;
+    EXCEPTION
+        WHEN duplicate_table THEN
+            RAISE NOTICE 'El índice único ya existe';
+        WHEN OTHERS THEN
+            RAISE NOTICE 'Error al crear índice único: %', SQLERRM;
+    END;
 
 EXCEPTION
     WHEN OTHERS THEN

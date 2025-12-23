@@ -16,6 +16,12 @@ export class Evidence {
     @Column()
     url: string;
 
+    @Column({ name: 'archivoUrl', nullable: false })
+    archivoUrl: string;
+
+    @Column({ name: 'nombreArchivo', nullable: false })
+    nombreArchivo: string;
+
     @Column({ nullable: true })
     filename: string;
 
@@ -33,6 +39,9 @@ export class Evidence {
 
     @Column({ name: 'tipoDocumento', nullable: true })
     tipoDocumento: string;
+
+    @Column({ nullable: false, default: 'DOCUMENTO' })
+    tipo: string;
 
     @Column({ nullable: true, type: 'varchar' })
     categoria: string | null;

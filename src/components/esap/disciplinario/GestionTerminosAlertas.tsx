@@ -26,6 +26,7 @@ import terminosAlertasService, {
   type ReglaAlerta,
   type Alerta,
 } from '../../../services/api/terminosAlertas.service';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 // Interfaces importadas desde el servicio
 
@@ -54,11 +55,21 @@ export function GestionTerminosAlertas() {
   const [showModalRegla, setShowModalRegla] = useState(false);
   const [reglaEditando, setReglaEditando] = useState<ReglaAlerta | null>(null);
   
+  // Estados para autocompletar de procesos
+  const [radicadosDisponibles, setRadicadosDisponibles] = useState<string[]>([]);
+  const [showProcesoDropdown, setShowProcesoDropdown] = useState(false);
+  const [cargandoProcesos, setCargandoProcesos] = useState(false);
+  
+  // Estados para profesionales
+  const [profesionales, setProfesionales] = useState<any[]>([]);
+  const [cargandoProfesionales, setCargandoProfesionales] = useState(false);
+  
   // Formulario para nuevo término
   const [nuevoTermino, setNuevoTermino] = useState({
     proceso: '',
     numeroProceso: '',
     actuacion: '',
+    responsableId: '',
     responsable: '',
     emailResponsable: '',
     fechaInicio: '',
@@ -86,7 +97,42 @@ export function GestionTerminosAlertas() {
   // Cargar datos desde el backend
   useEffect(() => {
     cargarDatos();
+    cargarProcesos();
+    cargarProfesionales();
   }, []);
+
+  // Cargar procesos disponibles para autocompletar
+  const cargarProcesos = async () => {
+    try {
+      setCargandoProcesos(true);
+      const procesosApi = await disciplinaryService.getAllProcesos();
+      
+      // Extraer solo los radicados para el autocomplete
+      const radicados = procesosApi.map(p => p.radicadoProceso).filter(Boolean);
+      setRadicadosDisponibles(radicados);
+    } catch (error: any) {
+      console.error('Error al cargar procesos:', error);
+      // No mostrar error al usuario, solo log
+    } finally {
+      setCargandoProcesos(false);
+    }
+  };
+
+  // Cargar profesionales disponibles
+  const cargarProfesionales = async () => {
+    try {
+      setCargandoProfesionales(true);
+      const profesionalesApi = await disciplinaryService.getProfesionales();
+      setProfesionales(profesionalesApi || []);
+    } catch (error: any) {
+      console.error('Error al cargar profesionales:', error);
+      toast.error('Error al cargar profesionales', {
+        description: 'No se pudieron cargar los profesionales disponibles'
+      });
+    } finally {
+      setCargandoProfesionales(false);
+    }
+  };
 
   const cargarDatos = async () => {
     try {
@@ -99,10 +145,17 @@ export function GestionTerminosAlertas() {
         ...(filterEstado !== 'all' && { estado: filterEstado as any }),
         ...(searchQuery && { search: searchQuery }),
       });
-      setTerminos(terminosResponse.items || []);
+      
+      // El backend devuelve { terminos: [...], pagination: {...}, stats: {...} }
+      // pero el frontend espera { items: [...], stats: {...} }
+      const terminosList = terminosResponse.items || terminosResponse.terminos || [];
+      setTerminos(terminosList);
+      
       if (terminosResponse.stats) {
         setStats(terminosResponse.stats);
       }
+      
+      console.log('📊 Términos cargados:', terminosList.length, 'Términos:', terminosList);
 
       // Cargar festivos
       const festivosResponse = await terminosAlertasService.listarFestivos();
@@ -1027,32 +1080,93 @@ export function GestionTerminosAlertas() {
               </div>
 
               <div className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Número de Proceso *
-                    </label>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Número de Proceso (Radicado) *
+                  </label>
+                  <div className="relative">
                     <input
                       type="text"
-                      placeholder="P-XXX-2025"
+                      placeholder="Buscar proceso (ej: P-120-2025)..."
                       value={nuevoTermino.numeroProceso}
-                      onChange={(e) => setNuevoTermino({...nuevoTermino, numeroProceso: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      onChange={(e) => {
+                        setNuevoTermino({...nuevoTermino, numeroProceso: e.target.value});
+                        setShowProcesoDropdown(true);
+                      }}
+                      onFocus={() => setShowProcesoDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowProcesoDropdown(false), 200)}
+                      onKeyDown={(e) => {
+                        const radicadosFiltrados = radicadosDisponibles.filter(radicado => 
+                          radicado.toLowerCase().includes(nuevoTermino.numeroProceso.toLowerCase())
+                        );
+                        if (e.key === 'Enter' && radicadosFiltrados.length === 1) {
+                          setNuevoTermino({...nuevoTermino, numeroProceso: radicadosFiltrados[0]});
+                          setShowProcesoDropdown(false);
+                        }
+                      }}
+                      className="w-full px-4 py-2 border-2 border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white font-medium text-gray-900"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Denunciado *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Nombre completo"
-                      value={nuevoTermino.proceso}
-                      onChange={(e) => setNuevoTermino({...nuevoTermino, proceso: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
+                    {showProcesoDropdown && radicadosDisponibles.filter(radicado => 
+                      radicado.toLowerCase().includes(nuevoTermino.numeroProceso.toLowerCase())
+                    ).length > 0 && (
+                      <div className="absolute left-0 right-0 top-full z-10 bg-white border border-gray-300 rounded-b-lg shadow-lg max-h-40 overflow-y-auto">
+                        {radicadosDisponibles
+                          .filter(radicado => 
+                            radicado.toLowerCase().includes(nuevoTermino.numeroProceso.toLowerCase())
+                          )
+                          .map(radicado => (
+                            <div
+                              key={radicado}
+                              className="px-4 py-2 cursor-pointer hover:bg-gray-100 font-medium"
+                              onClick={async () => {
+                                setNuevoTermino({...nuevoTermino, numeroProceso: radicado});
+                                setShowProcesoDropdown(false);
+                                
+                                // Buscar el proceso para obtener el nombre del denunciado
+                                try {
+                                  const proceso = await terminosAlertasService.buscarProcesoPorRadicado(radicado);
+                                  if (proceso?.news?.disciplinable) {
+                                    let denunciadoNombre = 'Sin nombre';
+                                    if (Array.isArray(proceso.news.disciplinable) && proceso.news.disciplinable.length > 0) {
+                                      denunciadoNombre = proceso.news.disciplinable[0]?.nombre || 'Sin nombre';
+                                    } else if (typeof proceso.news.disciplinable === 'object' && proceso.news.disciplinable.nombre) {
+                                      denunciadoNombre = proceso.news.disciplinable.nombre;
+                                    } else if (typeof proceso.news.disciplinable === 'string') {
+                                      denunciadoNombre = proceso.news.disciplinable;
+                                    }
+                                    setNuevoTermino(prev => ({...prev, proceso: denunciadoNombre}));
+                                  }
+                                } catch (error) {
+                                  console.error('Error al obtener información del proceso:', error);
+                                }
+                              }}
+                            >
+                              {radicado}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                    {showProcesoDropdown && radicadosDisponibles.filter(radicado => 
+                      radicado.toLowerCase().includes(nuevoTermino.numeroProceso.toLowerCase())
+                    ).length === 0 && nuevoTermino.numeroProceso && (
+                      <div className="absolute left-0 right-0 top-full z-10 bg-white border border-gray-300 rounded-b-lg shadow-lg">
+                        <div className="px-4 py-2 text-gray-500">No se encontraron procesos</div>
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                {nuevoTermino.proceso && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-blue-600" />
+                      <div>
+                        <p className="text-xs text-blue-600 font-semibold">Denunciado</p>
+                        <p className="text-sm text-gray-900 font-medium">{nuevoTermino.proceso}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -1072,31 +1186,43 @@ export function GestionTerminosAlertas() {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Responsable *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Nombre del responsable"
-                      value={nuevoTermino.responsable}
-                      onChange={(e) => setNuevoTermino({...nuevoTermino, responsable: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Email Responsable *
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="email@esap.edu.co"
-                      value={nuevoTermino.emailResponsable}
-                      onChange={(e) => setNuevoTermino({...nuevoTermino, emailResponsable: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Responsable *
+                  </label>
+                  <select
+                    value={nuevoTermino.responsableId}
+                    onChange={(e) => {
+                      const profesionalSeleccionado = profesionales.find(p => p.id === e.target.value);
+                      setNuevoTermino({
+                        ...nuevoTermino,
+                        responsableId: e.target.value,
+                        responsable: profesionalSeleccionado?.nombreCompleto || '',
+                        emailResponsable: profesionalSeleccionado?.email || ''
+                      });
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    disabled={cargandoProfesionales}
+                  >
+                    <option value="">Seleccione un responsable</option>
+                    {profesionales.map((prof) => (
+                      <option key={prof.id} value={prof.id}>
+                        {prof.nombreCompleto} - {prof.email} {prof.cargo ? `(${prof.cargo})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {nuevoTermino.responsableId && (
+                    <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-blue-600" />
+                        <div>
+                          <p className="text-xs text-blue-600 font-semibold">Responsable seleccionado</p>
+                          <p className="text-sm text-gray-900 font-medium">{nuevoTermino.responsable}</p>
+                          <p className="text-xs text-gray-600">{nuevoTermino.emailResponsable}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -1157,22 +1283,71 @@ export function GestionTerminosAlertas() {
                         // Buscar proceso por radicado (numeroProceso)
                         const proceso = await terminosAlertasService.buscarProcesoPorRadicado(nuevoTermino.numeroProceso);
 
-                        // Responsable temporal (placeholder UUID requerido por backend)
-                        const RESPONSABLE_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+                        // Debug: Log del proceso recibido
+                        console.log('Proceso encontrado:', proceso);
 
-                        await terminosAlertasService.crearTermino({
-                          procesoId: proceso.id,
-                        actuacion: nuevoTermino.actuacion,
-                          responsableId: RESPONSABLE_PLACEHOLDER,
-                        fechaInicio: nuevoTermino.fechaInicio,
-                        diasHabiles: nuevoTermino.diasHabiles,
-                        });
+                        // Validar que el proceso existe y tiene un ID válido
+                        if (!proceso) {
+                          toast.error('No se encontró el proceso con el radicado especificado');
+                          return;
+                        }
+
+                        if (!proceso.id) {
+                          console.error('Proceso sin ID:', proceso);
+                          toast.error('El proceso encontrado no tiene un ID válido. Verifique el radicado del proceso.');
+                          return;
+                        }
+
+                        // Validar formato UUID (mismo formato que ExpedienteElectronico)
+                        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                        const procesoId = String(proceso.id).trim();
+                        
+                        if (!uuidRegex.test(procesoId)) {
+                          console.error('ID del proceso inválido:', {
+                            id: procesoId,
+                            tipo: typeof procesoId,
+                            procesoCompleto: proceso
+                          });
+                          toast.error(`El ID del proceso no es un UUID válido. Radicado: ${nuevoTermino.numeroProceso}, ID recibido: ${procesoId}`);
+                          return;
+                        }
+
+                        // Validar que se haya seleccionado un responsable
+                        if (!nuevoTermino.responsableId) {
+                          toast.error('Debe seleccionar un responsable');
+                          return;
+                        }
+
+                        // Preparar el objeto a enviar - asegurar que procesoId sea string limpio
+                        const terminoData = {
+                          procesoId: String(procesoId).trim(),
+                          actuacion: String(nuevoTermino.actuacion).trim(),
+                          responsableId: String(nuevoTermino.responsableId).trim(),
+                          fechaInicio: String(nuevoTermino.fechaInicio).trim(),
+                          diasHabiles: Number(nuevoTermino.diasHabiles),
+                        };
+
+                        // Verificación final del UUID antes de enviar
+                        const finalUuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                        if (!finalUuidRegex.test(terminoData.procesoId)) {
+                          console.error('❌ ERROR: procesoId no pasa validación final:', terminoData.procesoId);
+                          toast.error('Error: El ID del proceso no es un UUID válido');
+                          return;
+                        }
+
+                        console.log('🔵 Creando término con datos:', JSON.stringify(terminoData, null, 2));
+                        console.log('🔵 Tipo de procesoId:', typeof terminoData.procesoId);
+                        console.log('🔵 Longitud de procesoId:', terminoData.procesoId.length);
+                        console.log('🔵 procesoId validado:', terminoData.procesoId);
+
+                        await terminosAlertasService.crearTermino(terminoData);
 
                       setShowModalNuevoTermino(false);
                       setNuevoTermino({
                         proceso: '',
                         numeroProceso: '',
                         actuacion: '',
+                        responsableId: '',
                         responsable: '',
                         emailResponsable: '',
                         fechaInicio: '',
@@ -1181,9 +1356,19 @@ export function GestionTerminosAlertas() {
                         await cargarDatos();
                         toast.success('Término creado exitosamente');
                       } catch (error: any) {
-                        toast.error('Error al crear término', {
-                          description: error?.response?.data?.message || error.message || 'No se pudo crear el término',
-                        });
+                        console.error('❌ Error completo al crear término:', error);
+                        const errorMessage = error?.response?.data?.message || error.message || 'No se pudo crear el término';
+                        
+                        // Mensaje más específico si es error de UUID
+                        if (errorMessage.includes('UUID') || errorMessage.includes('procesoId')) {
+                          toast.error('Error de validación de UUID', {
+                            description: 'El ID del proceso no es válido. Si el backend fue actualizado, por favor reinícialo para aplicar los cambios.',
+                          });
+                        } else {
+                          toast.error('Error al crear término', {
+                            description: errorMessage,
+                          });
+                        }
                       }
                     }}
                     className="flex-1 px-6 py-3 rounded-lg font-semibold text-white bg-orange-500 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
