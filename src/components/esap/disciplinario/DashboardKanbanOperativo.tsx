@@ -1960,7 +1960,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     const cargarProfesionales = async () => {
       try {
         const candidatos = await disciplinaryService.getCandidates();
-<<<<<<< HEAD
+        
         const filtered = Array.isArray(candidatos) ? candidatos.filter((c: any) => {
           // 1. Check Active Status (defensive)
           const isActive = !c.estado || c.estado === 'ACTIVO';
