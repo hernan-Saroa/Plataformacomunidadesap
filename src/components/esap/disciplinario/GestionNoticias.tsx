@@ -49,7 +49,7 @@ import { ModalDetallesNoticia } from './ModalDetallesNoticia';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
 import { ModalRemitirCompetencia } from './ModalRemitirCompetencia';
 
-import { disciplinaryService, DisciplinaryNews } from '../../../services/api/disciplinary.service';
+import { disciplinaryService, DisciplinaryNews, CreateNewsDto } from '../../../services/api/disciplinary.service';
 
 
 // ==================== INTERFACES ====================
@@ -97,7 +97,8 @@ interface NoticiaDisciplinaria {
     dependencia?: string;
     entidad?: string;
   }>;
-  estado: 'pendiente' | 'en-valoracion' | 'devuelto' | 'asignado' | 'convertido-proceso';
+  state?: string; // Add state optional for compatibility if needed
+  estado: 'pendiente' | 'en-valoracion' | 'devuelto' | 'asignado' | 'convertido-proceso' | 'archivado';
   estadoLabel: 'Pendiente' | 'En Valoración' | 'Devuelto' | 'Asignado' | 'Convertido a Proceso';
   etapa: string;
   diasTranscurridos: number;
@@ -105,11 +106,26 @@ interface NoticiaDisciplinaria {
   fechaRegistro: string;
   conductas?: string[];
   descripcion?: string;
+  hechos?: string; // Mapped from backend
+  dependenciaDenunciado?: string; // Mapped from backend
   adjuntos?: string[];
   profesionalAsignado?: string;
   procesoAsociado?: string; // PD-YYYY-####
   historialAuditoria: AccionAuditoria[];
 }
+
+const getDiasTranscurridos = (fechaString: string) => {
+  if (!fechaString) return 0;
+  const fecha = new Date(fechaString);
+  const ahora = new Date();
+  const diffTime = Math.abs(ahora.getTime() - fecha.getTime());
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
+const PROFESIONALES_MOCK_FALLBACK: Profesional[] = [
+  { id: '1', nombre: 'Juan Pérez', cargo: 'Abogado Senior', procesosAsignados: 5, capacidadMaxima: 10 },
+  { id: '2', nombre: 'Maria Rodriguez', cargo: 'Abogado Junior', procesosAsignados: 2, capacidadMaxima: 10 },
+];
 
 // ==================== MOCK DATA ====================
 
@@ -397,7 +413,7 @@ function ModalDevolver({ noticia, onClose, onConfirm }: {
 // ==================== MODAL ASIGNAR ====================
 function ModalAsignar({ noticia, profesionales, onClose, onConfirm }: {
   noticia: NoticiaDisciplinaria;
-  profesionales: { id: string; nombre: string; procesosAsignados: number; capacidadMaxima: number }[];
+  profesionales: Profesional[];
   onClose: () => void;
   onConfirm: (profesionalId: string, observaciones: string, convertirAProceso: boolean) => void;
 }) {
@@ -636,7 +652,7 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
   const handleExportPDF = () => {
     const doc = new jsPDF();
 
-// Header
+    // Header
     doc.setFontSize(16);
     doc.setTextColor(0, 61, 165); // ESAP Blue
     doc.text('Historial de Auditoría - Noticia Disciplinaria', 14, 20);
@@ -645,7 +661,7 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
     doc.text(`Radicado: ${noticia.radicado || 'N/A'}`, 14, 30);
-    doc.text(`Disciplinable: ${(Array.isArray(noticia.disciplinable) ? noticia.disciplinable[0]?.nombre : noticia.disciplinable?.nombre) || 'Sin nombre'}`, 14, 35);
+    doc.text(`Disciplinable: ${noticia.disciplinable?.[0]?.nombre || 'Sin nombre'}`, 14, 35);
     doc.text(`Fecha de Generación: ${new Date().toLocaleString()}`, 14, 40);
 
     // Tabla Historial
@@ -692,7 +708,7 @@ function ModalHistorial({ noticia, onClose }: { noticia: NoticiaDisciplinaria; o
                   Historial de Auditoría
                 </h2>
                 <p className="text-sm text-gray-600">
-                  {noticia.radicado} - {(Array.isArray(noticia.disciplinable) ? noticia.disciplinable[0]?.nombre : noticia.disciplinable?.nombre) || 'Sin nombre'}
+                  {noticia.radicado} - {noticia.disciplinable?.[0]?.nombre || 'Sin nombre'}
                 </p>
               </div>
             </div>
@@ -838,29 +854,55 @@ export function GestionNoticias() {
         if (s === 'DEVUELTA' || s === 'DEVUELTO') return 'devuelto';
         if (s === 'ASIGNADA' || s === 'ASIGNADO') return 'asignado';
         if (s === 'CONVERTIDO_PROCESO') return 'convertido-proceso';
+        if (s === 'ARCHIVADA') return 'archivado';
         return 'pendiente';
       };
 
-      const mappedNews: NoticiaDisciplinaria[] = noticiasData.map((news) => ({
-        id: news.id,
-        numeroRadicado: news.radicado,
-        origen: news.origen as any,
-        fechaQueja: news.fechaQueja || news.createdAt,
-        territorial: news.territorial,
-        disciplinable: Array.isArray(news.disciplinable) ? news.disciplinable : (news.disciplinable ? [news.disciplinable] : []),
-        denunciante: Array.isArray(news.denunciante) ? news.denunciante : (news.denunciante ? [news.denunciante] : []),
-        fechaRecepcion: news.fechaRecepcion?.toString() || news.createdAt,
-        estado: getFrontendStatus(news.estado),
-        estadoLabel: (news.estado || 'Pendiente') as any,
-        etapa: 'En Evaluación',
-        diasTranscurridos: 0,
-        radicador: 'Sistema',
-        fechaRegistro: news.createdAt,
-        conductas: news.conductas || [],
-        descripcion: news.hechos,
-        adjuntos: (news as any).adjuntos || [],
-        historialAuditoria: []
-      }));
+      const getFrontendStatusLabels = (backendStatus: string): any => {
+        const s = (backendStatus || '').toUpperCase();
+        if (s === 'RADICADA') return 'Pendiente';
+        if (s === 'EN_VALORACION') return 'En Valoración';
+        if (s === 'DEVUELTA' || s === 'DEVUELTO') return 'Devuelto';
+        if (s === 'ASIGNADA' || s === 'ASIGNADO') return 'Asignado';
+        if (s === 'CONVERTIDO_PROCESO') return 'Convertido a Proceso';
+        if (s === 'ARCHIVADA') return 'Archivada';
+        return 'Pendiente';
+      };
+
+      const mappedNews: NoticiaDisciplinaria[] = noticiasData.map((news) => {
+        const rawStatus = (news.estado || '').toUpperCase();
+        console.log(`[DEBUG] Noticia ${news.radicado} - Backend Status: ${rawStatus}`);
+        return {
+          id: news.id,
+          radicado: news.radicado,
+          numeroRadicado: news.radicado,
+          origen: news.origen as any,
+          fechaQueja: news.fechaQueja || news.createdAt,
+          territorial: news.territorial,
+          disciplinable: (Array.isArray(news.disciplinable) ? news.disciplinable : (news.disciplinable ? [news.disciplinable] : [])).map((d: any) => ({
+            ...d,
+            identificacion: d.cedula || d.identificacion || ''
+          })),
+          denunciante: (Array.isArray(news.denunciante) ? news.denunciante : (news.denunciante ? [news.denunciante] : [])).map((d: any) => ({
+            ...d,
+            identificacion: d.cedula || d.identificacion || ''
+          })),
+          adjuntos: news.adjuntos || [],
+          estado: getFrontendStatus(rawStatus),
+          estadoLabel: getFrontendStatusLabels(rawStatus),
+          etapa: news.kanbanStage || 'Recepcion',
+          diasTranscurridos: getDiasTranscurridos(news.fechaRecepcion),
+          radicador: (Array.isArray(news.historialAuditoria) ? news.historialAuditoria.find((h: any) => h.tipo === 'creacion')?.usuario : null) || 'Sistema',
+          fechaRegistro: news.fechaRecepcion,
+          fechaRecepcion: news.fechaRecepcion,
+          conductas: news.conductas || [],
+          descripcion: news.hechos || 'Sin descripción',
+          hechos: news.hechos || '',
+          dependenciaDenunciado: news.dependenciaDenunciado || 'Sin dependencia',
+          historialAuditoria: Array.isArray(news.historialAuditoria) ? news.historialAuditoria : [],
+        };
+      });
+
 
       setNoticias(mappedNews);
 
@@ -916,10 +958,18 @@ export function GestionNoticias() {
   };
 
   const filteredNoticias = noticias.filter(noticia => {
+    const disciplinableName = Array.isArray(noticia.disciplinable)
+      ? noticia.disciplinable[0]?.nombre
+      : (noticia.disciplinable as any)?.nombre || '';
+
+    const disciplinableCedula = Array.isArray(noticia.disciplinable)
+      ? noticia.disciplinable[0]?.cedula
+      : (noticia.disciplinable as any)?.cedula || '';
+
     const matchesSearch =
       (noticia.radicado || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (noticia.disciplinable?.[0]?.nombre || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (noticia.disciplinable?.[0]?.cedula || '').includes(searchQuery);
+      (disciplinableName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (disciplinableCedula || '').includes(searchQuery);
 
     // Filter State
     let matchesEstado = true;
@@ -946,19 +996,30 @@ export function GestionNoticias() {
   // };
 
   // Map frontend origen to backend enum
-  const mapOrigenToEnum = (origen: string): string => {
-    const mapping: Record<string, string> = {
-      'Anónimo': 'ANONIMO',
-      'Quejoso': 'QUEJOSO',
-      'De oficio': 'OFICIO',
-      'Remisión por competencia': 'REMISION',
-      // Fallbacks if already in enum format
-      'ANONIMO': 'ANONIMO',
-      'QUEJOSO': 'QUEJOSO',
-      'OFICIO': 'OFICIO',
-      'REMISION': 'REMISION'
+
+
+  const getActionTitle = (tipo: string) => {
+    const titles: Record<string, string> = {
+      creacion: 'Creación',
+      asignacion: 'Asignación',
+      conversion: 'Conversión',
+      archivo: 'Archivo',
+      archivar: 'Archivo',
+      devolucion: 'Devolución',
+      modificacion: 'Modificación'
     };
-    return mapping[origen] || 'QUEJOSO'; // Default to QUEJOSO if unknown
+    return titles[tipo] || titles[tipo.toLowerCase()] || tipo;
+  };
+
+
+  const mapOrigenToEnum = (origen: string): any => {
+    const mapping: Record<string, string> = {
+      'Queja ciudadana': 'QUEJOSO',
+      'Informe servidor público': 'INFORME',
+      'De oficio': 'OFICIO',
+      'Anónimo': 'ANONIMO'
+    };
+    return mapping[origen] || 'OFICIO';
   };
 
   const handleExportMain = () => {
@@ -969,110 +1030,115 @@ export function GestionNoticias() {
       return;
     }
 
-    const noticiaToExport = filteredNoticias[0];
-    const doc = new jsPDF();
+    try {
+      const noticiaToExport = filteredNoticias[0];
+      const doc = new jsPDF();
 
+      // Header
+      doc.setFontSize(16);
+      doc.setTextColor(0, 61, 165); // ESAP Blue
+      doc.text('Reporte Detallado - Noticia Disciplinaria', 14, 20);
 
-    // End of handleExportMain logic if it was intending to export
-    // But wait, the PDF generation continues below... 
-    // It seems the user pasted handleCreateNoticia INSIDE handleExportMain.
-    // I will CLOSE handleExportMain here if the code below is not part of it? 
-    // No, doc.text is below. So handleExportMain continues.
-    // I must REMOVE the handleCreateNoticia logic from here and place it BEFORE handleExportMain or separate.
+      // Info Noticia
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Radicado: ${noticiaToExport.radicado || 'N/A'}`, 14, 30);
+      doc.text(`Fecha Recepción: ${noticiaToExport.fechaRecepcion ? new Date(noticiaToExport.fechaRecepcion).toLocaleDateString() : 'N/A'}`, 14, 35);
+      doc.text(`Origen: ${noticiaToExport.origen}`, 14, 40);
+      doc.text(`Estado: ${noticiaToExport.estado}`, 14, 45);
 
-    // BUT I can't easily move code far away with one replace.
-    // I will comment out the invalid code inside handleExportMain? No, that leaves it broken.
-    // I will replace this block with JUST the PDF logic parts if any, or nothing?
+      let discipName = 'Sin nombre';
+      if (Array.isArray(noticiaToExport.disciplinable) && noticiaToExport.disciplinable.length > 0) {
+        discipName = noticiaToExport.disciplinable[0].nombre;
+      } else if (noticiaToExport.disciplinable && !Array.isArray(noticiaToExport.disciplinable)) {
+        discipName = (noticiaToExport.disciplinable as any).nombre;
+      }
 
-    // Let's look at 975-1027.
-    // It defines createsDto and calls radicarNoticia.
-    // This logic DOES NOT belong in export.
-    // I will DELETE this block from here.
-    // AND I will INSERT the `const handleCreateNoticia ...` block BEFORE `handleExportMain`.
+      doc.text(`Disciplinable: ${discipName}`, 14, 55);
+      doc.text(`Dependencia: ${noticiaToExport.dependenciaDenunciado}`, 14, 60);
 
-    // Actually, I can do it in two steps.
-    // 1. Insert handleCreateNoticia definition before handleExportMain.
-    // 2. Delete the body from inside handleExportMain.
+      doc.text('Hechos:', 14, 70);
+      const splitHechos = doc.splitTextToSize(noticiaToExport.hechos || 'Sin hechos registrados', 180);
+      doc.text(splitHechos, 14, 75);
 
-    // Let's try to find where handleCreateNoticia SHOULD be.
-    // I'll search for where `handleCreateNoticia` is USED (e.g. passed to Modal).
-    // `onCreate={handleCreateNoticia}`
+      let yPos = 75 + (splitHechos.length * 5) + 10;
 
+      // Tabla Historial
+      doc.text('Historial de Auditoría:', 14, yPos);
+      yPos += 5;
 
-    // Header
-    doc.setFontSize(16);
-    doc.setTextColor(0, 61, 165); // ESAP Blue
-    doc.text('Reporte Detallado - Noticia Disciplinaria', 14, 20);
+      const itemsHistorial = noticiaToExport.historialAuditoria || [];
 
-    // Info Noticia
-    doc.setFontSize(10);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Radicado: ${noticiaToExport.radicado || 'N/A'}`, 14, 30);
-    doc.text(`Fecha Recepción: ${new Date(noticiaToExport.fechaRecepcion).toLocaleDateString()}`, 14, 35);
-    doc.text(`Origen: ${noticiaToExport.origen}`, 14, 40);
-    doc.text(`Estado: ${noticiaToExport.estado}`, 14, 45);
+      if (itemsHistorial.length > 0) {
+        const tableBody = itemsHistorial.map((accion: any) => [
+          accion.fecha ? new Date(accion.fecha).toLocaleString('es-CO') : 'N/A',
+          getActionTitle(accion.tipo || 'accion'),
+          accion.usuario || 'Sistema',
+          accion.observaciones || 'Sin observaciones'
+        ]);
 
-    let discipName = 'Sin nombre';
-    if (Array.isArray(noticiaToExport.disciplinable) && noticiaToExport.disciplinable.length > 0) {
-      discipName = noticiaToExport.disciplinable[0].nombre;
-    } else if (noticiaToExport.disciplinable && !Array.isArray(noticiaToExport.disciplinable)) {
-      discipName = (noticiaToExport.disciplinable as any).nombre;
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Fecha', 'Acción', 'Usuario', 'Detalles']],
+          body: tableBody,
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [0, 61, 165] }
+        });
+      } else {
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text('Sin registros de auditoría disponibles.', 14, yPos + 10);
+      }
+
+      doc.save(`Reporte_Noticia_${noticiaToExport.radicado || 'ND'}.pdf`);
+    } catch (error) {
+      console.error('Error generando PDF', error);
+      toast.error('Error al generar el PDF de exportación');
     }
-
-    doc.text(`Disciplinable: ${discipName}`, 14, 55);
-    doc.text(`Dependencia: ${noticiaToExport.dependenciaDenunciado}`, 14, 60);
-
-    doc.text('Hechos:', 14, 70);
-    const splitHechos = doc.splitTextToSize(noticiaToExport.hechos, 180);
-    doc.text(splitHechos, 14, 75);
-
-    let yPos = 75 + (splitHechos.length * 5) + 10;
-
-    // Tabla Historial
-    doc.text('Historial de Auditoría:', 14, yPos);
-    yPos += 5;
-
-    const tableBody = (noticiaToExport.historialAuditoria || []).map((accion: any) => [
-      new Date(accion.fecha).toLocaleString('es-CO'),
-      getActionTitle(accion.tipo),
-      accion.usuario,
-      accion.observaciones || 'Sin observaciones'
-    ]);
-
-    autoTable(doc, {
-      startY: yPos,
-      head: [['Fecha', 'Acción', 'Usuario', 'Detalles']],
-      body: tableBody,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [0, 61, 165] }
-    });
-
-    doc.save(`Reporte_Noticia_${noticiaToExport.radicado || 'ND'}.pdf`);
   };
 
   const handleCreateNoticia = async (data: any) => {
     try {
       setLoading(true);
 
+      // Map Denunciante(s)
+      const denuncianteData = (data.denunciantes && data.denunciantes.length > 0)
+        ? data.denunciantes[0]
+        : (data.denunciante || {});
+
       const denuncianteObj = {
-        nombre: data.denunciante?.nombre || 'Anónimo',
-        email: data.denunciante?.email || '',
-        cedula: data.denunciante?.cedula || '',
-        cargo: data.denunciante?.cargo || 'Ciudadano',
+        nombre: denuncianteData.nombre || 'Anónimo',
+        email: denuncianteData.email || denuncianteData.correo || '',
+        cedula: denuncianteData.identificacion || denuncianteData.cedula || '',
+        identificacion: denuncianteData.identificacion || denuncianteData.cedula || '',
+        cargo: denuncianteData.cargo || 'Ciudadano',
+        telefono: denuncianteData.telefono || '',
+        direccion: denuncianteData.direccion || '',
+        entidad: denuncianteData.entidad || denuncianteData.dependencia || '',
+        dependencia: denuncianteData.dependencia || ''
       };
 
-      // Extract first disciplinable if it's an array
-      const mainDisciplinable = Array.isArray(data.disciplinable) && data.disciplinable.length > 0
-        ? data.disciplinable[0]
-        : (data.disciplinable || { nombre: 'Por determinar', cargo: 'N/A' });
+      // Map Disciplinable(s)
+      // The modal returns 'disciplinable' as an array if multiple, or we might need to check 'denunciados' if that's what it passes?
+      // Looking at CreateNoticiaModal handleSave: it sends 'disciplinable: disciplinables' which is an array.
+      const disciplinablesData = Array.isArray(data.disciplinable) ? data.disciplinable : (data.disciplinable ? [data.disciplinable] : []);
+      const mainDisciplinableData = disciplinablesData.length > 0 ? disciplinablesData[0] : {};
+
+      const disciplinableObj = {
+        nombre: mainDisciplinableData.nombre || 'Por determinar',
+        cedula: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
+        identificacion: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
+        cargo: mainDisciplinableData.cargo || 'N/A',
+        dependencia: mainDisciplinableData.dependencia || 'Sin Dependencia'
+      };
 
       const createDto: CreateNewsDto = {
         origen: mapOrigenToEnum(data.origen), // Map to backend enum
         territorial: data.territorial,
-        dependenciaDenunciado: mainDisciplinable.dependencia || 'Sin Dependencia',
+        dependenciaDenunciado: disciplinableObj.dependencia,
         hechos: data.descripcionHechos || 'Sin descripción',
-        denunciante: JSON.stringify(denuncianteObj),
-        disciplinable: JSON.stringify(mainDisciplinable),
+        denunciante: denuncianteObj as any, // Pass object, service handles stringify
+        disciplinable: disciplinableObj as any,
         // NO enviar: radicado, fechaRecepcion, estado (los genera el backend)
       };
 
@@ -1183,7 +1249,8 @@ export function GestionNoticias() {
       'Devuelto': 'Devuelto',
       'En Valoración': 'En Valoración',
       'Convertido a Proceso': 'Convertido a Proceso',
-      'ARCHIVADA': 'Archivada'
+      'ARCHIVADA': 'Archivada',
+      'Archivada': 'Archivada'
     }[estado] || 'Pendiente';
 
     const configs: Record<string, { bg: string; text: string; border: string }> = {

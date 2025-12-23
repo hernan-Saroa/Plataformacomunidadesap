@@ -8,10 +8,10 @@ import {
 import { ProcessStage } from '../entities/disciplinary-process.entity';
 
 export class CreateDisciplinaryProcessDto {
-  @IsUUID()
+  @IsString()
   newsId: string;
 
-  @IsUUID()
+  @IsString()
   abogadoId: string;
 
   @IsOptional()

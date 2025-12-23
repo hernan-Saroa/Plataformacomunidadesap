@@ -343,6 +343,8 @@ export function VinculacionForm({ onBack, onLoginClick }: VinculacionFormProps) 
           onNavigateToHome={onBack}
         />
       )}
+      {/* Header/Navbar espaciado */}
+      <div className="h-20" />
 
       {/* Main Content - con padding-top para el navbar flotante */}
       <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-24 sm:pt-28 max-w-5xl">

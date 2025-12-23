@@ -485,6 +485,10 @@ class DisciplinaryService {
         return apiClient.put<any>(`${SERVICE_PREFIX}/configuration/global`, config);
     }
 
+    async getAvailableRoles(): Promise<string[]> {
+        return apiClient.get<string[]>(`${SERVICE_PREFIX}/configuration/available-roles`);
+    }
+
     // ==================== ESTADÍSTICAS DEL PROCESO ====================
 
     /**

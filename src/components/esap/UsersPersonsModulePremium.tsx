@@ -58,14 +58,14 @@ import { DashboardSedesMetrics } from './DashboardSedesMetrics';  // ✅ DASHBOA
 import { CarpetaDigitalGlobal } from './CarpetaDigitalGlobal';  // ✅ CARPETA DIGITAL GLOBAL
 import { ExportUsersBySede } from './ExportUsersBySede';  // ✅ EXPORTAR POR SEDE
 import { MOCK_USERS_WITH_SEDES } from '../../data/mockUsersWithSedes';  // ✅ USUARIOS CON SEDES
+import { usersService, type User, type UserFilters } from '../../services/usersService';  // ✅ SERVICIO DE USUARIOS
 import { BadgesSedesUsuario } from '../estructura-organizacional/BadgesSedesUsuario';  // ✅ BADGES
 import { SelectorEstructuraCompacto } from '../estructura-organizacional/SelectorEstructura';  // ✅ FILTRO
 import { FiltroEstructuraOrganizacional } from '../estructura-organizacional/FiltroEstructuraOrganizacional';  // ✅ FILTRO COHERENTE
 import { DigitalFolderSection } from './DigitalFolderSection';  // ✅ CARPETA DIGITAL COMO SECCIÓN
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';  // ✅ TABS
 import { UserExpandedView } from './UserExpandedView';  // ✅ VISTA EXPANDIDA REDISEÑADA
-import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  // ✅ RF015 - ROLES Y PERMISOS ACTUALIZADO
-import React from 'react';
+import React, { useEffect } from 'react';
 
 export function UsersPersonsModulePremium() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,25 +81,108 @@ export function UsersPersonsModulePremium() {
   const [showEditModal, setShowEditModal] = useState(false);  // ✅ MODAL EDITAR
   const [showSedesMetrics, setShowSedesMetrics] = useState(false);  // ✅ DASHBOARD SEDES
   const [showExportModal, setShowExportModal] = useState(false);  // ✅ MODAL EXPORTAR
-  const [viewMode, setViewMode] = useState<'users' | 'digital-folder' | 'roles-permisos'>('users');  // ✅ NUEVO - Vista actual con RF015
+  const [viewMode, setViewMode] = useState<'users' | 'digital-folder'>('users');  // ✅ NUEVO - Vista actual
   const [selectedUser, setSelectedUser] = useState<any | null>(null);  // ✅ USUARIO SELECCIONADO
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);  // ✅ ESTADO MODAL CREAR
+  const [users, setUsers] = useState<User[]>([]);  // ✅ ESTADO PARA USUARIOS REALES
+  const [loading, setLoading] = useState(false);  // ✅ ESTADO DE CARGA
+  const [totalUsers, setTotalUsers] = useState(0);  // ✅ TOTAL DE USUARIOS
+  const [totalActiveUsers, setTotalActiveUsers] = useState(0);  // ✅ TOTAL DE USUARIOS ACTIVOS
+  const [totalBlockedUsers, setTotalBlockedUsers] = useState(0);  // ✅ TOTAL DE USUARIOS BLOQUEADOS
   const itemsPerPage = 10;
 
-  // Stats calculadas
+  // ✅ FUNCIÓN PARA CARGAR USUARIOS DESDE EL BACKEND
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const response = await usersService.getUsers({
+        page: currentPage,
+        limit: itemsPerPage
+      });
+
+      // Mapear usuarios de la API al formato esperado por el componente
+      // El backend devuelve: { ...person, user: { id_user, roles, is_active }, seccional, sede }
+      const mappedUsers = response.data.map((item: any) => ({
+        id: item.user.id_user,
+        id_user: item.user.id_user,
+        firstName: item.first_name,
+        lastName: item.last_name,
+        email: item.email,
+        phone: item.phone || '',
+        document: item.identification_number,
+        identification_number: item.identification_number,
+        identificationType: item.identification_type,
+        gender: item.gender || '',
+        status: item.user.is_active ? 'active' : 'inactive',
+        is_active: item.user.is_active,
+        roles: (item.user.roles || []).map((role: any) => ({
+          id: role.id,
+          name: role.name,
+          color: role.color,
+          type: role.type
+        })),
+        location: item.seccional?.ubicacion || item.sede?.ubicacion || 'Sin ubicación',
+        lastActivity: item.user.updated_at,
+        avatar: '',
+        person: {
+          id: item.id,
+          first_name: item.first_name,
+          last_name: item.last_name,
+          identification_number: item.identification_number,
+          identification_type: item.identification_type,
+          email: item.email,
+          phone: item.phone,
+          gender: item.gender
+        },
+        // Datos de Territorial (Seccional) y CETAP (Sede) del backend
+        seccional: item.seccional,
+        sede: item.sede,
+        // IDs para el modal de edición
+        idSeccional: item.seccional?.id || item.idSeccional || undefined,
+        idSede: item.sede?.id || item.idSede || undefined,
+        sedes: [], // Mantener para compatibilidad
+        enrollmentMethod: 'manual' as 'qr' | 'manual' | 'massive'
+      }));
+
+      setUsers(mappedUsers);
+      setTotalUsers(response.meta.total);
+      setTotalActiveUsers(response.meta.totalActive);
+      setTotalBlockedUsers(response.meta.totalBlocked);
+    } catch (error) {
+      console.error('Error al cargar usuarios:', error);
+      toast.error('Error al cargar usuarios', {
+        description: 'No se pudieron cargar los usuarios. Usando datos de prueba.'
+      });
+      // En caso de error, usamos los datos mock
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ CARGAR USUARIOS AL MONTAR EL COMPONENTE
+  useEffect(() => {
+    loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]); // Recargar cuando cambia la página
+
+  // Usuarios actuales (de API o mock)
+  const currentUsers = users.length > 0 ? users : MOCK_USERS_WITH_SEDES;
+
+  // Stats calculadas - Usar valores del backend si están disponibles, sino calcular del frontend
   const stats = {
-    total: MOCK_USERS_WITH_SEDES.length,
-    active: MOCK_USERS_WITH_SEDES.filter(u => u.status === 'active').length,
-    blocked: MOCK_USERS_WITH_SEDES.filter(u => u.status === 'blocked').length,
+    total: totalUsers > 0 ? totalUsers : currentUsers.length,
+    active: totalActiveUsers > 0 ? totalActiveUsers : currentUsers.filter(u => u.status === 'active').length,
+    blocked: totalBlockedUsers > 0 ? totalBlockedUsers : currentUsers.filter(u => u.status === 'blocked').length,
     growth: 12.5
   };
 
   // ✅ Stats de enrolamiento para el modal
   const enrollmentStats = {
-    qr: MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'qr').length,
-    manual: MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'manual').length,
-    massive: MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'massive').length,
-    total: MOCK_USERS_WITH_SEDES.length
+    qr: (users.length ? users.filter(u => u.enrollmentMethod === 'qr').length : MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'qr').length),
+    manual: (users.length ? users.filter(u => u.enrollmentMethod === 'manual').length : MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'manual').length),
+    massive: (users.length ? users.filter(u => u.enrollmentMethod === 'massive').length : MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'massive').length),
+    total: users.length || MOCK_USERS_WITH_SEDES.length
   };
 
   // Filtros únicos para los selectores
@@ -107,46 +190,72 @@ export function UsersPersonsModulePremium() {
   const uniqueLocations = Array.from(new Set(MOCK_USERS_WITH_SEDES.map(u => u.location)));
 
   // Filtrado
-  const filteredUsers = MOCK_USERS_WITH_SEDES.filter(user => {
+  const filteredUsers = currentUsers.filter(user => {
     const matchesSearch = searchQuery === '' ||
       `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.document.includes(searchQuery);
-    
+      (user.document || user.identification_number || '').includes(searchQuery);
+
     const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
     const matchesRole = roleFilter === 'all' || user.roles.some(r => r.name === roleFilter);
     const matchesLocation = locationFilter === 'all' || user.location === locationFilter;
-    
+
     // ✅ FILTRO POR UNIDAD ORGANIZACIONAL (Coherente con estructura)
-    const matchesUnidadOrganizacional = !unidadOrganizacionalFilter || 
-      user.sedes.some(sede => sede.id === unidadOrganizacionalFilter);
-    
+    const matchesUnidadOrganizacional = !unidadOrganizacionalFilter ||
+      (user.sedes && user.sedes.some(sede => sede.id === unidadOrganizacionalFilter));
+
     return matchesSearch && matchesStatus && matchesRole && matchesLocation && matchesUnidadOrganizacional;
   });
 
-  // Paginación
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
-  const paginatedUsers = filteredUsers.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  ).map(user => {
-    // ✅ Extraer territorial y CETAP de las sedes asignadas
-    const territorial = user.sedes.find(sede => sede.nivel === 'territorial');
-    const cetap = user.sedes.find(sede => sede.nivel === 'cetap');
-    const sedeCentral = user.sedes.find(sede => sede.nivel === 'sede-central');
-    
+  // Paginación - Usar totalPages del backend cuando no hay filtros activos
+  const hasActiveFilters = searchQuery !== '' || statusFilter !== 'all' || roleFilter !== 'all' || locationFilter !== 'all' || unidadOrganizacionalFilter;
+  const totalPages = hasActiveFilters
+    ? Math.ceil(filteredUsers.length / itemsPerPage)
+    : Math.ceil(totalUsers / itemsPerPage);
+
+  // Si hay filtros activos, paginar en frontend. Si no, los datos ya vienen paginados del backend
+  const paginatedUsers = hasActiveFilters
+    ? filteredUsers.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+      )
+    : filteredUsers;
+
+  const displayUsers = paginatedUsers.map(user => {
+    // ✅ Usar datos de seccional y sede del backend
+    // Si no hay datos del backend, usar el formato anterior para compatibilidad
+    const territorial = user.seccional ? {
+      nombre: user.seccional.nomSeccional,
+      codigo: user.seccional.codSeccional,
+      departamento: user.seccional.ubicacion || user.location
+    } : (user.sedes?.find((sede: any) => sede.nivel === 'territorial') ? {
+      nombre: user.sedes.find((sede: any) => sede.nivel === 'territorial').nombre,
+      codigo: user.sedes.find((sede: any) => sede.nivel === 'territorial').codigo,
+      departamento: user.location
+    } : null);
+
+    const cetap = user.sede ? {
+      nombre: user.sede.nomSede,
+      codigo: user.sede.codSede,
+      ciudad: user.sede.ubicacion || user.location
+    } : (user.sedes?.find((sede: any) => sede.nivel === 'cetap') ? {
+      nombre: user.sedes.find((sede: any) => sede.nivel === 'cetap').nombre,
+      codigo: user.sedes.find((sede: any) => sede.nivel === 'cetap').codigo,
+      ciudad: user.location
+    } : null);
+
+    const sedeCentral = user.sedes?.find((sede: any) => sede.nivel === 'sede-central');
+
     return {
       ...user,
-      territorial: territorial ? {
-        nombre: territorial.nombre,
-        codigo: territorial.codigo,
-        departamento: user.location // Usando location como departamento
-      } : null,
-      cetap: cetap ? {
-        nombre: cetap.nombre,
-        codigo: cetap.codigo,
-        ciudad: user.location
-      } : null,
+      // Normalizar campos para compatibilidad
+      firstName: user.firstName || user.person?.first_name || '',
+      lastName: user.lastName || user.person?.last_name || '',
+      email: user.email || user.person?.email || '',
+      document: user.document || user.person?.identification_number || '',
+      status: user.status || (user.is_active !== undefined ? (user.is_active ? 'active' : 'inactive') : 'active'),
+      territorial,
+      cetap,
       sedeCentral: sedeCentral ? {
         nombre: sedeCentral.nombre,
         codigo: sedeCentral.codigo
@@ -257,35 +366,78 @@ export function UsersPersonsModulePremium() {
     setShowEditModal(true);  // ✅ Abrir modal de edición con sedes
   };
 
-  const handleSaveEdit = (userData: any) => {
-    console.log('Guardando cambios de usuario:', userData);
-    toast.success('Usuario Actualizado', {
-      description: `${userData.firstName} ${userData.lastName} ha sido actualizado exitosamente.`
-    });
-    setShowEditModal(false);
-    setSelectedUser(null);
-    // TODO: En producción: await updateUser(userData); refetch();
-  };
+  const handleSaveEdit = async (userData: any) => {
+    try {
+      setLoading(true);
 
-  const handleDelete = async (user: typeof MOCK_USERS[0]) => {
-    const confirmed = window.confirm(
-      `¿Estás seguro de eliminar a ${user.firstName} ${user.lastName}?\n\nEsta acción no se puede deshacer.`
-    );
-    
-    if (confirmed) {
-      toast.success('Usuario Eliminado', { 
-        description: `${user.firstName} ${user.lastName} ha sido eliminado del sistema.` 
+      // Mapear datos del formulario al formato esperado por el backend
+      const updateUserData = {
+        first_name: userData.firstName,
+        last_name: userData.lastName,
+        identification_number: userData.documentNumber || userData.document || userData.identification_number,
+        identification_type: userData.documentType || userData.identificationType,
+        email: userData.email,
+        phone: userData.phone || '',
+        gender: userData.gender || '',
+        roleIds: userData.roleIds || [],
+        // Agregar seccional y sede si están definidos
+        idSeccional: userData.idSeccional ? Number(userData.idSeccional) : undefined,
+        idSede: userData.idSede ? Number(userData.idSede) : undefined,
+      };
+
+      await usersService.updateUser(userData.id_user || userData.id, updateUserData);
+
+      toast.success('Usuario Actualizado', {
+        description: `${userData.firstName} ${userData.lastName} ha sido actualizado exitosamente.`
       });
-      // En producción: await deleteUser(user.id); refetch();
+
+      setShowEditModal(false);
+      setSelectedUser(null);
+      // Refetch users
+      await loadUsers();
+    } catch (error: any) {
+      console.error('Error al actualizar usuario:', error);
+      toast.error('Error al actualizar usuario', {
+        description: error?.message || 'No se pudo actualizar el usuario. Intente nuevamente.'
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleViewDetails = (user: typeof MOCK_USERS[0]) => {
-    setExpandedUserId(expandedUserId === user.id ? null : user.id);
+  const handleDelete = async (user: any) => {
+    const confirmed = window.confirm(
+      `¿Estás seguro de eliminar a ${user.firstName} ${user.lastName}?\n\nEsta acción no se puede deshacer.`
+    );
+
+    if (confirmed) {
+      try {
+        setLoading(true);
+        await usersService.deleteUser(user.id_user || user.id);
+
+        toast.success('Usuario Eliminado', {
+          description: `${user.firstName} ${user.lastName} ha sido eliminado del sistema.`
+        });
+
+        // Refetch users
+        await loadUsers();
+      } catch (error: any) {
+        console.error('Error al eliminar usuario:', error);
+        toast.error('Error al eliminar usuario', {
+          description: error?.message || 'No se pudo eliminar el usuario. Intente nuevamente.'
+        });
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleViewDetails = (user: any) => {
+    setExpandedUserId(expandedUserId === (user.id || user.id_user) ? null : (user.id || user.id_user));
   };
 
   // ✅ NUEVO: Asignar Accesos
-  const handleAssignAccess = (user: typeof MOCK_USERS[0]) => {
+  const handleAssignAccess = (user: any) => {
     setSelectedUser(user);
     setShowAssignAccessModal(true);
   };
@@ -296,31 +448,92 @@ export function UsersPersonsModulePremium() {
   };
 
   // ✅ NUEVO: Bloquear usuario
-  const handleBlockUser = (user: typeof MOCK_USERS[0]) => {
-    toast.success('Usuario Bloqueado', { 
-      description: `${user.firstName} ${user.lastName} ha sido bloqueado exitosamente.`
-    });
-    // En producción: actualizar estado en backend y refrescar lista
+  const handleBlockUser = async (user: any) => {
+    const confirmed = window.confirm(
+      `¿Estás seguro de bloquear a ${user.firstName} ${user.lastName}?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      await usersService.updateUserStatus(user.id_user || user.id, false);
+
+      toast.success('Usuario Bloqueado', {
+        description: `${user.firstName} ${user.lastName} ha sido bloqueado exitosamente.`
+      });
+
+      // Refetch users
+      await loadUsers();
+    } catch (error: any) {
+      console.error('Error al bloquear usuario:', error);
+      toast.error('Error al bloquear usuario', {
+        description: error?.message || 'No se pudo bloquear el usuario. Intente nuevamente.'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ NUEVO: Activar usuario
-  const handleActivateUser = (user: typeof MOCK_USERS[0]) => {
-    toast.success('Usuario Activado', { 
-      description: `${user.firstName} ${user.lastName} ha sido activado exitosamente.`
-    });
-    // En producción: actualizar estado en backend y refrescar lista
+  const handleActivateUser = async (user: any) => {
+    try {
+      setLoading(true);
+      await usersService.updateUserStatus(user.id_user || user.id, true);
+
+      toast.success('Usuario Activado', {
+        description: `${user.firstName} ${user.lastName} ha sido activado exitosamente.`
+      });
+
+      // Refetch users
+      await loadUsers();
+    } catch (error: any) {
+      console.error('Error al activar usuario:', error);
+      toast.error('Error al activar usuario', {
+        description: error?.message || 'No se pudo activar el usuario. Intente nuevamente.'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ NUEVO: Handler para crear usuario
-  const handleCreateUser = (userData: any) => {
-    console.log('Creando usuario:', userData);
-    toast.success('Usuario Creado Exitosamente', {
-      description: `${userData.firstName} ${userData.lastName} ha sido registrado.`
-    });
-    
-    // TODO: En producción, hacer llamado al API
-    // await createUser(userData);
-    // refetch users
+  const handleCreateUser = async (userData: any) => {
+    try {
+      setLoading(true);
+
+      // Mapear datos del formulario al formato esperado por el backend
+      const createUserData = {
+        first_name: userData.firstName,
+        last_name: userData.lastName,
+        identification_number: userData.documentNumber || userData.document || userData.identification_number,
+        identification_type: userData.documentType || userData.identificationType || 'CC',
+        email: userData.email,
+        phone: userData.phone || '',
+        gender: userData.gender || '',
+        roleIds: userData.roleIds || [],
+        // Agregar seccional y sede si están definidos
+        idSeccional: userData.idSeccional ? Number(userData.idSeccional) : undefined,
+        idSede: userData.idSede ? Number(userData.idSede) : undefined,
+      };
+
+      const newUser = await usersService.createUser(createUserData);
+
+      toast.success('Usuario Creado Exitosamente', {
+        description: `${userData.firstName} ${userData.lastName} ha sido registrado.`
+      });
+
+      setShowCreateModal(false);
+      // Refetch users
+      await loadUsers();
+    } catch (error: any) {
+      console.error('Error al crear usuario:', error);
+      toast.error('Error al crear usuario', {
+        description: error?.message || 'No se pudo crear el usuario. Intente nuevamente.'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const clearAllFilters = () => {
@@ -330,42 +543,22 @@ export function UsersPersonsModulePremium() {
     setLocationFilter('all');
   };
 
-  const hasActiveFilters = searchQuery || statusFilter !== 'all' || roleFilter !== 'all' || locationFilter !== 'all';
-
   // Si estamos en la vista de carpeta digital, mostrar esa sección
   if (viewMode === 'digital-folder') {
     return (
       <DigitalFolderSection
         onBack={() => setViewMode('users')}
-        initialUserId={selectedUser?.id}
-        users={MOCK_USERS_WITH_SEDES.map(u => ({
-          id: u.id,
+        initialUserId={selectedUser?.id_user || selectedUser?.id}
+        users={currentUsers.map(u => ({
+          id: u.id_user || u.id,
           firstName: u.firstName,
           lastName: u.lastName,
-          document: u.document,
+          document: u.document || u.identification_number,
           email: u.email,
           avatar: u.avatar
         }))}
         canUpload={true}
       />
-    );
-  }
-
-  // ✅ RF015 - Si estamos en la vista de Roles y Permisos
-  if (viewMode === 'roles-permisos') {
-    return (
-      <div className="space-y-4">
-        {/* Botón de Retorno */}
-        <button
-          onClick={() => setViewMode('users')}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          ← Volver a Gestión de Personas
-        </button>
-        
-        {/* Componente RF015 Actualizado */}
-        <RolesYPermisosActualizado />
-      </div>
     );
   }
 
@@ -399,7 +592,7 @@ export function UsersPersonsModulePremium() {
                 color: '#1F2937'
               }}
             >
-              Gestión Personas
+              Administración
             </h1>
           </div>
           {/* Body: 14px Regular, line-height 20px */}
@@ -411,7 +604,7 @@ export function UsersPersonsModulePremium() {
               color: '#6B7280'
             }}
           >
-            Gestión integral de personas con asignación de roles múltiples simultáneos
+            Administra usuarios con sistema de roles múltiples simultáneos
           </p>
         </div>
 
@@ -502,33 +695,239 @@ export function UsersPersonsModulePremium() {
         </div>
       </motion.div>
 
-      {/* ✅ RF015 - Banner de acceso a Roles y Permisos */}
+      {/* Stats Cards - Card Stats según especificaciones */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}
-        className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border-2 border-blue-200 p-4"
       >
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-600">
-              <Shield className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-900">Roles y Permisos</h3>
-              <p className="text-sm text-gray-600">
-                Administra roles, permisos granulares y control de acceso con SSO
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setViewMode('roles-permisos')}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium"
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Card Total Usuarios */}
+          <motion.div
+            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
+            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
+            whileHover={{ 
+              y: -2, 
+              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
+              transition: { duration: 0.2 }
+            }}
           >
-            <Shield className="w-5 h-5" />
-            Gestionar Roles
-          </button>
+            {/* Icon con background */}
+            <div 
+              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
+              style={{
+                background: '#F0F6FF',
+                border: '1px solid #DBEAFE'
+              }}
+            >
+              <Users 
+                className="w-6 h-6" 
+                strokeWidth={2.5}
+                style={{ color: '#003DA5' }}
+              />
+            </div>
+            
+            {/* Number - Display: 48px Extrabold */}
+            <p 
+              className="font-extrabold mb-1"
+              style={{
+                fontSize: '48px',
+                lineHeight: '56px',
+                letterSpacing: '-0.5px',
+                color: '#1F2937'
+              }}
+            >
+              {stats.total}
+            </p>
+            
+            {/* Label: 14px Regular */}
+            <p 
+              className="font-normal"
+              style={{
+                fontSize: '14px',
+                lineHeight: '20px',
+                color: '#6B7280'
+              }}
+            >
+              Total Usuarios
+            </p>
+          </motion.div>
+
+          {/* Card Activos */}
+          <motion.div
+            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
+            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
+            whileHover={{ 
+              y: -2, 
+              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
+              transition: { duration: 0.2 }
+            }}
+          >
+            <div 
+              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
+              style={{
+                background: '#ECFDF5',
+                border: '1px solid #D1FAE5'
+              }}
+            >
+              <UserCheck 
+                className="w-6 h-6" 
+                strokeWidth={2.5}
+                style={{ color: '#10B981' }}
+              />
+            </div>
+            <p 
+              className="font-extrabold mb-1"
+              style={{
+                fontSize: '48px',
+                lineHeight: '56px',
+                letterSpacing: '-0.5px',
+                color: '#1F2937'
+              }}
+            >
+              {stats.active}
+            </p>
+            <p 
+              className="font-normal"
+              style={{
+                fontSize: '14px',
+                lineHeight: '20px',
+                color: '#6B7280'
+              }}
+            >
+              Usuarios Activos
+            </p>
+          </motion.div>
+
+          {/* Card Bloqueados */}
+          <motion.div
+            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
+            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
+            whileHover={{ 
+              y: -2, 
+              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
+              transition: { duration: 0.2 }
+            }}
+          >
+            <div 
+              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
+              style={{
+                background: '#FEF2F2',
+                border: '1px solid #FEE2E2'
+              }}
+            >
+              <UserX 
+                className="w-6 h-6" 
+                strokeWidth={2.5}
+                style={{ color: '#EF4444' }}
+              />
+            </div>
+            <p 
+              className="font-extrabold mb-1"
+              style={{
+                fontSize: '48px',
+                lineHeight: '56px',
+                letterSpacing: '-0.5px',
+                color: '#1F2937'
+              }}
+            >
+              {stats.blocked}
+            </p>
+            <p 
+              className="font-normal"
+              style={{
+                fontSize: '14px',
+                lineHeight: '20px',
+                color: '#6B7280'
+              }}
+            >
+              Bloqueados
+            </p>
+          </motion.div>
+
+          {/* Card Crecimiento */}
+          <motion.div
+            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
+            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
+            whileHover={{ 
+              y: -2, 
+              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
+              transition: { duration: 0.2 }
+            }}
+          >
+            <div 
+              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
+              style={{
+                background: '#FEF3C7',
+                border: '1px solid #FDE68A'
+              }}
+            >
+              <TrendingUp 
+                className="w-6 h-6" 
+                strokeWidth={2.5}
+                style={{ color: '#F59E0B' }}
+              />
+            </div>
+            <p 
+              className="font-extrabold mb-1"
+              style={{
+                fontSize: '48px',
+                lineHeight: '56px',
+                letterSpacing: '-0.5px',
+                color: '#1F2937'
+              }}
+            >
+              +{stats.growth}%
+            </p>
+            <p 
+              className="font-normal"
+              style={{
+                fontSize: '14px',
+                lineHeight: '20px',
+                color: '#6B7280'
+              }}
+            >
+              Crecimiento
+            </p>
+          </motion.div>
         </div>
+      </motion.div>
+
+      {/* ✅ Carpeta Digital Global - Todos los Usuarios */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.12 }}
+      >
+        <button
+          onClick={() => setShowSedesMetrics(!showSedesMetrics)}
+          className="w-full bg-white rounded-xl border border-[#E5E7EB] p-4 mb-4 hover:bg-gray-50 transition-colors flex items-center justify-between"
+          style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
+        >
+          <div className="flex items-center gap-2">
+            <FolderOpen className="w-5 h-5 text-[--esap-primary]" />
+            <span className="font-semibold text-gray-900">
+              Carpeta Digital
+            </span>
+            <Badge variant="outline" className="ml-2">
+              {filteredUsers.length} usuarios
+            </Badge>
+          </div>
+          <ChevronDown 
+            className={`w-5 h-5 text-gray-500 transition-transform ${showSedesMetrics ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {showSedesMetrics && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-4"
+          >
+            <CarpetaDigitalGlobal usuarios={filteredUsers} />
+          </motion.div>
+        )}
       </motion.div>
 
       {/* Búsqueda y Filtros - Input estándar según especificaciones */}
@@ -690,9 +1089,9 @@ export function UsersPersonsModulePremium() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.2 }}
       >
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden relative">
           {/* Header de tabla */}
-          <div 
+          <div
             className="border-b px-6 py-4"
             style={{
               background: '#F9FAFB',
@@ -701,7 +1100,7 @@ export function UsersPersonsModulePremium() {
           >
             <div className="flex items-center justify-between">
               <div>
-                <h2 
+                <h2
                   className="font-bold"
                   style={{
                     fontSize: '18px',
@@ -711,7 +1110,7 @@ export function UsersPersonsModulePremium() {
                 >
                   Lista de Usuarios
                 </h2>
-                <p 
+                <p
                   className="mt-0.5"
                   style={{
                     fontSize: '12px',
@@ -719,14 +1118,24 @@ export function UsersPersonsModulePremium() {
                     color: '#6B7280'
                   }}
                 >
-                  Mostrando {paginatedUsers.length} de {filteredUsers.length} usuarios
+                  {loading ? 'Cargando usuarios...' : `Mostrando ${displayUsers.length} de ${totalUsers} usuarios`}
                 </p>
               </div>
               <Badge variant="outline" className="font-semibold">
-                Total: {filteredUsers.length}
+                Total: {totalUsers}
               </Badge>
             </div>
           </div>
+
+          {/* Indicador de carga */}
+          {loading && (
+            <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50">
+              <div className="flex flex-col items-center gap-3">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#003DA5]"></div>
+                <p className="text-sm font-medium text-gray-600">Cargando usuarios...</p>
+              </div>
+            </div>
+          )}
 
           {/* Vista Desktop - Table según especificaciones */}
           <div className="hidden lg:block overflow-x-auto">
@@ -849,7 +1258,7 @@ export function UsersPersonsModulePremium() {
               </thead>
               <tbody style={{ background: '#FFFFFF' }}>
                 <AnimatePresence mode="popLayout">
-                  {paginatedUsers.map((user, index) => (
+                  {displayUsers.map((user, index) => (
                     <React.Fragment key={user.id}>
                       <motion.tr
                         initial={{ opacity: 0, y: 10 }}
@@ -1058,7 +1467,7 @@ export function UsersPersonsModulePremium() {
                                   <Edit className="w-4 h-4 mr-2" />
                                   Editar Usuario
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
                                   onClick={() => handleAssignAccess(user)}
                                   className="bg-amber-50 hover:bg-amber-100"
                                   style={{ color: '#D97706' }}
@@ -1067,7 +1476,26 @@ export function UsersPersonsModulePremium() {
                                   Asignar Accesos
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem 
+                                {user.status === 'active' || user.is_active ? (
+                                  <DropdownMenuItem
+                                    onClick={() => handleBlockUser(user)}
+                                    style={{ color: '#F59E0B' }}
+                                  >
+                                    <Lock className="w-4 h-4 mr-2" />
+                                    Bloquear Usuario
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem
+                                    onClick={() => handleActivateUser(user)}
+                                    className="bg-green-50 hover:bg-green-100"
+                                    style={{ color: '#10B981' }}
+                                  >
+                                    <Unlock className="w-4 h-4 mr-2" />
+                                    Activar Usuario
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
                                   onClick={() => handleDelete(user)}
                                   style={{ color: '#EF4444' }}
                                 >
@@ -1135,7 +1563,7 @@ export function UsersPersonsModulePremium() {
           {/* Vista Mobile - Cards */}
           <div className="lg:hidden divide-y" style={{ borderColor: '#E5E7EB' }}>
             <AnimatePresence mode="popLayout">
-              {paginatedUsers.map((user, index) => (
+              {displayUsers.map((user, index) => (
                 <motion.div
                   key={user.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -1230,7 +1658,7 @@ export function UsersPersonsModulePremium() {
                             <Edit className="w-4 h-4 mr-2" />
                             Editar Usuario
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => handleAssignAccess(user)}
                             className="bg-amber-50 hover:bg-amber-100"
                             style={{ color: '#D97706' }}
@@ -1239,7 +1667,26 @@ export function UsersPersonsModulePremium() {
                             Asignar Accesos
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem 
+                          {user.status === 'active' || user.is_active ? (
+                            <DropdownMenuItem
+                              onClick={() => handleBlockUser(user)}
+                              style={{ color: '#F59E0B' }}
+                            >
+                              <Lock className="w-4 h-4 mr-2" />
+                              Bloquear Usuario
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem
+                              onClick={() => handleActivateUser(user)}
+                              className="bg-green-50 hover:bg-green-100"
+                              style={{ color: '#10B981' }}
+                            >
+                              <Unlock className="w-4 h-4 mr-2" />
+                              Activar Usuario
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
                             onClick={() => handleDelete(user)}
                             style={{ color: '#EF4444' }}
                           >
@@ -1360,7 +1807,7 @@ export function UsersPersonsModulePremium() {
                 totalPages={totalPages}
                 onPageChange={setCurrentPage}
                 itemsPerPage={itemsPerPage}
-                totalItems={filteredUsers.length}
+                totalItems={totalUsers}
               />
             </div>
           )}
