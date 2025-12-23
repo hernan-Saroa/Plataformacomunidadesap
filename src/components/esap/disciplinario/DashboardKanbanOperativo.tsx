@@ -152,11 +152,12 @@ const isUuid = (value?: string) => {
 
 const DEFAULT_STAGES = [
   { nombre: 'RECEPCION', dias: 3 },
-  { nombre: 'EVALUACION', dias: 10 },
-  { nombre: 'INDAGACION_PREVIA', dias: 40 },
+  { nombre: 'VALORACION', dias: 10 },
+  { nombre: 'INDAGACION PREVIA', dias: 40 },
   { nombre: 'INVESTIGACION', dias: 60 },
+  { nombre: 'EVALUACION', dias: 10 },
   { nombre: 'JUZGAMIENTO', dias: 50 },
-  { nombre: 'FALLO', dias: 10 }
+  { nombre: 'SEGUNDA INSTANCIA', dias: 10 }
 ];
 
 const mergeStages = (stages: { nombre: string; dias: number }[]) => {
@@ -309,7 +310,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '77385960'
     },
     cedula: '77385960',
-    etapaActual: 'Indagación',
+    etapaActual: 'Indagación Previa',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'María García Londoño',
@@ -441,7 +442,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '79223344'
     },
     cedula: '79223344',
-    etapaActual: 'Fallo',
+    etapaActual: 'Segunda Instancia',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'Carlos Mendoza Ramírez',
@@ -1945,12 +1946,32 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     const cargarProfesionales = async () => {
       try {
         const candidatos = await disciplinaryService.getCandidates();
-        const mapped = Array.isArray(candidatos)
-          ? candidatos.map((c: any, index: number) => ({
-              id: c.id || c.uuid || c.userId || String(index + 1),
-              nombre: c.nombreCompleto || c.nombre || c.name || c.email || `Profesional ${index + 1}`
-            }))
-          : [];
+
+        const filtered = Array.isArray(candidatos) ? candidatos.filter((c: any) => {
+          // 1. Check Active Status (defensive)
+          const isActive = !c.estado || c.estado === 'ACTIVO';
+
+          // 2. Check Role
+          const cargo = (c.cargo || '').toLowerCase().trim();
+
+          // Precise Filtering based on user request: "menos sin cargo, admin o estudiante"
+          // - Estudiante: includes (covers 'Estudiante Tesista', etc.)
+          // - Sin Cargo: exact or includes? 'Sin Cargo' is usually distinct. Using includes to be safe.
+          // - Admin: MUST be strict or careful to not exclude 'Auxiliar Administrativo'
+
+          if (cargo.includes('estudiante')) return false;
+          if (cargo.includes('sin cargo')) return false;
+          if (cargo === 'admin') return false;
+          if (cargo === 'administrador') return false;
+          if (cargo.includes('super administrador')) return false;
+
+          return isActive;
+        }) : [];
+
+        const mapped = filtered.map((c: any, index: number) => ({
+          id: c.id || c.uuid || c.userId || String(index + 1),
+          nombre: c.nombreCompleto || c.nombre || c.name || c.email || `Profesional ${index + 1}`
+        }));
         setProfesionalesDisponibles(mapped);
       } catch (error) {
         console.error('Error cargando profesionales', error);
@@ -2310,10 +2331,10 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     const porcentajeTiempo = proceso.timePercentage !== undefined
       ? Math.round(proceso.timePercentage)
       : (() => {
-          const totalDias = fechaVenc ? Math.max(1, Math.round((fechaVenc.getTime() - fechaCreacion.getTime()) / (1000 * 60 * 60 * 24))) : 1;
-          const transcurridos = totalDias - diasRestantes;
-          return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
-        })();
+        const totalDias = fechaVenc ? Math.max(1, Math.round((fechaVenc.getTime() - fechaCreacion.getTime()) / (1000 * 60 * 60 * 24))) : 1;
+        const transcurridos = totalDias - diasRestantes;
+        return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
+      })();
 
     const semaforo: 'verde' | 'amarillo' | 'rojo' = diasRestantes <= 0
       ? 'rojo'
@@ -2511,11 +2532,11 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
   // Build dynamic etapas from hook
   const etapas = mergedStages.map(s => ({
-      nombre: s.nombre,
-      color: s.nombre.toLowerCase().includes('investiga') ? '#003DA5' : '#6B7280',
-      icono: getStageIcon(s.nombre),
-      diasEstimados: s.dias || 0
-    }));
+    nombre: s.nombre,
+    color: s.nombre.toLowerCase().includes('investiga') ? '#003DA5' : '#6B7280',
+    icono: getStageIcon(s.nombre),
+    diasEstimados: s.dias || 0
+  }));
 
   const etapaMap: Record<string, string> = {
     [normalizeEtapa('RECEPCION')]: 'RECEPCION',
@@ -2676,29 +2697,29 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
         return payload;
       };
 
-        const payload = {
-          origen: mapearOrigenNoticia(data.origen || 'QUEJOSO'),
-          fechaQueja: data.fechaQueja || undefined,
-          territorial: data.territorial || 'Direccion Nacional',
-          dependenciaDenunciado: denunciadoFromForm.dependencia || 'Por determinar',
-          hechos: data.descripcionHechos || '',
-          conductas: Array.isArray(data.conductasSeleccionadas) ? data.conductasSeleccionadas : [],
-          denunciante: buildDenunciantePayload(denuncianteListFromForm[0] || data.denunciante || {}),
-          disciplinable: disciplinablesFromForm.length > 0
-            ? {
-              nombre: disciplinablesFromForm[0].nombre || 'Sin denunciado',
-              cedula: disciplinablesFromForm[0].identificacion || disciplinablesFromForm[0].numeroIdentificacion || 'N/A',
-              cargo: disciplinablesFromForm[0].cargo,
-              dependencia: disciplinablesFromForm[0].dependencia
-            }
-            : {
-              nombre: denunciadoFromForm.nombre || 'Sin denunciado',
-              cedula: denunciadoFromForm.identificacion || denunciadoFromForm.numeroIdentificacion || 'N/A',
-              cargo: denunciadoFromForm.cargo,
-              dependencia: denunciadoFromForm.dependencia
-            },
-          adjuntos: urls,
-        };
+      const payload = {
+        origen: mapearOrigenNoticia(data.origen || 'QUEJOSO'),
+        fechaQueja: data.fechaQueja || undefined,
+        territorial: data.territorial || 'Direccion Nacional',
+        dependenciaDenunciado: denunciadoFromForm.dependencia || 'Por determinar',
+        hechos: data.descripcionHechos || '',
+        conductas: Array.isArray(data.conductasSeleccionadas) ? data.conductasSeleccionadas : [],
+        denunciante: buildDenunciantePayload(denuncianteListFromForm[0] || data.denunciante || {}),
+        disciplinable: disciplinablesFromForm.length > 0
+          ? {
+            nombre: disciplinablesFromForm[0].nombre || 'Sin denunciado',
+            cedula: disciplinablesFromForm[0].identificacion || disciplinablesFromForm[0].numeroIdentificacion || 'N/A',
+            cargo: disciplinablesFromForm[0].cargo,
+            dependencia: disciplinablesFromForm[0].dependencia
+          }
+          : {
+            nombre: denunciadoFromForm.nombre || 'Sin denunciado',
+            cedula: denunciadoFromForm.identificacion || denunciadoFromForm.numeroIdentificacion || 'N/A',
+            cargo: denunciadoFromForm.cargo,
+            dependencia: denunciadoFromForm.dependencia
+          },
+        adjuntos: urls,
+      };
 
       // 1. Guardar en base de datos
       const apiNoticia = await disciplinaryService.radicarNoticia(payload as any);
@@ -3669,504 +3690,503 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
                           Crear
                         </Button>
                       </div>
-                  </>
-                )}
+                    </>
+                  )}
 
-                {/* Modal: Archivar Noticia - REEMPLAZADO POR COMPONENTE MODAL COMPLETO */}
+                  {/* Modal: Archivar Noticia - REEMPLAZADO POR COMPONENTE MODAL COMPLETO */}
 
-                {/* Modal: Aprobar Borrador */}
-                {modalActivo === 'aprobar-borrador' && itemSeguro && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-green-100">
-                          <CheckCircle className="w-6 h-6 text-green-600" />
+                  {/* Modal: Aprobar Borrador */}
+                  {modalActivo === 'aprobar-borrador' && itemSeguro && (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-green-100">
+                            <CheckCircle className="w-6 h-6 text-green-600" />
+                          </div>
+                          <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
+                            Aprobar Borrador
+                          </h3>
                         </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
-                          Aprobar Borrador
-                        </h3>
-                      </div>
-                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="p-4 bg-green-50 rounded-xl border-2 border-green-200">
-                        <p className="text-sm font-bold text-green-700 mb-1">Proceso:</p>
-                        <p className="text-sm text-gray-900"> {itemSeleccionado.numeroProceso}</p>
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        Al aprobar, el documento pasará a estado final y se notificará al profesional asignado.
-                      </p>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
-                        Cancelar
-                      </Button>
-                      <Button onClick={handleConfirmarAprobacion} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
-                        <Check className="w-4 h-4 mr-2" />
-                        Aprobar
-                      </Button>
-                    </div>
-                  </>
-                )}
-
-                {/* Modal: Ver Detalles del Proceso - COMPLETO CON EDITOR */}
-                {modalActivo === 'ver-detalles' && itemSeguro && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-blue-100">
-                          <Eye className="w-6 h-6" style={{ color: '#003DA5' }} />
-                        </div>
-                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black`} style={{ color: '#003DA5' }}>
-                          {itemSeguro.tipo === 'noticia' ? 'Detalles de la Noticia' : 'Detalles del Proceso'}
-                        </h3>
-                      </div>
-                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                      {/* VISTA PARA NOTICIAS */}
-                      {itemSeguro.tipo === 'noticia' && (
-                        <>
-                          {/* Informacion de la Noticia */}
-                          <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
-                            <h4 className="font-bold text-orange-900 mb-2">{noticiaDetalle.numero}</h4>
-                            <div className="grid grid-cols-2 gap-2 text-sm">
-                              <div>
-                                <p className="text-gray-600">Origen:</p>
-                                <p className="font-bold text-gray-900">{noticiaDetalle.origen}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Fecha Recepcion:</p>
-                                <p className="font-bold text-gray-900">
-                                  {new Date(noticiaDetalle.fechaRecepcion).toLocaleDateString('es-CO')}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Fecha Queja:</p>
-                                <p className="font-bold text-gray-900">
-                                  {noticiaDetalle.fechaQueja
-                                    ? new Date(noticiaDetalle.fechaQueja).toLocaleDateString('es-CO')
-                                    : 'N/A'}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Territorial:</p>
-                                <p className="font-bold text-gray-900">{noticiaDetalle.territorial || 'N/A'}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Dependencia:</p>
-                                <p className="font-bold text-gray-900">{noticiaDetalle.dependenciaDenunciado || 'N/A'}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Estado:</p>
-                                <p className="font-bold text-gray-900 capitalize">{noticiaDetalle.estado.replace('-', ' ')}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Prioridad:</p>
-                                <p className={`font-bold ${
-                                  noticiaDetalle.prioridad === 'alta' ? 'text-red-600' :
-                                  noticiaDetalle.prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
-                                } capitalize`}>{noticiaDetalle.prioridad}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Dias Pendientes:</p>
-                                <p className="font-bold text-orange-600">{noticiaDetalle.diasPendientes} dias</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Denunciantes */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              DENUNCIANTES
-                            </h5>
-                            {noticiaDetalle.denunciantes && noticiaDetalle.denunciantes.length > 0 ? (
-                              <div className="space-y-2">
-                                {noticiaDetalle.denunciantes.map((den, idx) => (
-                                  <div key={idx} className="p-3 bg-gray-50 rounded-lg">
-                                    <p className="font-bold text-gray-900">{den.nombre}</p>
-                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mt-1">
-                                      <p>CC: {den.cedula || 'N/A'}</p>
-                                      {den.cargo && <p>Cargo: {den.cargo}</p>}
-                                      {den.entidad && <p>Entidad: {den.entidad}</p>}
-                                      {den.dependencia && !den.entidad && <p>Dependencia: {den.dependencia}</p>}
-                                      {den.telefono && <p>Telefono: {den.telefono}</p>}
-                                      {den.email && <p>Correo: {den.email}</p>}
-                                    </div>
-                                    {den.direccion && (
-                                      <p className="text-xs text-gray-600 mt-1">Direccion: {den.direccion}</p>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="p-3 bg-gray-50 rounded-lg">
-                                <p className="text-sm text-gray-600">Sin denunciante registrado</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Disciplinables */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              DENUNCIADOS
-                            </h5>
-                            {noticiaDetalle.disciplinables && noticiaDetalle.disciplinables.length > 0 ? (
-                              <div className="space-y-2">
-                                {noticiaDetalle.disciplinables.map((den, idx) => (
-                                  <div key={idx} className="p-3 bg-red-50 rounded-lg border border-red-200">
-                                    <p className="font-bold text-gray-900">{den.nombre}</p>
-                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mt-1">
-                                      <p>CC: {den.cedula || 'N/A'}</p>
-                                      {den.cargo && <p>Cargo: {den.cargo}</p>}
-                                      {den.dependencia && <p>Dependencia: {den.dependencia}</p>}
-                                      {den.telefono && <p>Telefono: {den.telefono}</p>}
-                                      {den.email && <p>Correo: {den.email}</p>}
-                                    </div>
-                                    {den.direccion && (
-                                      <p className="text-xs text-gray-600 mt-1">Direccion: {den.direccion}</p>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="p-3 bg-red-50 rounded-lg border border-red-200">
-                                <p className="text-sm text-gray-600">Sin denunciado registrado</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Conductas */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">CONDUCTAS</h5>
-                            {noticiaDetalle.conductas && noticiaDetalle.conductas.length > 0 ? (
-                              <div className="flex flex-wrap gap-2">
-                                {noticiaDetalle.conductas.map((conducta, idx) => (
-                                  <span key={idx} className="px-3 py-1 bg-orange-100 text-orange-800 text-xs font-semibold rounded-full">
-                                    {conducta}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="p-3 bg-gray-50 rounded-lg">
-                                <p className="text-sm text-gray-600">Sin conductas registradas</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Hechos */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">HECHOS</h5>
-                            <div className="p-3 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-700">{noticiaDetalle.hechos || 'Sin descripcion'}</p>
-                            </div>
-                          </div>
-
-                          {/* Adjuntos */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2">ARCHIVOS ADJUNTOS</h5>
-                            {noticiaDetalle.adjuntos && noticiaDetalle.adjuntos.length > 0 ? (
-                              <div className="space-y-2">
-                                {noticiaDetalle.adjuntos.map((archivo, idx) => {
-                                  const nombre = archivo.split('/').pop() || `Archivo ${idx + 1}`;
-                                  const ext = nombre.includes('.') ? nombre.split('.').pop() || '' : '';
-                                  const tipo = ext ? ext.toUpperCase() : 'ARCHIVO';
-                                  const descargaUrl = disciplinaryService.getFileUrl(archivo);
-                                  return (
-                                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                      <div className="flex items-center gap-3 min-w-0">
-                                        <Paperclip className="w-4 h-4 text-gray-500" />
-                                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white border border-gray-200 text-gray-600">
-                                          {tipo}
-                                        </span>
-                                        <span className="text-sm text-gray-800 truncate">{nombre}</span>
-                                      </div>
-                                      <a
-                                        href={descargaUrl}
-                                        download
-                                        className="text-sm font-semibold text-blue-700 hover:text-blue-800"
-                                      >
-                                        Descargar
-                                      </a>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="p-3 bg-gray-50 rounded-lg">
-                                <p className="text-sm text-gray-600">Sin adjuntos</p>
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
-
-                      {/* VISTA PARA PROCESOS */}
-                      {itemSeguro.tipo === 'proceso' && (
-                        <>
-                          {/* Información del Proceso */}
-                          <div className="p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
-                            <h4 className="font-bold text-blue-900 mb-2"> {(itemSeleccionado as Proceso).numeroProceso}</h4>
-                            <div className="grid grid-cols-2 gap-2 text-sm">
-                              <div>
-                                <p className="text-gray-600">Noticia Origen:</p>
-                                <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).noticiaOrigen}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Etapa:</p>
-                                <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).etapaActual}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600">Días Restantes:</p>
-                                <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).diasRestantes}d</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Denunciante */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              ?? DENUNCIANTE
-                            </h5>
-                            <div className="p-3 bg-gray-50 rounded-lg space-y-1">
-                              <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).denunciante.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Proceso).denunciante.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciante.numeroIdentificacion}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Denunciado */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              ?? DENUNCIADO
-                            </h5>
-                            <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
-                              <p className="font-bold text-gray-900 mb-1"> {(itemSeleccionado as Proceso).denunciado.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Proceso).denunciado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciado.numeroIdentificacion}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Profesional Asignado */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              ????? PROFESIONAL ASIGNADO
-                            </h5>
-                            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-1">
-                              <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).profesionalAsignado.nombre}</p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-semibold">{(itemSeleccionado as Proceso).profesionalAsignado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).profesionalAsignado.numeroIdentificacion}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* NUEVA SECCIÓN: Gestión Documental - SOLO PROCESOS */}
-                          <div>
-                            <h5 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                              <FileSignature className="w-4 h-4" style={{ color: '#003DA5' }} />
-                              GESTIÓN DOCUMENTAL
-                            </h5>
-                        <div className="grid grid-cols-2 gap-2">
-                          {/* Autos */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-autos');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Scale className="w-3.5 h-3.5 mr-2" style={{ color: '#8B5CF6' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Autos</p>
-                              <p className="text-xs text-gray-500">Providencias</p>
-                            </div>
-                          </Button>
-
-                          {/* Evidencias */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-evidencias');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Archive className="w-3.5 h-3.5 mr-2" style={{ color: '#F59E0B' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Evidencias</p>
-                              <p className="text-xs text-gray-500">Pruebas</p>
-                            </div>
-                          </Button>
-
-                          {/* Oficios */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-oficios');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Mail className="w-3.5 h-3.5 mr-2" style={{ color: '#06B6D4' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Oficios</p>
-                              <p className="text-xs text-gray-500">Comunicaciones</p>
-                            </div>
-                          </Button>
-
-                          {/* Notificaciones */}
-                          <Button
-                            onClick={() => {
-                              toast.info('Notificaciones', {
-                                description: 'Gestionar notificaciones del proceso'
-                              });
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <Bell className="w-3.5 h-3.5 mr-2" style={{ color: '#10B981' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Notificaciones</p>
-                              <p className="text-xs text-gray-500">Avisos</p>
-                            </div>
-                          </Button>
-
-                          {/* Actas */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('gestion-actas');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <FileCheck className="w-3.5 h-3.5 mr-2" style={{ color: '#DC2626' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Actas</p>
-                              <p className="text-xs text-gray-500">Diligencias</p>
-                            </div>
-                          </Button>
-
-                          {/* Historial */}
-                          <Button
-                            onClick={() => {
-                              setModalActivo('historial-auditoria');
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="w-full justify-start"
-                          >
-                            <History className="w-3.5 h-3.5 mr-2" style={{ color: '#6B7280' }} />
-                            <div className="text-left">
-                              <p className="text-xs font-bold">Historial</p>
-                              <p className="text-xs text-gray-500">Auditoría</p>
-                            </div>
-                          </Button>
-                        </div>
+                        <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                          <X className="w-5 h-5 text-gray-600" />
+                        </button>
                       </div>
 
-                      {/* Acciones Rápidas */}
-                      <div>
-                        <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                          <Settings className="w-4 h-4" style={{ color: '#003DA5' }} />
-                          ACCIONES RÁPIDAS
-                        </h5>
-                        <div className="flex justify-center">
-                          <Button
-                            onClick={() => {
-                              // Abrir modal de edición de proceso
-                              const proceso = itemSeleccionado as Proceso;
-                              setProcesoEditando(proceso);
-                              setDenunciadoEditando({
-                                nombre: proceso.denunciado.nombre,
-                                cedula: proceso.denunciado.numeroIdentificacion,
-                                cargo: proceso.cargo || ''
-                              });
-                              setObservaciones(proceso.hechos || '');
-                              setModalActivo('editar-proceso');
-                            }}
-                            size="sm"
-                            className="w-full bg-purple-600 hover:bg-purple-700 text-white"
-                          >
-                            <Edit2 className="w-3.5 h-3.5 mr-2" />
-                            Editar Proceso
-                          </Button>
+                      <div className="space-y-4">
+                        <div className="p-4 bg-green-50 rounded-xl border-2 border-green-200">
+                          <p className="text-sm font-bold text-green-700 mb-1">Proceso:</p>
+                          <p className="text-sm text-gray-900"> {itemSeleccionado.numeroProceso}</p>
                         </div>
+                        <p className="text-sm text-gray-600">
+                          Al aprobar, el documento pasará a estado final y se notificará al profesional asignado.
+                        </p>
                       </div>
 
-                      {/* Métricas - SOLO PROCESOS */}
-                      <div>
-                        <h5 className="text-sm font-bold text-gray-700 mb-2">ESTADÍSTICAS</h5>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="p-3 bg-purple-50 rounded-lg text-center">
-                            <p className="text-2xl font-black text-purple-700"> {getBorradoresCount(itemSeleccionado as Proceso)}</p>
-                            <p className="text-xs text-gray-600">Borradores</p>
-                          </div>
-                          <div className="p-3 bg-blue-50 rounded-lg text-center">
-                            <p className="text-2xl font-black text-blue-700"> {getDocStats(itemSeleccionado as Proceso).total}</p>
-                            <p className="text-xs text-gray-600">Documentos</p>
-                          </div>
-                          <div className="p-3 bg-green-50 rounded-lg text-center">
-                            <p className="text-2xl font-black text-green-700"> {(itemSeleccionado as Proceso).porcentajeTiempo}%</p>
-                            <p className="text-xs text-gray-600">Tiempo</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Última Actuaci�n - SOLO PROCESOS */}
-                      <div>
-                        <h5 className="text-sm font-bold text-gray-700 mb-2">ÚLTIMA ACTUACIÓN</h5>
-                        <div className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-700"> {(itemSeleccionado as Proceso).ultimaActuacion}</p>
-                          <p className="text-xs text-gray-500 mt-1"> {(itemSeleccionado as Proceso).fechaCreacion}</p>
-                        </div>
+                      <div className="flex gap-3 mt-6">
+                        <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                          Cancelar
+                        </Button>
+                        <Button onClick={handleConfirmarAprobacion} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
+                          <Check className="w-4 h-4 mr-2" />
+                          Aprobar
+                        </Button>
                       </div>
                     </>
                   )}
 
-                  </div>
+                  {/* Modal: Ver Detalles del Proceso - COMPLETO CON EDITOR */}
+                  {modalActivo === 'ver-detalles' && itemSeguro && (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-blue-100">
+                            <Eye className="w-6 h-6" style={{ color: '#003DA5' }} />
+                          </div>
+                          <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black`} style={{ color: '#003DA5' }}>
+                            {itemSeguro.tipo === 'noticia' ? 'Detalles de la Noticia' : 'Detalles del Proceso'}
+                          </h3>
+                        </div>
+                        <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                          <X className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </div>
 
-                  {/* Botones Finales */}
-                  <div className="flex gap-2 mt-4">
-                    <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
-                      Cerrar
-                    </Button>
-                    {itemSeleccionado.tipo === 'proceso' && (
-                      <Button
-                        onClick={() => handleVerExpediente(itemSeleccionado as Proceso)}
-                        className="flex-1"
-                        style={{ background: '#8B5CF6', color: '#FFFFFF' }}
-                      >
-                        <Archive className="w-4 h-4 mr-2" />
-                        Expediente Completo
-                      </Button>
-                    )}
-                    {itemSeleccionado.tipo === 'noticia' && (
-                      <Button
-                        onClick={() => {
-                          setModalActivo(null);
-                          handleConvertirNoticia(itemSeleccionado as Noticia);
-                        }}
-                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                      >
-                        <PlusCircle className="w-4 h-4 mr-2" />
-                        Convertir a Proceso
-                      </Button>
-                    )}
-                  </div>
-                </>
-              )}
+                      <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                        {/* VISTA PARA NOTICIAS */}
+                        {itemSeguro.tipo === 'noticia' && (
+                          <>
+                            {/* Informacion de la Noticia */}
+                            <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
+                              <h4 className="font-bold text-orange-900 mb-2">{noticiaDetalle.numero}</h4>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div>
+                                  <p className="text-gray-600">Origen:</p>
+                                  <p className="font-bold text-gray-900">{noticiaDetalle.origen}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Fecha Recepcion:</p>
+                                  <p className="font-bold text-gray-900">
+                                    {new Date(noticiaDetalle.fechaRecepcion).toLocaleDateString('es-CO')}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Fecha Queja:</p>
+                                  <p className="font-bold text-gray-900">
+                                    {noticiaDetalle.fechaQueja
+                                      ? new Date(noticiaDetalle.fechaQueja).toLocaleDateString('es-CO')
+                                      : 'N/A'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Territorial:</p>
+                                  <p className="font-bold text-gray-900">{noticiaDetalle.territorial || 'N/A'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Dependencia:</p>
+                                  <p className="font-bold text-gray-900">{noticiaDetalle.dependenciaDenunciado || 'N/A'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Estado:</p>
+                                  <p className="font-bold text-gray-900 capitalize">{noticiaDetalle.estado.replace('-', ' ')}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Prioridad:</p>
+                                  <p className={`font-bold ${noticiaDetalle.prioridad === 'alta' ? 'text-red-600' :
+                                    noticiaDetalle.prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
+                                    } capitalize`}>{noticiaDetalle.prioridad}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Dias Pendientes:</p>
+                                  <p className="font-bold text-orange-600">{noticiaDetalle.diasPendientes} dias</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Denunciantes */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                DENUNCIANTES
+                              </h5>
+                              {noticiaDetalle.denunciantes && noticiaDetalle.denunciantes.length > 0 ? (
+                                <div className="space-y-2">
+                                  {noticiaDetalle.denunciantes.map((den, idx) => (
+                                    <div key={idx} className="p-3 bg-gray-50 rounded-lg">
+                                      <p className="font-bold text-gray-900">{den.nombre}</p>
+                                      <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mt-1">
+                                        <p>CC: {den.cedula || 'N/A'}</p>
+                                        {den.cargo && <p>Cargo: {den.cargo}</p>}
+                                        {den.entidad && <p>Entidad: {den.entidad}</p>}
+                                        {den.dependencia && !den.entidad && <p>Dependencia: {den.dependencia}</p>}
+                                        {den.telefono && <p>Telefono: {den.telefono}</p>}
+                                        {den.email && <p>Correo: {den.email}</p>}
+                                      </div>
+                                      {den.direccion && (
+                                        <p className="text-xs text-gray-600 mt-1">Direccion: {den.direccion}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="p-3 bg-gray-50 rounded-lg">
+                                  <p className="text-sm text-gray-600">Sin denunciante registrado</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Disciplinables */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                DENUNCIADOS
+                              </h5>
+                              {noticiaDetalle.disciplinables && noticiaDetalle.disciplinables.length > 0 ? (
+                                <div className="space-y-2">
+                                  {noticiaDetalle.disciplinables.map((den, idx) => (
+                                    <div key={idx} className="p-3 bg-red-50 rounded-lg border border-red-200">
+                                      <p className="font-bold text-gray-900">{den.nombre}</p>
+                                      <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mt-1">
+                                        <p>CC: {den.cedula || 'N/A'}</p>
+                                        {den.cargo && <p>Cargo: {den.cargo}</p>}
+                                        {den.dependencia && <p>Dependencia: {den.dependencia}</p>}
+                                        {den.telefono && <p>Telefono: {den.telefono}</p>}
+                                        {den.email && <p>Correo: {den.email}</p>}
+                                      </div>
+                                      {den.direccion && (
+                                        <p className="text-xs text-gray-600 mt-1">Direccion: {den.direccion}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+                                  <p className="text-sm text-gray-600">Sin denunciado registrado</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Conductas */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2">CONDUCTAS</h5>
+                              {noticiaDetalle.conductas && noticiaDetalle.conductas.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {noticiaDetalle.conductas.map((conducta, idx) => (
+                                    <span key={idx} className="px-3 py-1 bg-orange-100 text-orange-800 text-xs font-semibold rounded-full">
+                                      {conducta}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="p-3 bg-gray-50 rounded-lg">
+                                  <p className="text-sm text-gray-600">Sin conductas registradas</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Hechos */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2">HECHOS</h5>
+                              <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm text-gray-700">{noticiaDetalle.hechos || 'Sin descripcion'}</p>
+                              </div>
+                            </div>
+
+                            {/* Adjuntos */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2">ARCHIVOS ADJUNTOS</h5>
+                              {noticiaDetalle.adjuntos && noticiaDetalle.adjuntos.length > 0 ? (
+                                <div className="space-y-2">
+                                  {noticiaDetalle.adjuntos.map((archivo, idx) => {
+                                    const nombre = archivo.split('/').pop() || `Archivo ${idx + 1}`;
+                                    const ext = nombre.includes('.') ? nombre.split('.').pop() || '' : '';
+                                    const tipo = ext ? ext.toUpperCase() : 'ARCHIVO';
+                                    const descargaUrl = disciplinaryService.getFileUrl(archivo);
+                                    return (
+                                      <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                          <Paperclip className="w-4 h-4 text-gray-500" />
+                                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white border border-gray-200 text-gray-600">
+                                            {tipo}
+                                          </span>
+                                          <span className="text-sm text-gray-800 truncate">{nombre}</span>
+                                        </div>
+                                        <a
+                                          href={descargaUrl}
+                                          download
+                                          className="text-sm font-semibold text-blue-700 hover:text-blue-800"
+                                        >
+                                          Descargar
+                                        </a>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="p-3 bg-gray-50 rounded-lg">
+                                  <p className="text-sm text-gray-600">Sin adjuntos</p>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+
+                        {/* VISTA PARA PROCESOS */}
+                        {itemSeguro.tipo === 'proceso' && (
+                          <>
+                            {/* Información del Proceso */}
+                            <div className="p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
+                              <h4 className="font-bold text-blue-900 mb-2"> {(itemSeleccionado as Proceso).numeroProceso}</h4>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div>
+                                  <p className="text-gray-600">Noticia Origen:</p>
+                                  <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).noticiaOrigen}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Etapa:</p>
+                                  <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).etapaActual}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Días Restantes:</p>
+                                  <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).diasRestantes}d</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Denunciante */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                ?? DENUNCIANTE
+                              </h5>
+                              <div className="p-3 bg-gray-50 rounded-lg space-y-1">
+                                <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).denunciante.nombre}</p>
+                                <p className="text-sm text-gray-600">
+                                  <span className="font-semibold">{(itemSeleccionado as Proceso).denunciante.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciante.numeroIdentificacion}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Denunciado */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                ?? DENUNCIADO
+                              </h5>
+                              <div className="p-3 bg-red-50 rounded-lg border border-red-200 space-y-1">
+                                <p className="font-bold text-gray-900 mb-1"> {(itemSeleccionado as Proceso).denunciado.nombre}</p>
+                                <p className="text-sm text-gray-600">
+                                  <span className="font-semibold">{(itemSeleccionado as Proceso).denunciado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).denunciado.numeroIdentificacion}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Profesional Asignado */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                ????? PROFESIONAL ASIGNADO
+                              </h5>
+                              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-1">
+                                <p className="font-bold text-gray-900">{(itemSeleccionado as Proceso).profesionalAsignado.nombre}</p>
+                                <p className="text-sm text-gray-600">
+                                  <span className="font-semibold">{(itemSeleccionado as Proceso).profesionalAsignado.tipoIdentificacion}:</span> {(itemSeleccionado as Proceso).profesionalAsignado.numeroIdentificacion}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* NUEVA SECCIÓN: Gestión Documental - SOLO PROCESOS */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                <FileSignature className="w-4 h-4" style={{ color: '#003DA5' }} />
+                                GESTIÓN DOCUMENTAL
+                              </h5>
+                              <div className="grid grid-cols-2 gap-2">
+                                {/* Autos */}
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('gestion-autos');
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <Scale className="w-3.5 h-3.5 mr-2" style={{ color: '#8B5CF6' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Autos</p>
+                                    <p className="text-xs text-gray-500">Providencias</p>
+                                  </div>
+                                </Button>
+
+                                {/* Evidencias */}
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('gestion-evidencias');
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <Archive className="w-3.5 h-3.5 mr-2" style={{ color: '#F59E0B' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Evidencias</p>
+                                    <p className="text-xs text-gray-500">Pruebas</p>
+                                  </div>
+                                </Button>
+
+                                {/* Oficios */}
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('gestion-oficios');
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <Mail className="w-3.5 h-3.5 mr-2" style={{ color: '#06B6D4' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Oficios</p>
+                                    <p className="text-xs text-gray-500">Comunicaciones</p>
+                                  </div>
+                                </Button>
+
+                                {/* Notificaciones */}
+                                <Button
+                                  onClick={() => {
+                                    toast.info('Notificaciones', {
+                                      description: 'Gestionar notificaciones del proceso'
+                                    });
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <Bell className="w-3.5 h-3.5 mr-2" style={{ color: '#10B981' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Notificaciones</p>
+                                    <p className="text-xs text-gray-500">Avisos</p>
+                                  </div>
+                                </Button>
+
+                                {/* Actas */}
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('gestion-actas');
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <FileCheck className="w-3.5 h-3.5 mr-2" style={{ color: '#DC2626' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Actas</p>
+                                    <p className="text-xs text-gray-500">Diligencias</p>
+                                  </div>
+                                </Button>
+
+                                {/* Historial */}
+                                <Button
+                                  onClick={() => {
+                                    setModalActivo('historial-auditoria');
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full justify-start"
+                                >
+                                  <History className="w-3.5 h-3.5 mr-2" style={{ color: '#6B7280' }} />
+                                  <div className="text-left">
+                                    <p className="text-xs font-bold">Historial</p>
+                                    <p className="text-xs text-gray-500">Auditoría</p>
+                                  </div>
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Acciones Rápidas */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                <Settings className="w-4 h-4" style={{ color: '#003DA5' }} />
+                                ACCIONES RÁPIDAS
+                              </h5>
+                              <div className="flex justify-center">
+                                <Button
+                                  onClick={() => {
+                                    // Abrir modal de edición de proceso
+                                    const proceso = itemSeleccionado as Proceso;
+                                    setProcesoEditando(proceso);
+                                    setDenunciadoEditando({
+                                      nombre: proceso.denunciado.nombre,
+                                      cedula: proceso.denunciado.numeroIdentificacion,
+                                      cargo: proceso.cargo || ''
+                                    });
+                                    setObservaciones(proceso.hechos || '');
+                                    setModalActivo('editar-proceso');
+                                  }}
+                                  size="sm"
+                                  className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5 mr-2" />
+                                  Editar Proceso
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Métricas - SOLO PROCESOS */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2">ESTADÍSTICAS</h5>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="p-3 bg-purple-50 rounded-lg text-center">
+                                  <p className="text-2xl font-black text-purple-700"> {getBorradoresCount(itemSeleccionado as Proceso)}</p>
+                                  <p className="text-xs text-gray-600">Borradores</p>
+                                </div>
+                                <div className="p-3 bg-blue-50 rounded-lg text-center">
+                                  <p className="text-2xl font-black text-blue-700"> {getDocStats(itemSeleccionado as Proceso).total}</p>
+                                  <p className="text-xs text-gray-600">Documentos</p>
+                                </div>
+                                <div className="p-3 bg-green-50 rounded-lg text-center">
+                                  <p className="text-2xl font-black text-green-700"> {(itemSeleccionado as Proceso).porcentajeTiempo}%</p>
+                                  <p className="text-xs text-gray-600">Tiempo</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Última Actuaci�n - SOLO PROCESOS */}
+                            <div>
+                              <h5 className="text-sm font-bold text-gray-700 mb-2">ÚLTIMA ACTUACIÓN</h5>
+                              <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm text-gray-700"> {(itemSeleccionado as Proceso).ultimaActuacion}</p>
+                                <p className="text-xs text-gray-500 mt-1"> {(itemSeleccionado as Proceso).fechaCreacion}</p>
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                      </div>
+
+                      {/* Botones Finales */}
+                      <div className="flex gap-2 mt-4">
+                        <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                          Cerrar
+                        </Button>
+                        {itemSeleccionado.tipo === 'proceso' && (
+                          <Button
+                            onClick={() => handleVerExpediente(itemSeleccionado as Proceso)}
+                            className="flex-1"
+                            style={{ background: '#8B5CF6', color: '#FFFFFF' }}
+                          >
+                            <Archive className="w-4 h-4 mr-2" />
+                            Expediente Completo
+                          </Button>
+                        )}
+                        {itemSeleccionado.tipo === 'noticia' && (
+                          <Button
+                            onClick={() => {
+                              setModalActivo(null);
+                              handleConvertirNoticia(itemSeleccionado as Noticia);
+                            }}
+                            className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <PlusCircle className="w-4 h-4 mr-2" />
+                            Convertir a Proceso
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  )}
 
                   {/* Modal: Devolver Noticia */}
                   {modalActivo === 'devolver-noticia' && itemSeguro && (

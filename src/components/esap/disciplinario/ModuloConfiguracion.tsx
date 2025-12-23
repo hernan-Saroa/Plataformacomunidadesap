@@ -58,32 +58,57 @@ export function ModuloConfiguracion() {
   const loadConfiguration = async () => {
     try {
       setLoading(true);
-      const [globalConfig, stagesConfig] = await Promise.all([
+      const [globalConfig, stagesConfig, availableRoles] = await Promise.all([
         disciplinaryService.getGlobalConfig(),
-        disciplinaryService.getStageConfiguration()
+        disciplinaryService.getStageConfiguration(),
+        disciplinaryService.getAvailableRoles().catch(() => []) // Fallback to empty if endpoint fails
       ]);
 
       // 1. Mapear Global Config (Capacidades, Notificaciones, Alertas)
       if (globalConfig) {
         // Capacidades
-        // Capacities
-        if (globalConfig.roleCapacities) {
-          let entries: [string, any][] = [];
+        const roleCapacities = globalConfig.roleCapacities || {};
 
-          // Robust check: is it an array or an object?
-          if (Array.isArray(globalConfig.roleCapacities)) {
-            // If array, we might lose keys? Or maybe it's just values.
-            // Best guess: map indices or try to salvage structure. 
-            // But honestly, it should be an object. If it's an array, it's likely corrupt or defaulted wrong.
-            // Let's filter out numeric keys if possible or just log warning.
-            console.warn('roleCapacities is an array, expected object:', globalConfig.roleCapacities);
-            // Fallback: try to see if it has named keys attached (weird JS) or just skip
+        // Merge DB roles with Configured capacities
+        // Source of truth for EXISTENCE is availableRoles (from DB professionals)
+        // Source of truth for CAPACITY is globalConfig
+
+        // If availableRoles is empty (e.g. no professionals yet), we might want to show defaults or nothing.
+        // Let's assume we show what's in DB + what's in Config (legacy support)
+        // or strictly what's in DB. The requirement says "basado en la composición actual".
+
+        // Let's normalize keys
+        const normalizeKey = (name: string) => name.toLowerCase().replace(/ /g, '_');
+
+        let mergedCargos: Cargo[] = [];
+
+        if (availableRoles && availableRoles.length > 0) {
+          mergedCargos = availableRoles.map((roleName: string, index: number) => {
+            const key = normalizeKey(roleName);
+            // Try to find capacity by exact key or normalized key
+            // Note: roleCapacities might have keys like 'asesor_juridico'
+            let capacity = roleCapacities[key] || roleCapacities[roleName];
+
+            // If not found, default to 10
+            if (capacity === undefined) capacity = 10;
+
+            return {
+              id: (index + 1).toString(),
+              nombre: roleName, // Use the name from DB directly
+              capacidad: Number(capacity),
+              rolId: key // Store normalized key for saving
+            };
+          });
+        } else {
+          // Fallback: Use only config if no DB roles found (legacy behavior)
+          let entries: [string, any][] = [];
+          if (Array.isArray(roleCapacities)) {
+            console.warn('roleCapacities is an array:', roleCapacities);
           } else {
-            entries = Object.entries(globalConfig.roleCapacities);
+            entries = Object.entries(roleCapacities);
           }
 
-          const loadedCargos = entries.map(([key, value], index) => {
-            // Fix: Ensure we don't display numeric keys if somehow they got in
+          mergedCargos = entries.map(([key, value], index) => {
             const name = isNaN(Number(key)) ? key.replace(/_/g, ' ').toUpperCase() : `CARGO ${key}`;
             return {
               id: (index + 1).toString(),
@@ -92,8 +117,9 @@ export function ModuloConfiguracion() {
               rolId: key
             };
           });
-          setCargos(loadedCargos);
         }
+
+        setCargos(mergedCargos);
 
         // Notificaciones
         if (globalConfig.notificationSettings) {
