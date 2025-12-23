@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
 interface Usuario {
@@ -61,6 +60,10 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
 
     setIsLoading(true);
 
+    // 🔥 LIMPIAR CACHÉ COMPLETAMENTE AL HACER LOGIN
+    localStorage.removeItem('esap-sesion-activa');
+    console.log('🗑️ LocalStorage limpiado');
+
     try {
       // Simular autenticación con delay realista
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -73,11 +76,11 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
         'estudiantes@esap.edu.co', 
         'egresados@esap.edu.co', 
         'docentes@esap.edu.co',
-        'funcionario@esap.edu.co',  // Usuario externo - Portal
-        'planta@esap.edu.co',        // Usuario externo - Portal
+        'funcionario@esap.edu.co',  // ✅ Diego Trujillo - Funcionario de Planeación
+        'planta@esap.edu.co',
       ];
       
-      // Usuarios internos (Backoffice)
+      // Usuarios internos (Backoffice Administrativo)
       const usuariosInternos = [
         'superuser@esap.edu.co',
         'rector@esap.edu.co',
@@ -88,6 +91,8 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
         'arqempresarial@esap.edu.co',
         'gestion.legal@esap.edu.co',
         'c.internoge@esap.edu.co',
+        'c.disciplinario@esap.edu.co',
+        'registro.academico@esap.edu.co',
         'gestion.profesoral@esap.edu.co', // Usuario específico para Gestión Profesoral
       ];
 
@@ -104,10 +109,10 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
         return;
       }
 
-      // Verificar contraseña (en este demo, cualquier contraseña de 6+ caracteres es válida)
-      if (password.length < 6) {
+      // Verificar contraseña (debe ser exactamente "123456")
+      if (password !== '123456') {
         toast.error('Contraseña incorrecta', {
-          description: '🔑 La contraseña ingresada no es válida.',
+          description: '🔑 La contraseña ingresada no es válida. Por favor verifica tu contraseña.',
           duration: 5000,
         });
         setErrors({ ...errors, password: 'La contraseña es incorrecta' });
@@ -115,34 +120,49 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
         return;
       }
 
-      // Determinar tipo de usuario y crear objeto Usuario
+      // Determinar tipo de usuario y redirigir
       let usuario: Usuario;
-
-      if (usuariosExternos.includes(emailLower)) {
-        // Usuario externo → Portal Transaccional
-        usuario = {
-          id: 'user-ext-001',
-          nombre: 'Usuario Portal',
-          tipo: 'externo',
-          email: emailLower,
+      
+      if (emailLower === 'estudiantes@esap.edu.co' || 
+          emailLower === 'estudiante@esap.edu.co' || 
+          emailLower === 'funcionario@esap.edu.co') {
+        // Usuarios específicos del Portal Transaccional
+        const nombres: Record<string, string> = {
+          'estudiantes@esap.edu.co': 'Estudiante Demo',
+          'estudiante@esap.edu.co': 'Estudiante Demo',
+          'funcionario@esap.edu.co': 'Diego Trujillo', // ✅ Usuario administrativo de Planeación
         };
-        toast.success('🎓 ¡Bienvenido!', {
+
+        usuario = {
+          id: emailLower === 'funcionario@esap.edu.co' ? 'func-001' : 'user-ext-001',
+          nombre: nombres[emailLower] || 'Usuario Portal',
+          tipo: 'externo', // ✅ Tipo externo para ir al Portal Transaccional
+          email: emailLower,
+          rol: emailLower === 'funcionario@esap.edu.co' ? 'Administrativo' : 'Estudiante',
+        };
+
+        console.log('✅ Usuario creado para Portal Transaccional:', usuario);
+
+        toast.success(`✅ ¡Bienvenido ${nombres[emailLower]}!`, {
           description: 'Acceso al Portal Transaccional concedido',
           duration: 3500,
         });
       } else {
         // Usuario interno → Backoffice
         const roles: Record<string, string> = {
-          'superuser@esap.edu.co': 'Super Administrador',
-          'rector@esap.edu.co': 'Rector',
+          'docentes@esap.edu.co': 'Docente',
           'director@esap.edu.co': 'Director',
           'admin@esap.edu.co': 'Administrador',
+          'superuser@esap.edu.co': 'Super Usuario',
+          'rector@esap.edu.co': 'Rector',
           'gestion.legal@esap.edu.co': 'Gestión Legal',
           'c.internoge@esap.edu.co': 'Control Interno',
+          'c.disciplinario@esap.edu.co': 'Control Disciplinario',
           'cerlaboral@esap.edu.co': 'Certificados Laborales',
           'arqempresarial@esap.edu.co': 'Arquitectura Empresarial',
           'ar.empresarial@esap.edu.co': 'Arquitectura Empresarial',
           'gestion.profesoral@esap.edu.co': 'Gestión Profesoral',
+          'registro.academico@esap.edu.co': 'Registro Académico',
         };
 
         usuario = {
@@ -152,6 +172,8 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
           email: emailLower,
           rol: roles[emailLower] || 'Administrador',
         };
+
+        console.log('✅ Usuario creado para Backoffice Administrativo:', usuario);
 
         toast.success(`⚡ ¡Bienvenido ${roles[emailLower] || 'Administrador'}!`, {
           description: 'Acceso al Backoffice Administrativo concedido',
@@ -200,9 +222,10 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
             {/* Logo - Mobile Only */}
             <div className="lg:hidden flex justify-center mb-6">
               <img 
-                src={esapLogo} 
-                alt="ESAP" 
-                className="h-12 w-auto object-contain"
+                src={esapLogoWhite} 
+                alt="ESAP Logo" 
+                className="h-10 w-auto object-contain"
+                style={{ filter: 'brightness(0) saturate(100%) invert(28%) sepia(91%) saturate(1448%) hue-rotate(197deg) brightness(91%) contrast(101%)' }}
               />
             </div>
 
@@ -459,8 +482,10 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
                     <code className="block px-2 py-1 bg-white rounded text-[10px]">c.internoge@esap.edu.co <span className="text-blue-600">(Control Interno)</span></code>
                     
                     <p className="text-[10px] text-orange-700 mb-1.5 mt-3 italic">⚠️ Acceso exclusivo a un solo módulo:</p>
+                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">c.disciplinario@esap.edu.co <span className="text-orange-700">(⚖️ Solo Control Disciplinario)</span></code>
                     <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.profesoral@esap.edu.co <span className="text-orange-700">(📚 Solo Gestión Profesoral)</span></code>
                     <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.legal@esap.edu.co <span className="text-orange-700">(⚖️ Solo Gestión Legal)</span></code>
+                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">registro.academico@esap.edu.co <span className="text-orange-700">(📚 Solo Registro Académico)</span></code>
                   </div>
                 </div>
               </motion.div>
@@ -529,11 +554,12 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
+              className="flex items-start"
             >
               <img 
                 src={esapLogoWhite} 
-                alt="ESAP" 
-                className="h-12 lg:h-14 xl:h-16 2xl:h-20 w-auto object-contain drop-shadow-2xl"
+                alt="ESAP Logo" 
+                className="h-16 w-auto object-contain drop-shadow-2xl"
               />
             </motion.div>
 

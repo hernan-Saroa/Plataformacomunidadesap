@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as React from 'react';
-import { X, Send, User, FileText, Calendar, CheckCircle, Clock, TrendingUp } from 'lucide-react';
+import { X, Send, User, FileText, Calendar, CheckCircle, Clock, TrendingUp, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ButtonSIGL } from '../esap/gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../esap/gestion-legal/design-system/BadgeSIGL';

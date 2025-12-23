@@ -1,3 +1,5 @@
+import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { 
   LayoutDashboard,
@@ -8,10 +10,10 @@ import {
   ChevronRight,
   UserCheck,
   ClipboardCheck,
-  Send
+  Send,
+  GraduationCap,
+  Workflow  // ✅ NUEVO - Icono para Flujo Secuencial
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { toast } from 'sonner';
 import { DashboardGestionProfesoral } from './DashboardGestionProfesoral';
 import { Modulo1PlanificacionAcademica } from './Modulo1PlanificacionAcademica';
 import { Modulo2Convocatorias } from './Modulo2Convocatorias';
@@ -20,9 +22,14 @@ import { Modulo5EvaluacionDocente } from './Modulo5EvaluacionDocente';
 import { PTAsList } from './PTAsList';
 import { CalendarioAcademicoModule } from './CalendarioAcademicoModule';
 import { ModalEnviarPTA } from './ModalEnviarPTA';
+import { DirectorioDocenteModule } from './DirectorioDocenteModule';
+import { FlujoSecuencialGestionProfesoral } from './FlujoSecuencialGestionProfesoral';  // ✅ NUEVO - Flujo Secuencial
+import { Fase1PlanificacionSemestral } from './Fase1PlanificacionSemestral';  // ✅ NUEVO - Fase 1
+import { Fase2AnalisisNecesidades } from './Fase2AnalisisNecesidades';  // ✅ NUEVO - Fase 2
+import { Fase4ProgramacionDocente } from './Fase4ProgramacionDocente';  // ✅ NUEVO - Fase 4
 
-// Tabs del módulo - 6 MÓDULOS PRINCIPALES
-type TabType = 'dashboard' | 'calendario' | 'planificacion' | 'convocatorias' | 'ptas' | 'hora-catedra' | 'evaluacion';
+// Tabs del módulo - 8 MÓDULOS PRINCIPALES (agregado Flujo Secuencial)
+type TabType = 'dashboard' | 'flujo-secuencial' | 'calendario' | 'planificacion' | 'convocatorias' | 'ptas' | 'hora-catedra' | 'evaluacion' | 'directorio';
 
 interface GestionProfesoralModuleProps {
   className?: string;
@@ -37,6 +44,13 @@ export function GestionProfesoralModule({ className = '' }: GestionProfesoralMod
       label: 'Dashboard', 
       icon: LayoutDashboard,
       description: 'Panel de control principal',
+      badge: null
+    },
+    { 
+      id: 'flujo-secuencial' as TabType, 
+      label: 'Flujo Secuencial', 
+      icon: Workflow,  // ✅ NUEVO - Icono para Flujo Secuencial
+      description: 'Flujo secuencial de gestión docente',
       badge: null
     },
     { 
@@ -80,6 +94,13 @@ export function GestionProfesoralModule({ className = '' }: GestionProfesoralMod
       icon: Star,
       description: 'Evaluación docente',
       badge: null
+    },
+    { 
+      id: 'directorio' as TabType, 
+      label: '6. Directorio Docente', 
+      icon: GraduationCap,  // ✅ NUEVO - Icono para Directorio Docente
+      description: 'Directorio completo de docentes',
+      badge: '270'
     }
   ];
 
@@ -87,10 +108,29 @@ export function GestionProfesoralModule({ className = '' }: GestionProfesoralMod
     switch (activeTab) {
       case 'dashboard':
         return <DashboardGestionProfesoral onNavigate={setActiveTab} />;
+      case 'flujo-secuencial':
+        return <FlujoSecuencialGestionProfesoral 
+          onFaseChange={(fase) => {
+            // Manejar cambio de fase
+            console.log('Fase cambiada:', fase);
+          }}
+          onVerDetalles={(fase) => {
+            // Navegar a la fase específica
+            if (fase === 'planificacion-semestral') {
+              setActiveTab('planificacion');
+            } else if (fase === 'convocatorias') {
+              setActiveTab('convocatorias');
+            } else if (fase === 'programacion-docente') {
+              setActiveTab('ptas');
+            } else if (fase === 'evaluacion-docente') {
+              setActiveTab('evaluacion');
+            }
+          }}
+        />;
       case 'calendario':
         return <CalendarioAcademicoModule />;
       case 'planificacion':
-        return <Modulo1Planificacion />;
+        return <Fase1PlanificacionSemestral />;
       case 'convocatorias':
         return <Modulo2ConvocatoriasWrapper />;
       case 'ptas':
@@ -99,6 +139,8 @@ export function GestionProfesoralModule({ className = '' }: GestionProfesoralMod
         return <Modulo4HoraCatedraWrapper />;
       case 'evaluacion':
         return <Modulo5EvaluacionWrapper />;
+      case 'directorio':
+        return <DirectorioDocenteModule />;
       default:
         return <DashboardGestionProfesoral onNavigate={setActiveTab} />;
     }

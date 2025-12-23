@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import esapStudentsReal from 'figma:asset/9366aaa7d27856d9aef10bd134f20dbe9d256906.png';
 import { 
@@ -9,6 +9,8 @@ import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { motion, useScroll, useTransform, useReducedMotion } from 'motion/react';
 import { FooterGovCo } from './FooterGovCo';
+import { SolicitarCertificadoLaboral } from './SolicitarCertificadoLaboral';
+import { PublicTitleVerification } from './PublicTitleVerification';
 
 interface LandingPageProps {
   onIrALogin?: () => void;
@@ -16,6 +18,8 @@ interface LandingPageProps {
 }
 
 export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
+  const [vistaActual, setVistaActual] = useState<'landing' | 'certificados-laborales' | 'certificados-graduados'>('landing');
+  
   const handleLoginClick = () => {
     if (onIrALogin) {
       onIrALogin();
@@ -35,7 +39,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
       icon: <Award className="w-7 h-7" />,
       title: 'Validación de Certificados de Graduados',
       description: 'Cada certificado tiene un QR único para validación pública. Sistema de trazabilidad completa que registra cada validación.',
-      action: handleLoginClick,
+      action: () => setVistaActual('certificados-graduados'),
       gradient: 'from-emerald-600 to-emerald-700',
       badge: 'Seguro'
     },
@@ -43,7 +47,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
       icon: <Briefcase className="w-7 h-7" />,
       title: 'Certificados Laborales',
       description: 'Solicita tu certificado laboral de forma automática. Validamos tu identidad por correo y generas tu certificado al instante.',
-      action: handleLoginClick,
+      action: () => setVistaActual('certificados-laborales'),
       gradient: 'from-sky-600 to-blue-700',
       badge: 'Abierto'
     }
@@ -110,6 +114,26 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
     'Pontificia Javeriana',
     'Universidad del Rosario'
   ];
+
+  // Renderizar vista de certificados laborales si está activa
+  if (vistaActual === 'certificados-laborales') {
+    return (
+      <SolicitarCertificadoLaboral 
+        onBack={() => setVistaActual('landing')}
+        onLoginClick={handleLoginClick}
+      />
+    );
+  }
+
+  // Renderizar vista de certificados de graduados si está activa
+  if (vistaActual === 'certificados-graduados') {
+    return (
+      <PublicTitleVerification 
+        onBack={() => setVistaActual('landing')}
+        onLoginClick={handleLoginClick}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-50">

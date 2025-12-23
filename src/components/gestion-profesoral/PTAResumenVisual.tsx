@@ -46,15 +46,132 @@ export function PTAResumenVisual({ pta, docente, onCerrar }: PTAResumenVisualPro
   
   const [seccionExpandida, setSeccionExpandida] = useState<string | null>(null);
   
+  // Datos demo cuando el PTA está vacío
+  const usarDatosDemo = !pta.componenteDocencia && !pta.componenteInvestigacion;
+  
+  // Si no hay datos, usar datos demo para mostrar el funcionamiento
+  const ptaConDatos = usarDatosDemo ? {
+    ...pta,
+    horas_programables: 360,
+    componenteDocencia: {
+      horas: 180,
+      porcentaje: 50,
+      actividades: [
+        {
+          nombreAsignatura: 'Derecho Administrativo I',
+          codigoAsignatura: 'DER-101',
+          programaAcademico: 'Derecho',
+          territorial: 'Nacional',
+          numeroCreditos: 4,
+          horasPTA: 80,
+          porcentajePTA: 22.2,
+          modalidad: 'Presencial',
+          totalEstudiantes: 45,
+          horasBase: 16
+        },
+        {
+          nombreAsignatura: 'Teoría del Estado',
+          codigoAsignatura: 'DER-102',
+          programaAcademico: 'Derecho',
+          territorial: 'Nacional',
+          numeroCreditos: 3,
+          horasPTA: 60,
+          porcentajePTA: 16.7,
+          modalidad: 'Presencial',
+          totalEstudiantes: 38,
+          horasBase: 12
+        },
+        {
+          nombreAsignatura: 'Políticas Públicas',
+          codigoAsignatura: 'ADM-201',
+          programaAcademico: 'Administración Pública',
+          territorial: 'Nacional',
+          numeroCreditos: 2,
+          horasPTA: 40,
+          porcentajePTA: 11.1,
+          modalidad: 'Virtual',
+          totalEstudiantes: 52,
+          horasBase: 8
+        }
+      ]
+    },
+    componenteInvestigacion: {
+      horas: 99,
+      porcentaje: 27.5,
+      actividades: [
+        {
+          nombreProyecto: 'Investigación sobre Gobierno Digital',
+          tipoProyectoLabel: 'Proyecto MinCiencias',
+          rolLabel: 'Investigador Principal',
+          grupoInvestigacion: 'Estado y Políticas Públicas',
+          horasDescarga: 60,
+          porcentajePTA: 16.7,
+          productosComprometidos: ['Artículo Categoría A1', 'Capítulo de libro', 'Ponencia internacional']
+        },
+        {
+          nombreProyecto: 'Análisis de Reforma Administrativa',
+          tipoProyectoLabel: 'Investigación Institucional',
+          rolLabel: 'Co-investigador',
+          grupoInvestigacion: 'Estado y Políticas Públicas',
+          horasDescarga: 39,
+          porcentajePTA: 10.8,
+          productosComprometidos: ['Artículo Categoría B', 'Working paper']
+        }
+      ]
+    },
+    componenteExtension: {
+      horas: 57.6,
+      porcentaje: 16,
+      actividades: [
+        {
+          nombreActividad: 'Convenio Gobernación de Cundinamarca',
+          tipoExtensionLabel: 'Asesoría/Consultoría',
+          entidadBeneficiaria: 'Gobernación de Cundinamarca',
+          modalidad: 'Híbrida',
+          horasAsignadas: 40,
+          porcentajePTA: 11.1
+        },
+        {
+          nombreActividad: 'Curso de Extensión - Gerencia Pública',
+          tipoExtensionLabel: 'Educación Continua',
+          entidadBeneficiaria: 'Alcaldía de Bogotá',
+          modalidad: 'Presencial',
+          horasAsignadas: 17.6,
+          porcentajePTA: 4.9
+        }
+      ]
+    },
+    componenteComplementarias: {
+      horas: 23.4,
+      porcentaje: 6.5,
+      actividades: [
+        {
+          nombreActividad: 'Comité Curricular',
+          tipoActividadLabel: 'Participación en Comités',
+          cargoFuncion: 'Miembro Comité',
+          horasAsignadas: 12,
+          porcentajePTA: 3.3
+        },
+        {
+          nombreActividad: 'Dirección de Trabajos de Grado',
+          tipoActividadLabel: 'Dirección de Tesis',
+          cargoFuncion: 'Director',
+          horasAsignadas: 11.4,
+          porcentajePTA: 3.2
+        }
+      ]
+    }
+  } : pta;
+  
   // Calcular totales
   const totalHoras = 
-    (pta.componenteDocencia?.horas || 0) +
-    (pta.componenteInvestigacion?.horas || 0) +
-    (pta.componenteExtension?.horas || 0) +
-    (pta.componenteComplementarias?.horas || 0) +
-    (pta.componenteAdministrativas?.horas || 0);
+    (ptaConDatos.componenteDocencia?.horas || 0) +
+    (ptaConDatos.componenteInvestigacion?.horas || 0) +
+    (ptaConDatos.componenteExtension?.horas || 0) +
+    (ptaConDatos.componenteComplementarias?.horas || 0) +
+    (ptaConDatos.componenteAdministrativas?.horas || 0);
   
-  const horasProgramables = pta.horas_programables || 360;
+  const horasProgramables = ptaConDatos.horas_programables || 360;
   const progreso = (totalHoras / horasProgramables) * 100;
   
   // Componentes configuración
@@ -66,7 +183,7 @@ export function PTAResumenVisual({ pta, docente, onCerrar }: PTAResumenVisualPro
       color: 'text-blue-600',
       bgColor: 'bg-blue-100',
       borderColor: 'border-blue-600',
-      data: pta.componenteDocencia
+      data: ptaConDatos.componenteDocencia
     },
     {
       id: 'investigacion',
@@ -75,7 +192,7 @@ export function PTAResumenVisual({ pta, docente, onCerrar }: PTAResumenVisualPro
       color: 'text-purple-600',
       bgColor: 'bg-purple-100',
       borderColor: 'border-purple-600',
-      data: pta.componenteInvestigacion
+      data: ptaConDatos.componenteInvestigacion
     },
     {
       id: 'extension',
@@ -84,7 +201,7 @@ export function PTAResumenVisual({ pta, docente, onCerrar }: PTAResumenVisualPro
       color: 'text-green-600',
       bgColor: 'bg-green-100',
       borderColor: 'border-green-600',
-      data: pta.componenteExtension
+      data: ptaConDatos.componenteExtension
     },
     {
       id: 'complementarias',
@@ -93,7 +210,7 @@ export function PTAResumenVisual({ pta, docente, onCerrar }: PTAResumenVisualPro
       color: 'text-orange-600',
       bgColor: 'bg-orange-100',
       borderColor: 'border-orange-600',
-      data: pta.componenteComplementarias
+      data: ptaConDatos.componenteComplementarias
     },
     {
       id: 'administrativas',
@@ -102,7 +219,7 @@ export function PTAResumenVisual({ pta, docente, onCerrar }: PTAResumenVisualPro
       color: 'text-red-600',
       bgColor: 'bg-red-100',
       borderColor: 'border-red-600',
-      data: pta.componenteAdministrativas
+      data: ptaConDatos.componenteAdministrativas
     }
   ];
   
@@ -112,6 +229,30 @@ export function PTAResumenVisual({ pta, docente, onCerrar }: PTAResumenVisualPro
   
   return (
     <div className="space-y-6">
+      {/* Mensaje de datos demo */}
+      {usarDatosDemo && (
+        <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl">
+          <div className="flex items-start gap-3">
+            <div className="text-blue-600 text-2xl">📊</div>
+            <div className="flex-1">
+              <h4 className="font-bold text-blue-900 mb-1">Visualización con Datos Demo</h4>
+              <p className="text-sm text-blue-800 mb-2">
+                Este PTA aún no tiene actividades registradas. Estás viendo datos de ejemplo para entender cómo funcionará el sistema.
+              </p>
+              <div className="bg-white/60 rounded-lg p-3 space-y-1 text-sm text-blue-900">
+                <p className="font-medium">💡 Para crear un PTA real:</p>
+                <ol className="list-decimal list-inside space-y-1 ml-2 text-blue-800">
+                  <li>Haz clic en "Crear PTA" desde el Dashboard</li>
+                  <li>Completa el formulario con las actividades del docente</li>
+                  <li>Asigna horas a cada componente (Docencia, Investigación, etc.)</li>
+                  <li>Guarda como borrador o envía directamente a aprobación</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <Card className="p-6 bg-gradient-to-r from-[#1e5da8] to-[#1a4d8f] text-white">
         <div className="flex items-start justify-between mb-4">

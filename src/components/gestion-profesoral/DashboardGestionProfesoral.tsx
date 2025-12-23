@@ -85,7 +85,7 @@ interface PTAPendiente {
 }
 
 interface DashboardGestionProfesoralProps {
-  onNavigate?: (tab: 'dashboard' | 'calendario' | 'planificacion' | 'convocatorias' | 'ptas' | 'hora-catedra' | 'evaluacion') => void;
+  onNavigate?: (tab: 'dashboard' | 'flujo-secuencial' | 'calendario' | 'planificacion' | 'convocatorias' | 'ptas' | 'hora-catedra' | 'evaluacion' | 'directorio') => void;
 }
 
 export function DashboardGestionProfesoral({ onNavigate }: DashboardGestionProfesoralProps) {
@@ -313,6 +313,33 @@ export function DashboardGestionProfesoral({ onNavigate }: DashboardGestionProfe
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Banner del Flujo Secuencial - DESTACADO */}
+          <div 
+            className="mb-4 p-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white cursor-pointer hover:shadow-lg transition-all"
+            onClick={() => onNavigate?.('flujo-secuencial')}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                  <Activity className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-semibold mb-1">🔄 Flujo Secuencial de Gestión</h3>
+                  <p className="text-sm opacity-90">
+                    Proceso completo: Planificación → Necesidades → Convocatorias → Programación → Evaluación
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-6 h-6" />
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="flex-1 bg-white/20 rounded-full h-2">
+                <div className="bg-white h-2 rounded-full" style={{ width: '41%' }} />
+              </div>
+              <span className="text-sm font-medium">41%</span>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <AccionRapida
               icon={<FileText className="w-5 h-5" />}

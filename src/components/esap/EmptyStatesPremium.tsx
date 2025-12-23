@@ -346,43 +346,40 @@ function UsersIllustration() {
   return (
     <div className="relative w-32 h-32">
       <motion.div
-        animate={{
-          scale: [1, 1.03, 1],
-        }}
-        transition={{
-          duration: 3.5,
-          repeat: Infinity,
-          ease: 'easeInOut',
-        }}
+        animate={{ scale: [1, 1.03, 1] }}
+        transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
         className="w-full h-full flex items-center justify-center"
       >
         <div
           className="w-28 h-28 rounded-2xl flex items-center justify-center relative overflow-hidden"
-          style={{
-            background: 'linear-gradient(135deg, #DCFCE7 0%, #BBF7D0 100%)',
-          }}
+          style={{ background: 'linear-gradient(135deg, #E0F2FE 0%, #BAE6FD 100%)' }}
         >
-          <div className="absolute -top-4 -right-4 w-16 h-16 bg-green-200 rounded-full opacity-30" />
-          <div className="absolute -bottom-4 -left-4 w-20 h-20 bg-green-300 rounded-full opacity-20" />
-          
-          <Users className="w-14 h-14 text-green-600 relative z-10" strokeWidth={1.5} />
+          <div className="absolute -top-4 -right-4 w-16 h-16 bg-blue-200 rounded-full opacity-30" />
+          <div className="absolute -bottom-4 -left-4 w-20 h-20 bg-blue-300 rounded-full opacity-20" />
+          <Users className="w-14 h-14 text-[#1e5da8] relative z-10" strokeWidth={1.5} />
         </div>
       </motion.div>
 
-      {/* Floating user icons */}
+      {/* Decoraciones flotantes */}
       <motion.div
-        animate={{ y: [-5, 5, -5] }}
-        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        animate={{ 
+          y: [0, -10, 0],
+          rotate: [0, 5, 0]
+        }}
+        transition={{ duration: 3, repeat: Infinity }}
         className="absolute top-2 left-2"
       >
-        <div className="w-4 h-4 bg-green-400 rounded-full opacity-60" />
+        <div className="w-4 h-4 bg-blue-400 rounded-full opacity-60" />
       </motion.div>
       <motion.div
-        animate={{ y: [5, -5, 5] }}
-        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
+        animate={{ 
+          y: [0, 10, 0],
+          rotate: [0, -5, 0]
+        }}
+        transition={{ duration: 4, repeat: Infinity, delay: 0.5 }}
         className="absolute bottom-2 right-2"
       >
-        <div className="w-3 h-3 bg-green-500 rounded-full opacity-50" />
+        <div className="w-3 h-3 bg-blue-500 rounded-full opacity-50" />
       </motion.div>
     </div>
   );

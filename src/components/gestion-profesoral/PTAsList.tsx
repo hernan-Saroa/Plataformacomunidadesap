@@ -163,6 +163,7 @@ export function PTAsList({ className = '' }: PTAsListProps) {
   };
 
   const handleEnviarARevision = (pta: any) => {
+    console.log('🚀 handleEnviarARevision llamado con:', pta);
     // Convertir el PTA al formato esperado por el modal
     const ptaParaModal = {
       id: pta.id,
@@ -189,7 +190,9 @@ export function PTAsList({ className = '' }: PTAsListProps) {
       horas_programables: 800
     };
     
+    console.log('✅ PTA convertido:', ptaParaModal);
     setPtaSeleccionado(ptaParaModal);
+    console.log('🔥 Abriendo modal ModalVistaGeneralPTA');
     setIsVistaGeneralOpen(true);
   };
   

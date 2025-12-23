@@ -25,6 +25,9 @@ import { RolesAdministrationModulePremium } from './RolesAdministrationModulePre
 // Importar módulos de Gestión Profesoral
 import { GestionProfesoralModule } from '../gestion-profesoral/GestionProfesoralModule';
 
+// Importar módulo de Procesos Administrativos
+import { ProcesosAdministrativosModule } from '../procesos/ProcesosAdministrativosModule';
+
 // Importar módulo de Control Interno
 import { ControlInternoFull } from './control-interno/ControlInternoFull';
 
@@ -80,6 +83,7 @@ type ModuleView =
   | 'programas-academicos'
   | 'aspirantes'
   | 'arquitectura-empresarial'
+  | 'procesos'  // ✅ NUEVO - Módulo de Procesos Administrativos
   | 'demo-pta-motor';
 
 interface BackofficeAppProps {
@@ -108,6 +112,10 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   // Si el usuario tiene acceso restringido, abrir directamente su módulo específico
   const initialModule = userData?.module === 'control-interno'
     ? 'control-interno'
+    : userData?.module === 'control-disciplinario'
+    ? 'control-disciplinario'
+    : userData?.module === 'registro-academico'
+    ? 'graduates'
     : userData?.module === 'certificados-laborales' 
     ? 'certificados-laborales' 
     : userData?.module === 'arquitectura-empresarial'
@@ -116,6 +124,8 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     ? 'gestion-legal'
     : userData?.module === 'gestion-profesoral'
     ? 'gestion-profesoral'
+    : userData?.module === 'procesos'
+    ? 'procesos'
     : 'dashboard';
   const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(''); // Nuevo: Guardar el módulo del sidebar
@@ -156,6 +166,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       'control-disciplinario': 'control-disciplinario',
       'gestion-legal': 'gestion-legal',
       'arquitectura-empresarial': 'arquitectura-empresarial',
+      'procesos': 'procesos'  // ✅ NUEVO - Módulo de Procesos Administrativos
     };
     return (mappings[sidebarModule] as ModuleView) || 'dashboard';
   };
@@ -274,6 +285,9 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'arquitectura-empresarial':
         return <ArquitecturaEmpresarialModule />;
       
+      case 'procesos':
+        return <ProcesosAdministrativosModule />;
+      
       default:
         return <ExecutiveDashboard userRole={mockUser.role} />;
     }
@@ -300,8 +314,12 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           }}
           certificatesPendingCount={certificatesPendingCount}
           restrictedMode={
-            hasRestrictedAccess && restrictedModule === 'control-interno'
+            userData?.module === 'control-interno'
               ? 'control-interno'
+              : userData?.module === 'control-disciplinario'
+              ? 'control-disciplinario'
+              : userData?.module === 'registro-academico'
+              ? 'registro-academico'
               : userData?.module === 'certificados-laborales' 
               ? 'certificados-laborales' 
               : userData?.module === 'arquitectura-empresarial'

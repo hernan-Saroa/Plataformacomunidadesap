@@ -6,6 +6,7 @@ import {
   Search,
   UserPlus,
   GraduationCap,
+  ArrowLeft,
 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
@@ -16,25 +17,39 @@ import { MOCK_USERS_WITH_SEDES as MOCK_USERS } from '../../data/mockUsersWithSed
 
 interface CommunitySectionProps {
   onEventSelect?: (event: any) => void;
+  onVolver?: () => void;
 }
 
-export function CommunitySection({ onEventSelect }: CommunitySectionProps) {
+export function CommunitySection({ onEventSelect, onVolver }: CommunitySectionProps) {
   const [directorySearch, setDirectorySearch] = useState('');
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-black text-gray-900 flex items-center gap-3">
-            <div className="p-2 bg-[#1e5da8]/10 rounded-lg">
-              <Users className="w-7 h-7 text-[#1e5da8]" />
-            </div>
-            Directorio Comunidad ESAP
-          </h2>
-          <p className="text-gray-600 mt-1">
-            Busca y conecta con estudiantes, docentes, graduados y administrativos
-          </p>
+        <div className="flex items-center gap-3">
+          {onVolver && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onVolver}
+              className="gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Volver
+            </Button>
+          )}
+          <div>
+            <h2 className="text-3xl font-black text-gray-900 flex items-center gap-3">
+              <div className="p-2 bg-[#1e5da8]/10 rounded-lg">
+                <Users className="w-7 h-7 text-[#1e5da8]" />
+              </div>
+              Directorio Comunidad ESAP
+            </h2>
+            <p className="text-gray-600 mt-1">
+              Busca y conecta con estudiantes, docentes, graduados y administrativos
+            </p>
+          </div>
         </div>
       </div>
 

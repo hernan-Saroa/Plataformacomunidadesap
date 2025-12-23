@@ -265,6 +265,8 @@ export default function App() {
           ? ['Docente']
           : usuarioActual?.email === 'estudiantes@esap.edu.co'
           ? ['Estudiante']
+          : usuarioActual?.email === 'funcionario@esap.edu.co'
+          ? ['Administrativo']
           : ['Estudiante']; // Default
 
         const teacherData = usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
@@ -280,6 +282,24 @@ export default function App() {
             }
           : undefined;
 
+        const adminData = usuarioActual?.email === 'funcionario@esap.edu.co'
+          ? {
+              area: 'Planeación',
+              cargo: 'Funcionario Administrativo',
+              dependencia: 'Oficina de Control Interno',
+              codigo_empleado: 'FUNC-001',
+              solicitudes_pendientes: 5,
+              reportes_generados: 12
+            }
+          : undefined;
+
+        console.log('📊 Datos para Portal Dashboard:', {
+          userName: usuarioActual!.nombre,
+          userEmail: usuarioActual!.email,
+          userRoles,
+          adminData
+        });
+
         return (
           <PortalDashboard
             userName={usuarioActual!.nombre}
@@ -289,7 +309,8 @@ export default function App() {
             userData={{
               rol_principal: userRoles[0],
               datos_por_rol: {
-                Docente: teacherData
+                Docente: teacherData,
+                Administrativo: adminData
               }
             }}
             onLogout={handleLogout}
@@ -300,6 +321,10 @@ export default function App() {
         // Determinar si el usuario tiene acceso restringido a un módulo específico
         const userData = usuarioActual?.email === 'c.internoge@esap.edu.co'
           ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ci-001', restrictedAccess: true, module: 'control-interno' }
+          : usuarioActual?.email === 'c.disciplinario@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cd-001', restrictedAccess: true, module: 'control-disciplinario' }
+          : usuarioActual?.email === 'registro.academico@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ra-001', restrictedAccess: true, module: 'registro-academico' }
           : usuarioActual?.email === 'cerlaboral@esap.edu.co'
           ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cl-001', restrictedAccess: true, module: 'certificados-laborales' }
           : usuarioActual?.email === 'arqempresarial@esap.edu.co' || usuarioActual?.email === 'ar.empresarial@esap.edu.co'
@@ -308,6 +333,8 @@ export default function App() {
           ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gl-001', restrictedAccess: true, module: 'gestion-legal' }
           : usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
           ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gp-001', restrictedAccess: true, module: 'gestion-profesoral' }
+          : usuarioActual?.email === 'funcionario@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'func-001', restrictedAccess: true, module: 'procesos' }
           : undefined;
 
         return (

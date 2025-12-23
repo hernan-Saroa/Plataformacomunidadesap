@@ -387,8 +387,8 @@ export function AuditAnomaliesDetector({ events }: AuditAnomaliesDetectorProps) 
         </div>
       ) : (
         <div className="text-center py-12">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Shield className="w-10 h-10 text-green-600" />
+          <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Shield className="w-10 h-10 text-[#1e5da8]" />
           </div>
           <h4 className="font-bold text-gray-900 mb-2">
             ¡No se detectaron anomalías!
@@ -397,9 +397,9 @@ export function AuditAnomaliesDetector({ events }: AuditAnomaliesDetectorProps) 
             El sistema no ha identificado patrones sospechosos o comportamientos inusuales 
             en los eventos de auditoría analizados.
           </p>
-          <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-green-50 rounded-xl border border-green-200">
-            <div className="w-2 h-2 bg-green-500 rounded-full" />
-            <span className="text-sm font-semibold text-green-700">
+          <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-xl border border-blue-200">
+            <div className="w-2 h-2 bg-[#1e5da8] rounded-full" />
+            <span className="text-sm font-semibold text-[#1e5da8]">
               Sistema operando normalmente
             </span>
           </div>

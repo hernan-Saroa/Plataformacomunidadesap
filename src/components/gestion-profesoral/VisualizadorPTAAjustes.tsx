@@ -13,29 +13,14 @@
  */
 
 import { useState } from 'react';
-import { motion } from 'motion/react';
-import {
-  FileText,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  User,
-  Calendar,
-  ChevronDown,
-  ChevronUp,
-  Edit,
-  Send,
-  MessageSquare,
-  TrendingUp,
-  TrendingDown,
-  AlertTriangle,
-  X
-} from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { X, AlertTriangle, TrendingUp, TrendingDown, Clock, CheckCircle, Edit, Send, ChevronDown, ChevronUp, FileText, User, Calendar, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Progress } from '../ui/progress';
 import { toast } from 'sonner@2.0.3';
+import { ModalActividadesAfectadas } from './ModalActividadesAfectadas';
+import { ModalRealizarAjustes } from './ModalRealizarAjustes';
 
 import { PTAConAprobacion, AprobacionPTA } from './FlujoAprobacionPTA';
 import { ptaDemoAjustesSolicitados, obtenerResumenAjustes } from '../../data/ptaDemoAjustesSolicitados';
@@ -61,15 +46,34 @@ export function VisualizadorPTAAjustes({
   
   const [seccionExpandida, setSeccionExpandida] = useState<string>('ajustes');
   const [mostrarComentarios, setMostrarComentarios] = useState(true);
+  const [modalActividadesAfectadas, setModalActividadesAfectadas] = useState(false);
+  const [modalRealizarAjustes, setModalRealizarAjustes] = useState(false);
 
   const toggleSeccion = (seccion: string) => {
     setSeccionExpandida(seccionExpandida === seccion ? '' : seccion);
   };
 
   const handleRealizarAjustes = () => {
-    toast.info('Abriendo editor de PTA...', {
-      description: 'Podrás ajustar las actividades según las observaciones del Decano'
+    setModalRealizarAjustes(true);
+  };
+
+  const handleVerActividadesAfectadas = () => {
+    setModalActividadesAfectadas(true);
+  };
+
+  const handleEditarActividad = (actividadId: string) => {
+    toast.info(`Editando actividad ${actividadId}`, {
+      description: 'Abriendo editor de actividad...'
     });
+    setModalActividadesAfectadas(false);
+    setModalRealizarAjustes(true);
+  };
+
+  const handleGuardarAjustes = () => {
+    toast.success('Ajustes guardados exitosamente', {
+      description: 'Ahora puedes reenviar el PTA para aprobación'
+    });
+    setModalRealizarAjustes(false);
   };
 
   const handleReenviarAprobacion = () => {
@@ -282,7 +286,7 @@ export function VisualizadorPTAAjustes({
                     <Edit className="w-4 h-4 mr-2" />
                     Realizar Ajustes
                   </Button>
-                  <Button variant="outline">
+                  <Button variant="outline" onClick={handleVerActividadesAfectadas}>
                     Ver Actividades Afectadas
                   </Button>
                 </div>
@@ -386,26 +390,36 @@ export function VisualizadorPTAAjustes({
                     ¿Listo para realizar los ajustes?
                   </h3>
                   <p className="text-sm text-gray-600">
-                    Una vez realices los ajustes solicitados, podrás reenviar el PTA para aprobación final
+                    Haz clic en "Realizar Ajustes" para editar las actividades del PTA según las observaciones recibidas.
+                    Una vez completados los ajustes, podrás reenviar el PTA para aprobación.
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={handleRealizarAjustes}>
-                    <Edit className="w-4 h-4 mr-2" />
-                    Editar PTA
-                  </Button>
                   <Button 
-                    className="bg-[#003DA5]"
-                    onClick={handleReenviarAprobacion}
+                    className="bg-[#003DA5] hover:bg-[#002d7a]"
+                    onClick={handleRealizarAjustes}
                   >
-                    <Send className="w-4 h-4 mr-2" />
-                    Reenviar a Aprobación
+                    <Edit className="w-4 h-4 mr-2" />
+                    Realizar Ajustes
                   </Button>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Modales */}
+        <ModalActividadesAfectadas
+          isOpen={modalActividadesAfectadas}
+          onClose={() => setModalActividadesAfectadas(false)}
+          onEditarActividad={handleEditarActividad}
+        />
+
+        <ModalRealizarAjustes
+          isOpen={modalRealizarAjustes}
+          onClose={() => setModalRealizarAjustes(false)}
+          onGuardarAjustes={handleGuardarAjustes}
+        />
       </div>
     </div>
   );

@@ -25,10 +25,10 @@ const colorSchemes = {
     border: 'border-blue-100',
   },
   green: {
-    bg: 'bg-green-50',
-    iconBg: 'bg-green-500',
-    button: 'bg-green-600 hover:bg-green-700',
-    border: 'border-green-100',
+    bg: 'bg-blue-50',
+    iconBg: 'bg-[#1e5da8]',
+    button: 'bg-[#1e5da8] hover:bg-[#1557a0]',
+    border: 'border-blue-100',
   },
   purple: {
     bg: 'bg-purple-50',
@@ -74,7 +74,7 @@ const categoryColors: Record<string, string> = {
   'Certificación': 'bg-orange-100 text-orange-700',
   'Personal': 'bg-indigo-100 text-indigo-700',
   'Administrativo': 'bg-teal-100 text-teal-700',
-  'Salud': 'bg-green-100 text-green-700',
+  'Salud': 'bg-blue-100 text-blue-700',
   'default': 'bg-gray-100 text-gray-700',
 };
 
@@ -146,7 +146,7 @@ export function DocumentCard({
         </span>
         {status && (
           <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
-            status === 'verified' ? 'bg-green-100 text-green-700' :
+            status === 'verified' ? 'bg-blue-100 text-blue-700' :
             status === 'pending' ? 'bg-amber-100 text-amber-700' :
             'bg-red-100 text-red-700'
           }`}>

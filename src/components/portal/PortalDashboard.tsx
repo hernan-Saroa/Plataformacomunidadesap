@@ -16,11 +16,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RoleSelector } from './RoleSelector';
-import { StudentView } from './StudentView';
-import { TeacherView } from './TeacherView';
-import { GraduateView } from './GraduateView';
-import { AdminView } from './AdminView';
-import { AspirantView } from './AspirantView';
+import { UnifiedPortalView } from './UnifiedPortalView';
 import { AuthenticatedPortalNavbar } from './AuthenticatedPortalNavbar';
 
 interface PortalDashboardProps {
@@ -113,42 +109,47 @@ export function PortalDashboard({
           transition={{ duration: 0.3 }}
         >
           {activeRole === 'Estudiante' && (
-            <StudentView
+            <UnifiedPortalView
               userName={userName}
               userEmail={userEmail}
-              studentData={roleData.Estudiante}
+              activeRole="Estudiante"
+              roleData={roleData.Estudiante}
             />
           )}
 
           {activeRole === 'Docente' && (
-            <TeacherView
+            <UnifiedPortalView
               userName={userName}
               userEmail={userEmail}
-              teacherData={roleData.Docente}
+              activeRole="Docente"
+              roleData={roleData.Docente}
             />
           )}
 
           {activeRole === 'Graduado' && (
-            <GraduateView
+            <UnifiedPortalView
               userName={userName}
               userEmail={userEmail}
-              graduateData={roleData.Graduado}
+              activeRole="Graduado"
+              roleData={roleData.Graduado}
             />
           )}
 
           {activeRole === 'Administrativo' && (
-            <AdminView
+            <UnifiedPortalView
               userName={userName}
               userEmail={userEmail}
-              adminData={roleData.Administrativo}
+              activeRole="Administrativo"
+              roleData={roleData.Administrativo}
             />
           )}
 
           {activeRole === 'Aspirante' && (
-            <AspirantView
+            <UnifiedPortalView
               userName={userName}
               userEmail={userEmail}
-              aspirantData={roleData.Aspirante}
+              activeRole="Aspirante"
+              roleData={roleData.Aspirante}
             />
           )}
         </motion.div>

@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
 interface ErrorFallbackUIProps {
   error: Error | null;
@@ -68,11 +67,7 @@ export function ErrorFallbackUI({ error, errorInfo, onReset }: ErrorFallbackUIPr
           {/* Header with Logo */}
           <div className="flex flex-col items-center mb-8">
             <div className="mb-6">
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP Logo" 
-                className="h-16 w-auto object-contain"
-              />
+              <div className="text-[#003DA5] text-4xl font-bold">ESAP</div>
             </div>
 
             {/* Animated Icon */}

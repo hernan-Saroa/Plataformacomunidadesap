@@ -170,187 +170,190 @@ export function MisExpedientesLegales({ onVolver }: MisExpedientesLegalesProps) 
   // Vista de lista de expedientes
   if (!expedienteSeleccionado) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <div className="bg-gradient-to-br from-purple-600 via-purple-700 to-purple-800 text-white px-4 py-6 sm:px-6 sm:py-8">
-          <div className="max-w-4xl mx-auto">
+      <div className="min-h-screen bg-gray-50 pt-16 pb-20 md:pb-0">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Header */}
+          <div className="mb-6">
             {/* Botón de volver al panel (solo si onVolver está definido) */}
             {onVolver && (
-              <button
+              <Button
                 onClick={() => {
                   console.log('MisExpedientesLegales - Botón Volver clickeado');
                   onVolver();
                 }}
-                className="flex items-center gap-2 mb-4 hover:bg-white/10 px-2 sm:px-3 py-2 rounded-lg transition-colors text-sm sm:text-base"
+                variant="ghost"
+                className="mb-4 hover:bg-gray-100 gap-2 font-semibold text-gray-700 hover:text-emerald-600"
               >
-                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                <ArrowLeft className="w-4 h-4" />
                 <span>Volver al Panel Administrativo</span>
-              </button>
+              </Button>
             )}
             
-            <div className="flex items-start gap-3 mb-6">
-              <div className="bg-white/20 p-3 rounded-lg flex-shrink-0">
-                <Scale className="w-7 h-7 sm:w-8 sm:h-8" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h1 className="text-xl sm:text-2xl font-black mb-1">Mis Procesos Legales</h1>
-                <p className="text-purple-100 text-sm sm:text-base">Expedientes disciplinarios</p>
-              </div>
-            </div>
-
-            {/* Alertas importantes */}
-            {expedientesActivos.length > 0 && (
-              <Card className="bg-yellow-50 border-2 border-yellow-300 p-3 sm:p-4">
-                <div className="flex gap-3">
-                  <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-yellow-900 mb-1 text-sm sm:text-base">
-                      Tienes {expedientesActivos.length} expediente(s) con término para responder
-                    </p>
-                    <p className="text-xs sm:text-sm text-yellow-800">
-                      Es muy importante que presentes tus descargos antes de la fecha límite
-                    </p>
-                  </div>
+            <div className="bg-gradient-to-br from-purple-600 via-purple-700 to-purple-800 text-white px-6 py-8 rounded-2xl shadow-xl">
+              <div className="flex items-start gap-3 mb-6">
+                <div className="bg-white/20 p-3 rounded-lg flex-shrink-0">
+                  <Scale className="w-7 h-7 sm:w-8 sm:h-8" />
                 </div>
-              </Card>
-            )}
-          </div>
-        </div>
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-xl sm:text-2xl font-black mb-1">Mis Procesos Legales</h1>
+                  <p className="text-purple-100 text-sm sm:text-base">Expedientes disciplinarios</p>
+                </div>
+              </div>
 
-        {/* Contenido principal */}
-        <div className="max-w-4xl mx-auto px-4 py-6 pb-24 space-y-6">
-          {/* Expedientes con término activo */}
-          {expedientesActivos.length > 0 && (
-            <div>
-              <h2 className="font-black text-gray-900 mb-3 flex items-center gap-2 text-base sm:text-lg">
-                <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 flex-shrink-0" />
-                <span>Requieren Respuesta</span>
-              </h2>
-              <div className="space-y-3">
-                {expedientesActivos.map((exp) => {
-                  const semaforo = getSemaforoTermino(exp.diasRestantes);
-                  return (
+              {/* Alertas importantes */}
+              {expedientesActivos.length > 0 && (
+                <Card className="bg-yellow-50 border-2 border-yellow-300 p-3 sm:p-4">
+                  <div className="flex gap-3">
+                    <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-yellow-900 mb-1 text-sm sm:text-base">
+                        Tienes {expedientesActivos.length} expediente(s) con término para responder
+                      </p>
+                      <p className="text-xs sm:text-sm text-yellow-800">
+                        Es muy importante que presentes tus descargos antes de la fecha límite
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </div>
+          </div>
+
+          {/* Contenido principal */}
+          <div className="space-y-6">
+            {/* Expedientes con término activo */}
+            {expedientesActivos.length > 0 && (
+              <div>
+                <h2 className="font-black text-gray-900 mb-3 flex items-center gap-2 text-base sm:text-lg">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 flex-shrink-0" />
+                  <span>Requieren Respuesta</span>
+                </h2>
+                <div className="space-y-3">
+                  {expedientesActivos.map((exp) => {
+                    const semaforo = getSemaforoTermino(exp.diasRestantes);
+                    return (
+                      <motion.div
+                        key={exp.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                      >
+                        <Card
+                          className="p-3 sm:p-4 border-2 cursor-pointer hover:shadow-lg transition-all"
+                          style={{ borderColor: semaforo?.color }}
+                          onClick={() => setExpedienteSeleccionado(exp)}
+                        >
+                          <div className="flex justify-between items-start mb-3 gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-black text-gray-900 mb-1 text-sm sm:text-base">{exp.numero}</p>
+                              <Badge
+                                className="text-[10px] sm:text-xs"
+                                style={{
+                                  background: semaforo?.bg,
+                                  color: semaforo?.color
+                                }}
+                              >
+                                {semaforo?.label}
+                              </Badge>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-xl sm:text-2xl font-black" style={{ color: semaforo?.color }}>
+                                {exp.diasRestantes}
+                              </p>
+                              <p className="text-[10px] sm:text-xs text-gray-600 whitespace-nowrap">días restantes</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 mb-3">
+                            <div className="flex items-start gap-2 text-xs sm:text-sm">
+                              <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                              <span className="text-gray-600 break-words">
+                                Fecha límite: <span className="font-bold text-gray-900">{exp.fechaLimiteRespuesta}</span>
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2 text-xs sm:text-sm">
+                              <FileText className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                              <span className="text-gray-600 break-words">
+                                Etapa: <span className="font-bold text-gray-900">{exp.etapaActual}</span>
+                              </span>
+                            </div>
+                          </div>
+
+                          <p className="text-xs sm:text-sm text-gray-600 mb-3 line-clamp-2">{exp.hechos}</p>
+
+                          <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white text-sm">
+                            <Upload className="w-4 h-4 mr-2" />
+                            Presentar Descargos
+                          </Button>
+                        </Card>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Expedientes en proceso */}
+            {expedientesProceso.length > 0 && (
+              <div>
+                <h2 className="font-black text-gray-900 mb-3 flex items-center gap-2 text-base sm:text-lg">
+                  <History className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
+                  <span>En Proceso</span>
+                </h2>
+                <div className="space-y-3">
+                  {expedientesProceso.map((exp) => (
                     <motion.div
                       key={exp.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                     >
                       <Card
-                        className="p-3 sm:p-4 border-2 cursor-pointer hover:shadow-lg transition-all"
-                        style={{ borderColor: semaforo?.color }}
+                        className="p-3 sm:p-4 border-2 border-gray-200 cursor-pointer hover:shadow-lg transition-all"
                         onClick={() => setExpedienteSeleccionado(exp)}
                       >
-                        <div className="flex justify-between items-start mb-3 gap-3">
+                        <div className="flex flex-col sm:flex-row justify-between items-start mb-3 gap-2">
                           <div className="flex-1 min-w-0">
-                            <p className="font-black text-gray-900 mb-1 text-sm sm:text-base">{exp.numero}</p>
-                            <Badge
-                              className="text-[10px] sm:text-xs"
-                              style={{
-                                background: semaforo?.bg,
-                                color: semaforo?.color
-                              }}
-                            >
-                              {semaforo?.label}
+                            <p className="font-black text-gray-900 mb-1 text-sm sm:text-base break-words">{exp.numero}</p>
+                            <Badge className="text-[10px] sm:text-xs bg-blue-100 text-blue-700">
+                              {exp.etapaActual}
                             </Badge>
                           </div>
-                          <div className="text-right flex-shrink-0">
-                            <p className="text-xl sm:text-2xl font-black" style={{ color: semaforo?.color }}>
-                              {exp.diasRestantes}
-                            </p>
-                            <p className="text-[10px] sm:text-xs text-gray-600 whitespace-nowrap">días restantes</p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2 mb-3">
-                          <div className="flex items-start gap-2 text-xs sm:text-sm">
-                            <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
-                            <span className="text-gray-600 break-words">
-                              Fecha límite: <span className="font-bold text-gray-900">{exp.fechaLimiteRespuesta}</span>
-                            </span>
-                          </div>
-                          <div className="flex items-start gap-2 text-xs sm:text-sm">
-                            <FileText className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
-                            <span className="text-gray-600 break-words">
-                              Etapa: <span className="font-bold text-gray-900">{exp.etapaActual}</span>
-                            </span>
-                          </div>
+                          <Badge className="bg-green-100 text-green-700 text-[10px] sm:text-xs flex-shrink-0">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Descargos presentados
+                          </Badge>
                         </div>
 
                         <p className="text-xs sm:text-sm text-gray-600 mb-3 line-clamp-2">{exp.hechos}</p>
 
-                        <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white text-sm">
-                          <Upload className="w-4 h-4 mr-2" />
-                          Presentar Descargos
-                        </Button>
+                        <div className="flex items-center justify-between text-xs sm:text-sm gap-2">
+                          <span className="text-gray-600 truncate">
+                            Última actuación: {exp.fechaUltimaActuacion}
+                          </span>
+                          <Eye className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        </div>
                       </Card>
                     </motion.div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Expedientes en proceso */}
-          {expedientesProceso.length > 0 && (
-            <div>
-              <h2 className="font-black text-gray-900 mb-3 flex items-center gap-2 text-base sm:text-lg">
-                <History className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
-                <span>En Proceso</span>
-              </h2>
-              <div className="space-y-3">
-                {expedientesProceso.map((exp) => (
-                  <motion.div
-                    key={exp.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
-                    <Card
-                      className="p-3 sm:p-4 border-2 border-gray-200 cursor-pointer hover:shadow-lg transition-all"
-                      onClick={() => setExpedienteSeleccionado(exp)}
-                    >
-                      <div className="flex flex-col sm:flex-row justify-between items-start mb-3 gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-black text-gray-900 mb-1 text-sm sm:text-base break-words">{exp.numero}</p>
-                          <Badge className="text-[10px] sm:text-xs bg-blue-100 text-blue-700">
-                            {exp.etapaActual}
-                          </Badge>
-                        </div>
-                        <Badge className="bg-green-100 text-green-700 text-[10px] sm:text-xs flex-shrink-0">
-                          <CheckCircle className="w-3 h-3 mr-1" />
-                          Descargos presentados
-                        </Badge>
-                      </div>
-
-                      <p className="text-xs sm:text-sm text-gray-600 mb-3 line-clamp-2">{exp.hechos}</p>
-
-                      <div className="flex items-center justify-between text-xs sm:text-sm gap-2">
-                        <span className="text-gray-600 truncate">
-                          Última actuación: {exp.fechaUltimaActuacion}
-                        </span>
-                        <Eye className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                      </div>
-                    </Card>
-                  </motion.div>
-                ))}
+            {/* Información general */}
+            <Card className="p-3 sm:p-4 bg-blue-50 border-2 border-blue-200">
+              <div className="flex gap-2 sm:gap-3">
+                <Info className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="space-y-2 text-xs sm:text-sm flex-1 min-w-0">
+                  <p className="font-bold text-blue-900">Información importante:</p>
+                  <ul className="space-y-1 text-blue-800">
+                    <li>• Los términos procesales se cuentan en días hábiles</li>
+                    <li>• Puedes presentar descargos antes de la fecha límite</li>
+                    <li>• Los documentos deben estar en formato PDF</li>
+                    <li>• Si necesitas asesoría legal, contacta a tu abogado asignado</li>
+                  </ul>
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* Información general */}
-          <Card className="p-3 sm:p-4 bg-blue-50 border-2 border-blue-200">
-            <div className="flex gap-2 sm:gap-3">
-              <Info className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="space-y-2 text-xs sm:text-sm flex-1 min-w-0">
-                <p className="font-bold text-blue-900">Información importante:</p>
-                <ul className="space-y-1 text-blue-800">
-                  <li>• Los términos procesales se cuentan en días hábiles</li>
-                  <li>• Puedes presentar descargos antes de la fecha límite</li>
-                  <li>• Los documentos deben estar en formato PDF</li>
-                  <li>• Si necesitas asesoría legal, contacta a tu abogado asignado</li>
-                </ul>
-              </div>
-            </div>
-          </Card>
+            </Card>
+          </div>
         </div>
       </div>
     );

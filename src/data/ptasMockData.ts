@@ -490,6 +490,259 @@ export const pta5: PTAConAprobacion = {
 };
 
 // ============================================================================
+// PTAs NUEVOS DOCENTES (Carlos Méndez, Ana Gutiérrez, Roberto Silva)
+// ============================================================================
+
+/**
+ * PTA 6: Dr. Carlos Méndez Bivera - URGENTE - Pendiente Nivel 1
+ */
+export const pta6: PTAConAprobacion = {
+  ...crearPTAConAprobacion(
+    'docente-catedra-021',
+    'Dr. Carlos Méndez Bivera',
+    '2025-1'
+  ),
+  id: 'PTA-2025-006',
+  tipoVinculacion: 'hora-catedra',
+  tipoDedicacion: 'medio-tiempo',
+  actividades: [
+    {
+      id: 'act-022',
+      codigo: 'DOC-001',
+      nombre: 'Docencia directa - Gestión del Talento Humano',
+      descripcion: 'Curso de especialización, 3 créditos',
+      componente: 'docencia',
+      horasAsignadas: 240,
+      horasPorSemana: 12,
+      esObligatoria: true,
+      requiereEvidencia: true,
+      evidencias: []
+    },
+    {
+      id: 'act-023',
+      codigo: 'DOC-005',
+      nombre: 'Preparación y evaluación',
+      descripcion: 'Preparación de clases y evaluaciones',
+      componente: 'docencia',
+      horasAsignadas: 80,
+      horasPorSemana: 4,
+      esObligatoria: true,
+      requiereEvidencia: false
+    },
+    {
+      id: 'act-024',
+      codigo: 'INV-010',
+      nombre: 'Proyecto de investigación aplicada',
+      descripcion: 'Investigación sobre gestión pública territorial',
+      componente: 'investigacion',
+      horasAsignadas: 80,
+      horasPorSemana: 4,
+      esObligatoria: false,
+      requiereEvidencia: true
+    }
+  ],
+  horasTotalesAsignadas: 400,
+  estado: 'en-aprobacion',
+  firmas: [
+    {
+      id: 'firma-060',
+      nivel: NivelAprobacion.NIVEL_1,
+      aprobadorId: 'docente-catedra-021',
+      aprobadorNombre: 'Dr. Carlos Méndez Bivera',
+      aprobadorCargo: 'Docente',
+      aprobadorEmail: 'carlos.mendez@esap.edu.co',
+      accion: TipoAccionAprobacion.ENVIAR,
+      fecha: '2024-12-10T08:00:00Z',
+      timestamp: 1733817600000,
+      observaciones: 'PTA enviado para aprobación URGENTE - Vence en 3 días'
+    }
+  ],
+  estadoFlujo: {
+    nivelActual: NivelAprobacion.NIVEL_1,
+    ultimaActualizacion: '2024-12-10T08:00:00Z',
+    requiereFirmasEspecificas: true,
+    firmasPendientes: ['Director Territorial', 'Subdirector Territorial']
+  }
+};
+
+/**
+ * PTA 7: Dra. Ana Gutiérrez López - EN REVISIÓN - Nivel 2
+ */
+export const pta7: PTAConAprobacion = {
+  ...crearPTAConAprobacion(
+    'docente-catedra-022',
+    'Dra. Ana Gutiérrez López',
+    '2025-1'
+  ),
+  id: 'PTA-2025-007',
+  tipoVinculacion: 'hora-catedra',
+  tipoDedicacion: 'medio-tiempo',
+  actividades: [
+    {
+      id: 'act-025',
+      codigo: 'DOC-001',
+      nombre: 'Docencia directa - Desarrollo Territorial',
+      descripcion: 'Curso de maestría, 4 créditos',
+      componente: 'docencia',
+      horasAsignadas: 200,
+      horasPorSemana: 10,
+      esObligatoria: true,
+      requiereEvidencia: true
+    },
+    {
+      id: 'act-026',
+      codigo: 'DOC-007',
+      nombre: 'Dirección de tesis de maestría',
+      descripcion: '2 tesis en dirección',
+      componente: 'docencia',
+      horasAsignadas: 80,
+      horasPorSemana: 4,
+      esObligatoria: true,
+      requiereEvidencia: true
+    },
+    {
+      id: 'act-027',
+      codigo: 'INV-005',
+      nombre: 'Co-investigadora proyecto territorial',
+      descripcion: 'Proyecto: Gobernanza regional en Antioquia',
+      componente: 'investigacion',
+      horasAsignadas: 80,
+      horasPorSemana: 4,
+      esObligatoria: false,
+      requiereEvidencia: true
+    },
+    {
+      id: 'act-028',
+      codigo: 'EXT-003',
+      nombre: 'Consultoría Gobernación de Antioquia',
+      descripcion: 'Asesoría en planificación estratégica',
+      componente: 'extension',
+      horasAsignadas: 40,
+      horasPorSemana: 2,
+      esObligatoria: false,
+      requiereEvidencia: true
+    }
+  ],
+  horasTotalesAsignadas: 400,
+  estado: 'en-aprobacion',
+  firmas: [
+    {
+      id: 'firma-070',
+      nivel: NivelAprobacion.NIVEL_1,
+      aprobadorId: 'docente-catedra-022',
+      aprobadorNombre: 'Dra. Ana Gutiérrez López',
+      aprobadorCargo: 'Docente',
+      aprobadorEmail: 'ana.gutierrez@esap.edu.co',
+      accion: TipoAccionAprobacion.ENVIAR,
+      fecha: '2024-12-15T10:30:00Z',
+      timestamp: 1734261000000,
+      observaciones: 'PTA enviado para aprobación'
+    },
+    {
+      id: 'firma-071',
+      nivel: NivelAprobacion.NIVEL_1,
+      aprobadorId: 'director-002',
+      aprobadorNombre: 'María Fernanda Gómez',
+      aprobadorCargo: 'Directora Territorial Antioquia',
+      aprobadorEmail: 'maria.gomez@esap.edu.co',
+      accion: TipoAccionAprobacion.APROBAR,
+      fecha: '2024-12-16T14:00:00Z',
+      timestamp: 1734358800000,
+      observaciones: 'Aprobado Nivel 1. Excelente distribución de componentes académicos.'
+    }
+  ],
+  estadoFlujo: {
+    nivelActual: NivelAprobacion.NIVEL_2,
+    ultimaActualizacion: '2024-12-16T14:00:00Z',
+    requiereFirmasEspecificas: true,
+    firmasPendientes: ['Coordinador Académico', 'Decano']
+  }
+};
+
+/**
+ * PTA 8: Mg. Roberto Silva Castro - CON OBSERVACIONES - Devuelto Nivel 1
+ */
+export const pta8: PTAConAprobacion = {
+  ...crearPTAConAprobacion(
+    'docente-catedra-023',
+    'Mg. Roberto Silva Castro',
+    '2025-1'
+  ),
+  id: 'PTA-2025-008',
+  tipoVinculacion: 'hora-catedra',
+  tipoDedicacion: 'medio-tiempo',
+  actividades: [
+    {
+      id: 'act-029',
+      codigo: 'DOC-001',
+      nombre: 'Docencia directa - Administración Municipal',
+      descripcion: 'Curso de especialización',
+      componente: 'docencia',
+      horasAsignadas: 320,
+      horasPorSemana: 16,
+      esObligatoria: true,
+      requiereEvidencia: true
+    },
+    {
+      id: 'act-030',
+      codigo: 'DOC-005',
+      nombre: 'Tutorías académicas',
+      descripcion: 'Acompañamiento a estudiantes',
+      componente: 'docencia',
+      horasAsignadas: 60,
+      horasPorSemana: 3,
+      esObligatoria: true,
+      requiereEvidencia: false
+    },
+    {
+      id: 'act-031',
+      codigo: 'ADM-008',
+      nombre: 'Participación comité curricular',
+      descripcion: 'Miembro comité de especialización',
+      componente: 'academico-administrativo',
+      horasAsignadas: 20,
+      horasPorSemana: 1,
+      esObligatoria: false,
+      requiereEvidencia: true
+    }
+  ],
+  horasTotalesAsignadas: 400,
+  estado: 'devuelto-ajustes',
+  firmas: [
+    {
+      id: 'firma-080',
+      nivel: NivelAprobacion.NIVEL_1,
+      aprobadorId: 'docente-catedra-023',
+      aprobadorNombre: 'Mg. Roberto Silva Castro',
+      aprobadorCargo: 'Docente',
+      aprobadorEmail: 'roberto.silva.docente@esap.edu.co',
+      accion: TipoAccionAprobacion.ENVIAR,
+      fecha: '2024-12-18T09:00:00Z',
+      timestamp: 1734513600000,
+      observaciones: 'PTA enviado para aprobación'
+    },
+    {
+      id: 'firma-081',
+      nivel: NivelAprobacion.NIVEL_1,
+      aprobadorId: 'director-003',
+      aprobadorNombre: 'Juan Carlos Ospina',
+      aprobadorCargo: 'Director Territorial Valle',
+      aprobadorEmail: 'juan.ospina@esap.edu.co',
+      accion: TipoAccionAprobacion.RECHAZAR,
+      fecha: '2024-12-19T11:30:00Z',
+      timestamp: 1734609000000,
+      observaciones: 'El PTA requiere ajustes importantes. El componente de Docencia está al 95% (380/400 horas), lo cual excede el máximo recomendado de 70%. No se evidencian actividades de Investigación (componente recomendado con mínimo 10%). No hay actividades de Extensión (componente obligatorio con mínimo 5%). Se debe rebalancear el PTA incluyendo al menos una actividad de investigación (40-60 horas) y una actividad de extensión (20-40 horas), reduciendo proporcionalmente las horas de docencia.'
+    }
+  ],
+  estadoFlujo: {
+    nivelActual: null,
+    ultimaActualizacion: '2024-12-19T11:30:00Z',
+    requiereFirmasEspecificas: false,
+    firmasPendientes: []
+  }
+};
+
+// ============================================================================
 // NOTIFICACIONES DE EJEMPLO
 // ============================================================================
 
@@ -560,7 +813,10 @@ export const ptasMockData: PTAConAprobacion[] = [
   pta2, // En aprobación Nivel 1
   pta3, // En aprobación Nivel 2
   pta4, // Aprobado completamente
-  pta5  // Devuelto para ajustes
+  pta5, // Devuelto para ajustes
+  pta6, // NUEVO: Dr. Carlos Méndez - URGENTE Nivel 1
+  pta7, // NUEVO: Dra. Ana Gutiérrez - En Revisión Nivel 2
+  pta8  // NUEVO: Mg. Roberto Silva - Observaciones/Devuelto
 ];
 
 /**
@@ -578,7 +834,10 @@ export const todasLasPTAs: PTAConAprobacion[] = [
   pta3,
   pta4,
   pta5,
-  ptaDemo  // Agregar PTA demo
+  pta6,  // NUEVO: Dr. Carlos Méndez Bivera
+  pta7,  // NUEVO: Dra. Ana Gutiérrez López
+  pta8,  // NUEVO: Mg. Roberto Silva Castro
+  ptaDemo  // PTA demo
 ];
 
 /**

@@ -900,6 +900,97 @@ export const DOCENTES_HORA_CATEDRA: UserWithSedes[] = [
     documentNumber: '16012345',
     birthDate: '1987-04-15',
     address: 'Calle 70 # 4B-32, Cali'
+  },
+  
+  // ============================================
+  // NUEVOS DOCENTES - PTAs PENDIENTES
+  // ============================================
+  {
+    id: 'docente-catedra-021',
+    personId: 'person-doc-catedra-021',
+    firstName: 'Carlos',
+    lastName: 'Méndez Bivera',
+    email: 'carlos.mendez@esap.edu.co',
+    phone: '+57 310 234 5670',
+    status: 'active',
+    roles: [
+      { id: 'role-01', name: 'Docente', code: 'DOCENTE', alcance: 'nacional' }
+    ],
+    location: 'Bogotá D.C.',
+    sedes: [
+      {
+        id: 'sede-nacional',
+        codigo: 'ESAP-NAC',
+        nombre: 'Sede Nacional',
+        nivel: 'sede-central',
+        esPrincipal: true
+      }
+    ],
+    enrollmentMethod: 'manual',
+    enrollmentDate: '2022-03-15',
+    lastLogin: '2024-12-23T08:30:00',
+    documentType: 'CC',
+    documentNumber: '79234567',
+    birthDate: '1975-09-12',
+    address: 'Calle 80 # 12-45, Bogotá'
+  },
+  {
+    id: 'docente-catedra-022',
+    personId: 'person-doc-catedra-022',
+    firstName: 'Ana',
+    lastName: 'Gutiérrez López',
+    email: 'ana.gutierrez@esap.edu.co',
+    phone: '+57 315 678 9012',
+    status: 'active',
+    roles: [
+      { id: 'role-01', name: 'Docente', code: 'DOCENTE', alcance: 'territorial' }
+    ],
+    location: 'Medellín',
+    sedes: [
+      {
+        id: 'ter-antioquia',
+        codigo: 'ESAP-ANT',
+        nombre: 'Territorial Antioquia',
+        nivel: 'territorial',
+        esPrincipal: true
+      }
+    ],
+    enrollmentMethod: 'manual',
+    enrollmentDate: '2021-08-20',
+    lastLogin: '2024-12-23T09:15:00',
+    documentType: 'CC',
+    documentNumber: '43567890',
+    birthDate: '1982-06-25',
+    address: 'Calle 60 # 45-30, Medellín'
+  },
+  {
+    id: 'docente-catedra-023',
+    personId: 'person-doc-catedra-023',
+    firstName: 'Roberto',
+    lastName: 'Silva Castro',
+    email: 'roberto.silva.docente@esap.edu.co',
+    phone: '+57 318 890 1234',
+    status: 'active',
+    roles: [
+      { id: 'role-01', name: 'Docente', code: 'DOCENTE', alcance: 'territorial' }
+    ],
+    location: 'Cali',
+    sedes: [
+      {
+        id: 'ter-valle',
+        codigo: 'ESAP-VAL',
+        nombre: 'Territorial Valle del Cauca',
+        nivel: 'territorial',
+        esPrincipal: true
+      }
+    ],
+    enrollmentMethod: 'manual',
+    enrollmentDate: '2020-02-10',
+    lastLogin: '2024-12-23T07:45:00',
+    documentType: 'CC',
+    documentNumber: '80123456',
+    birthDate: '1978-11-30',
+    address: 'Cra 5 # 25-60, Cali'
   }
 ];
 
