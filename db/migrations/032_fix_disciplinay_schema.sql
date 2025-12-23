@@ -328,15 +328,8 @@ CREATE TABLE IF NOT EXISTS internal_disciplinary_control.dias_festivos (
     fecha_actualizacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Índice único que maneja NULLs correctamente usando COALESCE
--- Esto asegura que solo haya un registro por (fecha, tipo, territorio)
--- donde territorio puede ser NULL. El índice usa COALESCE para convertir NULL a ''
-CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_festivo_fecha_tipo_territorio
-ON internal_disciplinary_control.dias_festivos (
-    fecha, 
-    tipo, 
-    COALESCE(territorio, '')
-);
+-- NOTA: El índice único se crea después de limpiar duplicados (ver sección de migraciones)
+-- para evitar errores si ya existen duplicados en la tabla
 
 CREATE INDEX IF NOT EXISTS idx_festivos_fecha ON internal_disciplinary_control.dias_festivos(fecha);
 CREATE INDEX IF NOT EXISTS idx_festivos_tipo ON internal_disciplinary_control.dias_festivos(tipo);
@@ -396,21 +389,21 @@ CREATE INDEX IF NOT EXISTS idx_alertas_fecha_envio ON internal_disciplinary_cont
 -- y ON CONFLICT no puede usar expresiones directamente
 INSERT INTO internal_disciplinary_control.dias_festivos (fecha, descripcion, tipo, territorio, activo, creado_por_id)
 SELECT * FROM (VALUES
-    ('2025-01-01', 'Año Nuevo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-01-06', 'Día de los Reyes Magos', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-03-24', 'Día de San José', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-04-17', 'Jueves Santo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-04-18', 'Viernes Santo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-05-01', 'Día del Trabajo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-06-23', 'Día de San Pedro y San Pablo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-07-20', 'Día de la Independencia', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-08-07', 'Batalla de Boyacá', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-08-18', 'Asunción de la Virgen', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-10-13', 'Día de la Raza', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-11-03', 'Todos los Santos', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-11-17', 'Independencia de Cartagena', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-12-08', 'Inmaculada Concepción', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-12-25', 'Navidad', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000')
+    ('2025-01-01'::DATE, 'Año Nuevo', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-01-06'::DATE, 'Día de los Reyes Magos', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-03-24'::DATE, 'Día de San José', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-04-17'::DATE, 'Jueves Santo', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-04-18'::DATE, 'Viernes Santo', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-05-01'::DATE, 'Día del Trabajo', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-06-23'::DATE, 'Día de San Pedro y San Pablo', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-07-20'::DATE, 'Día de la Independencia', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-08-07'::DATE, 'Batalla de Boyacá', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-08-18'::DATE, 'Asunción de la Virgen', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-10-13'::DATE, 'Día de la Raza', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-11-03'::DATE, 'Todos los Santos', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-11-17'::DATE, 'Independencia de Cartagena', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-12-08'::DATE, 'Inmaculada Concepción', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID),
+    ('2025-12-25'::DATE, 'Navidad', 'nacional'::internal_disciplinary_control.tipo_festivo_enum, NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'::UUID)
 ) AS v(fecha, descripcion, tipo, territorio, activo, creado_por_id)
 WHERE NOT EXISTS (
     SELECT 1 FROM internal_disciplinary_control.dias_festivos df
@@ -808,12 +801,12 @@ BEGIN
 
     -- Crear función del trigger si no existe
     CREATE OR REPLACE FUNCTION internal_disciplinary_control.update_updated_at_column()
-    RETURNS TRIGGER AS $$
+    RETURNS TRIGGER AS $func$
     BEGIN
         NEW."updatedAt" = CURRENT_TIMESTAMP;
         RETURN NEW;
     END;
-    $$ language 'plpgsql';
+    $func$ language 'plpgsql';
 
     -- Crear trigger si no existe
     IF NOT EXISTS (
@@ -845,11 +838,20 @@ DO $$
 DECLARE
     duplicados_count INTEGER;
 BEGIN
-    -- Eliminar duplicados, manteniendo solo el más reciente (o el primero si tienen la misma fecha)
+    -- PASO 1: Eliminar el índice único si existe (para poder limpiar duplicados)
+    BEGIN
+        DROP INDEX IF EXISTS internal_disciplinary_control.idx_unique_festivo_fecha_tipo_territorio;
+        RAISE NOTICE 'Índice único eliminado temporalmente para limpiar duplicados';
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE NOTICE 'No se pudo eliminar el índice (puede que no exista): %', SQLERRM;
+    END;
+
+    -- PASO 2: Eliminar duplicados, manteniendo solo el más reciente (o el primero si tienen la misma fecha)
     WITH duplicados AS (
         SELECT id,
                ROW_NUMBER() OVER (
-                   PARTITION BY fecha, tipo, COALESCE(territorio::text, 'NULL')
+                   PARTITION BY fecha, tipo, COALESCE(territorio::text, '')
                    ORDER BY fecha_creacion DESC, id
                ) as rn
         FROM internal_disciplinary_control.dias_festivos
@@ -865,8 +867,7 @@ BEGIN
         RAISE NOTICE 'Eliminados % días festivos duplicados', duplicados_count;
     END IF;
 
-    -- Asegurar que la restricción única funcione correctamente
-    -- Eliminar la restricción existente si existe
+    -- PASO 3: Eliminar cualquier restricción única existente si existe
     BEGIN
         ALTER TABLE internal_disciplinary_control.dias_festivos
         DROP CONSTRAINT IF EXISTS uq_festivo_fecha_tipo_territorio;
@@ -875,16 +876,10 @@ BEGIN
             NULL;
     END;
 
-    -- Crear un índice único que maneje NULLs correctamente usando COALESCE
+    -- PASO 4: Crear el índice único después de limpiar duplicados
     -- Esto asegura que solo haya un registro por (fecha, tipo, territorio)
     -- donde territorio puede ser NULL
-    IF NOT EXISTS (
-        SELECT 1 
-        FROM pg_indexes 
-        WHERE schemaname = 'internal_disciplinary_control'
-        AND tablename = 'dias_festivos'
-        AND indexname = 'idx_unique_festivo_fecha_tipo_territorio'
-    ) THEN
+    BEGIN
         CREATE UNIQUE INDEX idx_unique_festivo_fecha_tipo_territorio
         ON internal_disciplinary_control.dias_festivos (
             fecha, 
@@ -893,7 +888,12 @@ BEGIN
         );
         
         RAISE NOTICE 'Índice único creado para días festivos';
-    END IF;
+    EXCEPTION
+        WHEN duplicate_table THEN
+            RAISE NOTICE 'El índice único ya existe';
+        WHEN OTHERS THEN
+            RAISE NOTICE 'Error al crear índice único: %', SQLERRM;
+    END;
 
 EXCEPTION
     WHEN OTHERS THEN
