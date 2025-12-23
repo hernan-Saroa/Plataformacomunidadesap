@@ -160,6 +160,20 @@ const DEFAULT_STAGES = [
   { nombre: 'SEGUNDA INSTANCIA', dias: 10 }
 ];
 
+// Helper para calcular días transcurridos
+const getDiasTranscurridos = (fecha: string | Date | undefined) => {
+  if (!fecha) return 0;
+  try {
+    const fechaDate = new Date(fecha);
+    if (isNaN(fechaDate.getTime())) return 0;
+    const hoy = new Date();
+    const diffTime = Math.abs(hoy.getTime() - fechaDate.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  } catch (e) {
+    return 0;
+  }
+};
+
 const mergeStages = (stages: { nombre: string; dias: number }[]) => {
   const byKey = new Map<string, { nombre: string; dias: number }>();
 
@@ -1946,7 +1960,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     const cargarProfesionales = async () => {
       try {
         const candidatos = await disciplinaryService.getCandidates();
-
+<<<<<<< HEAD
         const filtered = Array.isArray(candidatos) ? candidatos.filter((c: any) => {
           // 1. Check Active Status (defensive)
           const isActive = !c.estado || c.estado === 'ACTIVO';
@@ -4663,11 +4677,8 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
             <ModalArchivarNoticia
               noticia={{
                 id: itemSeleccionado.id,
-                numeroRadicado: itemSeleccionado.numero,
-                denunciado: {
-                  nombre: itemSeleccionado.denunciado.nombre,
-                  identificacion: `${itemSeleccionado.denunciado.tipoIdentificacion} ${itemSeleccionado.denunciado.numeroIdentificacion}`
-                }
+                radicado: itemSeleccionado.radicado || itemSeleccionado.numero,
+                disciplinable: itemSeleccionado.disciplinable || itemSeleccionado.disciplinables || itemSeleccionado.denunciado
               }}
               onClose={() => {
                 setModalActivo(null);
