@@ -648,6 +648,72 @@ BEGIN
 END $$;
 
 -- ============================================
+-- FIX: Agregar columna telefono a disciplinary_professional
+-- ============================================
+DO $$
+BEGIN
+    -- Verificamos si disciplinary_professional tiene telefono
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_professional'
+        AND column_name = 'telefono'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_professional
+        ADD COLUMN "telefono" VARCHAR(50);
+        RAISE NOTICE 'Columna telefono agregada a tabla disciplinary_professional';
+    END IF;
+
+    -- Verificamos si disciplinary_professional tiene especialidad
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_professional'
+        AND column_name = 'especialidad'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_professional
+        ADD COLUMN "especialidad" VARCHAR(100);
+        RAISE NOTICE 'Columna especialidad agregada a tabla disciplinary_professional';
+    END IF;
+
+    -- Verificamos si disciplinary_professional tiene tipo_contrato
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_professional'
+        AND column_name = 'tipo_contrato'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_professional
+        ADD COLUMN "tipo_contrato" VARCHAR(50);
+        RAISE NOTICE 'Columna tipo_contrato agregada a tabla disciplinary_professional';
+    END IF;
+
+    -- Verificamos si disciplinary_professional tiene territorial
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_professional'
+        AND column_name = 'territorial'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_professional
+        ADD COLUMN "territorial" VARCHAR(100);
+        RAISE NOTICE 'Columna territorial agregada a tabla disciplinary_professional';
+    END IF;
+
+    -- Verificamos si disciplinary_professional tiene capacidad_maxima
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_professional'
+        AND column_name = 'capacidad_maxima'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_professional
+        ADD COLUMN "capacidad_maxima" INTEGER DEFAULT 10;
+        RAISE NOTICE 'Columna capacidad_maxima agregada a tabla disciplinary_professional';
+    END IF;
+END $$;
+
+-- ============================================
 -- MIGRACIONES: Actualizar tablas existentes
 -- ============================================
 -- Estas migraciones actualizan tablas existentes para soportar nuevas funcionalidades
@@ -656,28 +722,122 @@ END $$;
 -- para soportar URLs externas largas (http:// o https://)
 DO $$
 BEGIN
-    -- Verificar si la columna 'url' existe y es VARCHAR(255)
-    IF EXISTS (
-        SELECT 1 
-        FROM information_schema.columns
-        WHERE table_schema = 'internal_disciplinary_control'
-        AND table_name = 'evidence'
-        AND column_name = 'url'
-        AND data_type = 'character varying'
-        AND character_maximum_length = 255
-    ) THEN
-        -- Cambiar el tipo de VARCHAR(255) a TEXT
-        ALTER TABLE internal_disciplinary_control.evidence
-        ALTER COLUMN url TYPE TEXT;
-        
-        RAISE NOTICE 'Campo url en tabla evidence actualizado de VARCHAR(255) a TEXT';
-    ELSE
-        -- Si la columna no existe o ya es TEXT, no hacer nada
-        RAISE NOTICE 'Campo url en tabla evidence ya es TEXT o no existe';
+    -- 1. url (TEXT)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'url') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "url" TEXT;
+        RAISE NOTICE 'Columna url agregada a tabla evidence';
     END IF;
+    -- Ajustar tipo url a TEXT si existe
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'url' AND data_type = 'character varying' AND character_maximum_length = 255) THEN
+        ALTER TABLE internal_disciplinary_control.evidence ALTER COLUMN url TYPE TEXT;
+        RAISE NOTICE 'Campo url actualizado a TEXT';
+    END IF;
+
+    -- 2. archivoUrl (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'archivoUrl') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "archivoUrl" VARCHAR;
+        RAISE NOTICE 'Columna archivoUrl agregada';
+    END IF;
+
+    -- 3. nombreArchivo (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'nombreArchivo') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "nombreArchivo" VARCHAR;
+        RAISE NOTICE 'Columna nombreArchivo agregada';
+    END IF;
+
+    -- 4. filename (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'filename') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "filename" VARCHAR;
+        RAISE NOTICE 'Columna filename agregada';
+    END IF;
+
+    -- 5. description (VARCHAR/TEXT)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'description') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "description" TEXT;
+        RAISE NOTICE 'Columna description agregada';
+    END IF;
+
+    -- 6. fileType (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'fileType') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "fileType" VARCHAR;
+        RAISE NOTICE 'Columna fileType agregada';
+    END IF;
+
+    -- 7. fileSize (INTEGER)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'fileSize') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "fileSize" INTEGER;
+        RAISE NOTICE 'Columna fileSize agregada';
+    END IF;
+
+    -- 8. nombreDocumento (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'nombreDocumento') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "nombreDocumento" VARCHAR;
+        RAISE NOTICE 'Columna nombreDocumento agregada';
+    END IF;
+
+    -- 9. tipoDocumento (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'tipoDocumento') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "tipoDocumento" VARCHAR;
+        RAISE NOTICE 'Columna tipoDocumento agregada';
+    END IF;
+
+    -- 10. tipo (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'tipo') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "tipo" VARCHAR DEFAULT 'DOCUMENTO';
+        RAISE NOTICE 'Columna tipo agregada';
+    END IF;
+
+    -- 11. categoria (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'categoria') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "categoria" VARCHAR;
+        RAISE NOTICE 'Columna categoria agregada';
+    END IF;
+
+    -- 12. destinatario (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'destinatario') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "destinatario" VARCHAR;
+        RAISE NOTICE 'Columna destinatario agregada';
+    END IF;
+
+    -- 13. asunto (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'asunto') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "asunto" VARCHAR;
+        RAISE NOTICE 'Columna asunto agregada';
+    END IF;
+
+    -- 14. participantes (INTEGER) - Int type inferred from entity
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'participantes') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "participantes" INTEGER;
+        RAISE NOTICE 'Columna participantes agregada';
+    END IF;
+
+    -- 15. etapa (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'etapa') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "etapa" VARCHAR;
+        RAISE NOTICE 'Columna etapa agregada';
+    END IF;
+
+    -- 16. usuarioCarga (VARCHAR)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'usuarioCarga') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "usuarioCarga" VARCHAR;
+        RAISE NOTICE 'Columna usuarioCarga agregada';
+    END IF;
+
+    -- 17. createdAt (TIMESTAMP)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'createdAt') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "createdAt" TIMESTAMP DEFAULT now();
+        RAISE NOTICE 'Columna createdAt agregada';
+    END IF;
+
+    -- 18. processId (UUID)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'internal_disciplinary_control' AND table_name = 'evidence' AND column_name = 'processId') THEN
+        ALTER TABLE internal_disciplinary_control.evidence ADD COLUMN "processId" UUID;
+        RAISE NOTICE 'Columna processId agregada';
+    END IF;
+
 EXCEPTION
     WHEN OTHERS THEN
-        RAISE NOTICE 'Error al actualizar campo url: %', SQLERRM;
+        RAISE NOTICE 'Error al actualizar columnas de evidence: %', SQLERRM;
 END $$;
 
 -- Migración: Agregar columnas archivoUrl y nombreArchivo si no existen
