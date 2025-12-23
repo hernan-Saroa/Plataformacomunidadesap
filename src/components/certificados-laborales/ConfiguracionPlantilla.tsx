@@ -5602,14 +5602,16 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  dangerouslySetInnerHTML={{ __html: borrador.contenidoCertificado.texto }}
+                  ref={(el) => {
+                    if (el && !el.dataset.initialized) {
+                      el.innerHTML = borrador.contenidoCertificado.texto;
+                      el.dataset.initialized = 'true';
+                    }
+                  }}
 
 
 
                   onInput={(e) => {
-
-
-
                     setBorrador({
 
 
