@@ -17,6 +17,7 @@ import { LoginPage } from './components/esap/LoginPage';
 import { SystemSelector } from './components/esap/SystemSelector';
 import { Toaster } from 'sonner';
 import { toast } from 'sonner@2.0.3';
+import { AlertTriangle, Clock } from 'lucide-react';
 import { authService } from './services/api/authService';
 
 // Importar Demo de Control Disciplinario
@@ -262,7 +263,7 @@ export default function App() {
     
     setUsuarioActual(null);
     setVistaActual('landing');
-    localStorage.removeItem('esap-sesion-activa');
+    handleLogout();
     setMostrarAlertaInactividad(false);
     
     console.log('⏰ Sesión cerrada por inactividad');
@@ -564,6 +565,14 @@ export default function App() {
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });
     }
+  };
+
+  const handleContinuarSesion = () => {
+    setMostrarAlertaInactividad(false);
+    resetearTimerInactividad();
+    toast.success('Sesión extendida', {
+      description: 'Has renovado tu sesión exitosamente',
+    });
   };
 
   // ============================================
