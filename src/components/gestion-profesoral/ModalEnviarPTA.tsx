@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { X, Send, User, FileText, Calendar, CheckCircle } from 'lucide-react';
+import * as React from 'react';
+import { X, Send, User, FileText, Calendar, CheckCircle, Clock, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ButtonSIGL } from '../ui/button-sigl';
-import { BadgeSIGL } from '../ui/badge-sigl';
+import { ButtonSIGL } from '../esap/gestion-legal/design-system/ButtonSIGL';
+import { BadgeSIGL } from '../esap/gestion-legal/design-system/BadgeSIGL';
 
 interface PTA {
   id: string;
@@ -25,12 +26,24 @@ interface ModalEnviarPTAProps {
   onClose: () => void;
   ptas: PTA[];
   onEnviar: (pta: PTA) => void;
+  ptaPreseleccionado?: PTA | null; // PTA pre-seleccionado (para botón individual)
 }
 
-export function ModalEnviarPTA({ isOpen, onClose, ptas, onEnviar }: ModalEnviarPTAProps) {
+export function ModalEnviarPTA({ isOpen, onClose, ptas, onEnviar, ptaPreseleccionado = null }: ModalEnviarPTAProps) {
   const [selectedPTA, setSelectedPTA] = useState<PTA | null>(null);
   const [showConfirmacion, setShowConfirmacion] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Si hay un PTA preseleccionado, usarlo y saltar directo a confirmación
+  React.useEffect(() => {
+    if (isOpen && ptaPreseleccionado) {
+      setSelectedPTA(ptaPreseleccionado);
+      setShowConfirmacion(true);
+    } else if (isOpen) {
+      setShowConfirmacion(false);
+      setSelectedPTA(null);
+    }
+  }, [isOpen, ptaPreseleccionado]);
 
   // Filtrar PTAs en estado borrador que pueden ser enviados
   const ptasDisponibles = ptas.filter(
@@ -75,7 +88,7 @@ export function ModalEnviarPTA({ isOpen, onClose, ptas, onEnviar }: ModalEnviarP
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -90,7 +103,7 @@ export function ModalEnviarPTA({ isOpen, onClose, ptas, onEnviar }: ModalEnviarP
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden"
+          className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden"
         >
           {!showConfirmacion ? (
             // PASO 1: Seleccionar PTA

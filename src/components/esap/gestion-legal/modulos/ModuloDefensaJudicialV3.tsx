@@ -396,9 +396,9 @@ function TarjetaExpediente({
       <Card 
         className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full"
         style={{ 
-          height: vistaCompacta ? '560px' : '680px',
-          minHeight: vistaCompacta ? '560px' : '680px',
-          maxHeight: vistaCompacta ? '560px' : '680px'
+          height: vistaCompacta ? '480px' : '520px',
+          minHeight: vistaCompacta ? '480px' : '520px',
+          maxHeight: vistaCompacta ? '480px' : '520px'
         }}
       >
         {/* Barra superior azul ESAP */}
@@ -407,7 +407,7 @@ function TarjetaExpediente({
           style={{ background: '#003DA5' }}
         />
 
-        <div className="p-2.5 flex flex-col">
+        <div className="p-2.5 flex-1 flex flex-col overflow-y-auto min-h-0">
           {/* Header */}
           <div className="flex items-start justify-between mb-1.5">
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -500,12 +500,6 @@ function TarjetaExpediente({
               </p>
               <p className="text-xs text-gray-500">Tiempo</p>
             </div>
-          </div>
-
-          {/* Última actuación */}
-          <div className="mb-1.5">
-            <p className="text-xs text-gray-500 mb-0.5">Última actuación:</p>
-            <p className="text-xs text-gray-700 line-clamp-1">{expediente.hechos.substring(0, 80)}...</p>
           </div>
 
           {/* Acciones Principales - Siempre Visibles */}

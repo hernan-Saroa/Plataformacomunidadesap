@@ -719,13 +719,19 @@ function TarjetaProceso({
             </div>
           </div>
 
-          {/* Última actuación - Solo desktop */}
-          {!vistaCompacta && !isMobile && (
-            <div className="mb-1.5">
-              <p className="text-xs text-gray-500 mb-0.5">Última actuación:</p>
-              <p className="text-xs text-gray-700 line-clamp-1">{proceso.ultimaActuacion}</p>
-            </div>
-          )}
+          {/* Última actuación - SIEMPRE VISIBLE */}
+          <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
+            <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#003DA5' }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#003DA5' }}></span>
+              ÚLTIMA ACTUACIÓN
+            </p>
+            <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-700 line-clamp-2 mb-1`}>
+              {proceso.ultimaActuacion}
+            </p>
+            <p className="text-xs text-gray-500">
+              📅 {proceso.fechaCreacion}
+            </p>
+          </div>
 
           {/* Acciones Principales - Siempre Visibles */}
           <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">

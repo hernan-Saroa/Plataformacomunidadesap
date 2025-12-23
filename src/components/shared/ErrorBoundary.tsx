@@ -4,11 +4,11 @@
  * ═══════════════════════════════════════════════════════════════
  * 
  * Captura errores de React y muestra una UI amigable al usuario
- * En lugar de pantalla en blanco, muestra mensaje tranquilizador
+ * En lugar de pantalla en blanco, muestra un mini-juego interactivo
  */
 
 import React, { Component, ReactNode } from 'react';
-import { ErrorFallbackUI } from './ErrorFallbackUI';
+import { ErrorGamePage } from '../esap/ErrorGamePage';
 
 interface Props {
   children: ReactNode;
@@ -62,6 +62,11 @@ export class ErrorBoundary extends Component<Props, State> {
     });
   };
 
+  handleGoHome = () => {
+    // Reiniciar la aplicación
+    window.location.href = '/';
+  };
+
   render() {
     if (this.state.hasError) {
       // Renderizar UI de error personalizada
@@ -70,10 +75,9 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <ErrorFallbackUI
-          error={this.state.error}
-          errorInfo={this.state.errorInfo}
-          onReset={this.handleReset}
+        <ErrorGamePage
+          onRetry={this.handleReset}
+          onGoHome={this.handleGoHome}
         />
       );
     }

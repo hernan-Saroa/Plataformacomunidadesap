@@ -42,6 +42,9 @@ import { PTAFormModal } from './PTAFormModal';
 import { PTARevisionModal } from './PTARevisionModal';
 import { PTADetallesModal } from './PTADetallesModal';
 import { VisualizadorPTAAjustes } from './VisualizadorPTAAjustes';
+import { ModalAprobacionExitosa } from './ModalAprobacionExitosa';
+import { ModalEnviarPTA } from './ModalEnviarPTA';
+import { ModalVistaGeneralPTA } from './ModalVistaGeneralPTA';
 
 interface PTAsListProps {
   className?: string;
@@ -57,6 +60,8 @@ export function PTAsList({ className = '' }: PTAsListProps) {
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
   const [isDetallesModalOpen, setIsDetallesModalOpen] = useState(false);
   const [isVisualizadorDemoOpen, setIsVisualizadorDemoOpen] = useState(false);
+  const [isAprobacionExitosaOpen, setIsAprobacionExitosaOpen] = useState(false);
+  const [isVistaGeneralOpen, setIsVistaGeneralOpen] = useState(false);
   const [ptaSeleccionado, setPtaSeleccionado] = useState<any>(null);
   const [modoEdicion, setModoEdicion] = useState(false);
   
@@ -158,14 +163,45 @@ export function PTAsList({ className = '' }: PTAsListProps) {
   };
 
   const handleEnviarARevision = (pta: any) => {
-    if (confirm('¿Estás seguro de enviar este PTA a revisión?')) {
-      setPtas(prev => prev.map(p => 
-        p.id === pta.id 
-          ? { ...p, estado: 'en_revision', fecha_envio: new Date().toISOString() }
-          : p
-      ));
-      toast.success('PTA enviado a revisión exitosamente');
-    }
+    // Convertir el PTA al formato esperado por el modal
+    const ptaParaModal = {
+      id: pta.id,
+      codigo: pta.codigo,
+      docente: {
+        nombre: pta.docente_nombre || 'Docente',
+        email: `${pta.docente_nombre?.toLowerCase().replace(/ /g, '.').replace(/🔴/g, '').replace(/demo:/g, '').trim()}@esap.edu.co` || 'docente@esap.edu.co',
+        documento: 'CC 123456789',
+        programa: pta.departamento || 'Programa Académico'
+      },
+      periodo: pta.periodo_nombre || '2025-I',
+      estado: 'BORRADOR',
+      fecha_creacion: pta.created_at 
+        ? new Date(pta.created_at).toLocaleDateString('es-CO', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          })
+        : 'N/A',
+      horas_totales: (pta.componente_ensenanza?.horas || 0) + 
+                     (pta.componente_investigacion?.horas || 0) + 
+                     (pta.componente_extension?.horas || 0) + 
+                     (pta.componente_apoyo_institucional?.horas || 0),
+      horas_programables: 800
+    };
+    
+    setPtaSeleccionado(ptaParaModal);
+    setIsVistaGeneralOpen(true);
+  };
+  
+  const handleConfirmarEnvio = (ptaModal: any) => {
+    // Actualizar el estado del PTA en la lista
+    setPtas(prev => prev.map(p => 
+      p.id === ptaModal.id 
+        ? { ...p, estado: 'en_revision', fecha_envio: new Date().toISOString() }
+        : p
+    ));
+    toast.success(`PTA ${ptaModal.codigo} enviado exitosamente a revisión`);
+    setIsVistaGeneralOpen(false);
   };
 
   const handleSuccessForm = (ptaData: any) => {
@@ -189,6 +225,7 @@ export function PTAsList({ className = '' }: PTAsListProps) {
           }
         : p
     ));
+    setIsAprobacionExitosaOpen(true);
   };
 
   const handleRechazarPTA = (data: any) => {
@@ -231,18 +268,30 @@ export function PTAsList({ className = '' }: PTAsListProps) {
   };
 
   const handleAprobarDirecto = (pta: any) => {
-    if (confirm(`¿Está seguro de aprobar el PTA ${pta.codigo}?`)) {
-      setPtas(prev => prev.map(p => 
-        p.id === pta.id 
-          ? { 
-              ...p, 
-              estado: 'aprobado', 
-              fecha_aprobacion: new Date().toISOString()
-            }
-          : p
-      ));
-      toast.success(`PTA ${pta.codigo} aprobado exitosamente`);
-    }
+    console.log('🔍 handleAprobarDirecto llamado con PTA:', pta);
+    
+    const ptaAprobado = {
+      ...pta,
+      estado: 'aprobado',
+      fecha_aprobacion: new Date().toISOString(),
+      periodo: pta.periodo_nombre || '2025-I',
+      docente: {
+        nombre: pta.docente_nombre || 'Docente',
+        email: `${pta.docente_nombre?.toLowerCase().replace(/ /g, '.').replace(/🔴/g, '').replace(/demo:/g, '').trim()}@esap.edu.co` || 'docente@esap.edu.co',
+        documento: 'CC 123456789',
+        programa: pta.departamento || 'Programa Académico'
+      }
+    };
+
+    console.log('✅ PTA aprobado:', ptaAprobado);
+
+    setPtas(prev => prev.map(p => 
+      p.id === pta.id ? ptaAprobado : p
+    ));
+    
+    setPtaSeleccionado(ptaAprobado);
+    console.log('🚀 Abriendo modal de aprobación exitosa');
+    setIsAprobacionExitosaOpen(true);
   };
 
   return (
@@ -610,6 +659,19 @@ export function PTAsList({ className = '' }: PTAsListProps) {
         isOpen={isVisualizadorDemoOpen}
         onClose={() => setIsVisualizadorDemoOpen(false)}
         pta={ptaDemoConverted}
+      />
+      
+      <ModalAprobacionExitosa
+        isOpen={isAprobacionExitosaOpen}
+        onClose={() => setIsAprobacionExitosaOpen(false)}
+        pta={ptaSeleccionado}
+      />
+      
+      <ModalVistaGeneralPTA
+        isOpen={isVistaGeneralOpen}
+        onClose={() => setIsVistaGeneralOpen(false)}
+        pta={ptaSeleccionado}
+        onEnviar={handleConfirmarEnvio}
       />
     </div>
   );

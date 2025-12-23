@@ -4,13 +4,13 @@ import {
   Users, Shield, Activity, BarChart3, TrendingUp, Zap, 
   GraduationCap, CheckCircle, Award, FolderOpen, FileCheck, 
   BookOpen, ClipboardList, Scale, Bell, Layout, Building2,
-  ChevronDown, ChevronLeft, Briefcase
+  ChevronDown, ChevronLeft, Briefcase, Gavel
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import esapLogoSimple from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 
-type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'aspirantes' | 'gestion-profesoral' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas';
+type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'aspirantes' | 'gestion-profesoral' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -803,9 +803,16 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   
                   {renderMenuItem(
                     'control-interno',
-                    <ClipboardList className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                    <ClipboardList className="w-5 h-5" strokeWidth={2} />,
                     'Control Interno Gestión',
                     'Auditorías y hallazgos'
+                  )}
+                  
+                  {renderMenuItem(
+                    'control-disciplinario',
+                    <Gavel className="w-5 h-5" strokeWidth={2} />,
+                    'Control Interno Disciplinario',
+                    'Procesos disciplinarios'
                   )}
                 </div>
               </>
@@ -857,7 +864,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   
                   {renderMenuItem(
                     'gestion-legal',
-                    <Scale className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                    <Scale className="w-5 h-5" strokeWidth={2} />,
                     'Gestión Legal (SIGL)',
                     'Sistema Integrado Legal'
                   )}
@@ -1029,11 +1036,36 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       'Administrar profesores'
                     )}
 
+                    {/* Separador visual - Módulos de Control y Gestión Legal */}
+                    <AnimatePresence mode="wait">
+                      {!effectiveCollapsed && (
+                        <motion.div
+                          initial={{ opacity: 0, scaleX: 0 }}
+                          animate={{ opacity: 1, scaleX: 1 }}
+                          exit={{ opacity: 0, scaleX: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="my-4 mx-2"
+                        >
+                          <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                          <div className="text-[9px] text-white/40 uppercase tracking-widest text-center mt-2 font-semibold">
+                            Control y Legal
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
                     {renderMenuItem(
                       'control-interno',
                       <ClipboardList className="w-5 h-5" strokeWidth={2} />,
                       'Control Interno Gestión',
                       'Auditorías y hallazgos'
+                    )}
+                    
+                    {renderMenuItem(
+                      'control-disciplinario',
+                      <Gavel className="w-5 h-5" strokeWidth={2} />,
+                      'Control Interno Disciplinario',
+                      'Procesos disciplinarios'
                     )}
                     
                     {/* ✅ NUEVO: Gestión Legal (SIGL) v5.0 */}

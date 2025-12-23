@@ -192,54 +192,40 @@ function Modulo2ConvocatoriasWrapper() {
 function Modulo3PTAs() {
   const [showModalEnviar, setShowModalEnviar] = useState(false);
   
-  // PTAs de ejemplo - En producción vendrían de una API o estado global
-  const ptasEjemplo = [
-    {
-      id: '1',
-      codigo: 'PTA-DEMO-BOR-001',
+  // Importar PTAs desde los datos demo
+  const { ptasDemoPorEstado } = require('../../data/ptasDemoPorEstado');
+  const { ptasMock } = require('../../mock-data/profesoral-mock-completo');
+  
+  // Combinar todos los PTAs disponibles
+  const todosLosPTAs = [...ptasDemoPorEstado, ...ptasMock];
+  
+  // Convertir PTAs al formato esperado por el modal
+  const ptasParaModal = todosLosPTAs
+    .filter(pta => pta.estado === 'borrador')
+    .map(pta => ({
+      id: pta.id,
+      codigo: pta.codigo,
       docente: {
-        nombre: 'Dra. Ana María Torres',
-        email: 'ana.torres@esap.edu.co',
-        documento: '52.123.456',
-        programa: 'Administración Pública'
+        nombre: pta.docente_nombre || 'Docente',
+        email: `${pta.docente_nombre?.toLowerCase().replace(/ /g, '.').replace(/🔴/g, '').replace(/demo:/g, '').trim()}@esap.edu.co` || 'docente@esap.edu.co',
+        documento: 'CC 123456789',
+        programa: pta.departamento || 'Programa Académico'
       },
-      periodo: '2025-I',
-      estado: 'EN_CONSTRUCCION',
-      fecha_creacion: '10 de enero de 2025',
-      horas_totales: 800,
-      horas_programables: 800
-    },
-    {
-      id: '2',
-      codigo: 'PTA-DEMO-BOR-002',
-      docente: {
-        nombre: 'Dr. Carlos Eduardo Mendoza',
-        email: 'carlos.mendoza@esap.edu.co',
-        documento: '79.456.789',
-        programa: 'Gestión Territorial'
-      },
-      periodo: '2025-I',
+      periodo: pta.periodo_nombre || '2025-I',
       estado: 'BORRADOR',
-      fecha_creacion: '8 de enero de 2025',
-      horas_totales: 400,
-      horas_programables: 400
-    },
-    {
-      id: '3',
-      codigo: 'PTA-DEMO-BOR-003',
-      docente: {
-        nombre: 'Dra. Patricia López García',
-        email: 'patricia.lopez@esap.edu.co',
-        documento: '41.234.567',
-        programa: 'Ciencias Políticas'
-      },
-      periodo: '2025-I',
-      estado: 'EN_CONSTRUCCION',
-      fecha_creacion: '12 de enero de 2025',
-      horas_totales: 800,
+      fecha_creacion: pta.created_at 
+        ? new Date(pta.created_at).toLocaleDateString('es-CO', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          })
+        : 'N/A',
+      horas_totales: (pta.componente_ensenanza?.horas || 0) + 
+                     (pta.componente_investigacion?.horas || 0) + 
+                     (pta.componente_extension?.horas || 0) + 
+                     (pta.componente_apoyo_institucional?.horas || 0),
       horas_programables: 800
-    }
-  ];
+    }));
   
   const handleEnviarPTA = (pta: any) => {
     // Aquí iría la lógica para enviar el PTA a revisión
@@ -247,6 +233,7 @@ function Modulo3PTAs() {
       description: `Se notificó al docente ${pta.docente.nombre}`,
       duration: 4000
     });
+    setShowModalEnviar(false);
   };
   
   return (
@@ -290,7 +277,7 @@ function Modulo3PTAs() {
       <ModalEnviarPTA
         isOpen={showModalEnviar}
         onClose={() => setShowModalEnviar(false)}
-        ptas={ptasEjemplo}
+        ptas={ptasParaModal}
         onEnviar={handleEnviarPTA}
       />
     </div>
