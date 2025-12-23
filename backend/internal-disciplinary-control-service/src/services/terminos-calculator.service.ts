@@ -64,6 +64,7 @@ export class TerminosCalculatorService {
       // Meses calendario (aproximación simple por ahora)
       const fechaVencimiento = new Date(desde);
       fechaVencimiento.setDate(fechaVencimiento.getDate() + dias);
+      console.log('Calendar months calculation for', etapa, 'dias', dias, 'fechaVencimiento', fechaVencimiento);
       return { dias, fechaVencimiento };
     } else {
       const fechaVencimiento = await this.sumarDiasHabiles(desde, dias);
