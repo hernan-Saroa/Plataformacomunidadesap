@@ -22,6 +22,7 @@ import { FlujoProcesoDisciplinario } from './FlujoProcesoDisciplinario';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { buildApiUrl, API_MODE } from '../../../config/environment';
 import { Viewer, Worker } from '@react-pdf-viewer/core';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import '@react-pdf-viewer/core/lib/styles/index.css';
@@ -299,10 +300,146 @@ function ModalVisorDocumento({
   processId?: string;
 }) {
   const [versionSeleccionada, setVersionSeleccionada] = useState(documento.version);
+  // NO mostrar documento automáticamente - el usuario debe hacer clic en "Mostrar Documento"
   const [viendoPDF, setViendoPDF] = useState(false);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [cargandoPDF, setCargandoPDF] = useState(false);
+  const [errorPDF, setErrorPDF] = useState<string | null>(null);
+  const [tipoArchivo, setTipoArchivo] = useState<'pdf' | 'word' | 'ppt' | 'xls' | 'otro'>('pdf');
   
   // Plugin de react-pdf-viewer con layout completo (zoom, navegación, etc.)
   const defaultLayoutPluginInstance = defaultLayoutPlugin();
+
+  // Limpiar estado cuando se cierra el modal
+  useEffect(() => {
+    return () => {
+      // Limpiar todos los estados cuando el componente se desmonta
+      setViendoPDF(false);
+      setCargandoPDF(false);
+      setErrorPDF(null);
+      setTipoArchivo('pdf');
+      if (pdfBlobUrl) {
+        window.URL.revokeObjectURL(pdfBlobUrl);
+        setPdfBlobUrl(null);
+      }
+    };
+  }, []);
+
+  // Cargar el PDF como blob cuando se abre el modal
+  useEffect(() => {
+    let currentBlobUrl: string | null = null;
+    let cancelled = false;
+
+    const cargarPDF = async () => {
+      if (!processId || !documento.id || !viendoPDF) {
+        return;
+      }
+
+      try {
+        setCargandoPDF(true);
+        setErrorPDF(null);
+
+        // Usar buildApiUrl para construir la URL correctamente según el modo (gateway/direct)
+        // En modo directo: /disciplinary-processes/...
+        // En modo gateway: /api/v1/disciplinary-processes/...
+        const endpoint = API_MODE === 'direct' 
+          ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
+          : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
+        const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
+        const token = localStorage.getItem('esap_access_token');
+        
+        const headers: HeadersInit = {
+          'Accept': 'application/octet-stream',
+        };
+        
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetch(downloadUrl, {
+          method: 'GET',
+          headers,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error ${response.status}: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        
+        if (cancelled) {
+          return;
+        }
+        
+        // Detectar tipo de archivo basado en el nombre del documento
+        const nombreArchivo = documento.nombre.toLowerCase();
+        let tipoDetectado: 'pdf' | 'word' | 'ppt' | 'xls' | 'otro' = 'otro';
+        
+        if (nombreArchivo.endsWith('.pdf')) {
+          tipoDetectado = 'pdf';
+          // Verificar que el blob sea realmente un PDF
+          const arrayBuffer = await blob.slice(0, 4).arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+          const pdfHeader = String.fromCharCode(...bytes);
+          
+          if (pdfHeader !== '%PDF') {
+            const text = await blob.text();
+            if (text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('<!doctype')) {
+              throw new Error('El servidor devolvió HTML en lugar de PDF. Verifique la autenticación y la URL.');
+            }
+            throw new Error('El archivo no es un PDF válido. Header esperado: %PDF, recibido: ' + pdfHeader);
+          }
+        } else if (nombreArchivo.endsWith('.doc') || nombreArchivo.endsWith('.docx')) {
+          tipoDetectado = 'word';
+        } else if (nombreArchivo.endsWith('.ppt') || nombreArchivo.endsWith('.pptx')) {
+          tipoDetectado = 'ppt';
+        } else if (nombreArchivo.endsWith('.xls') || nombreArchivo.endsWith('.xlsx')) {
+          tipoDetectado = 'xls';
+        }
+        
+        setTipoArchivo(tipoDetectado);
+
+        // Crear blob URL para todos los tipos de archivo
+        const url = window.URL.createObjectURL(blob);
+        currentBlobUrl = url;
+        
+        if (!cancelled) {
+          setPdfBlobUrl(url);
+        } else {
+          window.URL.revokeObjectURL(url);
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          console.error('Error al cargar PDF:', error);
+          setErrorPDF(error.message || 'No se pudo cargar el PDF');
+          toast.error('Error al cargar PDF', {
+            description: error.message || 'No se pudo cargar el documento'
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setCargandoPDF(false);
+        }
+      }
+    };
+
+    cargarPDF();
+
+    // Limpiar blob URL cuando se desmonte el componente o cambien las dependencias
+    return () => {
+      cancelled = true;
+      if (currentBlobUrl) {
+        window.URL.revokeObjectURL(currentBlobUrl);
+      }
+      // También limpiar el estado si existe
+      setPdfBlobUrl((prev: string | null) => {
+        if (prev) {
+          window.URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+    };
+  }, [processId, documento.id, viendoPDF]);
 
   const handleDescargarVersion = async () => {
     try {
@@ -316,15 +453,26 @@ function ModalVisorDocumento({
 
       toast.loading('Generando PDF...', { id: 'download' });
 
-      // Descargar el archivo original primero
-      const baseUrl = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3000';
-      const downloadUrl = `${baseUrl}/control-disciplinario/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
+      // Descargar el archivo original primero usando buildApiUrl
+      // En modo directo: /disciplinary-processes/...
+      // En modo gateway: /api/v1/disciplinary-processes/...
+      const endpoint = API_MODE === 'direct' 
+        ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
+        : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
+      const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
       const token = localStorage.getItem('esap_access_token');
       
+      const headers: HeadersInit = {
+        'Accept': 'application/octet-stream',
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       const response = await fetch(downloadUrl, {
-        headers: token ? {
-          'Authorization': `Bearer ${token}`,
-        } : {},
+        method: 'GET',
+        headers,
       });
 
       if (!response.ok) {
@@ -491,25 +639,36 @@ function ModalVisorDocumento({
     }
   };
 
-  const handleVerPDF = () => {
-    if (!processId || !documento.id) {
-      toast.error('No se puede ver el documento', {
-        description: 'Falta información del proceso o documento'
-      });
-      return;
-    }
-    setViendoPDF(true);
-  };
-
   const handleCerrarVisor = () => {
     setViendoPDF(false);
+    // El blob URL se limpiará automáticamente por el useEffect
+  };
+
+  // Función para limpiar el estado cuando se cierra el modal
+  const handleCerrarModal = () => {
+    // Limpiar todos los estados
+    setViendoPDF(false);
+    setCargandoPDF(false);
+    setErrorPDF(null);
+    setTipoArchivo('pdf');
+    if (pdfBlobUrl) {
+      window.URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
+    }
+    // Llamar al onClose original
+    onClose();
   };
 
   // Construir URL del documento para el visor
   // Nota: onClose se pasa como prop y se usa para cerrar el modal completo
-  const getDocumentUrl = () => {
-    const baseUrl = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3000';
-    return `${baseUrl}/control-disciplinario/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
+  const getDocumentUrl = (forViewer: boolean = false) => {
+    if (!processId || !documento.id) return '';
+    // En modo directo: /disciplinary-processes/...
+    // En modo gateway: /api/v1/disciplinary-processes/...
+    const endpoint = API_MODE === 'direct' 
+      ? `/disciplinary-processes/${processId}/documents/${documento.id}/download${forViewer ? '?view=true' : ''}`
+      : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download${forViewer ? '?view=true' : ''}`;
+    return buildApiUrl('control-disciplinario', endpoint);
   };
 
   return (
@@ -518,14 +677,14 @@ function ModalVisorDocumento({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
+      onClick={handleCerrarModal}
     >
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col"
       >
         {/* Header */}
         <div className="p-6 border-b bg-gradient-to-r from-blue-50 to-purple-50">
@@ -561,147 +720,317 @@ function ModalVisorDocumento({
               </div>
             </div>
 
-            <button onClick={onClose} className="p-2 hover:bg-white/50 rounded-lg transition-colors">
+            <button onClick={handleCerrarModal} className="p-2 hover:bg-white/50 rounded-lg transition-colors">
               <X className="w-6 h-6 text-gray-600" />
             </button>
           </div>
         </div>
 
         {/* Contenido */}
-        <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 240px)' }}>
-          {/* Vista previa del PDF con react-pdf-viewer */}
-          {viendoPDF && (
-            <Card className="mb-6 overflow-hidden">
-              {/* Header con botón de cerrar */}
-              <div className="bg-gradient-to-r from-[#003DA5] to-[#0056D6] px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-white">
-                  <Eye className="w-4 h-4" />
-                  <span className="font-medium text-sm">
-                    {documento.nombre} - Versión {versionSeleccionada}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => window.open(getDocumentUrl(), '_blank')}
-                    className="h-7 px-3 gap-1 text-white hover:bg-white/10"
-                    title="Abrir en nueva pestaña"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    Nueva pestaña
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={handleCerrarVisor}
-                    className="h-7 px-3 gap-1 text-white hover:bg-white/10"
-                  >
-                    <X className="w-3 h-3" />
-                    Cerrar visor
-                  </Button>
-                </div>
-              </div>
-
-              {/* Área del visor con react-pdf-viewer (incluye su propio toolbar con zoom, páginas, etc.) */}
-              <div style={{ height: '60vh' }}>
-                <Worker workerUrl="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js">
-                  <Viewer 
-                    fileUrl={getDocumentUrl()} 
-                    plugins={[defaultLayoutPluginInstance]}
-                  />
-                </Worker>
-              </div>
-            </Card>
-          )}
-
-          {/* Información del Documento */}
-          <Card className="p-4 mb-6 bg-gray-50">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-gray-600 mb-1">Usuario Carga</p>
-                <p className="font-semibold text-gray-900">{documento.usuarioCarga}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-600 mb-1">Fecha Carga</p>
-                <p className="font-semibold text-gray-900">
-                  {new Date(documento.fechaCarga).toLocaleString('es-CO')}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-600 mb-1">Tamaño</p>
-                <p className="font-semibold text-gray-900">{documento.tamaño}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-600 mb-1">Folios</p>
-                <p className="font-semibold text-gray-900">
-                  {documento.metadatos.folios || 'N/A'}
-                </p>
-              </div>
-            </div>
-            <div className="mt-3">
-              <p className="text-xs text-gray-600 mb-1">Descripción</p>
-              <p className="text-sm text-gray-700">{documento.descripcion}</p>
-            </div>
-          </Card>
-
-          {/* Enlace Externo */}
-          {documento.urlExterna && (
-            <Card className="p-4 mb-6 bg-orange-50 border-orange-200">
-              <div className="flex items-start gap-3">
-                <LinkIcon className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="font-semibold text-gray-900 mb-1">Enlace Externo</p>
-                  <a
-                    href={documento.urlExterna}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-blue-600 hover:underline flex items-center gap-1"
-                  >
-                    {documento.urlExterna}
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Historial de Versiones */}
-          <div>
-            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-              <History className="w-5 h-5" />
-              Historial de Versiones
-            </h3>
-            <div className="space-y-3">
-              {documento.versiones.map((version) => (
-                <Card
-                  key={version.numero}
-                  className={`p-4 cursor-pointer border-l-4 transition-all ${
-                    versionSeleccionada === version.numero
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-300 hover:border-blue-300'
-                  }`}
-                  onClick={() => setVersionSeleccionada(version.numero)}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
-                      style={{ background: '#003DA5' }}
-                    >
-                      v{version.numero}
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900">{version.cambios}</p>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {version.usuario} • {new Date(version.fecha).toLocaleString('es-CO')} • {version.tamaño}
-                      </p>
-                    </div>
-                    {versionSeleccionada === version.numero && (
-                      <CheckCircle className="w-5 h-5 text-blue-600" />
-                    )}
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          {/* Vista previa del documento - Apartado separado cuando está activo */}
+          {viendoPDF && (documento.urlExterna || (processId && documento.id)) && (
+            <div className="border-b flex-shrink-0" style={{ height: '500px' }}>
+              <Card className="rounded-none border-0 overflow-hidden h-full flex flex-col">
+                {/* Header del visor */}
+                <div className="bg-gradient-to-r from-[#003DA5] to-[#0056D6] px-4 py-3 flex items-center justify-between flex-shrink-0">
+                  <div className="flex items-center gap-2 text-white">
+                    <Eye className="w-4 h-4" />
+                    <span className="font-medium text-sm">
+                      {documento.nombre} - Versión {versionSeleccionada}
+                    </span>
                   </div>
-                </Card>
-              ))}
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => {
+                        if (documento.urlExterna) {
+                          window.open(documento.urlExterna, '_blank');
+                        } else if (pdfBlobUrl) {
+                          window.open(pdfBlobUrl, '_blank');
+                        } else {
+                          window.open(getDocumentUrl(), '_blank');
+                        }
+                      }}
+                      className="h-7 px-3 gap-1 text-white hover:bg-white/10"
+                      title="Abrir en nueva pestaña"
+                      disabled={!documento.urlExterna && !pdfBlobUrl && cargandoPDF}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Nueva pestaña
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={handleCerrarVisor}
+                      className="h-7 px-3 gap-1 text-white hover:bg-white/10"
+                    >
+                      <X className="w-3 h-3" />
+                      Ocultar
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Área del visor */}
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  {/* Si hay URL externa, mostrar en iframe */}
+                  {documento.urlExterna && (
+                    <iframe
+                      src={documento.urlExterna}
+                      className="w-full h-full border-0"
+                      title={`Vista previa de ${documento.nombre}`}
+                      style={{ height: '100%', width: '100%' }}
+                      sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                    />
+                  )}
+                  {/* Si no hay URL externa, mostrar el archivo local */}
+                  {!documento.urlExterna && cargandoPDF && (
+                    <div className="flex items-center justify-center h-full bg-gradient-to-br from-blue-50 to-indigo-50">
+                      <div className="text-center">
+                        <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-600 mb-6"></div>
+                        <p className="text-lg font-semibold text-gray-700 mb-2">Cargando documento...</p>
+                        <p className="text-sm text-gray-500">{documento.nombre}</p>
+                      </div>
+                    </div>
+                  )}
+                  {!documento.urlExterna && errorPDF && !cargandoPDF && (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center p-6">
+                        <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                        <p className="text-red-600 font-semibold mb-2">Error al cargar el documento</p>
+                        <p className="text-sm text-gray-600 mb-4">{errorPDF}</p>
+                        <Button 
+                          onClick={async () => {
+                            try {
+                              setErrorPDF(null);
+                              setCargandoPDF(true);
+                              
+                              const endpoint = API_MODE === 'direct' 
+                                ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
+                                : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
+                              const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
+                              const token = localStorage.getItem('esap_access_token');
+                              
+                              const headers: HeadersInit = {
+                                'Accept': 'application/octet-stream',
+                              };
+                              
+                              if (token) {
+                                headers['Authorization'] = `Bearer ${token}`;
+                              }
+                              
+                              const res = await fetch(downloadUrl, {
+                                method: 'GET',
+                                headers,
+                              });
+                              
+                              if (!res.ok) {
+                                const errorText = await res.text();
+                                let errorMessage = `Error ${res.status}: ${res.statusText}`;
+                                try {
+                                  const errorJson = JSON.parse(errorText);
+                                  errorMessage = errorJson.message || errorMessage;
+                                } catch {
+                                  // Si no es JSON, usar el texto del error
+                                }
+                                throw new Error(errorMessage);
+                              }
+                              
+                              const blob = await res.blob();
+                              
+                              // Detectar tipo de archivo
+                              const nombreArchivo = documento.nombre.toLowerCase();
+                              let tipoDetectado: 'pdf' | 'word' | 'ppt' | 'xls' | 'otro' = 'otro';
+                              
+                              if (nombreArchivo.endsWith('.pdf')) {
+                                tipoDetectado = 'pdf';
+                                const arrayBuffer = await blob.slice(0, 4).arrayBuffer();
+                                const bytes = new Uint8Array(arrayBuffer);
+                                const pdfHeader = String.fromCharCode(...bytes);
+                                
+                                if (pdfHeader !== '%PDF') {
+                                  const text = await blob.text();
+                                  if (text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('<!doctype')) {
+                                    throw new Error('El servidor devolvió HTML en lugar de PDF. Verifique la autenticación y la URL.');
+                                  }
+                                  throw new Error('El archivo no es un PDF válido.');
+                                }
+                              } else if (nombreArchivo.endsWith('.doc') || nombreArchivo.endsWith('.docx')) {
+                                tipoDetectado = 'word';
+                              } else if (nombreArchivo.endsWith('.ppt') || nombreArchivo.endsWith('.pptx')) {
+                                tipoDetectado = 'ppt';
+                              } else if (nombreArchivo.endsWith('.xls') || nombreArchivo.endsWith('.xlsx')) {
+                                tipoDetectado = 'xls';
+                              }
+                              
+                              setTipoArchivo(tipoDetectado);
+                              
+                              const url = window.URL.createObjectURL(blob);
+                              if (pdfBlobUrl) window.URL.revokeObjectURL(pdfBlobUrl);
+                              setPdfBlobUrl(url);
+                              setErrorPDF(null);
+                              setCargandoPDF(false);
+                            } catch (err: any) {
+                              setErrorPDF(err.message || 'Error al cargar el documento');
+                              setCargandoPDF(false);
+                            }
+                          }}
+                          className="bg-blue-600 text-white"
+                        >
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                          Reintentar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {pdfBlobUrl && !cargandoPDF && !errorPDF && tipoArchivo === 'pdf' && (
+                    <Worker workerUrl="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js">
+                      <Viewer 
+                        fileUrl={pdfBlobUrl} 
+                        plugins={[defaultLayoutPluginInstance]}
+                      />
+                    </Worker>
+                  )}
+                  {pdfBlobUrl && !cargandoPDF && !errorPDF && tipoArchivo !== 'pdf' && (
+                    <div className="h-full w-full bg-white relative flex items-center justify-center">
+                      {/* Usar object tag para mejor compatibilidad con diferentes tipos de archivo */}
+                      <object
+                        data={pdfBlobUrl}
+                        type={
+                          tipoArchivo === 'word' 
+                            ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                            : tipoArchivo === 'ppt'
+                            ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+                            : tipoArchivo === 'xls'
+                            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                            : 'application/octet-stream'
+                        }
+                        className="w-full h-full"
+                        style={{ minHeight: '100%', width: '100%' }}
+                      >
+                        {/* Fallback: si el object no funciona, mostrar mensaje y opción de descarga */}
+                        <div className="flex flex-col items-center justify-center p-8 text-center">
+                          <FileText className="w-16 h-16 text-gray-400 mb-4" />
+                          <p className="text-lg font-semibold text-gray-700 mb-2">
+                            Vista previa no disponible
+                          </p>
+                          <p className="text-sm text-gray-600 mb-6">
+                            El navegador no puede mostrar este tipo de archivo directamente.
+                          </p>
+                          <Button
+                            onClick={() => {
+                              const link = document.createElement('a');
+                              link.href = pdfBlobUrl;
+                              link.download = documento.nombre;
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Descargar para ver
+                          </Button>
+                        </div>
+                      </object>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* Información del Documento - Siempre visible */}
+          <div className="p-6 overflow-y-auto flex-1" style={{ maxHeight: viendoPDF ? 'calc(95vh - 700px)' : 'calc(95vh - 280px)' }}>
+            {/* Información del Documento */}
+            <Card className="p-4 mb-6 bg-gray-50">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Usuario Carga</p>
+                  <p className="font-semibold text-gray-900">{documento.usuarioCarga}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Fecha Carga</p>
+                  <p className="font-semibold text-gray-900">
+                    {new Date(documento.fechaCarga).toLocaleString('es-CO')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Tamaño</p>
+                  <p className="font-semibold text-gray-900">{documento.tamaño}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Folios</p>
+                  <p className="font-semibold text-gray-900">
+                    {documento.metadatos.folios || 'N/A'}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3">
+                <p className="text-xs text-gray-600 mb-1">Descripción</p>
+                <p className="text-sm text-gray-700">{documento.descripcion}</p>
+              </div>
+            </Card>
+
+            {/* Enlace Externo */}
+            {documento.urlExterna && (
+              <Card className="p-4 mb-6 bg-orange-50 border-orange-200">
+                <div className="flex items-start gap-3">
+                  <LinkIcon className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900 mb-1">Enlace Externo</p>
+                    <a
+                      href={documento.urlExterna}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      {documento.urlExterna}
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Historial de Versiones */}
+            <div>
+              <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                <History className="w-5 h-5" />
+                Historial de Versiones
+              </h3>
+              <div className="space-y-3">
+                {documento.versiones.map((version) => (
+                  <Card
+                    key={version.numero}
+                    className={`p-4 cursor-pointer border-l-4 transition-all ${
+                      versionSeleccionada === version.numero
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-300 hover:border-blue-300'
+                    }`}
+                    onClick={() => setVersionSeleccionada(version.numero)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
+                        style={{ background: '#003DA5' }}
+                      >
+                        v{version.numero}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-gray-900">{version.cambios}</p>
+                        <p className="text-sm text-gray-600 mt-1">
+                          {version.usuario} • {new Date(version.fecha).toLocaleString('es-CO')} • {version.tamaño}
+                        </p>
+                      </div>
+                      {versionSeleccionada === version.numero && (
+                        <CheckCircle className="w-5 h-5 text-blue-600" />
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -715,14 +1044,16 @@ function ModalVisorDocumento({
             <Download className="w-4 h-4 mr-2" />
             Descargar Versión {versionSeleccionada}
           </Button>
-          <Button 
-            onClick={handleVerPDF}
-            className="bg-purple-600"
-          >
-            <Eye className="w-4 h-4 mr-2" />
-            Ver PDF
-          </Button>
-          <Button onClick={onClose} className="bg-gray-500 ml-auto">
+          {(documento.urlExterna || (processId && documento.id)) && (
+            <Button 
+              onClick={() => setViendoPDF(!viendoPDF)}
+              className={viendoPDF ? "bg-gray-600" : "bg-purple-600"}
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              {viendoPDF ? 'Ocultar Documento' : 'Mostrar Documento'}
+            </Button>
+          )}
+          <Button onClick={handleCerrarModal} className="bg-gray-500 ml-auto">
             Cerrar
           </Button>
         </div>
@@ -750,6 +1081,34 @@ function ModalSubirDocumento({
   const [urlExterna, setUrlExterna] = useState('');
   const [dragActive, setDragActive] = useState(false);
 
+  // Tipos de archivo permitidos
+  const tiposPermitidos = [
+    'application/pdf',
+    'application/msword', // .doc
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+    'application/vnd.ms-powerpoint', // .ppt
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+    'application/vnd.ms-excel', // .xls
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  ];
+
+  const extensionesPermitidas = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'];
+
+  const validarTipoArchivo = (file: File): boolean => {
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+    const tipoMime = file.type;
+    
+    // Verificar por extensión
+    const extensionValida = extensionesPermitidas.some(ext => 
+      file.name.toLowerCase().endsWith(ext.toLowerCase())
+    );
+    
+    // Verificar por tipo MIME (puede estar vacío en algunos navegadores)
+    const tipoMimeValido = !tipoMime || tiposPermitidos.includes(tipoMime);
+    
+    return extensionValida && tipoMimeValido;
+  };
+
   const handleConfirmar = () => {
     if (!nombreDocumento.trim()) {
       toast.error('Campo Requerido', { description: 'Ingrese el nombre del documento' });
@@ -761,6 +1120,12 @@ function ModalSubirDocumento({
     }
     if (usarEnlaceExterno && !urlExterna.trim()) {
       toast.error('URL Requerida', { description: 'Ingrese la URL del enlace externo' });
+      return;
+    }
+    if (!usarEnlaceExterno && archivo && !validarTipoArchivo(archivo)) {
+      toast.error('Tipo de archivo no permitido', { 
+        description: 'Solo se permiten archivos PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx) y Excel (.xls, .xlsx)' 
+      });
       return;
     }
 
@@ -797,6 +1162,9 @@ function ModalSubirDocumento({
             <div>
               <h3 className="text-xl font-bold text-gray-900">Cargar Documento</h3>
               <p className="text-sm text-gray-600">Agregar documento al expediente electrónico</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Formatos permitidos: PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx), Excel (.xls, .xlsx)
+              </p>
             </div>
           </div>
         </div>
@@ -905,7 +1273,14 @@ function ModalSubirDocumento({
                 setDragActive(false);
                 const files = e.dataTransfer.files;
                 if (files.length > 0) {
-                  setArchivo(files[0]);
+                  const file = files[0];
+                  if (validarTipoArchivo(file)) {
+                    setArchivo(file);
+                  } else {
+                    toast.error('Tipo de archivo no permitido', { 
+                      description: 'Solo se permiten archivos PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx) y Excel (.xls, .xlsx)' 
+                    });
+                  }
                 }
               }}
             >
@@ -922,7 +1297,20 @@ function ModalSubirDocumento({
               )}
               <input
                 type="file"
-                onChange={(e) => setArchivo(e.target.files?.[0] || null)}
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (file) {
+                    if (validarTipoArchivo(file)) {
+                      setArchivo(file);
+                    } else {
+                      toast.error('Tipo de archivo no permitido', { 
+                        description: 'Solo se permiten archivos PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx) y Excel (.xls, .xlsx)' 
+                      });
+                      e.target.value = ''; // Limpiar el input
+                    }
+                  }
+                }}
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
             </div>
@@ -969,6 +1357,7 @@ export function ExpedienteElectronico() {
   const [procesoSearchQuery, setProcesoSearchQuery] = useState('');
   const [showProcesoDropdown, setShowProcesoDropdown] = useState(false);
   const [procesosRecientes, setProcesosRecientes] = useState<Proceso[]>([]);
+  const [radicadosDisponibles, setRadicadosDisponibles] = useState<string[]>([]);
 
   // Cargar procesos desde la API
   useEffect(() => {
@@ -1003,9 +1392,14 @@ export function ExpedienteElectronico() {
         
         setProcesos(procesosConvertidos);
         
+        // Extraer solo los radicados para el autocomplete
+        const radicados = procesosConvertidos.map(p => p.numero);
+        setRadicadosDisponibles(radicados);
+        
         // Seleccionar el primer proceso si hay alguno
         if (procesosConvertidos.length > 0 && !procesoSeleccionado) {
           setProcesoSeleccionado(procesosConvertidos[0]);
+          setProcesoSearchQuery(procesosConvertidos[0].numero);
           setProcesosRecientes(procesosConvertidos.slice(0, 5));
         }
       } catch (error: any) {
@@ -1067,6 +1461,13 @@ export function ExpedienteElectronico() {
     cargarDocumentos();
   }, [procesoSeleccionado?.id]);
 
+  // Sincronizar el input con el proceso seleccionado
+  useEffect(() => {
+    if (procesoSeleccionado) {
+      setProcesoSearchQuery(procesoSeleccionado.numero);
+    }
+  }, [procesoSeleccionado]);
+
   const handleVerDocumento = (doc: Documento) => {
     setDocumentoSeleccionado(doc);
     setShowModalVisor(true);
@@ -1124,15 +1525,7 @@ export function ExpedienteElectronico() {
 
       if (!docData.archivo && !docData.urlExterna) {
         toast.error('Archivo requerido', {
-          description: 'Debe seleccionar un archivo para cargar'
-        });
-        return;
-      }
-
-      // Si es un enlace externo, solo mostrar mensaje (no implementado en backend aún)
-      if (docData.urlExterna) {
-        toast.warning('Enlaces externos', {
-          description: 'La funcionalidad de enlaces externos aún no está disponible'
+          description: 'Debe seleccionar un archivo o proporcionar una URL externa'
         });
         return;
       }
@@ -1155,16 +1548,62 @@ export function ExpedienteElectronico() {
       // Obtener información del usuario actual
       const usuarioActual = localStorage.getItem('esap_user_name') || 'Usuario del Sistema';
 
-      // Usar el servicio para subir el documento
-      const resultado = await disciplinaryService.uploadDocumento(
-        procesoSeleccionado.id,
-        docData.archivo,
-        tipoBackend,
-        descripcionFinal,
-        docData.nombre,
-        docData.etapa || undefined,
-        usuarioActual
-      );
+      let resultado;
+      
+      // Si es un enlace externo, crear un documento con URL externa
+      if (docData.urlExterna) {
+        // Crear un FormData con la URL externa en lugar de un archivo
+        const formData = new FormData();
+        formData.append('urlExterna', docData.urlExterna);
+        formData.append('tipo', tipoBackend);
+        if (descripcionFinal) formData.append('descripcion', descripcionFinal);
+        if (docData.nombre) formData.append('nombre', docData.nombre);
+        if (docData.etapa) formData.append('etapa', docData.etapa);
+        if (usuarioActual) formData.append('usuarioCarga', usuarioActual);
+
+        // Usar el mismo endpoint pero con URL externa
+        const endpoint = API_MODE === 'direct' 
+          ? `/disciplinary-processes/${procesoSeleccionado.id}/documents`
+          : `/api/v1/disciplinary-processes/${procesoSeleccionado.id}/documents`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+        const token = localStorage.getItem('esap_access_token');
+        
+        const headers: HeadersInit = {};
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          let errorMessage = `Error ${response.status}: ${response.statusText}`;
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.message || errorMessage;
+          } catch {
+            // Si no es JSON, usar el texto del error
+          }
+          throw new Error(errorMessage);
+        }
+
+        resultado = await response.json();
+      } else {
+        // Usar el servicio para subir el documento local
+        resultado = await disciplinaryService.uploadDocumento(
+          procesoSeleccionado.id,
+          docData.archivo!,
+          tipoBackend,
+          descripcionFinal,
+          docData.nombre,
+          docData.etapa || undefined,
+          usuarioActual
+        );
+      }
 
       toast.success('Documento cargado exitosamente', {
         id: toastId,
@@ -1208,6 +1647,7 @@ export function ExpedienteElectronico() {
       
     } catch (error: any) {
       toast.error('Error al cargar documento', {
+        id: toastId,
         description: error.message || 'No se pudo cargar el documento'
       });
     }
@@ -1232,7 +1672,8 @@ export function ExpedienteElectronico() {
       description: '📋 Recopilando información del proceso\n📄 Generando índice electrónico\n⏳ Por favor espere...'
     });
 
-    const doc = new jsPDF();
+    try {
+      const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -1386,16 +1827,23 @@ export function ExpedienteElectronico() {
       doc.text(`Pág. ${i} de ${totalPages}`, pageWidth - 20, 285, { align: 'right' });
     }
 
-    const nombreArchivo = `Expediente_${procesoSeleccionado?.numero || 'Completo'}_${new Date().toISOString().split('T')[0]}.pdf`;
-    doc.save(nombreArchivo);
+      const nombreArchivo = `Expediente_${procesoSeleccionado?.numero || 'Completo'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(nombreArchivo);
 
-    setTimeout(() => {
-      toast.dismiss(toastId);
-      toast.success('¡Expediente Exportado Exitosamente!', {
-        description: `${nombreArchivo}\n📄 ${documentos.length} documentos incluidos\n📑 ${totalPages} páginas generadas\n✅ Incluye índice electrónico y detalles completos`,
-        duration: 5000
+      setTimeout(() => {
+        toast.dismiss(toastId);
+        toast.success('¡Expediente Exportado Exitosamente!', {
+          description: `${nombreArchivo}\n📄 ${documentos.length} documentos incluidos\n📑 ${totalPages} páginas generadas\n✅ Incluye índice electrónico y detalles completos`,
+          duration: 5000
+        });
+      }, 500);
+    } catch (error: any) {
+      console.error('Error al exportar expediente:', error);
+      toast.error('Error al exportar expediente', {
+        id: toastId,
+        description: error.message || 'No se pudo generar el PDF del expediente'
       });
-    }, 500);
+    }
   };
 
   const handleImprimirIndice = () => {
@@ -1526,31 +1974,56 @@ export function ExpedienteElectronico() {
     }
   };
   
-  const handleSeleccionarProceso = (proceso: Proceso) => {
-    setProcesoSeleccionado(proceso);
-    setProcesoSearchQuery('');
-    setShowProcesoDropdown(false);
-    
-    // Agregar a recientes si no está
-    if (!procesosRecientes.find(p => p.id === proceso.id)) {
-      setProcesosRecientes([proceso, ...procesosRecientes.slice(0, 4)]);
+  const handleSeleccionarProceso = async (radicado: string) => {
+    try {
+      // Buscar el proceso completo por radicado
+      const procesoCompleto = await disciplinaryService.getProcesoByRadicado(radicado);
+      
+      // Convertir al formato del componente
+      let denunciadoNombre = 'Sin nombre';
+      if (procesoCompleto.news?.disciplinable) {
+        if (Array.isArray(procesoCompleto.news.disciplinable) && procesoCompleto.news.disciplinable.length > 0) {
+          denunciadoNombre = procesoCompleto.news.disciplinable[0]?.nombre || 'Sin nombre';
+        } else if (typeof procesoCompleto.news.disciplinable === 'object' && procesoCompleto.news.disciplinable.nombre) {
+          denunciadoNombre = procesoCompleto.news.disciplinable.nombre;
+        } else if (typeof procesoCompleto.news.disciplinable === 'string') {
+          denunciadoNombre = procesoCompleto.news.disciplinable;
+        }
+      }
+      
+      const procesoConvertido: Proceso = {
+        id: procesoCompleto.id,
+        numero: procesoCompleto.radicadoProceso,
+        denunciado: denunciadoNombre,
+        etapaActual: procesoCompleto.etapaActual || 'Sin etapa',
+        fechaInicio: procesoCompleto.createdAt || new Date().toISOString(),
+        estado: procesoCompleto.estado || 'ACTIVO',
+      };
+      
+      setProcesoSeleccionado(procesoConvertido);
+      setProcesoSearchQuery(radicado);
+      setShowProcesoDropdown(false);
+      
+      // Agregar a recientes si no está
+      if (!procesosRecientes.find(p => p.numero === radicado)) {
+        setProcesosRecientes([procesoConvertido, ...procesosRecientes.slice(0, 4)]);
+      }
+      
+      toast.success('Proceso Seleccionado', {
+        description: `Proceso: ${radicado}`
+      });
+    } catch (error: any) {
+      console.error('Error al buscar proceso por radicado:', error);
+      toast.error('Error al seleccionar proceso', {
+        description: error.message || 'No se pudo encontrar el proceso'
+      });
     }
-    
-    toast.success('Proceso Seleccionado', {
-      description: `${proceso.numero} - ${typeof proceso.denunciado === 'string' ? proceso.denunciado : proceso.denunciado.nombre}`
-    });
   };
 
-  // Filtrar procesos según búsqueda
-  const procesosFiltrados = procesos.filter(p => {
+  // Filtrar radicados según búsqueda (solo por radicado)
+  const radicadosFiltrados = radicadosDisponibles.filter(radicado => {
     const query = procesoSearchQuery.toLowerCase();
-    const denunciadoStr = typeof p.denunciado === 'string' ? p.denunciado : p.denunciado.nombre;
-    return (
-      p.numero.toLowerCase().includes(query) ||
-      denunciadoStr.toLowerCase().includes(query) ||
-      p.etapaActual.toLowerCase().includes(query) ||
-      p.estado.toLowerCase().includes(query)
-    );
+    return radicado.toLowerCase().includes(query);
   });
 
   const filteredDocumentos = documentos.filter(d => {
@@ -1626,25 +2099,32 @@ export function ExpedienteElectronico() {
               type="text"
               value={procesoSearchQuery}
               onChange={(e) => setProcesoSearchQuery(e.target.value)}
-              placeholder="Buscar proceso..."
+              placeholder="Buscar proceso (ej: P-120-2025)..."
               className="w-full px-4 py-3 border-2 border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white font-medium text-gray-900"
               onFocus={() => setShowProcesoDropdown(true)}
               onBlur={() => setTimeout(() => setShowProcesoDropdown(false), 200)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && radicadosFiltrados.length === 1) {
+                  handleSeleccionarProceso(radicadosFiltrados[0]);
+                }
+              }}
             />
-            {showProcesoDropdown && (
+            {showProcesoDropdown && radicadosFiltrados.length > 0 && (
               <div className="absolute left-0 right-0 top-full z-10 bg-white border border-gray-300 rounded-b-lg shadow-lg max-h-40 overflow-y-auto">
-                {procesosFiltrados.map(proceso => (
+                {radicadosFiltrados.map(radicado => (
                   <div
-                    key={proceso.id}
-                    className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSeleccionarProceso(proceso)}
+                    key={radicado}
+                    className="px-4 py-2 cursor-pointer hover:bg-gray-100 font-medium"
+                    onClick={() => handleSeleccionarProceso(radicado)}
                   >
-                    {proceso.numero} - {typeof proceso.denunciado === 'string' ? proceso.denunciado : proceso.denunciado.nombre} ({proceso.etapaActual})
+                    {radicado}
                   </div>
                 ))}
-                {procesosFiltrados.length === 0 && (
-                  <div className="px-4 py-2 text-gray-500">No se encontraron procesos</div>
-                )}
+              </div>
+            )}
+            {showProcesoDropdown && radicadosFiltrados.length === 0 && procesoSearchQuery && (
+              <div className="absolute left-0 right-0 top-full z-10 bg-white border border-gray-300 rounded-b-lg shadow-lg">
+                <div className="px-4 py-2 text-gray-500">No se encontraron procesos</div>
               </div>
             )}
           </div>

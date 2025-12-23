@@ -26,7 +26,7 @@
 
 
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 
 
@@ -288,6 +288,7 @@ interface PlantillaConfig {
 
 
   };
+
 
 
 
@@ -699,7 +700,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-  const [editorRef, setEditorRef] = useState<HTMLDivElement | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
 
 
@@ -732,6 +733,15 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
   };
+
+  useEffect(() => {
+    if (!editorRef.current || !borrador) return;
+    const editor = editorRef.current;
+    if (document.activeElement === editor) return;
+    if (editor.innerHTML !== borrador.contenidoCertificado.texto) {
+      editor.innerHTML = borrador.contenidoCertificado.texto;
+    }
+  }, [borrador?.contenidoCertificado.texto]);
 
 
 
@@ -1199,7 +1209,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    if (!editorRef) return;
+    if (!editorRef.current) return;
 
 
 
@@ -1335,7 +1345,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          texto: editorRef.innerHTML
+          texto: editorRef.current.innerHTML
 
 
 
@@ -1383,7 +1393,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    if (!sel || !sel.rangeCount || !editorRef || !editorRef.contains(sel.anchorNode)) {
+    if (!sel || !sel.rangeCount || !editorRef.current || !editorRef.current.contains(sel.anchorNode)) {
 
 
 
@@ -1403,7 +1413,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    const tokens = Array.from(editorRef.querySelectorAll<HTMLElement>('.variable-token'));
+    const tokens = Array.from(editorRef.current.querySelectorAll<HTMLElement>('.variable-token'));
 
 
 
@@ -5562,7 +5572,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  ref={(el) => setEditorRef(el)}
+                  ref={editorRef}
 
 
 
@@ -5602,14 +5612,10 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  dangerouslySetInnerHTML={{ __html: borrador.contenidoCertificado.texto }}
 
 
 
                   onInput={(e) => {
-
-
-
                     setBorrador({
 
 
@@ -7943,17 +7949,6 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 }
-
-
-
-
-
-
-
-
-
-
-
 
 
 

@@ -702,6 +702,7 @@ function DashboardEjecutivo({ onNavigate, procesos = PROCESOS_MOCK }: { onNaviga
 export function ControlDisciplinarioFull() {
   const [currentSection, setCurrentSection] = useState<'dashboard' | 'noticias' | 'aprobacion' | 'procesos' | 'expediente' | 'terminos' | 'reportes' | 'profesionales' | 'config'>('dashboard');
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
+  const [filtroProfesionalNombre, setFiltroProfesionalNombre] = useState<string | null>(null);
   const [dashboardView, setDashboardView] = useState<'lista' | 'kanban'>('lista');
   // Estados de Negocio
   const [procesos, setProcesos] = useState<Proceso[]>([]);
@@ -751,7 +752,15 @@ export function ControlDisciplinarioFull() {
 
   const handleVerProcesosProfesional = (profesional: any) => {
     setFiltroProfesional(profesional.id);
+    setFiltroProfesionalNombre(profesional.nombre);
     setCurrentSection('dashboard');
+    toast.info(`Filtrando procesos asignados a: ${profesional.nombre}`);
+  };
+
+  const handleLimpiarFiltro = () => {
+    setFiltroProfesional(null);
+    setFiltroProfesionalNombre(null);
+    toast.info('Filtro de profesional eliminado');
   };
 
   return (
@@ -766,7 +775,14 @@ export function ControlDisciplinarioFull() {
       breadcrumb={['Backoffice', 'Control Interno Disciplinario', getTitleForSection()]}
     >
       {/* Contenido Principal */}
-      {currentSection === 'dashboard' && <DashboardKanbanOperativo onNavigateToExpediente={() => setCurrentSection('expediente')} filtroProfesionalId={filtroProfesional} />}
+      {currentSection === 'dashboard' && (
+        <DashboardKanbanOperativo
+          onNavigateToExpediente={() => setCurrentSection('expediente')}
+          filtroProfesionalId={filtroProfesional}
+          filtroProfesionalNombre={filtroProfesionalNombre}
+          onLimpiarFiltro={handleLimpiarFiltro}
+        />
+      )}
       {currentSection === 'noticias' && <GestionNoticias />}
       {currentSection === 'aprobacion' && <RevisionAprobacionJefe />}
       {currentSection === 'expediente' && <ExpedienteElectronico />}
