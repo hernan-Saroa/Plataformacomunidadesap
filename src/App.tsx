@@ -305,7 +305,7 @@ export default function App() {
       const userEmail = user?.person?.email || user?.email || '';
       const userName = user?.person?.first_name
         ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
-        : user?.username || 'Usuario ESAP';
+        : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
 
       console.log('👤 User info extracted:', { userEmail, userName });
 
@@ -325,6 +325,12 @@ export default function App() {
           email: userEmail,
           personId: user?.person?.id || user?.id
         });
+        setUsuarioActual({
+          id: user?.id || user?.person?.id || 'unknown',
+          nombre: userName,
+          email: userEmail,
+          tipo: 'interno'
+        });
         setUserRoles(['Administrativo']);
         setCurrentView('backoffice');
         setVistaActual('backoffice');
@@ -333,6 +339,7 @@ export default function App() {
         // });
       } else {
         console.log('🎓 Redirecting to portal');
+        let vistaActualCurrent: Vista = 'portal'
         // Usuario Estudiante/Graduado/Docente → Portal Transaccional
         // Determinar tipo basado en el email o roles
         const emailLower = userEmail.toLowerCase();
@@ -343,7 +350,7 @@ export default function App() {
         if (emailLower.includes('cerlaboral')) {
           userType = 'administrativo';
           currentView = 'backoffice'
-          setVistaActual('backoffice');
+          vistaActualCurrent = 'backoffice';
           setUserData({ 
             name: userName, 
             email: userEmail, 
@@ -396,7 +403,13 @@ export default function App() {
         setIsAuthenticated(true);
         setUserRoles(portalRoles);
         setCurrentView(currentView);
-        setVistaActual('portal');
+        setVistaActual(vistaActualCurrent);
+        setUsuarioActual({
+          id: user?.id || user?.person?.id || 'unknown',
+          nombre: userName,
+          email: userEmail,
+          tipo: currentView === 'backoffice' ? 'interno' : 'externo'
+        });
         toast.success('¡Bienvenido al Portal Transaccional!', {
           description: `Hola ${userName}`,
         });
@@ -462,6 +475,7 @@ export default function App() {
 
   // Handler para cambio directo de sistema (sin pasar por selector)
   const handleSystemChange = (system: 'backoffice' | 'portal') => {
+    console.log('🔄 System change requested:', system); 
     if (system === 'backoffice') {
       setCurrentView('backoffice');
       setUserType('administrativo');
@@ -580,8 +594,11 @@ export default function App() {
       case 'backoffice':
         return (
           <BackofficeApp
-            usuario={usuarioActual!}
             onLogout={handleLogout}
+            onBackToSystemSelector={handleBackToSystemSelector}
+            onSystemChange={handleSystemChange}
+            userData={userData}
+            userRoles={userRoles}
           />
         );
       
