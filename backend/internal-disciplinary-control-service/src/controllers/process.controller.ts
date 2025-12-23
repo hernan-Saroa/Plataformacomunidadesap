@@ -194,7 +194,7 @@ export class ProcessController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Subir documento',
-    description: 'Sube un documento al expediente del proceso disciplinario',
+    description: 'Sube un documento al expediente del proceso disciplinario. Puede ser un archivo o una URL externa.',
   })
   @ApiResponse({
     status: 201,
@@ -202,46 +202,84 @@ export class ProcessController {
   })
   async uploadDocument(
     @Param('id') id: string,
-    @UploadedFile(
-      new ParseFilePipe({
-        validators: [
-          new MaxFileSizeValidator({ maxSize: 50 * 1024 * 1024 }), // 50MB
-        ],
-      }),
-    )
-    file: Express.Multer.File,
-    @Body() body: { tipo?: string; descripcion?: string; nombre?: string; etapa?: string; usuarioCarga?: string; categoria?: string; destinatario?: string; asunto?: string; participantes?: string },
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() body: { tipo?: string; descripcion?: string; nombre?: string; etapa?: string; usuarioCarga?: string; categoria?: string; destinatario?: string; asunto?: string; participantes?: string; urlExterna?: string },
   ) {
     try {
       console.log('📤 Upload Document - Iniciando...');
       console.log('📤 Body recibido:', JSON.stringify(body, null, 2));
-      console.log('📤 Archivo:', file.originalname, file.size, 'bytes');
+      console.log('📤 Archivo:', file ? `${file.originalname}, ${file.size} bytes` : 'No hay archivo');
+      console.log('📤 URL Externa:', body.urlExterna || 'No hay URL externa');
 
-    // Obtener proceso para usar su radicado (sin cargar autos para evitar errores)
-    const proceso = await this.processService.findById(id, false);
-      console.log('✅ Proceso encontrado:', proceso.radicadoProceso);
-      
-      let tipoDocumento = body.tipo || 'DOCUMENTO';
-      if (tipoDocumento === 'OFICIO' && file.mimetype !== 'application/pdf') {
+      // Validar que haya archivo o URL externa
+      if (!file && !body.urlExterna) {
         throw new HttpException(
-          'Solo se permiten archivos PDF para oficios',
+          'Debe proporcionar un archivo o una URL externa',
           HttpStatus.BAD_REQUEST,
         );
       }
 
-      // Guardar archivo usando storage service
-      const rutaRelativa = await this.storageService.saveFile(
-        proceso.radicadoProceso,
-        {
-          buffer: file.buffer,
-          originalname: file.originalname,
-        },
-        tipoDocumento,
-      );
-      console.log('✅ Archivo guardado en:', rutaRelativa);
+      // Validar tamaño del archivo si se proporciona
+      if (file && file.size > 50 * 1024 * 1024) {
+        throw new HttpException(
+          'El archivo excede el tamaño máximo permitido de 50MB',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Obtener proceso para usar su radicado (sin cargar autos para evitar errores)
+      const proceso = await this.processService.findById(id, false);
+      console.log('✅ Proceso encontrado:', proceso.radicadoProceso);
+      
+      let tipoDocumento = body.tipo || 'DOCUMENTO';
+      let rutaRelativa: string;
+      let nombreDocumento: string;
+      let fileType: string;
+      let fileSize: number;
+      let originalName: string;
+
+      // Si hay URL externa, usar esa URL directamente
+      if (body.urlExterna) {
+        rutaRelativa = body.urlExterna;
+        nombreDocumento = body.nombre || 'Documento Externo';
+        originalName = body.nombre || 'Documento Externo';
+        fileType = 'application/octet-stream'; // Tipo genérico para URLs externas
+        fileSize = 0; // No conocemos el tamaño de URLs externas
+        console.log('✅ Usando URL externa:', rutaRelativa);
+      } else {
+        // Validar archivo si no hay URL externa
+        if (!file) {
+          throw new HttpException(
+            'Archivo requerido cuando no se proporciona URL externa',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        if (tipoDocumento === 'OFICIO' && file.mimetype !== 'application/pdf') {
+          throw new HttpException(
+            'Solo se permiten archivos PDF para oficios',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        // Guardar archivo usando storage service
+        rutaRelativa = await this.storageService.saveFile(
+          proceso.radicadoProceso,
+          {
+            buffer: file.buffer,
+            originalname: file.originalname,
+          },
+          tipoDocumento,
+        );
+        console.log('✅ Archivo guardado en:', rutaRelativa);
+
+        nombreDocumento = body.nombre || file.originalname;
+        originalName = file.originalname;
+        fileType = file.mimetype;
+        fileSize = file.size;
+      }
 
       // Extraer información del body
-      let nombreDocumento = body.nombre || file.originalname;
       let etapa = body.etapa || null;
       let descripcionFinal = body.descripcion || '';
       const participantes = body.participantes ? Number(body.participantes) : undefined;
@@ -256,16 +294,17 @@ export class ProcessController {
         destinatario: body.destinatario || null,
         asunto: body.asunto || null,
         participantes: participantes ?? null,
+        urlExterna: body.urlExterna || null,
       });
 
       // Guardar en BD usando el método addEvidence con toda la información
       const procesoActualizado = await this.processService.addEvidence(
         id,
         rutaRelativa,
-        file.originalname,
+        originalName,
         descripcionFinal || nombreDocumento,
-        file.mimetype,
-        file.size,
+        fileType,
+        fileSize,
         nombreDocumento,
         tipoDocumento,
         etapa || undefined,
@@ -280,9 +319,10 @@ export class ProcessController {
       return {
         message: 'Documento subido exitosamente',
         url: rutaRelativa,
-        filename: file.originalname,
-        fileType: file.mimetype,
-        fileSize: file.size,
+        filename: originalName,
+        fileType: fileType,
+        fileSize: fileSize,
+        urlExterna: body.urlExterna || null,
         process: {
           id: procesoActualizado.id,
           radicadoProceso: procesoActualizado.radicadoProceso,
@@ -337,6 +377,9 @@ export class ProcessController {
       };
       const tipo = tipoMap[evidencia.tipoDocumento?.toUpperCase() || ''] || 'otro';
 
+      // Detectar si la URL es externa (empieza con http:// o https://)
+      const isUrlExterna = evidencia.url && (evidencia.url.startsWith('http://') || evidencia.url.startsWith('https://'));
+      
       return {
         id: evidencia.id,
         nombre: evidencia.nombreDocumento || evidencia.filename || 'Documento sin nombre',
@@ -353,7 +396,8 @@ export class ProcessController {
         usuarioCarga: evidencia.usuarioCarga || 'Sistema',
         descripcion: evidencia.description || '',
         url: evidencia.url,
-        downloadUrl: `/control-disciplinario/api/v1/disciplinary-processes/${id}/documents/${evidencia.id}/download`,
+        urlExterna: isUrlExterna ? evidencia.url : null,
+        downloadUrl: isUrlExterna ? null : `/control-disciplinario/api/v1/disciplinary-processes/${id}/documents/${evidencia.id}/download`,
         processId: evidencia.processId,
         fileType: evidencia.fileType,
         fileSize: evidencia.fileSize,
@@ -415,6 +459,12 @@ export class ProcessController {
 
     if (!documento) {
       throw new HttpException('Documento no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    // Si es una URL externa, redirigir a esa URL
+    const isUrlExterna = documento.url && (documento.url.startsWith('http://') || documento.url.startsWith('https://'));
+    if (isUrlExterna) {
+      return res.redirect(documento.url);
     }
 
     const rutaCompleta = this.storageService.getFullPath(documento.url);

@@ -2077,7 +2077,6 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
 
         // console.log('👥 Profesionales mapeados para el dropdown:', mapped);
         const candidatos = await disciplinaryService.getCandidates();
-        
         const filtered = Array.isArray(candidatos) ? candidatos.filter((c: any) => {
           // 1. Check Active Status (defensive)
           const isActive = !c.estado || c.estado === 'ACTIVO';
@@ -2305,6 +2304,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
     } catch (error: any) {
       console.error('Error descargando documento', error);
       toast.error('Error al descargar', {
+        id: 'download-doc',
         description: error.message || 'No se pudo descargar el documento'
       });
     }

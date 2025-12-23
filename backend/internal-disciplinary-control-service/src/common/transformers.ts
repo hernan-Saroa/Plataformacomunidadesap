@@ -10,6 +10,37 @@ import { AlertaEnviada } from '../entities/alerta-enviada.entity';
  * Transforma un término procesal al formato esperado por el frontend
  */
 export function transformTermino(termino: TerminoProcesal, nombreProceso?: string): any {
+  // Asegurar conversiones seguras en caso de strings provenientes de queries raw
+  const fechaInicio = termino.fechaInicio instanceof Date 
+    ? termino.fechaInicio 
+    : termino.fechaInicio 
+      ? new Date(termino.fechaInicio as any) 
+      : null;
+  
+  const fechaVencimiento = termino.fechaVencimiento instanceof Date 
+    ? termino.fechaVencimiento 
+    : termino.fechaVencimiento 
+      ? new Date(termino.fechaVencimiento as any) 
+      : null;
+  
+  const fechaCumplimiento = termino.fechaCumplimiento instanceof Date 
+    ? termino.fechaCumplimiento 
+    : termino.fechaCumplimiento 
+      ? new Date(termino.fechaCumplimiento as any) 
+      : null;
+  
+  const fechaCreacion = termino.fechaCreacion instanceof Date 
+    ? termino.fechaCreacion 
+    : termino.fechaCreacion 
+      ? new Date(termino.fechaCreacion as any) 
+      : null;
+  
+  const fechaActualizacion = termino.fechaActualizacion instanceof Date 
+    ? termino.fechaActualizacion 
+    : termino.fechaActualizacion 
+      ? new Date(termino.fechaActualizacion as any) 
+      : null;
+
   return {
     id: termino.id,
     procesoId: termino.procesoId,
@@ -19,18 +50,16 @@ export function transformTermino(termino: TerminoProcesal, nombreProceso?: strin
     responsableId: termino.responsableId,
     responsable: termino.responsableNombre, // Para compatibilidad con frontend
     emailResponsable: termino.emailResponsable,
-    fechaInicio: termino.fechaInicio.toISOString().split('T')[0], // YYYY-MM-DD
+    fechaInicio: fechaInicio ? fechaInicio.toISOString().split('T')[0] : undefined, // YYYY-MM-DD
     diasHabiles: termino.diasHabiles,
-    fechaVencimiento: termino.fechaVencimiento.toISOString().split('T')[0], // YYYY-MM-DD
+    fechaVencimiento: fechaVencimiento ? fechaVencimiento.toISOString().split('T')[0] : undefined, // YYYY-MM-DD
     diasRestantes: termino.diasRestantes,
     estado: termino.estado,
     alertaEnviada: termino.alertaEnviada,
-    fechaCumplimiento: termino.fechaCumplimiento 
-      ? termino.fechaCumplimiento.toISOString().split('T')[0] 
-      : undefined,
+    fechaCumplimiento: fechaCumplimiento ? fechaCumplimiento.toISOString().split('T')[0] : undefined,
     observaciones: termino.observaciones,
-    fechaCreacion: termino.fechaCreacion?.toISOString(),
-    fechaActualizacion: termino.fechaActualizacion?.toISOString(),
+    fechaCreacion: fechaCreacion?.toISOString(),
+    fechaActualizacion: fechaActualizacion?.toISOString(),
   };
 }
 
@@ -59,12 +88,19 @@ export function transformFestivo(festivo: DiaFestivo): any {
  * Transforma una alerta al formato esperado por el frontend
  */
 export function transformAlerta(alerta: AlertaEnviada, nombreProceso?: string): any {
+  // Asegurar conversión segura de fecha
+  const fechaEnvio = alerta.fechaEnvio instanceof Date 
+    ? alerta.fechaEnvio 
+    : alerta.fechaEnvio 
+      ? new Date(alerta.fechaEnvio as any) 
+      : new Date();
+
   return {
     id: alerta.id,
     termino: alerta.terminoId, // ID del término
     proceso: nombreProceso || alerta.termino?.numeroProceso || 'Proceso sin nombre',
     tipo: alerta.tipo,
-    fechaEnvio: alerta.fechaEnvio.toISOString().replace('T', ' ').substring(0, 16), // YYYY-MM-DD HH:mm
+    fechaEnvio: fechaEnvio.toISOString().replace('T', ' ').substring(0, 16), // YYYY-MM-DD HH:mm
     destinatario: alerta.destinatario,
     estado: alerta.estado,
     asunto: alerta.asunto || '',

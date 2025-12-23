@@ -10,21 +10,28 @@ import {
   IsEnum,
   IsBoolean,
   IsNumber,
+  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TerminoEstado } from '../entities/termino-procesal.entity';
 
 export class CreateTerminoDto {
-  @IsUUID()
-  @IsNotEmpty()
+  @IsString({ message: 'procesoId must be a string' })
+  @IsNotEmpty({ message: 'procesoId must not be empty' })
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
+    message: 'procesoId must be a valid UUID',
+  })
   procesoId: string;
 
   @IsString()
   @IsNotEmpty()
   actuacion: string;
 
-  @IsUUID()
-  @IsNotEmpty()
+  @IsString({ message: 'responsableId must be a string' })
+  @IsNotEmpty({ message: 'responsableId must not be empty' })
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
+    message: 'responsableId must be a valid UUID',
+  })
   responsableId: string;
 
   @IsDateString()
@@ -43,7 +50,10 @@ export class UpdateTerminoDto {
   actuacion?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString({ message: 'responsableId must be a string' })
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
+    message: 'responsableId must be a valid UUID',
+  })
   responsableId?: string;
 
   @IsOptional()
@@ -86,11 +96,17 @@ export class ListarTerminosDto {
   estado?: TerminoEstado;
 
   @IsOptional()
-  @IsUUID()
+  @IsString({ message: 'procesoId must be a string' })
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
+    message: 'procesoId must be a valid UUID',
+  })
   procesoId?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString({ message: 'responsableId must be a string' })
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
+    message: 'responsableId must be a valid UUID',
+  })
   responsableId?: string;
 
   @IsOptional()

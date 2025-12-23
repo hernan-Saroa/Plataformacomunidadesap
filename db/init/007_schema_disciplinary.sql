@@ -164,9 +164,13 @@ CREATE INDEX IF NOT EXISTS idx_auto_versions_number ON internal_disciplinary_con
 -- ============================================
 -- Tabla: evidence
 -- ============================================
+-- NOTA: El campo 'url' puede almacenar tanto rutas relativas de archivos locales
+-- como URLs externas completas (http:// o https://). Por eso se usa TEXT en lugar de VARCHAR.
 CREATE TABLE IF NOT EXISTS internal_disciplinary_control.evidence (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    url VARCHAR(255) NOT NULL,
+    url TEXT NOT NULL, -- Cambiado a TEXT para soportar URLs externas largas
+    "archivoUrl" VARCHAR(255), -- Mantener compatibilidad con TypeORM
+    "nombreArchivo" VARCHAR(255), -- Mantener compatibilidad con TypeORM
     filename VARCHAR(255),
     description TEXT,
     "fileType" VARCHAR(100),
@@ -197,9 +201,37 @@ CREATE TABLE IF NOT EXISTS internal_disciplinary_control.stage_configuration (
     "diasHabiles" INTEGER NOT NULL DEFAULT 30,
     descripcion TEXT,
     activo BOOLEAN DEFAULT true,
-    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Función para actualizar automáticamente updatedAt en stage_configuration
+CREATE OR REPLACE FUNCTION internal_disciplinary_control.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW."updatedAt" = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Trigger para actualizar automáticamente updatedAt en stage_configuration
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_trigger 
+        WHERE tgname = 'update_stage_configuration_timestamp'
+    ) THEN
+        CREATE TRIGGER update_stage_configuration_timestamp
+            BEFORE UPDATE ON internal_disciplinary_control.stage_configuration
+            FOR EACH ROW
+            EXECUTE FUNCTION internal_disciplinary_control.update_updated_at_column();
+    END IF;
+END $$;
+
+-- Comentarios en las columnas de stage_configuration
+COMMENT ON COLUMN internal_disciplinary_control.stage_configuration."createdAt" IS 'Fecha de creación del registro';
+COMMENT ON COLUMN internal_disciplinary_control.stage_configuration."updatedAt" IS 'Fecha de última actualización del registro';
 
 -- ============================================
 -- Tabla: system_configuration
@@ -281,6 +313,9 @@ CREATE INDEX IF NOT EXISTS idx_terminos_dias_restantes ON internal_disciplinary_
 -- ============================================
 -- Tabla: dias_festivos
 -- ============================================
+-- NOTA: Usamos un índice único con expresión para manejar NULLs correctamente.
+-- PostgreSQL trata cada NULL como único en restricciones UNIQUE normales,
+-- pero con un índice único usando COALESCE podemos prevenir duplicados.
 CREATE TABLE IF NOT EXISTS internal_disciplinary_control.dias_festivos (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     fecha DATE NOT NULL,
@@ -290,9 +325,17 @@ CREATE TABLE IF NOT EXISTS internal_disciplinary_control.dias_festivos (
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     creado_por_id UUID NOT NULL,
     fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    fecha_actualizacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    
-    CONSTRAINT uq_festivo_fecha_tipo_territorio UNIQUE (fecha, tipo, territorio)
+    fecha_actualizacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Índice único que maneja NULLs correctamente usando COALESCE
+-- Esto asegura que solo haya un registro por (fecha, tipo, territorio)
+-- donde territorio puede ser NULL. El índice usa COALESCE para convertir NULL a ''
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_festivo_fecha_tipo_territorio
+ON internal_disciplinary_control.dias_festivos (
+    fecha, 
+    tipo, 
+    COALESCE(territorio, '')
 );
 
 CREATE INDEX IF NOT EXISTS idx_festivos_fecha ON internal_disciplinary_control.dias_festivos(fecha);
@@ -349,24 +392,32 @@ CREATE INDEX IF NOT EXISTS idx_alertas_fecha_envio ON internal_disciplinary_cont
 -- ============================================
 -- DATOS INICIALES: Días Festivos Colombia 2025
 -- ============================================
+-- NOTA: Usamos INSERT con WHERE NOT EXISTS porque el índice único usa COALESCE
+-- y ON CONFLICT no puede usar expresiones directamente
 INSERT INTO internal_disciplinary_control.dias_festivos (fecha, descripcion, tipo, territorio, activo, creado_por_id)
-VALUES
-    ('2025-01-01', 'Año Nuevo', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-01-06', 'Día de los Reyes Magos', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-03-24', 'Día de San José', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-04-17', 'Jueves Santo', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-04-18', 'Viernes Santo', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-05-01', 'Día del Trabajo', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-06-23', 'Día de San Pedro y San Pablo', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-07-20', 'Día de la Independencia', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-08-07', 'Batalla de Boyacá', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-08-18', 'Asunción de la Virgen', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-10-13', 'Día de la Raza', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-11-03', 'Todos los Santos', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-11-17', 'Independencia de Cartagena', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-12-08', 'Inmaculada Concepción', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000'),
-    ('2025-12-25', 'Navidad', 'nacional', NULL, TRUE, '00000000-0000-0000-0000-000000000000')
-ON CONFLICT (fecha, tipo, territorio) DO NOTHING;
+SELECT * FROM (VALUES
+    ('2025-01-01', 'Año Nuevo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-01-06', 'Día de los Reyes Magos', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-03-24', 'Día de San José', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-04-17', 'Jueves Santo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-04-18', 'Viernes Santo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-05-01', 'Día del Trabajo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-06-23', 'Día de San Pedro y San Pablo', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-07-20', 'Día de la Independencia', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-08-07', 'Batalla de Boyacá', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-08-18', 'Asunción de la Virgen', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-10-13', 'Día de la Raza', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-11-03', 'Todos los Santos', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-11-17', 'Independencia de Cartagena', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-12-08', 'Inmaculada Concepción', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000'),
+    ('2025-12-25', 'Navidad', 'nacional', NULL::VARCHAR(100), TRUE, '00000000-0000-0000-0000-000000000000')
+) AS v(fecha, descripcion, tipo, territorio, activo, creado_por_id)
+WHERE NOT EXISTS (
+    SELECT 1 FROM internal_disciplinary_control.dias_festivos df
+    WHERE df.fecha = v.fecha 
+    AND df.tipo = v.tipo 
+    AND COALESCE(df.territorio, '') = COALESCE(v.territorio, '')
+);
 
 -- ============================================
 -- DATOS INICIALES: Reglas de Alerta por Defecto
@@ -377,6 +428,477 @@ VALUES
     ('Alerta Preventiva - 5 días antes', 5, TRUE, TRUE, TRUE, 'Se envía cuando faltan 5 días hábiles para el vencimiento', '00000000-0000-0000-0000-000000000000'),
     ('Alerta Temprana - 10 días antes', 10, FALSE, FALSE, TRUE, 'Se envía cuando faltan 10 días hábiles para el vencimiento', '00000000-0000-0000-0000-000000000000')
 ON CONFLICT (nombre) DO NOTHING;
+
+-- ============================================
+-- VERIFICACIÓN Y CORRECCIÓN DE COLUMNAS FALTANTES
+-- ============================================
+-- Agregar columnas que puedan faltar en tablas existentes
+
+-- Agregar columna pruebas a disciplinary_processes si no existe
+DO $$
+DECLARE
+    table_name_found TEXT;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_processes'
+        AND column_name = 'pruebas'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_processes
+        ADD COLUMN pruebas TEXT[];
+    END IF;
+
+    -- Agregar columnas de estadísticas si no existen
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_processes'
+        AND column_name = 'drafts_count'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_processes
+        ADD COLUMN drafts_count INTEGER DEFAULT 0 NOT NULL;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_processes'
+        AND column_name = 'documents_count'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_processes
+        ADD COLUMN documents_count INTEGER DEFAULT 0 NOT NULL;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_processes'
+        AND column_name = 'time_percentage'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_processes
+        ADD COLUMN time_percentage DECIMAL(5,2) DEFAULT 0.00 NOT NULL;
+    END IF;
+
+    -- Agregar columnas a disciplinary_news si no existen
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_news'
+        AND column_name = 'fechaQueja'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_news
+        ADD COLUMN "fechaQueja" TIMESTAMP;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_news'
+        AND column_name = 'conductas'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_news
+        ADD COLUMN conductas TEXT[] DEFAULT ARRAY[]::TEXT[];
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_news'
+        AND column_name = 'kanbanStage'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_news
+        ADD COLUMN "kanbanStage" VARCHAR(50) DEFAULT 'RECEPCION';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'disciplinary_news'
+        AND column_name = 'historialAuditoria'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.disciplinary_news
+        ADD COLUMN "historialAuditoria" JSONB DEFAULT '[]'::jsonb;
+    END IF;
+
+    -- Verificar y agregar columna observaciones a tabla de relación si existe
+    -- (TypeORM puede crear tablas de relación automáticamente)
+    -- Buscar directamente en el catálogo de PostgreSQL usando pg_class
+    BEGIN
+        -- Buscar la tabla usando pg_class (más confiable que pg_tables para nombres con comillas)
+        SELECT c.relname INTO table_name_found
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'internal_disciplinary_control'
+        AND c.relkind = 'r'
+        AND (
+            c.relname = 'DisciplinaryProcess__DisciplinaryProcess_news'
+            OR c.relname = 'disciplinaryprocess__disciplinaryprocess_news'
+            OR c.relname = 'disciplinary_process__disciplinary_process_news'
+            OR c.relname ILIKE '%disciplinaryprocess%news%'
+        )
+        LIMIT 1;
+
+        -- Si se encontró la tabla, agregar la columna si no existe
+        IF table_name_found IS NOT NULL THEN
+            -- Verificar si la columna ya existe
+            IF NOT EXISTS (
+                SELECT 1 
+                FROM pg_attribute a
+                JOIN pg_class c ON a.attrelid = c.oid
+                JOIN pg_namespace n ON c.relnamespace = n.oid
+                WHERE n.nspname = 'internal_disciplinary_control'
+                AND c.relname = table_name_found
+                AND a.attname = 'observaciones'
+                AND a.attnum > 0
+                AND NOT a.attisdropped
+            ) THEN
+                -- Agregar la columna usando el nombre exacto encontrado
+                EXECUTE format('ALTER TABLE internal_disciplinary_control.%I ADD COLUMN observaciones TEXT', table_name_found);
+            END IF;
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            -- Si hay algún error en la búsqueda, intentar agregar directamente con el nombre del error
+            BEGIN
+                -- Verificar si la tabla existe con el nombre exacto del error
+                IF EXISTS (
+                    SELECT 1 
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'internal_disciplinary_control'
+                    AND c.relname = 'DisciplinaryProcess__DisciplinaryProcess_news'
+                    AND c.relkind = 'r'
+                ) THEN
+                    -- Verificar si la columna no existe
+                    IF NOT EXISTS (
+                        SELECT 1 
+                        FROM pg_attribute a
+                        JOIN pg_class c ON a.attrelid = c.oid
+                        JOIN pg_namespace n ON c.relnamespace = n.oid
+                        WHERE n.nspname = 'internal_disciplinary_control'
+                        AND c.relname = 'DisciplinaryProcess__DisciplinaryProcess_news'
+                        AND a.attname = 'observaciones'
+                        AND a.attnum > 0
+                        AND NOT a.attisdropped
+                    ) THEN
+                        EXECUTE 'ALTER TABLE internal_disciplinary_control."DisciplinaryProcess__DisciplinaryProcess_news" ADD COLUMN observaciones TEXT';
+                    END IF;
+                END IF;
+            EXCEPTION
+                WHEN OTHERS THEN
+                    NULL;
+            END;
+    END;
+
+    -- Verificación adicional: intentar agregar la columna directamente
+    -- (por si la búsqueda anterior no funcionó)
+    BEGIN
+        EXECUTE 'ALTER TABLE internal_disciplinary_control."DisciplinaryProcess__DisciplinaryProcess_news" ADD COLUMN observaciones TEXT';
+    EXCEPTION
+        WHEN duplicate_column THEN
+            -- La columna ya existe, perfecto
+            NULL;
+        WHEN undefined_table THEN
+            -- La tabla no existe, no hacer nada
+            NULL;
+        WHEN OTHERS THEN
+            -- Cualquier otro error, ignorar
+            NULL;
+    END;
+END $$;
+
+-- ============================================
+-- FIX DIRECTO: Agregar columna observaciones a tabla de relación
+-- ============================================
+-- Este bloque se ejecuta independientemente para asegurar que la columna exista
+DO $$
+BEGIN
+    -- Intentar agregar la columna directamente (maneja todos los errores posibles)
+    BEGIN
+        ALTER TABLE internal_disciplinary_control."DisciplinaryProcess__DisciplinaryProcess_news" 
+        ADD COLUMN observaciones TEXT;
+    EXCEPTION
+        WHEN duplicate_column THEN
+            RAISE NOTICE 'Columna observaciones ya existe en DisciplinaryProcess__DisciplinaryProcess_news';
+        WHEN undefined_table THEN
+            RAISE NOTICE 'Tabla DisciplinaryProcess__DisciplinaryProcess_news no existe aún';
+        WHEN OTHERS THEN
+            RAISE NOTICE 'Error al agregar columna: %', SQLERRM;
+    END;
+    
+    -- Intentar también con nombre en minúsculas por si acaso
+    BEGIN
+        ALTER TABLE internal_disciplinary_control.disciplinaryprocess__disciplinaryprocess_news 
+        ADD COLUMN observaciones TEXT;
+    EXCEPTION
+        WHEN duplicate_column THEN
+            NULL;
+        WHEN undefined_table THEN
+            NULL;
+        WHEN OTHERS THEN
+            NULL;
+    END;
+    
+    -- Intentar con guiones bajos
+    BEGIN
+        ALTER TABLE internal_disciplinary_control.disciplinary_process__disciplinary_process_news 
+        ADD COLUMN observaciones TEXT;
+    EXCEPTION
+        WHEN duplicate_column THEN
+            NULL;
+        WHEN undefined_table THEN
+            NULL;
+        WHEN OTHERS THEN
+            NULL;
+    END;
+END $$;
+
+-- ============================================
+-- MIGRACIONES: Actualizar tablas existentes
+-- ============================================
+-- Estas migraciones actualizan tablas existentes para soportar nuevas funcionalidades
+
+-- Migración: Cambiar campo 'url' de VARCHAR(255) a TEXT en tabla evidence
+-- para soportar URLs externas largas (http:// o https://)
+DO $$
+BEGIN
+    -- Verificar si la columna 'url' existe y es VARCHAR(255)
+    IF EXISTS (
+        SELECT 1 
+        FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'evidence'
+        AND column_name = 'url'
+        AND data_type = 'character varying'
+        AND character_maximum_length = 255
+    ) THEN
+        -- Cambiar el tipo de VARCHAR(255) a TEXT
+        ALTER TABLE internal_disciplinary_control.evidence
+        ALTER COLUMN url TYPE TEXT;
+        
+        RAISE NOTICE 'Campo url en tabla evidence actualizado de VARCHAR(255) a TEXT';
+    ELSE
+        -- Si la columna no existe o ya es TEXT, no hacer nada
+        RAISE NOTICE 'Campo url en tabla evidence ya es TEXT o no existe';
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error al actualizar campo url: %', SQLERRM;
+END $$;
+
+-- Migración: Agregar columnas archivoUrl y nombreArchivo si no existen
+-- (para compatibilidad con TypeORM)
+DO $$
+BEGIN
+    -- Agregar columna archivoUrl si no existe
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'evidence'
+        AND column_name = 'archivoUrl'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.evidence
+        ADD COLUMN "archivoUrl" VARCHAR(255);
+        
+        RAISE NOTICE 'Columna archivoUrl agregada a tabla evidence';
+    END IF;
+
+    -- Agregar columna nombreArchivo si no existe
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'evidence'
+        AND column_name = 'nombreArchivo'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.evidence
+        ADD COLUMN "nombreArchivo" VARCHAR(255);
+        
+        RAISE NOTICE 'Columna nombreArchivo agregada a tabla evidence';
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error al agregar columnas archivoUrl/nombreArchivo: %', SQLERRM;
+END $$;
+
+-- Migración: Agregar createdAt y updatedAt a stage_configuration si no existen
+-- y crear trigger para actualización automática
+DO $$
+BEGIN
+    -- Agregar columna createdAt si no existe
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'stage_configuration'
+        AND column_name = 'createdAt'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.stage_configuration
+        ADD COLUMN "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+        
+        RAISE NOTICE 'Columna createdAt agregada a tabla stage_configuration';
+    ELSE
+        -- Si existe pero no es NOT NULL, actualizarla
+        IF EXISTS (
+            SELECT 1 
+            FROM information_schema.columns
+            WHERE table_schema = 'internal_disciplinary_control'
+            AND table_name = 'stage_configuration'
+            AND column_name = 'createdAt'
+            AND is_nullable = 'YES'
+        ) THEN
+            -- Primero actualizar valores NULL
+            UPDATE internal_disciplinary_control.stage_configuration
+            SET "createdAt" = CURRENT_TIMESTAMP
+            WHERE "createdAt" IS NULL;
+            
+            -- Luego hacerla NOT NULL
+            ALTER TABLE internal_disciplinary_control.stage_configuration
+            ALTER COLUMN "createdAt" SET NOT NULL;
+            
+            RAISE NOTICE 'Columna createdAt actualizada a NOT NULL en tabla stage_configuration';
+        END IF;
+    END IF;
+
+    -- Agregar columna updatedAt si no existe
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns
+        WHERE table_schema = 'internal_disciplinary_control'
+        AND table_name = 'stage_configuration'
+        AND column_name = 'updatedAt'
+    ) THEN
+        ALTER TABLE internal_disciplinary_control.stage_configuration
+        ADD COLUMN "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+        
+        RAISE NOTICE 'Columna updatedAt agregada a tabla stage_configuration';
+    ELSE
+        -- Si existe pero no es NOT NULL, actualizarla
+        IF EXISTS (
+            SELECT 1 
+            FROM information_schema.columns
+            WHERE table_schema = 'internal_disciplinary_control'
+            AND table_name = 'stage_configuration'
+            AND column_name = 'updatedAt'
+            AND is_nullable = 'YES'
+        ) THEN
+            -- Primero actualizar valores NULL
+            UPDATE internal_disciplinary_control.stage_configuration
+            SET "updatedAt" = CURRENT_TIMESTAMP
+            WHERE "updatedAt" IS NULL;
+            
+            -- Luego hacerla NOT NULL
+            ALTER TABLE internal_disciplinary_control.stage_configuration
+            ALTER COLUMN "updatedAt" SET NOT NULL;
+            
+            RAISE NOTICE 'Columna updatedAt actualizada a NOT NULL en tabla stage_configuration';
+        END IF;
+    END IF;
+
+    -- Actualizar filas existentes con timestamps actuales si son NULL
+    UPDATE internal_disciplinary_control.stage_configuration
+    SET "createdAt" = CURRENT_TIMESTAMP
+    WHERE "createdAt" IS NULL;
+
+    UPDATE internal_disciplinary_control.stage_configuration
+    SET "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "updatedAt" IS NULL;
+
+    -- Crear función del trigger si no existe
+    CREATE OR REPLACE FUNCTION internal_disciplinary_control.update_updated_at_column()
+    RETURNS TRIGGER AS $$
+    BEGIN
+        NEW."updatedAt" = CURRENT_TIMESTAMP;
+        RETURN NEW;
+    END;
+    $$ language 'plpgsql';
+
+    -- Crear trigger si no existe
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_trigger 
+        WHERE tgname = 'update_stage_configuration_timestamp'
+    ) THEN
+        CREATE TRIGGER update_stage_configuration_timestamp
+            BEFORE UPDATE ON internal_disciplinary_control.stage_configuration
+            FOR EACH ROW
+            EXECUTE FUNCTION internal_disciplinary_control.update_updated_at_column();
+        
+        RAISE NOTICE 'Trigger update_stage_configuration_timestamp creado';
+    END IF;
+
+    -- Agregar comentarios en las columnas
+    COMMENT ON COLUMN internal_disciplinary_control.stage_configuration."createdAt" IS 'Fecha de creación del registro';
+    COMMENT ON COLUMN internal_disciplinary_control.stage_configuration."updatedAt" IS 'Fecha de última actualización del registro';
+
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error en migración de stage_configuration: %', SQLERRM;
+END $$;
+
+-- Migración: Limpiar días festivos duplicados
+-- El problema es que cuando territorio es NULL, PostgreSQL permite múltiples filas
+-- con la misma combinación (fecha, tipo, NULL) porque NULL != NULL en restricciones únicas
+DO $$
+DECLARE
+    duplicados_count INTEGER;
+BEGIN
+    -- Eliminar duplicados, manteniendo solo el más reciente (o el primero si tienen la misma fecha)
+    WITH duplicados AS (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                   PARTITION BY fecha, tipo, COALESCE(territorio::text, 'NULL')
+                   ORDER BY fecha_creacion DESC, id
+               ) as rn
+        FROM internal_disciplinary_control.dias_festivos
+    )
+    DELETE FROM internal_disciplinary_control.dias_festivos
+    WHERE id IN (
+        SELECT id FROM duplicados WHERE rn > 1
+    );
+    
+    GET DIAGNOSTICS duplicados_count = ROW_COUNT;
+    
+    IF duplicados_count > 0 THEN
+        RAISE NOTICE 'Eliminados % días festivos duplicados', duplicados_count;
+    END IF;
+
+    -- Asegurar que la restricción única funcione correctamente
+    -- Eliminar la restricción existente si existe
+    BEGIN
+        ALTER TABLE internal_disciplinary_control.dias_festivos
+        DROP CONSTRAINT IF EXISTS uq_festivo_fecha_tipo_territorio;
+    EXCEPTION
+        WHEN OTHERS THEN
+            NULL;
+    END;
+
+    -- Crear un índice único que maneje NULLs correctamente usando COALESCE
+    -- Esto asegura que solo haya un registro por (fecha, tipo, territorio)
+    -- donde territorio puede ser NULL
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_indexes 
+        WHERE schemaname = 'internal_disciplinary_control'
+        AND tablename = 'dias_festivos'
+        AND indexname = 'idx_unique_festivo_fecha_tipo_territorio'
+    ) THEN
+        CREATE UNIQUE INDEX idx_unique_festivo_fecha_tipo_territorio
+        ON internal_disciplinary_control.dias_festivos (
+            fecha, 
+            tipo, 
+            COALESCE(territorio, '')
+        );
+        
+        RAISE NOTICE 'Índice único creado para días festivos';
+    END IF;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error al limpiar días festivos duplicados: %', SQLERRM;
+END $$;
 
 -- ============================================
 -- NOTA IMPORTANTE
@@ -394,6 +916,24 @@ ON CONFLICT (nombre) DO NOTHING;
 -- - Índices para optimización
 -- - Datos iniciales: días festivos y reglas de alerta
 --
+-- FUNCIONALIDADES ESPECIALES:
+-- - Soporte para URLs externas en tabla evidence:
+--   El campo 'url' puede almacenar tanto rutas relativas de archivos locales
+--   como URLs externas completas (http:// o https://). Por eso se usa TEXT.
+--   El backend detecta automáticamente si es URL externa o archivo local.
+--
+-- - Timestamps automáticos en stage_configuration:
+--   La tabla stage_configuration incluye columnas createdAt y updatedAt con
+--   un trigger que actualiza automáticamente updatedAt en cada modificación.
+--   Incluye función update_updated_at_column() y trigger update_stage_configuration_timestamp.
+--
+-- MIGRACIONES INCLUIDAS:
+-- - Migración 030: Agregar createdAt y updatedAt a stage_configuration
+--   (incluye función del trigger y trigger automático)
+-- - Migración: Actualizar campo url de evidence de VARCHAR(255) a TEXT
+-- - Migración: Agregar columnas archivoUrl y nombreArchivo a evidence
+--
 -- NOTA: Este schema es idempotente y puede ejecutarse múltiples veces
 -- usando CREATE TABLE IF NOT EXISTS y ON CONFLICT para evitar duplicados.
+-- Las migraciones al final actualizan tablas existentes automáticamente.
 -- ============================================
