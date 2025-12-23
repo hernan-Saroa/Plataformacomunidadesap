@@ -508,11 +508,30 @@ function ModalFormularioProfesional({ onClose, profesional, onSuccess }: { onClo
     }
   };
 
-  const usuariosFiltrados = candidatos.filter(u =>
-    u.nombre.toLowerCase().includes(searchUsuario.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchUsuario.toLowerCase()) ||
-    u.cargo.toLowerCase().includes(searchUsuario.toLowerCase())
-  );
+  const usuariosFiltrados = candidatos.filter(u => {
+    // 1. Basic Search Filter
+    const matchesSearch = u.nombre.toLowerCase().includes(searchUsuario.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchUsuario.toLowerCase()) ||
+      u.cargo.toLowerCase().includes(searchUsuario.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    // 2. Role Filtering (Exclude specific roles)
+    const cargo = (u.cargo || '').toLowerCase().trim();
+
+    // Precise Filtering:
+    // - Estudiante: includes (covers 'Estudiante Tesista', etc.)
+    // - Sin Cargo: includes (covers 'Sin Cargo Assignado', etc.)
+    // - Admin: strict 'admin' or 'administrador'
+
+    if (cargo.includes('estudiante')) return false;
+    if (cargo.includes('sin cargo')) return false;
+    if (cargo === 'admin') return false;
+    if (cargo === 'administrador') return false;
+    if (cargo.includes('super administrador')) return false;
+
+    return true;
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
