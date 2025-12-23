@@ -70,6 +70,29 @@ const formatDate = (dateString: string | undefined) => {
   });
 };
 
+const getDiasTranscurridos = (fecha: string | Date | undefined) => {
+  if (!fecha) return 0;
+  try {
+    const fechaDate = new Date(fecha);
+    if (isNaN(fechaDate.getTime())) return 0;
+    const hoy = new Date();
+    const diffTime = Math.abs(hoy.getTime() - fechaDate.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  } catch (e) {
+    return 0;
+  }
+};
+
+const getEstadoLabel = (estado: string) => {
+  if (!estado) return 'Desconocido';
+  // Capitalize first letter
+  return estado.charAt(0).toUpperCase() + estado.slice(1).replace(/-/g, ' ');
+};
+
+const getOrigenLabel = (origen: string) => {
+  return origen || 'Desconocido';
+};
+
 export function ModalDetallesNoticia({ noticia, onClose }: { noticia: any; onClose: () => void }) {
   // Compute values
   const dias = getDiasTranscurridos(noticia.fechaRecepcion || noticia.createdAt);
@@ -259,7 +282,7 @@ export function ModalDetallesNoticia({ noticia, onClose }: { noticia: any; onClo
                 Información de Denunciantes
               </h3>
               <div className="space-y-4">
-                {noticia.denunciante.map((person, idx) => (
+                {noticia.denunciante.map((person: any, idx: number) => (
                   <Card key={idx} className="p-5 border-2 border-blue-200 bg-blue-50">
                     <div className="grid md:grid-cols-2 gap-4">
                       <div>
@@ -316,7 +339,7 @@ export function ModalDetallesNoticia({ noticia, onClose }: { noticia: any; onClo
               </h3>
               <Card className="p-5 border-2 border-gray-200">
                 <div className="space-y-2">
-                  {noticia.adjuntos.map((archivo, idx) => {
+                  {noticia.adjuntos.map((archivo: string, idx: number) => {
                     const nombreArchivo = archivo.split('/').pop() || `Archivo ${idx + 1}`;
                     const descargaUrl = disciplinaryService.getFileUrl(archivo);
                     return (

@@ -48,10 +48,19 @@ export class ProcessService {
       // Validar que la noticia existe
       const noticia = await this.newsService.findById(createProcessDto.newsId);
 
-      // Validar que la noticia esté en estado RADICADA
-      if (noticia.estado !== NewsStatus.RADICADA) {
+      // DEBUG LOGGING
+      console.log(`[ProcessService] Assigning process to news ${noticia.id}. Status: ${noticia.estado}`);
+
+      // DEBUG LOGGING
+      console.log(`[ProcessService] Assigning process to news ${noticia.id}. Status: ${noticia.estado}`);
+
+      const status = (noticia.estado || '').toUpperCase();
+      const allowedStatuses = ['RADICADA', 'EN_VALORACION', 'DEVUELTA'];
+
+      if (!allowedStatuses.includes(status)) {
+        console.error(`[ProcessService] Verification failed. Expected one of ${allowedStatuses.join(', ')}, got: ${noticia.estado}`);
         throw new HttpException(
-          'La noticia debe estar en estado RADICADA para asignar proceso',
+          `La noticia debe estar en estado RADICADA, EN_VALORACION o DEVUELTA para asignar proceso. Estado actual: ${noticia.estado}`,
           HttpStatus.BAD_REQUEST,
         );
       }
