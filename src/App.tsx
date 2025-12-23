@@ -44,7 +44,7 @@ type AppView =
 
 type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | null;
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'solicitar-certificados-laborales';
 
 interface Usuario {
   id: string;
@@ -559,7 +559,7 @@ export default function App() {
   const renderVista = () => {
     switch (vistaActual) {
       case 'landing':
-        return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;
+        return renderViewLanding();
       
       case 'login':
         return (
@@ -590,6 +590,32 @@ export default function App() {
     }
   };
 
+  const renderViewLanding = () => {
+    console.log('🔍 Vista actual:', vistaActual, currentView); 
+    switch (currentView) {
+      case 'solicitar-certificados-laborales':
+        return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />
+      case 'enrollment-qr':
+        return (
+          <EnrollmentQRLandingUnified
+            onBeginActivation={() => {
+              // En producción iniciaría el flujo de activación
+              console.log('Iniciando proceso de enrolamiento');
+            }}
+            onBackToHome={handleBackToHome}
+            onLoginClick={handleLoginClick}
+          />
+        );
+      case 'vinculaciones':
+        return <VinculacionForm onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
+      case 'verificacion':
+        return <PublicTitleVerification onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
+
+      default:
+        return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;
+    }
+  };
+
   return (
     <>
       <style>{`
@@ -602,7 +628,10 @@ export default function App() {
         [data-description] { color: #6b7280 !important; font-size: 13px !important; margin-top: 4px !important; }
       `}</style>
       
-      {renderVista()}
+      <Routes>
+        <Route path="/verificar-certificado/:codigo" element={<VerificarCertificado />} />
+        <Route path="*" element={renderVista()} />
+      </Routes>
       
       {/* Modal de Alerta de Inactividad */}
       {mostrarAlertaInactividad && (

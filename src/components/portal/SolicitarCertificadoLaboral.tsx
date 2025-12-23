@@ -682,7 +682,8 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Navbar Público Flotante */}
       <PublicNavbar onLoginClick={onLoginClick} onNavigateToHome={onBack} />
-
+      {/* Header/Navbar espaciado */}
+      <div className="h-20" />
       {/* Main Content */}
       <div className="pt-24 sm:pt-28 py-8 mb-16">
         {/* Botón Volver */}
