@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, Between, FindOptionsWhere, ILike } from 'typeorm';
 import { TerminoProcesal, TerminoEstado } from '../entities/termino-procesal.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
+import { DisciplinaryProfessional } from '../entities/disciplinary-professional.entity';
 import {
   CreateTerminoDto,
   UpdateTerminoDto,
@@ -25,6 +26,8 @@ export class TerminosProcesalesService {
     private terminosRepository: Repository<TerminoProcesal>,
     @InjectRepository(DisciplinaryProcess)
     private procesosRepository: Repository<DisciplinaryProcess>,
+    @InjectRepository(DisciplinaryProfessional)
+    private professionalRepository: Repository<DisciplinaryProfessional>,
     private terminosCalculator: TerminosCalculatorService,
   ) {}
 
@@ -63,11 +66,23 @@ export class TerminosProcesalesService {
       estado = TerminoEstado.PROXIMO_VENCER;
     }
 
-    // Obtener información del responsable (debe venir del módulo de personas)
-    // TODO: Integrar con módulo de Administración de Personas para obtener nombre y email
-    // Por ahora usamos valores por defecto que deben ser actualizados
-    const responsableNombre = `Responsable ${dto.responsableId.substring(0, 8)}`; // TODO: Obtener de módulo personas
-    const emailResponsable = `responsable-${dto.responsableId.substring(0, 8)}@esap.edu.co`; // TODO: Obtener de módulo personas
+    // Obtener información del responsable desde la base de datos
+    let responsableNombre = `Responsable ${dto.responsableId.substring(0, 8)}`;
+    let emailResponsable = `responsable-${dto.responsableId.substring(0, 8)}@esap.edu.co`;
+    
+    try {
+      const profesional = await this.professionalRepository.findOne({
+        where: { id: dto.responsableId }
+      });
+      
+      if (profesional) {
+        responsableNombre = profesional.nombreCompleto || responsableNombre;
+        emailResponsable = profesional.email || emailResponsable;
+      }
+    } catch (error) {
+      console.error('Error al obtener información del profesional:', error);
+      // Continuar con valores por defecto si hay error
+    }
 
     // Obtener proceso completo con noticia para nombre del denunciado
     const procesoCompleto = await this.procesosRepository.findOne({
@@ -179,14 +194,36 @@ export class TerminosProcesalesService {
       .getMany();
 
     // Transformar para incluir nombre del proceso (denunciado) y formato correcto
-    const terminosTransformados = terminos.map(termino => {
+    // También actualizar datos del responsable si están desactualizados
+    const terminosTransformados = await Promise.all(terminos.map(async (termino) => {
       // Obtener nombre del denunciado desde la noticia
       const nombreDenunciado = termino.proceso?.news?.disciplinable?.[0]?.nombre || 
                                termino.numeroProceso || 
                                'Proceso sin nombre';
       
+      // Actualizar datos del responsable si están desactualizados (tienen formato placeholder)
+      if (termino.responsableId && 
+          (termino.responsableNombre?.includes('Responsable 00000000') || 
+           termino.emailResponsable?.includes('responsable-00000000'))) {
+        try {
+          const profesional = await this.professionalRepository.findOne({
+            where: { id: termino.responsableId }
+          });
+          
+          if (profesional) {
+            // Actualizar en la base de datos
+            termino.responsableNombre = profesional.nombreCompleto || termino.responsableNombre;
+            termino.emailResponsable = profesional.email || termino.emailResponsable;
+            await this.terminosRepository.save(termino);
+          }
+        } catch (error) {
+          console.error('Error al actualizar datos del responsable:', error);
+          // Continuar sin actualizar si hay error
+        }
+      }
+      
       return transformTermino(termino, nombreDenunciado);
-    });
+    }));
 
     // Calcular estadísticas
     const stats = {
@@ -271,19 +308,22 @@ export class TerminosProcesalesService {
         fechaVencimiento,
       );
 
-      // Determinar nuevo estado
-      let estado = TerminoEstado.PENDIENTE;
-      if (diasRestantes < 0) {
-        estado = TerminoEstado.VENCIDO;
-      } else if (diasRestantes <= 3) {
-        estado = TerminoEstado.PROXIMO_VENCER;
+      // Determinar nuevo estado (solo si NO está cumplido)
+      // No cambiar el estado si ya está marcado como cumplido
+      if (termino.estado !== TerminoEstado.CUMPLIDO) {
+        let estado = TerminoEstado.PENDIENTE;
+        if (diasRestantes < 0) {
+          estado = TerminoEstado.VENCIDO;
+        } else if (diasRestantes <= 3) {
+          estado = TerminoEstado.PROXIMO_VENCER;
+        }
+        termino.estado = estado;
       }
 
       termino.fechaInicio = fechaInicio;
       termino.diasHabiles = diasHabiles;
       termino.fechaVencimiento = fechaVencimiento;
       termino.diasRestantes = diasRestantes;
-      termino.estado = estado;
     }
 
     if (dto.actuacion) {
@@ -292,9 +332,27 @@ export class TerminosProcesalesService {
 
     if (dto.responsableId) {
       termino.responsableId = dto.responsableId;
-      // TODO: Actualizar nombre y email desde módulo personas
-      termino.responsableNombre = `Responsable ${dto.responsableId.substring(0, 8)}`;
-      termino.emailResponsable = `responsable-${dto.responsableId.substring(0, 8)}@esap.edu.co`;
+      
+      // Obtener información del responsable desde la base de datos
+      try {
+        const profesional = await this.professionalRepository.findOne({
+          where: { id: dto.responsableId }
+        });
+        
+        if (profesional) {
+          termino.responsableNombre = profesional.nombreCompleto || `Responsable ${dto.responsableId.substring(0, 8)}`;
+          termino.emailResponsable = profesional.email || `responsable-${dto.responsableId.substring(0, 8)}@esap.edu.co`;
+        } else {
+          // Si no se encuentra el profesional, usar valores por defecto
+          termino.responsableNombre = `Responsable ${dto.responsableId.substring(0, 8)}`;
+          termino.emailResponsable = `responsable-${dto.responsableId.substring(0, 8)}@esap.edu.co`;
+        }
+      } catch (error) {
+        console.error('Error al obtener información del profesional:', error);
+        // Continuar con valores por defecto si hay error
+        termino.responsableNombre = `Responsable ${dto.responsableId.substring(0, 8)}`;
+        termino.emailResponsable = `responsable-${dto.responsableId.substring(0, 8)}@esap.edu.co`;
+      }
     }
 
     const terminoGuardado = await this.terminosRepository.save(termino);
@@ -375,6 +433,24 @@ export class TerminosProcesalesService {
     };
 
     for (const termino of terminosActivos) {
+      // Actualizar datos del responsable si están desactualizados
+      if (termino.responsableId && 
+          (termino.responsableNombre?.includes('Responsable 00000000') || 
+           termino.emailResponsable?.includes('responsable-00000000'))) {
+        try {
+          const profesional = await this.professionalRepository.findOne({
+            where: { id: termino.responsableId }
+          });
+          
+          if (profesional) {
+            termino.responsableNombre = profesional.nombreCompleto || termino.responsableNombre;
+            termino.emailResponsable = profesional.email || termino.emailResponsable;
+          }
+        } catch (error) {
+          console.error('Error al actualizar datos del responsable en recálculo:', error);
+        }
+      }
+
       // Recalcular fecha de vencimiento
       const fechaVencimiento = await this.terminosCalculator.sumarDiasHabiles(
         termino.fechaInicio,
@@ -386,22 +462,25 @@ export class TerminosProcesalesService {
         fechaVencimiento,
       );
 
-      // Determinar nuevo estado
-      let nuevoEstado = TerminoEstado.PENDIENTE;
-      if (diasRestantes < 0) {
-        nuevoEstado = TerminoEstado.VENCIDO;
-        cambiosEstado.vencido++;
-      } else if (diasRestantes <= 3) {
-        nuevoEstado = TerminoEstado.PROXIMO_VENCER;
-        cambiosEstado.proximo_vencer++;
-      } else {
-        cambiosEstado.pendiente++;
+      // Determinar nuevo estado (solo si NO está cumplido)
+      // El estado CUMPLIDO solo se asigna manualmente
+      if (termino.estado !== TerminoEstado.CUMPLIDO) {
+        let nuevoEstado = TerminoEstado.PENDIENTE;
+        if (diasRestantes < 0) {
+          nuevoEstado = TerminoEstado.VENCIDO;
+          cambiosEstado.vencido++;
+        } else if (diasRestantes <= 3) {
+          nuevoEstado = TerminoEstado.PROXIMO_VENCER;
+          cambiosEstado.proximo_vencer++;
+        } else {
+          cambiosEstado.pendiente++;
+        }
+        termino.estado = nuevoEstado;
       }
 
       // Actualizar término
       termino.fechaVencimiento = fechaVencimiento;
       termino.diasRestantes = diasRestantes;
-      termino.estado = nuevoEstado;
 
       await this.terminosRepository.save(termino);
     }

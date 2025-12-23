@@ -263,7 +263,8 @@ class DisciplinaryService {
     ): Promise<{ message: string; url: string; filename: string }> {
         const formData = new FormData();
         formData.append('file', file);
-        if (tipo) formData.append('tipo', tipo);
+        // Siempre enviar tipo, usar 'DOCUMENTO' como valor por defecto si no se proporciona
+        formData.append('tipo', tipo || 'DOCUMENTO');
         if (descripcion) formData.append('descripcion', descripcion);
         if (nombre) formData.append('nombre', nombre);
         if (etapa) formData.append('etapa', etapa);

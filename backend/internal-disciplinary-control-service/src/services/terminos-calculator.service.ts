@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { StageConfiguration } from '../entities/stage-configuration.entity';
-import { DiaFestivo } from '../entities/dia-festivo.entity';
+import { DiaFestivo, TipoFestivo } from '../entities/dia-festivo.entity';
 
 @Injectable()
 export class TerminosCalculatorService {
@@ -82,6 +82,7 @@ export class TerminosCalculatorService {
 
   /**
    * Obtiene festivos activos desde BD (con caché)
+   * Para términos procesales, solo se consideran festivos nacionales
    */
   private async obtenerFestivosActivos(): Promise<DiaFestivo[]> {
     const now = Date.now();
@@ -91,10 +92,14 @@ export class TerminosCalculatorService {
       return this.festivosCache;
     }
 
-    // Obtener de BD
+    // Obtener de BD solo festivos nacionales e institucionales activos
+    // Los festivos regionales no se consideran para el cálculo de términos procesales
     try {
       this.festivosCache = await this.festivosRepo.find({
-        where: { activo: true },
+        where: [
+          { activo: true, tipo: TipoFestivo.NACIONAL },
+          { activo: true, tipo: TipoFestivo.INSTITUCIONAL }
+        ],
       });
       this.cacheTimestamp = now;
       return this.festivosCache;

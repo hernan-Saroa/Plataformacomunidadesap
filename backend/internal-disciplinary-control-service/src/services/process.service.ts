@@ -206,6 +206,8 @@ export class ProcessService {
     const proceso = await this.processRepository.findOne({
       where: { id },
       relations,
+      // Evitar que TypeORM genere alias incorrectos
+      loadEagerRelations: true,
     });
     if (!proceso) {
       throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
@@ -425,42 +427,35 @@ export class ProcessService {
     participantes?: number,
   ): Promise<DisciplinaryProcess> {
     try {
-      console.log('💾 addEvidence - Iniciando guardado en BD...');
-      console.log('💾 Parámetros recibidos:', {
-        id,
-        url,
-        originalName,
-        descripcion,
-        fileType,
-        fileSize,
-        nombreDocumento,
-        tipoDocumento,
-        etapa,
-        usuarioCarga,
-        categoria,
-        destinatario,
-        asunto,
-        participantes,
-      });
 
       const proceso = await this.findById(id, false); // No cargar autos para evitar errores
-      console.log('✅ Proceso encontrado:', proceso.id, proceso.radicadoProceso);
 
       // Determinar tipo de archivo desde la extensión si no se proporciona
       const extension = originalName.split('.').pop()?.toLowerCase() || '';
       const finalFileType = fileType || extension;
 
       // Preparar datos para la evidencia
+      // Mapear tipoDocumento a tipo para la columna NOT NULL
+      const tipoMapeado = tipoDocumento || 'DOCUMENTO';
+      
+      // La URL es la ruta relativa que retorna el storageService
+      // archivoUrl debe ser la misma ruta (o ruta completa si se necesita)
+      const archivoUrl = url; // Usar la misma ruta que url para archivoUrl
+      const nombreArchivoFinal = nombreDocumento || originalName;
+      
       const evidenceData = {
         url,
+        archivoUrl, // Campo requerido NOT NULL - ruta del archivo guardado
+        nombreArchivo: nombreArchivoFinal, // Campo requerido NOT NULL - nombre del archivo
         process: proceso,
         processId: proceso.id,
         description: descripcion || 'Documento cargado desde el portal',
         filename: originalName,
         fileType: finalFileType,
         fileSize: fileSize || 0,
-        nombreDocumento: nombreDocumento || originalName,
-        tipoDocumento: tipoDocumento || 'DOCUMENTO',
+        nombreDocumento: nombreArchivoFinal,
+        tipoDocumento: tipoMapeado,
+        tipo: tipoMapeado, // Campo requerido NOT NULL
         categoria: categoria || null,
         destinatario: destinatario || null,
         asunto: asunto || null,
@@ -469,15 +464,11 @@ export class ProcessService {
         usuarioCarga: usuarioCarga || 'Sistema',
       };
 
-      console.log('💾 Datos de evidencia a guardar:', JSON.stringify(evidenceData, null, 2));
 
       // Crear entidad de evidencia con toda la información
       const evidence = this.evidenceRepository.create(evidenceData);
-      console.log('✅ Entidad creada, guardando...');
 
       const evidenceGuardada = await this.evidenceRepository.save(evidence);
-      console.log('✅ Evidencia guardada exitosamente. ID:', evidenceGuardada.id);
-      console.log('✅ Evidencia guardada completa:', JSON.stringify(evidenceGuardada, null, 2));
 
       // Mantener compatibilidad con campo legacy
       if (!proceso.pruebas) {
@@ -486,7 +477,6 @@ export class ProcessService {
       proceso.pruebas.push(url);
 
       await this.processRepository.update(id, { pruebas: proceso.pruebas });
-      console.log('✅ Proceso actualizado con nueva prueba');
 
       return proceso;
     } catch (error) {
