@@ -48,7 +48,10 @@ import { toast } from 'sonner@2.0.3';
 
 // ============ COMPONENTES DEL DESIGN SYSTEM ============
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/Button';
+import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
+
+// ============ COMPONENTES DE AUDITORÍA ============
+import { FormularioNuevaAuditoria } from './FormularioNuevaAuditoria';
 
 // ============ COMPONENTE BADGE AUXILIAR ============
 function Badge({ 
@@ -322,13 +325,6 @@ export function ProgramaAnualCIG() {
 
         <div className="flex items-center gap-2 flex-wrap">
           <ButtonSIGL
-            variant="primary"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={() => setMostrarModalNueva(true)}
-          >
-            Nueva Auditoría
-          </ButtonSIGL>
-          <ButtonSIGL
             variant="outline"
             icon={<Download className="w-4 h-4" />}
             onClick={() => toast.success('Exportando programa anual...')}
@@ -523,7 +519,7 @@ function VistaCalendario({
       exit={{ opacity: 0 }}
     >
       <CardSIGL className="overflow-x-auto">
-        <div className="min-w-[1200px] p-6">
+        <div className="min-w-[1200px] p-6 pl-52">
           {/* Header de meses */}
           <div className="grid grid-cols-12 gap-2 mb-4">
             {MESES.map((mes, idx) => (
@@ -540,24 +536,45 @@ function VistaCalendario({
           </div>
 
           {/* Línea de tiempo con auditorías */}
-          <div className="space-y-3">
+          <div className="space-y-4">
             {auditorias.map((aud) => (
               <div key={aud.id} className="relative">
                 <div className="grid grid-cols-12 gap-2">
                   {MESES.map((_, mesIdx) => (
                     <div
                       key={mesIdx}
-                      className="h-16 bg-gray-50 rounded border border-gray-200 relative"
+                      className="h-24 bg-gray-50 rounded border border-gray-200 relative"
                     >
                       {/* Renderizar fase si corresponde al mes */}
                       {aud.mesInicio === mesIdx && (
-                        <div className="absolute inset-0 p-1">
+                        <div className="absolute inset-0 p-0.5">
                           <div
-                            className="h-full rounded px-2 py-1 text-xs text-white flex flex-col justify-center shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                            style={{ backgroundColor: aud.fases.planeacion.color }}
+                            className="h-full rounded flex flex-col justify-center items-center shadow-md hover:shadow-lg transition-all cursor-pointer"
+                            style={{ 
+                              backgroundColor: aud.fases.planeacion.color,
+                              padding: '8px 12px'
+                            }}
                           >
-                            <div className="truncate">{aud.codigo}</div>
-                            <div className="text-[10px] opacity-90">P: {aud.fases.planeacion.duracionDias}d</div>
+                            <div 
+                              className="text-white font-black tracking-tight" 
+                              style={{ 
+                                fontSize: '15px', 
+                                lineHeight: '1.3',
+                                textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                              }}
+                            >
+                              {aud.codigo}
+                            </div>
+                            <div 
+                              className="text-white font-bold mt-1" 
+                              style={{ 
+                                fontSize: '13px', 
+                                lineHeight: '1.3',
+                                textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                              }}
+                            >
+                              P: {aud.fases.planeacion.duracionDias}d
+                            </div>
                           </div>
                         </div>
                       )}
@@ -566,9 +583,9 @@ function VistaCalendario({
                 </div>
                 
                 {/* Etiqueta lateral */}
-                <div className="absolute -left-48 top-0 w-44 pr-2 flex items-center h-16">
+                <div className="absolute -left-48 top-0 w-44 pr-2 flex items-center h-24">
                   <div className="text-xs text-right">
-                    <div className="text-gray-900 truncate">{aud.nombre}</div>
+                    <div className="text-gray-900 truncate font-semibold">{aud.nombre}</div>
                     <div className="text-gray-500 mt-1">{aud.auditorLider.iniciales}</div>
                   </div>
                 </div>
@@ -793,35 +810,39 @@ function VistaAuditores({ auditores }: { auditores: AuditorDisponible[] }) {
 // ============ MODAL NUEVA AUDITORÍA ============
 
 function ModalNuevaAuditoria({ onClose }: { onClose: () => void }) {
+  const handleGuardarAuditoria = (auditoria: any) => {
+    console.log('Auditoría creada:', auditoria);
+    // Aquí podrías agregar la lógica para guardar en el estado o backend
+    toast.success('¡Auditoría agregada al programa!', {
+      description: `${auditoria.codigo} se agregó exitosamente`
+    });
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-      >
-        <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-xl text-gray-900 flex items-center gap-2">
-            <Plus className="w-5 h-5 text-blue-600" />
-            Nueva Auditoría Programada
-          </h2>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-[9999] overflow-y-auto">
+      <div className="min-h-screen w-full flex items-start justify-center p-4 py-8">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl relative"
+        >
+          {/* Botón Cerrar Moderno */}
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="absolute top-4 right-4 z-10 p-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:scale-110 active:scale-95 shadow-md"
+            aria-label="Cerrar"
           >
-            <X className="w-5 h-5 text-gray-600" />
+            <X className="w-5 h-5" />
           </button>
-        </div>
 
-        <div className="p-6">
-          <p className="text-gray-600 mb-4">
-            Formulario para crear una nueva auditoría programada en desarrollo...
-          </p>
-          <ButtonSIGL variant="primary" onClick={onClose}>
-            Cerrar
-          </ButtonSIGL>
-        </div>
-      </motion.div>
+          {/* Contenido del formulario sin padding extra */}
+          <FormularioNuevaAuditoria 
+            onClose={onClose} 
+            onGuardar={handleGuardarAuditoria}
+          />
+        </motion.div>
+      </div>
     </div>
   );
 }

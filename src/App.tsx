@@ -319,7 +319,7 @@ export default function App() {
       
       case 'backoffice':
         // Determinar si el usuario tiene acceso restringido a un módulo específico
-        const userData = usuarioActual?.email === 'c.internoge@esap.edu.co'
+        const userData = usuarioActual?.email === 'OCIG@esap.edu.co' || usuarioActual?.email === 'ocig@esap.edu.co'
           ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ci-001', restrictedAccess: true, module: 'control-interno' }
           : usuarioActual?.email === 'c.disciplinario@esap.edu.co'
           ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cd-001', restrictedAccess: true, module: 'control-disciplinario' }
@@ -361,11 +361,34 @@ export default function App() {
   return (
     <ErrorBoundary>
       <style>{`
-        [data-sonner-toaster] { position: fixed !important; z-index: 9999 !important; }
-        [data-sonner-toast] { background: white !important; border: 1px solid #e5e7eb !important; border-radius: 12px !important; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important; padding: 16px !important; }
+        [data-sonner-toaster] { 
+          position: fixed !important; 
+          bottom: 20px !important; 
+          right: 20px !important; 
+          z-index: 9999 !important; 
+        }
+        [data-sonner-toast] { 
+          background: white !important; 
+          border: 1px solid #e5e7eb !important; 
+          border-radius: 12px !important; 
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important; 
+          padding: 16px !important; 
+          animation: slideIn 0.3s ease-out !important;
+        }
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
         [data-sonner-toast][data-type=\"success\"] { border-left: 4px solid #10b981 !important; }
         [data-sonner-toast][data-type=\"error\"] { border-left: 4px solid #ef4444 !important; }
         [data-sonner-toast][data-type=\"warning\"] { border-left: 4px solid #f59e0b !important; }
+        [data-sonner-toast][data-type=\"info\"] { border-left: 4px solid #3b82f6 !important; }
         [data-title] { font-weight: 600 !important; color: #111827 !important; font-size: 14px !important; }
         [data-description] { color: #6b7280 !important; font-size: 13px !important; margin-top: 4px !important; }
       `}</style>
@@ -423,7 +446,7 @@ export default function App() {
         </div>
       )}
       
-      <Toaster position="top-right" richColors expand={true} />
+      <Toaster position="bottom-right" richColors expand={true} />
     </ErrorBoundary>
   );
 }

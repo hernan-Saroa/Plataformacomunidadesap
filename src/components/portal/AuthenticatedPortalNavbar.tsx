@@ -17,7 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../u
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner@2.0.3';
 import { SystemSwitcher } from '../esap/SystemSwitcher';
-import { NotificacionesArquitectura } from './NotificacionesArquitectura';
+import { NotificacionesDropdown } from './NotificacionesDropdown';
 
 interface AuthenticatedPortalNavbarProps {
   userName: string;
@@ -65,7 +65,7 @@ export function AuthenticatedPortalNavbar({
           <div className="flex items-center gap-3">
             {/* Logo ESAP */}
             <div className="flex items-center gap-2">
-              <img src={image_1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba} alt="ESAP Logo" className="h-10 w-auto object-contain" />
+              <img src={image_1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba} alt="ESAP Logo" className="h-10 w-auto object-contain ml-[150px]" />
             </div>
           </div>
 
@@ -109,7 +109,7 @@ export function AuthenticatedPortalNavbar({
                 <SheetHeader>
                   <SheetTitle>Notificaciones</SheetTitle>
                 </SheetHeader>
-                <NotificacionesArquitectura />
+                <NotificacionesDropdown />
               </SheetContent>
             </Sheet>
 

@@ -8,7 +8,8 @@ import {
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { motion, useScroll, useTransform, useReducedMotion } from 'motion/react';
-import { FooterGovCo } from './FooterGovCo';
+import { FooterWorldClass } from '../FooterWorldClass';
+import { NewsletterSection } from '../NewsletterSection';
 import { SolicitarCertificadoLaboral } from './SolicitarCertificadoLaboral';
 import { PublicTitleVerification } from './PublicTitleVerification';
 
@@ -824,8 +825,11 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
         </div>
       </section>
 
-      {/* Footer GOV.CO - Conforme a Normativas del Gobierno Colombiano */}
-      <FooterGovCo />
+      {/* Newsletter Section - NUEVA SECCIÓN ANTES DEL FOOTER */}
+      <NewsletterSection />
+
+      {/* Footer World Class - Conforme a Normativas del Gobierno Colombiano */}
+      <FooterWorldClass />
     </div>
   );
 }

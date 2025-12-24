@@ -644,7 +644,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     <img 
                       src={esapLogoWhite} 
                       alt="ESAP Logo" 
-                      className="h-12 w-auto mx-auto object-contain drop-shadow-lg"
+                      className="h-10 w-auto mx-auto object-contain drop-shadow-lg"
                     />
                   </motion.div>
                 </AnimatePresence>
@@ -1114,13 +1114,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       <Gavel className="w-5 h-5" strokeWidth={2} />,
                       'Control Interno Disciplinario',
                       'Procesos disciplinarios'
-                    )}
-                    
-                    {renderMenuItem(
-                      'procesos',
-                      <FileText className="w-5 h-5" strokeWidth={2} />,
-                      'Procesos Administrativos',
-                      'Control y gestión legal'
                     )}
                     
                     {/* ✅ NUEVO: Gestión Legal (SIGL) v5.0 */}

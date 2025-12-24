@@ -1,4 +1,14 @@
+import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
+import { motion } from 'motion/react';
+import { 
+  FileText, Users, Clock, Award, Plus, Search, Download, 
+  Eye, Edit, Trash2, Building2, Calendar, AlertCircle 
+} from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { CONVOCATORIAS_ESAP, getEstadisticasConvocatorias, type Convocatoria } from '../../data/convocatoriasData';
 

@@ -85,20 +85,20 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       // Validar credenciales específicas
       const emailLower = email.toLowerCase();
       const validCredentials: Usuario[] = [
-        { id: '1', nombre: 'Super User', tipo: 'interno', email: 'superuser@esap.edu.co', rol: 'superuser', password: '123456' },
-        { id: '2', nombre: 'Rector', tipo: 'interno', email: 'rector@esap.edu.co', rol: 'rector', password: '123456' },
-        { id: '3', nombre: 'Director', tipo: 'interno', email: 'director@esap.edu.co', rol: 'director', password: '123456' },
-        { id: '4', nombre: 'Admin', tipo: 'interno', email: 'admin@esap.edu.co', rol: 'admin', password: '123456' },
-        { id: '5', nombre: 'Estudiantes', tipo: 'interno', email: 'estudiantes@esap.edu.co', rol: 'student', password: '123456' },
-        { id: '6', nombre: 'Gestor de Certificados', tipo: 'interno', email: 'cerlaboral@esap.edu.co', rol: 'certificados', password: '123456' },
-        { id: '7', nombre: 'Funcionario', tipo: 'interno', email: 'funcionario@esap.edu.co', rol: 'funcionario', password: '123456' },
-        { id: '8', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'ar.empresarial@esap.edu.co', rol: 'arquitectura', password: '123456' },
-        { id: '9', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'arqempresarial@esap.edu.co', rol: 'arquitectura', password: '123456' },
-        { id: '10', nombre: 'Docente Planta', tipo: 'interno', email: 'planta@esap.edu.co', rol: 'planta-profesoral', password: '123456' }, // ✅ NUEVO: Gestión Profesoral
-        { id: '11', nombre: 'Gestión Legal', tipo: 'interno', email: 'gestion.legal@esap.edu.co', rol: 'gestion-legal', password: '123456' }, // ✅ NUEVO: Gestión Legal
-        { id: '12', nombre: 'Control Interno', tipo: 'interno', email: 'c.internoge@esap.edu.co', rol: 'control-interno', password: '123456' }, // ✅ NUEVO: Control Interno
-        { id: '13', nombre: 'Control Disciplinario', tipo: 'interno', email: 'c.disciplinario@esap.edu.co', rol: 'control-disciplinario', password: '123456' }, // ✅ NUEVO: Control Disciplinario
-        { id: '14', nombre: 'Registro Académico', tipo: 'interno', email: 'registro.academico@esap.edu.co', rol: 'registro-academico', password: '123456' }, // ✅ NUEVO: Registro Académico
+        { id: '1', nombre: 'Super User', tipo: 'interno', email: 'superuser@esap.edu.co', rol: 'superuser', password: 'Esap2026*' },
+        { id: '2', nombre: 'Rector', tipo: 'interno', email: 'rector@esap.edu.co', rol: 'rector', password: 'Esap2026*' },
+        { id: '3', nombre: 'Director', tipo: 'interno', email: 'director@esap.edu.co', rol: 'director', password: 'Esap2026*' },
+        { id: '4', nombre: 'Admin', tipo: 'interno', email: 'admin@esap.edu.co', rol: 'admin', password: 'Esap2026*' },
+        { id: '5', nombre: 'Estudiantes', tipo: 'interno', email: 'estudiantes@esap.edu.co', rol: 'student', password: 'Esap2026*' },
+        { id: '6', nombre: 'Gestor de Certificados', tipo: 'interno', email: 'cerlaboral@esap.edu.co', rol: 'certificados', password: 'Esap2026*' },
+        { id: '7', nombre: 'Funcionario', tipo: 'interno', email: 'funcionario@esap.edu.co', rol: 'funcionario', password: 'Esap2026*' },
+        { id: '8', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'ar.empresarial@esap.edu.co', rol: 'arquitectura', password: 'Esap2026*' },
+        { id: '9', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'arqempresarial@esap.edu.co', rol: 'arquitectura', password: 'Esap2026*' },
+        { id: '10', nombre: 'Docente Planta', tipo: 'interno', email: 'planta@esap.edu.co', rol: 'planta-profesoral', password: 'Esap2026*' }, // ✅ NUEVO: Gestión Profesoral
+        { id: '11', nombre: 'Gestión Legal', tipo: 'interno', email: 'gestion.legal@esap.edu.co', rol: 'gestion-legal', password: 'Esap2026*' }, // ✅ NUEVO: Gestión Legal
+        { id: '12', nombre: 'Control Interno', tipo: 'interno', email: 'OCIG@esap.edu.co', rol: 'control-interno', password: 'Esap2026*' }, // ✅ NUEVO: Control Interno OCIG
+        { id: '13', nombre: 'Control Disciplinario', tipo: 'interno', email: 'c.disciplinario@esap.edu.co', rol: 'control-disciplinario', password: 'Esap2026*' }, // ✅ NUEVO: Control Disciplinario
+        { id: '14', nombre: 'Registro Académico', tipo: 'interno', email: 'registro.academico@esap.edu.co', rol: 'registro-academico', password: 'Esap2026*' }, // ✅ NUEVO: Registro Académico
       ];
 
       // Verificar si el email existe en las credenciales válidas
@@ -168,9 +168,9 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           description: 'Acceso a la Gestión Legal concedido',
           duration: 3500,
         });
-      } else if (emailLower === 'c.internoge@esap.edu.co') {
-        toast.success('🔍 ¡Bienvenido Control Interno!', {
-          description: 'Acceso al Módulo de Control Interno concedido',
+      } else if (emailLower === 'ocig@esap.edu.co') {
+        toast.success('🔍 ¡Bienvenido OCIG!', {
+          description: 'Acceso al Módulo de Control Interno de Gestión concedido',
           duration: 3500,
         });
       } else if (emailLower === 'c.disciplinario@esap.edu.co') {
@@ -481,7 +481,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="font-medium">🔍 Control Interno:</span>
-                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">c.internoge@esap.edu.co</code>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">OCIG@esap.edu.co</code>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="font-medium">🔍 Control Disciplinario:</span>
@@ -493,7 +493,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   </div>
                   <div className="flex items-center justify-between pt-1.5 border-t border-blue-200">
                     <span className="font-medium">🔑 Contraseña:</span>
-                    <code className="px-2 py-0.5 bg-white rounded font-mono font-bold">123456</code>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono font-bold">Esap2026*</code>
                   </div>
                 </div>
               </motion.div>

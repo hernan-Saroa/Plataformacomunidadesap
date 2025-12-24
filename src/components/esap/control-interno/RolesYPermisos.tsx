@@ -15,10 +15,10 @@ import {
   Settings, AlertCircle, CheckCircle, Clock, Save, Copy, Info
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/Button';
+import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
-import { InputSIGL } from '../gestion-legal/design-system/Input';
-import { toast } from 'sonner';
+import { InputSIGL } from '../gestion-legal/design-system/InputSIGL';
+import { toast } from 'sonner@2.0.3';
 import { 
   obtenerRolesPorCategoria, 
   obtenerPermisosRolModulo,
@@ -511,7 +511,7 @@ export function RolesYPermisos() {
           {/* Selector de vista */}
           <div className="flex gap-2">
             <ButtonSIGL
-              variant={vistaActiva === 'roles' ? 'primary' : 'default'}
+              variant={vistaActiva === 'roles' ? 'primary' : 'secondary'}
               onClick={() => setVistaActiva('roles')}
               className="gap-2"
             >
@@ -519,7 +519,7 @@ export function RolesYPermisos() {
               Roles
             </ButtonSIGL>
             <ButtonSIGL
-              variant={vistaActiva === 'usuarios' ? 'primary' : 'default'}
+              variant={vistaActiva === 'usuarios' ? 'primary' : 'secondary'}
               onClick={() => setVistaActiva('usuarios')}
               className="gap-2"
             >
@@ -528,7 +528,7 @@ export function RolesYPermisos() {
               <BadgeSIGL variant="outline" className="text-xs">{usuarios.length}</BadgeSIGL>
             </ButtonSIGL>
             <ButtonSIGL
-              variant={vistaActiva === 'matriz' ? 'primary' : 'default'}
+              variant={vistaActiva === 'matriz' ? 'primary' : 'secondary'}
               onClick={() => setVistaActiva('matriz')}
               className="gap-2"
             >

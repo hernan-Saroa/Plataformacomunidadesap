@@ -139,11 +139,106 @@ const USUARIOS_MOCK: Usuario[] = [
   { id: 'usr-006', nombre: 'Natalia Cañón Mora', cargo: 'Auditor', iniciales: 'NC' }
 ];
 
+// ============ DATOS MOCK - PLANES DE EJEMPLO ============
+
+const PLANES_MOCK: PlanAnual[] = [
+  {
+    id: 'plan-2025',
+    año: 2025,
+    estado: 'Vigente',
+    jefeOCI: {
+      id: 'usr-001',
+      nombre: 'Fernando Ávila García',
+      cargo: 'Jefe OCI'
+    },
+    roles: ROLES_DECRETO_648.map((rol, idx) => ({
+      ...rol,
+      actividades: [
+        {
+          id: `act-2025-${idx}-1`,
+          nombre: idx === 0 ? 'Participación en Comité Institucional de Coordinación de Control Interno' :
+                 idx === 1 ? 'Diseño de matriz de riesgos de corrupción actualizada' :
+                 idx === 2 ? 'Atención de requerimientos de Contraloría General' :
+                 idx === 3 ? 'Auditoría al Mapa de Riesgos Institucional' :
+                 'Seguimiento a Planes de Mejoramiento institucionales',
+          descripcion: 'Actividad principal del rol',
+          responsableId: 'usr-001',
+          responsableNombre: 'Fernando Ávila García',
+          fechaInicio: '2025-01-15',
+          fechaFin: '2025-12-15',
+          porcentaje: 65,
+          estado: 'En Ejecución'
+        }
+      ]
+    })),
+    fechaCreacion: '2024-11-15',
+    fechaAprobacion: '2024-12-10',
+    version: 2
+  },
+  {
+    id: 'plan-2024',
+    año: 2024,
+    estado: 'Cerrado',
+    jefeOCI: {
+      id: 'usr-001',
+      nombre: 'Fernando Ávila García',
+      cargo: 'Jefe OCI'
+    },
+    roles: ROLES_DECRETO_648.map((rol, idx) => ({
+      ...rol,
+      actividades: [
+        {
+          id: `act-2024-${idx}-1`,
+          nombre: `Actividad ${rol.nombre} - 2024`,
+          descripcion: 'Actividad completada',
+          responsableId: 'usr-001',
+          responsableNombre: 'Fernando Ávila García',
+          fechaInicio: '2024-01-15',
+          fechaFin: '2024-12-15',
+          porcentaje: 100,
+          estado: 'Completada'
+        }
+      ]
+    })),
+    fechaCreacion: '2023-11-20',
+    fechaAprobacion: '2023-12-15',
+    version: 1
+  },
+  {
+    id: 'plan-2026',
+    año: 2026,
+    estado: 'En Revisión',
+    jefeOCI: {
+      id: 'usr-001',
+      nombre: 'Fernando Ávila García',
+      cargo: 'Jefe OCI'
+    },
+    roles: ROLES_DECRETO_648.map((rol, idx) => ({
+      ...rol,
+      actividades: [
+        {
+          id: `act-2026-${idx}-1`,
+          nombre: `Actividad ${rol.nombre} - 2026`,
+          descripcion: 'Actividad en revisión',
+          responsableId: 'usr-002',
+          responsableNombre: 'Catalina Rubio Silva',
+          fechaInicio: '2026-01-15',
+          fechaFin: '2026-12-15',
+          porcentaje: 0,
+          estado: 'Pendiente'
+        }
+      ]
+    })),
+    fechaCreacion: '2025-11-01',
+    version: 1
+  }
+];
+
 // ============ COMPONENTE PRINCIPAL ============
 
 export function PlanAnualModule() {
   const [vistaActiva, setVistaActiva] = useState<'lista' | 'crear' | 'detalle' | 'editar'>('lista');
-  const [planes, setPlanes] = useState<PlanAnual[]>([]);
+  const [planes, setPlanes] = useState<PlanAnual[]>(PLANES_MOCK);
   const [planActual, setPlanActual] = useState<PlanAnual | null>(null);
   const [mostrarModalAprobacion, setMostrarModalAprobacion] = useState(false);
 

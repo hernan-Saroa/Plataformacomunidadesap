@@ -7,7 +7,8 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   GripVertical, Clock, User, AlertTriangle, CheckCircle,
-  MoreVertical, Eye, Calendar, FolderOpen
+  MoreVertical, Eye, Calendar, FolderOpen,
+  ChevronsDown, ChevronsUp, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -143,6 +144,39 @@ export function DashboardKanban() {
   const [procesos, setProcesos] = useState(PROCESOS_KANBAN);
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
   const [draggedOverColumn, setDraggedOverColumn] = useState<string | null>(null);
+  const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
+
+  // ==================== FUNCIONES PARA COLAPSAR/EXPANDIR TARJETAS ====================
+  
+  // Toggle colapso de tarjeta individual
+  const toggleTarjetaColapsada = (id: string) => {
+    setTarjetasColapsadas(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Colapsar todas las tarjetas
+  const colapsarTodasTarjetas = () => {
+    const todasLasIds = procesos.map(p => p.id);
+    setTarjetasColapsadas(new Set(todasLasIds));
+    toast.success('Tarjetas colapsadas', {
+      description: 'Todas las tarjetas ahora muestran vista compacta'
+    });
+  };
+
+  // Expandir todas las tarjetas
+  const expandirTodasTarjetas = () => {
+    setTarjetasColapsadas(new Set());
+    toast.success('Tarjetas expandidas', {
+      description: 'Todas las tarjetas ahora muestran información completa'
+    });
+  };
 
   // Inicio del drag
   const handleDragStart = (procesoId: string) => {
@@ -191,13 +225,37 @@ export function DashboardKanban() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-extrabold mb-2" style={{ color: '#003DA5' }}>
-          Vista Kanban
-        </h2>
-        <p className="text-sm" style={{ color: '#6B7280' }}>
-          Arrastra los procesos entre etapas para actualizar su estado
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-extrabold mb-2" style={{ color: '#003DA5' }}>
+            Vista Kanban
+          </h2>
+          <p className="text-sm" style={{ color: '#6B7280' }}>
+            Arrastra los procesos entre etapas para actualizar su estado
+          </p>
+        </div>
+
+        {/* BOTONES COLAPSAR/EXPANDIR TODAS LAS TARJETAS */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={colapsarTodasTarjetas}
+            className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all hover:bg-blue-50 border-2 border-blue-300 hover:border-blue-500"
+            style={{ color: '#1e5da8' }}
+            title="Colapsar todas las tarjetas"
+          >
+            <ChevronsDown className="w-4 h-4" />
+            <span>Colapsar Todas</span>
+          </button>
+          <button
+            onClick={expandirTodasTarjetas}
+            className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all hover:bg-green-50 border-2 border-green-300 hover:border-green-500"
+            style={{ color: '#059669' }}
+            title="Expandir todas las tarjetas"
+          >
+            <ChevronsUp className="w-4 h-4" />
+            <span>Expandir Todas</span>
+          </button>
+        </div>
       </div>
 
       {/* Kanban Board */}
@@ -302,18 +360,38 @@ export function DashboardKanban() {
                               </Badge>
                             </div>
                           </div>
-                          <button 
-                            className="p-1 hover:bg-gray-100 rounded flex-shrink-0"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toast.info('Opciones del proceso');
-                            }}
-                          >
-                            <MoreVertical className="w-4 h-4" style={{ color: '#6B7280' }} />
-                          </button>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {/* Botón Colapsar/Expandir Individual */}
+                            <button
+                              className="p-1 hover:bg-blue-50 rounded transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleTarjetaColapsada(proceso.id);
+                              }}
+                              title={tarjetasColapsadas.has(proceso.id) ? 'Expandir tarjeta' : 'Colapsar tarjeta'}
+                            >
+                              {tarjetasColapsadas.has(proceso.id) ? (
+                                <ChevronDown className="w-4 h-4" style={{ color: '#1e5da8' }} />
+                              ) : (
+                                <ChevronUp className="w-4 h-4" style={{ color: '#1e5da8' }} />
+                              )}
+                            </button>
+                            <button 
+                              className="p-1 hover:bg-gray-100 rounded"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toast.info('Opciones del proceso');
+                              }}
+                            >
+                              <MoreVertical className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            </button>
+                          </div>
                         </div>
 
-                        {/* Semáforo */}
+                        {/* Contenido - Ocultable */}
+                        {!tarjetasColapsadas.has(proceso.id) && (
+                          <>
+                            {/* Semáforo */}
                         <div className="flex items-center gap-2 mb-3">
                           <div
                             className="w-3 h-3 rounded-full ring-2"
@@ -385,6 +463,8 @@ export function DashboardKanban() {
                             </span>
                           </div>
                         </div>
+                          </>
+                        )}
                       </Card>
                     </motion.div>
                   ))}

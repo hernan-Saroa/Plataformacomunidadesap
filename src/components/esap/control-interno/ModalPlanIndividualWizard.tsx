@@ -611,7 +611,7 @@ export function ModalPlanIndividualWizard({
                     <div className="md:col-span-2">
                       <label className="text-sm font-bold block mb-1" style={{ color: '#6B7280' }}>Auditor Líder</label>
                       <div className="px-4 py-2 rounded-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB' }}>
-                        {datosBase.auditorLider}
+                        {typeof datosBase.auditorLider === 'string' ? datosBase.auditorLider : datosBase.auditorLider?.nombre || 'No asignado'}
                       </div>
                     </div>
                     <div>

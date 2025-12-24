@@ -17,11 +17,11 @@ import {
   Archive
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/Button';
+import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-import { InputSIGL } from '../gestion-legal/design-system/Input';
-import { toast } from 'sonner';
+import { InputSIGL } from '../gestion-legal/design-system/InputSIGL';
+import { toast } from 'sonner@2.0.3';
 import { CATALOGO_INFORMES_LEY, InformeLeyNormativo, PeriodicidadInforme } from './CatalogoInformesLey';
 
 // ====================================
@@ -160,21 +160,21 @@ export const InformesLeyModule: React.FC = () => {
 
             <div className="flex gap-2">
               <ButtonSIGL
-                variant={vistaActual === 'CATALOGO' ? 'primary' : 'default'}
+                variant={vistaActual === 'CATALOGO' ? 'primary' : 'secondary'}
                 onClick={() => setVistaActual('CATALOGO')}
               >
                 <FileText className="w-4 h-4" />
                 Catálogo
               </ButtonSIGL>
               <ButtonSIGL
-                variant={vistaActual === 'GENERADOS' ? 'primary' : 'default'}
+                variant={vistaActual === 'GENERADOS' ? 'primary' : 'secondary'}
                 onClick={() => setVistaActual('GENERADOS')}
               >
                 <Archive className="w-4 h-4" />
                 Generados
               </ButtonSIGL>
               <ButtonSIGL
-                variant={vistaActual === 'PROXIMOS' ? 'primary' : 'default'}
+                variant={vistaActual === 'PROXIMOS' ? 'primary' : 'secondary'}
                 onClick={() => setVistaActual('PROXIMOS')}
               >
                 <Clock className="w-4 h-4" />
@@ -380,7 +380,7 @@ const VistaCatalogo: React.FC<{
                   </div>
 
                   <div className="flex gap-2 flex-shrink-0 ml-4">
-                    <ButtonSIGL variant="default" onClick={() => onVerDetalle(informe)}>
+                    <ButtonSIGL variant="secondary" onClick={() => onVerDetalle(informe)}>
                       <Eye className="w-4 h-4" />
                       Ver Detalle
                     </ButtonSIGL>
@@ -473,11 +473,11 @@ const VistaGenerados: React.FC<{ informes: InformeGenerado[] }> = ({ informes })
                 </div>
 
                 <div className="flex gap-2">
-                  <ButtonSIGL variant="default">
+                  <ButtonSIGL variant="secondary">
                     <Eye className="w-4 h-4" />
                     Ver
                   </ButtonSIGL>
-                  <ButtonSIGL variant="default">
+                  <ButtonSIGL variant="secondary">
                     <Download className="w-4 h-4" />
                     Descargar
                   </ButtonSIGL>
@@ -645,7 +645,7 @@ const ModalDetalleInforme: React.FC<{
         )}
 
         <div className="flex justify-end gap-3 pt-4 border-t">
-          <ButtonSIGL variant="default" onClick={onClose}>
+          <ButtonSIGL variant="secondary" onClick={onClose}>
             Cerrar
           </ButtonSIGL>
           <ButtonSIGL variant="primary" onClick={onGenerar}>
@@ -710,7 +710,7 @@ const ModalGenerarInforme: React.FC<{
         </div>
 
         <div className="flex justify-end gap-3 pt-4 border-t">
-          <ButtonSIGL variant="default" onClick={onClose}>
+          <ButtonSIGL variant="secondary" onClick={onClose}>
             Cancelar
           </ButtonSIGL>
           <ButtonSIGL variant="primary" onClick={onGenerar} disabled={!periodo.trim()}>

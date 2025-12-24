@@ -6,9 +6,14 @@
 // ⭐ MÓDULO PRINCIPAL
 export { ControlInternoFull } from './ControlInternoFull';
 
+// ⭐ COMPONENTES DE UI UNIFICADOS
+export { HeaderModuloCIG } from './HeaderModuloCIG';
+
 // ⭐ MÓDULOS CONSOLIDADOS (NUEVOS)
 export { PlanificacionModule } from './PlanificacionModule';
+export { PlanificacionModuleRediseno } from './PlanificacionModuleRediseno';
 export { ProcesoAuditoriaModule } from './ProcesoAuditoriaModule';
+export { ProcesoAuditoriaModuleRediseno } from './ProcesoAuditoriaModuleRediseno';
 export { PlanesMejoramientoModule } from './PlanesMejoramientoModule';
 export { SoporteModule } from './SoporteModule';
 export { ModulosAvanzadosModule } from './ModulosAvanzadosModule';

@@ -25,9 +25,6 @@ import { RolesAdministrationModulePremium } from './RolesAdministrationModulePre
 // Importar módulos de Gestión Profesoral
 import { GestionProfesoralModule } from '../gestion-profesoral/GestionProfesoralModule';
 
-// Importar módulo de Procesos Administrativos
-import { ProcesosAdministrativosModule } from '../procesos/ProcesosAdministrativosModule';
-
 // Importar módulo de Control Interno
 import { ControlInternoFull } from './control-interno/ControlInternoFull';
 
@@ -83,7 +80,6 @@ type ModuleView =
   | 'programas-academicos'
   | 'aspirantes'
   | 'arquitectura-empresarial'
-  | 'procesos'  // ✅ NUEVO - Módulo de Procesos Administrativos
   | 'demo-pta-motor';
 
 interface BackofficeAppProps {
@@ -124,8 +120,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     ? 'gestion-legal'
     : userData?.module === 'gestion-profesoral'
     ? 'gestion-profesoral'
-    : userData?.module === 'procesos'
-    ? 'procesos'
     : 'dashboard';
   const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(''); // Nuevo: Guardar el módulo del sidebar
@@ -165,8 +159,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       'control-interno': 'control-interno',
       'control-disciplinario': 'control-disciplinario',
       'gestion-legal': 'gestion-legal',
-      'arquitectura-empresarial': 'arquitectura-empresarial',
-      'procesos': 'procesos'  // ✅ NUEVO - Módulo de Procesos Administrativos
+      'arquitectura-empresarial': 'arquitectura-empresarial'
     };
     return (mappings[sidebarModule] as ModuleView) || 'dashboard';
   };
@@ -284,9 +277,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       
       case 'arquitectura-empresarial':
         return <ArquitecturaEmpresarialModule />;
-      
-      case 'procesos':
-        return <ProcesosAdministrativosModule />;
       
       default:
         return <ExecutiveDashboard userRole={mockUser.role} />;

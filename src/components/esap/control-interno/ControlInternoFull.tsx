@@ -1,10 +1,4 @@
-/**
- * CONTROL INTERNO DE GESTIÓN - OPTIMIZADO
- * ACTUALIZADO: 22 Diciembre 2025
- * Consolidación: De 14 módulos a 6 módulos gruesos con tabs
- */
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Shield,
   LayoutDashboard,
@@ -14,37 +8,81 @@ import {
   FolderOpen,
   Settings,
   Sliders,
+  FileText,
+  Bell,
+  Users,
+  BarChart3,
+  Zap,
+  Activity,
 } from "lucide-react";
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
+import { IntegracionAuditoriasPlanesProvider, useIntegracionAuditoriaPlanes } from "./IntegracionAuditoriasPlanesContext";
+import { toast } from "sonner";
 
 // ━━━━━━━━━━━ MÓDULOS CONSOLIDADOS ━━━━━━━━━━━
 import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";  // DASHBOARD PRINCIPAL
-import { PlanificacionModule } from "./PlanificacionModule";  // RF001-004 (Plan Anual + Universo + Programa + Inicio)
-import { ProcesoAuditoriaModule } from "./ProcesoAuditoriaModule";  // RF005-009 (Planeación + Ejecución + Comunicación)
-import { PlanesMejoramientoModule } from "./PlanesMejoramientoModule";  // RF010-011 (Formulación + Seguimiento)
-import { SoporteModule } from "./SoporteModule";  // RF012-014 (Informes + Documental + Notificaciones)
-import { ModulosAvanzadosModule } from "./ModulosAvanzadosModule";  // RF015-018 (Roles + Reportes + Territoriales + Especiales)
-import { ConfiguracionSistemaCompleto } from "./ConfiguracionSistemaCompleto";  // RF019 (General + Auditorías + Informes + Notificaciones)
+import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  // RF001-004
+// ELIMINADO: ProcesoAuditoriaModuleRediseno - Integrado en Expediente del Kanban (RF005-009)
+import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRediseno";  // RF010-011
+import { InformesLeyModulePremium } from "./InformesLeyModulePremium";  // RF012 - VERSIÓN PREMIUM
+import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - VERSIÓN PREMIUM - EXPEDIENTES
+import { RolesYPermisosModulePremium } from "./RolesYPermisosModulePremium";  // RF015 - VERSIÓN PREMIUM
+import { AuditoriasEspecialesModuleCompleto } from "./AuditoriasEspecialesModuleCompleto";  // RF018 - MÓDULO INDEPENDIENTE
+import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
 
 type SeccionActiva =
-  | "dashboard"              // KANBAN DASHBOARD - CENTRO DE COMANDO
-  | "planificacion"          // RF001-004 (4 tabs)
-  | "proceso-auditoria"      // RF005-009 (3 tabs)
-  | "planes-mejoramiento"    // RF010-011 (2 tabs)
-  | "soporte"                // RF012-014 (3 tabs)
-  | "modulos-avanzados"      // RF015-018 (4 tabs)
-  | "configuracion";         // Configuración del sistema
+  | "dashboard"                      // KANBAN DASHBOARD - CENTRO DE COMANDO
+  | "planificacion"                  // RF001-004 (4 tabs)
+  | "planes-mejoramiento"            // RF010-011 (2 tabs)
+  | "informes-ley"                   // RF012 - MÓDULO INDEPENDIENTE
+  | "expedientes"                    // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
+  | "roles-permisos"                 // RF015 - MÓDULO INDEPENDIENTE
+  | "auditorias-especiales"          // RF018 - MÓDULO INDEPENDIENTE
+  | "config-auditorias";             // RF019-B - Config Auditorías (Tipos + Listas)
 
 export function ControlInternoFull() {
   const [seccionActiva, setSeccionActiva] =
     useState<SeccionActiva>("dashboard"); // 🎯 DASHBOARD DE PRIMERAS
+  const [navegacionManual, setNavegacionManual] = useState<number>(0); // ← NUEVO: Timestamp de última navegación manual
 
+  return (
+    <ControlInternoProvider>
+      <IntegracionAuditoriasPlanesProvider>
+        <ControlInternoContent
+          seccionActiva={seccionActiva}
+          setSeccionActiva={setSeccionActiva}
+          navegacionManual={navegacionManual}
+          setNavegacionManual={setNavegacionManual}
+        />
+      </IntegracionAuditoriasPlanesProvider>
+    </ControlInternoProvider>
+  );
+}
+
+// ============ COMPONENTE INTERNO CON ACCESO AL CONTEXT ============
+
+interface ControlInternoContentProps {
+  seccionActiva: SeccionActiva;
+  setSeccionActiva: (seccion: SeccionActiva) => void;
+  navegacionManual: number;
+  setNavegacionManual: (timestamp: number) => void;
+}
+
+function ControlInternoContent({
+  seccionActiva,
+  setSeccionActiva,
+  navegacionManual,
+  setNavegacionManual
+}: ControlInternoContentProps) {
+  const { auditoriaSeleccionada } = useIntegracionAuditoriaPlanes();
+
+  // Calcular menuItems dinámicamente con badge
   const menuItems: MenuItem[] = [
     // ━━━━━━━━━━━ 1. CENTRO DE COMANDO ━━━━━━━━━━━
     {
       id: "dashboard",
-      label: "Dashboard Kanban",
+      label: "Auditorías OCIG",
       subtitle: "Centro de comando integrado",
       icon: <LayoutDashboard className="w-5 h-5" />,
       color: "#10B981", // Verde - Principal
@@ -53,54 +91,64 @@ export function ControlInternoFull() {
     // ━━━━━━━━━━━ 2. PLANIFICACIÓN (RF001-004) ━━━━━━━━━━━
     {
       id: "planificacion",
-      label: "Planificación",
-      subtitle: "Plan Anual • Universo • Programa • Inicio",
+      label: "Planeación OCIG",
+      subtitle: "Plan Anual • Universo • Programa",
       icon: <ClipboardList className="w-5 h-5" />,
       color: "#003DA5", // Azul ESAP
     },
     
-    // ━━━━━━━━━━━ 3. PROCESO DE AUDITORÍA (RF005-009) ━━━━━━━━━━━
-    {
-      id: "proceso-auditoria",
-      label: "Proceso de Auditoría",
-      subtitle: "Planeación • Ejecución • Comunicación",
-      icon: <Target className="w-5 h-5" />,
-      color: "#F59E0B", // Naranja - En proceso
-    },
-    
-    // ━━━━━━━━━━━ 4. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 3. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
     {
       id: "planes-mejoramiento",
       label: "Planes de Mejoramiento",
       subtitle: "Formulación • Seguimiento",
       icon: <AlertTriangle className="w-5 h-5" />,
       color: "#EF4444", // Rojo - Hallazgos
+      badge: auditoriaSeleccionada ? auditoriaSeleccionada.hallazgos.length : 0
     },
     
-    // ━━━━━━━━━━━ 5. MÓDULOS DE SOPORTE (RF012-014) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 4. INFORMES DE LEY (RF012) ━━━━━━━━━━━
     {
-      id: "soporte",
-      label: "Módulos de Soporte",
-      subtitle: "Informes • Documental • Notificaciones",
+      id: "informes-ley",
+      label: "Informes de Ley",
+      subtitle: "Ejecutivo Anual • Pormenorizado • Formatos",
+      icon: <FileText className="w-5 h-5" />,
+      color: "#8B5CF6", // Púrpura - Informes
+    },
+    
+    // ━━━━━━━━━━━ 5. EXPEDIENTES (RF013) ━━━━━━━━━━━
+    {
+      id: "expedientes",
+      label: "Expedientes",
+      subtitle: "Archivo • Búsqueda • Expedientes",
       icon: <FolderOpen className="w-5 h-5" />,
-      color: "#8B5CF6", // Púrpura - Soporte
+      color: "#0891B2", // Cyan - Documental
     },
     
-    // ━━━━━━━━━━━ 6. MÓDULOS AVANZADOS (RF015-018) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 6. ROLES Y PERMISOS (RF015) ━━━━━━━━━━━
     {
-      id: "modulos-avanzados",
-      label: "Módulos Avanzados",
-      subtitle: "Roles • Reportes • Territoriales • Especiales",
+      id: "roles-permisos",
+      label: "Roles y Permisos",
+      subtitle: "RBAC • Seguridad • Accesos",
+      icon: <Shield className="w-5 h-5" />,
+      color: "#DC2626", // Rojo - Seguridad
+    },
+    
+    // ━━━━━━━━━━━ 7. AUDITORÍAS ESPECIALES (RF018) ━━━━━━━━━━━
+    {
+      id: "auditorias-especiales",
+      label: "Auditorías Especiales",
+      subtitle: "No Programadas • Extraordinarias",
+      icon: <Zap className="w-5 h-5" />,
+      color: "#EA580C", // Naranja - Especiales
+    },
+    
+    // ━━━━━━━━━━━ 8. CONFIGURACIONES ━━━━━━━━━━━
+    {
+      id: "config-auditorias",
+      label: "Configuraciones",
+      subtitle: "Notificaciones • Auditoría • Kanban • Config",
       icon: <Settings className="w-5 h-5" />,
-      color: "#6B7280", // Gris - Admin
-    },
-    
-    // ━━━━━━━━━━━ 7. CONFIGURACIÓN (RF019) ━━━━━━━━━━━
-    {
-      id: "configuracion",
-      label: "Configuración",
-      subtitle: "General • Auditorías • Informes • Notificaciones",
-      icon: <Sliders className="w-5 h-5" />,
       color: "#059669", // Verde oscuro - Config
     },
   ];
@@ -111,22 +159,25 @@ export function ControlInternoFull() {
         return <GestionAuditoriasKanbanSimple />;
       
       case "planificacion":
-        return <PlanificacionModule />;
-      
-      case "proceso-auditoria":
-        return <ProcesoAuditoriaModule />;
+        return <PlanificacionModuleRediseno />;
       
       case "planes-mejoramiento":
-        return <PlanesMejoramientoModule />;
+        return <PlanesMejoramientoModuleRediseno />;
       
-      case "soporte":
-        return <SoporteModule />;
+      case "informes-ley":
+        return <InformesLeyModulePremium />;
       
-      case "modulos-avanzados":
-        return <ModulosAvanzadosModule />;
+      case "expedientes":
+        return <ExpedientesModulePremium />;
       
-      case "configuracion":
-        return <ConfiguracionSistemaCompleto />;
+      case "roles-permisos":
+        return <RolesYPermisosModulePremium />;
+      
+      case "auditorias-especiales":
+        return <AuditoriasEspecialesModuleCompleto />;
+      
+      case "config-auditorias":
+        return <ConfiguracionesModulePremium />;
       
       default:
         return <GestionAuditoriasKanbanSimple />;
@@ -141,14 +192,74 @@ export function ControlInternoFull() {
       moduleColor="#F97316"
       menuItems={menuItems}
       activeSection={seccionActiva}
-      onSectionChange={(section) =>
-        setSeccionActiva(section as SeccionActiva)
-      }
+      onSectionChange={(section) => {
+        setSeccionActiva(section as SeccionActiva);
+        setNavegacionManual(Date.now()); // ← NUEVO: Actualizar timestamp de navegación manual
+      }}
     >
-      <ControlInternoProvider>
-        {/* Contenido de la sección */}
-        {renderSeccion()}
-      </ControlInternoProvider>
+      {/* Navegación automática */}
+      <MenuDinamicoWrapper
+        seccionActiva={seccionActiva}
+        onCambiarSeccion={setSeccionActiva}
+        navegacionManual={navegacionManual}
+      />
+      
+      {/* Contenido de la sección */}
+      {renderSeccion()}
     </ModuleLayout>
   );
+}
+
+// ============ COMPONENTE WRAPPER PARA NAVEGACIÓN AUTOMÁTICA ============
+
+interface MenuDinamicoWrapperProps {
+  seccionActiva: SeccionActiva;
+  onCambiarSeccion: (seccion: SeccionActiva) => void;
+  navegacionManual: number;
+}
+
+function MenuDinamicoWrapper({ 
+  seccionActiva, 
+  onCambiarSeccion,
+  navegacionManual
+}: MenuDinamicoWrapperProps) {
+  const { auditoriaSeleccionada } = useIntegracionAuditoriaPlanes();
+  const [yaNavego, setYaNavego] = useState(false); // ← Control de navegación única
+
+  // Navegación automática (solo la primera vez)
+  useEffect(() => {
+    const tiempoActual = Date.now();
+    const navegacionReciente = (tiempoActual - navegacionManual) < 500; // 500ms después de navegación manual
+    
+    if (auditoriaSeleccionada && 
+        seccionActiva !== 'planes-mejoramiento' && 
+        !yaNavego && 
+        !navegacionReciente) {
+      
+      console.log('🚀 Navegación automática activada:', {
+        auditoria: auditoriaSeleccionada.codigo,
+        seccionActual: seccionActiva,
+        seccionDestino: 'planes-mejoramiento'
+      });
+      
+      setYaNavego(true); // ← Marcar que ya navegó
+      onCambiarSeccion('planes-mejoramiento');
+      
+      // Toast informativo mejorado
+      toast.success(
+        `Navegando a Planes de Mejoramiento`,
+        {
+          description: `Auditoría ${auditoriaSeleccionada.codigo} - ${auditoriaSeleccionada.hallazgos.length} hallazgos detectados`,
+          duration: 3000
+        }
+      );
+    }
+    
+    // Reset del flag cuando se limpia la selección
+    if (!auditoriaSeleccionada && yaNavego) {
+      setYaNavego(false);
+    }
+  }, [auditoriaSeleccionada, seccionActiva, onCambiarSeccion, navegacionManual, yaNavego]);
+
+  return null;
 }

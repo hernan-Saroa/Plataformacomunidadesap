@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/Button';
+import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 
 // Importar tipos (deben estar disponibles)

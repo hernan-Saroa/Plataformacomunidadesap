@@ -7,8 +7,8 @@ import { SIGL_COLORS, SIGL_BORDERS, SIGL_SPACING, SIGL_HEIGHTS } from './tokens'
 
 interface InputSIGLProps {
   label?: string;
-  value: string;
-  onChange: (value: string) => void;
+  value: string | number;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   placeholder?: string;
   type?: 'text' | 'email' | 'number' | 'tel' | 'url' | 'password' | 'date' | 'datetime-local';
   disabled?: boolean;
@@ -20,6 +20,9 @@ interface InputSIGLProps {
   size?: 'sm' | 'md' | 'lg';
   fullWidth?: boolean;
   className?: string;
+  min?: string;
+  max?: string;
+  onKeyPress?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
 export function InputSIGL({
@@ -37,6 +40,9 @@ export function InputSIGL({
   size = 'md',
   fullWidth = true,
   className = '',
+  min,
+  max,
+  onKeyPress,
 }: InputSIGLProps) {
   const sizeStyles: Record<string, { height: number; fontSize: number; padding: string }> = {
     sm: {
@@ -108,10 +114,13 @@ export function InputSIGL({
         <input
           type={type}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={onChange}
           placeholder={placeholder}
           disabled={disabled}
           required={required}
+          min={min}
+          max={max}
+          onKeyPress={onKeyPress}
           style={{
             ...inputStyles,
             paddingLeft: icon && iconPosition === 'left' ? SIGL_SPACING.xl : sizes.padding.split(' ')[1],

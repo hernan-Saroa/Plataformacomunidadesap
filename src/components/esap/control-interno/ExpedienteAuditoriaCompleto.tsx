@@ -77,12 +77,19 @@ import { toast } from 'sonner@2.0.3';
 
 // Design System
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/Button';
+import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs';
 
 // Sub-módulos de fases
 import { PlaneacionAuditoriaModule } from './PlaneacionAuditoriaModule';
+import { ModalCargarDocumento } from './ModalCargarDocumento';
+import {
+  ActividadesIntegradas,
+  ACTIVIDADES_PLANEACION,
+  ACTIVIDADES_EJECUCION,
+  ACTIVIDADES_COMUNICACION,
+} from './ActividadesAuditoriaIntegradas';
 
 // ============ TIPOS ============
 
@@ -413,7 +420,21 @@ export function ExpedienteAuditoriaCompleto({
   const [auditoria] = useState<Auditoria>(AUDITORIA_EJEMPLO);
   const [documentos] = useState<DocumentoExpediente[]>(DOCUMENTOS_EJEMPLO);
   const [historial] = useState<EventoHistorial[]>(HISTORIAL_EJEMPLO);
-  const [activeTab, setActiveTab] = useState(tabInicial);
+  
+  // ✅ AUTO-DETECCIÓN: Si no se especifica tab, detectar según el estado de la auditoría
+  const getTabAutomatico = () => {
+    if (tabInicial !== 'general') return tabInicial;
+    
+    // Si el estado es Planeación, Ejecución o Comunicación, abrir directamente ese tab
+    const estadoLowerCase = auditoria.estado.toLowerCase();
+    if (estadoLowerCase === 'planeación' || estadoLowerCase === 'planeacion') return 'planeacion';
+    if (estadoLowerCase === 'ejecución' || estadoLowerCase === 'ejecucion') return 'ejecucion';
+    if (estadoLowerCase === 'comunicación' || estadoLowerCase === 'comunicacion') return 'comunicacion';
+    
+    return 'general';
+  };
+  
+  const [activeTab, setActiveTab] = useState(getTabAutomatico());
   const [mostrarDetalles, setMostrarDetalles] = useState(true);
   const [filtroDocumentos, setFiltroDocumentos] = useState<string>('todos');
 
@@ -452,208 +473,221 @@ export function ExpedienteAuditoriaCompleto({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white rounded-xl shadow-2xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col"
-      >
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                <FileText className="w-6 h-6 text-white" />
+    <>
+      {/* Overlay */}
+      <div 
+        className="fixed inset-0 bg-black/50 z-[110]" 
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }}
+      />
+      
+      {/* Modal Container */}
+      <div className="fixed inset-0 z-[111] flex items-start justify-center p-4 pt-20 overflow-y-auto pointer-events-none">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="bg-white rounded-xl shadow-2xl w-full max-w-7xl max-h-[calc(100vh-6rem)] overflow-hidden flex flex-col my-4 pointer-events-auto"
+        >
+          {/* Header */}
+          <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                  <FileText className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl text-white">
+                    Expediente de Auditoría
+                  </h2>
+                  <p className="text-sm text-blue-100">
+                    {auditoria.codigo} - {auditoria.nombre}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-xl text-white">
-                  Expediente de Auditoría
-                </h2>
-                <p className="text-sm text-blue-100">
-                  {auditoria.codigo} - {auditoria.nombre}
-                </p>
+
+              {/* Metadatos rápidos */}
+              <div className="flex items-center gap-6 text-sm text-blue-100">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4" />
+                  <span>{auditoria.areaAuditable}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4" />
+                  <span>{auditoria.tipo}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  <span>{diasRestantes} días restantes</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4" />
+                  <span>{auditoria.progreso.general}% completado</span>
+                </div>
               </div>
             </div>
 
-            {/* Metadatos rápidos */}
-            <div className="flex items-center gap-6 text-sm text-blue-100">
-              <div className="flex items-center gap-2">
-                <Building2 className="w-4 h-4" />
-                <span>{auditoria.areaAuditable}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Target className="w-4 h-4" />
-                <span>{auditoria.tipo}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                <span>{diasRestantes} días restantes</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                <span>{auditoria.progreso.general}% completado</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Acciones rápidas */}
-          <div className="flex items-center gap-2">
-            <ButtonSIGL
-              variant="ghost"
-              size="small"
-              onClick={exportarExpediente}
-              className="text-white hover:bg-white/10"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Exportar
-            </ButtonSIGL>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5 text-white" />
-            </button>
-          </div>
-        </div>
-
-        {/* Indicadores de estado */}
-        <div className="bg-gray-50 px-6 py-3 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <BadgeSIGL
-                variant={
-                  auditoria.estado === 'finalizada'
-                    ? 'success'
-                    : auditoria.estado === 'ejecucion'
-                    ? 'warning'
-                    : 'default'
-                }
+            {/* Acciones rápidas */}
+            <div className="flex items-center gap-2">
+              <ButtonSIGL
+                variant="ghost"
+                size="sm"
+                onClick={exportarExpediente}
+                className="text-white hover:bg-white/10"
               >
-                {auditoria.estado === 'planeacion' && '🎯 Planeación'}
-                {auditoria.estado === 'ejecucion' && '⚡ Ejecución'}
-                {auditoria.estado === 'comunicacion' && '📄 Comunicación'}
-                {auditoria.estado === 'seguimiento' && '🔍 Seguimiento'}
-                {auditoria.estado === 'finalizada' && '✅ Finalizada'}
-              </BadgeSIGL>
-              
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">Nivel de Riesgo:</span>
+                <Download className="w-4 h-4 mr-2" />
+                Exportar
+              </ButtonSIGL>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-white" />
+              </button>
+            </div>
+          </div>
+
+          {/* Indicadores de estado */}
+          <div className="bg-gray-50 px-6 py-3 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
                 <BadgeSIGL
                   variant={
-                    auditoria.nivelRiesgo === 'Alto'
-                      ? 'danger'
-                      : auditoria.nivelRiesgo === 'Medio'
+                    auditoria.estado === 'finalizada'
+                      ? 'success'
+                      : auditoria.estado === 'ejecucion'
                       ? 'warning'
-                      : 'success'
+                      : 'neutral'
                   }
                 >
-                  {auditoria.nivelRiesgo}
+                  {auditoria.estado === 'planeacion' && '🎯 Planeación'}
+                  {auditoria.estado === 'ejecucion' && '⚡ Ejecución'}
+                  {auditoria.estado === 'comunicacion' && '📄 Comunicación'}
+                  {auditoria.estado === 'seguimiento' && '🔍 Seguimiento'}
+                  {auditoria.estado === 'finalizada' && '✅ Finalizada'}
                 </BadgeSIGL>
-              </div>
-
-              {auditoria.estadisticas.totalHallazgos > 0 && (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <AlertCircle className="w-4 h-4 text-red-600" />
-                  <span>
-                    {auditoria.estadisticas.totalHallazgos} hallazgos identificados
-                  </span>
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Nivel de Riesgo:</span>
+                  <BadgeSIGL
+                    variant={
+                      auditoria.nivelRiesgo === 'Alto'
+                        ? 'danger'
+                        : auditoria.nivelRiesgo === 'Medio'
+                        ? 'warning'
+                        : 'success'
+                    }
+                  >
+                    {auditoria.nivelRiesgo}
+                  </BadgeSIGL>
                 </div>
-              )}
-            </div>
 
-            {/* Barra de progreso mini */}
-            <div className="flex items-center gap-3">
-              <div className="text-sm text-gray-600">Progreso general:</div>
-              <div className="w-32 bg-gray-200 rounded-full h-2 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all"
-                  style={{ width: `${auditoria.progreso.general}%` }}
-                />
+                {auditoria.estadisticas.totalHallazgos > 0 && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <AlertCircle className="w-4 h-4 text-red-600" />
+                    <span>
+                      {auditoria.estadisticas.totalHallazgos} hallazgos identificados
+                    </span>
+                  </div>
+                )}
               </div>
-              <span className="text-sm text-gray-900 w-10 text-right">
-                {auditoria.progreso.general}%
-              </span>
+
+              {/* Barra de progreso mini */}
+              <div className="flex items-center gap-3">
+                <div className="text-sm text-gray-600">Progreso general:</div>
+                <div className="w-32 bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all"
+                    style={{ width: `${auditoria.progreso.general}%` }}
+                  />
+                </div>
+                <span className="text-sm text-gray-900 w-10 text-right">
+                  {auditoria.progreso.general}%
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Tabs y contenido */}
-        <div className="flex-1 overflow-hidden">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <div className="px-6 pt-4 border-b border-gray-200">
-              <TabsList className="bg-gray-100">
-                <TabsTrigger value="general" className="gap-2">
-                  <Info className="w-4 h-4" />
-                  General
-                </TabsTrigger>
-                <TabsTrigger value="planeacion" className="gap-2">
-                  <FileSearch className="w-4 h-4" />
-                  Planeación
-                </TabsTrigger>
-                <TabsTrigger value="ejecucion" className="gap-2">
-                  <ClipboardCheck className="w-4 h-4" />
-                  Ejecución
-                </TabsTrigger>
-                <TabsTrigger value="comunicacion" className="gap-2">
-                  <FileText className="w-4 h-4" />
-                  Comunicación
-                </TabsTrigger>
-                <TabsTrigger value="documentacion" className="gap-2">
-                  <FolderOpen className="w-4 h-4" />
-                  Documentación
-                  {documentos.length > 0 && (
-                    <span className="ml-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
-                      {documentos.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="historial" className="gap-2">
-                  <History className="w-4 h-4" />
-                  Historial
-                </TabsTrigger>
-              </TabsList>
-            </div>
+          {/* Tabs y contenido */}
+          <div className="flex-1 overflow-hidden">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+              <div className="px-6 pt-4 border-b border-gray-200">
+                <TabsList className="bg-gray-100">
+                  <TabsTrigger value="general" className="gap-2">
+                    <Info className="w-4 h-4" />
+                    General
+                  </TabsTrigger>
+                  <TabsTrigger value="planeacion" className="gap-2">
+                    <FileSearch className="w-4 h-4" />
+                    Planeación
+                  </TabsTrigger>
+                  <TabsTrigger value="ejecucion" className="gap-2">
+                    <ClipboardCheck className="w-4 h-4" />
+                    Ejecución
+                  </TabsTrigger>
+                  <TabsTrigger value="comunicacion" className="gap-2">
+                    <FileText className="w-4 h-4" />
+                    Comunicación
+                  </TabsTrigger>
+                  <TabsTrigger value="documentacion" className="gap-2">
+                    <FolderOpen className="w-4 h-4" />
+                    Documentación
+                    {documentos.length > 0 && (
+                      <span className="ml-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                        {documentos.length}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="historial" className="gap-2">
+                    <History className="w-4 h-4" />
+                    Historial
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
-              {/* TAB 1: GENERAL */}
-              <TabsContent value="general" className="mt-0">
-                <TabGeneral auditoria={auditoria} />
-              </TabsContent>
+              <div className="flex-1 overflow-y-auto p-6">
+                {/* TAB 1: GENERAL */}
+                <TabsContent value="general" className="mt-0">
+                  <TabGeneral auditoria={auditoria} />
+                </TabsContent>
 
-              {/* TAB 2: PLANEACIÓN */}
-              <TabsContent value="planeacion" className="mt-0">
-                <TabPlaneacion auditoria={auditoria} />
-              </TabsContent>
+                {/* TAB 2: PLANEACIÓN */}
+                <TabsContent value="planeacion" className="mt-0">
+                  <TabPlaneacion auditoria={auditoria} />
+                </TabsContent>
 
-              {/* TAB 3: EJECUCIÓN */}
-              <TabsContent value="ejecucion" className="mt-0">
-                <TabEjecucion auditoria={auditoria} />
-              </TabsContent>
+                {/* TAB 3: EJECUCIÓN */}
+                <TabsContent value="ejecucion" className="mt-0">
+                  <TabEjecucion auditoria={auditoria} />
+                </TabsContent>
 
-              {/* TAB 4: COMUNICACIÓN */}
-              <TabsContent value="comunicacion" className="mt-0">
-                <TabComunicacion auditoria={auditoria} />
-              </TabsContent>
+                {/* TAB 4: COMUNICACIÓN */}
+                <TabsContent value="comunicacion" className="mt-0">
+                  <TabComunicacion auditoria={auditoria} />
+                </TabsContent>
 
-              {/* TAB 5: DOCUMENTACIÓN */}
-              <TabsContent value="documentacion" className="mt-0">
-                <TabDocumentacion
-                  documentos={documentosFiltrados}
-                  filtro={filtroDocumentos}
-                  onFiltroChange={setFiltroDocumentos}
-                />
-              </TabsContent>
+                {/* TAB 5: DOCUMENTACIÓN */}
+                <TabsContent value="documentacion" className="mt-0">
+                  <TabDocumentacion
+                    documentos={documentosFiltrados}
+                    filtro={filtroDocumentos}
+                    onFiltroChange={setFiltroDocumentos}
+                  />
+                </TabsContent>
 
-              {/* TAB 6: HISTORIAL */}
-              <TabsContent value="historial" className="mt-0">
-                <TabHistorial eventos={historial} />
-              </TabsContent>
-            </div>
-          </Tabs>
-        </div>
-      </motion.div>
-    </div>
+                {/* TAB 6: HISTORIAL */}
+                <TabsContent value="historial" className="mt-0">
+                  <TabHistorial eventos={historial} />
+                </TabsContent>
+              </div>
+            </Tabs>
+          </div>
+        </motion.div>
+      </div>
+    </>
   );
 }
 
@@ -667,7 +701,7 @@ function TabGeneral({ auditoria }: { auditoria: Auditoria }) {
       <CardSIGL>
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-lg text-gray-900">Resumen Ejecutivo</h3>
-          <ButtonSIGL variant="ghost" size="small">
+          <ButtonSIGL variant="ghost" size="sm">
             <Edit2 className="w-4 h-4 mr-2" />
             Editar
           </ButtonSIGL>
@@ -699,7 +733,7 @@ function TabGeneral({ auditoria }: { auditoria: Auditoria }) {
                 Tipo de Auditoría
               </label>
               <div className="mt-1">
-                <BadgeSIGL variant="default">{auditoria.tipo}</BadgeSIGL>
+                <BadgeSIGL variant="neutral">{auditoria.tipo}</BadgeSIGL>
               </div>
             </div>
           </div>
@@ -964,22 +998,28 @@ function TabGeneral({ auditoria }: { auditoria: Auditoria }) {
 // TAB 2: PLANEACIÓN
 function TabPlaneacion({ auditoria }: { auditoria: Auditoria }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
         <div className="flex items-center gap-3">
           <Info className="w-5 h-5 text-purple-600" />
           <div>
             <p className="text-sm text-purple-900">
-              <strong>Fase de Planeación</strong>
+              <strong>Fase de Planeación</strong> - Gestión integrada de actividades
             </p>
             <p className="text-xs text-purple-700 mt-1">
-              Duración: {auditoria.tipo === 'Sede' ? '5-10 días' : '3 días'} según EM-PT-004
+              Completa las 3 actividades para avanzar a la fase de Ejecución
             </p>
           </div>
         </div>
       </div>
 
-      <PlaneacionAuditoriaModule auditoria={auditoria as any} />
+      <ActividadesIntegradas
+        actividades={ACTIVIDADES_PLANEACION}
+        faseTitulo="Planeación"
+        faseColor="#9333ea"
+        estadoRequerido="Planeación"
+        estadoActual={auditoria.estado}
+      />
     </div>
   );
 }
@@ -987,30 +1027,28 @@ function TabPlaneacion({ auditoria }: { auditoria: Auditoria }) {
 // TAB 3: EJECUCIÓN
 function TabEjecucion({ auditoria }: { auditoria: Auditoria }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
         <div className="flex items-center gap-3">
           <Info className="w-5 h-5 text-amber-600" />
           <div>
             <p className="text-sm text-amber-900">
-              <strong>Fase de Ejecución</strong> - En desarrollo
+              <strong>Fase de Ejecución</strong> - Gestión integrada de actividades
             </p>
             <p className="text-xs text-amber-700 mt-1">
-              Incluirá: Listas de chequeo digitales, registro de hallazgos, evidencias
+              Completa las 3 actividades para avanzar a la fase de Comunicación
             </p>
           </div>
         </div>
       </div>
 
-      <CardSIGL>
-        <div className="text-center py-12">
-          <ClipboardCheck className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500 mb-2">Módulo de Ejecución en desarrollo</p>
-          <p className="text-sm text-gray-400">
-            RF006-RF008: Listas de chequeo, hallazgos y evidencias
-          </p>
-        </div>
-      </CardSIGL>
+      <ActividadesIntegradas
+        actividades={ACTIVIDADES_EJECUCION}
+        faseTitulo="Ejecución"
+        faseColor="#f59e0b"
+        estadoRequerido="Ejecución"
+        estadoActual={auditoria.estado}
+      />
     </div>
   );
 }
@@ -1018,30 +1056,28 @@ function TabEjecucion({ auditoria }: { auditoria: Auditoria }) {
 // TAB 4: COMUNICACIÓN
 function TabComunicacion({ auditoria }: { auditoria: Auditoria }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-green-50 border border-green-200 rounded-lg p-4">
         <div className="flex items-center gap-3">
           <Info className="w-5 h-5 text-green-600" />
           <div>
             <p className="text-sm text-green-900">
-              <strong>Fase de Comunicación</strong> - En desarrollo
+              <strong>Fase de Comunicación</strong> - Gestión integrada de actividades
             </p>
             <p className="text-xs text-green-700 mt-1">
-              Incluirá: Informe preliminar, controversias, informe final y ejecutivo
+              Completa las 3 actividades para avanzar a la fase de Seguimiento
             </p>
           </div>
         </div>
       </div>
 
-      <CardSIGL>
-        <div className="text-center py-12">
-          <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500 mb-2">Módulo de Comunicación en desarrollo</p>
-          <p className="text-sm text-gray-400">
-            RF009: Generación de informes (preliminar, final, ejecutivo)
-          </p>
-        </div>
-      </CardSIGL>
+      <ActividadesIntegradas
+        actividades={ACTIVIDADES_COMUNICACION}
+        faseTitulo="Comunicación"
+        faseColor="#10b981"
+        estadoRequerido="Comunicación"
+        estadoActual={auditoria.estado}
+      />
     </div>
   );
 }
@@ -1056,86 +1092,109 @@ function TabDocumentacion({
   filtro: string;
   onFiltroChange: (filtro: string) => void;
 }) {
+  const [modalCargarDocumento, setModalCargarDocumento] = useState(false);
+
   return (
-    <div className="space-y-6">
-      {/* Filtros */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Filter className="w-5 h-5 text-gray-500" />
-          <span className="text-sm text-gray-700">Filtrar por fase:</span>
-          <div className="flex gap-2">
-            {['todos', 'planeacion', 'ejecucion', 'comunicacion'].map((f) => (
-              <button
-                key={f}
-                onClick={() => onFiltroChange(f)}
-                className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
-                  filtro === f
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {f === 'todos' ? 'Todos' : f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <ButtonSIGL variant="primary" size="small">
-          <Upload className="w-4 h-4 mr-2" />
-          Cargar Documento
-        </ButtonSIGL>
-      </div>
-
-      {/* Lista de documentos */}
-      <div className="space-y-2">
-        {documentos.map((doc) => (
-          <CardSIGL key={doc.id} className="!p-4 hover:shadow-md transition-shadow">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <FileText className="w-6 h-6 text-blue-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-sm text-gray-900 truncate">{doc.nombre}</p>
-                  {doc.version && (
-                    <BadgeSIGL variant="default" className="!text-xs">
-                      v{doc.version}
-                    </BadgeSIGL>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
-                  <span>{doc.tipo}</span>
-                  <span>•</span>
-                  <span>{doc.size}</span>
-                  <span>•</span>
-                  <span>{new Date(doc.fechaCarga).toLocaleDateString()}</span>
-                  <span>•</span>
-                  <span>{doc.cargadoPor}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                  <Eye className="w-4 h-4 text-gray-600" />
+    <>
+      <div className="space-y-6">
+        {/* Filtros */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Filter className="w-5 h-5 text-gray-500" />
+            <span className="text-sm text-gray-700">Filtrar por fase:</span>
+            <div className="flex gap-2">
+              {['todos', 'planeacion', 'ejecucion', 'comunicacion'].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => onFiltroChange(f)}
+                  className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
+                    filtro === f
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {f === 'todos' ? 'Todos' : f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
-                <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                  <Download className="w-4 h-4 text-gray-600" />
-                </button>
-                <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                  <Trash2 className="w-4 h-4 text-gray-600" />
-                </button>
-              </div>
+              ))}
             </div>
-          </CardSIGL>
-        ))}
+          </div>
+
+          <ButtonSIGL 
+            variant="primary" 
+            size="sm"
+            icon={<Upload className="w-4 h-4" />}
+            iconPosition="left"
+            onClick={() => setModalCargarDocumento(true)}
+          >
+            Cargar Documento
+          </ButtonSIGL>
+        </div>
+
+        {/* Lista de documentos */}
+        <div className="space-y-2">
+          {documentos.map((doc) => (
+            <CardSIGL key={doc.id} className="!p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-6 h-6 text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-sm text-gray-900 truncate">{doc.nombre}</p>
+                    {doc.version && (
+                      <BadgeSIGL variant="neutral" className="!text-xs">
+                        v{doc.version}
+                      </BadgeSIGL>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <span>{doc.tipo}</span>
+                    <span>•</span>
+                    <span>{doc.size}</span>
+                    <span>•</span>
+                    <span>{new Date(doc.fechaCarga).toLocaleDateString()}</span>
+                    <span>•</span>
+                    <span>{doc.cargadoPor}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                    <Eye className="w-4 h-4 text-gray-600" />
+                  </button>
+                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                    <Download className="w-4 h-4 text-gray-600" />
+                  </button>
+                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                    <Trash2 className="w-4 h-4 text-gray-600" />
+                  </button>
+                </div>
+              </div>
+            </CardSIGL>
+          ))}
+        </div>
+
+        {documentos.length === 0 && (
+          <div className="text-center py-12">
+            <FolderOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500">No hay documentos en esta categoría</p>
+          </div>
+        )}
       </div>
 
-      {documentos.length === 0 && (
-        <div className="text-center py-12">
-          <FolderOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">No hay documentos en esta categoría</p>
-        </div>
+      {/* MODAL CARGAR DOCUMENTO */}
+      {modalCargarDocumento && (
+        <ModalCargarDocumento
+          onClose={() => setModalCargarDocumento(false)}
+          onGuardar={(documento) => {
+            // TODO: Agregar el documento a la lista
+            toast.success('Documento cargado exitosamente', {
+              description: `${documento.nombre} agregado al expediente`,
+            });
+            setModalCargarDocumento(false);
+          }}
+        />
       )}
-    </div>
+    </>
   );
 }
 
@@ -1174,7 +1233,7 @@ function TabHistorial({ eventos }: { eventos: EventoHistorial[] }) {
                     <p className="text-sm text-gray-900">{evento.titulo}</p>
                     <p className="text-xs text-gray-500 mt-1">{evento.descripcion}</p>
                   </div>
-                  <BadgeSIGL variant="default" className="!text-xs">
+                  <BadgeSIGL variant="neutral" className="!text-xs">
                     {evento.tipo}
                   </BadgeSIGL>
                 </div>

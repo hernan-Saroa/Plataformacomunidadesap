@@ -90,7 +90,7 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
         'ar.empresarial@esap.edu.co',
         'arqempresarial@esap.edu.co',
         'gestion.legal@esap.edu.co',
-        'c.internoge@esap.edu.co',
+        'ocig@esap.edu.co',
         'c.disciplinario@esap.edu.co',
         'registro.academico@esap.edu.co',
         'gestion.profesoral@esap.edu.co', // Usuario específico para Gestión Profesoral
@@ -109,8 +109,8 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
         return;
       }
 
-      // Verificar contraseña (debe ser exactamente "123456")
-      if (password !== '123456') {
+      // Verificar contraseña (debe ser exactamente "Esap2026*")
+      if (password !== 'Esap2026*') {
         toast.error('Contraseña incorrecta', {
           description: '🔑 La contraseña ingresada no es válida. Por favor verifica tu contraseña.',
           duration: 5000,
@@ -156,7 +156,7 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
           'superuser@esap.edu.co': 'Super Usuario',
           'rector@esap.edu.co': 'Rector',
           'gestion.legal@esap.edu.co': 'Gestión Legal',
-          'c.internoge@esap.edu.co': 'Control Interno',
+          'ocig@esap.edu.co': 'OCIG',
           'c.disciplinario@esap.edu.co': 'Control Disciplinario',
           'cerlaboral@esap.edu.co': 'Certificados Laborales',
           'arqempresarial@esap.edu.co': 'Arquitectura Empresarial',
@@ -479,9 +479,9 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
                     <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">cerlaboral@esap.edu.co <span className="text-blue-600">(Certificados)</span></code>
                     <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">ar.empresarial@esap.edu.co <span className="text-blue-600">(Arq. Empresarial)</span></code>
                     <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">arqempresarial@esap.edu.co <span className="text-blue-600">(Arq. Empresarial)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px]">c.internoge@esap.edu.co <span className="text-blue-600">(Control Interno)</span></code>
                     
                     <p className="text-[10px] text-orange-700 mb-1.5 mt-3 italic">⚠️ Acceso exclusivo a un solo módulo:</p>
+                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">ocig@esap.edu.co <span className="text-orange-700">(🔍 Solo Control Interno OCIG)</span></code>
                     <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">c.disciplinario@esap.edu.co <span className="text-orange-700">(⚖️ Solo Control Disciplinario)</span></code>
                     <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.profesoral@esap.edu.co <span className="text-orange-700">(📚 Solo Gestión Profesoral)</span></code>
                     <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.legal@esap.edu.co <span className="text-orange-700">(⚖️ Solo Gestión Legal)</span></code>
