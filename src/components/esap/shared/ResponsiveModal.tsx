@@ -31,7 +31,7 @@ export function ResponsiveModal({
   maxWidth = '2xl',
   headerColor = '#003DA5',
   footer,
-  zIndex = 50
+  zIndex = 111 // Cambiado de 50 a 111 para quedar sobre el TopBar (z-[101])
 }: ResponsiveModalProps) {
   const maxWidthClass = {
     sm: 'max-w-sm',

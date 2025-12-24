@@ -1,118 +1,231 @@
 /**
- * PLANES DE MEJORAMIENTO - Módulo Contenedor
+ * PLANES DE MEJORAMIENTO - Módulo Contenedor Rediseñado
  * Agrupa: Formulación (RF010) + Seguimiento (RF011)
+ * Diseño unificado con Modelos de Soporte - World-Class UX
  */
 
 import { useState } from "react";
-import { AlertTriangle, TrendingUp, Info } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
-import { motion } from "motion/react";
+import { AlertTriangle, TrendingUp, Info, ChevronRight, FileQuestion, BookOpen } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { Badge } from "../../ui/badge";
 
 // Componentes existentes
 import { FormulacionPlanMejoramientoModule } from "./FormulacionPlanMejoramientoModule";
 import { SeguimientoPlanMejoramientoModule } from "./SeguimientoPlanMejoramientoModule";
 
 export function PlanesMejoramientoModule() {
-  const [tabActiva, setTabActiva] = useState("formulacion");
-
-  // Información contextual por tab
-  const infoTabs = {
-    "formulacion": "Formula planes de mejoramiento basados en hallazgos de auditoría",
-    "seguimiento": "Hace seguimiento al cumplimiento de los planes de mejoramiento",
-  };
-
-  const proximoPasoTabs = {
-    "formulacion": { label: "Ir a Seguimiento →", tab: "seguimiento" },
-    "seguimiento": { label: "Volver a Formulación", tab: "formulacion" },
-  };
+  const [tabActiva, setTabActiva] = useState<'formulacion' | 'seguimiento'>('formulacion');
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Breadcrumb + Indicador de Flujo */}
-      <div className="bg-gradient-to-r from-[#EF4444] to-[#DC2626] text-white px-4 md:px-6 py-3 md:py-4">
-        <div className="flex flex-col gap-2">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-sm">
-            <span className="opacity-70">Control Interno Gestión</span>
-            <span className="opacity-50">›</span>
-            <span className="font-semibold">Planes de Mejoramiento</span>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50">
+      {/* Header con breadcrumb y descripción - Estilo unificado naranja */}
+      <div 
+        className="bg-gradient-to-r from-orange-600 via-orange-500 to-red-600 px-6 py-6 border-b-4"
+        style={{ borderBottomColor: '#EA580C' }}
+      >
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-xs text-orange-100 mb-4">
+          <span>Control Interno de Gestión</span>
+          <ChevronRight className="w-3 h-3" />
+          <span>Planes de Mejoramiento</span>
+          <ChevronRight className="w-3 h-3" />
+          <span>1. Planificación</span>
+          <ChevronRight className="w-3 h-3" />
+          <span>2. Proceso Auditoría</span>
+          <ChevronRight className="w-3 h-3" />
+          <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm">
+            3. MEJORAMIENTO
+          </Badge>
+          <ChevronRight className="w-3 h-3" />
+          <span>4. Soporte</span>
+        </div>
 
-          {/* Indicador de Flujo del Proceso */}
-          <div className="hidden md:flex items-center gap-2 text-xs">
-            <div className="opacity-60">1. Planificación</div>
-            <span className="opacity-50">→</span>
-            <div className="opacity-60">2. Proceso Auditoría</div>
-            <span className="opacity-50">→</span>
-            <div className="flex items-center gap-1 px-3 py-1.5 bg-white/20 rounded-full">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-              <span className="font-medium">3. MEJORAMIENTO</span>
-            </div>
-            <span className="opacity-50">→</span>
-            <div className="opacity-60">4. Soporte</div>
+        {/* Descripción */}
+        <div className="flex items-start gap-3 bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
+          <div className="p-2 bg-white/20 rounded-lg">
+            <Info className="w-5 h-5 text-white" />
+          </div>
+          <p className="text-white text-sm">
+            Formula planes de mejoramiento basados en hallazgos de auditoría y realiza seguimiento al cumplimiento de acciones correctivas
+          </p>
+        </div>
+      </div>
+
+      {/* Pestañas - Estilo unificado con borde inferior */}
+      <div className="bg-white border-b-2 border-gray-200 px-6">
+        <div className="flex gap-1">
+          <TabButton
+            activo={tabActiva === 'formulacion'}
+            onClick={() => setTabActiva('formulacion')}
+            icono={<AlertTriangle className="w-4 h-4" />}
+            titulo="Formulación de Planes"
+            color="#EA580C"
+          />
+          <TabButton
+            activo={tabActiva === 'seguimiento'}
+            onClick={() => setTabActiva('seguimiento')}
+            icono={<TrendingUp className="w-4 h-4" />}
+            titulo="Seguimiento"
+            color="#EA580C"
+          />
+          <TabButton
+            activo={tabActiva === 'soporte'}
+            onClick={() => setTabActiva('soporte')}
+            icono={<BookOpen className="w-4 h-4" />}
+            titulo="Soporte y Ayuda"
+            color="#EA580C"
+          />
+        </div>
+      </div>
+
+      {/* Contenido */}
+      <div className="p-6">
+        <AnimatePresence mode="wait">
+          {tabActiva === 'formulacion' && (
+            <motion.div
+              key="formulacion"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <FormulacionPlanMejoramientoModule />
+            </motion.div>
+          )}
+
+          {tabActiva === 'seguimiento' && (
+            <motion.div
+              key="seguimiento"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <SeguimientoPlanMejoramientoModule />
+            </motion.div>
+          )}
+
+          {tabActiva === 'soporte' && (
+            <motion.div
+              key="soporte"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <TabSoporteAyuda />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+// ============ COMPONENTE: TAB BUTTON ============
+
+function TabButton({ 
+  activo, 
+  onClick, 
+  icono, 
+  titulo,
+  color 
+}: { 
+  activo: boolean; 
+  onClick: () => void; 
+  icono: React.ReactNode; 
+  titulo: string;
+  color: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 px-4 py-3 font-semibold text-sm transition-all border-b-3 ${
+        activo 
+          ? 'border-b-3' 
+          : 'text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300'
+      }`}
+      style={{
+        borderBottomWidth: '3px',
+        borderBottomStyle: 'solid',
+        color: activo ? color : undefined,
+        borderBottomColor: activo ? color : undefined
+      }}
+    >
+      {icono}
+      <span>{titulo}</span>
+    </button>
+  );
+}
+
+// ============ TAB: SOPORTE Y AYUDA ============
+
+function TabSoporteAyuda() {
+  const recursos = [
+    {
+      id: '1',
+      titulo: 'Guía de Formulación de Planes',
+      descripcion: 'Aprende cómo formular planes de mejoramiento efectivos',
+      icono: <FileQuestion className="w-5 h-5" />,
+      color: '#EA580C'
+    },
+    {
+      id: '2',
+      titulo: 'Manual de Seguimiento',
+      descripcion: 'Procedimientos para el seguimiento trimestral',
+      icono: <TrendingUp className="w-5 h-5" />,
+      color: '#EA580C'
+    },
+    {
+      id: '3',
+      titulo: 'Preguntas Frecuentes',
+      descripcion: 'Respuestas a las dudas más comunes',
+      icono: <Info className="w-5 h-5" />,
+      color: '#EA580C'
+    }
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-gradient-to-r from-orange-50 to-red-50 border-2 border-orange-200 rounded-xl p-6">
+        <div className="flex items-start gap-4">
+          <div className="p-3 rounded-xl bg-gradient-to-br from-orange-600 to-red-600">
+            <BookOpen className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-xl font-black text-gray-900 mb-1">
+              Centro de Soporte y Ayuda
+            </h2>
+            <p className="text-sm text-gray-600">
+              Encuentra recursos, guías y asistencia para gestionar los Planes de Mejoramiento de manera efectiva
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Información Contextual */}
-      <motion.div
-        key={tabActiva}
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="bg-red-50 border-l-4 border-[#EF4444] px-4 md:px-6 py-3 flex items-start gap-3"
-      >
-        <Info className="w-5 h-5 text-[#EF4444] flex-shrink-0 mt-0.5" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm text-gray-700">{infoTabs[tabActiva as keyof typeof infoTabs]}</p>
-        </div>
-      </motion.div>
-
-      {/* Tabs del Módulo */}
-      <div className="flex-1 overflow-hidden">
-        <Tabs value={tabActiva} onValueChange={setTabActiva} className="h-full flex flex-col">
-          {/* Tabs Header */}
-          <div className="border-b bg-white px-4 md:px-6 pt-4">
-            <TabsList className="w-full md:w-auto grid grid-cols-2 md:flex gap-1">
-              <TabsTrigger value="formulacion" className="flex items-center gap-2 text-xs md:text-sm px-3 md:px-4">
-                <AlertTriangle className="w-4 h-4" />
-                <span className="hidden sm:inline">Formulación</span>
-                <span className="sm:hidden">Form</span>
-              </TabsTrigger>
-              
-              <TabsTrigger value="seguimiento" className="flex items-center gap-2 text-xs md:text-sm px-3 md:px-4">
-                <TrendingUp className="w-4 h-4" />
-                <span className="hidden sm:inline">Seguimiento</span>
-                <span className="sm:hidden">Segui</span>
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          {/* Tabs Content */}
-          <div className="flex-1 overflow-auto">
-            <TabsContent value="formulacion" className="h-full m-0 p-0">
-              <div className="h-full flex flex-col">
-                <FormulacionPlanMejoramientoModule />
-                
-                {/* Botón Siguiente Paso */}
-                <div className="sticky bottom-0 bg-gradient-to-t from-white via-white to-transparent pt-6 pb-4 px-6">
-                  <motion.button
-                    onClick={() => setTabActiva(proximoPasoTabs["formulacion"].tab)}
-                    className="w-full md:w-auto px-6 py-3 bg-[#EF4444] hover:bg-[#DC2626] text-white rounded-lg font-medium shadow-lg flex items-center justify-center gap-2 transition-all"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <span>{proximoPasoTabs["formulacion"].label}</span>
-                  </motion.button>
+      <div className="grid gap-4">
+        {recursos.map((recurso) => (
+          <div
+            key={recurso.id}
+            className="bg-white border-2 border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-orange-300 transition-all cursor-pointer"
+          >
+            <div className="flex items-start gap-4">
+              <div 
+                className="p-3 rounded-lg"
+                style={{ backgroundColor: `${recurso.color}15` }}
+              >
+                <div style={{ color: recurso.color }}>
+                  {recurso.icono}
                 </div>
               </div>
-            </TabsContent>
-
-            <TabsContent value="seguimiento" className="h-full m-0 p-0">
-              <SeguimientoPlanMejoramientoModule />
-            </TabsContent>
+              <div className="flex-1">
+                <h3 className="font-bold text-gray-900 mb-1">{recurso.titulo}</h3>
+                <p className="text-sm text-gray-600">{recurso.descripcion}</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400" />
+            </div>
           </div>
-        </Tabs>
+        ))}
       </div>
     </div>
   );

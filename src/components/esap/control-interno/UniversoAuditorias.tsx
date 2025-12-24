@@ -606,61 +606,81 @@ export function UniversoAuditorias() {
   };
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      {/* ACCIONES PRINCIPALES */}
-      <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant={vistaActiva === 'dashboard' ? 'default' : 'outline'}
-            onClick={() => setVistaActiva('dashboard')}
-            size="sm"
+    <div className="h-full flex flex-col bg-gray-50">
+      {/* HEADER CON TABS Y ACCIÓN PRINCIPAL */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between">
+          {/* Tabs de vista */}
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            <Button
+              variant={vistaActiva === 'dashboard' ? 'default' : 'ghost'}
+              onClick={() => setVistaActiva('dashboard')}
+              size="sm"
+              className="gap-2"
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span className="hidden md:inline">Dashboard</span>
+            </Button>
+            <Button
+              variant={vistaActiva === 'lista' ? 'default' : 'ghost'}
+              onClick={() => setVistaActiva('lista')}
+              size="sm"
+              className="gap-2"
+            >
+              <Layers className="w-4 h-4" />
+              <span className="hidden md:inline">Lista de Áreas</span>
+              <span className="md:hidden">({areasFiltradas.length})</span>
+            </Button>
+          </div>
+
+          {/* Stats rápidas */}
+          <div className="hidden lg:flex items-center gap-4 text-xs text-gray-600">
+            <span className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full" style={{ background: '#003DA5' }} />
+              <strong>{metricas.total}</strong> áreas
+            </span>
+            <span className="w-px h-4 bg-gray-300" />
+            <span><strong>{metricas.seleccionadas}</strong> seleccionadas</span>
+            <span className="w-px h-4 bg-gray-300" />
+            <span className="text-red-600"><strong>{metricas.critico}</strong> críticas</span>
+          </div>
+
+          {/* Acción principal */}
+          <Button 
+            style={{ background: '#003DA5' }}
             className="gap-2"
-          >
-            <BarChart3 className="w-4 h-4" />
-            Dashboard
-          </Button>
-          <Button
-            variant={vistaActiva === 'lista' ? 'default' : 'outline'}
-            onClick={() => setVistaActiva('lista')}
             size="sm"
-            className="gap-2"
+            onClick={() => setModalNuevaArea(true)}
           >
-            <Layers className="w-4 h-4" />
-            Áreas ({areasFiltradas.length})
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Nueva Área</span>
           </Button>
         </div>
-
-        <Button 
-          style={{ background: '#003DA5' }}
-          className="gap-2 w-full sm:w-auto"
-          size="sm"
-          onClick={() => setModalNuevaArea(true)}
-        >
-          <Plus className="w-4 h-4" />
-          Nueva Área
-        </Button>
       </div>
 
-      <AnimatePresence mode="wait">
-        {vistaActiva === 'dashboard' && (
-          <motion.div
-            key="dashboard"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-          >
-            <DashboardUniverso metricas={metricas} areas={areas} />
-          </motion.div>
-        )}
+      {/* CONTENIDO */}
+      <div className="flex-1 overflow-auto p-6">
 
-        {vistaActiva === 'lista' && (
-          <motion.div
-            key="lista"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="space-y-4"
-          >
+        <AnimatePresence mode="wait">
+          {vistaActiva === 'dashboard' && (
+            <motion.div
+              key="dashboard"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <DashboardUniverso metricas={metricas} areas={areas} />
+            </motion.div>
+          )}
+
+          {vistaActiva === 'lista' && (
+            <motion.div
+              key="lista"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-4"
+            >
             {/* FILTROS Y BÚSQUEDA */}
             <Card className="p-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -776,6 +796,7 @@ export function UniversoAuditorias() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
 
       {/* MODAL NUEVA ÁREA */}
       {modalNuevaArea && (
@@ -817,67 +838,6 @@ interface DashboardUniversoProps {
 function DashboardUniverso({ metricas, areas }: DashboardUniversoProps) {
   return (
     <div className="space-y-6">
-      {/* CARD INFORMATIVO DAFP */}
-      <Card className="p-6 border-2 border-orange-300 bg-gradient-to-br from-orange-50 to-amber-50">
-        <div className="flex items-start gap-4">
-          <div className="p-3 bg-orange-500 rounded-lg flex-shrink-0">
-            <Target className="w-6 h-6 text-white" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-black text-gray-900 mb-2 flex items-center gap-2">
-              Metodología DAFP - Cálculo de Riesgo
-              <Badge className="bg-orange-500 text-white">Oficial</Badge>
-            </h3>
-            <p className="text-sm text-gray-700 mb-3">
-              Departamento Administrativo de la Función Pública - Sistema de evaluación de riesgo para priorización de auditorías
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {/* INTEGRACIÓN CON ESTRUCTURA ORGANIZACIONAL */}
-      <Card className="p-6 border-2 bg-gradient-to-br from-blue-50 to-indigo-50" style={{ borderColor: '#003DA5' }}>
-        <div className="flex items-start gap-4">
-          <div className="p-3 rounded-lg flex-shrink-0" style={{ background: '#003DA5' }}>
-            <Link2 className="w-6 h-6 text-white" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-black text-gray-900 mb-2 flex items-center gap-2">
-              Integrado con Estructura Organizacional
-              <Badge style={{ background: '#003DA5', color: 'white' }}>Conectado</Badge>
-            </h3>
-            <p className="text-sm text-gray-700 mb-3">
-              Las áreas auditables están sincronizadas con las <strong>{TERRITORIALES_ESAP.length} unidades organizacionales</strong> de ESAP: 
-              1 Sede Central + 17 Territoriales con 307 CETAP en todo el país
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-              <div className="bg-white p-3 rounded-lg text-center border border-blue-200">
-                <div className="font-black text-blue-600 text-2xl">{TERRITORIALES_ESAP.length}</div>
-                <div className="text-xs text-gray-600 mt-1">Unidades Totales</div>
-              </div>
-              <div className="bg-white p-3 rounded-lg text-center border border-purple-200">
-                <div className="font-black text-purple-600 text-2xl">
-                  {TERRITORIALES_ESAP.filter(t => t.codigo === 'ESAP-CENTRAL').length}
-                </div>
-                <div className="text-xs text-gray-600 mt-1">Sede Central</div>
-              </div>
-              <div className="bg-white p-3 rounded-lg text-center border border-green-200">
-                <div className="font-black text-green-600 text-2xl">
-                  {TERRITORIALES_ESAP.filter(t => t.codigo !== 'ESAP-CENTRAL').length}
-                </div>
-                <div className="text-xs text-gray-600 mt-1">Territoriales</div>
-              </div>
-              <div className="bg-white p-3 rounded-lg text-center border border-orange-200">
-                <div className="font-black text-orange-600 text-2xl">
-                  {TERRITORIALES_ESAP.reduce((sum, t) => sum + t.totalCetap, 0)}
-                </div>
-                <div className="text-xs text-gray-600 mt-1">CETAP Totales</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Card>
-
       {/* MÉTRICAS GENERALES */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <Card className="p-4 text-center border-2" style={{ borderColor: '#003DA5' }}>

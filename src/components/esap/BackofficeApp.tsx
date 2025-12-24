@@ -29,11 +29,13 @@ import { GestionProfesoralModule } from '../gestion-profesoral/GestionProfesoral
 // Importar módulo de Control Interno
 import { ControlInternoFull } from './control-interno/ControlInternoFull';
 
-// Importar módulo de Control Disciplinario Completo (Sistema Full)
+// Importar módulo de Control Interno Disciplinario
 import { ControlDisciplinarioFull } from './disciplinario/ControlDisciplinarioFull';
 
 // Importar módulo de Gestión Legal (Juzgamiento Disciplinario)
-import { GestionLegalFull } from './gestion-legal/GestionLegalFull';
+// import { GestionLegalFull } from './gestion-legal/GestionLegalFull';
+// ✅ NUEVO: Módulo de Gestión Legal SIGL v5.0
+import { GestionLegalFull } from './gestion-legal/core/GestionLegalFull';
 
 // Importar módulo de Certificados Laborales
 import { CertificadosLaboralesRouter } from '../certificados-laborales/CertificadosLaboralesRouter';
@@ -94,11 +96,21 @@ interface BackofficeAppProps {
 }
 
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, userData, userRoles }: BackofficeAppProps = {}) {
-  // Si el usuario es cerlaboral@esap.edu.co o ar.empresarial@esap.edu.co, abrir automáticamente su módulo específico
-  const initialModule = userData?.module === 'certificados-laborales' 
+  // Si el usuario tiene acceso restringido, abrir directamente su módulo específico
+  const initialModule = userData?.module === 'control-interno'
+    ? 'control-interno'
+    : userData?.module === 'control-disciplinario'
+    ? 'control-disciplinario'
+    : userData?.module === 'registro-academico'
+    ? 'graduates'
+    : userData?.module === 'certificados-laborales' 
     ? 'certificados-laborales' 
     : userData?.module === 'arquitectura-empresarial'
     ? 'dashboard' // Abrir en Dashboard Ejecutivo que muestra métricas de Arquitectura
+    : userData?.module === 'gestion-legal' 
+    ? 'gestion-legal'
+    : userData?.module === 'gestion-profesoral'
+    ? 'gestion-profesoral'
     : 'dashboard';
   const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -132,7 +144,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       'control-interno': 'control-interno',
       'control-disciplinario': 'control-disciplinario',
       'gestion-legal': 'gestion-legal',
-      'arquitectura-empresarial': 'arquitectura-empresarial',
+      'arquitectura-empresarial': 'arquitectura-empresarial'
     };
     return (mappings[sidebarModule] as ModuleView) || 'dashboard';
   };
@@ -145,12 +157,15 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     personId: 'admin-001'
   };
 
+  // Extraer nombre del usuario, priorizando userData.name, luego usuario.nombre
+  const userName = currentUser.name || 'Administrador ESAP';
+
   const mockUser = {
-    name: currentUser.name,
+    name: userName,
     role: 'super-admin' as const,
     email: currentUser.email,
     avatar: undefined,
-    initials: currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    initials: userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
   };
 
   // Handlers
@@ -312,6 +327,24 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           hasBothSystemsAccess={userData?.hasBothSystemsAccess}
           onSystemChange={onSystemChange}
           currentSystem="backoffice"
+          certificatesPendingCount={certificatesPendingCount}
+          restrictedMode={
+            userData?.module === 'control-interno'
+              ? 'control-interno'
+              : userData?.module === 'control-disciplinario'
+              ? 'control-disciplinario'
+              : userData?.module === 'registro-academico'
+              ? 'registro-academico'
+              : userData?.module === 'certificados-laborales' 
+              ? 'certificados-laborales' 
+              : userData?.module === 'arquitectura-empresarial'
+              ? 'arquitectura-empresarial'
+              : userData?.module === 'gestion-legal'
+              ? 'gestion-legal'
+              : userData?.module === 'gestion-profesoral'
+              ? 'gestion-profesoral'
+              : undefined
+          }
         />
 
         {/* Module Content - Con espacio superior para evitar superposición */}

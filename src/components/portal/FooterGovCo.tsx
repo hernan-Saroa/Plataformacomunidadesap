@@ -26,27 +26,6 @@ export function FooterGovCo() {
       email: 'correspondencia@esap.edu.co',
       horario: 'Lunes a Viernes: 8:00 a.m. - 5:00 p.m.',
     },
-    {
-      nombre: 'Sede Antioquia',
-      direccion: 'Calle 50 No. 49-27, Medellín',
-      telefono: '(604) 511 7340',
-      email: 'antioquia@esap.edu.co',
-      horario: 'Lunes a Viernes: 8:00 a.m. - 5:00 p.m.',
-    },
-    {
-      nombre: 'Sede Valle del Cauca',
-      direccion: 'Carrera 6 No. 8-68, Cali',
-      telefono: '(602) 889 1628',
-      email: 'valle@esap.edu.co',
-      horario: 'Lunes a Viernes: 8:00 a.m. - 5:00 p.m.',
-    },
-    {
-      nombre: 'Sede Atlántico',
-      direccion: 'Carrera 43 No. 75-174, Barranquilla',
-      telefono: '(605) 368 9780',
-      email: 'atlantico@esap.edu.co',
-      horario: 'Lunes a Viernes: 8:00 a.m. - 5:00 p.m.',
-    },
   ];
 
   const enlacesObligatorios = [

@@ -15,7 +15,7 @@ import {
   X
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/Button';
+import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { toast } from 'sonner';
 

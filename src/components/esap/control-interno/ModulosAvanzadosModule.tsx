@@ -1,15 +1,16 @@
 /**
  * ============================================
- * MÓDULOS AVANZADOS (RF015-RF018) - WORLD CLASS
+ * MÓDULOS AVANZADOS (RF015-RF020) - WORLD CLASS
  * ============================================
  * 
  * Módulo consolidador de funcionalidades transversales:
  * - RF015: Roles y Permisos (RBAC)
  * - RF016: Reportes Ejecutivos
- * - RF017: Auditorías Territoriales
  * - RF018: Auditorías Especiales
+ * - RF020: Auditoría de Cambios ⭐ NUEVO
  * 
  * NOTA: RF019 (Configuración) es ahora un módulo independiente
+ * NOTA: Las auditorías territoriales están integradas en el Dashboard Kanban principal
  * 
  * MEJORAS APLICADAS:
  * ✅ Navegación intuitiva con breadcrumbs
@@ -21,7 +22,7 @@
  * ✅ Responsive mejorado
  * ✅ Accesibilidad (ARIA labels)
  * 
- * ÚLTIMA ACTUALIZACIÓN: 22 Diciembre 2025
+ * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
  */
 
 import React, { useState, useEffect } from 'react';
@@ -29,7 +30,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield,
   BarChart3,
-  MapPin,
   Zap,
   Settings,
   ChevronRight,
@@ -39,23 +39,25 @@ import {
   Sparkles,
   TrendingUp,
   Users,
-  FileText
+  FileText,
+  Activity
 } from 'lucide-react';
-import { ButtonSIGL } from '../gestion-legal/design-system/Button';
+import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 
 // Importar módulos
 import { RolesYPermisos } from './RolesYPermisos';
+import { DashboardEjecutivoCIG } from './DashboardEjecutivoCIG';
 import { ReportesEjecutivosModule } from './ReportesEjecutivosModule';
-import { GestionAuditoriasTerritoriales } from './GestionAuditoriasTerritoriales';
-import { AuditoriasEspecialesModule } from './AuditoriasEspecialesModule';
+import { AuditoriasEspecialesModuleCompleto } from './AuditoriasEspecialesModuleCompleto';
+import { AuditoriaCambiosModule } from './AuditoriaCambiosModule';
 
 // ====================================
 // TIPOS Y CONFIGURACIÓN
 // ====================================
 
-type TabActiva = 'roles' | 'reportes' | 'territoriales' | 'especiales';
+type TabActiva = 'roles' | 'reportes' | 'especiales' | 'auditoria_cambios';
 
 interface TabConfig {
   id: TabActiva;
@@ -92,16 +94,6 @@ const TABS_CONFIG: TabConfig[] = [
     shortcut: '2'
   },
   {
-    id: 'territoriales',
-    label: 'Auditorías Territoriales',
-    description: 'Gestión de auditorías en las 16 territoriales ESAP',
-    icon: MapPin,
-    color: '#10B981',
-    bgColor: 'from-green-500/10 to-green-600/5',
-    badge: 'RF017',
-    shortcut: '3'
-  },
-  {
     id: 'especiales',
     label: 'Auditorías Especiales',
     description: 'Auditorías no programadas y casos extraordinarios',
@@ -109,6 +101,16 @@ const TABS_CONFIG: TabConfig[] = [
     color: '#F59E0B',
     bgColor: 'from-yellow-500/10 to-yellow-600/5',
     badge: 'RF018',
+    shortcut: '3'
+  },
+  {
+    id: 'auditoria_cambios',
+    label: 'Auditoría de Cambios',
+    description: 'Seguimiento y registro de cambios en el sistema',
+    icon: Activity,
+    color: '#65A30D',
+    bgColor: 'from-lime-500/10 to-lime-600/5',
+    badge: 'RF020',
     shortcut: '4'
   }
 ];
@@ -382,9 +384,9 @@ export function ModulosAvanzadosModule() {
                 className="min-h-[600px]"
               >
                 {tabActiva === 'roles' && <RolesYPermisos />}
-                {tabActiva === 'reportes' && <ReportesEjecutivosModule />}
-                {tabActiva === 'territoriales' && <GestionAuditoriasTerritoriales />}
-                {tabActiva === 'especiales' && <AuditoriasEspecialesModule />}
+                {tabActiva === 'reportes' && <DashboardEjecutivoCIG />}
+                {tabActiva === 'especiales' && <AuditoriasEspecialesModuleCompleto />}
+                {tabActiva === 'auditoria_cambios' && <AuditoriaCambiosModule />}
               </motion.div>
             )}
           </AnimatePresence>

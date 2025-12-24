@@ -54,3 +54,15 @@ export { useFirstVisit } from './useFirstVisit';
 
 // Tips Persistentes
 export { usePersistentTip, resetAllTips, getHiddenTipsCount } from './usePersistentTip';
+
+// Prorrateo Automático
+export { useProrrateoAutomatico, useComponentesAjustados, useNecesitaProrrateo } from './useProrrateoAutomatico';
+
+// Notificaciones PTA
+export { usePTANotifications, usePTANotificationsSender } from './usePTANotifications';
+
+// Estado EN FIRME
+export { usePTAEnFirme, usePasarAEnFirme, useSolicitudModificacion, useGestionarSolicitudes } from './usePTAEnFirme';
+
+// Aprobación Granular por Actividad
+export { usePTAAprobacionGranular, useAprobarActividad, useGestionAprobacionGranular } from './usePTAAprobacionGranular';

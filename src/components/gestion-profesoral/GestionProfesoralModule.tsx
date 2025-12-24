@@ -1,3 +1,5 @@
+import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { 
   LayoutDashboard,
@@ -7,9 +9,11 @@ import {
   Star, 
   ChevronRight,
   UserCheck,
-  ClipboardCheck
+  ClipboardCheck,
+  Send,
+  GraduationCap,
+  Workflow  // ✅ NUEVO - Icono para Flujo Secuencial
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { DashboardGestionProfesoral } from './DashboardGestionProfesoral';
 import { Modulo1PlanificacionAcademica } from './Modulo1PlanificacionAcademica';
 import { Modulo2Convocatorias } from './Modulo2Convocatorias';
@@ -17,9 +21,15 @@ import { Modulo4HoraCatedra } from './Modulo4HoraCatedra';
 import { Modulo5EvaluacionDocente } from './Modulo5EvaluacionDocente';
 import { PTAsList } from './PTAsList';
 import { CalendarioAcademicoModule } from './CalendarioAcademicoModule';
+import { ModalEnviarPTA } from './ModalEnviarPTA';
+import { DirectorioDocenteModule } from './DirectorioDocenteModule';
+import { FlujoSecuencialGestionProfesoral } from './FlujoSecuencialGestionProfesoral';  // ✅ NUEVO - Flujo Secuencial
+import { Fase1PlanificacionSemestral } from './Fase1PlanificacionSemestral';  // ✅ NUEVO - Fase 1
+import { Fase2AnalisisNecesidades } from './Fase2AnalisisNecesidades';  // ✅ NUEVO - Fase 2
+import { Fase4ProgramacionDocente } from './Fase4ProgramacionDocente';  // ✅ NUEVO - Fase 4
 
-// Tabs del módulo - 6 MÓDULOS PRINCIPALES
-type TabType = 'dashboard' | 'calendario' | 'planificacion' | 'convocatorias' | 'ptas' | 'hora-catedra' | 'evaluacion';
+// Tabs del módulo - 8 MÓDULOS PRINCIPALES (agregado Flujo Secuencial)
+type TabType = 'dashboard' | 'flujo-secuencial' | 'calendario' | 'planificacion' | 'convocatorias' | 'ptas' | 'hora-catedra' | 'evaluacion' | 'directorio';
 
 interface GestionProfesoralModuleProps {
   className?: string;
@@ -34,6 +44,13 @@ export function GestionProfesoralModule({ className = '' }: GestionProfesoralMod
       label: 'Dashboard', 
       icon: LayoutDashboard,
       description: 'Panel de control principal',
+      badge: null
+    },
+    { 
+      id: 'flujo-secuencial' as TabType, 
+      label: 'Flujo Secuencial', 
+      icon: Workflow,  // ✅ NUEVO - Icono para Flujo Secuencial
+      description: 'Flujo secuencial de gestión docente',
       badge: null
     },
     { 
@@ -77,17 +94,43 @@ export function GestionProfesoralModule({ className = '' }: GestionProfesoralMod
       icon: Star,
       description: 'Evaluación docente',
       badge: null
+    },
+    { 
+      id: 'directorio' as TabType, 
+      label: '6. Directorio Docente', 
+      icon: GraduationCap,  // ✅ NUEVO - Icono para Directorio Docente
+      description: 'Directorio completo de docentes',
+      badge: '270'
     }
   ];
 
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardGestionProfesoral />;
+        return <DashboardGestionProfesoral onNavigate={setActiveTab} />;
+      case 'flujo-secuencial':
+        return <FlujoSecuencialGestionProfesoral 
+          onFaseChange={(fase) => {
+            // Manejar cambio de fase
+            console.log('Fase cambiada:', fase);
+          }}
+          onVerDetalles={(fase) => {
+            // Navegar a la fase específica
+            if (fase === 'planificacion-semestral') {
+              setActiveTab('planificacion');
+            } else if (fase === 'convocatorias') {
+              setActiveTab('convocatorias');
+            } else if (fase === 'programacion-docente') {
+              setActiveTab('ptas');
+            } else if (fase === 'evaluacion-docente') {
+              setActiveTab('evaluacion');
+            }
+          }}
+        />;
       case 'calendario':
         return <CalendarioAcademicoModule />;
       case 'planificacion':
-        return <Modulo1Planificacion />;
+        return <Fase1PlanificacionSemestral />;
       case 'convocatorias':
         return <Modulo2ConvocatoriasWrapper />;
       case 'ptas':
@@ -96,8 +139,10 @@ export function GestionProfesoralModule({ className = '' }: GestionProfesoralMod
         return <Modulo4HoraCatedraWrapper />;
       case 'evaluacion':
         return <Modulo5EvaluacionWrapper />;
+      case 'directorio':
+        return <DirectorioDocenteModule />;
       default:
-        return <DashboardGestionProfesoral />;
+        return <DashboardGestionProfesoral onNavigate={setActiveTab} />;
     }
   };
 
@@ -187,12 +232,67 @@ function Modulo2ConvocatoriasWrapper() {
 
 // MÓDULO 3: PTA (COMPONENTE CENTRAL)
 function Modulo3PTAs() {
+  const [showModalEnviar, setShowModalEnviar] = useState(false);
+  
+  // Importar PTAs desde los datos demo
+  const { ptasDemoPorEstado } = require('../../data/ptasDemoPorEstado');
+  const { ptasMock } = require('../../mock-data/profesoral-mock-completo');
+  
+  // Combinar todos los PTAs disponibles
+  const todosLosPTAs = [...ptasDemoPorEstado, ...ptasMock];
+  
+  // Convertir PTAs al formato esperado por el modal
+  const ptasParaModal = todosLosPTAs
+    .filter(pta => pta.estado === 'borrador')
+    .map(pta => ({
+      id: pta.id,
+      codigo: pta.codigo,
+      docente: {
+        nombre: pta.docente_nombre || 'Docente',
+        email: `${pta.docente_nombre?.toLowerCase().replace(/ /g, '.').replace(/🔴/g, '').replace(/demo:/g, '').trim()}@esap.edu.co` || 'docente@esap.edu.co',
+        documento: 'CC 123456789',
+        programa: pta.departamento || 'Programa Académico'
+      },
+      periodo: pta.periodo_nombre || '2025-I',
+      estado: 'BORRADOR',
+      fecha_creacion: pta.created_at 
+        ? new Date(pta.created_at).toLocaleDateString('es-CO', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          })
+        : 'N/A',
+      horas_totales: (pta.componente_ensenanza?.horas || 0) + 
+                     (pta.componente_investigacion?.horas || 0) + 
+                     (pta.componente_extension?.horas || 0) + 
+                     (pta.componente_apoyo_institucional?.horas || 0),
+      horas_programables: 800
+    }));
+  
+  const handleEnviarPTA = (pta: any) => {
+    // Aquí iría la lógica para enviar el PTA a revisión
+    toast.success(`PTA ${pta.codigo} enviado exitosamente`, {
+      description: `Se notificó al docente ${pta.docente.nombre}`,
+      duration: 4000
+    });
+    setShowModalEnviar(false);
+  };
+  
   return (
     <div className="space-y-6">
       <div className="bg-gradient-to-br from-[#003DA5] to-[#1e5da8] rounded-2xl p-6 text-white">
-        <div className="flex items-center gap-3 mb-2">
-          <FileText className="w-8 h-8" />
-          <h1 className="text-3xl font-bold">Módulo 3: Plan de Trabajo Académico (PTA)</h1>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <FileText className="w-8 h-8" />
+            <h1 className="text-3xl font-bold">Módulo 3: Plan de Trabajo Académico (PTA)</h1>
+          </div>
+          <button
+            onClick={() => setShowModalEnviar(true)}
+            className="px-6 py-2.5 bg-white text-[#003DA5] rounded-lg font-medium hover:bg-blue-50 transition-colors flex items-center gap-2"
+          >
+            <Send className="w-4 h-4" />
+            Enviar
+          </button>
         </div>
         <p className="text-sm opacity-90">
           ⭐ COMPONENTE CENTRAL - Gestión completa del PTA con 4 componentes: Docencia, Investigación, Extensión, Complementarias
@@ -212,7 +312,16 @@ function Modulo3PTAs() {
           </div>
         </div>
       </div>
+      
       <PTAsList />
+      
+      {/* Modal para enviar PTA */}
+      <ModalEnviarPTA
+        isOpen={showModalEnviar}
+        onClose={() => setShowModalEnviar(false)}
+        ptas={ptasParaModal}
+        onEnviar={handleEnviarPTA}
+      />
     </div>
   );
 }

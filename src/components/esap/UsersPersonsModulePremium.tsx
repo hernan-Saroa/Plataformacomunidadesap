@@ -68,6 +68,8 @@ import { FiltroEstructuraOrganizacional } from '../estructura-organizacional/Fil
 import { DigitalFolderSection } from './DigitalFolderSection';  // ✅ CARPETA DIGITAL COMO SECCIÓN
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';  // ✅ TABS
 import { UserExpandedView } from './UserExpandedView';  // ✅ VISTA EXPANDIDA REDISEÑADA
+import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  // ✅ RF015 - ROLES Y PERMISOS ACTUALIZADO
+import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  // ✅ ESTADÍSTICAS DOCENTES ESAP
 import React, { useEffect } from 'react';
 
 export function UsersPersonsModulePremium() {
@@ -85,7 +87,7 @@ export function UsersPersonsModulePremium() {
   const [showAssignRolesModal, setShowAssignRolesModal] = useState(false);  // ✅ MODAL ASIGNAR ROLES
   const [showSedesMetrics, setShowSedesMetrics] = useState(false);  // ✅ DASHBOARD SEDES
   const [showExportModal, setShowExportModal] = useState(false);  // ✅ MODAL EXPORTAR
-  const [viewMode, setViewMode] = useState<'users' | 'digital-folder'>('users');  // ✅ NUEVO - Vista actual
+  const [viewMode, setViewMode] = useState<'users' | 'digital-folder' | 'roles-permisos' | 'estadisticas-docentes'>('users');  // ✅ NUEVO - Vista actual con RF015 + Estadísticas
   const [selectedUser, setSelectedUser] = useState<any | null>(null);  // ✅ USUARIO SELECCIONADO
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);  // ✅ ESTADO MODAL CREAR
   const [users, setUsers] = useState<User[]>([]);  // ✅ ESTADO PARA USUARIOS REALES
@@ -176,7 +178,7 @@ export function UsersPersonsModulePremium() {
   }, [currentPage]); // Recargar cuando cambia la página
 
   // Usuarios actuales (de API o mock)
-  const currentUsers = users.length > 0 ? users : MOCK_USERS_WITH_SEDES;
+  const currentUsers = users;
 
   // Stats calculadas - Usar valores del backend si están disponibles, sino calcular del frontend
   const stats = {
@@ -188,9 +190,9 @@ export function UsersPersonsModulePremium() {
 
   // ✅ Stats de enrolamiento para el modal
   const enrollmentStats = {
-    qr: (users.length ? users.filter(u => u.enrollmentMethod === 'qr').length : MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'qr').length),
-    manual: (users.length ? users.filter(u => u.enrollmentMethod === 'manual').length : MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'manual').length),
-    massive: (users.length ? users.filter(u => u.enrollmentMethod === 'massive').length : MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'massive').length),
+    qr: (users.length ? users.filter(u => u.enrollmentMethod === 'qr').length : 0),
+    manual: (users.length ? users.filter(u => u.enrollmentMethod === 'manual').length : 0),
+    massive: (users.length ? users.filter(u => u.enrollmentMethod === 'massive').length : 0),
     total: users.length || MOCK_USERS_WITH_SEDES.length
   };
 
@@ -645,6 +647,42 @@ export function UsersPersonsModulePremium() {
         }))}
         canUpload={true}
       />
+    );
+  }
+
+  // ✅ RF015 - Si estamos en la vista de Roles y Permisos
+  if (viewMode === 'roles-permisos') {
+    return (
+      <div className="space-y-4">
+        {/* Botón de Retorno */}
+        <button
+          onClick={() => setViewMode('users')}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          ← Volver a Gestión de Personas
+        </button>
+        
+        {/* Componente RF015 Actualizado */}
+        <RolesYPermisosActualizado />
+      </div>
+    );
+  }
+
+  // ✅ ESTADÍSTICAS DOCENTES ESAP - Vista detallada de los 263 docentes integrados
+  if (viewMode === 'estadisticas-docentes') {
+    return (
+      <div className="space-y-4">
+        {/* Botón de Retorno */}
+        <button
+          onClick={() => setViewMode('users')}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          ← Volver a Gestión de Personas
+        </button>
+        
+        {/* Estadísticas de Docentes ESAP */}
+        <EstadisticasDocentesESAP />
+      </div>
     );
   }
 
@@ -1350,7 +1388,6 @@ export function UsersPersonsModulePremium() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2, delay: index * 0.05 }}
                         className="group cursor-pointer"
                         style={{
                           borderBottom: '1px solid #E5E7EB',
@@ -1665,7 +1702,6 @@ export function UsersPersonsModulePremium() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2, delay: index * 0.05 }}
                   className="p-4"
                   style={{
                     background: '#FFFFFF',
