@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { Audiencia } from './audiencia.entity';
 
-@Entity('abogados')
+@Entity('abogados', { schema: 'legal_management' })
 export class Abogado {
     @PrimaryGeneratedColumn('uuid')
     id: string;

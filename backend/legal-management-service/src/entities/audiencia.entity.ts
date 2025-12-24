@@ -2,7 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, Jo
 import { Abogado } from './abogado.entity';
 import { Expediente } from './expediente.entity';
 
-@Entity('audiencias')
+@Entity('audiencias', { schema: 'legal_management' })
 export class Audiencia {
     @PrimaryGeneratedColumn('uuid')
     id: string;
