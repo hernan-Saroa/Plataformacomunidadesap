@@ -3,9 +3,11 @@
  * 
  * Vista principal para administrativos y equipos de gestión profesoral
  * Incluye métricas, acciones rápidas y navegación intuitiva
+ * 
+ * ACTUALIZADO: Integración completa con Flujo de Aprobación PTA
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Users,
@@ -32,6 +34,7 @@ import {
   UserCheck,
   ClipboardList,
   Zap,
+  Bell,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -41,11 +44,26 @@ import { Progress } from '../ui/progress';
 import { Separator } from '../ui/separator';
 import { toast } from 'sonner@2.0.3';
 
-// Importar modales
+// Importar modales originales
 import { RevisarPTAsModal } from './modals/RevisarPTAsModal';
 import { GestionDocentesModalV2 } from './modals/GestionDocentesModalV2';
 import { EvaluacionesModal } from './modals/EvaluacionesModal';
 import { AnalyticsModal } from './modals/AnalyticsModal';
+import { PTADetallesModal } from './PTADetallesModal';
+
+// Importar nuevo sistema de flujo de aprobación
+import { ConfiguradorPTAModal } from './ConfiguradorPTAModal';
+import { ModalRevisionPTA } from './ModalRevisionPTA';
+import { NotificacionesWidget } from './NotificacionesPTA';
+import { TimelineAprobacionesPTA } from './TimelineAprobacionesPTA';
+import {
+  GestorFlujoAprobacion,
+  PTAConAprobacion,
+  NotificacionPTA,
+  crearPTAConAprobacion,
+  NivelAprobacion
+} from './FlujoAprobacionPTA';
+import { crearPTAVacio } from './MotorReglasPTA';
 
 interface MetricaPTA {
   label: string;
@@ -66,7 +84,11 @@ interface PTAPendiente {
   requiereAtencion: boolean;
 }
 
-export function DashboardGestionProfesoral() {
+interface DashboardGestionProfesoralProps {
+  onNavigate?: (tab: 'dashboard' | 'flujo-secuencial' | 'calendario' | 'planificacion' | 'convocatorias' | 'ptas' | 'hora-catedra' | 'evaluacion' | 'directorio') => void;
+}
+
+export function DashboardGestionProfesoral({ onNavigate }: DashboardGestionProfesoralProps) {
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState('2025-1');
   const [busqueda, setBusqueda] = useState('');
   
@@ -75,6 +97,8 @@ export function DashboardGestionProfesoral() {
   const [modalDocentesOpen, setModalDocentesOpen] = useState(false);
   const [modalEvaluacionesOpen, setModalEvaluacionesOpen] = useState(false);
   const [modalAnalyticsOpen, setModalAnalyticsOpen] = useState(false);
+  const [modalDetallesPTAOpen, setModalDetallesPTAOpen] = useState(false);
+  const [ptaSeleccionado, setPtaSeleccionado] = useState<any>(null);
 
   // Métricas principales
   const metricas: MetricaPTA[] = [
@@ -141,6 +165,66 @@ export function DashboardGestionProfesoral() {
       requiereAtencion: true
     },
   ];
+
+  // Handlers para PTAs
+  const handleVerDetallesPTA = (pta: PTAPendiente) => {
+    // Convertir PTAPendiente a formato completo del PTA
+    const ptaCompleto = {
+      id: pta.id,
+      codigo: pta.id,
+      docente_nombre: pta.docente,
+      docente_documento: '80.123.456',
+      periodo_nombre: pta.periodo,
+      territorial: 'Bogotá',
+      departamento: 'Facultad de Ciencias Políticas',
+      horas_base: pta.horasBase,
+      estado: pta.estado.toLowerCase().replace(' ', '_'),
+      created_at: new Date().toISOString(),
+      componente_ensenanza: {
+        horas: Math.floor(pta.horasAsignadas * 0.48),
+        porcentaje: 48,
+        actividades: [
+          { nombre: 'Clases Presenciales', horas: 16 },
+          { nombre: 'Tutorías', horas: 4 },
+          { nombre: 'Evaluaciones', horas: 3 }
+        ]
+      },
+      componente_investigacion: {
+        horas: Math.floor(pta.horasAsignadas * 0.30),
+        porcentaje: 30,
+        actividades: [
+          { nombre: 'Proyecto de Investigación', horas: 10 },
+          { nombre: 'Publicaciones', horas: 2 }
+        ]
+      },
+      componente_extension: {
+        horas: Math.floor(pta.horasAsignadas * 0.15),
+        porcentaje: 15,
+        actividades: [
+          { nombre: 'Extensión Comunitaria', horas: 6 }
+        ]
+      },
+      componente_apoyo_institucional: {
+        horas: Math.floor(pta.horasAsignadas * 0.07),
+        porcentaje: 7,
+        actividades: [
+          { nombre: 'Comités', horas: 3 }
+        ]
+      }
+    };
+    
+    setPtaSeleccionado(ptaCompleto);
+    setModalDetallesPTAOpen(true);
+  };
+
+  const handleAprobarPTA = (pta: PTAPendiente) => {
+    if (confirm(`¿Está seguro de aprobar el PTA ${pta.id}?`)) {
+      toast.success(`PTA ${pta.id} aprobado exitosamente`, {
+        description: `El Plan de Trabajo Académico de ${pta.docente} ha sido aprobado.`
+      });
+      // Aquí iría la lógica para actualizar el estado en el backend
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -229,6 +313,33 @@ export function DashboardGestionProfesoral() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Banner del Flujo Secuencial - DESTACADO */}
+          <div 
+            className="mb-4 p-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white cursor-pointer hover:shadow-lg transition-all"
+            onClick={() => onNavigate?.('flujo-secuencial')}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                  <Activity className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-semibold mb-1">🔄 Flujo Secuencial de Gestión</h3>
+                  <p className="text-sm opacity-90">
+                    Proceso completo: Planificación → Necesidades → Convocatorias → Programación → Evaluación
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-6 h-6" />
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="flex-1 bg-white/20 rounded-full h-2">
+                <div className="bg-white h-2 rounded-full" style={{ width: '41%' }} />
+              </div>
+              <span className="text-sm font-medium">41%</span>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <AccionRapida
               icon={<FileText className="w-5 h-5" />}
@@ -299,7 +410,12 @@ export function DashboardGestionProfesoral() {
           {/* Lista de PTAs */}
           <div className="space-y-3">
             {ptasPendientes.map((pta) => (
-              <PTAPendienteCard key={pta.id} {...pta} />
+              <PTAPendienteCard 
+                key={pta.id} 
+                {...pta}
+                onVerDetalles={() => handleVerDetallesPTA(pta)}
+                onAprobar={() => handleAprobarPTA(pta)}
+              />
             ))}
           </div>
 
@@ -307,7 +423,7 @@ export function DashboardGestionProfesoral() {
           <Button 
             variant="outline" 
             className="w-full mt-4"
-            onClick={() => toast.info('Cargando todos los PTAs...')}
+            onClick={() => onNavigate?.('ptas')}
           >
             Ver Todos los PTAs
             <ChevronRight className="w-4 h-4 ml-2" />
@@ -428,6 +544,12 @@ export function DashboardGestionProfesoral() {
         isOpen={modalAnalyticsOpen} 
         onClose={() => setModalAnalyticsOpen(false)}
       />
+      
+      <PTADetallesModal 
+        isOpen={modalDetallesPTAOpen} 
+        onClose={() => setModalDetallesPTAOpen(false)}
+        pta={ptaSeleccionado}
+      />
     </div>
   );
 }
@@ -471,8 +593,10 @@ function PTAPendienteCard({
   horasBase,
   estado,
   diasPendientes,
-  requiereAtencion
-}: PTAPendiente) {
+  requiereAtencion,
+  onVerDetalles,
+  onAprobar
+}: PTAPendiente & { onVerDetalles: () => void, onAprobar: () => void }) {
   const porcentaje = Math.round((horasAsignadas / horasBase) * 100);
 
   return (
@@ -513,7 +637,7 @@ function PTAPendienteCard({
           <Button 
             size="sm" 
             variant="outline"
-            onClick={() => toast.info(`Viendo detalles de ${id}...`)}
+            onClick={onVerDetalles}
           >
             <Eye className="w-4 h-4 mr-1" />
             Ver
@@ -521,7 +645,7 @@ function PTAPendienteCard({
           <Button 
             size="sm" 
             className="bg-[#003DA5] hover:bg-[#1e5da8]"
-            onClick={() => toast.success(`Aprobando ${id}...`)}
+            onClick={onAprobar}
           >
             <CheckCircle className="w-4 h-4 mr-1" />
             Aprobar

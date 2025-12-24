@@ -15,9 +15,17 @@ import { useState, useEffect } from 'react';
 import { X, AlertCircle, Info, Calendar, Scale, User, Building, FileText, Clock } from 'lucide-react';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { legalService } from '../../../../services/api/legal.service';
 
 type Jurisdiccion = 'CONTENCIOSO' | 'ORDINARIA' | 'LABORAL' | 'CONSTITUCIONAL';
+
+// TODO: Replace with real auth hook integration
+const CURRENT_USER_MOCK = {
+  id: 'd290f1ee-6c54-4b01-90e6-d701748f0851', // Default ID
+  role: 'JEFE_OFICINA', // 'JEFE_OFICINA' allows manual assignment. Change to 'ABOGADO' to test auto-assignment.
+  nombre: 'Juan Perez'
+};
 
 interface MedioControl {
   id: string;
@@ -28,9 +36,10 @@ interface MedioControl {
 
 interface ExpedienteForm {
   // Clasificación
+  radicado: string;
   jurisdiccion: Jurisdiccion | '';
   medioControl: string;
-  
+
   // Partes
   demandante: string;
   tipoIdDemandante: 'CC' | 'CE' | 'NIT' | 'PA' | '';
@@ -39,17 +48,17 @@ interface ExpedienteForm {
   tipoIdDemandado: 'CC' | 'CE' | 'NIT' | 'PA' | '';
   numeroIdDemandado: string;
   juzgado: string;
-  
+
   // Demanda
   pretensionDemandante: string;
   actoAdministrativo: string;
   fechaNotificacion: string;
   fechaDemandaPresentada: string;
   valorDemanda: string;
-  
+
   // Asignación
   abogadoId: string;
-  
+
   // Plazo
   plazoEspecial: string;
   justificacionPlazo: string;
@@ -81,21 +90,17 @@ const MEDIOS_CONTROL_POR_JURISDICCION: Record<Jurisdiccion, MedioControl[]> = {
   ],
 };
 
-const ABOGADOS_MOCK = [
-  { id: '1', nombre: 'Dr. Luis Ramírez Torres', identificacion: 'CC 79456123', status: 'ACTIVO' },
-  { id: '2', nombre: 'Dra. Patricia González Ruiz', identificacion: 'CC 52123789', status: 'ACTIVO' },
-  { id: '3', nombre: 'Dr. Carlos Mendoza López', identificacion: 'CC 1015678901', status: 'ACTIVO' },
-  { id: '4', nombre: 'Dra. Ana María Rodríguez', identificacion: 'CC 52998877', status: 'ACTIVO' },
-];
+// Abogados now fetched from backend - see useEffect below
 
-interface Props {
+interface FormularioExpedienteJudicialProps {
   isOpen: boolean;
   onClose: () => void;
-  onExpedienteCreado?: (expedienteId: string) => void;
+  onExpedienteCreado: (expediente: any) => void;
 }
 
-export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCreado }: Props) {
+export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCreado }: FormularioExpedienteJudicialProps) {
   const [formData, setFormData] = useState<ExpedienteForm>({
+    radicado: '',
     jurisdiccion: '',
     medioControl: '',
     demandante: '',
@@ -121,12 +126,42 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
   const [esPlazoTaxativo, setEsPlazoTaxativo] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Abogados from API
+  const [abogados, setAbogados] = useState<{ id: string; nombre: string; identificacion: string; status: string }[]>([]);
+  const [loadingAbogados, setLoadingAbogados] = useState(false);
+
+  // Fetch abogados from backend on mount
+  useEffect(() => {
+    const fetchAbogados = async () => {
+      setLoadingAbogados(true);
+      try {
+        const data = await legalService.getAbogadosDashboard();
+        // Map API response to expected format
+        const mapped = data.map((a: any) => ({
+          id: a.id,
+          nombre: a.nombreCompleto || a.nombre || 'Sin nombre',
+          identificacion: a.email || '',
+          status: a.estado || 'ACTIVO'
+        }));
+        setAbogados(mapped);
+      } catch (error) {
+        console.error('Error fetching abogados:', error);
+        toast.error('No se pudieron cargar los abogados');
+      } finally {
+        setLoadingAbogados(false);
+      }
+    };
+    fetchAbogados();
+  }, []);
+
   // Calcular plazo automáticamente cuando cambia jurisdicción o medio control
+  const [files, setFiles] = useState<FileList | null>(null);
+
   useEffect(() => {
     if (formData.jurisdiccion && formData.medioControl) {
       const medios = MEDIOS_CONTROL_POR_JURISDICCION[formData.jurisdiccion];
       const medioSeleccionado = medios.find(m => m.id === formData.medioControl);
-      
+
       if (medioSeleccionado) {
         if (medioSeleccionado.plazoTaxativo !== null) {
           setPlazoCalculado(medioSeleccionado.plazoTaxativo);
@@ -152,6 +187,13 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
 
   const validarFormulario = (): boolean => {
     const newErrors: Record<string, string> = {};
+
+    // RN-001: Radicado 23 dígitos
+    if (!formData.radicado) {
+      newErrors.radicado = 'El código de radicación es obligatorio';
+    } else if (!/^\d{23}$/.test(formData.radicado)) {
+      newErrors.radicado = 'Debe tener exactamente 23 dígitos numéricos';
+    }
 
     // RN-001: Jurisdicción requerida
     if (!formData.jurisdiccion) {
@@ -258,30 +300,79 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
     setIsSubmitting(true);
 
     try {
-      // Simulación de creación (aquí iría la llamada al API)
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const formDataToSend = new FormData();
 
-      // Generar ID único (simulado)
-      const year = new Date().getFullYear();
-      const numero = Math.floor(Math.random() * 99999).toString().padStart(5, '0');
-      const expedienteId = `PJ-${year}-${numero}`;
+      // Append fields
+      formDataToSend.append('radicado', formData.radicado);
+      formDataToSend.append('jurisdiccion', formData.jurisdiccion);
+      formDataToSend.append('medioControl', formData.medioControl);
+      formDataToSend.append('tipoProceso', formData.medioControl); // Required by DB NOT NULL constraint
+      formDataToSend.append('demandante', formData.demandante);
+      formDataToSend.append('tipoIdDemandante', formData.tipoIdDemandante);
+      formDataToSend.append('numeroIdDemandante', formData.numeroIdDemandante);
+      formDataToSend.append('demandado', formData.demandado);
+      formDataToSend.append('tipoIdDemandado', formData.tipoIdDemandado);
+      formDataToSend.append('numeroIdDemandado', formData.numeroIdDemandado);
+      formDataToSend.append('juzgadoConocimiento', formData.juzgado);
+      formDataToSend.append('pretensionDemandante', formData.pretensionDemandante);
+      formDataToSend.append('actoAdministrativoDemandado', formData.actoAdministrativo);
+      formDataToSend.append('fechaNotificacion', new Date(formData.fechaNotificacion).toISOString());
+      formDataToSend.append('fechaDemandaPresentada', new Date(formData.fechaDemandaPresentada).toISOString());
+      if (formData.valorDemanda) formDataToSend.append('cuantia', formData.valorDemanda);
+
+      // RN-009: Plazo (Taxativo o Especial)
+      const diasTermino = plazoCalculado ? plazoCalculado : (formData.plazoEspecial ? formData.plazoEspecial : '30');
+      formDataToSend.append('terminoProcesalDias', String(diasTermino));
+
+      // Enviar datos del usuario actual para asignación automática (Backend Logic)
+      formDataToSend.append('userId', CURRENT_USER_MOCK.id);
+      formDataToSend.append('userRole', CURRENT_USER_MOCK.role);
+
+      // Si se seleccionó un abogado manualmente (Caso Jefe Oficina)
+      if (formData.abogadoId) {
+        formDataToSend.append('abogadoId', formData.abogadoId);
+      }
+
+      formDataToSend.append('estado', 'ACTIVO');
+      formDataToSend.append('etapaProcesal', 'RADICACION');
+      formDataToSend.append('fechaRadicacion', new Date().toISOString()); // Required by DB NOT NULL constraint
+
+      // Append files
+      if (files) {
+        Array.from(files).forEach((file) => {
+          formDataToSend.append('files', file);
+        });
+      }
+
+      const response = await fetch('http://localhost:3008/api/legal/expedientes', {
+        method: 'POST',
+        // No Content-Type header needed for FormData, browser sets it with boundary
+        body: formDataToSend,
+      });
+
+      if (!response.ok) {
+        throw new Error('Error en la petición al servidor');
+      }
+
+      const data = await response.json();
 
       toast.success(
-        `✓ Expediente ${expedienteId} creado exitosamente`,
+        `✓ Expediente creado exitosamente`,
         {
-          description: `Demandante: ${formData.demandante} vs Demandado: ${formData.demandado}`,
+          description: `Radicado: ${data.radicado}`,
           duration: 5000,
         }
       );
 
       if (onExpedienteCreado) {
-        onExpedienteCreado(expedienteId);
+        onExpedienteCreado(data);
       }
 
       onClose();
     } catch (error) {
+      console.error(error);
       toast.error('Error al crear expediente', {
-        description: 'Por favor intente nuevamente',
+        description: 'No se pudo conectar con el servidor',
       });
     } finally {
       setIsSubmitting(false);
@@ -320,6 +411,33 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
               1. Clasificación Jurisdiccional
             </h3>
 
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Código Único de Radicación (23 dígitos) <span className="text-red-600">*</span>
+              </label>
+              <input
+                type="text"
+                maxLength={23}
+                value={formData.radicado}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, ''); // Solo números
+                  handleInputChange('radicado', val);
+                }}
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-lg tracking-wide ${errors.radicado ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                placeholder="Ej: 11001333500220250012500"
+              />
+              {errors.radicado && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.radicado}
+                </p>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Formato oficial Rama Judicial (23 dígitos)
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               {/* Jurisdicción */}
               <div>
@@ -329,9 +447,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                 <select
                   value={formData.jurisdiccion}
                   onChange={(e) => handleInputChange('jurisdiccion', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errors.jurisdiccion ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.jurisdiccion ? 'border-red-500' : 'border-gray-300'
+                    }`}
                 >
                   <option value="">Seleccione jurisdicción...</option>
                   <option value="CONTENCIOSO">Contencioso Administrativo</option>
@@ -356,9 +473,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                   value={formData.medioControl}
                   onChange={(e) => handleInputChange('medioControl', e.target.value)}
                   disabled={!formData.jurisdiccion}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errors.medioControl ? 'border-red-500' : 'border-gray-300'
-                  } ${!formData.jurisdiccion ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.medioControl ? 'border-red-500' : 'border-gray-300'
+                    } ${!formData.jurisdiccion ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 >
                   <option value="">Seleccione medio de control...</option>
                   {mediosDisponibles.map((medio) => (
@@ -401,7 +517,7 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                     </p>
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -412,9 +528,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                       min="1"
                       value={formData.plazoEspecial}
                       onChange={(e) => handleInputChange('plazoEspecial', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.plazoEspecial ? 'border-red-500' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.plazoEspecial ? 'border-red-500' : 'border-gray-300'
+                        }`}
                       placeholder="Ej: 60"
                     />
                     {errors.plazoEspecial && (
@@ -429,9 +544,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                     <textarea
                       value={formData.justificacionPlazo}
                       onChange={(e) => handleInputChange('justificacionPlazo', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.justificacionPlazo ? 'border-red-500' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.justificacionPlazo ? 'border-red-500' : 'border-gray-300'
+                        }`}
                       rows={2}
                       placeholder="Justifique el plazo especial..."
                     />
@@ -464,9 +578,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                     maxLength={255}
                     value={formData.demandante}
                     onChange={(e) => handleInputChange('demandante', e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.demandante ? 'border-red-500' : 'border-gray-300'
-                    }`}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.demandante ? 'border-red-500' : 'border-gray-300'
+                      }`}
                     placeholder="Ej: Juan Pérez Gómez"
                   />
                   {errors.demandante && (
@@ -482,9 +595,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                     <select
                       value={formData.tipoIdDemandante}
                       onChange={(e) => handleInputChange('tipoIdDemandante', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.tipoIdDemandante ? 'border-red-500' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.tipoIdDemandante ? 'border-red-500' : 'border-gray-300'
+                        }`}
                     >
                       <option value="">Seleccione...</option>
                       <option value="CC">Cédula de Ciudadanía (CC)</option>
@@ -505,9 +617,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                       type="text"
                       value={formData.numeroIdDemandante}
                       onChange={(e) => handleInputChange('numeroIdDemandante', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.numeroIdDemandante ? 'border-red-500' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.numeroIdDemandante ? 'border-red-500' : 'border-gray-300'
+                        }`}
                       placeholder="Ej: 80123456"
                     />
                     {errors.numeroIdDemandante && (
@@ -531,9 +642,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                     maxLength={255}
                     value={formData.demandado}
                     onChange={(e) => handleInputChange('demandado', e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.demandado ? 'border-red-500' : 'border-gray-300'
-                    }`}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.demandado ? 'border-red-500' : 'border-gray-300'
+                      }`}
                     placeholder="Ej: ESAP - Rectoría Nacional"
                   />
                   {errors.demandado && (
@@ -556,9 +666,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                     <select
                       value={formData.tipoIdDemandado}
                       onChange={(e) => handleInputChange('tipoIdDemandado', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.tipoIdDemandado ? 'border-red-500' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.tipoIdDemandado ? 'border-red-500' : 'border-gray-300'
+                        }`}
                     >
                       <option value="">Seleccione...</option>
                       <option value="NIT">NIT</option>
@@ -579,9 +688,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                       type="text"
                       value={formData.numeroIdDemandado}
                       onChange={(e) => handleInputChange('numeroIdDemandado', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.numeroIdDemandado ? 'border-red-500' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.numeroIdDemandado ? 'border-red-500' : 'border-gray-300'
+                        }`}
                       placeholder="Ej: 899999027-1"
                     />
                     {errors.numeroIdDemandado && (
@@ -603,9 +711,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                 maxLength={255}
                 value={formData.juzgado}
                 onChange={(e) => handleInputChange('juzgado', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.juzgado ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.juzgado ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 placeholder="Ej: Juzgado 3º Administrativo de Bogotá"
               />
               {errors.juzgado && (
@@ -629,9 +736,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                 maxLength={1000}
                 value={formData.pretensionDemandante}
                 onChange={(e) => handleInputChange('pretensionDemandante', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.pretensionDemandante ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.pretensionDemandante ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 rows={3}
                 placeholder="Describa la pretensión principal del demandante..."
               />
@@ -668,9 +774,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                   type="date"
                   value={formData.fechaNotificacion}
                   onChange={(e) => handleInputChange('fechaNotificacion', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errors.fechaNotificacion ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.fechaNotificacion ? 'border-red-500' : 'border-gray-300'
+                    }`}
                 />
                 {errors.fechaNotificacion && (
                   <p className="text-xs text-red-600 mt-1">{errors.fechaNotificacion}</p>
@@ -686,9 +791,8 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                   type="date"
                   value={formData.fechaDemandaPresentada}
                   onChange={(e) => handleInputChange('fechaDemandaPresentada', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errors.fechaDemandaPresentada ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.fechaDemandaPresentada ? 'border-red-500' : 'border-gray-300'
+                    }`}
                 />
                 {errors.fechaDemandaPresentada && (
                   <p className="text-xs text-red-600 mt-1">{errors.fechaDemandaPresentada}</p>
@@ -697,17 +801,23 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Valor Demanda (opcional)
+                  Valor Demanda COP (opcional)
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.valorDemanda}
-                  onChange={(e) => handleInputChange('valorDemanda', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="$ 0.00"
-                />
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formData.valorDemanda ? Number(formData.valorDemanda).toLocaleString('es-CO') : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      handleInputChange('valorDemanda', raw);
+                    }}
+                    className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="0"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Formato: Pesos Colombianos (COP)</p>
               </div>
             </div>
           </div>
@@ -726,12 +836,13 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
               <select
                 value={formData.abogadoId}
                 onChange={(e) => handleInputChange('abogadoId', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.abogadoId ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.abogadoId ? 'border-red-500' : 'border-gray-300'
+                  }`}
               >
-                <option value="">Seleccione abogado...</option>
-                {ABOGADOS_MOCK.filter(a => a.status === 'ACTIVO').map((abogado) => (
+                <option value="">
+                  {loadingAbogados ? 'Cargando abogados...' : 'Seleccione abogado...'}
+                </option>
+                {abogados.filter(a => a.status === 'ACTIVO').map((abogado) => (
                   <option key={abogado.id} value={abogado.id}>
                     {abogado.nombre} - {abogado.identificacion}
                   </option>

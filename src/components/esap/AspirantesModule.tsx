@@ -706,7 +706,7 @@ export function AspirantesModule() {
                       {/* Teléfono */}
                       <td style={{ padding: '16px' }}>
                         <div className="flex items-center gap-2">
-                          <Phone className="w-4 h-4 text-green-600" />
+                          <Phone className="w-4 h-4 text-[#1e5da8]" />
                           <p 
                             style={{
                               fontSize: '14px',
@@ -922,8 +922,8 @@ export function AspirantesModule() {
                 {/* Información de Contacto */}
                 <div className="bg-gray-50 rounded-xl p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
-                      <Mail className="w-4 h-4 text-green-600" />
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                      <Mail className="w-4 h-4 text-[#1e5da8]" />
                     </div>
                     <h4 className="font-bold text-gray-900">Información de Contacto</h4>
                   </div>

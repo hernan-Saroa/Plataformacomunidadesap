@@ -343,7 +343,7 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50"
+            className="fixed inset-0 bg-black/50 z-[110]"
             onClick={onClose}
           />
 
@@ -353,9 +353,9 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-4 md:inset-8 lg:inset-16 z-50 flex items-center justify-center"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[111] w-[calc(100%-2rem)] md:w-[calc(100%-4rem)] lg:w-full lg:max-w-5xl max-h-[90vh]"
           >
-            <div className="bg-white rounded-lg shadow-2xl w-full h-full flex flex-col max-w-5xl">
+            <div className="bg-white rounded-lg shadow-2xl w-full h-full max-h-[90vh] flex flex-col">
               {/* HEADER */}
               <div className="flex items-start justify-between p-6 border-b border-gray-200">
                 <div className="flex-1">

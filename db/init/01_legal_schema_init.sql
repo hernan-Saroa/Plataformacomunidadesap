@@ -46,7 +46,7 @@ INSERT INTO legal_management.expedientes (
     'TRASLADO_DESCARGOS', 
     '2025-01-02 08:30:00', 
     50000000.00,
-    'Dr. Carlos Mendoza',
+    NULL,  -- Will be assigned from abogados table via migration
     '2025-06-15 00:00:00',
     true,
     7,
@@ -62,7 +62,7 @@ INSERT INTO legal_management.expedientes (
     'EN_TRAMITE', 
     '2024-11-15 14:20:00', 
     120000000.00,
-    'Dra. Lucia Ramirez',
+    NULL,  -- Will be assigned from abogados table via migration
     '2026-11-15 00:00:00',
     false,
     45,
@@ -78,7 +78,7 @@ INSERT INTO legal_management.expedientes (
     'FALLO', 
     '2024-05-10 09:00:00', 
     85000000.00,
-    'Dr. Mario Fernandez',
+    NULL,  -- Will be assigned from abogados table via migration
     NULL,
     false,
     0,
@@ -94,7 +94,7 @@ INSERT INTO legal_management.expedientes (
     'RADICADO', 
     '2025-02-01 10:15:00', 
     0.00,
-    'Sin Asignar',
+    NULL,  -- Will be assigned from abogados table via migration
     '2025-08-01 00:00:00',
     false,
     30,
@@ -110,7 +110,7 @@ INSERT INTO legal_management.expedientes (
     'EN_TRAMITE', 
     '2024-09-20 16:45:00', 
     0.00,
-    'Dr. Carlos Mendoza',
+    NULL,  -- Will be assigned from abogados table via migration
     '2025-09-20 00:00:00',
     false,
     15,

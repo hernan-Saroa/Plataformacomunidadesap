@@ -19,8 +19,33 @@ export class ExpedienteService {
             }
         }
 
+        // Mapeo automático de campos adicionales
+        // Calcular estado inicial/etapa si no vienen
+        if (!data.estado) data.estado = 'ACTIVO';
+        if (!data.etapaProcesal) data.etapaProcesal = 'RADICACION';
+
+        // Calcular Fecha Vencimiento (Días Hábiles)
+        if (data.fechaNotificacion && data.terminoProcesalDias) {
+            const fechaNotif = new Date(data.fechaNotificacion);
+            // El término comienza a contar desde el día siguiente hábil, simplificamos a sumar días hábiles
+            data.fechaVencimientoTermino = this.addBusinessDays(fechaNotif, Number(data.terminoProcesalDias));
+        }
+
         const nuevoExpediente = this.expedienteRepository.create(data);
         return this.expedienteRepository.save(nuevoExpediente);
+    }
+
+    private addBusinessDays(startDate: Date, days: number): Date {
+        let currentDate = new Date(startDate);
+        let addedDays = 0;
+        while (addedDays < days) {
+            currentDate.setDate(currentDate.getDate() + 1);
+            const day = currentDate.getDay();
+            if (day !== 0 && day !== 6) { // 0=Sun, 6=Sat
+                addedDays++;
+            }
+        }
+        return currentDate;
     }
 
     async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {

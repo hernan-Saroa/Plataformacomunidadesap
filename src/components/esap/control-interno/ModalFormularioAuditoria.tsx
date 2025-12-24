@@ -171,6 +171,7 @@ export function ModalFormularioAuditoria({
 }: ModalFormularioAuditoriaProps) {
   // Estado del formulario
   const [formData, setFormData] = useState<AuditoriaFormData>({
+    tipoAuditoria: initialData?.tipoAuditoria || 'regular',
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
@@ -188,6 +189,36 @@ export function ModalFormularioAuditoria({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [objetivoTemporal, setObjetivoTemporal] = useState('');
+
+  // Actualizar formulario cuando cambian los datos iniciales
+  useEffect(() => {
+    if (open && initialData) {
+      // Normalizar objetivos: convertir objetos a strings si es necesario
+      const normalizedObjetivos = initialData.objetivos
+        ? initialData.objetivos.map((obj: any) => 
+            typeof obj === 'string' ? obj : obj.descripcion || ''
+          )
+        : [];
+      
+      setFormData({
+        codigo: initialData.codigo || '',
+        tipoAuditoria: initialData.tipoAuditoria || 'regular',
+        titulo: initialData.titulo || '',
+        descripcion: initialData.descripcion || '',
+        territorial: initialData.territorial || '',
+        auditorLider: initialData.auditorLider || '',
+        auditorAsignado: initialData.auditorAsignado || '',
+        fechaInicio: initialData.fechaInicio || '',
+        fechaFin: initialData.fechaFin || '',
+        objetivos: normalizedObjetivos,
+        alcance: initialData.alcance || '',
+        riesgo: initialData.riesgo || 'Medio'
+      });
+      setTouched({});
+      setErrors([]);
+      setHasChanges(false);
+    }
+  }, [open, initialData]);
 
   // Detectar cambios
   useEffect(() => {
@@ -284,7 +315,8 @@ export function ModalFormularioAuditoria({
     onClose();
   };
 
-  if (!open) return null;
+  // ⚠️ NO RETORNAR NULL - AnimatePresence maneja el montaje/desmontaje
+  // if (!open) return null;
 
   // Calcular progreso de completado
   const camposRequeridos = [
@@ -315,19 +347,21 @@ export function ModalFormularioAuditoria({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50"
+            className="fixed inset-0 bg-black/50 z-[110]"
             onClick={handleClose}
           />
 
-          {/* MODAL */}
+          {/* MODAL CONTENT */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-4 md:inset-8 lg:inset-16 z-50 flex items-center justify-center"
+            className="fixed inset-0 z-[111] flex items-center justify-center p-4"
           >
-            <div className="bg-white rounded-lg shadow-2xl w-full h-full flex flex-col max-w-5xl">
+            <div className="bg-white rounded-lg shadow-2xl w-full h-full max-h-[90vh] flex flex-col max-w-4xl"
+              onClick={(e) => e.stopPropagation()}
+            >
               {/* HEADER */}
               <div className="flex items-start justify-between p-6 border-b border-gray-200">
                 <div className="flex-1">
@@ -398,6 +432,61 @@ export function ModalFormularioAuditoria({
                     </h3>
 
                     <div className="space-y-4">
+                      {/* Tipo de Auditoría */}
+                      <FieldWrapper
+                        label="Tipo de Auditoría"
+                        required
+                        helpText="Seleccione el tipo de auditoría a realizar"
+                      >
+                        <div className="grid grid-cols-3 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleChange('tipoAuditoria', 'regular')}
+                            className={`
+                              px-4 py-3 rounded-lg border-2 transition-all duration-200
+                              flex items-center justify-center gap-2 font-medium
+                              ${formData.tipoAuditoria === 'regular'
+                                ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                              }
+                            `}
+                          >
+                            <Shield className="w-5 h-5" />
+                            Regular
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleChange('tipoAuditoria', 'territorial')}
+                            className={`
+                              px-4 py-3 rounded-lg border-2 transition-all duration-200
+                              flex items-center justify-center gap-2 font-medium
+                              ${formData.tipoAuditoria === 'territorial'
+                                ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                              }
+                            `}
+                          >
+                            <Target className="w-5 h-5" />
+                            Territorial
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleChange('tipoAuditoria', 'especial')}
+                            className={`
+                              px-4 py-3 rounded-lg border-2 transition-all duration-200
+                              flex items-center justify-center gap-2 font-medium
+                              ${formData.tipoAuditoria === 'especial'
+                                ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                              }
+                            `}
+                          >
+                            <AlertCircle className="w-5 h-5" />
+                            Especial
+                          </button>
+                        </div>
+                      </FieldWrapper>
+
                       {/* Título */}
                       <FieldWrapper
                         label="Título de la Auditoría"

@@ -698,6 +698,10 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   const [logCambios, setLogCambios] = useState<LogCambio[]>([]);
 
+  const [activeTab, setActiveTab] = useState<string>(canEdit ? 'Modificaciónn' : 'historial');
+
+  const [editorContent, setEditorContent] = useState<string>('');
+
 
 
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -734,14 +738,44 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   };
 
+  // Sincronizar el contenido del editor con el borrador cuando carga por primera vez
   useEffect(() => {
-    if (!editorRef.current || !borrador) return;
-    const editor = editorRef.current;
-    if (document.activeElement === editor) return;
-    if (editor.innerHTML !== borrador.contenidoCertificado.texto) {
-      editor.innerHTML = borrador.contenidoCertificado.texto;
+    if (borrador?.contenidoCertificado.texto) {
+      // Normalizar las variables para que todas tengan el formato compacto
+      const contenidoNormalizado = normalizarVariables(borrador.contenidoCertificado.texto);
+      setEditorContent(contenidoNormalizado);
     }
   }, [borrador?.contenidoCertificado.texto]);
+
+  // Actualizar el editor cuando cambia el activeTab o editorContent
+  useEffect(() => {
+    // Solo proceder si estamos en la pestaña de Modificación
+    if (activeTab !== 'Modificaciónn') return;
+
+    // Usar un pequeño delay para asegurar que el DOM esté listo después del cambio de tab
+    const timer = setTimeout(() => {
+      if (!editorRef.current) {
+        console.log('Editor ref no disponible');
+        return;
+      }
+      const editor = editorRef.current;
+
+      // No sobrescribir si el usuario está editando activamente
+      if (document.activeElement === editor) return;
+
+      // Actualizar el contenido del editor, normalizando las variables
+      let currentContent = editorContent || borrador?.contenidoCertificado.texto || '';
+      currentContent = normalizarVariables(currentContent);
+      console.log('Restaurando contenido del editor:', currentContent.substring(0, 50) + '...');
+
+      if (editor.innerHTML !== currentContent && currentContent) {
+        editor.innerHTML = currentContent;
+        console.log('Contenido restaurado exitosamente');
+      }
+    }, 50); // Aumentar el delay a 50ms para dar tiempo al DOM
+
+    return () => clearTimeout(timer);
+  }, [activeTab, editorContent, borrador?.contenidoCertificado.texto]);
 
 
 
@@ -785,7 +819,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      '<span class="variable-token px-2 py-1 bg-yellow-200 text-black rounded" style="font-weight: inherit;" contenteditable="false">[$1]</span>'
+      '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$1]</span>'
 
 
 
@@ -793,6 +827,41 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+  };
+
+  /**
+   * Normaliza las variables eliminando TODOS los spans anidados
+   */
+  const normalizarVariables = (html: string): string => {
+    if (!html) return html;
+
+    let resultado = html;
+
+    // Paso 1: Colapsar todos los spans anidados repetidamente (15 veces para asegurar)
+    for (let i = 0; i < 15; i++) {
+      // Eliminar spans que solo contienen otro span
+      resultado = resultado.replace(
+        /<span[^>]*>\s*(<span[^>]*>[\s\S]*?<\/span>)\s*<\/span>/g,
+        '$1'
+      );
+    }
+
+    // Paso 2: Normalizar todos los spans con clase variable-token
+    resultado = resultado.replace(
+      /<span[^>]*class="[^"]*variable-token[^"]*"[^>]*>([^<]*\[([A-Z_]+)\][^<]*)<\/span>/g,
+      '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$2]</span>'
+    );
+
+    // Paso 3: Envolver variables sueltas que no tienen span
+    resultado = resultado.replace(
+      /(?<!<span[^>]*>)\[([A-Z_]+)\](?![^<]*<\/span>)/g,
+      '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$1]</span>'
+    );
+
+    // Paso 4: Limpiar spans vacíos
+    resultado = resultado.replace(/<span[^>]*>\s*<\/span>/g, '');
+
+    return resultado;
   };
 
 
@@ -965,7 +1034,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          return `<span class="variable-token px-1 py-0.5 bg-yellow-200 text-black rounded" style="font-weight: inherit;">${t}</span>`;
+          return `<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;">${t}</span>`;
 
 
 
@@ -1113,7 +1182,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        fuente: config.typography?.font || 'Times New Roman',
+        fuente: 'Arial Narrow, Arial, sans-serif', // Misma fuente que los PDFs generados
 
 
 
@@ -1145,7 +1214,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        texto: resaltar ? resaltarVariables(contenidoHtml) : contenidoHtml,
+        texto: resaltar ? normalizarVariables(resaltarVariables(contenidoHtml)) : normalizarVariables(contenidoHtml),
 
 
 
@@ -1249,11 +1318,23 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    span.className = 'variable-token px-2 py-1 bg-yellow-200 text-black rounded';
+    span.className = 'variable-token bg-yellow-200 text-black';
 
 
 
     span.style.fontWeight = 'inherit';
+
+    span.style.display = 'inline';
+
+    span.style.padding = '0px 2px';
+
+    span.style.fontSize = 'inherit';
+
+    span.style.lineHeight = 'inherit';
+
+    span.style.borderRadius = '2px';
+
+    span.style.margin = '0';
 
 
 
@@ -2883,9 +2964,12 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
       if (borrador.contenidoCertificado.texto !== plantilla.contenidoCertificado.texto) {
 
+        // Normalizar el contenido antes de guardar para limpiar spans anidados
+        const contenidoNormalizado = normalizarVariables(borrador.contenidoCertificado.texto);
 
 
-        contentChanges.certificateContentHtml = borrador.contenidoCertificado.texto;
+
+        contentChanges.certificateContentHtml = contenidoNormalizado;
 
 
 
@@ -3048,6 +3132,26 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+
+  const handleGuardarYVerPlantilla = async () => {
+    if (!ensureEditable()) return;
+
+    if (!borrador || !plantilla) return;
+
+    // Guardar el contenido actual del editor antes de navegar
+    if (editorRef.current) {
+      const currentContent = editorRef.current.innerHTML;
+      setEditorContent(currentContent);
+    }
+
+    // Si hay cambios, guardar primero
+    if (hasChanges) {
+      await handleGuardarBorrador();
+    }
+
+    // Navegar a la pestaña de Visualización usando el estado
+    setActiveTab('Visualizaciónn');
+  };
 
   const handleAutorizarPlantilla = async () => {
 
@@ -3665,7 +3769,22 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      <style>{`.variable-token{font-weight:inherit;}`}</style>
+      <style>{`
+        .variable-token {
+          font-weight: inherit !important;
+          display: inline !important;
+          font-size: inherit !important;
+          line-height: inherit !important;
+          padding: 0px 2px !important;
+          margin: 0 !important;
+          border-radius: 2px !important;
+          vertical-align: baseline !important;
+        }
+        .variable-token * {
+          padding: 0 !important;
+          margin: 0 !important;
+        }
+      `}</style>
 
 
 
@@ -4020,7 +4139,20 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      <Tabs defaultValue={canEdit ? "Modificaciónn" : "historial"} className="mt-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={(newTab: string) => {
+          // Guardar el contenido del editor antes de cambiar de pestaña
+          if (activeTab === 'Modificaciónn' && editorRef.current) {
+            const currentContent = editorRef.current.innerHTML;
+            console.log('Guardando contenido antes de cambiar de pestaña:', currentContent.substring(0, 50) + '...');
+            setEditorContent(currentContent);
+          }
+          // Cambiar la pestaña
+          setActiveTab(newTab);
+        }}
+        className="mt-6"
+      >
 
 
 
@@ -5616,6 +5748,15 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
                   onInput={(e) => {
+                    let newContent = e.currentTarget.innerHTML;
+
+                    // Normalizar el contenido para limpiar spans anidados
+                    newContent = normalizarVariables(newContent);
+
+                    // Actualizar el estado local del editor
+                    setEditorContent(newContent);
+
+                    // Actualizar el borrador
                     setBorrador({
 
 
@@ -5632,7 +5773,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                        texto: e.currentTarget.innerHTML
+                        texto: newContent
 
 
 
@@ -5837,6 +5978,42 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
                 Guardar Borrador
+
+
+
+              </Button>
+
+
+
+              <Button
+
+
+
+                variant="outline"
+
+
+
+                onClick={handleGuardarYVerPlantilla}
+
+
+
+                disabled={!canEdit || isSaving}
+
+
+
+                className="border-blue-600 text-blue-600 hover:bg-blue-50"
+
+
+
+              >
+
+
+
+                <Eye className="w-4 h-4 mr-2" />
+
+
+
+                Ver Plantilla
 
 
 

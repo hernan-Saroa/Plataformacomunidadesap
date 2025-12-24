@@ -38,13 +38,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Users, Calendar, CheckCircle, X, ChevronRight, 
   ChevronLeft, Download, Send, Eye, AlertCircle, Sparkles,
-  Building2, MapPin, Clock, Target, FileCheck, Mail, Shield, Settings
+  Building2, MapPin, Clock, Target, FileCheck, Mail, Shield, Settings,
+  Edit, Upload, Save
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
 // Componentes del design system
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/Button';
+import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 
 // ============ TIPOS ============
@@ -532,11 +533,19 @@ export function InicioAuditoriaWizard({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      {/* Overlay */}
+      <div 
+        className="fixed inset-0 bg-black/60 z-50" 
+        onClick={onClose}
+      />
+      
+      {/* Modal Container */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto"
         >
           {/* Header */}
           <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700">
@@ -684,70 +693,76 @@ function Paso1Informacion({ auditoria }: { auditoria: AuditoriaProgramada }) {
       <div>
         <h3 className="text-lg text-gray-900 mb-2 flex items-center gap-2">
           <Target className="w-5 h-5 text-blue-600" />
-          Información de la Auditoría
+          Auditoría Seleccionada
         </h3>
         <p className="text-sm text-gray-600">
-          Verifique los datos de la auditoría programada antes de continuar.
+          Revise la información de la auditoría que está a punto de iniciar formalmente.
         </p>
       </div>
 
+      {/* Banner de auditoría seleccionada */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-5">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+              <FileText className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">Auditoría a Iniciar</p>
+              <h4 className="text-lg text-gray-900 font-bold">{auditoria.codigo}</h4>
+            </div>
+          </div>
+          <BadgeSIGL variant="info" size="lg">
+            <CheckCircle className="w-4 h-4" />
+            <span className="ml-1">Seleccionada</span>
+          </BadgeSIGL>
+        </div>
+        <p className="text-sm text-gray-900 font-medium mb-1">{auditoria.nombre}</p>
+        <div className="flex items-center gap-3 mt-3">
+          <BadgeSIGL variant={auditoria.tipo === 'Sede' ? 'info' : 'success'} size="sm">
+            {auditoria.tipo === 'Sede' ? <Building2 className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
+            <span className="ml-1">{auditoria.tipo}</span>
+          </BadgeSIGL>
+          <span className="text-xs text-gray-600">•</span>
+          <span className="text-xs text-gray-600">Inicio: {auditoria.fechaInicio.toLocaleDateString('es-CO')}</span>
+        </div>
+      </div>
+
+      {/* Detalles organizados en grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Proceso y Área */}
         <CardSIGL className="p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <FileText className="w-5 h-5 text-blue-600" />
-            <span className="text-sm text-gray-600">Información General</span>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+              <Building2 className="w-4 h-4 text-purple-600" />
+            </div>
+            <h4 className="text-sm text-gray-900 font-semibold">Proceso Auditado</h4>
           </div>
-          <div className="space-y-2">
-            <div>
-              <span className="text-xs text-gray-500">Código:</span>
-              <p className="text-sm text-gray-900 font-medium">{auditoria.codigo}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500">Nombre:</span>
-              <p className="text-sm text-gray-900">{auditoria.nombre}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <BadgeSIGL variant={auditoria.tipo === 'Sede' ? 'info' : 'success'} size="sm">
-                {auditoria.tipo === 'Sede' ? <Building2 className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
-                <span className="ml-1">{auditoria.tipo}</span>
-              </BadgeSIGL>
-            </div>
+          <p className="text-sm text-gray-900 font-medium mb-2">{auditoria.procesoNombre}</p>
+          <div className="space-y-1">
+            <p className="text-xs text-gray-600">Responsable del Área:</p>
+            <p className="text-sm text-gray-900">{auditoria.responsableArea.nombre}</p>
+            <p className="text-xs text-gray-600">{auditoria.responsableArea.cargo}</p>
+            <p className="text-xs text-blue-600">{auditoria.responsableArea.email}</p>
           </div>
         </CardSIGL>
 
+        {/* Equipo Auditor */}
         <CardSIGL className="p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <Building2 className="w-5 h-5 text-purple-600" />
-            <span className="text-sm text-gray-600">Área Auditada</span>
-          </div>
-          <div className="space-y-2">
-            <div>
-              <span className="text-xs text-gray-500">Proceso:</span>
-              <p className="text-sm text-gray-900">{auditoria.procesoNombre}</p>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+              <Users className="w-4 h-4 text-green-600" />
             </div>
-            <div>
-              <span className="text-xs text-gray-500">Responsable:</span>
-              <p className="text-sm text-gray-900 font-medium">{auditoria.responsableArea.nombre}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500">Cargo:</span>
-              <p className="text-sm text-gray-900">{auditoria.responsableArea.cargo}</p>
-            </div>
+            <h4 className="text-sm text-gray-900 font-semibold">Equipo Auditor</h4>
           </div>
-        </CardSIGL>
-
-        <CardSIGL className="p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <Users className="w-5 h-5 text-green-600" />
-            <span className="text-sm text-gray-600">Equipo Auditor</span>
-          </div>
-          <div className="space-y-2">
-            <div>
-              <span className="text-xs text-gray-500">Auditor Líder:</span>
+          <div className="space-y-3">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+              <p className="text-xs text-green-700 font-semibold mb-1">Auditor Líder</p>
               <p className="text-sm text-gray-900 font-medium">{auditoria.auditorLider.nombre}</p>
+              <p className="text-xs text-gray-600">{auditoria.auditorLider.email}</p>
             </div>
             <div>
-              <span className="text-xs text-gray-500">Equipo de apoyo:</span>
+              <p className="text-xs text-gray-600 mb-1">Equipo de Apoyo:</p>
               {auditoria.equipoAuditores.map((auditor) => (
                 <p key={auditor.id} className="text-sm text-gray-900">• {auditor.nombre}</p>
               ))}
@@ -755,30 +770,70 @@ function Paso1Informacion({ auditoria }: { auditoria: AuditoriaProgramada }) {
           </div>
         </CardSIGL>
 
+        {/* Cronograma */}
         <CardSIGL className="p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <Clock className="w-5 h-5 text-orange-600" />
-            <span className="text-sm text-gray-600">Cronograma</span>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+              <Clock className="w-4 h-4 text-orange-600" />
+            </div>
+            <h4 className="text-sm text-gray-900 font-semibold">Cronograma Estimado</h4>
           </div>
           <div className="space-y-2">
-            <div>
-              <span className="text-xs text-gray-500">Fecha de inicio:</span>
-              <p className="text-sm text-gray-900 font-medium">
-                {auditoria.fechaInicio.toLocaleDateString('es-CO')}
-              </p>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-600">Fecha de Inicio:</span>
+              <span className="text-sm text-gray-900 font-medium">
+                {auditoria.fechaInicio.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </span>
             </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">
-                P: {auditoria.duracionDias.planeacion}d
-              </span>
-              <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
-                E: {auditoria.duracionDias.ejecucion}d
-              </span>
-              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded">
-                C: {auditoria.duracionDias.comunicacion}d
-              </span>
+            <div className="border-t border-gray-200 pt-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-600">Fase Planeación:</span>
+                <BadgeSIGL variant="info" size="sm">{auditoria.duracionDias.planeacion} días</BadgeSIGL>
+              </div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-600">Fase Ejecución:</span>
+                <BadgeSIGL variant="warning" size="sm">{auditoria.duracionDias.ejecucion} días</BadgeSIGL>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-600">Fase Comunicación:</span>
+                <BadgeSIGL variant="success" size="sm">{auditoria.duracionDias.comunicacion} días</BadgeSIGL>
+              </div>
+            </div>
+            <div className="border-t border-gray-200 pt-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-700 font-medium">Duración Total:</span>
+                <span className="text-sm text-gray-900 font-bold">
+                  {auditoria.duracionDias.planeacion + auditoria.duracionDias.ejecucion + auditoria.duracionDias.comunicacion} días
+                </span>
+              </div>
             </div>
           </div>
+        </CardSIGL>
+
+        {/* Documentos a Generar */}
+        <CardSIGL className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+              <FileCheck className="w-4 h-4 text-blue-600" />
+            </div>
+            <h4 className="text-sm text-gray-900 font-semibold">Documentos a Generar</h4>
+          </div>
+          <div className="space-y-2">
+            {[
+              { name: 'Oficio de Anuncio', icon: <FileText className="w-3 h-3" /> },
+              { name: 'Carta de Representante', icon: <Users className="w-3 h-3" /> },
+              { name: 'Carta de Compromiso', icon: <Shield className="w-3 h-3" /> },
+              { name: 'Programa Individual', icon: <FileCheck className="w-3 h-3" /> }
+            ].map((doc, idx) => (
+              <div key={idx} className="flex items-center gap-2 text-xs text-gray-700">
+                <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                <span>{doc.name}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-3 italic">
+            Los documentos se generarán automáticamente en el siguiente paso
+          </p>
         </CardSIGL>
       </div>
 
@@ -907,6 +962,9 @@ function Paso3Documentos({
   loading: boolean;
   onPreview: (doc: DocumentoGenerado) => void;
 }) {
+  const [documentoEditar, setDocumentoEditar] = useState<DocumentoGenerado | null>(null);
+  const [documentoCargar, setDocumentoCargar] = useState<TipoDocumento | null>(null);
+  
   if (loading) {
     return (
       <motion.div
@@ -926,89 +984,124 @@ function Paso3Documentos({
   }
 
   return (
-    <motion.div
-      key="paso3"
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      className="space-y-6"
-    >
-      <div>
-        <h3 className="text-lg text-gray-900 mb-2 flex items-center gap-2">
-          <FileCheck className="w-5 h-5 text-green-600" />
-          Documentos Generados
-        </h3>
-        <p className="text-sm text-gray-600">
-          Los siguientes documentos han sido generados automáticamente y están listos para revisión.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {documentos.map((doc, idx) => (
-          <motion.div
-            key={doc.tipo}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.1 }}
-          >
-            <CardSIGL hover className="p-4">
-              <div className="flex items-start gap-4">
-                <div 
-                  className="p-3 rounded-lg flex-shrink-0"
-                  style={{ backgroundColor: `${doc.color}20` }}
-                >
-                  <div style={{ color: doc.color }}>
-                    {doc.icono}
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-sm text-gray-900 font-medium mb-1">
-                    {doc.titulo}
-                  </h4>
-                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
-                    <span>{doc.size}</span>
-                    <span>•</span>
-                    <span>{doc.generadoEn.toLocaleTimeString('es-CO')}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ButtonSIGL
-                      variant="outline"
-                      size="sm"
-                      icon={<Eye className="w-3 h-3" />}
-                      onClick={() => onPreview(doc)}
-                    >
-                      Ver
-                    </ButtonSIGL>
-                    <ButtonSIGL
-                      variant="outline"
-                      size="sm"
-                      icon={<Download className="w-3 h-3" />}
-                      onClick={() => toast.info('Descargando documento...')}
-                    >
-                      Descargar
-                    </ButtonSIGL>
-                  </div>
-                </div>
-              </div>
-            </CardSIGL>
-          </motion.div>
-        ))}
-      </div>
-
-      <CardSIGL className="p-4 border-l-4 border-l-green-500 bg-green-50/50">
-        <div className="flex items-start gap-3">
-          <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm text-gray-900 font-medium mb-1">
-              ✅ Todos los documentos generados correctamente
-            </p>
-            <p className="text-sm text-gray-700">
-              Revise cada documento antes de continuar. Puede descargarlos para revisión offline.
-            </p>
-          </div>
+    <>
+      <motion.div
+        key="paso3"
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -20 }}
+        className="space-y-6"
+      >
+        <div>
+          <h3 className="text-lg text-gray-900 mb-2 flex items-center gap-2">
+            <FileCheck className="w-5 h-5 text-green-600" />
+            Documentos Generados
+          </h3>
+          <p className="text-sm text-gray-600">
+            Los siguientes documentos han sido generados automáticamente. Puede editarlos o cargar versiones personalizadas.
+          </p>
         </div>
-      </CardSIGL>
-    </motion.div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {documentos.map((doc, idx) => (
+            <motion.div
+              key={doc.tipo}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.1 }}
+            >
+              <CardSIGL hover className="p-4">
+                <div className="flex items-start gap-4">
+                  <div 
+                    className="p-3 rounded-lg flex-shrink-0"
+                    style={{ backgroundColor: `${doc.color}20` }}
+                  >
+                    <div style={{ color: doc.color }}>
+                      {doc.icono}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm text-gray-900 font-medium mb-1">
+                      {doc.titulo}
+                    </h4>
+                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+                      <span>{doc.size}</span>
+                      <span>•</span>
+                      <span>{doc.generadoEn.toLocaleTimeString('es-CO')}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ButtonSIGL
+                        variant="outline"
+                        size="sm"
+                        icon={<Eye className="w-3 h-3" />}
+                        onClick={() => onPreview(doc)}
+                      >
+                        Ver
+                      </ButtonSIGL>
+                      <ButtonSIGL
+                        variant="outline"
+                        size="sm"
+                        icon={<Edit className="w-3 h-3" />}
+                        onClick={() => setDocumentoEditar(doc)}
+                      >
+                        Editar
+                      </ButtonSIGL>
+                      <ButtonSIGL
+                        variant="outline"
+                        size="sm"
+                        icon={<Upload className="w-3 h-3" />}
+                        onClick={() => setDocumentoCargar(doc.tipo)}
+                      >
+                        Cargar
+                      </ButtonSIGL>
+                    </div>
+                  </div>
+                </div>
+              </CardSIGL>
+            </motion.div>
+          ))}
+        </div>
+
+        <CardSIGL className="p-4 border-l-4 border-l-green-500 bg-green-50/50">
+          <div className="flex items-start gap-3">
+            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-gray-900 font-medium mb-1">
+                ✅ Todos los documentos generados correctamente
+              </p>
+              <p className="text-sm text-gray-700">
+                Puede editar cualquier documento o cargar una versión personalizada antes de continuar.
+              </p>
+            </div>
+          </div>
+        </CardSIGL>
+      </motion.div>
+
+      {/* Modal de edición */}
+      {documentoEditar && (
+        <ModalEditarDocumento
+          documento={documentoEditar}
+          onClose={() => setDocumentoEditar(null)}
+          onSave={(contenido) => {
+            // Actualizar el contenido del documento
+            toast.success(`✅ ${documentoEditar.titulo} actualizado`);
+            setDocumentoEditar(null);
+          }}
+        />
+      )}
+
+      {/* Modal de carga */}
+      {documentoCargar && (
+        <ModalCargarDocumento
+          tipo={documentoCargar}
+          onClose={() => setDocumentoCargar(null)}
+          onUpload={(file) => {
+            toast.success(`✅ Archivo cargado: ${file.name}`);
+            setDocumentoCargar(null);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -1170,6 +1263,201 @@ function ModalVistaPrevia({
             onClick={onClose}
           >
             Cerrar
+          </ButtonSIGL>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ============ MODAL EDITAR DOCUMENTO ============
+
+function ModalEditarDocumento({ 
+  documento, 
+  onClose,
+  onSave
+}: { 
+  documento: DocumentoGenerado;
+  onClose: () => void;
+  onSave: (contenido: string) => void;
+}) {
+  const [contenido, setContenido] = useState(documento.contenido);
+  
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+      >
+        {/* Header */}
+        <div 
+          className="p-4 border-b border-gray-200 flex items-center justify-between"
+          style={{ backgroundColor: `${documento.color}10` }}
+        >
+          <div className="flex items-center gap-3">
+            <div 
+              className="p-2 rounded-lg"
+              style={{ backgroundColor: `${documento.color}20`, color: documento.color }}
+            >
+              {documento.icono}
+            </div>
+            <div>
+              <h3 className="text-gray-900 font-medium">{documento.titulo}</h3>
+              <p className="text-xs text-gray-600">Editar documento</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-600" />
+          </button>
+        </div>
+
+        {/* Contenido */}
+        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+          <div className="bg-white rounded-lg shadow-sm p-8 max-w-3xl mx-auto">
+            <textarea
+              value={contenido}
+              onChange={(e) => setContenido(e.target.value)}
+              rows={15}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Edite el contenido del documento..."
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-2">
+          <ButtonSIGL
+            variant="outline"
+            icon={<Download className="w-4 h-4" />}
+            onClick={() => toast.success('Descargando documento...')}
+          >
+            Descargar PDF
+          </ButtonSIGL>
+          <ButtonSIGL
+            variant="primary"
+            onClick={() => onSave(contenido)}
+          >
+            Guardar Cambios
+          </ButtonSIGL>
+          <ButtonSIGL
+            variant="outline"
+            onClick={onClose}
+          >
+            Cancelar
+          </ButtonSIGL>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ============ MODAL CARGAR DOCUMENTO ============
+
+function ModalCargarDocumento({ 
+  tipo, 
+  onClose,
+  onUpload
+}: { 
+  tipo: TipoDocumento;
+  onClose: () => void;
+  onUpload: (file: File) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFile(e.target.files[0]);
+    }
+  };
+
+  const handleUpload = () => {
+    if (file) {
+      onUpload(file);
+    }
+  };
+  
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+      >
+        {/* Header */}
+        <div 
+          className="p-4 border-b border-gray-200 flex items-center justify-between"
+          style={{ backgroundColor: '#3B82F610' }}
+        >
+          <div className="flex items-center gap-3">
+            <div 
+              className="p-2 rounded-lg"
+              style={{ backgroundColor: '#3B82F620', color: '#3B82F6' }}
+            >
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-gray-900 font-medium">Cargar Documento</h3>
+              <p className="text-xs text-gray-600">Subir archivo personalizado</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-600" />
+          </button>
+        </div>
+
+        {/* Contenido */}
+        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+          <div className="bg-white rounded-lg shadow-sm p-8 max-w-3xl mx-auto">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-lg bg-gray-100">
+                <FileText className="w-5 h-5 text-gray-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm text-gray-900 font-medium">Archivo seleccionado:</p>
+                <p className="text-sm text-gray-700">
+                  {file ? file.name : 'Ningún archivo seleccionado'}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4">
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx"
+                onChange={handleFileChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-2">
+          <ButtonSIGL
+            variant="outline"
+            icon={<Download className="w-4 h-4" />}
+            onClick={() => toast.success('Descargando documento...')}
+          >
+            Descargar PDF
+          </ButtonSIGL>
+          <ButtonSIGL
+            variant="primary"
+            onClick={handleUpload}
+            disabled={!file}
+          >
+            Cargar Archivo
+          </ButtonSIGL>
+          <ButtonSIGL
+            variant="outline"
+            onClick={onClose}
+          >
+            Cancelar
           </ButtonSIGL>
         </div>
       </motion.div>

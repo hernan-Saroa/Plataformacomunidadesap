@@ -179,15 +179,6 @@ export function CommandPalettePremium({
       onExecute: () => onNavigate?.('community'),
     },
     {
-      id: 'nav-job-board',
-      title: 'Bolsa de Empleo',
-      description: 'Ofertas laborales',
-      icon: <Briefcase className="w-5 h-5" />,
-      category: 'navigation',
-      keywords: ['bolsa', 'empleo', 'trabajo', 'ofertas', 'vacantes', 'jobs'],
-      onExecute: () => onNavigate?.('job-board'),
-    },
-    {
       id: 'nav-certificados',
       title: 'Certificados Laborales',
       description: 'Certificación laboral',

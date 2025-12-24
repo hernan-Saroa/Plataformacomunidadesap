@@ -31,6 +31,7 @@ import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { toast } from 'sonner@2.0.3';
 import { NormatividadAplicable } from './NormatividadAplicable';
+import { ConfiguracionAvanzadaCIG } from './ConfiguracionAvanzadaCIG';
 
 // ====================================
 // TIPOS

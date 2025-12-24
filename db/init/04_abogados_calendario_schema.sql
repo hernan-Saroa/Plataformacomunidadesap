@@ -1,8 +1,8 @@
 -- 04_abogados_calendario_schema.sql
 
 -- Tabla de Abogados Sustanciadores
-CREATE TABLE IF NOT EXISTS abogados (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+CREATE TABLE IF NOT EXISTS legal_management.abogados (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     nombre_completo VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     telefono VARCHAR(50),
@@ -15,10 +15,10 @@ CREATE TABLE IF NOT EXISTS abogados (
 );
 
 -- Tabla de Audiencias
-CREATE TABLE IF NOT EXISTS audiencias (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    expediente_id UUID NOT NULL REFERENCES expedientes(id),
-    abogado_id UUID NOT NULL REFERENCES abogados(id),
+CREATE TABLE IF NOT EXISTS legal_management.audiencias (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    expediente_id UUID NOT NULL REFERENCES legal_management.expedientes(id),
+    abogado_id UUID NOT NULL REFERENCES legal_management.abogados(id),
     titulo VARCHAR(255) NOT NULL,
     fecha_hora_inicio TIMESTAMP NOT NULL,
     duracion_minutos INTEGER NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS audiencias (
 );
 
 -- Seed Data para Abogados (Requerido)
-INSERT INTO abogados (nombre_completo, email, telefono, especialidad, fecha_ingreso, estado)
+INSERT INTO legal_management.abogados (nombre_completo, email, telefono, especialidad, fecha_ingreso, estado)
 VALUES 
 ('Carlos Mendoza', 'carlos.mendoza@esap.edu.co', '3001234567', 'Derecho Disciplinario', CURRENT_DATE - INTERVAL '5 years', 'ACTIVO'),
 ('María Torres', 'maria.torres@esap.edu.co', '3109876543', 'Responsabilidad Fiscal', CURRENT_DATE - INTERVAL '2 years', 'ACTIVO')

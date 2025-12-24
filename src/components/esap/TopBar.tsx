@@ -97,7 +97,6 @@ export function TopBar({
             ) : (
               /* Fallback: solo mostrar título del módulo */
               <span className="text-[--esap-gray-900] font-semibold truncate max-w-[200px] lg:max-w-[150px] xl:max-w-[200px]">
-                {moduleTitle}
               </span>
             )}
           </div>

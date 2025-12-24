@@ -344,8 +344,8 @@ export function CarpetaDigitalGlobal({ usuarios }: CarpetaDigitalGlobalProps) {
                   <p className="text-2xl font-bold text-purple-600">{estadisticasGlobales.formatos}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-green-600 mb-1">Completos</p>
-                  <p className="text-2xl font-bold text-green-600">{estadisticasGlobales.completos}</p>
+                  <p className="text-xs text-[#1e5da8] mb-1">Completos</p>
+                  <p className="text-2xl font-bold text-[#1e5da8]">{estadisticasGlobales.completos}</p>
                 </div>
                 <div>
                   <p className="text-xs text-orange-600 mb-1">Rechazados</p>
@@ -411,7 +411,7 @@ export function CarpetaDigitalGlobal({ usuarios }: CarpetaDigitalGlobalProps) {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
                             {usuario.porEstado.completo > 0 && (
-                              <Badge className="bg-green-100 text-green-700 border-green-200 text-xs px-2 py-0.5">
+                              <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs px-2 py-0.5">
                                 {usuario.porEstado.completo}
                               </Badge>
                             )}
@@ -618,7 +618,7 @@ export function CarpetaDigitalGlobal({ usuarios }: CarpetaDigitalGlobalProps) {
                       </td>
                       <td className="px-6 py-4">
                         {doc.estado === 'completo' && (
-                          <Badge className="bg-green-100 text-green-700 border-green-200">
+                          <Badge className="bg-blue-100 text-blue-700 border-blue-200">
                             Validado
                           </Badge>
                         )}
@@ -663,7 +663,7 @@ export function CarpetaDigitalGlobal({ usuarios }: CarpetaDigitalGlobalProps) {
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => handleValidate(doc)}>
-                                  <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
+                                  <CheckCircle className="w-4 h-4 mr-2 text-[#1e5da8]" />
                                   Validar
                                 </DropdownMenuItem>
                               </>

@@ -265,7 +265,7 @@ const DocumentCard = ({ doc, onDownload, onDelete, onShare }: DocumentCardProps)
         {/* Badges superiores */}
         <div className="absolute top-3 left-3">
           {doc.validated && (
-            <Badge className="bg-green-100 text-green-700 border-green-300 text-xs">
+            <Badge className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
               <CheckCircle className="w-3 h-3 mr-1" />
               Validado
             </Badge>
@@ -478,7 +478,7 @@ export function DigitalFolderSection({
               <p className="text-xs text-white/70">Total</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-green-300">{stats.validated}</p>
+              <p className="text-2xl font-bold text-blue-300">{stats.validated}</p>
               <p className="text-xs text-white/70">Validados</p>
             </div>
             <div className="text-center">

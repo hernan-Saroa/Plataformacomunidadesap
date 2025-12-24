@@ -965,7 +965,7 @@ export function DigitalFolderModalPremium({
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
+                      className="fixed inset-0 z-[111] flex items-center justify-center pointer-events-none"
                       style={{ 
                         background: 'rgba(0, 61, 165, 0.95)',
                         backdropFilter: 'blur(10px)'

@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
 interface LoadingErrorUIProps {
   type?: 'network' | 'timeout' | 'resource' | 'unknown';
@@ -103,15 +102,6 @@ export function LoadingErrorUI({
         className="relative z-10 w-full max-w-2xl"
       >
         <Card className="p-8 md:p-12 shadow-2xl border-2 border-gray-200 bg-white/95 backdrop-blur-lg">
-          {/* Logo */}
-          <div className="flex justify-center mb-6">
-            <img 
-              src={esapLogoWhite} 
-              alt="ESAP Logo" 
-              className="h-16 w-auto object-contain"
-            />
-          </div>
-
           {/* Animated Icon */}
           <motion.div
             initial={{ scale: 0 }}
