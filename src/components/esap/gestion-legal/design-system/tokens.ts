@@ -1,276 +1,250 @@
 /**
- * DESIGN TOKENS SIGL - Sistema Integral de Gestión Legal ESAP
- * Basado en: DISEÑO_UI_SIGL_DETALLADO_PARA_FIGMA.md
- * Versión: 1.0
- * Fecha: Diciembre 17, 2025
+ * SIGL v5.0 - Design System Tokens
+ * Documento base: DISE_O_UX_UI_SIGL_v5_MVP_CORREGIDO.md
+ * 
+ * ⚠️ ESTOS VALORES SON MANDATORIOS - NO MODIFICAR
  */
 
-export const DESIGN_TOKENS = {
-  // 1. COLORES PRIMARIOS
-  colors: {
-    primary: {
-      blue: '#1F4788',        // Headers, botones primarios
-      blueHover: '#0d2856',   // Hover states primarios
-      blueActive: '#0a1f3f',  // Active states primarios
-      secondary: '#2E5C8A',   // Secondary actions
-      light: '#E8F0F8',       // Backgrounds, inputs
-      white: '#FFFFFF',       // Base
-    },
+// ⭐ COLORES PRIMARIOS (CAMBIO MANDATORIO v5.0)
+export const SIGL_COLORS = {
+  // Primarios
+  primary: '#0066CC',            // ⚠️ Azul ESAP v5.0 (antes era #003DA5)
+  primaryDark: '#004C99',
+  primaryLight: '#3399FF',
+  primaryHover: '#0052A3',
+  
+  // ⭐ SEMÁFORO UNIVERSAL (Aplicar en TODOS los módulos)
+  semaforoVerde: '#28A745',      // > 50% plazo disponible
+  semaforoAmarillo: '#FFC107',   // 25-50% plazo
+  semaforoRojo: '#DC3545',       // < 25% plazo
+  semaforoCritico: '#8B0000',    // ≤ 0 días (con animate-pulse)
+  
+  // ⭐ COLORES POR MÓDULO MVP (Para badges/headers de tab)
+  modDefensaJudicial: '#0066CC',      // MOD-01: Azul
+  modJuzgamiento: '#9C27B0',          // MOD-02: Púrpura
+  modAsesoria: '#FF9800',             // MOD-03: Naranja
+  modBuzonNotif: '#2196F3',           // MOD-04: Azul claro
+  modTerminos: '#607D8B',             // MOD-05: Gris azulado
+  
+  // ⭐ COLORES POR JURISDICCIÓN (MOD-01 específico)
+  jurisdContencioso: '#1976D2',       // Contencioso Administrativo
+  jurisdCivil: '#388E3C',             // Ordinaria Civil
+  jurisdLaboral: '#F57C00',           // Laboral
+  jurisdConstitucional: '#7B1FA2',    // Constitucional
+  
+  // Neutrales (Grises)
+  gris100: '#F8F9FA',
+  gris200: '#E9ECEF',
+  gris300: '#DEE2E6',
+  gris400: '#CED4DA',
+  gris500: '#ADB5BD',
+  gris600: '#6C757D',
+  gris700: '#495057',
+  gris800: '#343A40',
+  gris900: '#212529',
+  
+  // Estados
+  success: '#28A745',
+  warning: '#FFC107',
+  danger: '#DC3545',
+  info: '#17A2B8',
+  
+  // Fondos
+  bgPrimary: '#FFFFFF',
+  bgSecondary: '#F8F9FA',
+  bgDark: '#212529',
+  bgHover: '#F1F3F5',
+  bgSelected: '#E7F5FF',
+  
+  // Bordes
+  border: '#DEE2E6',
+  borderDark: '#ADB5BD',
+  borderLight: '#E9ECEF',
+  
+  // Texto
+  textPrimary: '#212529',
+  textSecondary: '#6C757D',
+  textMuted: '#ADB5BD',
+  textWhite: '#FFFFFF',
+} as const;
 
-    // 2. COLORES DE ESTADO (Semáforo de plazos)
-    status: {
-      green: '#28A745',       // OK/Plazo normal
-      yellow: '#FFC107',      // Alerta (Día 25)
-      orange: '#FF9800',      // Atención (< 10 días)
-      red: '#DC3545',         // Crítico/Vencido
-      gray: '#6C757D',        // Inactivo
-    },
+// ⭐ ESPACIADO (Sistema de 4px base)
+export const SIGL_SPACING = {
+  xs: 4,      // 4px
+  sm: 8,      // 8px
+  md: 16,     // 16px
+  lg: 24,     // 24px
+  xl: 32,     // 32px
+  xxl: 48,    // 48px
+  xxxl: 64,   // 64px
+} as const;
 
-    // 3. COLORES NEUTROS
-    neutral: {
-      darkGray: '#2C3E50',    // Texto principal
-      mediumGray: '#95A5A6',  // Texto secundario
-      lightGray: '#ECF0F1',   // Bordes, divisores
-      veryLightGray: '#F5F6FA', // Backgrounds secundarios
-    },
+// ⭐ BORDES Y RADIOS
+export const SIGL_BORDERS = {
+  radiusCard: 8,
+  radiusInput: 4,
+  radiusModal: 12,
+  radiusButton: 6,
+  radiusBadge: 4,
+  radiusTab: 6,
+  
+  // Tamaños de borde
+  thin: '1px',
+  medium: '2px',
+  thick: '3px',
+  
+  // Estilos
+  solid: 'solid',
+  dashed: 'dashed',
+  dotted: 'dotted',
+} as const;
 
-    // 4. GRADIENTES
-    gradients: {
-      blue: 'linear-gradient(135deg, #1F4788 0%, #2E5C8A 100%)', // Headers
-      alert: 'linear-gradient(135deg, #FFC107 0%, #FF9800 100%)', // Warning banners
-    },
+// ⭐ SOMBRAS
+export const SIGL_SHADOWS = {
+  none: 'none',
+  sm: '0 1px 3px rgba(0,0,0,0.12)',
+  md: '0 2px 8px rgba(0,0,0,0.15)',
+  lg: '0 4px 16px rgba(0,0,0,0.15)',
+  xl: '0 8px 24px rgba(0,0,0,0.20)',
+  hover: '0 4px 12px rgba(0,102,204,0.20)', // Sombra con color primario
+} as const;
 
-    // 5. COLORES POR ESTADO DE EXPEDIENTE (Badges)
-    badge: {
-      recibida: { bg: '#1F4788', text: '#FFFFFF' },
-      enDefensa: { bg: '#FFC107', text: '#2C3E50' },
-      respondida: { bg: '#28A745', text: '#FFFFFF' },
-      vencida: { bg: '#DC3545', text: '#FFFFFF' },
-      sentenciada: { bg: '#6C757D', text: '#FFFFFF' },
-      enProceso: { bg: '#FF9800', text: '#FFFFFF' },
-      extendida: { bg: '#2E5C8A', text: '#FFFFFF' },
-    },
-
-    // 6. COLORES ESPECÍFICOS PARA MÓDULO LEGAL
-    legal: {
-      purple: '#6F42C1',      // Color actual del módulo legal
-      purpleLight: '#F3E8FF', // Backgrounds púrpura claro
-      purpleDark: '#5A2D9C',  // Hover púrpura
-    },
+// ⭐ TIPOGRAFÍA (Fuente: Inter de Google Fonts)
+export const SIGL_TYPOGRAPHY = {
+  h1: {
+    fontSize: 32,
+    fontWeight: 700,
+    lineHeight: 1.25,
   },
-
-  // 2. TIPOGRAFÍA
-  typography: {
-    fontFamily: {
-      primary: 'Inter, Arial, sans-serif',
-      monospace: 'Courier New, monospace', // Para IDs, números
-    },
-
-    fontSize: {
-      h1: '32px',       // Títulos Página
-      h2: '24px',       // Subtítulos
-      h3: '18px',       // Títulos Sección
-      body: '14px',     // Body Regular
-      small: '12px',    // Body Small
-      label: '12px',    // Label
-      button: '14px',   // Button Text
-      code: '13px',     // Code/Monospace
-    },
-
-    fontWeight: {
-      regular: 400,     // Body text
-      semibold: 600,    // Labels, button text
-      bold: 700,        // Headings
-    },
-
-    lineHeight: {
-      h1: 1.2,
-      h2: 1.3,
-      h3: 1.4,
-      body: 1.6,
-      small: 1.5,
-      label: 1.4,
-      button: 1.4,
-    },
+  h2: {
+    fontSize: 24,
+    fontWeight: 600,
+    lineHeight: 1.3,
   },
-
-  // 3. SPACING (base 8px)
-  spacing: {
-    xs: '4px',        // Inner spacing en botones pequeños
-    s: '8px',         // Default spacing entre elementos
-    m: '16px',        // Spacing entre secciones menores
-    l: '24px',        // Spacing entre secciones principales
-    xl: '32px',       // Spacing entre grandes bloques
-    xxl: '48px',      // Page-level spacing
+  h3: {
+    fontSize: 20,
+    fontWeight: 600,
+    lineHeight: 1.4,
   },
-
-  // 4. PADDING ESPECÍFICO
-  padding: {
-    button: {
-      vertical: '12px',
-      horizontal: '16px',
-    },
-    input: {
-      vertical: '10px',
-      horizontal: '12px',
-    },
-    card: '24px',
-    cardHeader: '16px',
-    cardFooter: '16px',
+  h4: {
+    fontSize: 18,
+    fontWeight: 600,
+    lineHeight: 1.4,
   },
-
-  // 5. MARGINS
-  margin: {
-    betweenCards: '16px',
-    betweenFields: '16px',
-    betweenSections: '32px',
+  body: {
+    fontSize: 14,
+    fontWeight: 400,
+    lineHeight: 1.5,
   },
-
-  // 6. BORDES Y ESQUINAS
-  borderRadius: {
-    small: '4px',     // Inputs, buttons
-    medium: '8px',    // Cards, modals
-    large: '12px',    // Large cards
-    round: '50%',     // Avatares, badges circulares
+  small: {
+    fontSize: 12,
+    fontWeight: 400,
+    lineHeight: 1.5,
   },
-
-  borderWidth: {
-    thin: '1px',
-    normal: '2px',
-    thick: '3px',
-  },
-
-  borderStyle: {
-    input: '1px solid #ECF0F1',
-    card: '1px solid #E8F0F8',
-    divider: '1px solid #ECF0F1',
-    focus: '2px solid #1F4788',
-  },
-
-  // 7. SOMBRAS (Elevación)
-  shadows: {
-    level1: '0 2px 4px rgba(0,0,0,0.1)',     // Cards, modals
-    level2: '0 4px 8px rgba(0,0,0,0.15)',    // Dropdowns, popovers
-    level3: '0 8px 16px rgba(0,0,0,0.2)',    // Modals elevated
-    none: 'none',                             // Flat design
-  },
-
-  // 8. TAMAÑOS DE COMPONENTES
-  componentSizes: {
-    button: {
-      height: '40px',
-      minWidth: '100px',
-    },
-    buttonIcon: {
-      size: '36px',
-    },
-    input: {
-      height: '40px',
-    },
-    textarea: {
-      minHeight: '100px',
-      maxHeight: '400px',
-    },
-    avatar: {
-      small: '32px',
-      medium: '40px',
-      large: '64px',
-    },
-    checkbox: '18px',
-    radio: '20px',
-    tableRow: '44px',
-  },
-
-  // 9. Z-INDEX
-  zIndex: {
-    dropdown: 100,
-    sticky: 200,
-    fixed: 300,
-    modalOverlay: 900,
-    modal: 1000,
-    toast: 1100,
-    tooltip: 1200,
-  },
-
-  // 10. TRANSICIONES
-  transitions: {
-    fast: '150ms',
-    normal: '200ms',
-    slow: '300ms',
-    verySlow: '500ms',
-  },
-
-  // 11. OPACIDADES
-  opacity: {
-    disabled: 0.6,
-    hover: 0.8,
-    placeholder: 0.6,
-  },
-
-  // 12. BREAKPOINTS RESPONSIVE
-  breakpoints: {
-    mobile: '320px',
-    tablet: '768px',
-    desktop: '1024px',
-    wide: '1440px',
+  micro: {
+    fontSize: 10,
+    fontWeight: 400,
+    lineHeight: 1.5,
   },
 } as const;
 
-// Tipos TypeScript para autocompletado
-export type ColorToken = typeof DESIGN_TOKENS.colors;
-export type TypographyToken = typeof DESIGN_TOKENS.typography;
-export type SpacingToken = typeof DESIGN_TOKENS.spacing;
+// ⭐ ALTURAS DE COMPONENTES
+export const SIGL_HEIGHTS = {
+  inputSm: 32,
+  inputMd: 40,
+  inputLg: 48,
+  buttonSm: 32,
+  buttonMd: 40,
+  buttonLg: 48,
+  navTab: 48,
+  tableRow: 56,
+  cardHeader: 64,
+} as const;
 
-// Helper functions para acceso rápido
-export const getStatusColor = (status: string) => {
-  const normalizedStatus = status.toLowerCase().replace(/\s+/g, '');
-  const statusMap: Record<string, { bg: string; text: string }> = {
-    recibida: DESIGN_TOKENS.colors.badge.recibida,
-    endefensa: DESIGN_TOKENS.colors.badge.enDefensa,
-    respondida: DESIGN_TOKENS.colors.badge.respondida,
-    vencida: DESIGN_TOKENS.colors.badge.vencida,
-    sentenciada: DESIGN_TOKENS.colors.badge.sentenciada,
-    enproceso: DESIGN_TOKENS.colors.badge.enProceso,
-    extendida: DESIGN_TOKENS.colors.badge.extendida,
-  };
-  return statusMap[normalizedStatus] || { bg: DESIGN_TOKENS.colors.neutral.lightGray, text: DESIGN_TOKENS.colors.neutral.darkGray };
-};
+// ⭐ Z-INDEX (Capas de profundidad)
+export const SIGL_Z_INDEX = {
+  base: 0,
+  dropdown: 100,
+  sticky: 200,
+  fixed: 300,
+  modalBackdrop: 400,
+  modal: 500,
+  popover: 600,
+  tooltip: 700,
+} as const;
 
-// Función para calcular color según días restantes (Semáforo)
-export const getPlazoColor = (diasRestantes: number, vencido: boolean = false) => {
-  if (vencido || diasRestantes < 0) {
-    return DESIGN_TOKENS.colors.status.red; // Rojo - Vencido
-  }
-  if (diasRestantes < 5) {
-    return DESIGN_TOKENS.colors.status.orange; // Naranja - < 5 días
-  }
-  if (diasRestantes < 15) {
-    return DESIGN_TOKENS.colors.status.yellow; // Amarillo - 5-15 días
-  }
-  return DESIGN_TOKENS.colors.status.green; // Verde - > 15 días
-};
+// ⭐ TRANSICIONES
+export const SIGL_TRANSITIONS = {
+  fast: '150ms ease-in-out',
+  normal: '250ms ease-in-out',
+  slow: '350ms ease-in-out',
+  
+  // Propiedades específicas
+  all: 'all 250ms ease-in-out',
+  color: 'color 150ms ease-in-out',
+  background: 'background-color 150ms ease-in-out',
+  transform: 'transform 250ms ease-in-out',
+  opacity: 'opacity 200ms ease-in-out',
+} as const;
 
-// Función para obtener color de fondo según días restantes
-export const getPlazoBackgroundColor = (diasRestantes: number, vencido: boolean = false) => {
-  const color = getPlazoColor(diasRestantes, vencido);
-  // Retornar versión semi-transparente del color
-  return `${color}10`; // 10% opacity
-};
+// ⭐ BREAKPOINTS (Responsive)
+export const SIGL_BREAKPOINTS = {
+  xs: 0,      // Mobile small
+  sm: 576,    // Mobile
+  md: 768,    // Tablet
+  lg: 992,    // Desktop
+  xl: 1200,   // Desktop large
+  xxl: 1400,  // Desktop extra large
+} as const;
 
-// Función para determinar si el texto debe ser claro u oscuro según el fondo
-export const getContrastText = (backgroundColor: string) => {
-  // Simple heurística: si el color es oscuro, usar texto blanco
+// ⭐ ANCHOS MÁXIMOS
+export const SIGL_MAX_WIDTH = {
+  container: 1440,
+  modal: 800,
+  modalLarge: 1200,
+  sidebar: 280,
+  card: 400,
+} as const;
+
+/**
+ * Utilidad para generar sombra de semáforo
+ */
+export function getSemaforoShadow(color: string): string {
+  return `0 0 8px ${color}40`; // 40 es 25% de opacidad en hex
+}
+
+/**
+ * Utilidad para determinar color de texto según fondo
+ */
+export function getTextColor(bgColor: string): string {
+  // Simplificado: colores oscuros usan texto blanco
   const darkColors = [
-    DESIGN_TOKENS.colors.primary.blue,
-    DESIGN_TOKENS.colors.primary.blueHover,
-    DESIGN_TOKENS.colors.status.red,
-    DESIGN_TOKENS.colors.status.green,
-    DESIGN_TOKENS.colors.legal.purple,
+    SIGL_COLORS.primary,
+    SIGL_COLORS.primaryDark,
+    SIGL_COLORS.semaforoCritico,
+    SIGL_COLORS.jurisdConstitucional,
+    SIGL_COLORS.modJuzgamiento,
   ];
   
-  return darkColors.includes(backgroundColor) 
-    ? DESIGN_TOKENS.colors.primary.white 
-    : DESIGN_TOKENS.colors.neutral.darkGray;
-};
+  return darkColors.includes(bgColor) 
+    ? SIGL_COLORS.textWhite 
+    : SIGL_COLORS.textPrimary;
+}
 
-export default DESIGN_TOKENS;
+/**
+ * Exportar tokens combinados para uso fácil
+ */
+export const SIGL_TOKENS = {
+  colors: SIGL_COLORS,
+  spacing: SIGL_SPACING,
+  borders: SIGL_BORDERS,
+  shadows: SIGL_SHADOWS,
+  typography: SIGL_TYPOGRAPHY,
+  heights: SIGL_HEIGHTS,
+  zIndex: SIGL_Z_INDEX,
+  transitions: SIGL_TRANSITIONS,
+  breakpoints: SIGL_BREAKPOINTS,
+  maxWidth: SIGL_MAX_WIDTH,
+} as const;
+
+export default SIGL_TOKENS;

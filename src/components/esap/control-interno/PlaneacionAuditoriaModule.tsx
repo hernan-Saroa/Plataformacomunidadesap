@@ -743,7 +743,7 @@ export function PlaneacionAuditoriaModule({
                     </span>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
                     {actividadDatos.checklist.map((item) => (
                       <div
                         key={item.id}
@@ -966,13 +966,11 @@ export function PlaneacionAuditoriaModule({
                         }
                       }}
                     />
-                    <label htmlFor={`file-${actividadActiva}`}>
-                      <ButtonSIGL variant="secondary" className="cursor-pointer" asChild>
-                        <span>
-                          <Upload className="w-4 h-4 mr-2" />
-                          Cargar Documento
-                        </span>
-                      </ButtonSIGL>
+                    <label htmlFor={`file-${actividadActiva}`} className="cursor-pointer">
+                      <span className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border-2 border-gray-200 bg-white text-gray-700 hover:border-gray-300 transition-colors">
+                        <Upload className="w-4 h-4" />
+                        Cargar Documento
+                      </span>
                     </label>
                   </div>
 

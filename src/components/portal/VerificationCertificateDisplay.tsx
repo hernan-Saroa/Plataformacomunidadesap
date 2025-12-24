@@ -1,11 +1,19 @@
-import { useRef, useEffect, useState } from 'react';
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Download, Share2, Shield, Calendar, User, Award, Hash, CheckCircle, FileText, Building2, ShieldCheck, Lock, FileCheck, ArrowUp, X, Copy, Mail, MessageCircle, Loader2 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import React from 'react';
+import { motion } from 'framer-motion';
+import { 
+  Download, 
+  Share2, 
+  CheckCircle, 
+  Calendar, 
+  User, 
+  FileText, 
+  Award,
+  Copy,
+  Mail,
+  MessageSquare
+} from 'lucide-react';
 import { VerificationCertificate } from '../../types';
 import { toast } from 'sonner@2.0.3';
-import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 import { copyToClipboard } from '@/utils/browser';
 
 interface VerificationCertificateDisplayProps {

@@ -68,6 +68,8 @@ import { FiltroEstructuraOrganizacional } from '../estructura-organizacional/Fil
 import { DigitalFolderSection } from './DigitalFolderSection';  // ✅ CARPETA DIGITAL COMO SECCIÓN
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';  // ✅ TABS
 import { UserExpandedView } from './UserExpandedView';  // ✅ VISTA EXPANDIDA REDISEÑADA
+import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  // ✅ RF015 - ROLES Y PERMISOS ACTUALIZADO
+import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  // ✅ ESTADÍSTICAS DOCENTES ESAP
 import React, { useEffect } from 'react';
 
 export function UsersPersonsModulePremium() {
@@ -85,7 +87,7 @@ export function UsersPersonsModulePremium() {
   const [showAssignRolesModal, setShowAssignRolesModal] = useState(false);  // ✅ MODAL ASIGNAR ROLES
   const [showSedesMetrics, setShowSedesMetrics] = useState(false);  // ✅ DASHBOARD SEDES
   const [showExportModal, setShowExportModal] = useState(false);  // ✅ MODAL EXPORTAR
-  const [viewMode, setViewMode] = useState<'users' | 'digital-folder'>('users');  // ✅ NUEVO - Vista actual
+  const [viewMode, setViewMode] = useState<'users' | 'digital-folder' | 'roles-permisos' | 'estadisticas-docentes'>('users');  // ✅ NUEVO - Vista actual con RF015 + Estadísticas
   const [selectedUser, setSelectedUser] = useState<any | null>(null);  // ✅ USUARIO SELECCIONADO
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);  // ✅ ESTADO MODAL CREAR
   const [users, setUsers] = useState<User[]>([]);  // ✅ ESTADO PARA USUARIOS REALES
@@ -645,6 +647,42 @@ export function UsersPersonsModulePremium() {
         }))}
         canUpload={true}
       />
+    );
+  }
+
+  // ✅ RF015 - Si estamos en la vista de Roles y Permisos
+  if (viewMode === 'roles-permisos') {
+    return (
+      <div className="space-y-4">
+        {/* Botón de Retorno */}
+        <button
+          onClick={() => setViewMode('users')}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          ← Volver a Gestión de Personas
+        </button>
+        
+        {/* Componente RF015 Actualizado */}
+        <RolesYPermisosActualizado />
+      </div>
+    );
+  }
+
+  // ✅ ESTADÍSTICAS DOCENTES ESAP - Vista detallada de los 263 docentes integrados
+  if (viewMode === 'estadisticas-docentes') {
+    return (
+      <div className="space-y-4">
+        {/* Botón de Retorno */}
+        <button
+          onClick={() => setViewMode('users')}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          ← Volver a Gestión de Personas
+        </button>
+        
+        {/* Estadísticas de Docentes ESAP */}
+        <EstadisticasDocentesESAP />
+      </div>
     );
   }
 

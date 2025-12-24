@@ -504,8 +504,7 @@ export function RevisarPTAsModal({ isOpen, onClose, onPTAReviewed }: RevisarPTAs
                       key={pta.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="bg-white border-2 border-gray-200 rounded-xl p-4 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer"
-                      onClick={() => setSelectedPTA(pta)}
+                      className="bg-white border-2 border-gray-200 rounded-xl p-4 hover:border-blue-400 hover:shadow-md transition-all"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
@@ -564,7 +563,14 @@ export function RevisarPTAsModal({ isOpen, onClose, onPTAReviewed }: RevisarPTAs
                           </div>
                         </div>
 
-                        <Button variant="outline" size="sm">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPTA(pta);
+                          }}
+                        >
                           <Eye className="w-4 h-4 mr-2" />
                           Revisar
                         </Button>

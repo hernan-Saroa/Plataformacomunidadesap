@@ -1,0 +1,360 @@
+/**
+ * DashboardEjecutivoSIGL - Dashboard Ejecutivo SIGL
+ * DISEÑO 100% COHERENTE CON CONTROL DISCIPLINARIO
+ */
+
+import { TrendingUp, AlertTriangle, Clock, CheckCircle, FileText, Calendar, Scale, Gavel, FileQuestion, Inbox, CalendarClock } from 'lucide-react';
+import { Card } from '../../../ui/card';
+import { Badge } from '../../../ui/badge';
+
+import { estadisticasDefensaJudicial } from '../data/datosExpedientesJudiciales';
+import { estadisticasJuzgamiento } from '../data/datosProcesoDisciplinarios';
+import { estadisticasAsesoriaJuridica } from '../data/datosConsultasJuridicas';
+import { estadisticasBuzonNotificaciones } from '../data/datosNotificaciones';
+import { estadisticasTerminosCompleto } from '../data/datosTerminosInformesCompleto';
+
+export function DashboardEjecutivoSIGL() {
+  const totalExpedientes = (estadisticasDefensaJudicial?.total || 0) + 
+                           (estadisticasJuzgamiento?.total || 0) + 
+                           (estadisticasAsesoriaJuridica?.total || 0) + 
+                           (estadisticasBuzonNotificaciones?.total || 0) + 
+                           (estadisticasTerminosCompleto?.total || 0);
+  
+  const totalUrgentes = 
+    (estadisticasDefensaJudicial?.urgentes || 0) + 
+    (estadisticasJuzgamiento?.enDescargos || 0) + 
+    (estadisticasAsesoriaJuridica?.urgentes || 0) + 
+    (estadisticasBuzonNotificaciones?.urgentes || 0) +
+    (estadisticasTerminosCompleto?.urgentes?.length || 0);
+  
+  const totalVencidos = 
+    (estadisticasDefensaJudicial?.vencidos || 0) + 
+    (estadisticasAsesoriaJuridica?.vencidas || 0) + 
+    (estadisticasBuzonNotificaciones?.vencidas || 0) +
+    (estadisticasTerminosCompleto?.vencidos || 0);
+
+  const expedientesUrgentes = [
+    {
+      id: 'NRD - María González vs ESAP',
+      modulo: 'Defensa Judicial',
+      dias: '3 días',
+      color: '#10B981',
+    },
+    {
+      id: 'Proceso Disciplinario - Carlos Ruiz',
+      modulo: 'Juzgamiento',
+      dias: '2 días',
+      color: '#DC2626',
+    },
+    {
+      id: 'Concepto Contratación - Territorial',
+      modulo: 'Asesoría',
+      dias: '4 días',
+      color: '#8B5CF6',
+    },
+    {
+      id: 'Informe Permanente Q1 2025',
+      modulo: 'Informes',
+      dias: '5 días',
+      color: '#6366F1',
+    },
+  ];
+
+  return (
+    <div className="h-full flex flex-col bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: '#003DA5' }}>
+              Dashboard Ejecutivo SIGL
+            </h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Vista general de todos los expedientes y procesos legales
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-500">Última actualización</p>
+            <p className="text-sm font-semibold" style={{ color: '#003DA5' }}>
+              {new Date().toLocaleDateString('es-CO', { 
+                day: '2-digit', 
+                month: 'short', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Contenido */}
+      <div className="flex-1 overflow-auto p-6">
+        {/* Métricas Principales */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+          {/* Total Expedientes */}
+          <Card className="p-4 border-l-4" style={{ borderLeftColor: '#003DA5' }}>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-sm text-gray-600">Total Expedientes</p>
+                <p className="text-3xl font-bold mt-2" style={{ color: '#003DA5' }}>
+                  {totalExpedientes}
+                </p>
+                <div className="flex items-center gap-1 mt-2">
+                  <TrendingUp size={14} className="text-green-600" />
+                  <span className="text-xs text-green-600">+8% vs mes anterior</span>
+                </div>
+              </div>
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#E0EDFF' }}>
+                <FileText size={24} style={{ color: '#003DA5' }} />
+              </div>
+            </div>
+          </Card>
+
+          {/* Expedientes Urgentes */}
+          <Card className="p-4 border-l-4 border-l-red-600">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-sm text-gray-600">Expedientes Urgentes</p>
+                <p className="text-3xl font-bold mt-2 text-red-600">
+                  {totalUrgentes}
+                </p>
+                <Badge className="mt-2 bg-red-100 text-red-700 text-xs">
+                  Requieren atención
+                </Badge>
+              </div>
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-red-50">
+                <AlertTriangle size={24} className="text-red-600" />
+              </div>
+            </div>
+          </Card>
+
+          {/* Expedientes Vencidos */}
+          <Card className="p-4 border-l-4 border-l-orange-600">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-sm text-gray-600">Expedientes Vencidos</p>
+                <p className="text-3xl font-bold mt-2 text-orange-600">
+                  {totalVencidos}
+                </p>
+                <Badge className="mt-2 bg-orange-100 text-orange-700 text-xs">
+                  Acción inmediata
+                </Badge>
+              </div>
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-orange-50 animate-pulse">
+                <Clock size={24} className="text-orange-600" />
+              </div>
+            </div>
+          </Card>
+
+          {/* Término Promedio */}
+          <Card className="p-4 border-l-4 border-l-yellow-500">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-sm text-gray-600">Término Promedio</p>
+                <p className="text-3xl font-bold mt-2 text-yellow-600">
+                  22 días
+                </p>
+                <div className="flex items-center gap-1 mt-2">
+                  <CheckCircle size={14} className="text-green-600" />
+                  <span className="text-xs text-green-600">Dentro del plazo</span>
+                </div>
+              </div>
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-yellow-50">
+                <Calendar size={24} className="text-yellow-600" />
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Top Expedientes Urgentes */}
+          <Card className="p-5">
+            <div className="mb-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold" style={{ color: '#003DA5' }}>
+                  Top Expedientes Más Urgentes
+                </h3>
+                <Badge className="bg-red-100 text-red-700 text-xs font-semibold">
+                  4 Urgentes
+                </Badge>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Requieren atención prioritaria
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {expedientesUrgentes.map((exp, idx) => (
+                <div 
+                  key={idx}
+                  className="p-3 rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge style={{ background: exp.color, color: '#FFFFFF' }} className="text-xs">
+                      {exp.modulo}
+                    </Badge>
+                    <span className="text-xs font-bold text-red-600">
+                      ⏰ {exp.dias}
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {exp.id}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Distribución por Módulo */}
+          <Card className="p-5">
+            <div className="mb-4">
+              <h3 className="font-bold" style={{ color: '#003DA5' }}>
+                Distribución por Módulo
+              </h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Carga de trabajo por área
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Defensa Judicial */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded" style={{ backgroundColor: '#10B981' }} />
+                    <span className="text-sm font-medium text-gray-900">Defensa Judicial</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-gray-900">{estadisticasDefensaJudicial?.total || 0}</span>
+                    <Badge className="bg-red-100 text-red-700 text-xs">
+                      {estadisticasDefensaJudicial?.urgentes || 0} Urgentes
+                    </Badge>
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-green-500"
+                    style={{ 
+                      width: totalExpedientes > 0 ? `${((estadisticasDefensaJudicial?.total || 0) / totalExpedientes) * 100}%` : '0%',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Juzgamiento */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-red-600" />
+                    <span className="text-sm font-medium text-gray-900">Juzgamiento</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-gray-900">{estadisticasJuzgamiento?.total || 0}</span>
+                    <Badge className="bg-red-100 text-red-700 text-xs">
+                      {estadisticasJuzgamiento?.criticos || 0} Críticos
+                    </Badge>
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-red-600"
+                    style={{ 
+                      width: totalExpedientes > 0 ? `${((estadisticasJuzgamiento?.total || 0) / totalExpedientes) * 100}%` : '0%',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Asesoría */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-purple-600" />
+                    <span className="text-sm font-medium text-gray-900">Asesoría</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-gray-900">{estadisticasAsesoriaJuridica?.total || 0}</span>
+                    <Badge className="bg-orange-100 text-orange-700 text-xs">
+                      {estadisticasAsesoriaJuridica?.urgentes || 0} Urgentes
+                    </Badge>
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-purple-600"
+                    style={{ 
+                      width: totalExpedientes > 0 ? `${((estadisticasAsesoriaJuridica?.total || 0) / totalExpedientes) * 100}%` : '0%',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Buzón */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-blue-600" />
+                    <span className="text-sm font-medium text-gray-900">Buzón Notif.</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-gray-900">{estadisticasBuzonNotificaciones?.total || 0}</span>
+                    <Badge className="bg-yellow-100 text-yellow-700 text-xs">
+                      {estadisticasBuzonNotificaciones?.sinRevisar || 0} Sin Revisar
+                    </Badge>
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-600"
+                    style={{ 
+                      width: totalExpedientes > 0 ? `${((estadisticasBuzonNotificaciones?.total || 0) / totalExpedientes) * 100}%` : '0%',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Términos */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-indigo-600" />
+                    <span className="text-sm font-medium text-gray-900">Términos Informes</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-gray-900">{estadisticasTerminosCompleto?.total || 0}</span>
+                    <Badge className="bg-red-100 text-red-700 text-xs">
+                      {estadisticasTerminosCompleto?.urgentes?.length || 0} Urgentes
+                    </Badge>
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-indigo-600"
+                    style={{ 
+                      width: totalExpedientes > 0 ? `${((estadisticasTerminosCompleto?.total || 0) / totalExpedientes) * 100}%` : '0%',
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* Bienvenida */}
+        <div className="mt-6 text-center py-12">
+          <div className="inline-block p-4 rounded-full mb-4" style={{ backgroundColor: '#E0EDFF' }}>
+            <FileText size={48} style={{ color: '#003DA5' }} />
+          </div>
+          <h2 className="text-xl font-bold mb-2" style={{ color: '#003DA5' }}>
+            Bienvenido al Sistema Integrado de Gestión Legal
+          </h2>
+          <p className="text-sm max-w-2xl mx-auto text-gray-600">
+            Utiliza el menú lateral para navegar entre los diferentes módulos del sistema. 
+            Cada módulo cuenta con herramientas especializadas para gestionar expedientes, procesos y términos legales.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

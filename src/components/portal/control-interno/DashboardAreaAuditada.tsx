@@ -365,491 +365,495 @@ export function DashboardAreaAuditada({ onVolver }: DashboardAreaAuditadaProps) 
   const accionesVencidas = accionesPendientes.filter(a => a.estado === 'vencida').length;
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        {/* Botón de volver (si existe la función) */}
-        {onVolver && (
-          <button
-            onClick={() => {
-              console.log('DashboardAreaAuditada - Botón Volver clickeado');
-              onVolver();
-            }}
-            className="flex items-center gap-2 mb-4 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors text-sm font-medium text-gray-700"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Volver al Panel Administrativo</span>
-          </button>
-        )}
-
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div 
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-                style={{
-                  background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
-                  boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
-                }}
-              >
-                <Shield className="w-6 h-6 text-white" strokeWidth={2.5} />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight text-gray-900">
-                  Mis Compromisos de Auditoría
-                </h1>
-                <p className="text-sm text-gray-600 mt-1">
-                  {usuarioActual.nombre} • {usuarioActual.area}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" className="gap-2 relative">
-              <Bell className="w-4 h-4" />
-              Notificaciones
-              {notificacionesNoLeidas > 0 && (
-                <Badge className="bg-red-500 text-white border-0 absolute -top-2 -right-2 px-1.5 py-0.5 text-xs min-w-[20px] h-5 flex items-center justify-center">
-                  {notificacionesNoLeidas}
-                </Badge>
-              )}
-            </Button>
-            <Button variant="outline" size="sm" className="gap-2">
-              <Download className="w-4 h-4" />
-              Mis Informes
-            </Button>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Alerta si hay compromisos vencidos */}
-      {(planesConAlerta > 0 || accionesVencidas > 0) && (
+    <div className="min-h-screen bg-gray-50 pt-16 pb-20 md:pb-0">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header con botón de volver */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-red-50 border-2 border-red-300 rounded-xl p-4"
+          transition={{ duration: 0.3 }}
+          className="mb-6"
         >
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="font-semibold text-red-900 mb-1">
-                Atención: Tiene compromisos vencidos
-              </h3>
-              <p className="text-sm text-red-800">
-                {accionesVencidas > 0 && `${accionesVencidas} ${accionesVencidas === 1 ? 'acción correctiva vencida' : 'acciones correctivas vencidas'}`}
-                {accionesVencidas > 0 && planesConAlerta > 0 && ' • '}
-                {planesConAlerta > 0 && `${planesConAlerta} ${planesConAlerta === 1 ? 'plan requiere atención' : 'planes requieren atención'}`}
-              </p>
-            </div>
+          {/* Botón de volver (si existe la función) */}
+          {onVolver && (
             <Button
-              size="sm"
-              className="bg-red-600 hover:bg-red-700 text-white"
               onClick={() => {
-                toast.info('Navegando a acciones vencidas');
+                console.log('DashboardAreaAuditada - Botón Volver clickeado');
+                onVolver();
               }}
+              variant="ghost"
+              className="mb-4 hover:bg-gray-100 gap-2 font-semibold text-gray-700 hover:text-emerald-600"
             >
-              Ver Detalles
+              <ArrowLeft className="w-4 h-4" />
+              <span>Volver al Panel Administrativo</span>
             </Button>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <div 
+                  className="w-12 h-12 rounded-xl flex items-center justify-center"
+                  style={{
+                    background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
+                    boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
+                  }}
+                >
+                  <Shield className="w-6 h-6 text-white" strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+                    Mis Compromisos de Auditoría
+                  </h1>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {usuarioActual.nombre} • {usuarioActual.area}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Button variant="outline" size="sm" className="gap-2 relative">
+                <Bell className="w-4 h-4" />
+                Notificaciones
+                {notificacionesNoLeidas > 0 && (
+                  <Badge className="bg-red-500 text-white border-0 absolute -top-2 -right-2 px-1.5 py-0.5 text-xs min-w-[20px] h-5 flex items-center justify-center">
+                    {notificacionesNoLeidas}
+                  </Badge>
+                )}
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Download className="w-4 h-4" />
+                Mis Informes
+              </Button>
+            </div>
           </div>
         </motion.div>
-      )}
 
-      {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* KPI 1: Notificaciones */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <Card className="p-6 border-l-4 border-l-blue-500">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Bell className="w-6 h-6 text-blue-600" />
+        {/* Alerta si hay compromisos vencidos */}
+        {(planesConAlerta > 0 || accionesVencidas > 0) && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-50 border-2 border-red-300 rounded-xl p-4"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-red-900 mb-1">
+                  Atención: Tiene compromisos vencidos
+                </h3>
+                <p className="text-sm text-red-800">
+                  {accionesVencidas > 0 && `${accionesVencidas} ${accionesVencidas === 1 ? 'acción correctiva vencida' : 'acciones correctivas vencidas'}`}
+                  {accionesVencidas > 0 && planesConAlerta > 0 && ' • '}
+                  {planesConAlerta > 0 && `${planesConAlerta} ${planesConAlerta === 1 ? 'plan requiere atención' : 'planes requieren atención'}`}
+                </p>
               </div>
-              {notificacionesNoLeidas > 0 && (
-                <Badge className="bg-blue-500 text-white border-0">
-                  {notificacionesNoLeidas} nuevas
-                </Badge>
-              )}
+              <Button
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => {
+                  toast.info('Navegando a acciones vencidas');
+                }}
+              >
+                Ver Detalles
+              </Button>
             </div>
-            <h3 className="text-sm text-gray-600 mb-1">Notificaciones</h3>
-            <p className="text-3xl font-bold text-gray-900">{notificaciones.length}</p>
-            <p className="text-xs text-blue-600 mt-2">
-              {notificacionesNoLeidas} sin leer
-            </p>
-          </Card>
-        </motion.div>
+          </motion.div>
+        )}
 
-        {/* KPI 2: Planes Activos */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <Card className="p-6 border-l-4 border-l-green-500">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <Target className="w-6 h-6 text-green-600" />
-              </div>
-              {planesConAlerta > 0 && (
-                <Badge className="bg-yellow-500 text-white border-0">
-                  {planesConAlerta} alertas
-                </Badge>
-              )}
-            </div>
-            <h3 className="text-sm text-gray-600 mb-1">Planes de Mejoramiento</h3>
-            <p className="text-3xl font-bold text-gray-900">{planesActivos.length}</p>
-            <p className="text-xs text-gray-600 mt-2">
-              {planesActivos.filter(p => p.estado === 'al-dia').length} al día
-            </p>
-          </Card>
-        </motion.div>
-
-        {/* KPI 3: Hallazgos */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <Card className="p-6 border-l-4 border-l-orange-500">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <AlertTriangle className="w-6 h-6 text-orange-600" />
-              </div>
-              {hallazgosCriticos > 0 && (
-                <Badge className="bg-red-500 text-white border-0">
-                  {hallazgosCriticos} críticos
-                </Badge>
-              )}
-            </div>
-            <h3 className="text-sm text-gray-600 mb-1">Hallazgos</h3>
-            <p className="text-3xl font-bold text-gray-900">{hallazgos.length}</p>
-            <p className="text-xs text-orange-600 mt-2">
-              En mi área
-            </p>
-          </Card>
-        </motion.div>
-
-        {/* KPI 4: Acciones Pendientes */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-        >
-          <Card className="p-6 border-l-4 border-l-purple-500">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <ListChecks className="w-6 h-6 text-purple-600" />
-              </div>
-              {accionesVencidas > 0 && (
-                <Badge className="bg-red-500 text-white border-0">
-                  {accionesVencidas} vencidas
-                </Badge>
-              )}
-            </div>
-            <h3 className="text-sm text-gray-600 mb-1">Acciones Correctivas</h3>
-            <p className="text-3xl font-bold text-gray-900">{accionesPendientes.length}</p>
-            <p className="text-xs text-gray-600 mt-2">
-              {accionesPendientes.filter(a => a.estado === 'completada').length} completadas
-            </p>
-          </Card>
-        </motion.div>
-      </div>
-
-      {/* Notificaciones Pendientes */}
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Bell className="w-5 h-5 text-[#003DA5]" />
-            Notificaciones Pendientes
-            {notificacionesNoLeidas > 0 && (
-              <Badge className="bg-[#003DA5] text-white border-0 ml-2">
-                {notificacionesNoLeidas} nuevas
-              </Badge>
-            )}
-          </h3>
-          <Button variant="outline" size="sm" className="gap-2">
-            Ver Todas
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
-
-        <div className="space-y-3">
-          {notificaciones.slice(0, 3).map((notif) => (
-            <Card 
-              key={notif.id} 
-              className={`p-4 hover:shadow-md transition-shadow cursor-pointer ${
-                !notif.leida ? 'bg-blue-50 border-blue-200' : ''
-              }`}
-              onClick={() => {
-                toast.info('Abriendo notificación');
-              }}
-            >
-              <div className="flex items-start gap-4">
-                <div className="p-2 bg-white rounded-lg shadow-sm">
-                  {getNotificacionIcon(notif.tipo)}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-gray-900">{notif.titulo}</h4>
-                        {!notif.leida && (
-                          <Badge className="bg-blue-500 text-white border-0 px-2 py-0.5 text-xs">
-                            Nueva
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-600 mb-2">{notif.descripcion}</p>
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(notif.fecha).toLocaleDateString('es-CO')}
-                        </span>
-                        <span>•</span>
-                        <span>{notif.auditoria}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {getPrioridadBadge(notif.prioridad)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </Card>
-
-      {/* Planes de Mejoramiento Activos */}
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Target className="w-5 h-5 text-[#003DA5]" />
-            Mis Planes de Mejoramiento Activos
-          </h3>
-        </div>
-
-        <div className="space-y-4">
-          {planesActivos.map((plan) => (
-            <Card key={plan.id} className="p-5 hover:shadow-md transition-shadow">
+        {/* KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* KPI 1: Notificaciones */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <Card className="p-6 border-l-4 border-l-blue-500">
               <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h4 className="font-semibold text-gray-900 text-lg">{plan.auditoria}</h4>
-                    {getEstadoPlanBadge(plan.estado)}
-                  </div>
-                  <p className="text-sm text-gray-600 mb-1">
-                    Código: <strong>{plan.codigoAuditoria}</strong> • ID Plan: <strong>{plan.id}</strong>
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    Vigencia: {new Date(plan.fechaInicio).toLocaleDateString('es-CO')} - {new Date(plan.fechaFin).toLocaleDateString('es-CO')}
-                  </p>
+                <div className="p-3 bg-blue-100 rounded-lg">
+                  <Bell className="w-6 h-6 text-blue-600" />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-600 mb-1">Acciones Totales</p>
-                  <p className="text-2xl font-bold text-gray-900">{plan.accionesTotales}</p>
-                </div>
-                <div className="bg-green-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-600 mb-1">Completadas</p>
-                  <p className="text-2xl font-bold text-green-600">{plan.accionesCompletadas}</p>
-                </div>
-                {plan.accionesVencidas > 0 && (
-                  <div className="bg-red-50 rounded-lg p-3">
-                    <p className="text-xs text-gray-600 mb-1">Vencidas</p>
-                    <p className="text-2xl font-bold text-red-600">{plan.accionesVencidas}</p>
-                  </div>
+                {notificacionesNoLeidas > 0 && (
+                  <Badge className="bg-blue-500 text-white border-0">
+                    {notificacionesNoLeidas} nuevas
+                  </Badge>
                 )}
               </div>
-
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Avance General</span>
-                  <span className="font-semibold text-gray-900">{plan.avance}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className={`h-3 rounded-full transition-all ${
-                      plan.estado === 'al-dia' ? 'bg-green-500' :
-                      plan.estado === 'proximo-vencimiento' ? 'bg-yellow-500' :
-                      'bg-red-500'
-                    }`}
-                    style={{ width: `${plan.avance}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-4 border-t">
-                <div className="text-sm">
-                  {plan.diasParaSeguimiento > 0 ? (
-                    <p className="text-gray-600">
-                      Próximo seguimiento: <strong>{new Date(plan.proximoSeguimiento).toLocaleDateString('es-CO')}</strong>
-                      <span className="text-yellow-600 ml-2">({plan.diasParaSeguimiento} días)</span>
-                    </p>
-                  ) : (
-                    <p className="text-red-600 font-medium">
-                      Seguimiento vencido hace {Math.abs(plan.diasParaSeguimiento)} días
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Eye className="w-4 h-4" />
-                    Ver Plan
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    className="bg-[#003DA5] hover:bg-[#002873] gap-2"
-                    onClick={() => {
-                      toast.success('Abriendo formulario de evidencias');
-                    }}
-                  >
-                    <Upload className="w-4 h-4" />
-                    Cargar Evidencias
-                  </Button>
-                </div>
-              </div>
+              <h3 className="text-sm text-gray-600 mb-1">Notificaciones</h3>
+              <p className="text-3xl font-bold text-gray-900">{notificaciones.length}</p>
+              <p className="text-xs text-blue-600 mt-2">
+                {notificacionesNoLeidas} sin leer
+              </p>
             </Card>
-          ))}
-        </div>
-      </Card>
+          </motion.div>
 
-      {/* Hallazgos y Acciones Correctivas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Hallazgos */}
+          {/* KPI 2: Planes Activos */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <Card className="p-6 border-l-4 border-l-green-500">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-green-100 rounded-lg">
+                  <Target className="w-6 h-6 text-green-600" />
+                </div>
+                {planesConAlerta > 0 && (
+                  <Badge className="bg-yellow-500 text-white border-0">
+                    {planesConAlerta} alertas
+                  </Badge>
+                )}
+              </div>
+              <h3 className="text-sm text-gray-600 mb-1">Planes de Mejoramiento</h3>
+              <p className="text-3xl font-bold text-gray-900">{planesActivos.length}</p>
+              <p className="text-xs text-gray-600 mt-2">
+                {planesActivos.filter(p => p.estado === 'al-dia').length} al día
+              </p>
+            </Card>
+          </motion.div>
+
+          {/* KPI 3: Hallazgos */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <Card className="p-6 border-l-4 border-l-orange-500">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-orange-100 rounded-lg">
+                  <AlertTriangle className="w-6 h-6 text-orange-600" />
+                </div>
+                {hallazgosCriticos > 0 && (
+                  <Badge className="bg-red-500 text-white border-0">
+                    {hallazgosCriticos} críticos
+                  </Badge>
+                )}
+              </div>
+              <h3 className="text-sm text-gray-600 mb-1">Hallazgos</h3>
+              <p className="text-3xl font-bold text-gray-900">{hallazgos.length}</p>
+              <p className="text-xs text-orange-600 mt-2">
+                En mi área
+              </p>
+            </Card>
+          </motion.div>
+
+          {/* KPI 4: Acciones Pendientes */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+          >
+            <Card className="p-6 border-l-4 border-l-purple-500">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-purple-100 rounded-lg">
+                  <ListChecks className="w-6 h-6 text-purple-600" />
+                </div>
+                {accionesVencidas > 0 && (
+                  <Badge className="bg-red-500 text-white border-0">
+                    {accionesVencidas} vencidas
+                  </Badge>
+                )}
+              </div>
+              <h3 className="text-sm text-gray-600 mb-1">Acciones Correctivas</h3>
+              <p className="text-3xl font-bold text-gray-900">{accionesPendientes.length}</p>
+              <p className="text-xs text-gray-600 mt-2">
+                {accionesPendientes.filter(a => a.estado === 'completada').length} completadas
+              </p>
+            </Card>
+          </motion.div>
+        </div>
+
+        {/* Notificaciones Pendientes */}
         <Card className="p-6">
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-[#003DA5]" />
-              Hallazgos en Mi Área
+              <Bell className="w-5 h-5 text-[#003DA5]" />
+              Notificaciones Pendientes
+              {notificacionesNoLeidas > 0 && (
+                <Badge className="bg-[#003DA5] text-white border-0 ml-2">
+                  {notificacionesNoLeidas} nuevas
+                </Badge>
+              )}
             </h3>
             <Button variant="outline" size="sm" className="gap-2">
-              Ver Todos
+              Ver Todas
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
 
           <div className="space-y-3">
-            {hallazgos.map((hallazgo) => (
-              <Card key={hallazgo.id} className="p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="outline" className="text-xs">{hallazgo.numero}</Badge>
-                      {getTipoHallazgoBadge(hallazgo.tipo)}
-                      {getGravedadBadge(hallazgo.gravedad)}
-                    </div>
-                    <p className="text-sm text-gray-900 mb-2">{hallazgo.descripcion}</p>
-                    <p className="text-xs text-gray-600">
-                      {hallazgo.auditoria} • {new Date(hallazgo.fechaIdentificacion).toLocaleDateString('es-CO')}
-                    </p>
+            {notificaciones.slice(0, 3).map((notif) => (
+              <Card 
+                key={notif.id} 
+                className={`p-4 hover:shadow-md transition-shadow cursor-pointer ${
+                  !notif.leida ? 'bg-blue-50 border-blue-200' : ''
+                }`}
+                onClick={() => {
+                  toast.info('Abriendo notificación');
+                }}
+              >
+                <div className="flex items-start gap-4">
+                  <div className="p-2 bg-white rounded-lg shadow-sm">
+                    {getNotificacionIcon(notif.tipo)}
                   </div>
-                </div>
-                <div className="flex items-center justify-between pt-3 border-t mt-3">
-                  <Badge className="bg-blue-100 text-blue-800 border-0 text-xs">
-                    Plan en ejecución
-                  </Badge>
-                  <Button variant="ghost" size="sm" className="gap-2 text-[#003DA5]">
-                    Ver Detalles
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold text-gray-900">{notif.titulo}</h4>
+                          {!notif.leida && (
+                            <Badge className="bg-blue-500 text-white border-0 px-2 py-0.5 text-xs">
+                              Nueva
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">{notif.descripcion}</p>
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(notif.fecha).toLocaleDateString('es-CO')}
+                          </span>
+                          <span>•</span>
+                          <span>{notif.auditoria}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {getPrioridadBadge(notif.prioridad)}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </Card>
             ))}
           </div>
         </Card>
 
-        {/* Acciones Correctivas Pendientes */}
+        {/* Planes de Mejoramiento Activos */}
         <Card className="p-6">
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <ListChecks className="w-5 h-5 text-[#003DA5]" />
-              Acciones Correctivas
+              <Target className="w-5 h-5 text-[#003DA5]" />
+              Mis Planes de Mejoramiento Activos
             </h3>
           </div>
 
-          <div className="space-y-3">
-            {accionesPendientes.map((accion) => (
-              <Card key={accion.id} className="p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between mb-3">
+          <div className="space-y-4">
+            {planesActivos.map((plan) => (
+              <Card key={plan.id} className="p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      {getEstadoAccionBadge(accion.estado)}
-                      {accion.requiereEvidencia && (
-                        <Badge className="bg-orange-100 text-orange-800 border-0 text-xs flex items-center gap-1">
-                          <Upload className="w-3 h-3" />
-                          Requiere evidencia
-                        </Badge>
-                      )}
+                      <h4 className="font-semibold text-gray-900 text-lg">{plan.auditoria}</h4>
+                      {getEstadoPlanBadge(plan.estado)}
                     </div>
-                    <p className="text-sm font-medium text-gray-900 mb-2">{accion.accion}</p>
-                    <p className="text-xs text-gray-600 mb-1">
-                      Hallazgo: {accion.hallazgo}
+                    <p className="text-sm text-gray-600 mb-1">
+                      Código: <strong>{plan.codigoAuditoria}</strong> • ID Plan: <strong>{plan.id}</strong>
                     </p>
-                    <p className="text-xs text-gray-600">
-                      Responsable: <strong>{accion.responsable}</strong>
+                    <p className="text-sm text-gray-600">
+                      Vigencia: {new Date(plan.fechaInicio).toLocaleDateString('es-CO')} - {new Date(plan.fechaFin).toLocaleDateString('es-CO')}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-3 border-t">
-                  <div className="text-xs">
-                    {accion.diasRestantes > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-600 mb-1">Acciones Totales</p>
+                    <p className="text-2xl font-bold text-gray-900">{plan.accionesTotales}</p>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-600 mb-1">Completadas</p>
+                    <p className="text-2xl font-bold text-green-600">{plan.accionesCompletadas}</p>
+                  </div>
+                  {plan.accionesVencidas > 0 && (
+                    <div className="bg-red-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-600 mb-1">Vencidas</p>
+                      <p className="text-2xl font-bold text-red-600">{plan.accionesVencidas}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Avance General</span>
+                    <span className="font-semibold text-gray-900">{plan.avance}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className={`h-3 rounded-full transition-all ${
+                        plan.estado === 'al-dia' ? 'bg-green-500' :
+                        plan.estado === 'proximo-vencimiento' ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      }`}
+                      style={{ width: `${plan.avance}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <div className="text-sm">
+                    {plan.diasParaSeguimiento > 0 ? (
                       <p className="text-gray-600">
-                        Vence: {new Date(accion.fechaFin).toLocaleDateString('es-CO')}
-                        <span className={`ml-2 font-medium ${
-                          accion.diasRestantes <= 7 ? 'text-yellow-600' : 'text-gray-600'
-                        }`}>
-                          ({accion.diasRestantes} días)
-                        </span>
+                        Próximo seguimiento: <strong>{new Date(plan.proximoSeguimiento).toLocaleDateString('es-CO')}</strong>
+                        <span className="text-yellow-600 ml-2">({plan.diasParaSeguimiento} días)</span>
                       </p>
                     ) : (
                       <p className="text-red-600 font-medium">
-                        Vencida hace {Math.abs(accion.diasRestantes)} días
+                        Seguimiento vencido hace {Math.abs(plan.diasParaSeguimiento)} días
                       </p>
                     )}
                   </div>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    className="gap-2"
-                    onClick={() => {
-                      toast.info('Abriendo formulario de actualización');
-                    }}
-                  >
-                    Actualizar
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" className="gap-2">
+                      <Eye className="w-4 h-4" />
+                      Ver Plan
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      className="bg-[#003DA5] hover:bg-[#002873] gap-2"
+                      onClick={() => {
+                        toast.success('Abriendo formulario de evidencias');
+                      }}
+                    >
+                      <Upload className="w-4 h-4" />
+                      Cargar Evidencias
+                    </Button>
+                  </div>
                 </div>
               </Card>
             ))}
           </div>
         </Card>
-      </div>
 
-      {/* Información de ayuda */}
-      <Card className="p-6 bg-blue-50 border-blue-200">
-        <div className="flex items-start gap-3">
-          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <h4 className="font-semibold text-blue-900 mb-2">Información Importante</h4>
-            <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Recibirá notificaciones automáticas 7 días antes de los seguimientos trimestrales</li>
-              <li>• Las acciones vencidas afectan los indicadores de cumplimiento de su área</li>
-              <li>• Puede presentar controversias sobre hallazgos dentro de los 5 días siguientes a su notificación</li>
-              <li>• Los planes de mejoramiento requieren aprobación del Jefe de Control Interno</li>
-            </ul>
-          </div>
+        {/* Hallazgos y Acciones Correctivas */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Hallazgos */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-[#003DA5]" />
+                Hallazgos en Mi Área
+              </h3>
+              <Button variant="outline" size="sm" className="gap-2">
+                Ver Todos
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {hallazgos.map((hallazgo) => (
+                <Card key={hallazgo.id} className="p-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="outline" className="text-xs">{hallazgo.numero}</Badge>
+                        {getTipoHallazgoBadge(hallazgo.tipo)}
+                        {getGravedadBadge(hallazgo.gravedad)}
+                      </div>
+                      <p className="text-sm text-gray-900 mb-2">{hallazgo.descripcion}</p>
+                      <p className="text-xs text-gray-600">
+                        {hallazgo.auditoria} • {new Date(hallazgo.fechaIdentificacion).toLocaleDateString('es-CO')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-3 border-t mt-3">
+                    <Badge className="bg-blue-100 text-blue-800 border-0 text-xs">
+                      Plan en ejecución
+                    </Badge>
+                    <Button variant="ghost" size="sm" className="gap-2 text-[#003DA5]">
+                      Ver Detalles
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </Card>
+
+          {/* Acciones Correctivas Pendientes */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <ListChecks className="w-5 h-5 text-[#003DA5]" />
+                Acciones Correctivas
+              </h3>
+            </div>
+
+            <div className="space-y-3">
+              {accionesPendientes.map((accion) => (
+                <Card key={accion.id} className="p-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        {getEstadoAccionBadge(accion.estado)}
+                        {accion.requiereEvidencia && (
+                          <Badge className="bg-orange-100 text-orange-800 border-0 text-xs flex items-center gap-1">
+                            <Upload className="w-3 h-3" />
+                            Requiere evidencia
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm font-medium text-gray-900 mb-2">{accion.accion}</p>
+                      <p className="text-xs text-gray-600 mb-1">
+                        Hallazgo: {accion.hallazgo}
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        Responsable: <strong>{accion.responsable}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t">
+                    <div className="text-xs">
+                      {accion.diasRestantes > 0 ? (
+                        <p className="text-gray-600">
+                          Vence: {new Date(accion.fechaFin).toLocaleDateString('es-CO')}
+                          <span className={`ml-2 font-medium ${
+                            accion.diasRestantes <= 7 ? 'text-yellow-600' : 'text-gray-600'
+                          }`}>
+                            ({accion.diasRestantes} días)
+                          </span>
+                        </p>
+                      ) : (
+                        <p className="text-red-600 font-medium">
+                          Vencida hace {Math.abs(accion.diasRestantes)} días
+                        </p>
+                      )}
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => {
+                        toast.info('Abriendo formulario de actualización');
+                      }}
+                    >
+                      Actualizar
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </Card>
         </div>
-      </Card>
+
+        {/* Información de ayuda */}
+        <Card className="p-6 bg-blue-50 border-blue-200">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-semibold text-blue-900 mb-2">Información Importante</h4>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>• Recibirá notificaciones automáticas 7 días antes de los seguimientos trimestrales</li>
+                <li>• Las acciones vencidas afectan los indicadores de cumplimiento de su área</li>
+                <li>• Puede presentar controversias sobre hallazgos dentro de los 5 días siguientes a su notificación</li>
+                <li>• Los planes de mejoramiento requieren aprobación del Jefe de Control Interno</li>
+              </ul>
+            </div>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

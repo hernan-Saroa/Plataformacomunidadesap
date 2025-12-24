@@ -30,7 +30,7 @@ export function EnrollmentAuditModal({ enrollment, onClose }: EnrollmentAuditMod
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 z-[111] flex items-center justify-center p-4"
         style={{
           background: 'rgba(0, 0, 0, 0.5)',
           backdropFilter: 'blur(2px)'

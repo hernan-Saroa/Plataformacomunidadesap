@@ -20,12 +20,12 @@ import {
   Trash2
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/Button';
+import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-import { InputSIGL } from '../gestion-legal/design-system/Input';
+import { InputSIGL } from '../gestion-legal/design-system/InputSIGL';
 import { TextareaSIGL } from '../gestion-legal/design-system/TextareaSIGL';
-import { toast } from 'sonner';
+import { toast } from 'sonner@2.0.3';
 
 // ====================================
 // TIPOS Y DATOS
@@ -316,7 +316,7 @@ export const ComunicacionAuditoriaModule: React.FC<{ auditoriaId?: string }> = (
               <div className="flex items-center gap-4 mt-4">
                 <BadgeSIGL variant="info">
                   <Users className="w-3 h-3" />
-                  {auditoria.auditorLider}
+                  {typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : auditoria.auditorLider?.nombre || 'No asignado'}
                 </BadgeSIGL>
                 <BadgeSIGL variant="default">
                   <Calendar className="w-3 h-3" />
@@ -1410,7 +1410,7 @@ const ModalPreviewInforme: React.FC<{
           </div>
           <div>
             <p className="font-semibold text-gray-700">Auditor Líder:</p>
-            <p className="text-gray-900">{auditoria.auditorLider}</p>
+            <p className="text-gray-900">{typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : auditoria.auditorLider?.nombre || 'No asignado'}</p>
           </div>
           <div>
             <p className="font-semibold text-gray-700">Fecha de Generación:</p>

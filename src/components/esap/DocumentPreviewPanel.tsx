@@ -258,7 +258,7 @@ export function DocumentPreviewPanel({
         return (
           <div className="w-full h-full bg-white rounded-lg shadow-inner overflow-hidden">
             {/* Header de Excel */}
-            <div className="bg-green-600 h-8 flex items-center justify-between px-3">
+            <div className="bg-[#1e5da8] h-8 flex items-center justify-between px-3">
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-white" />
                 <span className="text-xs text-white font-medium">{documento.nombre}</span>
@@ -297,7 +297,7 @@ export function DocumentPreviewPanel({
                     <div className="h-1.5 bg-gray-300 rounded w-2/3"></div>
                   </div>
                   <div className="px-2 py-1.5">
-                    <div className="h-1.5 bg-green-300 rounded w-1/2"></div>
+                    <div className="h-1.5 bg-blue-300 rounded w-1/2"></div>
                   </div>
                 </div>
               ))}
@@ -353,7 +353,7 @@ export function DocumentPreviewPanel({
         {/* Badge de estado flotante */}
         <div className="absolute bottom-3 left-3">
           {documento.estado === 'completo' && (
-            <Badge className="bg-green-600 text-white border-none shadow-lg">
+            <Badge className="bg-[#1e5da8] text-white border-none shadow-lg">
               <CheckCircle className="w-4 h-4 mr-1" />
               Validado
             </Badge>
@@ -425,7 +425,7 @@ export function DocumentPreviewPanel({
         {documento.estado !== 'completo' && (
           <button
             onClick={onValidate}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#1e5da8] text-white rounded-lg hover:bg-[#1557a0] transition-colors font-medium"
           >
             <CheckCircle className="w-5 h-5" />
             <span>Validar Documento</span>

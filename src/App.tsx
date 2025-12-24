@@ -31,6 +31,29 @@ import { PublicTitleVerification } from './components/portal/PublicTitleVerifica
 import { SolicitarCertificadoLaboral } from './components/portal/SolicitarCertificadoLaboral';
 import { VerificarCertificado } from './components/certificados-laborales/VerificarCertificado';
 
+/** Entrante */
+import { ErrorBoundary } from './components/ErrorBoundary';
+// import { LoginPage } from './components/portal/LoginPage';
+import { VisualizadorPTAAjustes } from './components/gestion-profesoral/VisualizadorPTAAjustes';
+// import { Toaster } from './components/ui/sonner';
+
+/**
+ * ============================================
+ * APP PRINCIPAL - ESAP
+ * ============================================
+ * 
+ * Gestiona la navegación entre los 4 ambientes:
+ * 1. Landing Page (público)
+ * 2. Login (autenticación)
+ * 3. Portal Transaccional (usuarios externos)
+ * 4. Backoffice Administrativo (usuarios internos)
+ * 
+ * Features:
+ * - Persistencia de sesión en localStorage
+ * - Auto-logout por inactividad (15 minutos)
+ * - Alerta previa antes de cerrar sesión
+ */
+
 type AppView =
   | 'landing'
   | 'login'
@@ -46,7 +69,7 @@ type AppView =
 
 type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | null;
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'solicitar-certificados-laborales';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'solicitar-certificados-laborales' | 'pta-demo';
 
 interface Usuario {
   id: string;
@@ -684,21 +707,99 @@ export default function App() {
         );
       
       case 'portal':
+        // Determinar roles según el email del usuario
+        const userRoles = usuarioActual?.email === 'gestion.profesoral@esap.edu.co' 
+          ? ['Docente']
+          : usuarioActual?.email === 'estudiantes@esap.edu.co'
+          ? ['Estudiante']
+          : usuarioActual?.email === 'funcionario@esap.edu.co'
+          ? ['Administrativo']
+          : ['Estudiante']; // Default
+
+        const teacherData = usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
+          ? {
+              tipo_vinculacion: 'Carrera',
+              dedicacion: 'Tiempo Completo',
+              area: 'Administración Pública',
+              codigo_docente: 'DOC-GP-001',
+              clases_asignadas: 5,
+              estudiantes_totales: 120,
+              nivel_educativo: 'Doctorado',
+              anos_experiencia: 12,
+            }
+          : undefined;
+
+        const adminData = usuarioActual?.email === 'funcionario@esap.edu.co'
+          ? {
+              area: 'Planeación',
+              cargo: 'Funcionario Administrativo',
+              dependencia: 'Oficina de Control Interno',
+              codigo_empleado: 'FUNC-001',
+              solicitudes_pendientes: 5,
+              reportes_generados: 12
+            }
+          : undefined;
+
+        console.log('📊 Datos para Portal Dashboard:', {
+          userName: usuarioActual!.nombre,
+          userEmail: usuarioActual!.email,
+          userRoles,
+          adminData
+        });
+
         return (
-          <PortalTransaccional
-            usuario={usuarioActual!}
+          <PortalDashboard
+            userName={usuarioActual!.nombre}
+            userEmail={usuarioActual!.email}
+            userPersonId={usuarioActual!.id}
+            userRoles={userRoles}
+            userData={{
+              rol_principal: userRoles[0],
+              datos_por_rol: {
+                Docente: teacherData,
+                Administrativo: adminData
+              }
+            }}
             onLogout={handleLogout}
           />
         );
       
       case 'backoffice':
+        // Determinar si el usuario tiene acceso restringido a un módulo específico
+        const userData = usuarioActual?.email === 'OCIG@esap.edu.co' || usuarioActual?.email === 'ocig@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ci-001', restrictedAccess: true, module: 'control-interno' }
+          : usuarioActual?.email === 'c.disciplinario@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cd-001', restrictedAccess: true, module: 'control-disciplinario' }
+          : usuarioActual?.email === 'registro.academico@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ra-001', restrictedAccess: true, module: 'registro-academico' }
+          : usuarioActual?.email === 'cerlaboral@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cl-001', restrictedAccess: true, module: 'certificados-laborales' }
+          : usuarioActual?.email === 'arqempresarial@esap.edu.co' || usuarioActual?.email === 'ar.empresarial@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ae-001', restrictedAccess: true, module: 'arquitectura-empresarial' }
+          : usuarioActual?.email === 'gestion.legal@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gl-001', restrictedAccess: true, module: 'gestion-legal' }
+          : usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gp-001', restrictedAccess: true, module: 'gestion-profesoral' }
+          : usuarioActual?.email === 'funcionario@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'func-001', restrictedAccess: true, module: 'procesos' }
+          : undefined;
+
         return (
           <BackofficeApp
+            usuario={usuarioActual!}
             onLogout={handleLogout}
             onBackToSystemSelector={handleBackToSystemSelector}
             onSystemChange={handleSystemChange}
             userData={userData}
             userRoles={userRoles}
+          />
+        );
+      
+      case 'pta-demo':
+        return (
+          <VisualizadorPTAAjustes
+            usuario={usuarioActual!}
+            onLogout={handleLogout}
           />
         );
       
@@ -734,13 +835,36 @@ export default function App() {
   };
 
   return (
-    <>
+    <ErrorBoundary>
       <style>{`
-        [data-sonner-toaster] { position: fixed !important; z-index: 9999 !important; }
-        [data-sonner-toast] { background: white !important; border: 1px solid #e5e7eb !important; border-radius: 12px !important; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important; padding: 16px !important; }
+        [data-sonner-toaster] { 
+          position: fixed !important; 
+          bottom: 20px !important; 
+          right: 20px !important; 
+          z-index: 9999 !important; 
+        }
+        [data-sonner-toast] { 
+          background: white !important; 
+          border: 1px solid #e5e7eb !important; 
+          border-radius: 12px !important; 
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important; 
+          padding: 16px !important; 
+          animation: slideIn 0.3s ease-out !important;
+        }
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
         [data-sonner-toast][data-type=\"success\"] { border-left: 4px solid #10b981 !important; }
         [data-sonner-toast][data-type=\"error\"] { border-left: 4px solid #ef4444 !important; }
         [data-sonner-toast][data-type=\"warning\"] { border-left: 4px solid #f59e0b !important; }
+        [data-sonner-toast][data-type=\"info\"] { border-left: 4px solid #3b82f6 !important; }
         [data-title] { font-weight: 600 !important; color: #111827 !important; font-size: 14px !important; }
         [data-description] { color: #6b7280 !important; font-size: 13px !important; margin-top: 4px !important; }
       `}</style>
@@ -801,8 +925,8 @@ export default function App() {
         </div>
       )}
       
-      <Toaster position="top-right" richColors expand={true} />
-    </>
+      <Toaster position="bottom-right" richColors expand={true} />
+    </ErrorBoundary>
   );
 
 }

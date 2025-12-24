@@ -1,117 +1,49 @@
 import { useState } from 'react';
-import { motion } from 'motion/react';
-import {
-  Users,
-  FileText,
-  CheckCircle,
-  Clock,
-  UserPlus,
-  Search,
-  Filter,
-  Download,
-  Plus,
-  Eye,
-  Edit,
-  Trash2,
-  Calendar,
-  Building2,
-  Award,
-  AlertCircle
-} from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { motion } from 'motion/react';
+import { 
+  FileText, Users, Clock, Award, Plus, Search, Download, 
+  Eye, Edit, Trash2, Building2, Calendar, AlertCircle 
+} from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { CONVOCATORIAS_ESAP, getEstadisticasConvocatorias, type Convocatoria } from '../../data/convocatoriasData';
 
 interface Modulo2ConvocatoriasProps {
   className?: string;
 }
-
-// Mock data
-interface Convocatoria {
-  id: string;
-  codigo: string;
-  titulo: string;
-  territorial: string;
-  programa: string;
-  vacantes: number;
-  postulados: number;
-  fechaInicio: string;
-  fechaCierre: string;
-  estado: 'Abierta' | 'En Evaluación' | 'Cerrada' | 'Cancelada';
-  perfilRequerido: string;
-}
-
-const convocatoriasMock: Convocatoria[] = [
-  {
-    id: 'conv-001',
-    codigo: 'CONV-2025-001',
-    titulo: 'Docente de Carrera - Administración Pública',
-    territorial: 'Bogotá',
-    programa: 'Administración Pública',
-    vacantes: 3,
-    postulados: 45,
-    fechaInicio: '2025-01-10',
-    fechaCierre: '2025-02-10',
-    estado: 'Abierta',
-    perfilRequerido: 'Maestría en Administración Pública o afines'
-  },
-  {
-    id: 'conv-002',
-    codigo: 'CONV-2025-002',
-    titulo: 'Docente Ocasional - Derecho Administrativo',
-    territorial: 'Medellín',
-    programa: 'Derecho Público',
-    vacantes: 2,
-    postulados: 28,
-    fechaInicio: '2025-01-15',
-    fechaCierre: '2025-02-15',
-    estado: 'Abierta',
-    perfilRequerido: 'Maestría en Derecho Administrativo'
-  },
-  {
-    id: 'conv-003',
-    codigo: 'CONV-2024-089',
-    titulo: 'Docente de Carrera - Economía Pública',
-    territorial: 'Bogotá',
-    programa: 'Economía Pública',
-    vacantes: 1,
-    postulados: 67,
-    fechaInicio: '2024-11-01',
-    fechaCierre: '2024-12-31',
-    estado: 'En Evaluación',
-    perfilRequerido: 'Doctorado en Economía'
-  }
-];
 
 export function Modulo2Convocatorias({ className = '' }: Modulo2ConvocatoriasProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSubTab, setActiveSubTab] = useState<string>('convocatorias');
   const [selectedEstado, setSelectedEstado] = useState<string>('todas');
 
-  // Stats
+  // Stats - usando estadísticas centralizadas
+  const estadisticas = getEstadisticasConvocatorias();
+  
   const stats = [
     {
       label: 'Convocatorias Activas',
-      value: '12',
+      value: String(estadisticas.convocatoriasAbiertas),
       subtext: '2025',
       icon: FileText,
       color: 'bg-blue-500',
-      trend: '+3'
+      trend: null
     },
     {
       label: 'Total Postulados',
-      value: '270',
-      subtext: 'Este mes',
+      value: String(estadisticas.candidatosPendientes + estadisticas.candidatosEnEvaluacion),
+      subtext: 'En proceso',
       icon: Users,
       color: 'bg-purple-500',
-      trend: '+45'
+      trend: null
     },
     {
       label: 'En Evaluación',
-      value: '8',
+      value: String(estadisticas.convocatoriasEnEvaluacion),
       subtext: 'Requieren calificación',
       icon: Clock,
       color: 'bg-amber-500',
@@ -119,18 +51,18 @@ export function Modulo2Convocatorias({ className = '' }: Modulo2ConvocatoriasPro
     },
     {
       label: 'Banco de Elegibles',
-      value: '156',
+      value: String(estadisticas.bancoElegibles),
       subtext: 'Docentes disponibles',
       icon: Award,
       color: 'bg-green-500',
-      trend: '+12'
+      trend: null
     }
   ];
 
-  const filteredConvocatorias = convocatoriasMock.filter(conv => {
+  const filteredConvocatorias = CONVOCATORIAS_ESAP.filter(conv => {
     const matchesSearch = conv.titulo.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          conv.codigo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         conv.territorial.toLowerCase().includes(searchQuery.toLowerCase());
+                         conv.territorial.nombre.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesEstado = selectedEstado === 'todas' || conv.estado === selectedEstado;
     return matchesSearch && matchesEstado;
   });
@@ -280,7 +212,7 @@ export function Modulo2Convocatorias({ className = '' }: Modulo2ConvocatoriasPro
                       <div className="flex flex-wrap gap-4 text-sm text-gray-600">
                         <div className="flex items-center gap-1">
                           <Building2 className="w-4 h-4" />
-                          <span>{conv.territorial}</span>
+                          <span>{conv.territorial.nombre}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <FileText className="w-4 h-4" />

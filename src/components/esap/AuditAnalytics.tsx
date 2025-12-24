@@ -132,13 +132,13 @@ export function AuditAnalytics({ events }: AuditAnalyticsProps) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-5 shadow-lg"
+          className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-5 shadow-lg"
         >
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-green-100 text-sm font-semibold mb-1">Usuarios Activos</p>
+              <p className="text-blue-100 text-sm font-semibold mb-1">Usuarios Activos</p>
               <p className="text-white text-3xl font-extrabold">{uniqueUsers}</p>
-              <p className="text-green-100 text-xs mt-2">Usuarios únicos</p>
+              <p className="text-blue-100 text-xs mt-2">Usuarios únicos</p>
             </div>
             <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
               <Users className="w-6 h-6 text-white" strokeWidth={2.5} />
@@ -342,8 +342,8 @@ export function AuditAnalytics({ events }: AuditAnalyticsProps) {
               ))
             ) : (
               <div className="text-center py-8">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Shield className="w-8 h-8 text-green-600" />
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <Shield className="w-8 h-8 text-[#1e5da8]" />
                 </div>
                 <p className="font-semibold text-gray-900">¡Todo está bien!</p>
                 <p className="text-sm text-gray-600 mt-1">No hay eventos críticos recientes</p>

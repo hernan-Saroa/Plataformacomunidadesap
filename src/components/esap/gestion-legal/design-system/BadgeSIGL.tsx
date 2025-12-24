@@ -1,300 +1,220 @@
 /**
- * BADGE SIGL - Sistema Integral de Gestión Legal
- * Implementación según especificación DISEÑO_UI_SIGL_DETALLADO_PARA_FIGMA.md
+ * BadgeSIGL - Componente de badge/etiqueta para SIGL v5.0
  */
 
-import { HTMLAttributes } from 'react';
-import DESIGN_TOKENS, { getStatusColor } from './tokens';
+import React from 'react';
+import { SIGL_COLORS, SIGL_BORDERS, SIGL_SPACING } from './tokens';
 
-export interface BadgeSIGLProps extends HTMLAttributes<HTMLSpanElement> {
-  variant?: 'recibida' | 'enDefensa' | 'respondida' | 'vencida' | 'sentenciada' | 'enProceso' | 'extendida' | 'custom' | 
-            'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
-  customColor?: { bg: string; text: string };
-  size?: 'small' | 'medium' | 'large' | 'sm';
-  rounded?: boolean;
+interface BadgeSIGLProps {
+  children: React.ReactNode;
+  variant?: 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'custom' | 'outline';
+  color?: string; // Para variant='custom' y 'outline'
+  size?: 'sm' | 'md' | 'lg';
+  dot?: boolean;
+  icon?: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
 }
 
 export function BadgeSIGL({
-  variant = 'recibida',
-  customColor,
-  size = 'medium',
-  rounded = false,
   children,
+  variant = 'neutral',
+  color,
+  size = 'md',
+  dot = false,
+  icon,
   className = '',
-  style,
-  ...props
+  style = {},
 }: BadgeSIGLProps) {
-  // Normalizar tamaños
-  const normalizedSize = size === 'sm' ? 'small' : size;
-
-  // Obtener colores según variante
-  const getColorsByVariant = (v: string) => {
-    // Variantes estándar (genéricas)
-    const standardVariants: Record<string, { bg: string; text: string }> = {
-      default: { bg: '#F3F4F6', text: '#374151' },
-      primary: { bg: '#003DA5', text: '#FFFFFF' },
-      success: { bg: '#10B981', text: '#FFFFFF' },
-      warning: { bg: '#F59E0B', text: '#FFFFFF' },
-      danger: { bg: '#EF4444', text: '#FFFFFF' },
-      info: { bg: '#3B82F6', text: '#FFFFFF' },
-    };
-
-    if (standardVariants[v]) {
-      return standardVariants[v];
-    }
-
-    // Variantes SIGL originales
-    if (v === 'custom' && customColor) {
-      return customColor;
-    }
-
-    return getStatusColor(v);
+  // Variantes de color
+  const variantColors: Record<string, { bg: string; text: string; border: string }> = {
+    primary: {
+      bg: SIGL_COLORS.primary,
+      text: SIGL_COLORS.textWhite,
+      border: SIGL_COLORS.primary,
+    },
+    success: {
+      bg: SIGL_COLORS.success,
+      text: SIGL_COLORS.textWhite,
+      border: SIGL_COLORS.success,
+    },
+    warning: {
+      bg: SIGL_COLORS.warning,
+      text: SIGL_COLORS.gris900,
+      border: SIGL_COLORS.warning,
+    },
+    danger: {
+      bg: SIGL_COLORS.danger,
+      text: SIGL_COLORS.textWhite,
+      border: SIGL_COLORS.danger,
+    },
+    info: {
+      bg: SIGL_COLORS.info,
+      text: SIGL_COLORS.textWhite,
+      border: SIGL_COLORS.info,
+    },
+    neutral: {
+      bg: SIGL_COLORS.gris200,
+      text: SIGL_COLORS.textPrimary,
+      border: SIGL_COLORS.gris300,
+    },
+    custom: {
+      bg: color || SIGL_COLORS.primary,
+      text: SIGL_COLORS.textWhite,
+      border: color || SIGL_COLORS.primary,
+    },
+    outline: {
+      bg: 'transparent',
+      text: color || SIGL_COLORS.primary,
+      border: color || SIGL_COLORS.primary,
+    },
   };
-
-  const colors = getColorsByVariant(variant);
 
   // Tamaños
-  const sizeStyles = {
-    small: {
-      padding: '2px 6px',
-      fontSize: '10px',
-      height: '18px',
+  const sizeStyles: Record<string, { fontSize: number; padding: string; height: number }> = {
+    sm: {
+      fontSize: 10,
+      padding: `0 ${SIGL_SPACING.xs}px`,
+      height: 18,
     },
-    medium: {
-      padding: '4px 8px',
-      fontSize: '11px',
-      height: '22px',
+    md: {
+      fontSize: 12,
+      padding: `0 ${SIGL_SPACING.sm}px`,
+      height: 22,
     },
-    large: {
-      padding: '6px 12px',
-      fontSize: '12px',
-      height: '28px',
+    lg: {
+      fontSize: 14,
+      padding: `0 ${SIGL_SPACING.sm}px`,
+      height: 26,
     },
   };
 
-  const sizing = sizeStyles[normalizedSize];
+  // Normalizar variant para evitar undefined
+  const normalizedVariant = variant || 'neutral';
+  const normalizedSize = size || 'md';
+
+  const colors = variantColors[normalizedVariant] || variantColors['neutral'];
+  const sizes = sizeStyles[normalizedSize] || sizeStyles['md'];
+
+  const baseStyles: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: SIGL_SPACING.xs,
+    backgroundColor: colors.bg,
+    color: colors.text,
+    border: normalizedVariant === 'outline' ? `1px solid ${colors.border}` : 'none',
+    borderRadius: SIGL_BORDERS.radiusBadge,
+    fontSize: sizes.fontSize,
+    fontWeight: 600,
+    padding: sizes.padding,
+    height: sizes.height,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    ...style,
+  };
 
   return (
-    <span
-      className={`inline-flex items-center justify-center font-bold uppercase ${className}`}
-      style={{
-        ...sizing,
-        background: colors.bg,
-        color: colors.text,
-        borderRadius: rounded ? DESIGN_TOKENS.borderRadius.round : DESIGN_TOKENS.borderRadius.small,
-        fontWeight: DESIGN_TOKENS.typography.fontWeight.bold,
-        lineHeight: 1,
-        whiteSpace: 'nowrap',
-        ...style,
-      }}
-      {...props}
-    >
-      {children}
-    </span>
-  );
-}
-
-// Badge de plazo (con semáforo de colores)
-export interface PlazoBadgeProps extends HTMLAttributes<HTMLDivElement> {
-  diasRestantes: number;
-  vencido?: boolean;
-  showIcon?: boolean;
-  size?: 'small' | 'medium' | 'large';
-}
-
-export function PlazoBadge({
-  diasRestantes,
-  vencido = false,
-  showIcon = true,
-  size = 'medium',
-  className = '',
-  ...props
-}: PlazoBadgeProps) {
-  // Determinar color según días restantes
-  const getColor = () => {
-    if (vencido || diasRestantes < 0) {
-      return {
-        bg: DESIGN_TOKENS.colors.status.red,
-        text: DESIGN_TOKENS.colors.primary.white,
-        icon: '❌',
-        label: 'VENCIDA',
-      };
-    }
-    if (diasRestantes < 5) {
-      return {
-        bg: DESIGN_TOKENS.colors.status.orange,
-        text: DESIGN_TOKENS.colors.primary.white,
-        icon: '⚠️',
-        label: `${diasRestantes} DÍAS`,
-      };
-    }
-    if (diasRestantes < 15) {
-      return {
-        bg: DESIGN_TOKENS.colors.status.yellow,
-        text: DESIGN_TOKENS.colors.neutral.darkGray,
-        icon: '⚠️',
-        label: `${diasRestantes} DÍAS`,
-      };
-    }
-    return {
-      bg: DESIGN_TOKENS.colors.status.green,
-      text: DESIGN_TOKENS.colors.primary.white,
-      icon: '✓',
-      label: `${diasRestantes} DÍAS`,
-    };
-  };
-
-  const colorData = getColor();
-
-  const sizeStyles = {
-    small: {
-      padding: '4px 8px',
-      fontSize: '10px',
-      iconSize: '12px',
-    },
-    medium: {
-      padding: '6px 10px',
-      fontSize: '11px',
-      iconSize: '14px',
-    },
-    large: {
-      padding: '8px 12px',
-      fontSize: '12px',
-      iconSize: '16px',
-    },
-  };
-
-  const sizing = sizeStyles[size];
-
-  return (
-    <div
-      className={`inline-flex items-center gap-1 font-bold rounded ${className}`}
-      style={{
-        ...sizing,
-        background: colorData.bg,
-        color: colorData.text,
-        borderRadius: DESIGN_TOKENS.borderRadius.small,
-        fontWeight: DESIGN_TOKENS.typography.fontWeight.bold,
-      }}
-      {...props}
-    >
-      {showIcon && (
-        <span style={{ fontSize: sizing.iconSize }}>{colorData.icon}</span>
+    <span className={className} style={baseStyles}>
+      {dot && (
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            backgroundColor: colors.text,
+          }}
+        />
       )}
-      <span>{colorData.label}</span>
-    </div>
-  );
-}
-
-// Badge de tipo de falta (expedientes disciplinarios)
-export interface TipoFaltaBadgeProps extends HTMLAttributes<HTMLSpanElement> {
-  tipo: 'Leve' | 'Grave' | 'Gravísima';
-  size?: 'small' | 'medium' | 'large';
-}
-
-export function TipoFaltaBadge({
-  tipo,
-  size = 'medium',
-  className = '',
-  ...props
-}: TipoFaltaBadgeProps) {
-  const colorMap = {
-    Leve: {
-      bg: '#DBEAFE',
-      text: '#1E40AF',
-    },
-    Grave: {
-      bg: '#FEF3C7',
-      text: '#92400E',
-    },
-    Gravísima: {
-      bg: '#FEE2E2',
-      text: '#991B1B',
-    },
-  };
-
-  const colors = colorMap[tipo];
-
-  const sizeStyles = {
-    small: {
-      padding: '2px 6px',
-      fontSize: '10px',
-    },
-    medium: {
-      padding: '4px 8px',
-      fontSize: '11px',
-    },
-    large: {
-      padding: '6px 12px',
-      fontSize: '12px',
-    },
-  };
-
-  const sizing = sizeStyles[size];
-
-  return (
-    <span
-      className={`inline-flex items-center justify-center font-bold uppercase rounded ${className}`}
-      style={{
-        ...sizing,
-        ...colors,
-        borderRadius: DESIGN_TOKENS.borderRadius.small,
-        fontWeight: DESIGN_TOKENS.typography.fontWeight.bold,
-        lineHeight: 1,
-      }}
-      {...props}
-    >
-      {tipo}
+      {icon && <span style={{ display: 'flex', alignItems: 'center' }}>{icon}</span>}
+      <span>{children}</span>
     </span>
   );
 }
 
-// Badge de urgencia
-export interface UrgenciaBadgeProps extends HTMLAttributes<HTMLSpanElement> {
-  urgente: boolean;
-  size?: 'small' | 'medium' | 'large';
+/**
+ * BadgeLeyDisciplinaria - Badge específico para mostrar ley aplicable (MOD-02)
+ * Selector automático según fecha de hechos: Ley 734/2002 vs Ley 1952/2019
+ */
+interface BadgeLeyDisciplinariaProps {
+  fechaHechos: Date;
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
 }
 
-export function UrgenciaBadge({
-  urgente,
-  size = 'medium',
-  className = '',
-  ...props
-}: UrgenciaBadgeProps) {
-  if (!urgente) return null;
-
-  const sizeStyles = {
-    small: {
-      padding: '2px 6px',
-      fontSize: '10px',
-    },
-    medium: {
-      padding: '4px 8px',
-      fontSize: '11px',
-    },
-    large: {
-      padding: '6px 12px',
-      fontSize: '12px',
-    },
-  };
-
-  const sizing = sizeStyles[size];
-
+export function BadgeLeyDisciplinaria({ fechaHechos, size = 'md', className = '' }: BadgeLeyDisciplinariaProps) {
+  // ⚠️ FECHA CRÍTICA: 29 de marzo de 2022 (vigencia Ley 1952/2019)
+  const FECHA_CORTE = new Date('2022-03-29');
+  
+  const esLey734 = fechaHechos < FECHA_CORTE;
+  
+  const ley = esLey734 ? 'Ley 734/2002' : 'Ley 1952/2019';
+  const color = esLey734 ? SIGL_COLORS.gris600 : SIGL_COLORS.modJuzgamiento;
+  
   return (
-    <span
-      className={`inline-flex items-center gap-1 font-bold uppercase rounded ${className}`}
-      style={{
-        ...sizing,
-        background: DESIGN_TOKENS.colors.status.red,
-        color: DESIGN_TOKENS.colors.primary.white,
-        borderRadius: DESIGN_TOKENS.borderRadius.small,
-        fontWeight: DESIGN_TOKENS.typography.fontWeight.bold,
-        lineHeight: 1,
-      }}
-      {...props}
+    <BadgeSIGL variant="custom" color={color} size={size} className={className}>
+      {ley}
+    </BadgeSIGL>
+  );
+}
+
+/**
+ * BadgeUrgencia - Badge de urgencia para notificaciones (MOD-04)
+ */
+interface BadgeUrgenciaProps {
+  nivel: 'URGENTE' | 'IMPORTANTE' | 'NORMAL';
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+}
+
+export function BadgeUrgencia({ nivel, size = 'md', className = '' }: BadgeUrgenciaProps) {
+  const variantMap: Record<string, 'danger' | 'warning' | 'neutral'> = {
+    URGENTE: 'danger',
+    IMPORTANTE: 'warning',
+    NORMAL: 'neutral',
+  };
+  
+  return (
+    <BadgeSIGL variant={variantMap[nivel]} size={size} className={className} dot>
+      {nivel}
+    </BadgeSIGL>
+  );
+}
+
+/**
+ * BadgeModulo - Badge con color específico del módulo
+ */
+interface BadgeModuloProps {
+  modulo: 'defensa-judicial' | 'juzgamiento' | 'asesoria' | 'buzon-notif' | 'terminos';
+  size?: 'sm' | 'md' | 'lg';
+  children?: React.ReactNode;
+  className?: string;
+}
+
+export function BadgeModulo({ modulo, size = 'md', children, className = '' }: BadgeModuloProps) {
+  const moduloColors: Record<string, string> = {
+    'defensa-judicial': SIGL_COLORS.modDefensaJudicial,
+    'juzgamiento': SIGL_COLORS.modJuzgamiento,
+    'asesoria': SIGL_COLORS.modAsesoria,
+    'buzon-notif': SIGL_COLORS.modBuzonNotif,
+    'terminos': SIGL_COLORS.modTerminos,
+  };
+  
+  const moduloNames: Record<string, string> = {
+    'defensa-judicial': 'Defensa Judicial',
+    'juzgamiento': 'Juzgamiento',
+    'asesoria': 'Asesoría',
+    'buzon-notif': 'Buzón Notif.',
+    'terminos': 'Términos',
+  };
+  
+  return (
+    <BadgeSIGL 
+      variant="custom" 
+      color={moduloColors[modulo]} 
+      size={size} 
+      className={className}
     >
-      <span>⚠️</span>
-      <span>URGENTE</span>
-    </span>
+      {children || moduloNames[modulo]}
+    </BadgeSIGL>
   );
 }

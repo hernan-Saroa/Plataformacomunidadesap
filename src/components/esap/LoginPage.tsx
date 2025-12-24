@@ -2,11 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, GraduationCap, TrendingUp, Users, Award, Sparkles, Home, ArrowLeft, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { authService } from '../../services/api/authService';
 import { config } from '../../config/environment';
+
+interface Usuario {
+  id: string;
+  nombre: string;
+  tipo: 'externo' | 'interno';
+  email: string;
+  rol?: string;
+  password?: string;
+}
 
 interface LoginPageProps {
   onLogin: (user: any, accessToken: string, rememberMe?: boolean) => void;
@@ -116,17 +123,34 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
       // Determinar el tipo de usuario basado en el email para mostrar mensaje personalizado
       const emailLower = email.toLowerCase();
-      const validCredentials = [
-        { email: 'superuser@esap.edu.co', password: '123456', type: 'superuser' },
-        { email: 'rector@esap.edu.co', password: 'rector123', type: 'rector' },
-        { email: 'director@esap.edu.co', password: 'director123', type: 'director' },
-        { email: 'admin@esap.edu.co', password: '123456', type: 'admin' },
-        { email: 'estudiantes@esap.edu.co', password: '123456', type: 'student' },
-        { email: 'cerlaboral@esap.edu.co', password: '123456', type: 'certificados' },
-        { email: 'funcionario@esap.edu.co', password: '123456', type: 'funcionario' },
-        { email: 'ar.empresarial@esap.edu.co', password: '123456', type: 'arquitectura' },
-        { email: 'arqempresarial@esap.edu.co', password: '123456', type: 'arquitectura' },
-        { email: 'planta@esap.edu.co', password: '123456', type: 'planta-profesoral' }, // ✅ NUEVO: Gestión Profesoral
+      // const validCredentials = [
+      //   { email: 'superuser@esap.edu.co', password: '123456', type: 'superuser' },
+      //   { email: 'rector@esap.edu.co', password: 'rector123', type: 'rector' },
+      //   { email: 'director@esap.edu.co', password: 'director123', type: 'director' },
+      //   { email: 'admin@esap.edu.co', password: '123456', type: 'admin' },
+      //   { email: 'estudiantes@esap.edu.co', password: '123456', type: 'student' },
+      //   { email: 'cerlaboral@esap.edu.co', password: '123456', type: 'certificados' },
+      //   { email: 'funcionario@esap.edu.co', password: '123456', type: 'funcionario' },
+      //   { email: 'ar.empresarial@esap.edu.co', password: '123456', type: 'arquitectura' },
+      //   { email: 'arqempresarial@esap.edu.co', password: '123456', type: 'arquitectura' },
+      //   { email: 'planta@esap.edu.co', password: '123456', type: 'planta-profesoral' }, // ✅ NUEVO: Gestión Profesoral
+      // ];
+
+      const validCredentials: Usuario[] = [
+        { id: '1', nombre: 'Super User', tipo: 'interno', email: 'superuser@esap.edu.co', rol: 'superuser', password: 'Esap2026*' },
+        { id: '2', nombre: 'Rector', tipo: 'interno', email: 'rector@esap.edu.co', rol: 'rector', password: 'Esap2026*' },
+        { id: '3', nombre: 'Director', tipo: 'interno', email: 'director@esap.edu.co', rol: 'director', password: 'Esap2026*' },
+        { id: '4', nombre: 'Admin', tipo: 'interno', email: 'admin@esap.edu.co', rol: 'admin', password: 'Esap2026*' },
+        { id: '5', nombre: 'Estudiantes', tipo: 'interno', email: 'estudiantes@esap.edu.co', rol: 'student', password: 'Esap2026*' },
+        { id: '6', nombre: 'Gestor de Certificados', tipo: 'interno', email: 'cerlaboral@esap.edu.co', rol: 'certificados', password: 'Esap2026*' },
+        { id: '7', nombre: 'Funcionario', tipo: 'interno', email: 'funcionario@esap.edu.co', rol: 'funcionario', password: 'Esap2026*' },
+        { id: '8', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'ar.empresarial@esap.edu.co', rol: 'arquitectura', password: 'Esap2026*' },
+        { id: '9', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'arqempresarial@esap.edu.co', rol: 'arquitectura', password: 'Esap2026*' },
+        { id: '10', nombre: 'Docente Planta', tipo: 'interno', email: 'planta@esap.edu.co', rol: 'planta-profesoral', password: 'Esap2026*' }, // ✅ NUEVO: Gestión Profesoral
+        { id: '11', nombre: 'Gestión Legal', tipo: 'interno', email: 'gestion.legal@esap.edu.co', rol: 'gestion-legal', password: 'Esap2026*' }, // ✅ NUEVO: Gestión Legal
+        { id: '12', nombre: 'Control Interno', tipo: 'interno', email: 'OCIG@esap.edu.co', rol: 'control-interno', password: 'Esap2026*' }, // ✅ NUEVO: Control Interno OCIG
+        { id: '13', nombre: 'Control Disciplinario', tipo: 'interno', email: 'c.disciplinario@esap.edu.co', rol: 'control-disciplinario', password: 'Esap2026*' }, // ✅ NUEVO: Control Disciplinario
+        { id: '14', nombre: 'Registro Académico', tipo: 'interno', email: 'registro.academico@esap.edu.co', rol: 'registro-academico', password: 'Esap2026*' }, // ✅ NUEVO: Registro Académico
       ];
 
       // // Verificar si el email existe en las credenciales válidas
@@ -197,6 +221,21 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           description: 'Acceso a la Gestión Profesoral concedido',
           duration: 3500,
         });
+      } else if (emailLower === 'ocig@esap.edu.co') {
+        toast.success('🔍 ¡Bienvenido OCIG!', {
+          description: 'Acceso al Módulo de Control Interno de Gestión concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'c.disciplinario@esap.edu.co') {
+        toast.success('🔍 ¡Bienvenido Control Disciplinario!', {
+          description: 'Acceso al Módulo de Control Disciplinario concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'registro.academico@esap.edu.co') {
+        toast.success('📚 ¡Bienvenido Registro Académico!', {
+          description: 'Acceso al Módulo de Registro Académico concedido',
+          duration: 3500,
+        });
       }
 
       // console.log('🔄 Calling onLogin handler with user data');
@@ -257,11 +296,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           >
             {/* Logo - Mobile Only */}
             <div className="lg:hidden flex justify-center mb-6">
-              <img 
-                src={esapLogo} 
-                alt="ESAP" 
-                className="h-12 w-auto object-contain"
-              />
+              <div className="text-2xl font-bold text-[#1e5da8]">ESAP</div>
             </div>
 
             {/* Back to Home Button - Solo si onBackToHome está disponible */}
@@ -522,7 +557,11 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="font-medium">🔍 Control Interno:</span>
-                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">c.internoge@esap.edu.co</code>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">OCIG@esap.edu.co</code>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">🔍 Control Disciplinario:</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">c.disciplinario@esap.edu.co</code>
                   </div>
                   <div className="flex items-center justify-between bg-gradient-to-r from-purple-50 to-purple-100 px-2 py-1 rounded border border-purple-300">
                     <span className="font-bold text-purple-900">⚖️ Funcionario (Procesos):</span>
@@ -530,7 +569,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   </div>
                   <div className="flex items-center justify-between pt-1.5 border-t border-blue-200">
                     <span className="font-medium">🔑 Contraseña:</span>
-                    <code className="px-2 py-0.5 bg-white rounded font-mono font-bold">123456</code>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono font-bold">Esap2026*</code>
                   </div>
                 </div>
               </motion.div>
@@ -600,11 +639,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
             >
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP" 
-                className="h-12 lg:h-14 xl:h-16 2xl:h-20 w-auto object-contain drop-shadow-2xl"
-              />
+              <div className="text-3xl lg:text-4xl xl:text-5xl 2xl:text-6xl font-bold drop-shadow-2xl">ESAP</div>
             </motion.div>
 
             {/* Main Content */}

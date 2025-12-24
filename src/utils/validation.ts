@@ -339,6 +339,7 @@ export function validateUnique<T>(
 
 export interface AuditoriaFormData {
   codigo?: string;
+  tipoAuditoria?: 'regular' | 'territorial' | 'especial';
   titulo: string;
   descripcion: string;
   territorial: string;

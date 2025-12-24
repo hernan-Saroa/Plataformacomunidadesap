@@ -15,7 +15,8 @@ import {
   Search, Plus, Filter, Download, Eye, Edit, Trash2, MoreVertical,
   X, Check, Clock, AlertTriangle, CheckCircle, FolderOpen as Folder, FileText,
   Calendar, User, Mail, Phone, MapPin, Save, Upload, ChevronDown, ChevronRight,
-  TrendingUp, Star, Award, Target, ChevronLeft, List, Columns3, Scale, Archive
+  TrendingUp, Star, Award, Target, ChevronLeft, List, Columns3, Scale,
+  Archive, BookOpen, Bell
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -35,6 +36,10 @@ import { ExpedienteElectronico } from './ExpedienteElectronico'; // ✅ RF005 10
 import { GestionTerminosAlertas } from './GestionTerminosAlertas'; // ✅ RF006 100% Funcional
 import { DashboardEjecutivoIntegrado } from './DashboardEjecutivoIntegrado'; // ✅ Dashboard Hub Operativo
 import { DashboardKanbanOperativo } from './DashboardKanbanOperativo'; // ✅ Kanban Operativo Completo
+import { ModelosSoporteDisciplinario } from './ModelosSoporteDisciplinario'; // ✅ Modelos de Soporte
+import { InformesLeyModule } from './InformesLeyModule'; // ✅ Informes de Ley
+import { GestionDocumentalModule } from './GestionDocumentalModule'; // ✅ Gestión Documental
+import { NotificacionesModule } from './NotificacionesModule'; // ✅ Notificaciones
 
 import { disciplinaryService, DisciplinaryProcess } from '../../../services/api/disciplinary.service';
 
@@ -700,7 +705,8 @@ function DashboardEjecutivo({ onNavigate, procesos = PROCESOS_MOCK }: { onNaviga
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ControlDisciplinarioFull() {
-  const [currentSection, setCurrentSection] = useState<'dashboard' | 'noticias' | 'aprobacion' | 'procesos' | 'expediente' | 'terminos' | 'reportes' | 'profesionales' | 'config'>('dashboard');
+  // const [currentSection, setCurrentSection] = useState<'dashboard' | 'noticias' | 'aprobacion' | 'procesos' | 'expediente' | 'terminos' | 'reportes' | 'profesionales' | 'config'>('dashboard');
+  const [currentSection, setCurrentSection] = useState<'dashboard' | 'noticias' | 'aprobacion' | 'procesos' | 'expediente' | 'terminos' | 'reportes' | 'profesionales' | 'informes' | 'documental' | 'notificaciones' | 'config'>('dashboard');
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
   const [filtroProfesionalNombre, setFiltroProfesionalNombre] = useState<string | null>(null);
   const [dashboardView, setDashboardView] = useState<'lista' | 'kanban'>('lista');
@@ -742,6 +748,9 @@ export function ControlDisciplinarioFull() {
     { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6' },
     { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B' },
     { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5' },
+    { id: 'informes', label: 'Informes de Ley', icon: <FileText className="w-5 h-5" />, color: '#1e5da8' },
+    { id: 'documental', label: 'Gestión Documental', icon: <FolderOpen className="w-5 h-5" />, color: '#10b981' },
+    { id: 'notificaciones', label: 'Notificaciones', icon: <Bell className="w-5 h-5" />, color: '#ef4444' },
     { id: 'config', label: 'Configuración', icon: <Settings className="w-5 h-5" />, color: '#6B7280' }
   ];
 
@@ -788,6 +797,9 @@ export function ControlDisciplinarioFull() {
       {currentSection === 'expediente' && <ExpedienteElectronico />}
       {currentSection === 'terminos' && <GestionTerminosAlertas />}
       {currentSection === 'profesionales' && <GestionProfesionales onVerProcesos={handleVerProcesosProfesional} />}
+      {currentSection === 'informes' && <InformesLeyModule />}
+      {currentSection === 'documental' && <GestionDocumentalModule />}
+      {currentSection === 'notificaciones' && <NotificacionesModule />}
       {currentSection === 'config' && <ModuloConfiguracion />}
     </ModuleLayout>
   );

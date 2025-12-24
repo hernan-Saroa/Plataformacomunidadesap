@@ -208,7 +208,7 @@ export function DocumentoVistaCompleta({
 
           <div className="flex items-center gap-2">
             {documento.estado === 'completo' && (
-              <Badge className="bg-green-500 text-white border-green-600">
+              <Badge className="bg-[#1e5da8] text-white border-[#1e5da8]">
                 Validado
               </Badge>
             )}
@@ -307,7 +307,7 @@ export function DocumentoVistaCompleta({
                   onAprobar();
                   onClose();
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                className="flex items-center gap-2 px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#1557a0] transition-colors font-medium"
               >
                 <CheckCircle className="w-4 h-4" />
                 <span>Aprobar Documento</span>
