@@ -15,10 +15,15 @@ import {
   Eye,
   ChevronRight
 } from 'lucide-react';
-import { CardSIGL } from '../design-system/CardSIGL';
-import { ButtonSIGL } from '../design-system/ButtonSIGL';
-import { BadgeSIGL } from '../design-system/BadgeSIGL';
+// import { CardSIGL } from '../design-system/CardSIGL';
+// import { ButtonSIGL } from '../design-system/ButtonSIGL';
+// import { BadgeSIGL } from '../design-system/BadgeSIGL';
 import { PLANIFICACION_2025_1, generarReportePlanificacion } from '../../data/planificacionSemestralData';
+
+
+import { CardSIGL } from '../esap/gestion-legal/design-system/CardSIGL';
+import { ButtonSIGL } from '../esap/gestion-legal/design-system/ButtonSIGL';
+import { BadgeSIGL } from '../esap/gestion-legal/design-system/BadgeSIGL';
 
 export function Fase1PlanificacionSemestral() {
   const [sedeSeleccionada, setSedeSeleccionada] = useState<string | null>(null);

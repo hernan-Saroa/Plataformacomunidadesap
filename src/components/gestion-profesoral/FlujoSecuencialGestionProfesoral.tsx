@@ -17,9 +17,13 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
-import { CardSIGL } from '../design-system/CardSIGL';
-import { ButtonSIGL } from '../design-system/ButtonSIGL';
-import { BadgeSIGL } from '../design-system/BadgeSIGL';
+// import { CardSIGL } from '../design-system/CardSIGL';
+// import { ButtonSIGL } from '../design-system/ButtonSIGL';
+// import { BadgeSIGL } from '../design-system/BadgeSIGL';
+
+import { CardSIGL } from '../esap/gestion-legal/design-system/CardSIGL';
+import { ButtonSIGL } from '../esap/gestion-legal/design-system/ButtonSIGL';
+import { BadgeSIGL } from '../esap/gestion-legal/design-system/BadgeSIGL';
 
 // Fases del proceso secuencial
 export type FaseGestionProfesoral = 

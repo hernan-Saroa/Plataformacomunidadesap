@@ -708,7 +708,7 @@ export default function App() {
       
       case 'portal':
         // Determinar roles según el email del usuario
-        const userRoles = usuarioActual?.email === 'gestion.profesoral@esap.edu.co' 
+        const portalRoles = usuarioActual?.email === 'gestion.profesoral@esap.edu.co' 
           ? ['Docente']
           : usuarioActual?.email === 'estudiantes@esap.edu.co'
           ? ['Estudiante']
@@ -743,7 +743,7 @@ export default function App() {
         console.log('📊 Datos para Portal Dashboard:', {
           userName: usuarioActual!.nombre,
           userEmail: usuarioActual!.email,
-          userRoles,
+          userRoles: portalRoles,
           adminData
         });
 
@@ -752,9 +752,9 @@ export default function App() {
             userName={usuarioActual!.nombre}
             userEmail={usuarioActual!.email}
             userPersonId={usuarioActual!.id}
-            userRoles={userRoles}
+            userRoles={portalRoles}
             userData={{
-              rol_principal: userRoles[0],
+              rol_principal: portalRoles[0],
               datos_por_rol: {
                 Docente: teacherData,
                 Administrativo: adminData
