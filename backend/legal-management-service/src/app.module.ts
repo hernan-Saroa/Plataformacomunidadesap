@@ -15,10 +15,14 @@ import { ExpedienteService } from './services/expediente.service';
 import { ActuacionService } from './services/actuacion.service';
 import { AbogadoService } from './services/abogado.service';
 import { AudienciaService } from './services/audiencia.service';
+import { Comentario } from './entities/comentario.entity';
+import { ComentarioController } from './controllers/comentario.controller';
+import { ComentarioService } from './services/comentario.service';
 
 import { Requerimiento } from './entities/requerimiento.entity';
 import { OrganismoControl } from './entities/organismo-control.entity';
 import { RequerimientoController } from './controllers/requerimiento.controller';
+import { FilesController } from './controllers/files.controller';
 import { RequerimientoService } from './services/requerimiento.service';
 
 @Module({
@@ -30,7 +34,8 @@ import { RequerimientoService } from './services/requerimiento.service';
       Abogado,
       Audiencia,
       Requerimiento,
-      OrganismoControl
+      OrganismoControl,
+      Comentario
     ]),
   ],
   controllers: [
@@ -39,14 +44,17 @@ import { RequerimientoService } from './services/requerimiento.service';
     AbogadoController,
     AbogadoStatsController,
     AudienciaController,
-    RequerimientoController
+    RequerimientoController,
+    FilesController,
+    ComentarioController
   ],
   providers: [
     ExpedienteService,
     ActuacionService,
     AbogadoService,
     AudienciaService,
-    RequerimientoService
+    RequerimientoService,
+    ComentarioService
   ],
 })
 export class AppModule { }

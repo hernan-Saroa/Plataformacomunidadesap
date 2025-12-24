@@ -25,6 +25,7 @@ export interface Expediente {
     ultimaActuacion?: string;
     ubicacionFisica?: string;
     sancionProyectada?: string;
+    etapaProcesal?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -95,6 +96,19 @@ export class LegalService {
 
     async createAudiencia(data: any): Promise<any> {
         return legalApiClient.post<any>('/api/legal/audiencias', data);
+    }
+
+    // Comentarios
+    async getComentarios(expedienteId: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/expedientes/${expedienteId}/comentarios`);
+    }
+
+    async createComentario(expedienteId: string, data: { contenido: string; usuarioNombre: string }): Promise<any> {
+        return legalApiClient.post<any>(`/api/legal/expedientes/${expedienteId}/comentarios`, data);
+    }
+
+    async deleteComentario(expedienteId: string, comentarioId: string): Promise<void> {
+        return legalApiClient.delete<void>(`/api/legal/expedientes/${expedienteId}/comentarios/${comentarioId}`);
     }
 }
 
