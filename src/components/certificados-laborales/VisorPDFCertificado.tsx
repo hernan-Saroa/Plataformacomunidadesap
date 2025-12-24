@@ -616,7 +616,7 @@ export function VisorPDFCertificado({ isOpen, onClose, certificado, autoAction, 
                 style={{
                   width: '816px',
                   minHeight: '1056px',
-                  fontFamily: plantillaConfig.typography?.font || 'Times New Roman',
+                  fontFamily: 'Arial Narrow, Arial, sans-serif',
                   fontSize: '12pt',
                   padding: '72px 72px 72px 72px',
                   position: 'relative'
