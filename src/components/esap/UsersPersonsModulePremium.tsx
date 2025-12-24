@@ -178,7 +178,7 @@ export function UsersPersonsModulePremium() {
   }, [currentPage]); // Recargar cuando cambia la página
 
   // Usuarios actuales (de API o mock)
-  const currentUsers = users.length > 0 ? users : MOCK_USERS_WITH_SEDES;
+  const currentUsers = users;
 
   // Stats calculadas - Usar valores del backend si están disponibles, sino calcular del frontend
   const stats = {
@@ -190,9 +190,9 @@ export function UsersPersonsModulePremium() {
 
   // ✅ Stats de enrolamiento para el modal
   const enrollmentStats = {
-    qr: (users.length ? users.filter(u => u.enrollmentMethod === 'qr').length : MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'qr').length),
-    manual: (users.length ? users.filter(u => u.enrollmentMethod === 'manual').length : MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'manual').length),
-    massive: (users.length ? users.filter(u => u.enrollmentMethod === 'massive').length : MOCK_USERS_WITH_SEDES.filter(u => u.enrollmentMethod === 'massive').length),
+    qr: (users.length ? users.filter(u => u.enrollmentMethod === 'qr').length : 0),
+    manual: (users.length ? users.filter(u => u.enrollmentMethod === 'manual').length : 0),
+    massive: (users.length ? users.filter(u => u.enrollmentMethod === 'massive').length : 0),
     total: users.length || MOCK_USERS_WITH_SEDES.length
   };
 
@@ -1388,7 +1388,6 @@ export function UsersPersonsModulePremium() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2, delay: index * 0.05 }}
                         className="group cursor-pointer"
                         style={{
                           borderBottom: '1px solid #E5E7EB',
@@ -1703,7 +1702,6 @@ export function UsersPersonsModulePremium() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2, delay: index * 0.05 }}
                   className="p-4"
                   style={{
                     background: '#FFFFFF',
