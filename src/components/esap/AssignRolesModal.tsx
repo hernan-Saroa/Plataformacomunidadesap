@@ -12,6 +12,7 @@ interface AssignRolesModalProps {
     description?: string;
     color: string;
     type: string;
+    code: string;
   }>;
   selectedRoleIds: Set<string>;
   onToggleRole: (roleId: string) => void;
@@ -90,6 +91,10 @@ export function AssignRolesModal({
               ) : (
                 roles.map((role) => {
                   const selected = selectedRoleIds.has(role.id);
+                  const isSuperAdmin = role.code === 'SUPER_ADMIN';
+                  if (isSuperAdmin) {
+                    return null;
+                  }
                   return (
                     <button
                       key={role.id}

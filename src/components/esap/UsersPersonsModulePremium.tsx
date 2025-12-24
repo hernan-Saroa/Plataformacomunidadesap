@@ -127,7 +127,8 @@ export function UsersPersonsModulePremium() {
           id: role.id,
           name: role.name,
           color: role.color,
-          type: role.type
+          type: role.type,
+          code: role.code
         })),
         location: item.seccional?.ubicacion || item.sede?.ubicacion || 'Sin ubicación',
         lastActivity: item.user.updated_at,
@@ -320,6 +321,11 @@ export function UsersPersonsModulePremium() {
     );
   };
 
+  const hasSuperAdminRole = (user: any) =>
+    (user.roles || []).some((role: any) => {
+      return role.code === 'SUPER_ADMIN'
+    });
+
   // ✅ FUNCIÓN HELPER PARA BADGES DE ENROLAMIENTO
   const getEnrollmentBadge = (method: 'qr' | 'manual' | 'massive') => {
     const methodConfig: Record<string, { label: string; className: string; icon: any }> = {
@@ -473,7 +479,12 @@ export function UsersPersonsModulePremium() {
   };
 
   const handleAssignRoles = async (user: any) => {
-    console.log('🔐 Assigning roles to user:', user);
+    if (hasSuperAdminRole(user)) {
+      toast.info('Acción no disponible', {
+        description: 'El usuario SUPER_ADMIN no requiere asignación de roles.'
+      });
+      return;
+    }
     setSelectedUser(user);
     setSelectedRoleIds(new Set((user.roles || []).map((role: any) => role.id)));
     setShowAssignRolesModal(true);
@@ -1542,14 +1553,16 @@ export function UsersPersonsModulePremium() {
                                   <Edit className="w-4 h-4 mr-2" />
                                   Editar Usuario
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => handleAssignRoles(user)}
-                                  className="bg-blue-50 hover:bg-blue-100"
-                                  style={{ color: '#D97706' }}
-                                >
-                                  <Users className="w-4 h-4 mr-2" />
-                                  Asignar Roles
-                                </DropdownMenuItem>
+                                {!hasSuperAdminRole(user) && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleAssignRoles(user)}
+                                    className="bg-blue-50 hover:bg-blue-100"
+                                    style={{ color: '#003DA5' }}
+                                  >
+                                    <Users className="w-4 h-4 mr-2" />
+                                    Asignar Roles
+                                  </DropdownMenuItem>
+                                )}
                                 {/* <DropdownMenuItem
                                   onClick={() => handleAssignAccess(user)}
                                   className="bg-amber-50 hover:bg-amber-100"
@@ -1741,14 +1754,16 @@ export function UsersPersonsModulePremium() {
                             <Edit className="w-4 h-4 mr-2" />
                             Editar Usuario
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleAssignRoles(user)}
-                            className="bg-blue-50 hover:bg-blue-100"
-                            style={{ color: '#D97706' }}
-                          >
-                            <Users className="w-4 h-4 mr-2" />
-                            Asignar Roles
-                          </DropdownMenuItem>
+                          {!hasSuperAdminRole(user) && (
+                            <DropdownMenuItem
+                              onClick={() => handleAssignRoles(user)}
+                              className="bg-blue-50 hover:bg-blue-100"
+                              style={{ color: '#003DA5' }}
+                            >
+                              <Users className="w-4 h-4 mr-2" />
+                              Asignar Roles
+                            </DropdownMenuItem>
+                          )}
                           {/* <DropdownMenuItem
                             onClick={() => handleAssignAccess(user)}
                             className="bg-amber-50 hover:bg-amber-100"

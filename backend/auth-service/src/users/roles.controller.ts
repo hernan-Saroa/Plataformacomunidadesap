@@ -4,6 +4,7 @@ import type { CreateRoleDto, UpdateRoleDto, RoleFilters, RoleStats } from './rol
 
 export interface RoleResponse {
   id: string;
+  code: string;
   name: string;
   description?: string;
   icon: string;
@@ -32,6 +33,7 @@ export class RolesController {
     return {
       roles: result.roles.map((role: any) => ({
         id: role.id,
+        code: role.code,
         name: role.name,
         description: role.description,
         icon: role.icon,
@@ -60,6 +62,7 @@ export class RolesController {
     const role = await this.rolesService.findOne(id) as any;
     return {
       id: role.id,
+      code: role.code,
       name: role.name,
       description: role.description,
       icon: role.icon,
@@ -81,6 +84,7 @@ export class RolesController {
     const role = await this.rolesService.create(createRoleDto, 'current_user'); // TODO: obtener usuario actual
     return {
       id: role.id,
+      code: role.code,
       name: role.name,
       description: role.description,
       icon: role.icon,
@@ -102,6 +106,7 @@ export class RolesController {
     const role = await this.rolesService.update(id, updateRoleDto, 'current_user') as any; // TODO: obtener usuario actual
     return {
       id: role.id,
+      code: role.code,
       name: role.name,
       description: role.description,
       icon: role.icon,
@@ -129,6 +134,7 @@ export class RolesController {
     const role = await this.rolesService.duplicate(id, 'current_user'); // TODO: obtener usuario actual
     return {
       id: role.id,
+      code: role.code,
       name: role.name,
       description: role.description,
       icon: role.icon,
@@ -150,6 +156,7 @@ export class RolesController {
     const role = await this.rolesService.toggleActive(id, 'current_user') as any; // TODO: obtener usuario actual
     return {
       id: role.id,
+      code: role.code,
       name: role.name,
       description: role.description,
       icon: role.icon,
@@ -171,6 +178,7 @@ export class RolesController {
     const role = await this.rolesService.toggle2FA(id, 'current_user') as any; // TODO: obtener usuario actual
     return {
       id: role.id,
+      code: role.code,
       name: role.name,
       description: role.description,
       icon: role.icon,
@@ -207,6 +215,7 @@ export class RolesController {
     const role = await this.rolesService.updatePermissions(id, body.permissionIds, 'current_user') as any; // TODO: obtener usuario actual
     return {
       id: role.id,
+      code: role.code,
       name: role.name,
       description: role.description,
       icon: role.icon,
