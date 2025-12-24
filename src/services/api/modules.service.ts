@@ -103,7 +103,7 @@ export const modulesService = {
       color: getTextColorClass(module.color),
       bgColor: getBgColorClass(module.color),
       permissions: module.permissions.map((permission) => ({
-        id: permission.code,
+        id: permission.id,
         name: permission.name,
         description: permission.description,
         module: module.code,

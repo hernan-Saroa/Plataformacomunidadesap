@@ -53,12 +53,15 @@ import { CreatePersonModal } from './CreatePersonModal';
 import { UserEnrollmentSection } from './UserEnrollmentSection';  // ✅ NUEVO
 import { EnrollmentConfigModal } from './EnrollmentConfigModal';  // ✅ MODAL CONFIGURACIÓN
 import { AssignAccessModal } from './AssignAccessModal';  // ✅ MODAL ASIGNAR ACCESOS
+import { AssignRolesModal } from './AssignRolesModal';  // ✅ MODAL ASIGNAR ROLES
 import { EditUserModal } from './EditUserModal';  // ✅ MODAL EDITAR CON SEDES
 import { DashboardSedesMetrics } from './DashboardSedesMetrics';  // ✅ DASHBOARD SEDES
 import { CarpetaDigitalGlobal } from './CarpetaDigitalGlobal';  // ✅ CARPETA DIGITAL GLOBAL
 import { ExportUsersBySede } from './ExportUsersBySede';  // ✅ EXPORTAR POR SEDE
 import { MOCK_USERS_WITH_SEDES } from '../../data/mockUsersWithSedes';  // ✅ USUARIOS CON SEDES
 import { usersService, type User, type UserFilters } from '../../services/usersService';  // ✅ SERVICIO DE USUARIOS
+import { rolesService } from '../../services/api';
+import type { SystemRole } from '../../services/api/roles.service';
 import { BadgesSedesUsuario } from '../estructura-organizacional/BadgesSedesUsuario';  // ✅ BADGES
 import { SelectorEstructuraCompacto } from '../estructura-organizacional/SelectorEstructura';  // ✅ FILTRO
 import { FiltroEstructuraOrganizacional } from '../estructura-organizacional/FiltroEstructuraOrganizacional';  // ✅ FILTRO COHERENTE
@@ -79,6 +82,7 @@ export function UsersPersonsModulePremium() {
   const [showEnrollmentConfig, setShowEnrollmentConfig] = useState(false);  // ✅ NUEVO
   const [showAssignAccessModal, setShowAssignAccessModal] = useState(false);  // ✅ MODAL ASIGNAR ACCESOS
   const [showEditModal, setShowEditModal] = useState(false);  // ✅ MODAL EDITAR
+  const [showAssignRolesModal, setShowAssignRolesModal] = useState(false);  // ✅ MODAL ASIGNAR ROLES
   const [showSedesMetrics, setShowSedesMetrics] = useState(false);  // ✅ DASHBOARD SEDES
   const [showExportModal, setShowExportModal] = useState(false);  // ✅ MODAL EXPORTAR
   const [viewMode, setViewMode] = useState<'users' | 'digital-folder'>('users');  // ✅ NUEVO - Vista actual
@@ -89,6 +93,10 @@ export function UsersPersonsModulePremium() {
   const [totalUsers, setTotalUsers] = useState(0);  // ✅ TOTAL DE USUARIOS
   const [totalActiveUsers, setTotalActiveUsers] = useState(0);  // ✅ TOTAL DE USUARIOS ACTIVOS
   const [totalBlockedUsers, setTotalBlockedUsers] = useState(0);  // ✅ TOTAL DE USUARIOS BLOQUEADOS
+  const [availableRoles, setAvailableRoles] = useState<SystemRole[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [rolesSaving, setRolesSaving] = useState(false);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
   const itemsPerPage = 10;
 
   // ✅ FUNCIÓN PARA CARGAR USUARIOS DESDE EL BACKEND
@@ -119,7 +127,8 @@ export function UsersPersonsModulePremium() {
           id: role.id,
           name: role.name,
           color: role.color,
-          type: role.type
+          type: role.type,
+          code: role.code
         })),
         location: item.seccional?.ubicacion || item.sede?.ubicacion || 'Sin ubicación',
         lastActivity: item.user.updated_at,
@@ -312,6 +321,11 @@ export function UsersPersonsModulePremium() {
     );
   };
 
+  const hasSuperAdminRole = (user: any) =>
+    (user.roles || []).some((role: any) => {
+      return role.code === 'SUPER_ADMIN'
+    });
+
   // ✅ FUNCIÓN HELPER PARA BADGES DE ENROLAMIENTO
   const getEnrollmentBadge = (method: 'qr' | 'manual' | 'massive') => {
     const methodConfig: Record<string, { label: string; className: string; icon: any }> = {
@@ -445,6 +459,78 @@ export function UsersPersonsModulePremium() {
   const handleAssignAccessSubmit = (userId: string, accesses: string[]) => {
     console.log('Asignando accesos:', { userId, accesses });
     // En producción: await assignUserAccess(userId, accesses); refetch();
+  };
+
+  // ✅ NUEVO: Asignar Roles
+  const loadRoles = async () => {
+    try {
+      setRolesLoading(true);
+      const response = await rolesService.getRoles({ page: 1, limit: 200 });
+      setAvailableRoles(response.roles);
+    } catch (error) {
+      console.error('Error al cargar roles:', error);
+      toast.error('Error al cargar roles', {
+        description: 'No se pudieron obtener los roles del sistema'
+      });
+      setAvailableRoles([]);
+    } finally {
+      setRolesLoading(false);
+    }
+  };
+
+  const handleAssignRoles = async (user: any) => {
+    if (hasSuperAdminRole(user)) {
+      toast.info('Acción no disponible', {
+        description: 'El usuario SUPER_ADMIN no requiere asignación de roles.'
+      });
+      return;
+    }
+    setSelectedUser(user);
+    setSelectedRoleIds(new Set((user.roles || []).map((role: any) => role.id)));
+    setShowAssignRolesModal(true);
+    await loadRoles();
+  };
+
+  const toggleRoleSelection = (roleId: string) => {
+    setSelectedRoleIds(prev => {
+      const next = new Set(prev);
+      if (next.has(roleId)) {
+        next.delete(roleId);
+      } else {
+        next.add(roleId);
+      }
+      return next;
+    });
+  };
+
+  const handleSaveAssignedRoles = async () => {
+    if (!selectedUser) return;
+    if (selectedRoleIds.size === 0) {
+      toast.error('Selecciona al menos un rol', {
+        description: 'Un usuario debe tener al menos un rol asignado.'
+      });
+      return;
+    }
+
+    try {
+      setRolesSaving(true);
+      await usersService.updateUser(selectedUser.id_user || selectedUser.id, {
+        roleIds: Array.from(selectedRoleIds)
+      });
+      toast.success('Roles asignados', {
+        description: `Se actualizaron los roles de ${selectedUser.firstName} ${selectedUser.lastName}`
+      });
+      setShowAssignRolesModal(false);
+      setSelectedUser(null);
+      await loadUsers();
+    } catch (error: any) {
+      console.error('Error al asignar roles:', error);
+      toast.error('Error al asignar roles', {
+        description: error?.message || 'No se pudieron actualizar los roles'
+      });
+    } finally {
+      setRolesSaving(false);
+    }
   };
 
   // ✅ NUEVO: Bloquear usuario
@@ -1467,14 +1553,24 @@ export function UsersPersonsModulePremium() {
                                   <Edit className="w-4 h-4 mr-2" />
                                   Editar Usuario
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
+                                {!hasSuperAdminRole(user) && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleAssignRoles(user)}
+                                    className="bg-blue-50 hover:bg-blue-100"
+                                    style={{ color: '#003DA5' }}
+                                  >
+                                    <Users className="w-4 h-4 mr-2" />
+                                    Asignar Roles
+                                  </DropdownMenuItem>
+                                )}
+                                {/* <DropdownMenuItem
                                   onClick={() => handleAssignAccess(user)}
                                   className="bg-amber-50 hover:bg-amber-100"
                                   style={{ color: '#D97706' }}
                                 >
                                   <Shield className="w-4 h-4 mr-2" />
                                   Asignar Accesos
-                                </DropdownMenuItem>
+                                </DropdownMenuItem> */}
                                 <DropdownMenuSeparator />
                                 {user.status === 'active' || user.is_active ? (
                                   <DropdownMenuItem
@@ -1658,14 +1754,24 @@ export function UsersPersonsModulePremium() {
                             <Edit className="w-4 h-4 mr-2" />
                             Editar Usuario
                           </DropdownMenuItem>
-                          <DropdownMenuItem
+                          {!hasSuperAdminRole(user) && (
+                            <DropdownMenuItem
+                              onClick={() => handleAssignRoles(user)}
+                              className="bg-blue-50 hover:bg-blue-100"
+                              style={{ color: '#003DA5' }}
+                            >
+                              <Users className="w-4 h-4 mr-2" />
+                              Asignar Roles
+                            </DropdownMenuItem>
+                          )}
+                          {/* <DropdownMenuItem
                             onClick={() => handleAssignAccess(user)}
                             className="bg-amber-50 hover:bg-amber-100"
                             style={{ color: '#D97706' }}
                           >
                             <Shield className="w-4 h-4 mr-2" />
                             Asignar Accesos
-                          </DropdownMenuItem>
+                          </DropdownMenuItem> */}
                           <DropdownMenuSeparator />
                           {user.status === 'active' || user.is_active ? (
                             <DropdownMenuItem
@@ -1856,6 +1962,25 @@ export function UsersPersonsModulePremium() {
           }}
           user={selectedUser}
           onSave={handleSaveEdit}
+        />
+      )}
+
+      {/* ✅ Modal Asignar Roles */}
+      {showAssignRolesModal && selectedUser && (
+        <AssignRolesModal
+          isOpen={showAssignRolesModal}
+          onClose={() => {
+            setShowAssignRolesModal(false);
+            setSelectedUser(null);
+            setSelectedRoleIds(new Set());
+          }}
+          user={selectedUser}
+          roles={availableRoles}
+          selectedRoleIds={selectedRoleIds}
+          onToggleRole={toggleRoleSelection}
+          onSave={handleSaveAssignedRoles}
+          loading={rolesLoading}
+          saving={rolesSaving}
         />
       )}
 
