@@ -56,6 +56,45 @@ export class Expediente {
     @Column({ name: 'sancion_proyectada', nullable: true })
     sancionProyectada: string;
 
+    @Column({ name: 'medio_control', nullable: true })
+    medioControl: string;
+
+    @Column({ name: 'juzgado_conocimiento', nullable: true })
+    juzgadoConocimiento: string;
+
+    @Column({ name: 'pretension_demandante', type: 'text', nullable: true })
+    pretensionDemandante: string;
+
+    @Column({ name: 'acto_administrativo_demandado', type: 'text', nullable: true })
+    actoAdministrativoDemandado: string;
+
+    @Column({ name: 'fecha_notificacion', type: 'timestamp', nullable: true })
+    fechaNotificacion: Date;
+
+    @Column({ name: 'fecha_admision', type: 'timestamp', nullable: true })
+    fechaAdmision: Date;
+
+    @Column({ name: 'fecha_vencimiento_termino', type: 'timestamp', nullable: true })
+    fechaVencimientoTermino: Date;
+
+    @Column({ name: 'tipo_id_demandante', nullable: true })
+    tipoIdDemandante: string;
+
+    @Column({ name: 'numero_id_demandante', nullable: true })
+    numeroIdDemandante: string;
+
+    @Column({ name: 'tipo_id_demandado', nullable: true })
+    tipoIdDemandado: string;
+
+    @Column({ name: 'numero_id_demandado', nullable: true })
+    numeroIdDemandado: string;
+
+    @Column({ name: 'etapa_procesal', default: 'RADICACION' })
+    etapaProcesal: string;
+
+    @Column({ name: 'documentos_iniciales_urls', type: 'simple-array', nullable: true })
+    documentosInicialesUrls: string[];
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 
