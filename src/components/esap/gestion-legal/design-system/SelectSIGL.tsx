@@ -1,434 +1,147 @@
 /**
- * SELECT SIGL - Sistema Integral de Gestión Legal
- * Implementación según especificación DISEÑO_UI_SIGL_DETALLADO_PARA_FIGMA.md
- * Sección 2.2.3 - Select/Dropdown
+ * SelectSIGL - Componente de select/dropdown para SIGL v5.0
  */
 
-import { useState, useRef, useEffect, forwardRef } from 'react';
-import { ChevronDown, Search, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { createPortal } from 'react-dom';
-import DESIGN_TOKENS from './tokens';
+import React from 'react';
+import { ChevronDown } from 'lucide-react';
+import { SIGL_COLORS, SIGL_BORDERS, SIGL_SPACING, SIGL_HEIGHTS } from './tokens';
 
-export interface SelectOption {
+interface SelectOption {
   value: string;
   label: string;
   disabled?: boolean;
 }
 
-export interface SelectSIGLProps {
+interface SelectSIGLProps {
   label?: string;
-  placeholder?: string;
+  value: string;
+  onChange: (value: string) => void;
   options: SelectOption[];
-  value?: string;
-  onChange?: (value: string) => void;
+  placeholder?: string;
   disabled?: boolean;
+  required?: boolean;
   error?: string;
   helperText?: string;
+  size?: 'sm' | 'md' | 'lg';
   fullWidth?: boolean;
-  searchable?: boolean;
-  required?: boolean;
   className?: string;
 }
 
-export const SelectSIGL = forwardRef<HTMLDivElement, SelectSIGLProps>(
-  (
-    {
-      label,
-      placeholder = 'Seleccionar...',
-      options,
-      value,
-      onChange,
-      disabled = false,
-      error,
-      helperText,
-      fullWidth = true,
-      searchable = false,
-      required = false,
-      className = '',
+export function SelectSIGL({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = 'Seleccionar...',
+  disabled = false,
+  required = false,
+  error,
+  helperText,
+  size = 'md',
+  fullWidth = true,
+  className = '',
+}: SelectSIGLProps) {
+  const sizeStyles: Record<string, { height: number; fontSize: number; padding: string }> = {
+    sm: {
+      height: SIGL_HEIGHTS.inputSm,
+      fontSize: 12,
+      padding: `0 ${SIGL_SPACING.sm}px`,
     },
-    ref
-  ) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [highlightedIndex, setHighlightedIndex] = useState(-1);
-    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
-    const containerRef = useRef<HTMLDivElement>(null);
-    const searchInputRef = useRef<HTMLInputElement>(null);
-    const buttonRef = useRef<HTMLButtonElement>(null);
+    md: {
+      height: SIGL_HEIGHTS.inputMd,
+      fontSize: 14,
+      padding: `0 ${SIGL_SPACING.md}px`,
+    },
+    lg: {
+      height: SIGL_HEIGHTS.inputLg,
+      fontSize: 16,
+      padding: `0 ${SIGL_SPACING.md}px`,
+    },
+  };
 
-    // Encontrar opción seleccionada
-    const selectedOption = options.find((opt) => opt.value === value);
+  const sizes = sizeStyles[size];
 
-    // Filtrar opciones según búsqueda
-    const filteredOptions = searchable
-      ? options.filter((opt) =>
-          opt.label.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      : options;
+  const selectStyles: React.CSSProperties = {
+    width: fullWidth ? '100%' : 'auto',
+    height: sizes.height,
+    fontSize: sizes.fontSize,
+    padding: sizes.padding,
+    paddingRight: SIGL_SPACING.xl,
+    borderRadius: SIGL_BORDERS.radiusInput,
+    border: `1px solid ${error ? SIGL_COLORS.danger : SIGL_COLORS.border}`,
+    backgroundColor: disabled ? SIGL_COLORS.gris100 : SIGL_COLORS.bgPrimary,
+    color: disabled ? SIGL_COLORS.textMuted : SIGL_COLORS.textPrimary,
+    outline: 'none',
+    transition: 'all 150ms ease-in-out',
+    appearance: 'none',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+  };
 
-    // Calcular posición del dropdown cuando se abre
-    useEffect(() => {
-      const updatePosition = () => {
-        if (isOpen && buttonRef.current) {
-          const rect = buttonRef.current.getBoundingClientRect();
-          const viewportHeight = window.innerHeight;
-          const dropdownMaxHeight = 400;
-          
-          // Verificar si hay espacio suficiente abajo
-          const spaceBelow = viewportHeight - rect.bottom;
-          const spaceAbove = rect.top;
-          
-          // Decidir si abrir hacia arriba o hacia abajo
-          const shouldOpenUpward = spaceBelow < dropdownMaxHeight && spaceAbove > spaceBelow;
-          
-          if (shouldOpenUpward) {
-            // Abrir hacia arriba
-            setDropdownPosition({
-              top: rect.top - Math.min(dropdownMaxHeight, spaceAbove) - 4,
-              left: rect.left,
-              width: rect.width,
-            });
-          } else {
-            // Abrir hacia abajo (comportamiento por defecto)
-            setDropdownPosition({
-              top: rect.bottom + 4,
-              left: rect.left,
-              width: rect.width,
-            });
-          }
-        }
-      };
-
-      if (isOpen) {
-        updatePosition();
-        // Actualizar posición en scroll y resize
-        window.addEventListener('scroll', updatePosition, true);
-        window.addEventListener('resize', updatePosition);
-        
-        return () => {
-          window.removeEventListener('scroll', updatePosition, true);
-          window.removeEventListener('resize', updatePosition);
-        };
-      }
-    }, [isOpen]);
-
-    // Cerrar dropdown al hacer click fuera
-    useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (
-          containerRef.current &&
-          !containerRef.current.contains(event.target as Node)
-        ) {
-          setIsOpen(false);
-          setSearchTerm('');
-        }
-      };
-
-      if (isOpen) {
-        document.addEventListener('mousedown', handleClickOutside);
-        // Auto-focus search input si es searchable
-        if (searchable && searchInputRef.current) {
-          setTimeout(() => searchInputRef.current?.focus(), 100);
-        }
-      }
-
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }, [isOpen, searchable]);
-
-    // Keyboard navigation
-    useEffect(() => {
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (!isOpen) return;
-
-        switch (e.key) {
-          case 'ArrowDown':
-            e.preventDefault();
-            setHighlightedIndex((prev) =>
-              prev < filteredOptions.length - 1 ? prev + 1 : prev
-            );
-            break;
-          case 'ArrowUp':
-            e.preventDefault();
-            setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : 0));
-            break;
-          case 'Enter':
-            e.preventDefault();
-            if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
-              const option = filteredOptions[highlightedIndex];
-              if (!option.disabled) {
-                handleSelect(option.value);
-              }
-            }
-            break;
-          case 'Escape':
-            e.preventDefault();
-            setIsOpen(false);
-            setSearchTerm('');
-            break;
-        }
-      };
-
-      if (isOpen) {
-        document.addEventListener('keydown', handleKeyDown);
-      }
-
-      return () => {
-        document.removeEventListener('keydown', handleKeyDown);
-      };
-    }, [isOpen, highlightedIndex, filteredOptions]);
-
-    const handleToggle = () => {
-      if (!disabled) {
-        setIsOpen(!isOpen);
-        setSearchTerm('');
-        setHighlightedIndex(-1);
-      }
-    };
-
-    const handleSelect = (optionValue: string) => {
-      onChange?.(optionValue);
-      setIsOpen(false);
-      setSearchTerm('');
-      setHighlightedIndex(-1);
-    };
-
-    const getBorderColor = () => {
-      if (error) return DESIGN_TOKENS.colors.status.red;
-      if (isOpen) return DESIGN_TOKENS.colors.primary.blue;
-      return DESIGN_TOKENS.colors.neutral.lightGray;
-    };
-
-    const getBorderWidth = () => {
-      if (error || isOpen) return '2px';
-      return '1px';
-    };
-
-    return (
-      <div
-        ref={containerRef}
-        className={`relative ${fullWidth ? 'w-full' : ''} ${className}`}
-      >
-        {/* Label */}
-        {label && (
-          <label
-            className="block mb-2"
-            style={{
-              fontSize: DESIGN_TOKENS.typography.fontSize.label,
-              fontWeight: DESIGN_TOKENS.typography.fontWeight.semibold,
-              lineHeight: DESIGN_TOKENS.typography.lineHeight.label,
-              color: DESIGN_TOKENS.colors.neutral.darkGray,
-            }}
-          >
-            {label}
-            {required && (
-              <span style={{ color: DESIGN_TOKENS.colors.status.red }}>*</span>
-            )}
-          </label>
-        )}
-
-        {/* Select Button */}
-        <button
-          ref={buttonRef}
-          type="button"
-          disabled={disabled}
-          onClick={handleToggle}
-          className="w-full flex items-center justify-between transition-all duration-200 outline-none text-left"
+  return (
+    <div className={`${fullWidth ? 'w-full' : ''} ${className}`}>
+      {label && (
+        <label
           style={{
-            height: DESIGN_TOKENS.componentSizes.input.height,
-            padding: `${DESIGN_TOKENS.padding.input.vertical} ${DESIGN_TOKENS.padding.input.horizontal}`,
-            fontSize: DESIGN_TOKENS.typography.fontSize.body,
-            lineHeight: DESIGN_TOKENS.typography.lineHeight.body,
-            color: selectedOption
-              ? DESIGN_TOKENS.colors.neutral.darkGray
-              : DESIGN_TOKENS.colors.neutral.mediumGray,
-            background: disabled
-              ? DESIGN_TOKENS.colors.neutral.veryLightGray
-              : DESIGN_TOKENS.colors.primary.white,
-            border: `${getBorderWidth()} solid ${getBorderColor()}`,
-            borderRadius: DESIGN_TOKENS.borderRadius.small,
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            opacity: disabled ? DESIGN_TOKENS.opacity.disabled : 1,
+            display: 'block',
+            fontSize: 14,
+            fontWeight: 500,
+            color: SIGL_COLORS.textPrimary,
+            marginBottom: SIGL_SPACING.xs,
           }}
         >
-          <span className="truncate">
-            {selectedOption ? selectedOption.label : placeholder}
-          </span>
+          {label}
+          {required && <span style={{ color: SIGL_COLORS.danger }}> *</span>}
+        </label>
+      )}
 
-          <motion.div
-            animate={{ rotate: isOpen ? 180 : 0 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
-          >
-            <ChevronDown
-              size={18}
-              style={{ color: DESIGN_TOKENS.colors.neutral.mediumGray }}
-            />
-          </motion.div>
-        </button>
-
-        {/* Dropdown List */}
-        {isOpen &&
-          createPortal(
-            <AnimatePresence>
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.15, ease: 'easeOut' }}
-                className="fixed z-[99999]"
-                style={{
-                  top: `${dropdownPosition.top}px`,
-                  left: `${dropdownPosition.left}px`,
-                  width: `${dropdownPosition.width}px`,
-                  background: DESIGN_TOKENS.colors.primary.white,
-                  border: `1px solid ${DESIGN_TOKENS.colors.neutral.lightGray}`,
-                  borderRadius: DESIGN_TOKENS.borderRadius.small,
-                  boxShadow: DESIGN_TOKENS.shadows.level2,
-                  maxHeight: '400px',
-                  overflowY: 'auto',
-                }}
-              >
-                {/* Search Input */}
-                {searchable && (
-                  <div
-                    className="sticky top-0 z-10"
-                    style={{
-                      padding: DESIGN_TOKENS.spacing.s,
-                      background: DESIGN_TOKENS.colors.primary.white,
-                      borderBottom: `1px solid ${DESIGN_TOKENS.colors.neutral.lightGray}`,
-                    }}
-                  >
-                    <div className="relative">
-                      <Search
-                        size={16}
-                        className="absolute left-2 top-1/2 transform -translate-y-1/2"
-                        style={{ color: DESIGN_TOKENS.colors.neutral.mediumGray }}
-                      />
-                      <input
-                        ref={searchInputRef}
-                        type="text"
-                        placeholder="Buscar..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-8 pr-8 outline-none"
-                        style={{
-                          height: '32px',
-                          padding: '6px 8px 6px 32px',
-                          fontSize: DESIGN_TOKENS.typography.fontSize.small,
-                          color: DESIGN_TOKENS.colors.neutral.darkGray,
-                          background: DESIGN_TOKENS.colors.primary.light,
-                          border: `1px solid ${DESIGN_TOKENS.colors.neutral.lightGray}`,
-                          borderRadius: DESIGN_TOKENS.borderRadius.small,
-                        }}
-                      />
-                      {searchTerm && (
-                        <button
-                          type="button"
-                          onClick={() => setSearchTerm('')}
-                          className="absolute right-2 top-1/2 transform -translate-y-1/2"
-                        >
-                          <X
-                            size={14}
-                            style={{ color: DESIGN_TOKENS.colors.neutral.mediumGray }}
-                          />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Options List */}
-                {filteredOptions.length > 0 ? (
-                  <div>
-                    {filteredOptions.map((option, index) => {
-                      const isSelected = option.value === value;
-                      const isHighlighted = index === highlightedIndex;
-
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          disabled={option.disabled}
-                          onClick={() => handleSelect(option.value)}
-                          className="w-full text-left transition-colors duration-150"
-                          style={{
-                            height: '36px',
-                            padding: '10px 12px',
-                            fontSize: DESIGN_TOKENS.typography.fontSize.body,
-                            color: option.disabled
-                              ? DESIGN_TOKENS.colors.neutral.mediumGray
-                              : isSelected
-                              ? DESIGN_TOKENS.colors.primary.white
-                              : DESIGN_TOKENS.colors.neutral.darkGray,
-                            background: option.disabled
-                              ? DESIGN_TOKENS.colors.neutral.veryLightGray
-                              : isSelected
-                              ? DESIGN_TOKENS.colors.primary.blue
-                              : isHighlighted
-                              ? DESIGN_TOKENS.colors.primary.light
-                              : DESIGN_TOKENS.colors.primary.white,
-                            borderBottom: `1px solid ${DESIGN_TOKENS.colors.neutral.lightGray}`,
-                            cursor: option.disabled ? 'not-allowed' : 'pointer',
-                            fontWeight: isSelected
-                              ? DESIGN_TOKENS.typography.fontWeight.semibold
-                              : DESIGN_TOKENS.typography.fontWeight.regular,
-                          }}
-                          onMouseEnter={() => setHighlightedIndex(index)}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div
-                    className="text-center"
-                    style={{
-                      padding: DESIGN_TOKENS.spacing.l,
-                      fontSize: DESIGN_TOKENS.typography.fontSize.small,
-                      color: DESIGN_TOKENS.colors.neutral.mediumGray,
-                    }}
-                  >
-                    No se encontraron resultados
-                  </div>
-                )}
-              </motion.div>
-            </AnimatePresence>,
-            document.body
+      <div style={{ position: 'relative', width: fullWidth ? '100%' : 'auto' }}>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          required={required}
+          style={selectStyles}
+          className="focus:border-primary focus:ring-2 focus:ring-primary focus:ring-opacity-20"
+        >
+          {placeholder && (
+            <option value="" disabled>
+              {placeholder}
+            </option>
           )}
+          {options.map((option) => (
+            <option key={option.value} value={option.value} disabled={option.disabled}>
+              {option.label}
+            </option>
+          ))}
+        </select>
 
-        {/* Helper Text */}
-        {helperText && !error && (
-          <p
-            className="mt-1"
-            style={{
-              fontSize: DESIGN_TOKENS.typography.fontSize.small,
-              lineHeight: DESIGN_TOKENS.typography.lineHeight.small,
-              color: DESIGN_TOKENS.colors.neutral.mediumGray,
-            }}
-          >
-            {helperText}
-          </p>
-        )}
-
-        {/* Error Message */}
-        {error && (
-          <p
-            className="mt-1"
-            style={{
-              fontSize: DESIGN_TOKENS.typography.fontSize.small,
-              lineHeight: DESIGN_TOKENS.typography.lineHeight.small,
-              color: DESIGN_TOKENS.colors.status.red,
-            }}
-          >
-            {error}
-          </p>
-        )}
+        <div
+          style={{
+            position: 'absolute',
+            right: SIGL_SPACING.sm,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            pointerEvents: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            color: SIGL_COLORS.textSecondary,
+          }}
+        >
+          <ChevronDown size={16} />
+        </div>
       </div>
-    );
-  }
-);
 
-SelectSIGL.displayName = 'SelectSIGL';
+      {(error || helperText) && (
+        <p
+          style={{
+            fontSize: 12,
+            color: error ? SIGL_COLORS.danger : SIGL_COLORS.textSecondary,
+            marginTop: SIGL_SPACING.xs,
+          }}
+        >
+          {error || helperText}
+        </p>
+      )}
+    </div>
+  );
+}

@@ -64,7 +64,7 @@ interface Auditoria {
   diasRestantes: number;
   porcentajeTiempo: number;
   ultimaActuacion: string;
-  objetivos: string[];
+  objetivos: { id: string, descripcion: string }[];
   calificacionRiesgo: string;
   documentos: number;
   informes: number;
@@ -377,7 +377,7 @@ export function ModalExpedienteAuditoria({ auditoria, open, onClose }: ModalExpe
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50"
+            className="fixed inset-0 bg-black/50 z-[110]"
             onClick={onClose}
           />
 
@@ -387,9 +387,9 @@ export function ModalExpedienteAuditoria({ auditoria, open, onClose }: ModalExpe
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-4 md:inset-8 lg:inset-16 z-50 flex items-center justify-center"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[111] w-[calc(100%-2rem)] md:w-[calc(100%-4rem)] lg:w-full lg:max-w-7xl max-h-[90vh]"
           >
-            <div className="bg-white rounded-lg shadow-2xl w-full h-full flex flex-col max-w-7xl">
+            <div className="bg-white rounded-lg shadow-2xl w-full h-full max-h-[90vh] flex flex-col">
               {/* HEADER */}
               <div className="flex items-start justify-between p-6 border-b border-gray-200">
                 <div className="flex-1">
@@ -546,9 +546,9 @@ export function ModalExpedienteAuditoria({ auditoria, open, onClose }: ModalExpe
 
                     <div className="space-y-2">
                       {auditoria.objetivos.map((objetivo, index) => (
-                        <div key={index} className="flex items-start gap-2">
+                        <div key={objetivo.id} className="flex items-start gap-2">
                           <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                          <p className="text-gray-700">{objetivo}</p>
+                          <p className="text-gray-700">{objetivo.descripcion}</p>
                         </div>
                       ))}
                     </div>

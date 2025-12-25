@@ -375,7 +375,7 @@ const PortalAreaAuditada: React.FC<{
       archivoNombre: data.archivo.name,
       archivoUrl: `/mock/evidencias/${data.archivo.name}`,
       fechaCarga: new Date().toISOString(),
-      cargadoPor: plan.responsableArea,
+      cargadoPor: typeof plan.responsableArea === 'string' ? plan.responsableArea : plan.responsableArea?.nombre || 'No asignado',
       calificacion: 'PENDIENTE_REVISION'
     };
 
@@ -963,7 +963,7 @@ const DashboardJefeOCI: React.FC<{ plan: PlanMejoramiento }> = ({ plan }) => {
             </div>
             <div>
               <span className="font-medium text-gray-700">Responsable del Plan:</span>
-              <p className="text-gray-900">{plan.responsableArea}</p>
+              <p className="text-gray-900">{typeof plan.responsableArea === 'string' ? plan.responsableArea : plan.responsableArea?.nombre || 'No asignado'}</p>
             </div>
           </div>
         </div>

@@ -17,7 +17,8 @@ import {
   ChevronDown, Users, FileCheck, XCircle, PlusCircle, Settings,
   Maximize2, Minimize2, TrendingUp, AlertCircle, Phone, Mail,
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
-  List, Columns3, Menu, Edit2, FileSignature, History
+  List, Columns3, Menu, Edit2, FileSignature, History,
+  ChevronsDown, ChevronsUp, ChevronUp
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -493,9 +494,11 @@ interface TarjetaNoticiaProps {
   onVerDetalles?: (noticia: Noticia) => void;
   vistaCompacta: boolean;
   isMobile?: boolean;
+  colapsada?: boolean; // NUEVO: Indica si la tarjeta está colapsada
+  onToggleColapso?: () => void; // NUEVO: Toggle para colapsar/expandir
 }
 
-function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, vistaCompacta, isMobile }: TarjetaNoticiaProps) {
+function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, vistaCompacta, isMobile, colapsada, onToggleColapso }: TarjetaNoticiaProps) {
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
     item: { ...noticia, tipoItem: 'noticia' },
@@ -665,6 +668,8 @@ interface TarjetaProcesoProps {
   onComentarios?: (proceso: Proceso) => void;
   vistaCompacta: boolean;
   isMobile?: boolean;
+  colapsada?: boolean; // NUEVO: Indica si la tarjeta está colapsada
+  onToggleColapso?: () => void; // NUEVO: Toggle para colapsar/expandir
 }
 
 function TarjetaProceso({
@@ -679,8 +684,10 @@ function TarjetaProceso({
   onGestionOficios,
   onGestionActas,
   onComentarios,
-  vistaCompacta,
-  isMobile
+  vistaCompacta, 
+  isMobile,
+  colapsada,
+  onToggleColapso
 }: TarjetaProcesoProps) {
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
@@ -843,13 +850,19 @@ function TarjetaProceso({
             </div>
           </div>
 
-          {/* Última actuación - Solo desktop */}
-          {!vistaCompacta && !isMobile && (
-            <div className="mb-1.5">
-              <p className="text-xs text-gray-500 mb-0.5">Última actuación:</p>
-              <p className="text-xs text-gray-700 line-clamp-1">{proceso.ultimaActuacion}</p>
-            </div>
-          )}
+          {/* Última actuación - SIEMPRE VISIBLE */}
+          <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
+            <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#003DA5' }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#003DA5' }}></span>
+              ÚLTIMA ACTUACIÓN
+            </p>
+            <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-700 line-clamp-2 mb-1`}>
+              {proceso.ultimaActuacion}
+            </p>
+            <p className="text-xs text-gray-500">
+              📅 {proceso.fechaCreacion}
+            </p>
+          </div>
 
           {/* Acciones Principales - Siempre Visibles */}
           <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
@@ -1613,6 +1626,8 @@ interface ColumnaKanbanProps {
   isMobile?: boolean;
   colapsada?: boolean;
   onToggleColapso?: () => void;
+  tarjetasColapsadas?: Set<string>; // NUEVO: Set de IDs de tarjetas colapsadas
+  onToggleColapsoTarjeta?: (id: string) => void; // NUEVO: Toggle para tarjetas individuales
 }
 
 function ColumnaKanban({
@@ -1640,7 +1655,9 @@ function ColumnaKanban({
   vistaCompacta,
   isMobile,
   colapsada = false,
-  onToggleColapso
+  onToggleColapso,
+  tarjetasColapsadas,
+  onToggleColapsoTarjeta
 }: ColumnaKanbanProps) {
   const [expandTimeout, setExpandTimeout] = useState<NodeJS.Timeout | null>(null);
 
@@ -1695,9 +1712,9 @@ function ColumnaKanban({
     const procesosVerdes = procesos.filter(p => p.semaforo === 'verde').length;
 
     return (
-      <motion.div
-        ref={drop}
-        className={`flex-shrink-0`}
+      <motion.div 
+        ref={drop} 
+        className={`flex-shrink-0 h-full`}
         initial={{ width: 64 }}
         animate={{ width: 64 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
@@ -1879,6 +1896,8 @@ function ColumnaKanban({
               onVerDetalles={onVerDetallesNoticia}
               vistaCompacta={vistaCompacta}
               isMobile={isMobile}
+              colapsada={tarjetasColapsadas?.has(noticia.id)}
+              onToggleColapso={() => onToggleColapsoTarjeta?.(noticia.id)}
             />
           ))}
 
@@ -1908,6 +1927,8 @@ function ColumnaKanban({
               onComentarios={onComentarios}
               vistaCompacta={vistaCompacta}
               isMobile={isMobile}
+              colapsada={tarjetasColapsadas?.has(proceso.id)}
+              onToggleColapso={() => onToggleColapsoTarjeta?.(proceso.id)}
             />
           ))}
 
@@ -1949,6 +1970,7 @@ export function DashboardKanbanOperativo({
   const [vistaCompacta, setVistaCompacta] = useState(false);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
   const [filtroProfesionalId, setFiltroProfesionalId] = useState<string>(initialFiltroId || '');
+  const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
 
   // Efecto para sincronizar el filtro desde props
   useEffect(() => {
@@ -2728,6 +2750,40 @@ export function DashboardKanbanOperativo({
 
     // Si es proceso, actualizar backend
     if (item.tipo === 'proceso') {
+      // if (item.etapaActual !== nuevaEtapa) {
+      //   const etapaAnterior = item.etapaActual;
+      //   const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
+        
+      //   setItems(prev => prev.map(i => 
+      //     i.id === item.id && i.tipo === 'proceso'
+      //       ? { 
+      //           ...i, 
+      //           etapaActual: nuevaEtapa as any,
+      //           ultimaModificacion: new Date()
+      //         }
+      //       : i
+      //   ));
+        
+      //   // Registrar en trazabilidad/historial
+      //   const eventoTrazabilidad = {
+      //     id: `evt-${Date.now()}`,
+      //     tipo: 'cambio-estado' as const,
+      //     titulo: `Cambio de etapa: ${etapaAnterior} → ${nuevaEtapa}`,
+      //     descripcion: `El proceso fue movido de "${etapaAnterior}" a "${nuevaEtapa}" mediante arrastrar y soltar`,
+      //     usuario: usuario,
+      //     fecha: new Date(),
+      //     procesoId: item.id,
+      //     etapaAnterior: etapaAnterior,
+      //     etapaNueva: nuevaEtapa
+      //   };
+        
+      //   // En producción, esto se guardaría en el backend
+      //   console.log('📋 Trazabilidad - Movimiento de proceso:', eventoTrazabilidad);
+        
+      //   toast.success('Proceso Movido', {
+      //     description: `${item.numeroProceso} → ${nuevaEtapa} (registrado en trazabilidad)`
+      //   });
+      // }
       const backendStage = etapaMap[normalizeEtapa(nuevaEtapa)];
       console.log('🔍 handleDropItem: Mapeo de etapa:', {
         nuevaEtapa,
@@ -2766,7 +2822,7 @@ export function DashboardKanbanOperativo({
         await cargarDatos();
         console.log('✅ handleDropItem: Datos recargados exitosamente');
         toast.success('Proceso Movido', {
-          description: `${item.numeroProceso} → ${nuevaEtapa}`
+          description: `${item.numeroProceso} → ${nuevaEtapa} (registrado en trazabilidad)`
         });
       } catch (error) {
         console.error('Error actualizando etapa en backend:', error);
@@ -3383,6 +3439,38 @@ export function DashboardKanbanOperativo({
     }
   };
 
+  // ==================== FUNCIONES PARA COLAPSAR/EXPANDIR TARJETAS ====================
+  
+  // Toggle colapso de tarjeta individual
+  const toggleTarjetaColapsada = (id: string) => {
+    setTarjetasColapsadas(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Colapsar todas las tarjetas
+  const colapsarTodasTarjetas = () => {
+    const todasLasIds = items.map(item => item.id);
+    setTarjetasColapsadas(new Set(todasLasIds));
+    toast.success('Tarjetas colapsadas', {
+      description: 'Todas las tarjetas ahora muestran vista compacta'
+    });
+  };
+
+  // Expandir todas las tarjetas
+  const expandirTodasTarjetas = () => {
+    setTarjetasColapsadas(new Set());
+    toast.success('Tarjetas expandidas', {
+      description: 'Todas las tarjetas ahora muestran información completa'
+    });
+  };
+
   // Calcular estadísticas
   const noticias = items.filter(i => i.tipo === 'noticia') as Noticia[];
   const procesos = items.filter(i => i.tipo === 'proceso') as Proceso[];
@@ -3554,6 +3642,30 @@ export function DashboardKanbanOperativo({
               </button>
             )}
 
+            {/* BOTONES COLAPSAR/EXPANDIR TODAS LAS TARJETAS */}
+            {tipoVista === 'kanban' && !isMobile && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={colapsarTodasTarjetas}
+                  className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all hover:bg-blue-50 border-2 border-blue-300 hover:border-blue-500"
+                  style={{ color: '#1e5da8' }}
+                  title="Colapsar todas las tarjetas"
+                >
+                  <ChevronsDown className="w-4 h-4" />
+                  {!isTablet && <span>Colapsar Todas</span>}
+                </button>
+                <button
+                  onClick={expandirTodasTarjetas}
+                  className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all hover:bg-green-50 border-2 border-green-300 hover:border-green-500"
+                  style={{ color: '#059669' }}
+                  title="Expandir todas las tarjetas"
+                >
+                  <ChevronsUp className="w-4 h-4" />
+                  {!isTablet && <span>Expandir Todas</span>}
+                </button>
+              </div>
+            )}
+
             <Button
               onClick={() => setModalActivo('crear-noticia')}
               size="sm"
@@ -3704,6 +3816,8 @@ export function DashboardKanbanOperativo({
                   isMobile={isMobile}
                   colapsada={columnasColapsadas.has(etapa.nombre)}
                   onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
+                  tarjetasColapsadas={tarjetasColapsadas}
+                  onToggleColapsoTarjeta={toggleTarjetaColapsada}
                 />
               ))}
             </div>

@@ -3,10 +3,10 @@
  * Diseño premium con colores ESAP y UX optimizada
  */
 
+import React from 'react';
 import { motion } from 'motion/react';
 import { Building2, Users, ArrowRight, LogOut, Shield, BarChart3, MessageSquare, Check } from 'lucide-react';
 import { useState } from 'react';
-import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 
 interface SystemSelectorProps {
   userName: string;
@@ -89,11 +89,7 @@ export function SystemSelector({
               
               {/* Container del logo */}
               <div className="relative bg-gradient-to-br from-[#003DA5] to-[#0052cc] p-6 rounded-3xl shadow-2xl">
-                <img
-                  src={esapLogo}
-                  alt="ESAP"
-                  className="h-16 w-auto"
-                />
+                <div className="text-white text-4xl font-bold">ESAP</div>
               </div>
             </div>
           </motion.div>

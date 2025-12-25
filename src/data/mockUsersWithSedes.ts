@@ -3,9 +3,12 @@
  * Datos de prueba para el módulo de gestión de usuarios
  * Incluye asignación de sedes territoriales y CETAP
  * ✅ ACTUALIZADO: Usa estructura real de ESAP (1 Sede Central + 17 Territoriales + 307 CETAP)
+ * ✅ INTEGRADO: Incluye docentes de Gestión Profesoral (Planta + Hora Cátedra)
  */
 
 import { TERRITORIALES_ESAP } from './territoriales-cetap-completo';
+import { TODOS_LOS_DOCENTES } from './docentesGestionProfesoral';
+import { TODOS_LOS_DOCENTES_ESAP } from './docentesESAPCompleto';  // ✅ 263 DOCENTES REALES DE ESAP
 
 export interface UserWithSedes {
   id: string;
@@ -833,5 +836,19 @@ export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
     birthDate: '1984-03-15',
     program: 'Administración Pública',
     address: 'Calle 72 # 10-34, Bogotá D.C.'
-  }
+  },
+  // ============================================================================
+  // DOCENTES DE GESTIÓN PROFESORAL (Planta + Hora Cátedra)
+  // Importados desde docentesGestionProfesoral.ts
+  // ============================================================================
+  ...TODOS_LOS_DOCENTES,
+  // ============================================================================
+  // 📚 DOCENTES REALES DE ESAP - BASE DE DATOS COMPLETA
+  // Fuente: Base_Datos_Docentes_ESAP.md
+  // Total: 263 docentes distribuidos en 17 territoriales + Sede Central
+  // Categorías: Titular, Asociado, Asistente, Auxiliar, Visitante
+  // Formación: Doctorado, Maestría, Especialización, Posdoctorado
+  // Vinculación: Carrera1, Carrera2, Ocasional, Periodo de Prueba, Especial, Visitante
+  // ============================================================================
+  ...TODOS_LOS_DOCENTES_ESAP
 ];

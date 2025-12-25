@@ -15,7 +15,7 @@
  * Oficina Asesora Jurídica - ESAP
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Scale,
   Plus,
@@ -47,9 +47,10 @@ import {
   TableSIGL,
   useToast,
 } from './design-system';
-import { FormularioExpedienteCompleto } from './FormularioExpedienteCompleto';
+import { FormularioExpedienteJudicial } from './defensa-judicial/FormularioExpedienteJudicial';
 import { SistemaAlertasExpedientes } from './SistemaAlertasExpedientes';
 import { GestionDocumentosExpediente } from './GestionDocumentosExpediente';
+import { legalService } from '../../../services/api/legal.service';
 
 // ============================================
 // TIPOS
@@ -78,114 +79,10 @@ interface Expediente {
   pretension: string;
   createdAt: Date;
   updatedAt: Date;
+  documents?: string[];
 }
 
-// ============================================
-// DATOS MOCK
-// ============================================
-
-const EXPEDIENTES_MOCK: Expediente[] = [
-  {
-    id: 'PJ-2025-00001',
-    jurisdiccion: 'CONSTITUCIONAL',
-    demandante: 'Juan Pérez Gómez',
-    demandado: 'ESAP',
-    juzgado: 'Juzgado 25 Civil Municipal de Bogotá',
-    medioControl: 'Acción de Tutela',
-    abogadoAsignado: 'Dr. Luis Ramírez',
-    fechaNotificacion: new Date('2024-12-10'),
-    fechaDemanda: new Date('2024-12-08'),
-    fechaVencimiento: new Date('2024-12-20'),
-    plazo: 10,
-    diasRestantes: 2,
-    colorAlerta: 'ROJO',
-    estado: 'ACTIVO',
-    valorDemanda: 0,
-    pretension: 'Ordene a la ESAP readmitir al estudiante y permitirle continuar con sus estudios',
-    createdAt: new Date('2024-12-08'),
-    updatedAt: new Date('2024-12-17'),
-  },
-  {
-    id: 'PJ-2025-00002',
-    jurisdiccion: 'CONTENCIOSO',
-    demandante: 'María Rodríguez',
-    demandado: 'ESAP - Rectoría Nacional',
-    juzgado: 'Tribunal Administrativo de Cundinamarca',
-    medioControl: 'Acción de Nulidad y Restablecimiento del Derecho',
-    abogadoAsignado: 'Dra. Patricia González',
-    fechaNotificacion: new Date('2024-11-15'),
-    fechaDemanda: new Date('2024-11-10'),
-    fechaVencimiento: new Date('2024-12-25'),
-    plazo: 30,
-    diasRestantes: 8,
-    colorAlerta: 'AMARILLO',
-    estado: 'EN_PROCESO',
-    valorDemanda: 50000000,
-    pretension: 'Declarar nulidad del acto administrativo y restablecer derechos laborales',
-    createdAt: new Date('2024-11-15'),
-    updatedAt: new Date('2024-12-16'),
-  },
-  {
-    id: 'PJ-2025-00003',
-    jurisdiccion: 'LABORAL',
-    demandante: 'Carlos Méndez Silva',
-    demandado: 'ESAP - Territorial Antioquia',
-    juzgado: 'Juzgado Laboral del Circuito de Medellín',
-    medioControl: 'Proceso Ordinario Laboral',
-    abogadoAsignado: 'Dr. Carlos Mendoza',
-    fechaNotificacion: new Date('2024-10-01'),
-    fechaDemanda: new Date('2024-09-25'),
-    fechaVencimiento: new Date('2024-11-05'),
-    plazo: 30,
-    diasRestantes: -42,
-    colorAlerta: 'VENCIDO',
-    estado: 'VENCIDO',
-    valorDemanda: 120000000,
-    pretension: 'Reconocimiento de prestaciones sociales y salarios dejados de percibir',
-    createdAt: new Date('2024-10-01'),
-    updatedAt: new Date('2024-12-15'),
-  },
-  {
-    id: 'PJ-2025-00004',
-    jurisdiccion: 'ORDINARIA',
-    demandante: 'Constructora ABC S.A.S.',
-    demandado: 'ESAP',
-    juzgado: 'Juzgado 15 Civil del Circuito de Bogotá',
-    medioControl: 'Proceso Ejecutivo Único Acreedor',
-    abogadoAsignado: 'Dra. María Torres',
-    fechaNotificacion: new Date('2024-12-01'),
-    fechaDemanda: new Date('2024-11-28'),
-    fechaVencimiento: new Date('2025-01-10'),
-    plazo: 20,
-    diasRestantes: 24,
-    colorAlerta: 'VERDE',
-    estado: 'ACTIVO',
-    valorDemanda: 85000000,
-    pretension: 'Cobro de acreencia contractual por incumplimiento de contrato',
-    createdAt: new Date('2024-12-01'),
-    updatedAt: new Date('2024-12-17'),
-  },
-  {
-    id: 'PJ-2024-00156',
-    jurisdiccion: 'CONTENCIOSO',
-    demandante: 'Ana Gutiérrez López',
-    demandado: 'ESAP - Vicerrectoría Académica',
-    juzgado: 'Juzgado 3º Administrativo de Bogotá',
-    medioControl: 'Acción de Nulidad',
-    abogadoAsignado: 'Dr. Andrés Castillo',
-    fechaNotificacion: new Date('2024-11-20'),
-    fechaDemanda: new Date('2024-11-18'),
-    fechaVencimiento: new Date('2024-12-30'),
-    plazo: 30,
-    diasRestantes: 13,
-    colorAlerta: 'AMARILLO',
-    estado: 'EN_PROCESO',
-    valorDemanda: 0,
-    pretension: 'Declarar nulidad del acto administrativo que modificó el reglamento estudiantil',
-    createdAt: new Date('2024-11-20'),
-    updatedAt: new Date('2024-12-17'),
-  },
-];
+// Mock removed - data now comes from backend via legalService.getExpedientes()
 
 // ============================================
 // COMPONENTE PRINCIPAL
@@ -193,20 +90,68 @@ const EXPEDIENTES_MOCK: Expediente[] = [
 
 export function ModuloDefensaJudicial({
   onVolverKanban,
+  hideHeader = false,
 }: {
   onVolverKanban?: () => void;
+  hideHeader?: boolean;
 }) {
-  const { addToast } = useToast();
-  const [expedientes, setExpedientes] = useState<Expediente[]>(EXPEDIENTES_MOCK);
+  const { showToast } = useToast();
+  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [vista, setVista] = useState<'lista' | 'detalle'>('lista');
   const [expedienteSeleccionado, setExpedienteSeleccionado] = useState<Expediente | null>(null);
-  
+
+  useEffect(() => {
+    fetchExpedientes();
+  }, []);
+
+  const fetchExpedientes = async () => {
+    try {
+      const data = await legalService.getExpedientes();
+      if (data) {
+        const mappedData: Expediente[] = data.map((item: any) => ({
+          id: item.radicado,
+          jurisdiccion: item.jurisdiccion as Jurisdiccion,
+          demandante: item.demandante,
+          demandado: item.demandado,
+          juzgado: item.juzgadoConocimiento || 'Por definir',
+          medioControl: item.medioControl || 'Nulidad',
+          abogadoAsignado: item.abogadoSustanciador || 'Por asignar',
+          fechaNotificacion: item.fechaNotificacion ? new Date(item.fechaNotificacion) : new Date(),
+          fechaDemanda: item.fechaRadicacion ? new Date(item.fechaRadicacion) : new Date(),
+          fechaVencimiento: item.fechaVencimientoTermino ? new Date(item.fechaVencimientoTermino) : new Date(),
+          plazo: item.terminoProcesalDias || 30,
+          diasRestantes: item.fechaVencimientoTermino
+            ? Math.ceil((new Date(item.fechaVencimientoTermino).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+            : 0,
+          colorAlerta: item.riesgoPrescripcion ? 'ROJO' : 'VERDE',
+          estado: 'ACTIVO', // Map BE status 'RADICADO' -> 'ACTIVO' ?
+          valorDemanda: Number(item.cuantia) || 0,
+          pretension: item.pretensionDemandante || '',
+          createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
+          updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
+          documents: item.documentosInicialesUrls || []
+        }));
+        setExpedientes(mappedData);
+      }
+    } catch (error) {
+      console.error('Error fetching expedientes:', error);
+      showToast({
+        variant: 'error',
+        title: 'Error',
+        message: 'No se pudieron cargar los expedientes'
+      });
+    }
+  };
+
+  // Replace usage of mocked state
+
+
   // Modal formulario
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
-  
+
   // Tabs en vista detalle
   const [tabActivo, setTabActivo] = useState<'info' | 'documentos' | 'alertas'>('info');
-  
+
   // Filtros
   const [busqueda, setBusqueda] = useState('');
   const [filtroJurisdiccion, setFiltroJurisdiccion] = useState<string>('TODAS');
@@ -235,22 +180,22 @@ export function ModuloDefensaJudicial({
   const expedientesFiltrados = useMemo(() => {
     return expedientes.filter(exp => {
       // Búsqueda por texto
-      const matchBusqueda = busqueda === '' || 
+      const matchBusqueda = busqueda === '' ||
         exp.id.toLowerCase().includes(busqueda.toLowerCase()) ||
         exp.demandante.toLowerCase().includes(busqueda.toLowerCase()) ||
         exp.demandado.toLowerCase().includes(busqueda.toLowerCase()) ||
         exp.juzgado.toLowerCase().includes(busqueda.toLowerCase());
 
       // Filtro jurisdicción
-      const matchJurisdiccion = filtroJurisdiccion === 'TODAS' || 
+      const matchJurisdiccion = filtroJurisdiccion === 'TODAS' ||
         exp.jurisdiccion === filtroJurisdiccion;
 
       // Filtro estado
-      const matchEstado = filtroEstado === 'TODOS' || 
+      const matchEstado = filtroEstado === 'TODOS' ||
         exp.estado === filtroEstado;
 
       // Filtro alerta
-      const matchAlerta = filtroAlerta === 'TODAS' || 
+      const matchAlerta = filtroAlerta === 'TODAS' ||
         exp.colorAlerta === filtroAlerta;
 
       return matchBusqueda && matchJurisdiccion && matchEstado && matchAlerta;
@@ -265,47 +210,7 @@ export function ModuloDefensaJudicial({
     setMostrarFormulario(true);
   };
 
-  const handleGuardarExpediente = (data: any) => {
-    // Generar ID único para el nuevo expediente
-    const año = new Date().getFullYear();
-    const numero = (expedientes.length + 1).toString().padStart(5, '0');
-    const nuevoId = `PJ-${año}-${numero}`;
-    
-    // Crear nuevo expediente con los datos del formulario
-    const nuevoExpediente: Expediente = {
-      id: nuevoId,
-      jurisdiccion: data.jurisdiccion || 'CONTENCIOSO',
-      demandante: data.demandante || '',
-      demandado: data.demandado || 'ESAP',
-      juzgado: data.despacho || data.juzgado || '',
-      medioControl: data.medioControl || 'Acción de Nulidad',
-      abogadoAsignado: data.apoderado || data.abogadoAsignado || 'Por asignar',
-      fechaNotificacion: data.fechaNotificacion ? new Date(data.fechaNotificacion) : new Date(),
-      fechaDemanda: data.fechaDemanda ? new Date(data.fechaDemanda) : new Date(),
-      fechaVencimiento: data.fechaVencimiento ? new Date(data.fechaVencimiento) : new Date(),
-      plazo: data.plazo || 30,
-      diasRestantes: data.diasRestantes || 0,
-      colorAlerta: data.colorAlerta || 'VERDE',
-      estado: 'ACTIVO',
-      valorDemanda: data.cuantia || data.valorDemanda || 0,
-      pretension: data.pretensiones || data.pretension || '',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    
-    // Agregar el nuevo expediente al inicio de la lista
-    setExpedientes([nuevoExpediente, ...expedientes]);
-    
-    // Mostrar notificación de éxito
-    addToast({
-      type: 'success',
-      title: '✅ Expediente creado',
-      message: `Expediente ${nuevoId} creado exitosamente`,
-    });
-    
-    // Cerrar el modal
-    setMostrarFormulario(false);
-  };
+
 
   const handleVerDetalle = (expediente: Expediente) => {
     setExpedienteSeleccionado(expediente);
@@ -318,8 +223,8 @@ export function ModuloDefensaJudicial({
   };
 
   const handleExportar = () => {
-    addToast({
-      type: 'info',
+    showToast({
+      variant: 'info',
       title: 'Exportando datos',
       message: 'Se está generando el reporte en Excel...',
     });
@@ -387,9 +292,9 @@ export function ModuloDefensaJudicial({
               </div>
             </div>
             <BadgeSIGL
-              variant={expedienteSeleccionado.colorAlerta === 'VENCIDO' ? 'danger' : 
-                      expedienteSeleccionado.colorAlerta === 'ROJO' ? 'danger' :
-                      expedienteSeleccionado.colorAlerta === 'AMARILLO' ? 'warning' : 'success'}
+              variant={expedienteSeleccionado.colorAlerta === 'VENCIDO' ? 'danger' :
+                expedienteSeleccionado.colorAlerta === 'ROJO' ? 'danger' :
+                  expedienteSeleccionado.colorAlerta === 'AMARILLO' ? 'warning' : 'success'}
             >
               {expedienteSeleccionado.colorAlerta}
             </BadgeSIGL>
@@ -448,17 +353,28 @@ export function ModuloDefensaJudicial({
                   Documentos del Expediente
                 </h3>
                 <div className="space-y-2">
-                  {['Demanda original.pdf', 'Auto admisorio.pdf', 'Contestación.docx'].map((doc, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <FileText className="w-4 h-4 text-gray-500" />
-                        <span className="text-sm">{doc}</span>
-                      </div>
-                      <ButtonSIGL variant="ghost" size="sm">
-                        <Eye className="w-4 h-4" />
-                      </ButtonSIGL>
-                    </div>
-                  ))}
+                  {expedienteSeleccionado.documents && expedienteSeleccionado.documents.length > 0 ? (
+                    expedienteSeleccionado.documents.map((docUrl, idx) => {
+                      const fileName = docUrl.split('/').pop() || `Documento ${idx + 1}`;
+                      return (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <FileText className="w-4 h-4 text-gray-500" />
+                            <span className="text-sm truncate max-w-[200px]" title={fileName}>{fileName}</span>
+                          </div>
+                          <ButtonSIGL
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => window.open(docUrl, '_blank')}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </ButtonSIGL>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-gray-500 text-sm italic">No hay documentos adjuntos</p>
+                  )}
                 </div>
               </CardSIGL>
             </div>
@@ -486,13 +402,12 @@ export function ModuloDefensaJudicial({
                   </div>
                   <div className="pt-3 border-t">
                     <p className="text-gray-500">Días restantes</p>
-                    <p className={`text-2xl font-bold ${
-                      expedienteSeleccionado.diasRestantes < 0 ? 'text-red-600' :
+                    <p className={`text-2xl font-bold ${expedienteSeleccionado.diasRestantes < 0 ? 'text-red-600' :
                       expedienteSeleccionado.diasRestantes < 5 ? 'text-red-600' :
-                      expedienteSeleccionado.diasRestantes < 10 ? 'text-yellow-600' :
-                      'text-green-600'
-                    }`}>
-                      {expedienteSeleccionado.diasRestantes < 0 ? 
+                        expedienteSeleccionado.diasRestantes < 10 ? 'text-yellow-600' :
+                          'text-green-600'
+                      }`}>
+                      {expedienteSeleccionado.diasRestantes < 0 ?
                         `Vencido hace ${Math.abs(expedienteSeleccionado.diasRestantes)} días` :
                         `${expedienteSeleccionado.diasRestantes} días`
                       }
@@ -533,114 +448,118 @@ export function ModuloDefensaJudicial({
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            {onVolverKanban && (
+        {/* Header - HIDDEN IF hideHeader is true */}
+        {!hideHeader && (
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                {onVolverKanban && (
+                  <ButtonSIGL
+                    variant="outline"
+                    onClick={onVolverKanban}
+                  >
+                    ← Volver al Kanban
+                  </ButtonSIGL>
+                )}
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-blue-100 rounded-lg">
+                    <Scale className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900">
+                      Defensa Judicial
+                    </h1>
+                    <p className="text-gray-600">
+                      Gestión de expedientes judiciales - 4 jurisdicciones
+                    </p>
+                  </div>
+                </div>
+              </div>
               <ButtonSIGL
-                variant="outline"
-                onClick={onVolverKanban}
+                variant="primary"
+                onClick={handleCrearExpediente}
               >
-                ← Volver al Kanban
+                <Plus className="w-4 h-4" />
+                Nuevo Expediente
               </ButtonSIGL>
-            )}
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Scale className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Defensa Judicial
-                </h1>
-                <p className="text-gray-600">
-                  Gestión de expedientes judiciales - 4 jurisdicciones
-                </p>
-              </div>
             </div>
-          </div>
-          <ButtonSIGL
-            variant="primary"
-            onClick={handleCrearExpediente}
-          >
-            <Plus className="w-4 h-4" />
-            Nuevo Expediente
-          </ButtonSIGL>
-        </div>
 
-        {/* Estadísticas */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <FileText className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Total</p>
-                <p className="text-2xl font-bold text-gray-900">{estadisticas.total}</p>
-              </div>
-            </div>
-          </CardSIGL>
+            {/* Estadísticas */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+              <CardSIGL className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <FileText className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Total</p>
+                    <p className="text-2xl font-bold text-gray-900">{estadisticas.total}</p>
+                  </div>
+                </div>
+              </CardSIGL>
 
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <CheckCircle className="w-5 h-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Verde</p>
-                <p className="text-2xl font-bold text-green-600">{estadisticas.verde}</p>
-              </div>
-            </div>
-          </CardSIGL>
+              <CardSIGL className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Verde</p>
+                    <p className="text-2xl font-bold text-green-600">{estadisticas.verde}</p>
+                  </div>
+                </div>
+              </CardSIGL>
 
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <Clock className="w-5 h-5 text-yellow-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Amarillo</p>
-                <p className="text-2xl font-bold text-yellow-600">{estadisticas.alertaAmarilla}</p>
-              </div>
-            </div>
-          </CardSIGL>
+              <CardSIGL className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-yellow-100 rounded-lg">
+                    <Clock className="w-5 h-5 text-yellow-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Amarillo</p>
+                    <p className="text-2xl font-bold text-yellow-600">{estadisticas.alertaAmarilla}</p>
+                  </div>
+                </div>
+              </CardSIGL>
 
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <AlertCircle className="w-5 h-5 text-red-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Críticos</p>
-                <p className="text-2xl font-bold text-red-600">{estadisticas.criticos}</p>
-              </div>
-            </div>
-          </CardSIGL>
+              <CardSIGL className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-100 rounded-lg">
+                    <AlertCircle className="w-5 h-5 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Críticos</p>
+                    <p className="text-2xl font-bold text-red-600">{estadisticas.criticos}</p>
+                  </div>
+                </div>
+              </CardSIGL>
 
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-900 rounded-lg">
-                <XCircle className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Vencidos</p>
-                <p className="text-2xl font-bold text-red-900">{estadisticas.vencidos}</p>
-              </div>
-            </div>
-          </CardSIGL>
+              <CardSIGL className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-900 rounded-lg">
+                    <XCircle className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Vencidos</p>
+                    <p className="text-2xl font-bold text-red-900">{estadisticas.vencidos}</p>
+                  </div>
+                </div>
+              </CardSIGL>
 
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <TrendingUp className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Activos</p>
-                <p className="text-2xl font-bold text-blue-600">{estadisticas.activos}</p>
-              </div>
+              <CardSIGL className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <TrendingUp className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Activos</p>
+                    <p className="text-2xl font-bold text-blue-600">{estadisticas.activos}</p>
+                  </div>
+                </div>
+              </CardSIGL>
             </div>
-          </CardSIGL>
-        </div>
+          </>
+        )}
 
         {/* Filtros */}
         <CardSIGL className="p-4 mb-6">
@@ -650,12 +569,12 @@ export function ModuloDefensaJudicial({
                 placeholder="Buscar por ID, demandante, demandado o juzgado..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                icon={<Search className="w-4 h-4" />}
+
               />
             </div>
             <SelectSIGL
               value={filtroJurisdiccion}
-              onChange={(e) => setFiltroJurisdiccion(e.target.value)}
+              onChange={setFiltroJurisdiccion}
               options={[
                 { value: 'TODAS', label: 'Todas las jurisdicciones' },
                 { value: 'CONSTITUCIONAL', label: 'Constitucional' },
@@ -667,7 +586,7 @@ export function ModuloDefensaJudicial({
             <div className="flex gap-2">
               <SelectSIGL
                 value={filtroAlerta}
-                onChange={(e) => setFiltroAlerta(e.target.value)}
+                onChange={setFiltroAlerta}
                 options={[
                   { value: 'TODAS', label: 'Todas las alertas' },
                   { value: 'VERDE', label: 'Verde' },
@@ -722,7 +641,7 @@ export function ModuloDefensaJudicial({
                 {expedientesFiltrados.map((expediente) => {
                   const alerta = getColorAlerta(expediente.colorAlerta);
                   const IconoAlerta = alerta.icon;
-                  
+
                   return (
                     <tr key={expediente.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-4">
@@ -748,13 +667,12 @@ export function ModuloDefensaJudicial({
                         <p className="text-sm text-gray-700">{expediente.abogadoAsignado}</p>
                       </td>
                       <td className="px-4 py-4">
-                        <p className={`text-sm font-semibold ${
-                          expediente.diasRestantes < 0 ? 'text-red-900' :
+                        <p className={`text-sm font-semibold ${expediente.diasRestantes < 0 ? 'text-red-900' :
                           expediente.diasRestantes < 5 ? 'text-red-600' :
-                          expediente.diasRestantes < 10 ? 'text-yellow-600' :
-                          'text-green-600'
-                        }`}>
-                          {expediente.diasRestantes < 0 ? 
+                            expediente.diasRestantes < 10 ? 'text-yellow-600' :
+                              'text-green-600'
+                          }`}>
+                          {expediente.diasRestantes < 0 ?
                             `VENCIDO (${Math.abs(expediente.diasRestantes)}d)` :
                             `${expediente.diasRestantes} días`
                           }
@@ -766,7 +684,7 @@ export function ModuloDefensaJudicial({
                       <td className="px-4 py-4">
                         <ButtonSIGL
                           variant="ghost"
-                          size="sm"
+                          size="small"
                           onClick={() => handleVerDetalle(expediente)}
                         >
                           <Eye className="w-4 h-4" />
@@ -790,17 +708,42 @@ export function ModuloDefensaJudicial({
 
       {/* Modal Formulario */}
       {mostrarFormulario && (
-        <ModalSIGL
+        <FormularioExpedienteJudicial
           isOpen={mostrarFormulario}
           onClose={() => setMostrarFormulario(false)}
-          title="Crear Nuevo Expediente Judicial"
-          size="xlarge"
-        >
-          <FormularioExpedienteCompleto
-            onGuardar={handleGuardarExpediente}
-            onCancelar={() => setMostrarFormulario(false)}
-          />
-        </ModalSIGL>
+          onExpedienteCreado={(data: any) => {
+            showToast({
+              variant: 'success',
+              title: '✅ Expediente creado',
+              message: `Expediente ${data.radicado} creado exitosamente`,
+            });
+            setMostrarFormulario(false);
+
+            const nuevoExpediente: Expediente = {
+              id: data.radicado,
+              jurisdiccion: (data.jurisdiccion as Jurisdiccion) || 'ORDINARIA',
+              demandante: data.demandante || '',
+              demandado: data.demandado || 'ESAP',
+              juzgado: data.juzgadoConocimiento || 'Por definir',
+              medioControl: data.medioControl || 'Nulidad',
+              abogadoAsignado: data.abogadoSustanciador || 'Por asignar',
+              fechaNotificacion: data.fechaNotificacion ? new Date(data.fechaNotificacion) : new Date(),
+              fechaDemanda: data.fechaRadicacion ? new Date(data.fechaRadicacion) : new Date(),
+              fechaVencimiento: data.fechaVencimientoTermino ? new Date(data.fechaVencimientoTermino) : new Date(),
+              plazo: data.terminoProcesalDias || 30,
+              diasRestantes: 30, // Debería calcularse real
+              colorAlerta: 'VERDE', // Debería calcularse real
+              estado: 'ACTIVO',
+              valorDemanda: Number(data.cuantia) || 0,
+              pretension: data.pretensionDemandante || '',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              documents: data.documentosInicialesUrls || [],
+            };
+
+            setExpedientes((prev) => [nuevoExpediente, ...prev]);
+          }}
+        />
       )}
     </div>
   );

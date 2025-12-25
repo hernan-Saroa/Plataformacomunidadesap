@@ -1,0 +1,514 @@
+/**
+ * MOD-10: RIESGOS
+ * DISEÑO MATRIZ DE RIESGOS 2x2 PROFESIONAL + TABLA DETALLE
+ */
+
+import React, { useState, useMemo } from 'react';
+import { motion } from 'motion/react';
+import { Card } from '../../../ui/card';
+import { Badge } from '../../../ui/badge';
+import { Button } from '../../../ui/button';
+import { Input } from '../../../ui/input';
+import { 
+  AlertTriangle,
+  Shield,
+  Activity,
+  CheckCircle2,
+  Grid3x3,
+  List,
+  Plus,
+  Search,
+  Filter,
+  XCircle,
+  Eye,
+  TrendingUp,
+  TrendingDown,
+  Circle
+} from 'lucide-react';
+import type { Riesgo, EtapaRiesgo } from '../core/types';
+import { riesgos } from '../data/datosRiesgos';
+import { toast } from 'sonner@2.0.3';
+
+type VistaModulo = 'matriz' | 'tabla';
+
+const ZONA_RIESGO_CONFIG = {
+  EXTREMO: { color: '#DC2626', label: '🔴 Extremo', bg: '#FEE2E2', border: '#DC2626' },
+  ALTO: { color: '#EA580C', label: '🟠 Alto', bg: '#FFEDD5', border: '#EA580C' },
+  MODERADO: { color: '#F59E0B', label: '🟡 Moderado', bg: '#FEF3C7', border: '#F59E0B' },
+  BAJO: { color: '#10B981', label: '🟢 Bajo', bg: '#D1FAE5', border: '#10B981' }
+};
+
+const TIPO_RIESGO_MAP = {
+  GESTION: '📊 Gestión',
+  CORRUPCION: '⚠️ Corrupción',
+  SEGURIDAD_DIGITAL: '🔒 Seguridad Digital',
+  FISCAL: '💰 Fiscal'
+};
+
+export function Riesgos() {
+  const [vistaActual, setVistaActual] = useState<VistaModulo>('matriz');
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroZona, setFiltroZona] = useState<string>('TODAS');
+  const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
+
+  const riesgosFiltrados = useMemo(() => {
+    let resultado = [...riesgos].filter(r => r.estado === 'ACTIVO');
+
+    if (busqueda) {
+      resultado = resultado.filter(r =>
+        r.id.toLowerCase().includes(busqueda.toLowerCase()) ||
+        r.descripcion.toLowerCase().includes(busqueda.toLowerCase()) ||
+        r.proceso.toLowerCase().includes(busqueda.toLowerCase())
+      );
+    }
+
+    if (filtroZona !== 'TODAS') {
+      resultado = resultado.filter(r => r.zonaResidual === filtroZona);
+    }
+
+    if (filtroTipo !== 'TODOS') {
+      resultado = resultado.filter(r => r.tipoRiesgo === filtroTipo);
+    }
+
+    return resultado;
+  }, [busqueda, filtroZona, filtroTipo]);
+
+  // Métricas
+  const totalRiesgos = riesgos.filter(r => r.estado === 'ACTIVO').length;
+  const extremos = riesgos.filter(r => r.zonaResidual === 'EXTREMO').length;
+  const altos = riesgos.filter(r => r.zonaResidual === 'ALTO').length;
+  const moderados = riesgos.filter(r => r.zonaResidual === 'MODERADO').length;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex-1">
+          <h2 className="font-black leading-tight" style={{ color: '#003DA5', fontSize: '1.5rem' }}>
+            Gestión de Riesgos Institucionales
+          </h2>
+          <p className="text-sm text-gray-600 mt-0.5">
+            Matriz de riesgos según metodología DAFP e ISO 31000
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
+            <button
+              onClick={() => setVistaActual('matriz')}
+              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
+                vistaActual === 'matriz' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
+              }`}
+              style={{ color: vistaActual === 'matriz' ? '#003DA5' : '#6B7280' }}
+            >
+              <Grid3x3 className="w-4 h-4" />Matriz
+            </button>
+            <button
+              onClick={() => setVistaActual('tabla')}
+              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
+                vistaActual === 'tabla' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
+              }`}
+              style={{ color: vistaActual === 'tabla' ? '#003DA5' : '#6B7280' }}
+            >
+              <List className="w-4 h-4" />Tabla
+            </button>
+          </div>
+          <button className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-blue-400 transition-all" style={{ color: '#003DA5' }}>
+            <Plus className="w-4 h-4" />Nuevo Riesgo
+          </button>
+        </div>
+      </div>
+
+      {/* Métricas */}
+      <div className="grid grid-cols-4 gap-3">
+        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 p-3">
+            <div className="p-2.5 rounded-lg bg-blue-50 flex-shrink-0">
+              <Shield className="w-5 h-5 text-blue-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
+                {totalRiesgos}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">Riesgos Activos</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 p-3">
+            <div className="p-2.5 rounded-lg bg-red-50 flex-shrink-0">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
+                {extremos}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">Extremos</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 p-3">
+            <div className="p-2.5 rounded-lg bg-orange-50 flex-shrink-0">
+              <Activity className="w-5 h-5 text-orange-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
+                {altos}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">Altos</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 p-3">
+            <div className="p-2.5 rounded-lg bg-yellow-50 flex-shrink-0">
+              <CheckCircle2 className="w-5 h-5 text-yellow-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
+                {moderados}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">Moderados</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Filtros */}
+      <Card className="bg-white border border-gray-200">
+        <div className="p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-500" />
+            <h3 className="font-bold text-sm text-gray-900">Filtros de búsqueda</h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="md:col-span-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Buscar por ID, descripción, proceso..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+
+            <div>
+              <select
+                value={filtroZona}
+                onChange={(e) => setFiltroZona(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="TODAS">Todas las zonas</option>
+                <option value="EXTREMO">🔴 Extremo</option>
+                <option value="ALTO">🟠 Alto</option>
+                <option value="MODERADO">🟡 Moderado</option>
+                <option value="BAJO">🟢 Bajo</option>
+              </select>
+            </div>
+
+            <div>
+              <select
+                value={filtroTipo}
+                onChange={(e) => setFiltroTipo(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="TODOS">Todos los tipos</option>
+                <option value="GESTION">📊 Gestión</option>
+                <option value="CORRUPCION">⚠️ Corrupción</option>
+                <option value="SEGURIDAD_DIGITAL">🔒 Seguridad Digital</option>
+                <option value="FISCAL">💰 Fiscal</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-600">
+              Mostrando <span className="font-bold">{riesgosFiltrados.length}</span> de <span className="font-bold">{totalRiesgos}</span> riesgos
+            </p>
+            {(busqueda || filtroZona !== 'TODAS' || filtroTipo !== 'TODOS') && (
+              <Button
+                onClick={() => {
+                  setBusqueda('');
+                  setFiltroZona('TODAS');
+                  setFiltroTipo('TODOS');
+                }}
+                variant="outline"
+                size="sm"
+                className="text-xs"
+              >
+                <XCircle className="w-3 h-3 mr-1" />
+                Limpiar filtros
+              </Button>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Contenido principal */}
+      {vistaActual === 'matriz' ? (
+        <MatrizRiesgos riesgos={riesgosFiltrados} />
+      ) : (
+        <TablaRiesgos riesgos={riesgosFiltrados} />
+      )}
+    </div>
+  );
+}
+
+interface MatrizRiesgosProps {
+  riesgos: Riesgo[];
+}
+
+function MatrizRiesgos({ riesgos }: MatrizRiesgosProps) {
+  // Matriz 5x5 (Probabilidad x Impacto)
+  const probabilidades = ['Raro', 'Improbable', 'Posible', 'Probable', 'Casi Seguro'];
+  const impactos = ['Insignificante', 'Menor', 'Moderado', 'Mayor', 'Catastrófico'];
+
+  // Mapeo de nivel de riesgo por celda (Probabilidad, Impacto)
+  const getNivelRiesgo = (prob: number, imp: number): 'BAJO' | 'MODERADO' | 'ALTO' | 'EXTREMO' => {
+    const valor = prob * imp;
+    if (valor >= 20) return 'EXTREMO';
+    if (valor >= 12) return 'ALTO';
+    if (valor >= 5) return 'MODERADO';
+    return 'BAJO';
+  };
+
+  return (
+    <Card className="bg-white border border-gray-200 p-6">
+      <div className="mb-4">
+        <h3 className="font-bold text-lg" style={{ color: '#003DA5' }}>
+          Matriz de Riesgos (Probabilidad × Impacto)
+        </h3>
+        <p className="text-sm text-gray-600 mt-1">
+          Distribución de riesgos según probabilidad e impacto
+        </p>
+      </div>
+
+      <div className="overflow-x-auto">
+        <div className="inline-block min-w-full">
+          {/* Tabla de la matriz */}
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                <th className="border border-gray-300 p-2 bg-gray-50 text-xs font-bold text-gray-600 w-24">
+                  <div className="flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3" />
+                    Prob. / Imp.
+                  </div>
+                </th>
+                {impactos.map((impacto, idx) => (
+                  <th key={impacto} className="border border-gray-300 p-2 bg-gray-50 text-xs font-bold text-gray-600">
+                    {impacto}
+                    <div className="text-[10px] text-gray-400">({idx + 1})</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {probabilidades.map((prob, probIdx) => (
+                <tr key={prob}>
+                  <td className="border border-gray-300 p-2 bg-gray-50 text-xs font-bold text-gray-600">
+                    {prob}
+                    <div className="text-[10px] text-gray-400">({5 - probIdx})</div>
+                  </td>
+                  {impactos.map((imp, impIdx) => {
+                    const nivelRiesgo = getNivelRiesgo(5 - probIdx, impIdx + 1);
+                    const config = ZONA_RIESGO_CONFIG[nivelRiesgo];
+                    const riesgosEnCelda = riesgos.filter(r => 
+                      Math.abs((r.probabilidadInherente || 1) - (5 - probIdx)) <= 0.5 &&
+                      Math.abs((r.impactoInherente || 1) - (impIdx + 1)) <= 0.5
+                    );
+
+                    return (
+                      <td
+                        key={`${prob}-${imp}`}
+                        className="border border-gray-300 p-2 text-center relative"
+                        style={{ 
+                          backgroundColor: config.bg,
+                          minHeight: '60px',
+                          minWidth: '100px'
+                        }}
+                      >
+                        {riesgosEnCelda.length > 0 && (
+                          <div className="space-y-1">
+                            <Badge
+                              className="text-xs font-bold"
+                              style={{ 
+                                backgroundColor: config.color,
+                                color: '#FFFFFF'
+                              }}
+                            >
+                              {riesgosEnCelda.length} riesgo{riesgosEnCelda.length > 1 ? 's' : ''}
+                            </Badge>
+                            <div className="text-[10px] text-gray-600">
+                              {riesgosEnCelda.slice(0, 2).map(r => (
+                                <div key={r.id} className="truncate">{r.id}</div>
+                              ))}
+                              {riesgosEnCelda.length > 2 && (
+                                <div>+{riesgosEnCelda.length - 2} más</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Leyenda */}
+      <div className="mt-6 flex items-center justify-center gap-4 flex-wrap">
+        {Object.entries(ZONA_RIESGO_CONFIG).map(([key, config]) => (
+          <div key={key} className="flex items-center gap-2">
+            <div
+              className="w-4 h-4 rounded"
+              style={{ backgroundColor: config.color }}
+            />
+            <span className="text-xs font-semibold text-gray-700">{config.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Lista de riesgos debajo de la matriz */}
+      <div className="mt-6 pt-6 border-t border-gray-200">
+        <h4 className="font-bold text-sm text-gray-900 mb-3">Detalle de Riesgos</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {riesgos.slice(0, 6).map(riesgo => (
+            <TarjetaRiesgoCompacta key={riesgo.id} riesgo={riesgo} />
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+interface TablaRiesgosProps {
+  riesgos: Riesgo[];
+}
+
+function TablaRiesgos({ riesgos }: TablaRiesgosProps) {
+  return (
+    <Card className="bg-white border border-gray-200">
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">ID</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Descripción</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Proceso</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Tipo</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Nivel</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Etapa</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {riesgos.map((riesgo) => {
+              const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual];
+              return (
+                <tr key={riesgo.id} className="border-t border-gray-200 hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{riesgo.id}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">
+                    <div className="line-clamp-2">{riesgo.descripcion}</div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{riesgo.proceso}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    {TIPO_RIESGO_MAP[riesgo.tipoRiesgo]}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge
+                      className="text-xs font-bold"
+                      style={{ 
+                        backgroundColor: config.color,
+                        color: '#FFFFFF'
+                      }}
+                    >
+                      {config.label}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{riesgo.etapa}</td>
+                  <td className="px-4 py-3">
+                    <Button
+                      onClick={() => toast.success('Detalle Riesgo', { description: riesgo.id })}
+                      size="sm"
+                      style={{ background: '#003DA5', color: '#FFFFFF' }}
+                    >
+                      <Eye className="w-3 h-3 mr-1" />
+                      Ver
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+interface TarjetaRiesgoCompactaProps {
+  riesgo: Riesgo;
+}
+
+function TarjetaRiesgoCompacta({ riesgo }: TarjetaRiesgoCompactaProps) {
+  const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="border rounded-lg p-3 hover:shadow-md transition-all"
+      style={{ borderColor: config.border, borderWidth: '2px' }}
+    >
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <h5 className="font-bold text-sm" style={{ color: '#003DA5' }}>{riesgo.id}</h5>
+          <p className="text-xs text-gray-600 line-clamp-2">{riesgo.descripcion}</p>
+        </div>
+        <Badge
+          className="text-xs font-bold flex-shrink-0"
+          style={{ 
+            backgroundColor: config.color,
+            color: '#FFFFFF'
+          }}
+        >
+          {config.label}
+        </Badge>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <span className="text-gray-500">Proceso:</span>
+          <p className="font-semibold text-gray-900 truncate">{riesgo.proceso}</p>
+        </div>
+        <div>
+          <span className="text-gray-500">Tipo:</span>
+          <p className="font-semibold text-gray-900">{TIPO_RIESGO_MAP[riesgo.tipoRiesgo]}</p>
+        </div>
+      </div>
+
+      <div className="mt-2 pt-2 border-t border-gray-200">
+        <Button
+          onClick={() => toast.success('Detalle Riesgo', { description: riesgo.id })}
+          size="sm"
+          className="w-full"
+          style={{ background: '#003DA5', color: '#FFFFFF' }}
+        >
+          <Eye className="w-3 h-3 mr-1" />
+          Ver Detalle
+        </Button>
+      </div>
+    </motion.div>
+  );
+}

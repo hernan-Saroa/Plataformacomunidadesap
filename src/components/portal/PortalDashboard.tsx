@@ -16,11 +16,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RoleSelector } from './RoleSelector';
-import { StudentView } from './StudentView';
-import { TeacherView } from './TeacherView';
-import { GraduateView } from './GraduateView';
-import { AdminView } from './AdminView';
-import { AspirantView } from './AspirantView';
+import { UnifiedPortalViewV2 } from './UnifiedPortalViewV2';
+import { AuthenticatedPortalNavbar } from './AuthenticatedPortalNavbar';
 
 interface PortalDashboardProps {
   userName: string;
@@ -29,6 +26,7 @@ interface PortalDashboardProps {
   userRoles: string[];
   userData?: any; // Datos completos del usuario del backend
   onActiveRoleChange?: (role: string) => void;
+  onLogout?: () => void;
 }
 
 export function PortalDashboard({
@@ -38,6 +36,7 @@ export function PortalDashboard({
   userRoles,
   userData,
   onActiveRoleChange,
+  onLogout,
 }: PortalDashboardProps) {
   // Determinar rol inicial (principal o primero de la lista)
   const initialRole = userData?.rol_principal || userRoles[0] || 'Estudiante';
@@ -81,6 +80,18 @@ export function PortalDashboard({
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navbar Autenticado */}
+      {onLogout && (
+        <AuthenticatedPortalNavbar
+          userName={userName}
+          userEmail={userEmail}
+          userRoles={userRoles}
+          activeRole={activeRole}
+          onLogout={onLogout}
+          currentSection="inicio"
+        />
+      )}
+
       {/* Selector de roles (solo si tiene múltiples) */}
       <RoleSelector
         userRoles={userRoles}
@@ -98,42 +109,47 @@ export function PortalDashboard({
           transition={{ duration: 0.3 }}
         >
           {activeRole === 'Estudiante' && (
-            <StudentView
+            <UnifiedPortalViewV2
               userName={userName}
               userEmail={userEmail}
-              studentData={roleData.Estudiante}
+              activeRole="Estudiante"
+              roleData={roleData.Estudiante}
             />
           )}
 
           {activeRole === 'Docente' && (
-            <TeacherView
+            <UnifiedPortalViewV2
               userName={userName}
               userEmail={userEmail}
-              teacherData={roleData.Docente}
+              activeRole="Docente"
+              roleData={roleData.Docente}
             />
           )}
 
           {activeRole === 'Graduado' && (
-            <GraduateView
+            <UnifiedPortalViewV2
               userName={userName}
               userEmail={userEmail}
-              graduateData={roleData.Graduado}
+              activeRole="Graduado"
+              roleData={roleData.Graduado}
             />
           )}
 
           {activeRole === 'Administrativo' && (
-            <AdminView
+            <UnifiedPortalViewV2
               userName={userName}
               userEmail={userEmail}
-              adminData={roleData.Administrativo}
+              activeRole="Administrativo"
+              roleData={roleData.Administrativo}
             />
           )}
 
           {activeRole === 'Aspirante' && (
-            <AspirantView
+            <UnifiedPortalViewV2
               userName={userName}
               userEmail={userEmail}
-              aspirantData={roleData.Aspirante}
+              activeRole="Aspirante"
+              roleData={roleData.Aspirante}
             />
           )}
         </motion.div>

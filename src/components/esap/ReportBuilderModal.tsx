@@ -287,7 +287,7 @@ export function ReportBuilderModal({ open, onOpenChange, onReportCreated }: Repo
                     <motion.div
                       className={`w-7 h-7 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-xs sm:text-base font-bold transition-all ${
                         step < currentStep
-                          ? 'bg-green-500 text-white'
+                          ? 'bg-[#1e5da8] text-white'
                           : step === currentStep
                           ? 'bg-[#1e5da8] text-white'
                           : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
@@ -308,7 +308,7 @@ export function ReportBuilderModal({ open, onOpenChange, onReportCreated }: Repo
                     <div
                       className={`flex-1 h-0.5 sm:h-1 mx-1 sm:mx-2 transition-all ${
                         step < currentStep
-                          ? 'bg-green-500'
+                          ? 'bg-[#1e5da8]'
                           : 'bg-gray-200 dark:bg-gray-700'
                       }`}
                     />
@@ -861,7 +861,7 @@ export function ReportBuilderModal({ open, onOpenChange, onReportCreated }: Repo
               ) : (
                 <Button
                   onClick={handleGenerateReport}
-                  className="bg-gradient-to-r from-green-500 to-green-600 text-white"
+                  className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white"
                   size="default"
                 >
                   <Check className="w-4 h-4 mr-2" />

@@ -1,3 +1,4 @@
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { profileCompletenessService } from '../services/api/profileCompletenessService';
 import { toast } from '../utils/toast';

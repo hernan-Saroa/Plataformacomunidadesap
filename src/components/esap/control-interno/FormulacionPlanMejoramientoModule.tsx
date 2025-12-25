@@ -20,12 +20,11 @@ import {
   Save
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/Button';
+import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-import { InputSIGL } from '../gestion-legal/design-system/Input';
-import { TextareaSIGL } from '../gestion-legal/design-system/TextareaSIGL';
-import { toast } from 'sonner';
+import { InputSIGL, TextareaSIGL } from '../gestion-legal/design-system/InputSIGL';
+import { toast } from 'sonner@2.0.3';
 
 // ====================================
 // TIPOS Y DATOS
@@ -239,7 +238,7 @@ export const FormulacionPlanMejoramientoModule: React.FC<{ auditoriaId?: string 
               <div className="flex items-center gap-4 mt-4">
                 <BadgeSIGL variant="info">
                   <Users className="w-3 h-3" />
-                  {plan.responsableArea}
+                  {typeof plan.responsableArea === 'string' ? plan.responsableArea : plan.responsableArea?.nombre || 'No asignado'}
                 </BadgeSIGL>
                 <BadgeSIGL variant="default">
                   <Calendar className="w-3 h-3" />
@@ -868,7 +867,7 @@ const ModalPreviewPlan: React.FC<{
           </div>
           <div>
             <p className="font-semibold text-gray-700">Responsable del Plan:</p>
-            <p className="text-gray-900">{plan.responsableArea}</p>
+            <p className="text-gray-900">{typeof plan.responsableArea === 'string' ? plan.responsableArea : plan.responsableArea?.nombre || 'No asignado'}</p>
           </div>
           <div>
             <p className="font-semibold text-gray-700">Fecha de Creación:</p>

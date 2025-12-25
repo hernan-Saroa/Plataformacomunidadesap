@@ -1,41 +1,26 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import esapStudentsReal from 'figma:asset/9366aaa7d27856d9aef10bd134f20dbe9d256906.png';
 import { 
-  ArrowRight, GraduationCap, Users, BookOpen, Calendar, FileText, 
-  Award, Zap, Star, Phone, Mail, MapPin, ChevronRight, 
-  Shield, Sparkles, TrendingUp, CheckCircle, Play, Globe,
-  Brain, Rocket, Target, BarChart3, Lock, Clock, Check, X, Layers, Megaphone, QrCode, Briefcase, Menu
+  ArrowRight, Users, Award, Zap, Star, Shield, Sparkles, TrendingUp, 
+  CheckCircle, Globe, Rocket, Clock, Briefcase, Layers, Check
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { motion, useScroll, useTransform, useReducedMotion } from 'motion/react';
-import { ImageWithFallback } from '../figma/ImageWithFallback';
-import { DemoVideoModal } from './DemoVideoModal';
-import { ContactForm, MicrointeractionWrapper } from '../shared';
-import { useMicrointeractions, useAccessibility } from '../../hooks';
-import { FooterGovCo } from './FooterGovCo';
+import { FooterWorldClass } from '../FooterWorldClass';
+import { NewsletterSection } from '../NewsletterSection';
+import { SolicitarCertificadoLaboral } from './SolicitarCertificadoLaboral';
+import { PublicTitleVerification } from './PublicTitleVerification';
 
 interface LandingPageProps {
-  onIrALogin?: () => void; // Callback para ir al login
-  onLoginClick?: () => void; // Retrocompatibilidad
-  onNavigate?: (section: string) => void; // Retrocompatibilidad
+  onIrALogin?: () => void;
+  onLoginClick?: () => void;
 }
 
-// Utility: Throttle function para optimizar eventos de alta frecuencia
-function throttle<T extends (...args: any[]) => any>(func: T, limit: number): T {
-  let inThrottle: boolean;
-  return ((...args: any[]) => {
-    if (!inThrottle) {
-      func(...args);
-      inThrottle = true;
-      setTimeout(() => (inThrottle = false), limit);
-    }
-  }) as T;
-}
-
-export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPageProps) {
-  // Función unificada para manejar el click en login
+export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
+  const [vistaActual, setVistaActual] = useState<'landing' | 'certificados-laborales' | 'certificados-graduados'>('landing');
+  
   const handleLoginClick = () => {
     if (onIrALogin) {
       onIrALogin();
@@ -43,111 +28,19 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       onLoginClick();
     }
   };
-  const [selectedTestimonial, setSelectedTestimonial] = useState(0);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
   
-  // Detectar preferencia de movimiento reducido
   const prefersReducedMotion = useReducedMotion();
   
   const { scrollY } = useScroll();
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
-  
-  // UX Premium hooks
-  const { triggerFeedback } = useMicrointeractions();
-  const { ariaProps } = useAccessibility();
-
-  // Throttled mouse move handler - reduce de cientos a ~16 updates/segundo
-  const handleMouseMove = useCallback(
-    throttle((e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY });
-    }, 60), // 60ms = ~16fps, suficiente para parallax suave
-    []
-  );
-
-  // Throttled scroll handler
-  const handleScroll = useCallback(
-    throttle(() => {
-      setIsScrolled(window.scrollY > 50);
-    }, 100),
-    []
-  );
-
-  useEffect(() => {
-    // Solo agregar listener si no prefiere movimiento reducido
-    if (!prefersReducedMotion) {
-      window.addEventListener('mousemove', handleMouseMove);
-    }
-    window.addEventListener('scroll', handleScroll);
-    
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('scroll', handleScroll);
-    };
-  }, [handleMouseMove, handleScroll, prefersReducedMotion]);
-
-  const features = [
-    {
-      icon: <Zap className="w-8 h-8" />,
-      title: 'Un Solo Sistema Integrado',
-      description: 'Ya no necesitas 5-10 aplicaciones diferentes. Calificaciones, certificados, pagos, horarios... todo conectado en un solo lugar.',
-      color: 'from-blue-500 to-cyan-500',
-      stats: '80% más rápido'
-    },
-    {
-      icon: <BarChart3 className="w-8 h-8" />,
-      title: 'Trazabilidad Completa en Tiempo Real',
-      description: 'Ve exactamente en qué estado está tu solicitud. Notificaciones automáticas cuando hay cambios. Ya no tendrás que llamar para preguntar.',
-      color: 'from-purple-500 to-pink-500',
-      stats: 'Transparencia total'
-    },
-    {
-      icon: <Calendar className="w-8 h-8" />,
-      title: 'Perfil y Portafolio Digital',
-      description: 'Tu hoja de vida universitaria completa. Historial académico, certificaciones, documentos y proyectos en un solo portafolio digital.',
-      color: 'from-emerald-500 to-teal-500',
-      stats: 'Trayectoria completa'
-    },
-    {
-      icon: <Users className="w-8 h-8" />,
-      title: 'Experiencia Unificada por Rol',
-      description: 'Interfaz personalizada para cada rol. Estudiantes ven su portal académico, docentes sus cursos, coordinadores sus programas. Cada quien ve exactamente lo que necesita.',
-      color: 'from-orange-500 to-red-500',
-      stats: 'Personalizado'
-    },
-    {
-      icon: <Target className="w-8 h-8" />,
-      title: 'Conveniencia y Eficiencia Total',
-      description: 'Trámites que tomaban 2-3 horas se resuelven en 5 minutos desde tu celular. Acceso 24/7 desde cualquier lugar. Transparencia total del estado de tus solicitudes.',
-      color: 'from-indigo-500 to-blue-500',
-      stats: 'Disponible 24/7'
-    },
-    {
-      icon: <Shield className="w-8 h-8" />,
-      title: 'Validación con QR Único',
-      description: 'Cada certificado genera un QR único e irrepetible. Al escanearlo, cualquier entidad puede validar su autenticidad. Trazabilidad completa de cada validación.',
-      color: 'from-violet-500 to-purple-500',
-      stats: 'QR Único y Seguro'
-    }
-  ];
 
   const services = [
-    {
-      icon: <FileText className="w-7 h-7" />,
-      title: 'Formulario de Vinculaciones',
-      description: 'Proceso 100% digital. Recibe respuesta en menos de 24 horas sobre programas disponibles. Sin papeleos ni filas.',
-      action: () => onNavigate('vinculaciones'),
-      gradient: 'from-blue-600 to-blue-700',
-      badge: 'Rápido'
-    },
     {
       icon: <Award className="w-7 h-7" />,
       title: 'Validación de Certificados de Graduados',
       description: 'Cada certificado tiene un QR único para validación pública. Sistema de trazabilidad completa que registra cada validación.',
-      action: () => onNavigate('verificacion'),
+      action: () => setVistaActual('certificados-graduados'),
       gradient: 'from-emerald-600 to-emerald-700',
       badge: 'Seguro'
     },
@@ -155,7 +48,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       icon: <Briefcase className="w-7 h-7" />,
       title: 'Certificados Laborales',
       description: 'Solicita tu certificado laboral de forma automática. Validamos tu identidad por correo y generas tu certificado al instante.',
-      action: () => onNavigate('solicitar-certificados-laborales'),
+      action: () => setVistaActual('certificados-laborales'),
       gradient: 'from-sky-600 to-blue-700',
       badge: 'Abierto'
     }
@@ -222,6 +115,26 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
     'Pontificia Javeriana',
     'Universidad del Rosario'
   ];
+
+  // Renderizar vista de certificados laborales si está activa
+  if (vistaActual === 'certificados-laborales') {
+    return (
+      <SolicitarCertificadoLaboral 
+        onBack={() => setVistaActual('landing')}
+        onLoginClick={handleLoginClick}
+      />
+    );
+  }
+
+  // Renderizar vista de certificados de graduados si está activa
+  if (vistaActual === 'certificados-graduados') {
+    return (
+      <PublicTitleVerification 
+        onBack={() => setVistaActual('landing')}
+        onLoginClick={handleLoginClick}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-50">
@@ -393,7 +306,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
 
               {/* Subtitle */}
               <p className="text-sm xs:text-base sm:text-lg md:text-xl lg:text-xl xl:text-2xl text-blue-100 mb-4 sm:mb-6 lg:mb-8 leading-relaxed max-w-2xl mx-auto lg:mx-0">
-                La primera <span className="font-semibold text-white">ComUNIdad Universitaria</span> de Colombia. 
+                En la  <span className="font-semibold text-white">ComUNIdad ESAP</span> de Colombia. 
                 Todos tus trámites, servicios académicos y comunidad <span className="font-semibold text-white">en un solo lugar</span>.
               </p>
 
@@ -417,7 +330,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
               <div className="flex flex-col xs:flex-row gap-3 justify-center lg:justify-start">
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button
-                    onClick={() => onNavigate('enrollment-qr')}
+                    onClick={handleLoginClick}
                     size="lg"
                     className="w-full xs:w-auto px-6 py-3 xs:px-7 xs:py-4 sm:px-8 sm:py-6 bg-white text-[#1e5da8] hover:bg-blue-50 shadow-2xl shadow-blue-500/50 group relative overflow-hidden"
                   >
@@ -429,18 +342,6 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                       className="absolute inset-0 bg-gradient-to-r from-blue-400 to-cyan-400 opacity-0 group-hover:opacity-20"
                       initial={false}
                     />
-                  </Button>
-                </motion.div>
-
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button
-                    onClick={() => setIsDemoModalOpen(true)}
-                    size="lg"
-                    variant="outline"
-                    className="w-full xs:w-auto px-6 py-3 xs:px-7 xs:py-4 sm:px-8 sm:py-6 bg-white/10 backdrop-blur-md border-2 border-white/30 text-white hover:bg-white/20 group"
-                  >
-                    <Play className="w-4 h-4 sm:w-5 sm:h-5 mr-2 group-hover:scale-110 transition-transform" />
-                    <span className="font-bold text-sm xs:text-base sm:text-lg">Ver Demo</span>
                   </Button>
                 </motion.div>
               </div>
@@ -864,116 +765,11 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
         </div>
       </section>
 
-      {/* Testimonials Section - Carousel */}
-      <section id="testimonios" className="py-8 sm:py-10 lg:py-12 xl:py-16 bg-gradient-to-b from-white via-blue-50 to-white scroll-mt-24">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-          
-          {/* Section Header */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-8 sm:mb-10 lg:mb-12"
-          >
-            <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-purple-100 text-purple-700 rounded-full mb-4 sm:mb-6 font-semibold text-xs sm:text-sm">
-              <Star className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current" />
-              Testimonios
-            </div>
-            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black text-gray-900 mb-4 sm:mb-6 leading-tight">
-              Historias de éxito
-              <span className="block bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                de nuestra comunidad
-              </span>
-            </h2>
-          </motion.div>
-
-          {/* Testimonials Carousel */}
-          <div className="max-w-6xl mx-auto">
-            <motion.div
-              key={selectedTestimonial}
-              initial={{ opacity: 0, x: 100 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -100 }}
-              transition={{ duration: 0.5 }}
-            >
-              <Card className="bg-white/80 backdrop-blur-xl border-2 border-gray-200 shadow-2xl overflow-hidden">
-                <CardContent className="p-8 lg:p-12">
-                  <div className="grid lg:grid-cols-[200px_1fr] gap-8 items-start">
-                    
-                    {/* Avatar & Info */}
-                    <div className="flex flex-col items-center lg:items-start">
-                      <div className="relative mb-4">
-                        <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-xl">
-                          <img 
-                            src={testimonials[selectedTestimonial].avatar} 
-                            alt={testimonials[selectedTestimonial].name}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="absolute -bottom-2 -right-2 w-12 h-12 bg-gradient-to-br from-[#1e5da8] to-blue-600 rounded-full flex items-center justify-center border-4 border-white">
-                          <Award className="w-6 h-6 text-white" />
-                        </div>
-                      </div>
-                      <h4 className="font-bold text-gray-900 text-lg text-center lg:text-left">
-                        {testimonials[selectedTestimonial].name}
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-2 text-center lg:text-left">
-                        {testimonials[selectedTestimonial].role}
-                      </p>
-                      <div className="flex items-center gap-1 text-yellow-500 mb-2">
-                        {[...Array(testimonials[selectedTestimonial].rating)].map((_, i) => (
-                          <Star key={i} className="w-4 h-4 fill-current" />
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-1 text-gray-500 text-xs">
-                        <MapPin className="w-3 h-3" />
-                        {testimonials[selectedTestimonial].location}
-                      </div>
-                    </div>
-
-                    {/* Testimonial Content */}
-                    <div className="flex-1">
-                      <div className="mb-6">
-                        <svg className="w-12 h-12 text-[#1e5da8] opacity-20" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
-                        </svg>
-                      </div>
-                      <p className="text-xl lg:text-2xl text-gray-700 leading-relaxed mb-8 font-medium">
-                        {testimonials[selectedTestimonial].content}
-                      </p>
-                      
-                      {/* Navigation Dots */}
-                      <div className="flex gap-2">
-                        {testimonials.map((_, index) => (
-                          <button
-                            key={index}
-                            onClick={() => setSelectedTestimonial(index)}
-                            className={`h-2 rounded-full transition-all duration-300 ${
-                              index === selectedTestimonial
-                                ? 'w-12 bg-[#1e5da8]'
-                                : 'w-2 bg-gray-300 hover:bg-gray-400'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
       {/* CTA Section - Final Push */}
       <section className="py-6 sm:py-8 lg:py-12 xl:py-16 relative overflow-hidden">
         {/* Background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0f172a] via-[#1e5da8] to-[#2563eb]" />
-        <div className="absolute inset-0 opacity-10" style={{
-          backgroundImage: `radial-gradient(circle at 50% 50%, white 1px, transparent 1px)`,
-          backgroundSize: '50px 50px'
-        }} />
-
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0f172a] via-[#1e5da8] to-[#2563eb]\" />''
+        
         {/* Content */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <motion.div
@@ -988,9 +784,8 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
             </div>
 
             <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black text-white mb-4 sm:mb-6 leading-tight">
-              ¿Listo para una experiencia
+              ¿Ya haces parte de la comunidad ESAP ?
               <span className="block bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                universitaria moderna?
               </span>
             </h2>
 
@@ -1005,7 +800,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                   size="lg"
                   className="px-8 py-5 sm:px-10 sm:py-7 bg-white text-[#1e5da8] hover:bg-blue-50 shadow-2xl shadow-blue-500/50 font-bold text-base sm:text-lg group"
                 >
-                  Vincúlate Ahora
+                  Activa tu cuenta ahora
                   <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2 group-hover:translate-x-1 transition-transform" />
                 </Button>
               </motion.div>
@@ -1030,14 +825,11 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
         </div>
       </section>
 
-      {/* Footer GOV.CO - Conforme a Normativas del Gobierno Colombiano */}
-      <FooterGovCo />
+      {/* Newsletter Section - NUEVA SECCIÓN ANTES DEL FOOTER */}
+      <NewsletterSection />
 
-      {/* Demo Video Modal */}
-      <DemoVideoModal 
-        isOpen={isDemoModalOpen} 
-        onClose={() => setIsDemoModalOpen(false)} 
-      />
+      {/* Footer World Class - Conforme a Normativas del Gobierno Colombiano */}
+      <FooterWorldClass />
     </div>
   );
 }
