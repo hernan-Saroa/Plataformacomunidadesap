@@ -16,16 +16,175 @@ import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Checkbox } from '../../../ui/checkbox';
 import { Notificacion } from '../core/types';
-import { notificacionesMock } from '../data/datosNotificaciones';
 import { toast } from 'sonner@2.0.3';
+import { ModuleHeader } from '../design-system/ModuleHeader';
+import { ModuleMetrics } from '../design-system/ModuleMetrics';
+import { ModuleFilters } from '../design-system/ModuleFilters';
+
+// DATOS MOCK INLINE (temporales para demo)
+const notificacionesMock: any[] = [
+  {
+    id: 'NOT-2025-001',
+    etapa: 'PENDIENTE_VERIFICACIÓN',
+    tipo: 'NUEVA_DEMANDA',
+    tipoProceso: 'Acción Popular',
+    asunto: 'Nueva demanda radicada - Acción Popular',
+    descripcion: 'Se ha radicado nueva demanda por acción popular contra ESAP',
+    fechaRadicacion: new Date('2024-12-24'),
+    remitente: 'Juzgado 10 Administrativo Bogotá',
+    despachoOrigen: 'Juzgado 10 Admin. Bogotá',
+    radicadoExterno: '25000-33-10-001-2024-00234-00',
+    urgente: true,
+    leida: false,
+    documentosAdjuntos: ['demanda.pdf', 'anexos.pdf']
+  },
+  {
+    id: 'NOT-2025-002',
+    etapa: 'PENDIENTE_VERIFICACIÓN',
+    tipo: 'TERMINO_CERCANO',
+    tipoProceso: 'Laboral',
+    asunto: 'Término cercano - Contestación demanda DJ-2024-089',
+    descripcion: 'Quedan 3 días para contestar demanda DJ-2024-089',
+    fechaRadicacion: new Date('2024-12-24'),
+    remitente: 'Juzgado 3 Laboral Circuito Bogotá',
+    despachoOrigen: 'Juzgado 3 Laboral Bogotá',
+    radicadoExterno: '11001-31-03-002-2024-00567-00',
+    urgente: true,
+    leida: false,
+    documentosAdjuntos: ['notificacion.pdf']
+  },
+  {
+    id: 'NOT-2025-003',
+    etapa: 'CLASIFICADA',
+    tipo: 'AUDIENCIA',
+    tipoProceso: 'NRD',
+    asunto: 'Audiencia programada - Proceso DJ-2024-045',
+    descripcion: 'Audiencia de conciliación el 15 de enero de 2025',
+    fechaRadicacion: new Date('2024-12-23'),
+    remitente: 'Tribunal Administrativo de Cundinamarca',
+    despachoOrigen: 'Tribunal Admin. Cundinamarca',
+    radicadoExterno: '25000-23-42-000-2024-01234-01',
+    urgente: false,
+    leida: false,
+    documentosAdjuntos: ['citacion_audiencia.pdf']
+  },
+  {
+    id: 'NOT-2024-156',
+    etapa: 'CLASIFICADA',
+    tipo: 'AUTO_ADMISORIO',
+    tipoProceso: 'Laboral',
+    asunto: 'Auto admisorio notificado - DJ-2024-102',
+    descripcion: 'Se notificó auto admisorio de demanda laboral',
+    fechaRadicacion: new Date('2024-12-22'),
+    remitente: 'Juzgado 5 Laboral Circuito Bogotá',
+    despachoOrigen: 'Juzgado 5 Laboral Bogotá',
+    radicadoExterno: '11001-31-05-001-2024-00789-00',
+    urgente: false,
+    leida: false,
+    documentosAdjuntos: ['auto_admisorio.pdf']
+  },
+  {
+    id: 'NOT-2024-155',
+    etapa: 'CLASIFICADA',
+    tipo: 'DOCUMENTO_RECIBIDO',
+    tipoProceso: 'Consulta Jurídica',
+    asunto: 'Documento recibido - Oficina Jurídica',
+    descripcion: 'Concepto jurídico sobre contratación directa',
+    fechaRadicacion: new Date('2024-12-21'),
+    remitente: 'Contraloría General de la República',
+    despachoOrigen: 'Contraloría General',
+    radicadoExterno: 'CGR-DOC-2024-1567',
+    urgente: false,
+    leida: false,
+    documentosAdjuntos: ['concepto_contratacion.pdf']
+  },
+  {
+    id: 'NOT-2024-154',
+    etapa: 'DISTRIBUIDA',
+    tipo: 'NUEVA_DEMANDA',
+    tipoProceso: 'Reparación Directa',
+    asunto: 'Demanda distribuida a abogado externo',
+    descripcion: 'DJ-2024-098 asignada a Dr. Carlos Mendoza',
+    fechaRadicacion: new Date('2024-12-20'),
+    remitente: 'Juzgado 15 Administrativo Bogotá',
+    despachoOrigen: 'Juzgado 15 Admin. Bogotá',
+    radicadoExterno: '25000-33-15-001-2024-00456-00',
+    urgente: false,
+    leida: true,
+    documentosAdjuntos: ['demanda.pdf']
+  },
+  {
+    id: 'NOT-2024-153',
+    etapa: 'DISTRIBUIDA',
+    tipo: 'AUDIENCIA',
+    tipoProceso: 'NRD',
+    asunto: 'Audiencia finalizada - DJ-2024-045',
+    descripcion: 'Audiencia de conciliación sin acuerdo',
+    fechaRadicacion: new Date('2024-12-19'),
+    remitente: 'Tribunal Administrativo de Cundinamarca',
+    despachoOrigen: 'Tribunal Admin. Cundinamarca',
+    radicadoExterno: '25000-23-42-000-2024-01234-01',
+    urgente: false,
+    leida: true,
+    documentosAdjuntos: ['acta_audiencia.pdf']
+  },
+  {
+    id: 'NOT-2024-152',
+    etapa: 'DISTRIBUIDA',
+    tipo: 'FALLO',
+    tipoProceso: 'Laboral',
+    asunto: 'Sentencia notificada - DJ-2023-078',
+    descripcion: 'Sentencia desfavorable en primera instancia',
+    fechaRadicacion: new Date('2024-12-18'),
+    remitente: 'Juzgado 7 Laboral Circuito Bogotá',
+    despachoOrigen: 'Juzgado 7 Laboral Bogotá',
+    radicadoExterno: '11001-31-07-001-2023-00987-00',
+    urgente: false,
+    leida: true,
+    documentosAdjuntos: ['sentencia.pdf', 'argumentos.pdf']
+  },
+  {
+    id: 'NOT-2024-151',
+    etapa: 'ARCHIVADA',
+    tipo: 'TERMINO_VENCIDO',
+    tipoProceso: 'NRD',
+    asunto: 'Término vencido - Desistimiento aceptado',
+    descripcion: 'Proceso DJ-2024-012 terminado por desistimiento',
+    fechaRadicacion: new Date('2024-12-15'),
+    remitente: 'Juzgado 8 Administrativo Bogotá',
+    despachoOrigen: 'Juzgado 8 Admin. Bogotá',
+    radicadoExterno: '25000-33-08-001-2024-00123-00',
+    urgente: false,
+    leida: true,
+    documentosAdjuntos: ['desistimiento.pdf']
+  },
+  {
+    id: 'NOT-2024-150',
+    etapa: 'ARCHIVADA',
+    tipo: 'ARCHIVO',
+    tipoProceso: 'Acción de Tutela',
+    asunto: 'Proceso archivado - DJ-2024-003',
+    descripcion: 'Proceso archivado por falta de competencia',
+    fechaRadicacion: new Date('2024-12-10'),
+    remitente: 'Juzgado 12 Penal Municipal Bogotá',
+    despachoOrigen: 'Juzgado 12 Penal Bogotá',
+    radicadoExterno: '11001-60-00-2024-00789-00',
+    urgente: false,
+    leida: true,
+    documentosAdjuntos: ['auto_archivo.pdf']
+  }
+];
 
 type TabBandejaType = 'pendientes' | 'leidas' | 'archivadas' | 'urgentes';
 
 export function ModuloBuzonNotificacionesV3() {
   const [tabActiva, setTabActiva] = useState<TabBandejaType>('pendientes');
   const [busqueda, setBusqueda] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
+  const [filtroUrgencia, setFiltroUrgencia] = useState<string>('TODOS');
   const [notificacionSeleccionada, setNotificacionSeleccionada] = useState<Notificacion | null>(null);
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   const notificacionesFiltradas = useMemo(() => {
     let resultado = [...notificacionesMock];
@@ -42,7 +201,7 @@ export function ModuloBuzonNotificacionesV3() {
         resultado = resultado.filter(n => n.etapa === 'ARCHIVADA');
         break;
       case 'urgentes':
-        resultado = resultado.filter(n => n.urgencia === 'URGENTE');
+        resultado = resultado.filter(n => n.urgente === true);
         break;
     }
 
@@ -56,8 +215,16 @@ export function ModuloBuzonNotificacionesV3() {
       );
     }
 
+    // Filtros
+    if (filtroEstado !== 'TODOS') {
+      resultado = resultado.filter(n => n.etapa === filtroEstado);
+    }
+    if (filtroUrgencia !== 'TODOS') {
+      resultado = resultado.filter(n => n.urgente === (filtroUrgencia === 'URGENTE'));
+    }
+
     return resultado;
-  }, [tabActiva, busqueda]);
+  }, [tabActiva, busqueda, filtroEstado, filtroUrgencia]);
 
   const toggleSeleccion = (id: string) => {
     const nuevaSeleccion = new Set(seleccionadas);
@@ -89,71 +256,46 @@ export function ModuloBuzonNotificacionesV3() {
 
   // Métricas
   const totalPendientes = notificacionesMock.filter(n => n.etapa === 'PENDIENTE_VERIFICACIÓN' || n.etapa === 'CLASIFICADA').length;
-  const totalUrgentes = notificacionesMock.filter(n => n.urgencia === 'URGENTE').length;
+  const totalUrgentes = notificacionesMock.filter(n => n.urgente === true).length;
   const totalArchivadas = notificacionesMock.filter(n => n.etapa === 'ARCHIVADA').length;
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex-1">
-          <h2 className="font-black leading-tight" style={{ color: '#003DA5', fontSize: '1.5rem' }}>
-            Buzón de Notificaciones Judiciales
-          </h2>
-          <p className="text-sm text-gray-600 mt-0.5">
-            Gestión de notificaciones y comunicaciones oficiales
-          </p>
-        </div>
-
-        <button className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-blue-400 transition-all" style={{ color: '#003DA5' }}>
-          <Plus className="w-4 h-4" />Registrar Notificación
-        </button>
-      </div>
+      {/* Header con ModuleHeader - SIN toggleView */}
+      <ModuleHeader
+        title={isMobile ? 'Buzón Notificaciones' : 'Buzón de Notificaciones Judiciales'}
+        subtitle="Gestión de notificaciones y comunicaciones oficiales"
+        buttons={[
+          {
+            label: 'Registrar Notificación',
+            labelMobile: 'Nuevo',
+            icon: <Plus className="w-4 h-4" />,
+            onClick: () => toast.info('Registrar Nueva Notificación'),
+            variant: 'primary'
+          }
+        ]}
+      />
 
       {/* Métricas */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-blue-50 flex-shrink-0">
-              <Mail className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {totalPendientes}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">No Leídas</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-red-50 flex-shrink-0">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {totalUrgentes}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Urgentes</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-gray-50 flex-shrink-0">
-              <Archive className="w-5 h-5 text-gray-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {totalArchivadas}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Archivadas</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <ModuleMetrics
+        metrics={[
+          {
+            icon: <Mail className="w-5 h-5 text-blue-600" />,
+            value: totalPendientes,
+            label: 'No Leídas'
+          },
+          {
+            icon: <AlertTriangle className="w-5 h-5 text-red-600" />,
+            value: totalUrgentes,
+            label: 'Urgentes'
+          },
+          {
+            icon: <Archive className="w-5 h-5 text-gray-600" />,
+            value: totalArchivadas,
+            label: 'Archivadas'
+          }
+        ]}
+      />
 
       {/* Layout tipo Gmail */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -244,6 +386,32 @@ export function ModuloBuzonNotificacionesV3() {
               )}
             </div>
 
+            {/* Filtros */}
+            <ModuleFilters
+              filters={[
+                {
+                  label: 'Estado',
+                  options: [
+                    { value: 'TODOS', label: 'Todos' },
+                    { value: 'PENDIENTE_VERIFICACIÓN', label: 'Pendientes' },
+                    { value: 'DISTRIBUIDA', label: 'Leídas' },
+                    { value: 'ARCHIVADA', label: 'Archivadas' }
+                  ],
+                  selected: filtroEstado,
+                  onChange: setFiltroEstado
+                },
+                {
+                  label: 'Urgencia',
+                  options: [
+                    { value: 'TODOS', label: 'Todos' },
+                    { value: 'URGENTE', label: 'Urgentes' }
+                  ],
+                  selected: filtroUrgencia,
+                  onChange: setFiltroUrgencia
+                }
+              ]}
+            />
+
             {/* Lista de notificaciones */}
             <div className="divide-y divide-gray-200">
               {notificacionesFiltradas.length === 0 ? (
@@ -325,7 +493,7 @@ function ItemNotificacion({ notificacion, seleccionada, onToggleSeleccion, onSel
           <h4 className={`text-sm truncate ${esNueva ? 'font-bold text-gray-900' : 'font-normal text-gray-700'}`}>
             {notificacion.remitente}
           </h4>
-          {notificacion.urgencia === 'URGENTE' && (
+          {notificacion.urgente && (
             <Badge className="text-xs bg-red-100 text-red-700 flex-shrink-0">
               <AlertTriangle className="w-3 h-3 mr-1" />
               Urgente
@@ -339,7 +507,7 @@ function ItemNotificacion({ notificacion, seleccionada, onToggleSeleccion, onSel
           <span className="text-xs text-gray-400">{notificacion.despachoOrigen}</span>
           <Circle className="w-1 h-1 fill-gray-300" />
           <span className="text-xs text-gray-400">
-            {new Date(notificacion.fechaRecepcion).toLocaleDateString()}
+            {new Date(notificacion.fechaRadicacion).toLocaleDateString()}
           </span>
         </div>
       </div>
@@ -360,7 +528,7 @@ function VistaPreviaNotificacion({ notificacion }: VistaPreviaNotificacionProps)
             <h3 className="font-bold text-sm" style={{ color: '#003DA5' }}>
               {notificacion.id}
             </h3>
-            {notificacion.urgencia === 'URGENTE' && (
+            {notificacion.urgente && (
               <Badge className="mt-1 text-xs bg-red-100 text-red-700">
                 <AlertTriangle className="w-3 h-3 mr-1" />
                 Urgente
@@ -383,7 +551,7 @@ function VistaPreviaNotificacion({ notificacion }: VistaPreviaNotificacionProps)
           <div>
             <span className="text-gray-500">Fecha:</span>
             <p className="font-semibold text-gray-900">
-              {new Date(notificacion.fechaRecepcion).toLocaleDateString()}
+              {new Date(notificacion.fechaRadicacion).toLocaleDateString()}
             </p>
           </div>
 

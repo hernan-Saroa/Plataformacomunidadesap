@@ -55,6 +55,9 @@ import { ArquitecturaEmpresarialModule } from '../arquitectura-empresarial/Arqui
 // Importar Provider de Notificaciones
 import { NotificationsProvider } from './NotificationsContext';
 
+// ✅ NUEVO: Provider de Tour Guiado
+import { TourProvider } from './gestion-legal/design-system/TourContext';
+
 type ModuleView = 
   | 'dashboard'
   | 'users-persons'
@@ -285,93 +288,95 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   return (
     <NotificationsProvider>
-      <div className="min-h-screen bg-gray-50">
-        {/* Sidebar */}
-        <SidebarPremium
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          isCollapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-          currentModule={currentModule}
-          currentSidebarModule={currentSidebarModule}
-          onModuleChange={(sidebarModule) => {
-            console.log('🔍 Sidebar module clicked:', sidebarModule);
-            const mappedModule = mapSidebarToModule(sidebarModule);
-            console.log('📍 Mapped to:', mappedModule);
-            setCurrentSidebarModule(sidebarModule);
-            setCurrentModule(mappedModule);
-            setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
-          }}
-          certificatesPendingCount={certificatesPendingCount}
-          restrictedMode={
-            userData?.module === 'control-interno'
-              ? 'control-interno'
-              : userData?.module === 'control-disciplinario'
-              ? 'control-disciplinario'
-              : userData?.module === 'registro-academico'
-              ? 'registro-academico'
-              : userData?.module === 'certificados-laborales' 
-              ? 'certificados-laborales' 
-              : userData?.module === 'arquitectura-empresarial'
-              ? 'arquitectura-empresarial'
-              : userData?.module === 'gestion-legal'
-              ? 'gestion-legal'
-              : userData?.module === 'gestion-profesoral'
-              ? 'gestion-profesoral'
-              : undefined
-          }
-        />
-
-        {/* Main Content - Con margen izquierdo para el sidebar */}
-        <div 
-          className={`transition-all duration-300 ${
-            sidebarCollapsed 
-              ? 'md:ml-[80px]' 
-              : 'md:ml-[260px] lg:ml-[220px] xl:ml-[240px] 2xl:ml-[260px]'
-          }`}
-        >
-          {/* Top Bar */}
-          <TopBar
-            onToggleSidebar={() => {
-              // En mobile abre el sidebar, en desktop colapsa/expande
-              if (typeof window !== 'undefined' && window.innerWidth < 768) {
-                setSidebarOpen(!sidebarOpen);
-              } else {
-                setSidebarCollapsed(!sidebarCollapsed);
-              }
+      <TourProvider>
+        <div className="min-h-screen bg-gray-50">
+          {/* Sidebar */}
+          <SidebarPremium
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+            isCollapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+            currentModule={currentModule}
+            currentSidebarModule={currentSidebarModule}
+            onModuleChange={(sidebarModule) => {
+              console.log('🔍 Sidebar module clicked:', sidebarModule);
+              const mappedModule = mapSidebarToModule(sidebarModule);
+              console.log('📍 Mapped to:', mappedModule);
+              setCurrentSidebarModule(sidebarModule);
+              setCurrentModule(mappedModule);
+              setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
             }}
-            density={density}
-            onDensityChange={setDensity}
-            onLogout={handleLogout}
-            onViewProfile={handleViewProfile}
-            userName={mockUser.name}
-            userEmail={mockUser.email}
-            userInitials={mockUser.initials}
-            onBackToSystemSelector={onBackToSystemSelector}
-            hasBothSystemsAccess={userData?.hasBothSystemsAccess}
-            onSystemChange={onSystemChange}
-            currentSystem="backoffice"
+            certificatesPendingCount={certificatesPendingCount}
+            restrictedMode={
+              userData?.module === 'control-interno'
+                ? 'control-interno'
+                : userData?.module === 'control-disciplinario'
+                ? 'control-disciplinario'
+                : userData?.module === 'registro-academico'
+                ? 'registro-academico'
+                : userData?.module === 'certificados-laborales' 
+                ? 'certificados-laborales' 
+                : userData?.module === 'arquitectura-empresarial'
+                ? 'arquitectura-empresarial'
+                : userData?.module === 'gestion-legal'
+                ? 'gestion-legal'
+                : userData?.module === 'gestion-profesoral'
+                ? 'gestion-profesoral'
+                : undefined
+            }
           />
 
-          {/* Module Content */}
-          <main className="p-4 md:p-6 lg:p-8 min-h-screen">
-            {renderModule()}
-          </main>
+          {/* Main Content - Con margen izquierdo para el sidebar */}
+          <div 
+            className={`transition-all duration-300 ${
+              sidebarCollapsed 
+                ? 'md:ml-[80px]' 
+                : 'md:ml-[260px] lg:ml-[220px] xl:ml-[240px] 2xl:ml-[260px]'
+            }`}
+          >
+            {/* Top Bar */}
+            <TopBar
+              onToggleSidebar={() => {
+                // En mobile abre el sidebar, en desktop colapsa/expande
+                if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                  setSidebarOpen(!sidebarOpen);
+                } else {
+                  setSidebarCollapsed(!sidebarCollapsed);
+                }
+              }}
+              density={density}
+              onDensityChange={setDensity}
+              onLogout={handleLogout}
+              onViewProfile={handleViewProfile}
+              userName={mockUser.name}
+              userEmail={mockUser.email}
+              userInitials={mockUser.initials}
+              onBackToSystemSelector={onBackToSystemSelector}
+              hasBothSystemsAccess={userData?.hasBothSystemsAccess}
+              onSystemChange={onSystemChange}
+              currentSystem="backoffice"
+            />
+
+            {/* Module Content */}
+            <main className="p-4 md:p-6 lg:p-8 min-h-screen">
+              {renderModule()}
+            </main>
+          </div>
+
+          {/* Profile Modal */}
+          {showProfile && (
+            <ProfileModal
+              isOpen={showProfile}
+              onClose={() => setShowProfile(false)}
+              userName={mockUser.name}
+              userEmail={mockUser.email}
+              userRole="Super Administrador"
+              userInitials={mockUser.initials}
+              onLogout={handleLogout}
+            />
+          )}
         </div>
-
-        {/* Profile Modal */}
-        {showProfile && (
-          <ProfileModal
-            isOpen={showProfile}
-            onClose={() => setShowProfile(false)}
-            userName={mockUser.name}
-            userEmail={mockUser.email}
-            userRole="Super Administrador"
-            userInitials={mockUser.initials}
-            onLogout={handleLogout}
-          />
-        )}
-      </div>
+      </TourProvider>
     </NotificationsProvider>
   );
 }

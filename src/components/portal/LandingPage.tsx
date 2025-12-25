@@ -765,67 +765,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
         </div>
       </section>
 
-      {/* CTA Section - Final Push */}
-      <section className="py-6 sm:py-8 lg:py-12 xl:py-16 relative overflow-hidden">
-        {/* Background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0f172a] via-[#1e5da8] to-[#2563eb]\" />''
-        
-        {/* Content */}
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="max-w-4xl mx-auto text-center"
-          >
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-full mb-8 text-white font-semibold text-sm">
-              <Zap className="w-4 h-4" />
-              Únete a la transformación digital
-            </div>
-
-            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black text-white mb-4 sm:mb-6 leading-tight">
-              ¿Ya haces parte de la comunidad ESAP ?
-              <span className="block bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-              </span>
-            </h2>
-
-            <p className="text-base sm:text-lg lg:text-xl text-blue-100 mb-8 sm:mb-10 lg:mb-12 leading-relaxed max-w-2xl mx-auto px-4">
-              Únete a la comunidad ESAP con presencia en el 84% del país. Procesos 100% digitales, sin filas y sin papeleos. 66 años transformando Colombia.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8 sm:mb-10 lg:mb-12">
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button
-                  onClick={handleLoginClick}
-                  size="lg"
-                  className="px-8 py-5 sm:px-10 sm:py-7 bg-white text-[#1e5da8] hover:bg-blue-50 shadow-2xl shadow-blue-500/50 font-bold text-base sm:text-lg group"
-                >
-                  Activa tu cuenta ahora
-                  <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-                </Button>
-              </motion.div>
-            </div>
-
-            {/* Trust Indicators */}
-            <div className="flex flex-wrap items-center justify-center gap-8 pt-8 border-t border-white/10">
-              <div className="flex items-center gap-2 text-white/80">
-                <CheckCircle className="w-5 h-5 text-green-400" />
-                <span className="text-sm font-medium">100% gratuito para la comunidad ESAP</span>
-              </div>
-              <div className="flex items-center gap-2 text-white/80">
-                <CheckCircle className="w-5 h-5 text-green-400" />
-                <span className="text-sm font-medium">Acceso desde cualquier dispositivo</span>
-              </div>
-              <div className="flex items-center gap-2 text-white/80">
-                <CheckCircle className="w-5 h-5 text-green-400" />
-                <span className="text-sm font-medium">Soporte académico permanente</span>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Newsletter Section - NUEVA SECCIÓN ANTES DEL FOOTER */}
+      {/* Newsletter Section - MOVIDO ANTES DEL CTA */}
       <NewsletterSection />
 
       {/* Footer World Class - Conforme a Normativas del Gobierno Colombiano */}
