@@ -4,7 +4,7 @@ import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
 // Dedicated client for Legal Management Service to ensure direct connection if needed
 // or we can reuse the logic if we align endpoints. 
 // Given the backend is at /api/legal/expedientes and strictly on port 3008:
-const BASE_URL = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
+const BASE_URL = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3002';
 
 export const legalApiClient = new ApiClient(BASE_URL);
 
@@ -26,6 +26,18 @@ export interface Expediente {
     ubicacionFisica?: string;
     sancionProyectada?: string;
     etapaProcesal?: string;
+    medioControl?: string;
+    juzgadoConocimiento?: string;
+    pretensionDemandante?: string;
+    actoAdministrativoDemandado?: string;
+    fechaNotificacion?: string;
+    fechaAdmision?: string;
+    fechaVencimientoTermino?: string;
+    tipoIdDemandante?: string;
+    numeroIdDemandante?: string;
+    tipoIdDemandado?: string;
+    numeroIdDemandado?: string;
+    documentosInicialesUrls?: string[];
     createdAt: string;
     updatedAt: string;
 }
@@ -96,19 +108,6 @@ export class LegalService {
 
     async createAudiencia(data: any): Promise<any> {
         return legalApiClient.post<any>('/api/legal/audiencias', data);
-    }
-
-    // Comentarios
-    async getComentarios(expedienteId: string): Promise<any[]> {
-        return legalApiClient.get<any[]>(`/api/legal/expedientes/${expedienteId}/comentarios`);
-    }
-
-    async createComentario(expedienteId: string, data: { contenido: string; usuarioNombre: string }): Promise<any> {
-        return legalApiClient.post<any>(`/api/legal/expedientes/${expedienteId}/comentarios`, data);
-    }
-
-    async deleteComentario(expedienteId: string, comentarioId: string): Promise<void> {
-        return legalApiClient.delete<void>(`/api/legal/expedientes/${expedienteId}/comentarios/${comentarioId}`);
     }
 }
 
