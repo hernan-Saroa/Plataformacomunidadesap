@@ -294,6 +294,14 @@ export default function App() {
     }
   }, [usuarioActual, vistaActual]);
 
+  // Deep link: si ingresan directamente a /solicitar-certificado-laboral, abrir la vista pública de certificados laborales
+  useEffect(() => {
+    if (window.location.pathname === '/solicitar-certificado-laboral') {
+      setCurrentView('solicitar-certificados-laborales');
+      setVistaActual('solicitar-certificados-laborales');
+    }
+  }, []);
+
   // ============================================
   // SISTEMA DE DETECCIÓN DE INACTIVIDAD
   // ============================================
@@ -577,6 +585,7 @@ export default function App() {
   // Handler para volver al home desde login
   const handleBackToHome = () => {
     setCurrentView('landing');
+    setVistaActual('landing');
     navigate('/');
   };
 
@@ -661,6 +670,8 @@ export default function App() {
 
     if (section === 'solicitar-certificados-laborales') {
       setCurrentView('solicitar-certificados-laborales');
+      setVistaActual('solicitar-certificados-laborales');
+      navigate('/solicitar-certificado-laboral');
       return;
     }
 
@@ -698,6 +709,9 @@ export default function App() {
     switch (vistaActual) {
       case 'landing':
         return renderViewLanding();
+      
+      case 'solicitar-certificados-laborales':
+        return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
       
       case 'login':
         return (
