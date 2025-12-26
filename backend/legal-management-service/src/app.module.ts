@@ -7,14 +7,17 @@ import { Expediente } from './entities/expediente.entity';
 import { Actuacion } from './entities/actuacion.entity';
 import { Abogado } from './entities/abogado.entity';
 import { Audiencia } from './entities/audiencia.entity';
+import { Documento } from './entities/documento.entity';
 import { ExpedienteController } from './controllers/expediente.controller';
 import { ActuacionController } from './controllers/actuacion.controller';
 import { AbogadoController, AbogadoStatsController } from './controllers/abogado.controller';
 import { AudienciaController } from './controllers/audiencia.controller';
+import { DocumentoController } from './controllers/documento.controller';
 import { ExpedienteService } from './services/expediente.service';
 import { ActuacionService } from './services/actuacion.service';
 import { AbogadoService } from './services/abogado.service';
 import { AudienciaService } from './services/audiencia.service';
+import { DocumentoService } from './services/documento.service';
 import { Comentario } from './entities/comentario.entity';
 import { ComentarioController } from './controllers/comentario.controller';
 import { ComentarioService } from './services/comentario.service';
@@ -37,7 +40,8 @@ import { TerminosController } from './controllers/terminos.controller';
       Audiencia,
       Requerimiento,
       OrganismoControl,
-      Comentario
+      Comentario,
+      Documento
     ]),
   ],
   controllers: [
@@ -50,7 +54,8 @@ import { TerminosController } from './controllers/terminos.controller';
     FilesController,
     ComentarioController,
     JuzgamientoController,
-    TerminosController
+    TerminosController,
+    DocumentoController
   ],
   providers: [
     ExpedienteService,
@@ -58,7 +63,8 @@ import { TerminosController } from './controllers/terminos.controller';
     AbogadoService,
     AudienciaService,
     RequerimientoService,
-    ComentarioService
+    ComentarioService,
+    DocumentoService
   ],
 })
 export class AppModule { }

@@ -8,14 +8,15 @@ import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Input } from '../../../ui/input';
-import { 
-  Scale, Download, Eye, FileText, Calendar, 
+import {
+  Scale, Download, Eye, FileText, Calendar,
   AlertCircle, CheckCircle, Clock, X, Upload, Plus,
   Trash2, Edit, Search, Filter
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
+import { legalService } from '../../../../services/api/legal.service';
 
 interface ModalAutosProps {
   isOpen: boolean;
@@ -35,148 +36,129 @@ const tiposAuto = [
   'Auto de Sustanciación'
 ];
 
-// Datos mock de autos
-const autosMock = [
-  {
-    id: 1,
-    tipo: 'Auto Admisorio',
-    numero: 'AUTO-001-2024',
-    fecha: '10/12/2024',
-    juzgado: 'Juzgado 1° Administrativo',
-    resumen: 'Se admite demanda presentada por el actor contra ESAP. Se ordena notificar al demandado y dar traslado para contestación en término de 30 días.',
-    estado: 'Notificado',
-    estadoColor: 'green',
-    archivo: 'auto_admisorio_001.pdf',
-    tamaño: '1.2 MB',
-    cumplimiento: 'Completado',
-    fechaNotificacion: '12/12/2024'
-  },
-  {
-    id: 2,
-    tipo: 'Auto de Traslado',
-    numero: 'AUTO-002-2024',
-    fecha: '15/12/2024',
-    juzgado: 'Juzgado 1° Administrativo',
-    resumen: 'Se concede traslado de la demanda por el término de ley (30 días calendario) para que la parte demandada presente su contestación y excepciones.',
-    estado: 'En Término',
-    estadoColor: 'blue',
-    archivo: 'auto_traslado_002.pdf',
-    tamaño: '890 KB',
-    cumplimiento: 'En Curso',
-    fechaNotificacion: '16/12/2024',
-    diasRestantes: 22
-  },
-  {
-    id: 3,
-    tipo: 'Auto de Pruebas',
-    numero: 'AUTO-003-2024',
-    fecha: '20/12/2024',
-    juzgado: 'Juzgado 1° Administrativo',
-    resumen: 'Se admiten las pruebas solicitadas por ambas partes. Se ordena practicar inspección judicial y tomar declaración de testigos.',
-    estado: 'Pendiente',
-    estadoColor: 'orange',
-    archivo: 'auto_pruebas_003.pdf',
-    tamaño: '1.5 MB',
-    cumplimiento: 'Pendiente',
-    fechaNotificacion: null
-  }
-];
+// Mocks eliminados. Datos cargados desde API.
 
 export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
-  const [autos, setAutos] = useState(autosMock);
+  const [autos, setAutos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [busqueda, setBusqueda] = useState('');
   const [editandoId, setEditandoId] = useState<number | null>(null);
 
-  const handleDescargarAuto = (auto: typeof autosMock[0]) => {
-    // Simular descarga del archivo
-    toast.loading('⏳ Preparando descarga...', { 
-      duration: 1000,
-      id: 'descarga-auto' 
-    });
-    
-    setTimeout(() => {
-      toast.success('✅ Descarga completada', {
-        id: 'descarga-auto',
-        description: `${auto.archivo} (${auto.tamaño}) descargado exitosamente`,
-        duration: 3000
-      });
-      
-      // En producción, aquí iría la descarga real del archivo
-      // window.open(`/api/autos/download/${auto.id}`, '_blank');
-    }, 1000);
+  // Cargar autos al abrir
+  useEffect(() => {
+    if (isOpen && (expediente.uuid || expediente.id)) {
+      loadAutos();
+    }
+  }, [isOpen, expediente]);
+
+  const loadAutos = async () => {
+    try {
+      setLoading(true);
+      const data = await legalService.getActuaciones(expediente.uuid || expediente.id);
+
+      // Filtrar y mapear solo los que parecen ser autos (o mostrar todos si se prefiere)
+      // Asumiremos que si tiene archivo o tipo 'Auto' es un auto.
+      // O mostramos todas las actuaciones que tengan archivo adjunto como "Autos/Documentos"
+      const mapped = data.map((act: any) => ({
+        id: act.id,
+        tipo: act.tipoActuacion || 'Auto General',
+        numero: `AUTO-${act.id.slice(0, 4)}`, // Generar o usar número real si existe
+        fecha: new Date(act.fechaActuacion || act.createdAt).toLocaleDateString('es-CO'),
+        juzgado: expediente.juzgado || 'Juzgado de Conocimiento',
+        resumen: act.descripcion,
+        estado: 'Registrado', // Backend no tiene estado explícito aún en Actuacion entity, usar default
+        estadoColor: 'blue',
+        archivo: act.documentoNombre || 'No adjunto',
+        archivoUrl: act.documentoUrl,
+        tamaño: 'N/A',
+        cumplimiento: 'Pendiente',
+        fechaNotificacion: null
+      }));
+
+      setAutos(mapped);
+    } catch (error) {
+      console.error('Error cargando autos:', error);
+      toast.error('Error al cargar autos procesales');
+      setAutos([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleVerAuto = (auto: typeof autosMock[0]) => {
-    toast.loading('📄 Cargando visor de documentos...', { 
-      duration: 1500,
-      id: 'ver-auto' 
-    });
-    
-    setTimeout(() => {
-      toast.success('👁️ Documento abierto', {
-        id: 'ver-auto',
-        description: `${auto.numero} - ${auto.tipo}`,
-        duration: 2000
-      });
-      
-      // En producción, aquí se abriría el visor de PDF
-      // window.open(`/visor/auto/${auto.id}`, '_blank');
-      // O se abriría un modal con el visor integrado
-    }, 1500);
+  const getFullUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    const baseUrl = 'http://localhost:3008/api/legal'; // Ajustar según env
+    return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
+
+  const handleDescargarAuto = async (auto: any) => {
+    if (!auto.archivoUrl) {
+      toast.error('Este auto no tiene archivo adjunto');
+      return;
+    }
+    const fullUrl = getFullUrl(auto.archivoUrl);
+
+    try {
+      toast.info('Iniciando descarga...');
+      const response = await fetch(fullUrl);
+      if (!response.ok) throw new Error('Error al descargar');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', auto.archivo || `auto_${auto.id}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Error al descargar el archivo');
+    }
+  };
+
+  const handleVerAuto = (auto: any) => {
+    if (!auto.archivoUrl) {
+      toast.error('No hay documento para visualizar');
+      return;
+    }
+    window.open(getFullUrl(auto.archivoUrl), '_blank');
   };
 
   const handleCargarNuevoAuto = () => {
-    toast.info('📄 Abriendo carga de auto procesal', {
-      description: 'Selecciona el archivo del auto judicial',
-      duration: 2000
-    });
-    
-    // Simular apertura de input file
+    // Crear input file dinámicamente
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf,.doc,.docx';
-    
-    input.onchange = (e: any) => {
+
+    input.onchange = async (e: any) => {
       const file = e.target?.files?.[0];
       if (file) {
-        // Mostrar toast de procesamiento
-        toast.info('⏳ Procesando auto procesal...', {
-          description: `${file.name} - ${(file.size / (1024 * 1024)).toFixed(2)} MB`,
-          duration: 2000
-        });
-        
-        // Simular carga después de 2 segundos
-        setTimeout(() => {
-          const nuevoAuto = {
-            id: autos.length + 1,
-            tipo: 'Auto de Sustanciación',
-            numero: `AUTO-00${autos.length + 1}-2024`,
-            fecha: new Date().toLocaleDateString('es-CO'),
-            juzgado: 'Juzgado 1° Administrativo',
-            resumen: `Nuevo auto cargado al expediente: ${file.name.replace(/\.[^/.]+$/, '')}. Pendiente de revisión, clasificación y notificación a las partes.`,
-            estado: 'Pendiente',
-            estadoColor: 'orange',
-            archivo: file.name,
-            tamaño: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
-            cumplimiento: 'Pendiente',
-            fechaNotificacion: null
-          };
-          
-          setAutos([nuevoAuto, ...autos]);
-          
-          // Reset filtros para mostrar el nuevo auto inmediatamente
-          setFiltroTipo('TODOS');
-          setBusqueda('');
-          
-          toast.success('✅ Auto procesal cargado exitosamente', {
-            description: `${nuevoAuto.numero} agregado al expediente - Pendiente de notificación`,
-            duration: 5000
-          });
-        }, 2000);
+        try {
+          toast.loading('Subiendo auto procesal...');
+
+          const formData = new FormData();
+          formData.append('file', file); // Multer espera 'file' según ActuacionController
+          formData.append('descripcion', `Auto cargado: ${file.name}`);
+          formData.append('tipoActuacion', 'Auto de Sustanciación'); // Default, se podría preguntar primero
+          formData.append('fechaActuacion', new Date().toISOString());
+
+          await legalService.registrarActuacion(expediente.uuid || expediente.id, formData);
+
+          toast.dismiss();
+          toast.success('Auto cargado correctamente');
+          loadAutos(); // Recargar lista
+        } catch (error) {
+          console.error('Error subiendo auto:', error);
+          toast.dismiss();
+          toast.error('Error al subir el auto');
+        }
       }
     };
-    
+
     input.click();
   };
 
@@ -188,15 +170,15 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
   };
 
   const handleMarcarNotificado = (id: number) => {
-    setAutos(autos.map(auto => 
-      auto.id === id 
-        ? { 
-            ...auto, 
-            estado: 'Notificado', 
-            estadoColor: 'green', 
-            fechaNotificacion: new Date().toLocaleDateString('es-CO'),
-            cumplimiento: 'Completado'
-          }
+    setAutos(autos.map(auto =>
+      auto.id === id
+        ? {
+          ...auto,
+          estado: 'Notificado',
+          estadoColor: 'green',
+          fechaNotificacion: new Date().toLocaleDateString('es-CO'),
+          cumplimiento: 'Completado'
+        }
         : auto
     ));
     toast.success('✅ Estado actualizado', {
@@ -236,8 +218,8 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
   // Aplicar filtros y búsqueda
   const autosFiltrados = autos
     .filter(a => filtroTipo === 'TODOS' || a.tipo === filtroTipo)
-    .filter(a => 
-      busqueda === '' || 
+    .filter(a =>
+      busqueda === '' ||
       a.numero.toLowerCase().includes(busqueda.toLowerCase()) ||
       a.tipo.toLowerCase().includes(busqueda.toLowerCase()) ||
       a.resumen.toLowerCase().includes(busqueda.toLowerCase())
@@ -266,7 +248,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                   </p>
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-2">
                 <Badge style={{ background: '#003DA5', color: '#FFFFFF' }}>
                   {expediente.etapa}
@@ -342,9 +324,9 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
               ¿Qué son los Autos Procesales?
             </h4>
             <p className="text-xs text-orange-800 leading-relaxed">
-              Los <strong>autos</strong> son decisiones judiciales emitidas por el juzgado durante el proceso. 
-              A diferencia de las sentencias (que resuelven el fondo), los autos resuelven asuntos de trámite 
-              como admisión de demandas, traslados, decreto de pruebas, nulidades, etc. Es fundamental dar 
+              Los <strong>autos</strong> son decisiones judiciales emitidas por el juzgado durante el proceso.
+              A diferencia de las sentencias (que resuelven el fondo), los autos resuelven asuntos de trámite
+              como admisión de demandas, traslados, decreto de pruebas, nulidades, etc. Es fundamental dar
               cumplimiento oportuno a cada auto para evitar sanciones procesales.
             </p>
           </Card>
@@ -443,7 +425,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                             <Eye className="w-3.5 h-3.5 mr-1" />
                             Ver
                           </Button>
-                          
+
                           {/* Botón Descargar - Naranja corporativo */}
                           <Button
                             size="sm"
@@ -455,7 +437,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                             <Download className="w-3.5 h-3.5 mr-1" />
                             Descargar
                           </Button>
-                          
+
                           {/* Botón Eliminar - Rojo peligro */}
                           <Button
                             size="sm"
@@ -470,7 +452,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
-                          
+
                           {/* Botón Notificado (condicional) */}
                           {auto.estado !== 'Notificado' && (
                             <Button

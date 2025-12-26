@@ -52,43 +52,55 @@ export type MedioControl =
   | 'Cumplimiento';
 
 export interface ExpedienteJudicial {
-  id: string; // "PJ-2025-001"
+  uuid?: string; // ID real de la base de datos (UUID)
+  id: string; // "PJ-2025-001" - para mostrar (puede ser radicado)
   tipo: string; // "Nulidad y Restablecimiento del Derecho"
   medioControl: MedioControl;
   jurisdiccion: Jurisdiccion;
   etapa: EtapaDefensaJudicial;
-  
+
   // Partes procesales
   demandante: string;
+  demandado?: string;
   apoderado: string;
   juzgado: string;
   radicado: string;
-  
+  // Identificación de las partes
+  tipoIdDemandante?: string;
+  numeroIdDemandante?: string;
+  tipoIdDemandado?: string;
+  numeroIdDemandado?: string;
+  // Contacto del demandante
+  demandanteDireccion?: string;
+  demandanteTelefono?: string;
+  demandanteEmail?: string;
+  demandanteApoderado?: string;
+
   // Financiero
   cuantia: number;
-  
+
   // Términos
   fechaNotificacion: Date;
   diasTotales: number;
   diasRestantes: number;
-  
+
   // Responsable
   abogadoAsignado: string;
-  
+
   // Información adicional
   hechos: string;
   pretensiones: string;
-  
+
   // Documentos y actuaciones
   documentos: Documento[];
   actuaciones: Actuacion[];
-  
+
   // Auditoría
   timeline: EventoTimeline[];
   fechaCreacion: Date;
   fechaActualizacion: Date;
   estado: EstadoGeneral;
-  
+
   // NUEVA PROPIEDAD PARA VISUALIZACIÓN EN TARJETA
   ultimaActuacion?: string; // Descripción breve de la última actuación procesal
 }
@@ -111,38 +123,38 @@ export type LeyDisciplinaria = 'Ley 734/2002' | 'Ley 1952/2019';
 export interface ProcesoDisciplinario {
   id: string; // "PD-2025-001"
   etapa: EtapaJuzgamientoDisciplinario;
-  
+
   // ⚠️ CRÍTICO: Fecha que determina ley aplicable
   fechaHechos: Date;
   leyAplicable: LeyDisciplinaria; // Calculado automáticamente
-  
+
   // Investigado
   investigado: string;
   cargo: string;
   dependencia: string;
-  
+
   // Hechos
   hechos: string;
   faltasCatalogadas: string[];
-  
+
   // Términos (10 días TAXATIVO para descargos)
   fechaInicio: Date;
   diasDescargos: number; // Siempre 10
   diasRestantes: number;
-  
+
   // Responsable
   abogadoAsignado: string;
-  
+
   // Documentos y actuaciones
   documentos: Documento[];
   actuaciones: Actuacion[];
-  
+
   // Auditoría
   timeline: EventoTimeline[];
   fechaCreacion: Date;
   fechaActualizacion: Date;
   estado: EstadoGeneral;
-  
+
   // NUEVA PROPIEDAD PARA VISUALIZACIÓN EN TARJETA
   ultimaActuacion?: string; // Descripción breve de la última actuación procesal
 }
@@ -153,12 +165,12 @@ export interface ProcesoDisciplinario {
 
 export type EtapaAsesoriaJuridica = 'RADICADA' | 'ANÁLISIS' | 'RESPUESTA' | 'ENVIADA';
 
-export type TemaJuridico = 
-  | 'Contractual' 
-  | 'Laboral' 
-  | 'Disciplinario' 
-  | 'Presupuestal' 
-  | 'Administrativo' 
+export type TemaJuridico =
+  | 'Contractual'
+  | 'Laboral'
+  | 'Disciplinario'
+  | 'Presupuestal'
+  | 'Administrativo'
   | 'Otros';
 
 export type PrioridadConsulta = 'URGENTE' | 'ALTA' | 'MEDIA' | 'BAJA';
@@ -166,37 +178,37 @@ export type PrioridadConsulta = 'URGENTE' | 'ALTA' | 'MEDIA' | 'BAJA';
 export interface ConsultaJuridica {
   id: string; // "CJ-2025-001"
   etapa: EtapaAsesoriaJuridica;
-  
+
   // Tema
   temaJuridico: TemaJuridico;
   tema?: string; // Descripción breve del tema
-  
+
   // Solicitante
   solicitante: string;
   funcionarioSolicitante: string;
-  
+
   // Consulta
   consulta: string; // Pregunta o solicitud
-  
+
   // Términos (30 días - Decreto 019/2012)
   fechaRadicacion: Date;
   diasTotales: number; // Generalmente 30
   diasRestantes: number;
-  
+
   // Asignación
   abogadoAsignado: string;
   prioridad: PrioridadConsulta;
-  
+
   // Normativa
   normativaAplicable: string[];
-  
+
   // Respuesta
   respuesta?: string;
   fechaRespuesta?: Date;
-  
+
   // Documentos
   documentosAdjuntos: Documento[];
-  
+
   // Auditoría
   timeline: EventoTimeline[];
   fechaCreacion?: Date;
@@ -207,28 +219,28 @@ export interface ConsultaJuridica {
 export interface SolicitudAsesoria {
   id: string; // "SA-2025-001"
   etapa: EtapaAsesoriaJuridica;
-  
+
   // Solicitante
   entidadSolicitante: string;
   personaSolicitante: string;
   cargo: string;
-  
+
   // Solicitud
   temaJuridico: string;
   descripcion: string;
-  
+
   // Términos (30 días - Decreto 019/2012)
   fechaRadicacion: Date;
   diasTotales: 30; // Siempre 30
   diasRestantes: number;
-  
+
   // Respuesta
   respuesta?: string;
   abogadoAsignado: string;
-  
+
   // Documentos
   documentos: Documento[];
-  
+
   // Auditoría
   timeline: EventoTimeline[];
   fechaCreacion: Date;
@@ -254,29 +266,29 @@ export interface Notificacion {
   id: string; // "NOT-2025-001"
   tipo: TipoNotificacion;
   etapa: EtapaBuzonNotificaciones;
-  
+
   // Origen
   juzgadoOrigen: string;
   radicadoJuzgado: string;
-  
+
   // Recepción
   fechaRecepcion: Date;
   horaRecepcion: string;
-  
+
   // Urgencia (calculada automáticamente)
   urgencia: NivelUrgencia;
-  
+
   // Asociación
   expedienteRelacionado?: string; // ID del expediente
   moduloDestino?: ModuloSIGL;
-  
+
   // Contenido
   asunto: string;
   observaciones: string;
-  
+
   // Documentos
   documentos: Documento[];
-  
+
   // Auditoría
   timeline: EventoTimeline[];
   fechaCreacion: Date;
@@ -327,7 +339,7 @@ export interface TerminoInforme {
   timeline?: EventoTimeline[];
 }
 
-export type EtapaSolicitudInforme = 
+export type EtapaSolicitudInforme =
   | 'RECIBIDA'
   | 'EN_ELABORACIÓN'
   | 'REVISIÓN'

@@ -10,7 +10,7 @@ export class Expediente {
     @OneToMany(() => Actuacion, (actuacion) => actuacion.expediente)
     actuaciones: Actuacion[];
 
-    @Column({ unique: true, length: 23 })
+    @Column({ unique: true, length: 50 })
     radicado: string;
 
     @Column({ default: 'Disciplinaria' })
@@ -88,6 +88,29 @@ export class Expediente {
 
     @Column({ name: 'numero_id_demandado', nullable: true })
     numeroIdDemandado: string;
+
+    // Campos de contacto del demandante
+    @Column({ name: 'demandante_direccion', length: 500, nullable: true })
+    demandanteDireccion: string;
+
+    @Column({ name: 'demandante_telefono', length: 50, nullable: true })
+    demandanteTelefono: string;
+
+    @Column({ name: 'demandante_email', length: 255, nullable: true })
+    demandanteEmail: string;
+
+    @Column({ name: 'demandante_apoderado', length: 255, nullable: true })
+    demandanteApoderado: string;
+
+    // Campos de contacto del demandado (opcional)
+    @Column({ name: 'demandado_direccion', length: 500, nullable: true })
+    demandadoDireccion: string;
+
+    @Column({ name: 'demandado_telefono', length: 50, nullable: true })
+    demandadoTelefono: string;
+
+    @Column({ name: 'demandado_email', length: 255, nullable: true })
+    demandadoEmail: string;
 
     @Column({ name: 'etapa_procesal', default: 'RADICACION' })
     etapaProcesal: string;
