@@ -88,6 +88,9 @@ export interface ExpedienteJudicial {
   fechaCreacion: Date;
   fechaActualizacion: Date;
   estado: EstadoGeneral;
+  
+  // NUEVA PROPIEDAD PARA VISUALIZACIÓN EN TARJETA
+  ultimaActuacion?: string; // Descripción breve de la última actuación procesal
 }
 
 // ============================================================================
@@ -139,6 +142,9 @@ export interface ProcesoDisciplinario {
   fechaCreacion: Date;
   fechaActualizacion: Date;
   estado: EstadoGeneral;
+  
+  // NUEVA PROPIEDAD PARA VISUALIZACIÓN EN TARJETA
+  ultimaActuacion?: string; // Descripción breve de la última actuación procesal
 }
 
 // ============================================================================

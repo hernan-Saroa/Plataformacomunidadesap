@@ -23,6 +23,7 @@ import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner@2.0.3';
+import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
 interface FooterWorldClassProps {
   variant?: 'light' | 'dark';
@@ -122,14 +123,79 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
   const isDark = variant === 'dark';
 
   return (
-    <footer className={`${isDark ? 'bg-gradient-to-b from-gray-900 to-gray-950 text-gray-300' : 'bg-gray-50 text-gray-700'} border-t ${isDark ? 'border-gray-800' : 'border-gray-200'}`}>
+    <footer className={`${isDark ? 'bg-gradient-to-b from-[#1e5da8] via-[#1557a0] to-[#0f3d7a] text-blue-100' : 'bg-gray-50 text-gray-700'} border-t ${isDark ? 'border-blue-800/50' : 'border-gray-200'}`}>
       {/* Main Footer Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        
+        {/* Logo ESAP y Slogan Principal */}
+        <div className="mb-12 pb-8 border-b border-blue-700/30">
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+            {/* Logo */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="flex-shrink-0"
+            >
+              <img 
+                src={esapLogoWhite} 
+                alt="ESAP - Escuela Superior de Administración Pública" 
+                className="h-20 w-auto object-contain drop-shadow-2xl"
+              />
+            </motion.div>
+
+            {/* Información Institucional */}
+            <div className="flex-1 text-center md:text-left">
+              <h3 className="text-2xl font-black text-white mb-2">
+                Escuela Superior de Administración Pública
+              </h3>
+              <p className="text-blue-200 text-sm leading-relaxed mb-3">
+                Formando líderes de excelencia al servicio del Estado y la sociedad colombiana desde 1958.
+              </p>
+              <div className="flex flex-wrap gap-2 justify-center md:justify-start">
+                <span className="px-3 py-1 bg-cyan-400/20 text-cyan-200 rounded-full text-xs font-semibold border border-cyan-400/30">
+                  Educación Pública de Calidad
+                </span>
+                <span className="px-3 py-1 bg-green-400/20 text-green-200 rounded-full text-xs font-semibold border border-green-400/30">
+                  Acreditación de Alta Calidad
+                </span>
+                <span className="px-3 py-1 bg-purple-400/20 text-purple-200 rounded-full text-xs font-semibold border border-purple-400/30">
+                  Investigación e Innovación
+                </span>
+              </div>
+            </div>
+
+            {/* Redes Sociales */}
+            <div className="flex-shrink-0">
+              <p className="text-sm font-semibold mb-3 text-white text-center">Síguenos:</p>
+              <div className="flex gap-2">
+                {socialMedia.map((social, index) => {
+                  const Icon = social.icon;
+                  return (
+                    <motion.a
+                      key={index}
+                      href={social.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      whileHover={{ scale: 1.15, y: -3 }}
+                      whileTap={{ scale: 0.95 }}
+                      className={`w-10 h-10 rounded-full bg-blue-800/50 border border-blue-600/30 flex items-center justify-center transition-all ${social.color} text-white shadow-lg`}
+                      aria-label={social.name}
+                    >
+                      <Icon className="w-5 h-5" />
+                    </motion.a>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 mb-12">
           {/* Column 1: Institucional */}
           <div>
             <h4 className={`font-black text-sm uppercase tracking-wider mb-4 ${isDark ? 'text-white' : 'text-gray-900'} flex items-center gap-2`}>
-              <Building2 className="w-4 h-4 text-[#1e5da8]" />
+              <Building2 className="w-4 h-4 text-cyan-400" />
               Institucional
             </h4>
             <ul className="space-y-3">
@@ -141,7 +207,7 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
                 >
                   <a 
                     href={item.href}
-                    className={`text-sm hover:text-[#1e5da8] transition-colors flex items-center gap-2 group`}
+                    className={`text-sm hover:text-cyan-300 transition-colors flex items-center gap-2 group`}
                   >
                     {item.label}
                     <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -154,7 +220,7 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
           {/* Column 2: Académico */}
           <div>
             <h4 className={`font-black text-sm uppercase tracking-wider mb-4 ${isDark ? 'text-white' : 'text-gray-900'} flex items-center gap-2`}>
-              <GraduationCap className="w-4 h-4 text-[#1e5da8]" />
+              <GraduationCap className="w-4 h-4 text-cyan-400" />
               Académico
             </h4>
             <ul className="space-y-3">
@@ -166,7 +232,7 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
                 >
                   <a 
                     href={item.href}
-                    className={`text-sm hover:text-[#1e5da8] transition-colors flex items-center gap-2 group`}
+                    className={`text-sm hover:text-cyan-300 transition-colors flex items-center gap-2 group`}
                   >
                     {item.label}
                     <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -179,7 +245,7 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
           {/* Column 3: Servicios */}
           <div>
             <h4 className={`font-black text-sm uppercase tracking-wider mb-4 ${isDark ? 'text-white' : 'text-gray-900'} flex items-center gap-2`}>
-              <FileText className="w-4 h-4 text-[#1e5da8]" />
+              <FileText className="w-4 h-4 text-cyan-400" />
               Servicios
             </h4>
             <ul className="space-y-3">
@@ -191,7 +257,7 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
                 >
                   <a 
                     href={item.href}
-                    className={`text-sm hover:text-[#1e5da8] transition-colors flex items-center gap-2 group`}
+                    className={`text-sm hover:text-cyan-300 transition-colors flex items-center gap-2 group`}
                   >
                     {item.label}
                     <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -204,7 +270,7 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
           {/* Column 4: Legal */}
           <div>
             <h4 className={`font-black text-sm uppercase tracking-wider mb-4 ${isDark ? 'text-white' : 'text-gray-900'} flex items-center gap-2`}>
-              <Shield className="w-4 h-4 text-[#1e5da8]" />
+              <Shield className="w-4 h-4 text-cyan-400" />
               Legal
             </h4>
             <ul className="space-y-3">
@@ -216,7 +282,7 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
                 >
                   <a 
                     href={item.href}
-                    className={`text-sm hover:text-[#1e5da8] transition-colors flex items-center gap-2 group`}
+                    className={`text-sm hover:text-cyan-300 transition-colors flex items-center gap-2 group`}
                   >
                     {item.label}
                     <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -229,37 +295,37 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
           {/* Column 5: Contacto */}
           <div>
             <h4 className={`font-black text-sm uppercase tracking-wider mb-4 ${isDark ? 'text-white' : 'text-gray-900'} flex items-center gap-2`}>
-              <MapPin className="w-4 h-4 text-[#1e5da8]" />
+              <MapPin className="w-4 h-4 text-cyan-400" />
               Contacto
             </h4>
             <div className="space-y-4">
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-[#1e5da8]">Sede Principal - Bogotá</p>
+                <p className="text-xs font-semibold text-cyan-300">Sede Principal - Bogotá</p>
                 <div className="flex items-start gap-2 text-sm">
-                  <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0 text-gray-400" />
+                  <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-300" />
                   <span>Diagonal 40 No. 46A - 37<br />Bogotá D.C., Colombia</span>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 text-sm">
-                <Phone className="w-4 h-4 flex-shrink-0 text-gray-400" />
+                <Phone className="w-4 h-4 flex-shrink-0 text-blue-300" />
                 <div>
-                  <a href="tel:+576014440909" className="hover:text-[#1e5da8] transition-colors">
+                  <a href="tel:+576014440909" className="hover:text-cyan-300 transition-colors">
                     (601) 220 0700
                   </a>
-                  <p className="text-xs text-gray-500">Línea Nacional: 018000 119 190</p>
+                  <p className="text-xs text-blue-200">Línea Nacional: 018000 119 190</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 text-sm">
-                <Mail className="w-4 h-4 flex-shrink-0 text-gray-400" />
-                <a href="mailto:correspondencia@esap.edu.co" className="hover:text-[#1e5da8] transition-colors">
+                <Mail className="w-4 h-4 flex-shrink-0 text-blue-300" />
+                <a href="mailto:correspondencia@esap.edu.co" className="hover:text-cyan-300 transition-colors">
                   correspondencia@esap.edu.co
                 </a>
               </div>
 
               <div className="flex items-start gap-2 text-sm">
-                <Clock className="w-4 h-4 mt-0.5 flex-shrink-0 text-gray-400" />
+                <Clock className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-300" />
                 <span className="text-xs">
                   Lunes a Viernes<br />
                   8:00 AM - 5:00 PM
@@ -269,91 +335,13 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
           </div>
         </div>
 
-        <Separator className={`my-8 ${isDark ? 'bg-gray-800' : 'bg-gray-200'}`} />
-
-        {/* Social Media & Certifications */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
-          {/* Social Media */}
-          <div className="lg:col-span-1">
-            <p className={`text-sm font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Síguenos en:
-            </p>
-            <div className="flex gap-3">
-              {socialMedia.map((social, index) => {
-                const Icon = social.icon;
-                return (
-                  <motion.a
-                    key={index}
-                    href={social.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    whileHover={{ scale: 1.1, y: -2 }}
-                    whileTap={{ scale: 0.95 }}
-                    className={`w-10 h-10 rounded-full ${isDark ? 'bg-gray-800' : 'bg-white'} border ${isDark ? 'border-gray-700' : 'border-gray-300'} flex items-center justify-center transition-colors ${social.color} hover:text-white`}
-                    aria-label={social.name}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </motion.a>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Certifications & Badges */}
-          <div className="lg:col-span-2">
-            <div className="flex flex-wrap items-center gap-6 justify-center lg:justify-end">
-              {/* GOV.CO Badge */}
-              <motion.a
-                href="https://www.gov.co"
-                target="_blank"
-                rel="noopener noreferrer"
-                whileHover={{ scale: 1.05 }}
-                className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border-2 border-blue-600 hover:shadow-lg transition-shadow"
-              >
-                <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
-                  <span className="text-white font-black text-xs">GOV</span>
-                </div>
-                <div className="text-left">
-                  <p className="text-xs font-black text-blue-600 leading-none">GOV.CO</p>
-                  <p className="text-xs text-gray-600 leading-none">Portal Oficial</p>
-                </div>
-                <ExternalLink className="w-3 h-3 text-blue-600" />
-              </motion.a>
-
-              {/* ISO Certification */}
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-50 to-green-50 rounded-lg border border-emerald-200"
-              >
-                <CheckCircle2 className="w-6 h-6 text-emerald-600" />
-                <div className="text-left">
-                  <p className="text-xs font-black text-emerald-700 leading-none">ISO 9001:2015</p>
-                  <p className="text-xs text-emerald-600 leading-none">Certificado</p>
-                </div>
-              </motion.div>
-
-              {/* Ministerio de Educación */}
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200"
-              >
-                <Shield className="w-6 h-6 text-blue-600" />
-                <div className="text-left">
-                  <p className="text-xs font-black text-blue-700 leading-none">MinEducación</p>
-                  <p className="text-xs text-blue-600 leading-none">Acreditada</p>
-                </div>
-              </motion.div>
-            </div>
-          </div>
-        </div>
-
-        <Separator className={`my-8 ${isDark ? 'bg-gray-800' : 'bg-gray-200'}`} />
+        <Separator className={`my-8 ${isDark ? 'bg-blue-700/30' : 'bg-gray-200'}`} />
 
         {/* Bottom Footer */}
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm">
-          <div className={isDark ? 'text-gray-400' : 'text-gray-600'}>
+          <div className={isDark ? 'text-blue-200' : 'text-gray-600'}>
             <p>
-              © {new Date().getFullYear()} <span className="font-semibold">ESAP</span> - Escuela Superior de Administración Pública. 
+              © {new Date().getFullYear()} <span className="font-semibold text-white">ESAP</span> - Escuela Superior de Administración Pública. 
               <span className="hidden sm:inline"> Todos los derechos reservados.</span>
             </p>
             <p className="text-xs mt-1">
@@ -361,8 +349,8 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
             </p>
           </div>
           <div className="flex items-center gap-4 text-xs">
-            <span className={`px-3 py-1 rounded-full ${isDark ? 'bg-green-900/30 text-green-400' : 'bg-green-100 text-green-700'} flex items-center gap-1`}>
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className={`px-3 py-1 rounded-full ${isDark ? 'bg-green-500/20 text-green-300 border border-green-500/30' : 'bg-green-100 text-green-700'} flex items-center gap-1`}>
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
               Última actualización: {new Date().toLocaleDateString('es-CO', { 
                 day: '2-digit', 
                 month: 'long', 
