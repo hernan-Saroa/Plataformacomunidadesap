@@ -9664,12 +9664,6 @@
   }
 
   @media (width >= 40rem) {
-    .sm\:max-w-lg {
-      max-width: var(--container-lg);
-    }
-  }
-
-  @media (width >= 40rem) {
     .sm\:max-w-md {
       max-width: var(--container-md);
     }

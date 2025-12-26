@@ -49,7 +49,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
         {/* Header Sticky */}
         <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
           <div className="flex items-start justify-between">

@@ -75,6 +75,7 @@ const comunicacionesMock = [
 export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComunicacionesProps) {
   const [nuevoMensaje, setNuevoMensaje] = useState('');
   const [comunicaciones, setComunicaciones] = useState(comunicacionesMock);
+  const [responderA, setResponderA] = useState<number | null>(null);
 
   const handleEnviarMensaje = () => {
     if (!nuevoMensaje.trim()) {
@@ -86,7 +87,9 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
       id: comunicaciones.length + 1,
       usuario: expediente.abogadoAsignado,
       rol: 'Abogado Defensor',
-      mensaje: nuevoMensaje,
+      mensaje: responderA 
+        ? `↩️ Respondiendo a ${comunicaciones.find(c => c.id === responderA)?.usuario}: ${nuevoMensaje}`
+        : nuevoMensaje,
       fecha: new Date().toLocaleString('es-CO', {
         day: '2-digit',
         month: '2-digit',
@@ -95,12 +98,43 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
         minute: '2-digit'
       }),
       avatar: expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2),
-      tipo: 'message'
+      tipo: 'message',
+      respuestaA: responderA
     };
 
     setComunicaciones([nuevaComunicacion, ...comunicaciones]);
     setNuevoMensaje('');
+    setResponderA(null);
     toast.success('Mensaje enviado exitosamente');
+  };
+
+  const handleResponder = (idMensaje: number, nombreUsuario: string) => {
+    setResponderA(idMensaje);
+    setNuevoMensaje(`@${nombreUsuario} `);
+    toast.info(`Respondiendo a ${nombreUsuario}`);
+  };
+
+  const handleReaccionar = (idMensaje: number) => {
+    const reacciones = ['👍', '❤️', '😊', '🎉', '👏'];
+    const reaccionAleatoria = reacciones[Math.floor(Math.random() * reacciones.length)];
+    toast.success(`Reaccionaste con ${reaccionAleatoria} al mensaje`);
+  };
+
+  const handleAdjuntar = () => {
+    toast.info('📎 Función de adjuntar archivo - En desarrollo');
+  };
+
+  const handleMencionar = () => {
+    const usuarios = ['Juan Pérez López', 'María González', 'Carlos Ruiz', 'Ana López'];
+    const menuUsuarios = usuarios.map(u => `@${u}`).join(', ');
+    toast.info(`Usuarios disponibles: ${menuUsuarios}`, { duration: 5000 });
+  };
+
+  const handleEmoji = () => {
+    const emojis = ['😊', '👍', '❤️', '🎉', '✅', '⚠️', '📎', '🔔'];
+    const emojiAleatorio = emojis[Math.floor(Math.random() * emojis.length)];
+    setNuevoMensaje(prev => prev + emojiAleatorio);
+    toast.success(`Emoji ${emojiAleatorio} agregado`);
   };
 
   const getTipoColor = (tipo: string) => {
@@ -120,7 +154,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col p-0">
         {/* Header Sticky */}
         <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
           <div className="flex items-start justify-between">
@@ -234,6 +268,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
                             size="sm" 
                             variant="ghost" 
                             className="text-xs h-7 px-2 text-gray-600 hover:text-blue-600"
+                            onClick={() => handleResponder(com.id, com.usuario)}
                           >
                             💬 Responder
                           </Button>
@@ -241,6 +276,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
                             size="sm" 
                             variant="ghost" 
                             className="text-xs h-7 px-2 text-gray-600 hover:text-blue-600"
+                            onClick={() => handleReaccionar(com.id)}
                           >
                             👍 Reaccionar
                           </Button>
@@ -266,6 +302,30 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
 
         {/* Footer con input de nuevo mensaje */}
         <div className="sticky bottom-0 bg-white border-t px-6 py-4">
+          {/* Indicador de respuesta activa */}
+          {responderA && (
+            <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-blue-600" />
+                <span className="text-xs text-blue-900">
+                  Respondiendo a <strong>{comunicaciones.find(c => c.id === responderA)?.usuario}</strong>
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0"
+                onClick={() => {
+                  setResponderA(null);
+                  setNuevoMensaje('');
+                  toast.info('Respuesta cancelada');
+                }}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          )}
+
           {/* Sugerencias rápidas */}
           <div className="flex items-center gap-2 mb-3">
             <span className="text-xs text-gray-600">Respuestas rápidas:</span>
@@ -318,6 +378,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
                   variant="ghost" 
                   className="h-7 w-7 p-0"
                   title="Adjuntar archivo"
+                  onClick={handleAdjuntar}
                 >
                   <Paperclip className="w-3.5 h-3.5" />
                 </Button>
@@ -326,6 +387,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
                   variant="ghost" 
                   className="h-7 w-7 p-0"
                   title="Mencionar usuario"
+                  onClick={handleMencionar}
                 >
                   <AtSign className="w-3.5 h-3.5" />
                 </Button>
@@ -334,6 +396,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
                   variant="ghost" 
                   className="h-7 w-7 p-0"
                   title="Emoji"
+                  onClick={handleEmoji}
                 >
                   <Smile className="w-3.5 h-3.5" />
                 </Button>

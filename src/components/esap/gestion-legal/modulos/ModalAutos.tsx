@@ -131,7 +131,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
           <div className="flex items-start justify-between">
