@@ -29,7 +29,8 @@ import { EnrollmentQRLandingUnified } from './components/portal/EnrollmentQRLand
 import { VinculacionForm } from './components/portal/VinculacionForm';
 import { PublicTitleVerification } from './components/portal/PublicTitleVerification';
 import { SolicitarCertificadoLaboral } from './components/portal/SolicitarCertificadoLaboral';
-import { VerificarCertificado } from './components/certificados-laborales/VerificarCertificado';
+import { VerificarCertificadoPublico } from './components/portal/VerificarCertificadoPublico';
+import ValidarCertificadoGraduado from './components/portal/ValidarCertificadoGraduado';
 
 /** Entrante */
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -870,7 +871,14 @@ export default function App() {
       `}</style>
       
       <Routes>
-        <Route path="/verificar-certificado/:codigo" element={<VerificarCertificado />} />
+        <Route
+          path="/verificar-certificado-graduado"
+          element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
+        />
+        <Route
+          path="/verificar-certificado/:codigo"
+          element={<VerificarCertificadoPublico />}
+        />
         <Route path="*" element={renderVista()} />
       </Routes>
       
