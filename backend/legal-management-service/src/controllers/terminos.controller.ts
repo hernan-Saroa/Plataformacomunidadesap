@@ -49,7 +49,7 @@ export class TerminosController {
             demandante: data.demandante || data['enteSolicitante'],
             fechaRadicacion: new Date(),
             // Serializar array si viene del front
-            datosRequeridos: data.datosRequeridos ? JSON.stringify(data.datosRequeridos) : null
+            datosRequeridos: data.datosRequeridos ? JSON.stringify(data.datosRequeridos) : undefined
         };
 
         return this.expedienteService.crearExpediente(expedienteData);
