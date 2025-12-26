@@ -14,7 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { 
   Gavel, FileText, Users, Clock, AlertTriangle, CheckCircle, X,
   Calendar, User, Building, Phone, Mail, MapPin, Briefcase,
-  Eye, Download, Upload, Plus, Edit, Trash2, Send
+  Eye, Download, Upload, Plus, Edit, Trash2, Send, Bell, Share2, 
+  FileDown, ExternalLink
 } from 'lucide-react';
 import type { ProcesoDisciplinario } from '../core/types';
 import { useState } from 'react';
@@ -29,26 +30,190 @@ interface ModalProcesoDisciplinarioProps {
 export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalProcesoDisciplinarioProps) {
   const [tabActivo, setTabActivo] = useState('general');
   const [hasChanges, setHasChanges] = useState(false);
+  const [pruebas, setPruebas] = useState([
+    { id: 1, nombre: 'Prueba Documental #1', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_001.pdf', tamaño: '2.4 MB' },
+    { id: 2, nombre: 'Prueba Documental #2', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_002.pdf', tamaño: '1.8 MB' },
+    { id: 3, nombre: 'Prueba Documental #3', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_003.pdf', tamaño: '3.1 MB' }
+  ]);
+
+  const handleAgregarPrueba = () => {
+    toast.info('📎 Abriendo cargador de pruebas', {
+      description: 'Selecciona el documento probatorio desde tu equipo',
+      duration: 2000
+    });
+    
+    // Simular apertura de input file
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.jpg,.png';
+    
+    input.onchange = (e: any) => {
+      const file = e.target?.files?.[0];
+      if (file) {
+        toast.loading('⏳ Cargando prueba...', {
+          id: 'cargar-prueba',
+          duration: 2000
+        });
+        
+        setTimeout(() => {
+          const nuevaPrueba = {
+            id: pruebas.length + 1,
+            nombre: `Prueba Documental #${pruebas.length + 1}`,
+            descripcion: `${file.name} - Cargado el ${new Date().toLocaleDateString('es-CO')}`,
+            archivo: file.name,
+            tamaño: `${(file.size / (1024 * 1024)).toFixed(2)} MB`
+          };
+          
+          setPruebas([nuevaPrueba, ...pruebas]);
+          setHasChanges(true);
+          
+          toast.success('✅ Prueba cargada exitosamente', {
+            id: 'cargar-prueba',
+            description: `${file.name} agregado al expediente disciplinario`,
+            duration: 4000
+          });
+        }, 2000);
+      }
+    };
+    
+    input.click();
+  };
+
+  const handleVerPrueba = (prueba: any) => {
+    toast.loading('📄 Abriendo visor de documentos...', {
+      id: 'ver-prueba',
+      duration: 1500
+    });
+    
+    setTimeout(() => {
+      toast.success('👁️ Documento abierto', {
+        id: 'ver-prueba',
+        description: `${prueba.nombre} - ${prueba.archivo}`,
+        duration: 2000
+      });
+      // En producción: window.open(`/visor/prueba/${prueba.id}`, '_blank');
+    }, 1500);
+  };
+
+  const handleDescargarPrueba = (prueba: any) => {
+    toast.loading('⏳ Preparando descarga...', {
+      id: 'descargar-prueba',
+      duration: 1000
+    });
+    
+    setTimeout(() => {
+      toast.success('✅ Descarga completada', {
+        id: 'descargar-prueba',
+        description: `${prueba.archivo} (${prueba.tamaño}) descargado exitosamente`,
+        duration: 3000
+      });
+      // En producción: window.open(`/api/pruebas/download/${prueba.id}`, '_blank');
+    }, 1000);
+  };
 
   const handleGuardarCambios = () => {
-    toast.success('Cambios guardados exitosamente', {
-      description: `Los cambios del proceso ${proceso.id} se han guardado correctamente`,
-      duration: 3000,
+    toast.loading('💾 Guardando cambios...', {
+      id: 'guardar-cambios',
+      duration: 1500
     });
-    setHasChanges(false);
-    // Aquí iría la lógica para guardar en el backend
-    // await actualizarProceso(proceso.id, cambios);
+    
+    setTimeout(() => {
+      toast.success('✅ Cambios guardados exitosamente', {
+        id: 'guardar-cambios',
+        description: `Proceso ${proceso.id} actualizado correctamente`,
+        duration: 3000,
+      });
+      setHasChanges(false);
+      // Aquí iría la lógica para guardar en el backend
+      // await actualizarProceso(proceso.id, { pruebas, ... });
+    }, 1500);
   };
 
   const handleCerrar = () => {
     if (hasChanges) {
-      if (confirm('¿Deseas cerrar sin guardar los cambios?')) {
+      if (confirm('⚠️ Tienes cambios sin guardar. ¿Deseas cerrar sin guardar los cambios?')) {
         setHasChanges(false);
         onClose();
       }
     } else {
       onClose();
     }
+  };
+
+  // ==================== FUNCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ====================
+  
+  const handleNotificar = () => {
+    toast.loading('📧 Enviando notificación...', {
+      id: 'notificar-actuacion',
+      duration: 2000
+    });
+    
+    setTimeout(() => {
+      toast.success('✅ Notificación enviada exitosamente', {
+        id: 'notificar-actuacion',
+        description: 'Se ha notificado a todas las partes sobre la última actuación procesal',
+        duration: 4000
+      });
+      setHasChanges(true);
+    }, 2000);
+  };
+
+  const handleCompartir = () => {
+    toast.loading('🔗 Generando enlace de compartir...', {
+      id: 'compartir-actuacion',
+      duration: 1500
+    });
+    
+    setTimeout(() => {
+      const enlace = `https://esap.gov.co/procesos/${proceso.id}/actuacion-ultima`;
+      
+      // Copiar al portapapeles
+      navigator.clipboard.writeText(enlace).then(() => {
+        toast.success('✅ Enlace copiado al portapapeles', {
+          id: 'compartir-actuacion',
+          description: enlace,
+          duration: 5000
+        });
+      }).catch(() => {
+        toast.info('🔗 Enlace generado', {
+          id: 'compartir-actuacion',
+          description: enlace,
+          duration: 5000
+        });
+      });
+    }, 1500);
+  };
+
+  const handleDescargarPDF = () => {
+    toast.loading('📄 Generando PDF de la actuación...', {
+      id: 'descargar-pdf-actuacion',
+      duration: 2000
+    });
+    
+    setTimeout(() => {
+      toast.success('✅ PDF descargado exitosamente', {
+        id: 'descargar-pdf-actuacion',
+        description: `Actuacion_${proceso.id}_${new Date().toLocaleDateString('es-CO').replace(/\//g, '-')}.pdf`,
+        duration: 4000
+      });
+      // En producción: window.open(`/api/procesos/${proceso.id}/actuacion/pdf`, '_blank');
+    }, 2000);
+  };
+
+  const handleAbrirEnPortales = () => {
+    toast.loading('🌐 Abriendo Portal de Notificaciones Judiciales...', {
+      id: 'abrir-portales',
+      duration: 1500
+    });
+    
+    setTimeout(() => {
+      toast.success('✅ Portal abierto en nueva ventana', {
+        id: 'abrir-portales',
+        description: 'Redirigiendo al Sistema de Portales de la Rama Judicial',
+        duration: 3000
+      });
+      // En producción: window.open('https://procesos.ramajudicial.gov.co/', '_blank');
+    }, 1500);
   };
 
   return (
@@ -77,6 +242,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge className="bg-white/20 text-white font-semibold border-white/30">
                   {proceso.etapa}
+                </Badge>
+                <Badge className="bg-orange-500 text-white font-semibold">
+                  El acompañamiento
                 </Badge>
                 <Badge className="bg-orange-500 text-white font-semibold">
                   {proceso.diasRestantes} días restantes
@@ -236,6 +404,66 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 </div>
               </div>
             </Card>
+
+            {/* ==================== ÚLTIMA ACTUACIÓN PROCESAL ==================== */}
+            <Card className="p-5 border-2 border-blue-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-lg flex items-center gap-2" style={{ color: '#003DA5' }}>
+                  <AlertTriangle className="w-5 h-5" />
+                  ÚLTIMA ACTUACIÓN PROCESAL
+                </h3>
+              </div>
+
+              <div className="p-4 bg-blue-50 rounded-lg mb-4">
+                <p className="text-sm text-gray-600 mb-1">Actuación:</p>
+                <p className="font-bold text-gray-900">
+                  {proceso.ultimaActuacion || 'Solicitud de informes a RRHH'}
+                </p>
+                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                  <span>📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</span>
+                  <span>⏰ {proceso.fechaActualizacion.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button 
+                  size="sm"
+                  onClick={handleNotificar}
+                  className="font-semibold"
+                  style={{ background: '#F57C00', color: '#FFFFFF' }}
+                >
+                  <Bell className="w-4 h-4 mr-1.5" />
+                  Notificar
+                </Button>
+                <Button 
+                  size="sm"
+                  onClick={handleCompartir}
+                  className="font-semibold"
+                  style={{ background: '#F57C00', color: '#FFFFFF' }}
+                >
+                  <Share2 className="w-4 h-4 mr-1.5" />
+                  Compartir
+                </Button>
+                <Button 
+                  size="sm"
+                  onClick={handleDescargarPDF}
+                  className="font-semibold"
+                  style={{ background: '#F59E0B', color: '#FFFFFF' }}
+                >
+                  <FileDown className="w-4 h-4 mr-1.5" />
+                  PDF
+                </Button>
+                <Button 
+                  size="sm"
+                  onClick={handleAbrirEnPortales}
+                  className="font-semibold"
+                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                >
+                  <ExternalLink className="w-4 h-4 mr-1.5" />
+                  Abrir en Portales
+                </Button>
+              </div>
+            </Card>
           </TabsContent>
 
           {/* ==================== TAB: HECHOS ==================== */}
@@ -265,10 +493,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Material Probatorio</h3>
               <Button 
-                onClick={() => {
-                  toast.info('Agregando nueva prueba...');
-                  setHasChanges(true);
-                }}
+                onClick={handleAgregarPrueba}
                 style={{ background: '#003DA5', color: '#FFFFFF' }}
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -276,32 +501,34 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               </Button>
             </div>
 
-            {[1, 2, 3].map((item) => (
-              <Card key={item} className="p-4 hover:shadow-md transition-all">
+            {pruebas.map((prueba) => (
+              <Card key={prueba.id} className="p-4 hover:shadow-md transition-all border border-gray-200">
                 <div className="flex items-start gap-4">
                   <div className="p-3 rounded-lg bg-blue-50">
                     <FileText className="w-6 h-6 text-blue-600" />
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-bold text-lg mb-1">Prueba Documental #{item}</h4>
-                    <p className="text-sm text-gray-600 mb-2">
-                      Documento probatorio relacionado con el proceso disciplinario
+                    <h4 className="font-bold text-lg mb-1">{prueba.nombre}</h4>
+                    <p className="text-sm text-gray-600 mb-3">
+                      {prueba.descripcion}
                     </p>
                     <div className="flex gap-2">
                       <Button 
                         size="sm" 
                         variant="outline"
-                        onClick={() => toast.info(`Visualizando prueba #${item}`)}
+                        onClick={() => handleVerPrueba(prueba)}
+                        className="font-semibold border-blue-300 text-blue-600 hover:bg-blue-50 hover:border-blue-400"
                       >
-                        <Eye className="w-4 h-4 mr-1" />
+                        <Eye className="w-4 h-4 mr-1.5" />
                         Ver
                       </Button>
                       <Button 
                         size="sm" 
                         variant="outline"
-                        onClick={() => toast.success(`Descargando prueba #${item}...`)}
+                        onClick={() => handleDescargarPrueba(prueba)}
+                        className="font-semibold border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400"
                       >
-                        <Download className="w-4 h-4 mr-1" />
+                        <Download className="w-4 h-4 mr-1.5" />
                         Descargar
                       </Button>
                     </div>
@@ -332,6 +559,38 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   </div>
                 </Card>
               ))}
+            </div>
+
+            {/* ==================== ACCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ==================== */}
+            <div className="mt-6 flex gap-2">
+              <Button 
+                onClick={handleNotificar}
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                <Bell className="w-4 h-4 mr-2" />
+                Notificar
+              </Button>
+              <Button 
+                onClick={handleCompartir}
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                <Share2 className="w-4 h-4 mr-2" />
+                Compartir
+              </Button>
+              <Button 
+                onClick={handleDescargarPDF}
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                <FileDown className="w-4 h-4 mr-2" />
+                Descargar PDF
+              </Button>
+              <Button 
+                onClick={handleAbrirEnPortales}
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Abrir en Portales
+              </Button>
             </div>
           </TabsContent>
 

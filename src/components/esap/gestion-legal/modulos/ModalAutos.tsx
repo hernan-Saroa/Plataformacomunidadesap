@@ -89,15 +89,41 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
   const [editandoId, setEditandoId] = useState<number | null>(null);
 
   const handleDescargarAuto = (auto: typeof autosMock[0]) => {
-    toast.success('✅ Descarga iniciada', {
-      description: `${auto.numero} - ${auto.archivo} (${auto.tamaño})`
+    // Simular descarga del archivo
+    toast.loading('⏳ Preparando descarga...', { 
+      duration: 1000,
+      id: 'descarga-auto' 
     });
+    
+    setTimeout(() => {
+      toast.success('✅ Descarga completada', {
+        id: 'descarga-auto',
+        description: `${auto.archivo} (${auto.tamaño}) descargado exitosamente`,
+        duration: 3000
+      });
+      
+      // En producción, aquí iría la descarga real del archivo
+      // window.open(`/api/autos/download/${auto.id}`, '_blank');
+    }, 1000);
   };
 
   const handleVerAuto = (auto: typeof autosMock[0]) => {
-    toast.info('👁️ Abriendo visor de documento', {
-      description: `${auto.numero} - ${auto.tipo}`
+    toast.loading('📄 Cargando visor de documentos...', { 
+      duration: 1500,
+      id: 'ver-auto' 
     });
+    
+    setTimeout(() => {
+      toast.success('👁️ Documento abierto', {
+        id: 'ver-auto',
+        description: `${auto.numero} - ${auto.tipo}`,
+        duration: 2000
+      });
+      
+      // En producción, aquí se abriría el visor de PDF
+      // window.open(`/visor/auto/${auto.id}`, '_blank');
+      // O se abriría un modal con el visor integrado
+    }, 1500);
   };
 
   const handleCargarNuevoAuto = () => {
@@ -406,44 +432,57 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           <p className="text-xs text-gray-500">{auto.tamaño}</p>
                         </div>
                         <div className="flex items-center gap-1">
+                          {/* Botón Ver - Naranja corporativo */}
                           <Button
                             size="sm"
-                            variant="ghost"
                             onClick={() => handleVerAuto(auto)}
-                            title="Ver documento"
-                            className="hover:bg-blue-100"
+                            title="Ver documento completo en visor PDF"
+                            className="font-semibold text-xs px-3 py-1.5"
+                            style={{ background: '#F57C00', color: '#FFFFFF' }}
                           >
-                            <Eye className="w-3.5 h-3.5" />
+                            <Eye className="w-3.5 h-3.5 mr-1" />
+                            Ver
                           </Button>
+                          
+                          {/* Botón Descargar - Naranja corporativo */}
                           <Button
                             size="sm"
-                            variant="ghost"
                             onClick={() => handleDescargarAuto(auto)}
-                            title="Descargar"
-                            className="hover:bg-green-100"
+                            title="Descargar archivo PDF a tu equipo"
+                            className="font-semibold text-xs px-3 py-1.5"
+                            style={{ background: '#F57C00', color: '#FFFFFF' }}
                           >
-                            <Download className="w-3.5 h-3.5" />
+                            <Download className="w-3.5 h-3.5 mr-1" />
+                            Descargar
                           </Button>
+                          
+                          {/* Botón Eliminar - Rojo peligro */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              if (confirm(`¿Estás seguro de eliminar el auto ${auto.numero}?`)) {
+                                handleEliminarAuto(auto.id, auto.numero);
+                              }
+                            }}
+                            title="Eliminar auto del expediente"
+                            className="font-semibold text-xs px-2 py-1.5 border-red-300 text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                          
+                          {/* Botón Notificado (condicional) */}
                           {auto.estado !== 'Notificado' && (
                             <Button
                               size="sm"
-                              variant="ghost"
+                              variant="outline"
                               onClick={() => handleMarcarNotificado(auto.id)}
                               title="Marcar como notificado"
-                              className="hover:bg-green-100 text-green-600"
+                              className="font-semibold text-xs px-2 py-1.5 border-green-300 text-green-600 hover:bg-green-50"
                             >
                               <CheckCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleEliminarAuto(auto.id, auto.numero)}
-                            title="Eliminar auto"
-                            className="hover:bg-red-100 text-red-600"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
                         </div>
                       </div>
                     </div>
