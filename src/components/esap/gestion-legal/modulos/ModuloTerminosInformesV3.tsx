@@ -17,6 +17,10 @@ import { Input } from '../../../ui/input';
 import { SolicitudInforme } from '../core/types';
 import { solicitudesInformesMock } from '../data/datosSolicitudesInformes';
 import { toast } from 'sonner@2.0.3';
+import { ModuleHeader } from '../design-system/ModuleHeader';
+import { ModuleMetrics } from '../design-system/ModuleMetrics';
+import { ModuleFilters } from '../design-system/ModuleFilters';
+import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 
 type VistaModulo = 'calendario' | 'timeline' | 'lista';
 
@@ -25,6 +29,7 @@ export function ModuloTerminosInformesV3() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroSemaforo, setFiltroSemaforo] = useState<string>('TODOS');
   const [mesActual, setMesActual] = useState(new Date());
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   const solicitudesFiltradas = useMemo(() => {
     let resultado = [...solicitudesInformesMock];
@@ -55,154 +60,133 @@ export function ModuloTerminosInformesV3() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex-1">
-          <h2 className="font-black leading-tight" style={{ color: '#003DA5', fontSize: '1.5rem' }}>
-            Control de Términos e Informes
-          </h2>
-          <p className="text-sm text-gray-600 mt-0.5">
-            Seguimiento a solicitudes y plazos de entrega
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
-            <button
-              onClick={() => setVistaActual('timeline')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                vistaActual === 'timeline' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-              }`}
-              style={{ color: vistaActual === 'timeline' ? '#003DA5' : '#6B7280' }}
-            >
-              <TrendingUp className="w-4 h-4" />Timeline
-            </button>
-            <button
-              onClick={() => setVistaActual('calendario')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                vistaActual === 'calendario' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-              }`}
-              style={{ color: vistaActual === 'calendario' ? '#003DA5' : '#6B7280' }}
-            >
-              <CalendarDays className="w-4 h-4" />Calendario
-            </button>
-            <button
-              onClick={() => setVistaActual('lista')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                vistaActual === 'lista' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-              }`}
-              style={{ color: vistaActual === 'lista' ? '#003DA5' : '#6B7280' }}
-            >
-              <List className="w-4 h-4" />Lista
-            </button>
-          </div>
-          <button className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-blue-400 transition-all" style={{ color: '#003DA5' }}>
-            <Plus className="w-4 h-4" />Nueva Solicitud
-          </button>
-        </div>
-      </div>
+      {/* Header con ModuleHeader */}
+      <ModuleHeader
+        title="Control de Términos e Informes"
+        subtitle="Seguimiento a solicitudes y plazos de entrega"
+        toggleView={{
+          current: vistaActual,
+          onChange: (view) => setVistaActual(view as VistaModulo),
+          options: [
+            { label: 'Timeline', icon: <TrendingUp className="w-4 h-4" />, value: 'timeline' },
+            { label: 'Calendario', icon: <CalendarDays className="w-4 h-4" />, value: 'calendario' },
+            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
+          ]
+        }}
+        buttons={[
+          {
+            label: 'Nueva Solicitud',
+            labelMobile: 'Nuevo',
+            icon: <Plus className="w-4 h-4" />,
+            onClick: () => toast.info('Nueva Solicitud de Informe'),
+            variant: 'primary'
+          }
+        ]}
+        infoTooltip={
+          <ModuleInfoTooltip
+            title="Guía de Términos e Informes"
+            variant="icon"
+            sections={[
+              {
+                label: "🔗 Procedencia del Flujo",
+                content: "Este módulo NO recibe casos, es un MÓDULO TRANSVERSAL que consolida TODOS los términos activos de todos los módulos: Defensa Judicial, Juzgamiento, Asesoría, Órganos de Control, etc.",
+                type: "info"
+              },
+              {
+                label: "⏰ Propósito del Módulo",
+                content: "Control centralizado de TODOS los términos procesales y administrativos vigentes del área jurídica, con alertas tempranas para garantizar cumplimiento oportuno y evitar vencimientos.",
+                type: "default"
+              },
+              {
+                label: "🚦 Semáforo Inteligente",
+                content: "🟢 VERDE (En término): >5 días restantes | 🟡 AMARILLO (Próximo a vencer): 2-5 días | 🔴 ROJO (Vencido): ≤1 día o vencido. El sistema prioriza automáticamente los términos críticos en la vista principal.",
+                type: "warning"
+              },
+              {
+                label: "🔄 Tipos de Términos",
+                content: "• Judiciales: Contestaciones, recursos, alegatos (perentorios) | • Disciplinarios: Descargos, pruebas (improrrogables) | • Administrativos: Respuestas PQRS, informes a órganos de control | • Contractuales: Plazos de ejecución, entrega de informes.",
+                type: "default"
+              },
+              {
+                label: "📊 Dashboard de Control",
+                content: "Vista ejecutiva con: Total de términos activos | Términos vencidos (acción urgente) | Próximos a vencer (planear acción) | En término (monitoreo normal). Gráficos de tendencias y alertas.",
+                type: "default"
+              },
+              {
+                label: "🔔 Sistema de Alertas",
+                content: "Notificaciones automáticas por email/SMS: • 5 días antes: Alerta preventiva | • 2 días antes: Alerta urgente | • 1 día antes: Alerta crítica | • Vencido: Escalamiento automático a coordinación.",
+                type: "premium"
+              },
+              {
+                label: "🔗 Integración TOTAL",
+                content: "Este módulo se integra con TODOS los módulos: • Defensa Judicial (términos judiciales) • Juzgamiento (términos disciplinarios) • Asesoría (SLA de conceptos) • Órganos Control (términos de respuesta) • Procesos Coactivos (términos de cobro).",
+                type: "success"
+              },
+              {
+                label: "💡 Cómo Usar",
+                content: "1️⃣ Vista principal muestra TODOS los términos en semáforo único → 2️⃣ Filtrar por módulo origen para ver términos específicos → 3️⃣ Click en término para ver expediente completo → 4️⃣ Marcar como cumplido al ejecutar acción → 5️⃣ Exportar reporte de términos para gerencia.",
+                type: "default"
+              },
+              {
+                label: "📈 Reportes e Indicadores",
+                content: "Genera indicadores de gestión: • % Cumplimiento de términos (meta: >95%) | • Términos vencidos mensual (meta: 0) | • Tiempo promedio de respuesta | • Análisis de causas de vencimiento para mejora continua.",
+                type: "info"
+              }
+            ]}
+          />
+        }
+      />
 
       {/* Métricas */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-red-50 flex-shrink-0">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {solicitudesCriticas}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Críticas (≤2 días)</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-yellow-50 flex-shrink-0">
-              <Clock className="w-5 h-5 text-yellow-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {solicitudesUrgentes}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Urgentes (3-5 días)</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-green-50 flex-shrink-0">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {solicitudesEnTermino}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">En Término (&gt;5 días)</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <ModuleMetrics
+        metrics={[
+          {
+            label: 'Críticas (≤2 días)',
+            value: solicitudesCriticas,
+            icon: <AlertTriangle className="w-5 h-5 text-red-600" />,
+            color: 'red'
+          },
+          {
+            label: 'Urgentes (3-5 días)',
+            value: solicitudesUrgentes,
+            icon: <Clock className="w-5 h-5 text-yellow-600" />,
+            color: 'yellow'
+          },
+          {
+            label: 'En Término (&gt;5 días)',
+            value: solicitudesEnTermino,
+            icon: <CheckCircle className="w-5 h-5 text-green-600" />,
+            color: 'green'
+          }
+        ]}
+      />
 
       {/* Filtros */}
-      <Card className="bg-white border border-gray-200">
-        <div className="p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-500" />
-            <h3 className="font-bold text-sm text-gray-900">Filtros de búsqueda</h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="md:col-span-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Buscar por ID, asunto, solicitante..."
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-
-            <div>
-              <select
-                value={filtroSemaforo}
-                onChange={(e) => setFiltroSemaforo(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="TODOS">Todos los estados</option>
-                <option value="ROJO">🔴 Críticas (≤2 días)</option>
-                <option value="AMARILLO">🟡 Urgentes (3-5 días)</option>
-                <option value="VERDE">🟢 En término (&gt;5 días)</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              Mostrando <span className="font-bold">{solicitudesFiltradas.length}</span> de <span className="font-bold">{solicitudesInformesMock.length}</span> solicitudes
-            </p>
-            {(busqueda || filtroSemaforo !== 'TODOS') && (
-              <Button
-                onClick={() => {
-                  setBusqueda('');
-                  setFiltroSemaforo('TODOS');
-                }}
-                variant="outline"
-                size="sm"
-                className="text-xs"
-              >
-                <XCircle className="w-3 h-3 mr-1" />
-                Limpiar filtros
-              </Button>
-            )}
-          </div>
-        </div>
-      </Card>
+      <ModuleFilters
+        searchValue={busqueda}
+        onSearchChange={setBusqueda}
+        searchPlaceholder="Buscar por ID, asunto, solicitante..."
+        filters={[
+          {
+            type: 'select',
+            value: filtroSemaforo,
+            onChange: setFiltroSemaforo,
+            options: [
+              { value: 'TODOS', label: 'Todos los estados' },
+              { value: 'ROJO', label: '🔴 Críticas (≤2 días)' },
+              { value: 'AMARILLO', label: '🟡 Urgentes (3-5 días)' },
+              { value: 'VERDE', label: '🟢 En término (>5 días)' }
+            ]
+          }
+        ]}
+        totalItems={solicitudesInformesMock.length}
+        filteredItems={solicitudesFiltradas.length}
+        onClearFilters={() => {
+          setBusqueda('');
+          setFiltroSemaforo('TODOS');
+        }}
+        counterText={`Mostrando ${solicitudesFiltradas.length} de ${solicitudesInformesMock.length} solicitudes`}
+      />
 
       {/* Contenido principal */}
       {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} />}

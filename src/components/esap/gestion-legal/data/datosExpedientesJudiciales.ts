@@ -74,6 +74,7 @@ export const expedientesJudicialesMock: ExpedienteJudicial[] = [
     fechaCreacion: fechaHace(87),
     fechaActualizacion: fechaHace(85),
     estado: 'ACTIVO',
+    ultimaActuacion: 'Notificación del auto admisorio y traslado para contestación de la demanda',
   },
   {
     id: 'PJ-2025-002',
@@ -108,6 +109,7 @@ export const expedientesJudicialesMock: ExpedienteJudicial[] = [
     fechaCreacion: fechaHace(70),
     fechaActualizacion: fechaHace(70),
     estado: 'ACTIVO',
+    ultimaActuacion: 'Recepción y radicación de demanda por falla en el servicio de vigilancia',
   },
   {
     id: 'PJ-2025-003',
@@ -142,6 +144,7 @@ export const expedientesJudicialesMock: ExpedienteJudicial[] = [
     fechaCreacion: fechaHace(45),
     fechaActualizacion: fechaHace(45),
     estado: 'ACTIVO',
+    ultimaActuacion: 'Solicitud de información complementaria sobre el contrato de obra No. 045-2023',
   },
 
   // ========================================
@@ -170,6 +173,7 @@ export const expedientesJudicialesMock: ExpedienteJudicial[] = [
     fechaCreacion: fechaHace(120),
     fechaActualizacion: fechaHace(100),
     estado: 'ACTIVO',
+    ultimaActuacion: 'Término para contestación vencido - Gestión de prórroga solicitada',
   },
   {
     id: 'PJ-2024-095',
@@ -194,6 +198,7 @@ export const expedientesJudicialesMock: ExpedienteJudicial[] = [
     fechaCreacion: fechaHace(8),
     fechaActualizacion: fechaHace(7),
     estado: 'ACTIVO',
+    ultimaActuacion: 'Informe de contestación de tutela presentado al despacho judicial',
   },
   {
     id: 'PJ-2024-102',

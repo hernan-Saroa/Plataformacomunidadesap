@@ -17,8 +17,222 @@ import {
   Calendar, Eye, Plus, Search, Filter, List, Clock, User, FolderOpen, Download
 } from 'lucide-react';
 import type { IndicadorPlanAccion } from '../core/types';
-import { indicadoresPlanAccion } from '../data/datosPlanAccion';
 import { toast } from 'sonner@2.0.3';
+import { ModuleHeader } from '../design-system/ModuleHeader';
+import { ModuleMetrics } from '../design-system/ModuleMetrics';
+import { ModuleFilters } from '../design-system/ModuleFilters';
+import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+
+// DATOS MOCK INLINE (temporales para demo)
+const indicadoresPlanAccion: any[] = [
+  // EJE 1: GESTIÓN INSTITUCIONAL (2 indicadores)
+  {
+    id: 'IND-2025-001',
+    codigo: 'GI-001',
+    nombre: 'Reducción de términos en procesos judiciales',
+    objetivo: 'Reducir en 20% los términos vencidos en defensa judicial',
+    objetivoPEI: 'Fortalecer gestión jurídica institucional',
+    ejeEstrategico: 'GESTION_INSTITUCIONAL',
+    responsable: 'Dr. Carlos Mendoza Torres',
+    avance: 75,
+    cumplimiento: 75,
+    meta: 80,
+    resultadoActual: 75,
+    fechaInicio: new Date('2025-01-01'),
+    fechaFin: new Date('2025-12-31'),
+    estado: 'ACTIVO',
+    etapa: 'EN CURSO',
+    prioridad: 'ALTA',
+    periodicidad: 'Mensual',
+    tipoIndicador: 'Eficiencia',
+    unidadMedida: '%',
+    valorBase: 100,
+    valorActual: 75,
+    metaAnual: 80,
+    descripcion: 'Implementar sistema de alertas tempranas y seguimiento automatizado de términos procesales'
+  },
+  {
+    id: 'IND-2025-002',
+    codigo: 'GI-002',
+    nombre: 'Optimización de gestión documental jurídica',
+    objetivo: 'Digitalizar el 90% de los expedientes judiciales activos',
+    objetivoPEI: 'Modernizar gestión documental',
+    ejeEstrategico: 'GESTION_INSTITUCIONAL',
+    responsable: 'Dra. Patricia Ruiz Gómez',
+    avance: 62,
+    cumplimiento: 62,
+    meta: 90,
+    resultadoActual: 62,
+    fechaInicio: new Date('2025-01-01'),
+    fechaFin: new Date('2025-12-31'),
+    estado: 'ACTIVO',
+    etapa: 'EN CURSO',
+    prioridad: 'ALTA',
+    periodicidad: 'Trimestral',
+    tipoIndicador: 'Gestión',
+    unidadMedida: '%',
+    valorBase: 100,
+    valorActual: 62,
+    metaAnual: 90,
+    descripcion: 'Migración de expedientes físicos a plataforma digital con sistema de búsqueda avanzada'
+  },
+
+  // EJE 2: TALENTO HUMANO (2 indicadores)
+  {
+    id: 'IND-2025-003',
+    codigo: 'TH-001',
+    nombre: 'Capacitación en normativa jurídica actualizada',
+    objetivo: 'Capacitar al 100% del equipo jurídico en nuevas leyes 2025',
+    objetivoPEI: 'Fortalecer competencias del talento humano',
+    ejeEstrategico: 'TALENTO_HUMANO',
+    responsable: 'Dra. Ana María López',
+    avance: 45,
+    cumplimiento: 45,
+    meta: 100,
+    resultadoActual: 45,
+    fechaInicio: new Date('2025-01-01'),
+    fechaFin: new Date('2025-06-30'),
+    estado: 'ACTIVO',
+    etapa: 'EN CURSO',
+    prioridad: 'MEDIA',
+    periodicidad: 'Semestral',
+    tipoIndicador: 'Capacitación',
+    unidadMedida: '%',
+    valorBase: 100,
+    valorActual: 45,
+    metaAnual: 100,
+    descripcion: 'Programa de capacitación continua en reformas legales y jurisprudencia aplicable'
+  },
+  {
+    id: 'IND-2025-004',
+    codigo: 'TH-002',
+    nombre: 'Fortalecimiento de competencias en litigio estratégico',
+    objetivo: 'Incrementar en 30% la tasa de éxito en procesos judiciales',
+    objetivoPEI: 'Mejorar efectividad en litigio',
+    ejeEstrategico: 'TALENTO_HUMANO',
+    responsable: 'Dr. Luis Fernando Mora',
+    avance: 58,
+    cumplimiento: 58,
+    meta: 130,
+    resultadoActual: 58,
+    fechaInicio: new Date('2025-01-01'),
+    fechaFin: new Date('2025-12-31'),
+    estado: 'ACTIVO',
+    etapa: 'EN CURSO',
+    prioridad: 'ALTA',
+    periodicidad: 'Trimestral',
+    tipoIndicador: 'Eficacia',
+    unidadMedida: '%',
+    valorBase: 100,
+    valorActual: 58,
+    metaAnual: 130,
+    descripcion: 'Talleres prácticos de litigio estratégico y análisis de casos exitosos'
+  },
+
+  // EJE 3: TRANSPARENCIA (2 indicadores)
+  {
+    id: 'IND-2025-005',
+    codigo: 'TR-001',
+    nombre: 'Publicación de información jurídica en portal web',
+    objetivo: 'Publicar el 100% de las actuaciones judiciales en portal de transparencia',
+    objetivoPEI: 'Garantizar transparencia institucional',
+    ejeEstrategico: 'TRANSPARENCIA',
+    responsable: 'Dra. Sandra Milena Cruz',
+    avance: 88,
+    cumplimiento: 88,
+    meta: 100,
+    resultadoActual: 88,
+    fechaInicio: new Date('2025-01-01'),
+    fechaFin: new Date('2025-12-31'),
+    estado: 'ACTIVO',
+    etapa: 'EN CURSO',
+    prioridad: 'CRÍTICA',
+    periodicidad: 'Mensual',
+    tipoIndicador: 'Transparencia',
+    unidadMedida: '%',
+    valorBase: 100,
+    valorActual: 88,
+    metaAnual: 100,
+    descripcion: 'Actualización mensual del portal con sentencias, autos y estados procesales anonimizados'
+  },
+  {
+    id: 'IND-2025-006',
+    codigo: 'TR-002',
+    nombre: 'Atención de derechos de petición jurídicos',
+    objetivo: 'Responder el 100% de derechos de petición dentro del término legal',
+    objetivoPEI: 'Atención oportuna ciudadana',
+    ejeEstrategico: 'TRANSPARENCIA',
+    responsable: 'Dr. Roberto Castro Vega',
+    avance: 92,
+    cumplimiento: 92,
+    meta: 100,
+    resultadoActual: 92,
+    fechaInicio: new Date('2025-01-01'),
+    fechaFin: new Date('2025-12-31'),
+    estado: 'ACTIVO',
+    etapa: 'EN CURSO',
+    prioridad: 'CRÍTICA',
+    periodicidad: 'Mensual',
+    tipoIndicador: 'Oportunidad',
+    unidadMedida: '%',
+    valorBase: 100,
+    valorActual: 92,
+    metaAnual: 100,
+    descripcion: 'Sistema de seguimiento automatizado para garantizar respuesta oportuna'
+  },
+
+  // EJE 4: TECNOLOGÍA (2 indicadores)
+  {
+    id: 'IND-2025-007',
+    codigo: 'TEC-001',
+    nombre: 'Implementación de sistema SIGL (Sistema Integral de Gestión Legal)',
+    objetivo: 'Alcanzar 85% de adopción del sistema SIGL por parte de usuarios',
+    objetivoPEI: 'Transformación digital institucional',
+    ejeEstrategico: 'TECNOLOGIA',
+    responsable: 'Dr. Carlos Mendoza Torres',
+    avance: 70,
+    cumplimiento: 70,
+    meta: 85,
+    resultadoActual: 70,
+    fechaInicio: new Date('2025-01-01'),
+    fechaFin: new Date('2025-09-30'),
+    estado: 'ACTIVO',
+    etapa: 'EN CURSO',
+    prioridad: 'CRÍTICA',
+    periodicidad: 'Mensual',
+    tipoIndicador: 'Adopción',
+    unidadMedida: '%',
+    valorBase: 100,
+    valorActual: 70,
+    metaAnual: 85,
+    descripcion: 'Despliegue completo del sistema SIGL con 11 módulos integrados y capacitación de usuarios'
+  },
+  {
+    id: 'IND-2025-008',
+    codigo: 'TEC-002',
+    nombre: 'Automatización de alertas de términos procesales',
+    objetivo: 'Implementar sistema de alertas automáticas para el 100% de procesos',
+    objetivoPEI: 'Automatización de procesos jurídicos',
+    ejeEstrategico: 'TECNOLOGIA',
+    responsable: 'Dra. Patricia Ruiz Gómez',
+    avance: 55,
+    cumplimiento: 55,
+    meta: 100,
+    resultadoActual: 55,
+    fechaInicio: new Date('2025-01-01'),
+    fechaFin: new Date('2025-08-31'),
+    estado: 'ACTIVO',
+    etapa: 'EN CURSO',
+    prioridad: 'ALTA',
+    periodicidad: 'Mensual',
+    tipoIndicador: 'Automatización',
+    unidadMedida: '%',
+    valorBase: 100,
+    valorActual: 55,
+    metaAnual: 100,
+    descripcion: 'Sistema de notificaciones automáticas vía email y SMS para términos próximos a vencer'
+  }
+];
 
 type VistaModulo = 'timeline' | 'lista';
 
@@ -41,6 +255,7 @@ export function ModuloPlanAccionV3() {
   const [tipoVista, setTipoVista] = useState<VistaModulo>('timeline');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEje, setFiltroEje] = useState<string>('TODOS');
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   const indicadoresFiltrados = useMemo(() => {
     let resultado = [...indicadoresPlanAccion].filter(i => i.estado === 'ACTIVO');
@@ -77,151 +292,112 @@ export function ModuloPlanAccionV3() {
 
   return (
     <div className="space-y-4">
-      {/* Header Responsive - IGUAL A DEFENSA JUDICIAL */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex-1">
-          <h2 
-            className="font-black leading-tight"
-            style={{ 
-              color: '#003DA5',
-              fontSize: '1.5rem'
-            }}
-          >
-            Plan de Acción Institucional
-          </h2>
-          <p className="text-sm text-gray-600 mt-0.5">
-            Seguimiento de indicadores MIPG, FURAG y gestión estratégica
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Toggle de Vista - ESTILO DEFENSA JUDICIAL */}
-          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
-            <button
-              onClick={() => setTipoVista('timeline')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                tipoVista === 'timeline'
-                  ? 'bg-white shadow-sm' 
-                  : 'hover:bg-gray-200'
-              }`}
-              style={{ 
-                color: tipoVista === 'timeline' ? '#003DA5' : '#6B7280'
-              }}
-            >
-              <Calendar className="w-4 h-4" />
-              Timeline
-            </button>
-            <button
-              onClick={() => setTipoVista('lista')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                tipoVista === 'lista'
-                  ? 'bg-white shadow-sm' 
-                  : 'hover:bg-gray-200'
-              }`}
-              style={{ 
-                color: tipoVista === 'lista' ? '#003DA5' : '#6B7280'
-              }}
-            >
-              <List className="w-4 h-4" />
-              Lista
-            </button>
-          </div>
-
-          <button
-            className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-blue-400 transition-all"
-            style={{ color: '#003DA5' }}
-          >
-            <Plus className="w-4 h-4" />
-            Nuevo Indicador
-          </button>
-        </div>
-      </div>
+      {/* Header con ModuleHeader */}
+      <ModuleHeader
+        title={isMobile ? 'Plan de Acción' : 'Plan de Acción Institucional'}
+        subtitle="Seguimiento a indicadores y objetivos estratégicos"
+        toggleView={{
+          current: tipoVista,
+          onChange: (view) => setTipoVista(view as VistaModulo),
+          options: [
+            { label: 'Timeline', icon: <TrendingUp className="w-4 h-4" />, value: 'timeline' },
+            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
+          ]
+        }}
+        buttons={[
+          {
+            label: 'Nuevo Indicador',
+            labelMobile: 'Nuevo',
+            icon: <Plus className="w-4 h-4" />,
+            onClick: () => toast.info('Nuevo Indicador PEI'),
+            variant: 'primary'
+          }
+        ]}
+        infoTooltip={
+          <ModuleInfoTooltip
+            title="Guía de Plan de Acción"
+            variant="icon"
+            sections={[
+              {
+                label: "🎯 Propósito del Módulo",
+                content: "Seguimiento y control de indicadores del Plan Estratégico Institucional (PEI) 2024-2027. Permite monitorear el cumplimiento de objetivos estratégicos, metas institucionales y compromisos de gestión de la Oficina Jurídica de ESAP.",
+                type: "default"
+              },
+              {
+                label: "📋 Plan Estratégico Institucional (PEI)",
+                content: "El PEI es el instrumento rector de la planeación institucional que define la visión, misión, objetivos estratégicos y metas de ESAP para el cuatrienio. Este módulo gestiona específicamente los indicadores jurídicos que aportan al cumplimiento del PEI.",
+                type: "info"
+              },
+              {
+                label: "🗂️ Ejes Estratégicos (4 Columnas)",
+                content: "1️⃣ GESTIÓN INSTITUCIONAL: Eficiencia en procesos jurídicos | 2️⃣ TALENTO HUMANO: Capacitación y competencias del equipo | 3️⃣ TRANSPARENCIA: Publicación y rendición de cuentas | 4️⃣ TECNOLOGÍA: Transformación digital y automatización.",
+                type: "premium"
+              },
+              {
+                label: "📊 Tipos de Indicadores",
+                content: "• Eficiencia: Optimización de procesos y recursos | • Eficacia: Logro de objetivos y metas | • Gestión: Ejecución de actividades | • Transparencia: Publicación de información | • Capacitación: Formación del equipo | • Automatización: Adopción tecnológica.",
+                type: "default"
+              },
+              {
+                label: "🚦 Semáforo de Cumplimiento",
+                content: "🟢 Verde (≥90%): Meta cumplida o en vía de cumplimiento | 🟡 Amarillo (50-89%): Cumplimiento parcial - requiere atención | 🔴 Rojo (<50%): Cumplimiento bajo - acción correctiva urgente.",
+                type: "warning"
+              },
+              {
+                label: "📈 Seguimiento y Periodicidad",
+                content: "Los indicadores se actualizan según su periodicidad: Mensual, Trimestral, Semestral o Anual. El sistema genera alertas automáticas cuando se acerca la fecha de medición para garantizar actualización oportuna.",
+                type: "default"
+              },
+              {
+                label: "🔗 Integración con Otros Módulos",
+                content: "Este módulo se alimenta de datos de: • Defensa Judicial (términos, procesos ganados) • Juzgamiento (procesos disciplinarios) • Términos e Informes (cumplimiento de plazos) • Centro Comunicaciones (tiempos de respuesta) - TODOS los módulos aportan al cumplimiento del PEI.",
+                type: "success"
+              },
+              {
+                label: "💡 Cómo Usar",
+                content: "1️⃣ Revisa el Dashboard Timeline por eje estratégico → 2️⃣ Identifica indicadores en rojo o amarillo (requieren acción) → 3️⃣ Click 'Ver Detalle' para análisis completo → 4️⃣ Click 'Actualizar' para registrar avances → 5️⃣ Exporta reportes para reuniones de seguimiento.",
+                type: "default"
+              },
+              {
+                label: "⏭️ Siguiente Paso",
+                content: "Los resultados del Plan de Acción se consolidan en reportes trimestrales para Alta Dirección, Consejo Directivo y Órganos de Control. Los indicadores críticos se escalan al módulo 'Planes de Mejoramiento' para acciones correctivas.",
+                type: "info"
+              }
+            ]}
+          />
+        }
+      />
 
       {/* Métricas Compactas - ESTILO DEFENSA JUDICIAL (3 COLUMNAS EXACTAS) */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-blue-50 flex-shrink-0">
-              <Target className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {totalIndicadores}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Indicadores Activos
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-green-50 flex-shrink-0">
-              <TrendingUp className="w-5 h-5 text-green-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {cumplimientoPromedio}%
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Avance Global
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-red-50 flex-shrink-0">
-              <AlertCircle className="w-5 h-5 text-red-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {indicadoresVencidos}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Vencidos
-              </p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <ModuleMetrics
+        metrics={[
+          {
+            label: 'Indicadores Activos',
+            value: totalIndicadores,
+            icon: <Target className="w-5 h-5 text-blue-600" />,
+            color: '#003DA5'
+          },
+          {
+            label: 'Avance Global',
+            value: `${cumplimientoPromedio}%`,
+            icon: <TrendingUp className="w-5 h-5 text-green-600" />,
+            color: '#10B981'
+          },
+          {
+            label: 'Vencidos',
+            value: indicadoresVencidos,
+            icon: <AlertCircle className="w-5 h-5 text-red-600" />,
+            color: '#DC2626'
+          }
+        ]}
+      />
 
       {/* Filtros */}
-      <div className="flex flex-wrap items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
-        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-          <Search className="w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar por ID, nombre, descripción..."
-            className="flex-1 bg-transparent border-none outline-none text-sm"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-          />
-        </div>
-
-        <select
-          value={filtroEje}
-          onChange={(e) => setFiltroEje(e.target.value)}
-          className="px-3 py-2 bg-white border border-gray-200 rounded-md text-sm"
-        >
-          <option value="TODOS">Todos los ejes</option>
-          <option value="GESTION_INSTITUCIONAL">Gestión Institucional</option>
-          <option value="TALENTO_HUMANO">Talento Humano</option>
-          <option value="TRANSPARENCIA">Transparencia</option>
-          <option value="TECNOLOGIA">Tecnología</option>
-        </select>
-
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-2"
-        >
-          <Download className="w-4 h-4" />
-          Exportar
-        </Button>
-      </div>
+      <ModuleFilters
+        onSearchChange={(value) => setBusqueda(value)}
+        onEjeChange={(value) => setFiltroEje(value)}
+        onExport={() => toast.info('Exportando')}
+      />
 
       {/* Vista Timeline */}
       {tipoVista === 'timeline' && (

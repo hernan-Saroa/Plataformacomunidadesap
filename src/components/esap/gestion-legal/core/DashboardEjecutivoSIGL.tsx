@@ -1,11 +1,17 @@
 /**
  * DashboardEjecutivoSIGL - Dashboard Ejecutivo SIGL
  * DISEÑO 100% COHERENTE CON CONTROL DISCIPLINARIO
+ * ✅ FASE 3: Dashboard interactivo con drill-down
  */
 
-import { TrendingUp, AlertTriangle, Clock, CheckCircle, FileText, Calendar, Scale, Gavel, FileQuestion, Inbox, CalendarClock } from 'lucide-react';
+import { TrendingUp, AlertTriangle, Clock, CheckCircle, FileText, Calendar, Scale, Gavel, FileQuestion, Inbox, CalendarClock, Eye, ChevronRight } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
+import { Button } from '../../../ui/button';
+import { useState, useEffect } from 'react';
+import { GuidedTour, TourButton, useTourCompleted } from '../design-system/GuidedTour';
+import { useTour } from '../design-system/TourContext'; // ✅ Importar contexto de tour
+import { siglDashboardTourSteps } from '../design-system/tourSteps';
 
 import { estadisticasDefensaJudicial } from '../data/datosExpedientesJudiciales';
 import { estadisticasJuzgamiento } from '../data/datosProcesoDisciplinarios';
@@ -13,7 +19,26 @@ import { estadisticasAsesoriaJuridica } from '../data/datosConsultasJuridicas';
 import { estadisticasBuzonNotificaciones } from '../data/datosNotificaciones';
 import { estadisticasTerminosCompleto } from '../data/datosTerminosInformesCompleto';
 
-export function DashboardEjecutivoSIGL() {
+interface DashboardEjecutivoSIGLProps {
+  onNavigateToModule?: (moduleId: string) => void;
+}
+
+export function DashboardEjecutivoSIGL({ onNavigateToModule }: DashboardEjecutivoSIGLProps) {
+  // Estados del tour guiado
+  const [isTourOpen, setIsTourOpen] = useState(false);
+  const { completed: tourCompleted, resetTour } = useTourCompleted('sigl-dashboard-main');
+
+  // Auto-iniciar tour DESACTIVADO - Solo se activa con clic del usuario
+  // useEffect(() => {
+  //   if (!tourCompleted) {
+  //     // Esperar 1.5 segundos para que cargue la UI
+  //     const timer = setTimeout(() => {
+  //       setIsTourOpen(true);
+  //     }, 1500);
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [tourCompleted]);
+
   const totalExpedientes = (estadisticasDefensaJudicial?.total || 0) + 
                            (estadisticasJuzgamiento?.total || 0) + 
                            (estadisticasAsesoriaJuridica?.total || 0) + 
@@ -37,33 +62,49 @@ export function DashboardEjecutivoSIGL() {
     {
       id: 'NRD - María González vs ESAP',
       modulo: 'Defensa Judicial',
+      moduleId: 'defensa-judicial',
       dias: '3 días',
       color: '#10B981',
     },
     {
       id: 'Proceso Disciplinario - Carlos Ruiz',
       modulo: 'Juzgamiento',
+      moduleId: 'juzgamiento',
       dias: '2 días',
       color: '#DC2626',
     },
     {
       id: 'Concepto Contratación - Territorial',
       modulo: 'Asesoría',
+      moduleId: 'asesoria',
       dias: '4 días',
       color: '#8B5CF6',
     },
     {
       id: 'Informe Permanente Q1 2025',
       modulo: 'Informes',
+      moduleId: 'terminos',
       dias: '5 días',
       color: '#6366F1',
     },
   ];
 
+  const handleExpedienteClick = (moduleId: string) => {
+    if (onNavigateToModule) {
+      onNavigateToModule(moduleId);
+    }
+  };
+
+  const handleModuleClick = (moduleId: string) => {
+    if (onNavigateToModule) {
+      onNavigateToModule(moduleId);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 px-6 py-4" data-tour="dashboard-header">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold" style={{ color: '#003DA5' }}>
@@ -91,7 +132,7 @@ export function DashboardEjecutivoSIGL() {
       {/* Contenido */}
       <div className="flex-1 overflow-auto p-6">
         {/* Métricas Principales */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6" data-tour="dashboard-metrics">
           {/* Total Expedientes */}
           <Card className="p-4 border-l-4" style={{ borderLeftColor: '#003DA5' }}>
             <div className="flex items-start justify-between mb-4">
@@ -169,7 +210,7 @@ export function DashboardEjecutivoSIGL() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Top Expedientes Urgentes */}
-          <Card className="p-5">
+          <Card className="p-5" data-tour="dashboard-alerts">
             <div className="mb-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold" style={{ color: '#003DA5' }}>
@@ -189,6 +230,7 @@ export function DashboardEjecutivoSIGL() {
                 <div 
                   key={idx}
                   className="p-3 rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => handleExpedienteClick(exp.moduleId)}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <Badge style={{ background: exp.color, color: '#FFFFFF' }} className="text-xs">
@@ -207,7 +249,7 @@ export function DashboardEjecutivoSIGL() {
           </Card>
 
           {/* Distribución por Módulo */}
-          <Card className="p-5">
+          <Card className="p-5" data-tour="modules-grid">
             <div className="mb-4">
               <h3 className="font-bold" style={{ color: '#003DA5' }}>
                 Distribución por Módulo
@@ -219,7 +261,7 @@ export function DashboardEjecutivoSIGL() {
 
             <div className="space-y-4">
               {/* Defensa Judicial */}
-              <div>
+              <div data-tour="module-defensa">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded" style={{ backgroundColor: '#10B981' }} />
@@ -243,7 +285,7 @@ export function DashboardEjecutivoSIGL() {
               </div>
 
               {/* Juzgamiento */}
-              <div>
+              <div data-tour="module-juzgamiento">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-red-600" />
@@ -267,7 +309,7 @@ export function DashboardEjecutivoSIGL() {
               </div>
 
               {/* Asesoría */}
-              <div>
+              <div data-tour="module-asesoria">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-purple-600" />
@@ -291,7 +333,7 @@ export function DashboardEjecutivoSIGL() {
               </div>
 
               {/* Buzón */}
-              <div>
+              <div data-tour="module-comunicaciones">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-blue-600" />
@@ -315,7 +357,7 @@ export function DashboardEjecutivoSIGL() {
               </div>
 
               {/* Términos */}
-              <div>
+              <div data-tour="module-terminos">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-indigo-600" />
@@ -355,6 +397,24 @@ export function DashboardEjecutivoSIGL() {
           </p>
         </div>
       </div>
+
+      {/* Tour Guiado Interactivo */}
+      <GuidedTour
+        steps={siglDashboardTourSteps}
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
+        onComplete={() => {
+          console.log('✅ Tour completado exitosamente!');
+        }}
+        tourId="sigl-dashboard-main"
+      />
+
+      {/* Botón Flotante del Tour */}
+      <TourButton
+        onClick={() => setIsTourOpen(true)}
+        variant="floating"
+        label="Tour Guiado"
+      />
     </div>
   );
 }
