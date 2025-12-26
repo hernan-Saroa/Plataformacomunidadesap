@@ -15,9 +15,6 @@ import { ExpedienteService } from './services/expediente.service';
 import { ActuacionService } from './services/actuacion.service';
 import { AbogadoService } from './services/abogado.service';
 import { AudienciaService } from './services/audiencia.service';
-import { Comentario } from './entities/comentario.entity';
-import { ComentarioController } from './controllers/comentario.controller';
-import { ComentarioService } from './services/comentario.service';
 
 import { Requerimiento } from './entities/requerimiento.entity';
 import { OrganismoControl } from './entities/organismo-control.entity';
@@ -34,8 +31,7 @@ import { RequerimientoService } from './services/requerimiento.service';
       Abogado,
       Audiencia,
       Requerimiento,
-      OrganismoControl,
-      Comentario
+      OrganismoControl
     ]),
   ],
   controllers: [
@@ -45,16 +41,14 @@ import { RequerimientoService } from './services/requerimiento.service';
     AbogadoStatsController,
     AudienciaController,
     RequerimientoController,
-    FilesController,
-    ComentarioController
+    FilesController
   ],
   providers: [
     ExpedienteService,
     ActuacionService,
     AbogadoService,
     AudienciaService,
-    RequerimientoService,
-    ComentarioService
+    RequerimientoService
   ],
 })
 export class AppModule { }

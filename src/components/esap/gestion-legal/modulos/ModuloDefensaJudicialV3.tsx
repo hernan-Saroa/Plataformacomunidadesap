@@ -22,8 +22,8 @@ import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
-import { expedientesJudicialesMock } from '../data/datosExpedientesJudicialesExpandido';
-import type { ExpedienteJudicial } from '../core/types';
+import { legalService } from '../../../../services/api/legal.service';
+import type { ExpedienteJudicial, EtapaDefensaJudicial } from '../core/types';
 import { ModalNuevaDemanda, NuevaDemandaData } from './ModalNuevaDemanda';
 import { ModalExpediente } from './ModalExpediente';
 import { ModalComunicaciones } from './ModalComunicaciones';
@@ -47,6 +47,8 @@ export function ModuloDefensaJudicialV3() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
+  const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Detectar tamaño de pantalla
   useEffect(() => {
@@ -61,57 +63,142 @@ export function ModuloDefensaJudicialV3() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
+  // Cargar expedientes desde el backend
+  const loadExpedientes = async () => {
+    try {
+      setLoading(true);
+      const data = await legalService.getExpedientes();
+      // Mapear datos del backend al tipo ExpedienteJudicial del frontend
+      const mapped: ExpedienteJudicial[] = data.map((exp: any) => ({
+        id: exp.radicado || exp.id, // Usar radicado como ID visible, fallback al UUID
+        tipo: exp.tipoProceso || 'declarativo',
+        medioControl: exp.medioControl || 'NRD Art.138',
+        jurisdiccion: exp.jurisdiccion || 'Contencioso Administrativo',
+        etapa: (exp.etapaProcesal as EtapaDefensaJudicial) || 'NOTIFICADA',
+        demandante: exp.demandante || 'Sin demandante',
+        apoderado: '',
+        juzgado: exp.juzgadoConocimiento || '',
+        radicado: exp.radicado,
+        cuantia: exp.cuantia || 0,
+        fechaNotificacion: new Date(exp.fechaNotificacion || exp.fechaRadicacion),
+        diasTotales: exp.terminoProcesalDias || 90,
+        diasRestantes: calcularDiasRestantes(new Date(exp.fechaVencimientoTermino || exp.fechaRadicacion)),
+        // Para abogado, buscar el nombre en la relación o usar valor directo si es string
+        abogadoAsignado: exp.abogado?.nombreCompleto || exp.abogadoNombre || (
+          typeof exp.abogadoSustanciador === 'string' && exp.abogadoSustanciador.length < 50
+            ? exp.abogadoSustanciador
+            : 'Sin asignar'
+        ),
+        hechos: '',
+        pretensiones: exp.pretensionDemandante || '',
+        documentos: [],
+        actuaciones: [],
+        timeline: [],
+        fechaCreacion: new Date(exp.createdAt),
+        fechaActualizacion: new Date(exp.updatedAt),
+        estado: exp.estado || 'ACTIVO',
+        ultimaActuacion: exp.ultimaActuacion || `Expediente en etapa de ${exp.etapaProcesal || 'NOTIFICADA'}`,
+      }));
+      setExpedientes(mapped);
+    } catch (error) {
+      console.error('Error cargando expedientes:', error);
+      toast.error('Error al cargar expedientes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calcular días restantes
+  const calcularDiasRestantes = (fechaVencimiento: Date): number => {
+    const hoy = new Date();
+    const diff = fechaVencimiento.getTime() - hoy.getTime();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  useEffect(() => {
+    loadExpedientes();
+  }, []);
+
   // Agrupar expedientes por etapa
   const expedientesPorEtapa = {
-    NOTIFICADA: expedientesJudicialesMock.filter(exp => exp.etapa === 'NOTIFICADA'),
-    CONTESTACIÓN: expedientesJudicialesMock.filter(exp => exp.etapa === 'CONTESTACIÓN'),
-    PROBATORIA: expedientesJudicialesMock.filter(exp => exp.etapa === 'PROBATORIA'),
-    ALEGATOS: expedientesJudicialesMock.filter(exp => exp.etapa === 'ALEGATOS'),
+    NOTIFICADA: expedientes.filter(exp => exp.etapa === 'NOTIFICADA'),
+    CONTESTACIÓN: expedientes.filter(exp => exp.etapa === 'CONTESTACIÓN'),
+    PROBATORIA: expedientes.filter(exp => exp.etapa === 'PROBATORIA'),
+    ALEGATOS: expedientes.filter(exp => exp.etapa === 'ALEGATOS'),
   };
 
   // Calcular estadísticas
-  const totalExpedientes = expedientesJudicialesMock.length;
-  const expedientesCriticos = expedientesJudicialesMock.filter(e => e.diasRestantes <= 5).length;
-  const expedientesEnTermino = expedientesJudicialesMock.filter(e => e.diasRestantes > 15).length;
+  const totalExpedientes = expedientes.length;
+  const expedientesCriticos = expedientes.filter(e => e.diasRestantes <= 5).length;
+  const expedientesEnTermino = expedientes.filter(e => e.diasRestantes > 15).length;
 
   const etapas = [
-    { 
-      nombre: 'Notificada', 
-      color: '#6B7280', 
-      icono: <FileCheck className="w-4 h-4 text-gray-600" />, 
+    {
+      nombre: 'Notificada',
+      color: '#6B7280',
+      icono: <FileCheck className="w-4 h-4 text-gray-600" />,
       diasEstimados: 10,
       expedientes: expedientesPorEtapa.NOTIFICADA
     },
-    { 
-      nombre: 'Contestación', 
-      color: '#F59E0B', 
-      icono: <Edit className="w-4 h-4 text-amber-600" />, 
+    {
+      nombre: 'Contestación',
+      color: '#F59E0B',
+      icono: <Edit className="w-4 h-4 text-amber-600" />,
       diasEstimados: 30,
       expedientes: expedientesPorEtapa.CONTESTACIÓN
     },
-    { 
-      nombre: 'Probatoria', 
-      color: '#3B82F6', 
-      icono: <Search className="w-4 h-4 text-blue-600" />, 
+    {
+      nombre: 'Probatoria',
+      color: '#3B82F6',
+      icono: <Search className="w-4 h-4 text-blue-600" />,
       diasEstimados: 60,
       expedientes: expedientesPorEtapa.PROBATORIA
     },
-    { 
-      nombre: 'Alegatos', 
-      color: '#003DA5', 
-      icono: <Scale className="w-4 h-4" style={{ color: '#003DA5' }} />, 
+    {
+      nombre: 'Alegatos',
+      color: '#003DA5',
+      icono: <Scale className="w-4 h-4" style={{ color: '#003DA5' }} />,
       diasEstimados: 20,
       expedientes: expedientesPorEtapa.ALEGATOS
     },
   ];
 
   // Handler para guardar nueva demanda
-  const handleSaveNuevaDemanda = (demandaData: NuevaDemandaData) => {
-    console.log('Nueva demanda registrada:', demandaData);
-    // Aquí se integraría con el backend/estado global
-    toast.success('Demanda registrada exitosamente', {
-      description: `Radicado: ${demandaData.numeroRadicado}`
-    });
+  const handleSaveNuevaDemanda = async (demandaData: NuevaDemandaData) => {
+    try {
+      // Mapear datos del formulario al formato del backend
+      const expedienteData = {
+        radicado: demandaData.numeroRadicado,
+        tipoProceso: demandaData.medioControl,
+        jurisdiccion: 'Contencioso Administrativo',
+        demandante: demandaData.demandante,
+        demandado: 'ESAP',
+        estado: 'ACTIVO',
+        fechaRadicacion: new Date().toISOString(),
+        cuantia: parseFloat(demandaData.cuantia.replace(/[^0-9]/g, '')) || 0,
+        abogadoSustanciador: demandaData.abogadoAsignado,
+        medioControl: demandaData.medioControl,
+        juzgadoConocimiento: `${demandaData.juzgado} - ${demandaData.ciudad}, ${demandaData.departamento}`,
+        pretensionDemandante: demandaData.pretensiones,
+        fechaNotificacion: demandaData.fechaNotificacion,
+        fechaVencimientoTermino: demandaData.fechaVencimiento,
+        etapaProcesal: demandaData.etapa,
+        ultimaActuacion: demandaData.observaciones || 'Demanda registrada',
+        tipoIdDemandante: demandaData.tipoPersona === 'natural' ? 'CC' : 'NIT',
+        numeroIdDemandante: demandaData.identificacionDemandante,
+      };
+
+      await legalService.crearExpediente(expedienteData);
+      toast.success('Demanda registrada exitosamente', {
+        description: `Radicado: ${demandaData.numeroRadicado}`
+      });
+      // Recargar expedientes
+      loadExpedientes();
+      setModalNuevaDemandaOpen(false);
+    } catch (error) {
+      console.error('Error guardando demanda:', error);
+      toast.error('Error al guardar la demanda');
+    }
   };
 
   return (
@@ -140,7 +227,7 @@ export function ModuloDefensaJudicialV3() {
             }}
           />
         </div>
-        
+
         {/* Info Tooltip - Guía de flujo */}
         <div className="flex-shrink-0 pt-1">
           <ModuleInfoTooltip
@@ -238,8 +325,8 @@ export function ModuloDefensaJudicialV3() {
               </p>
             </div>
           )}
-          
-          <div 
+
+          <div
             className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
             style={{
               scrollbarWidth: 'thin',
@@ -324,8 +411,8 @@ function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
         </div>
 
         {/* Lista de Expedientes */}
-        <div 
-          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`} 
+        <div
+          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`}
           style={{ maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)' }}
         >
           {etapa.expedientes.map((expediente) => (
@@ -396,7 +483,7 @@ function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
         {/* Header */}
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div 
+            <div
               className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`}
               style={{ background: '#E0EDFF' }}
             >
@@ -425,7 +512,7 @@ function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
         <div className="mb-2 pb-2 border-b border-gray-200">
           <div className="flex items-center gap-2">
             <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
-              <AvatarFallback 
+              <AvatarFallback
                 className="text-xs"
                 style={{ background: '#E0EDFF', color: '#003DA5' }}
               >
@@ -443,11 +530,11 @@ function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
 
         {/* Semáforo */}
         <div className="flex items-center gap-1.5 mb-2">
-          <Badge 
+          <Badge
             className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200"
             style={{ color: semaforo.color }}
           >
-            <div 
+            <div
               className="w-2 h-2 rounded-full"
               style={{ background: semaforo.color }}
             />
@@ -508,7 +595,7 @@ function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
               <Scale className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
               Autos
             </Button>
-            
+
             <Button
               onClick={() => setModalEvidenciasOpen(true)}
               size="sm"
@@ -530,7 +617,7 @@ function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
               <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
               Oficios
             </Button>
-            
+
             <Button
               onClick={() => setModalActasOpen(true)}
               size="sm"
