@@ -66,6 +66,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const [cargandoAutos, setCargandoAutos] = useState(false);
   const [autoParaEliminar, setAutoParaEliminar] = useState<any | null>(null);
   const [eliminandoAuto, setEliminandoAuto] = useState(false);
+  const [autoEnviandoRevision, setAutoEnviandoRevision] = useState<string | null>(null);
 
   // Estados para crear nuevo auto
   const [tipoAutoSeleccionado, setTipoAutoSeleccionado] = useState<any | null>(null);
@@ -255,6 +256,21 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     } finally {
       setEliminandoAuto(false);
       setAutoParaEliminar(null);
+    }
+  };
+
+  const handleEnviarRevision = async (autoId: string, numero: string) => {
+    if (!processId) return;
+    setAutoEnviandoRevision(autoId);
+    try {
+      await disciplinaryService.sendToReview(autoId);
+      await cargarAutos(processId);
+      toast.success('Auto enviado a revisión', { description: numero });
+    } catch (error) {
+      console.error('Error enviando auto a revisión', error);
+      toast.error('No se pudo enviar a revisión');
+    } finally {
+      setAutoEnviandoRevision(null);
     }
   };
 
@@ -473,6 +489,26 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         </div>
                       </div>
                       <div className="flex gap-1">
+                        {auto.estado === 'BORRADOR' && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEnviarRevision(auto.id, auto.numero);
+                            }}
+                            disabled={autoEnviandoRevision === auto.id}
+                            title="Enviar a revisión del jefe"
+                            style={{ borderColor: '#0EA5E9', color: '#0EA5E9' }}
+                          >
+                            {autoEnviandoRevision === auto.id ? (
+                              <Clock className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5" />
+                            )}
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           size="sm"
