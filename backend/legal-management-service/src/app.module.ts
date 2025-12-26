@@ -21,6 +21,7 @@ import { OrganismoControl } from './entities/organismo-control.entity';
 import { RequerimientoController } from './controllers/requerimiento.controller';
 import { FilesController } from './controllers/files.controller';
 import { RequerimientoService } from './services/requerimiento.service';
+import { JuzgamientoController } from './controllers/juzgamiento.controller';
 
 @Module({
   imports: [
@@ -31,24 +32,78 @@ import { RequerimientoService } from './services/requerimiento.service';
       Abogado,
       Audiencia,
       Requerimiento,
-      OrganismoControl
+      OrganismoControl,
+      Comentario
     ]),
   ],
   controllers: [
     ExpedienteController,
     ActuacionController,
     AbogadoController,
-    AbogadoStatsController,
-    AudienciaController,
-    RequerimientoController,
-    FilesController
-  ],
+import { JuzgamientoController } from './controllers/juzgamiento.controller';
+  import { TerminosController } from './controllers/terminos.controller';
+
+@Module({
+    imports: [
+      TypeOrmModule.forRoot(databaseConfig),
+      TypeOrmModule.forFeature([
+        Expediente,
+        Actuacion,
+        Abogado,
+        Audiencia,
+        Requerimiento,
+        OrganismoControl,
+        Comentario
+      ]),
+    ],
+    controllers: [
+      ExpedienteController,
+      ActuacionController,
+      AbogadoController,
+      AbogadoStatsController,
+      AudienciaController,
+      RequerimientoController,
+      FilesController,
+      ComentarioController,
+      JuzgamientoController,
+      TerminosController
+    ],
+    providers: [
+      ExpedienteService,
+      ActuacionService,
+      AbogadoService,
+      AudienciaService,
+      RequerimientoService,
+      ComentarioService
+    ],
+  })
+  export class AppModule { }
+  imports: [
+  TypeOrmModule.forRoot(databaseConfig),
+  TypeOrmModule.forFeature([
+    Expediente,
+    Actuacion,
+    Abogado,
+    Audiencia,
+    Requerimiento,
+    OrganismoControl
+  ]),
+],
+  controllers: [
+  ExpedienteController,
+  ActuacionController,
+  AbogadoController,
+  AbogadoStatsController,
+  AudienciaController,
+  RequerimientoController,
+  FilesController
+],
   providers: [
-    ExpedienteService,
-    ActuacionService,
-    AbogadoService,
-    AudienciaService,
-    RequerimientoService
-  ],
+  ExpedienteService,
+  ActuacionService,
+  AbogadoService,
+  AudienciaService,
+  RequerimientoService
+],
 })
 export class AppModule { }

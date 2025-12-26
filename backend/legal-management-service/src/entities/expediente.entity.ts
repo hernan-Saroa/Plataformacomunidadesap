@@ -95,6 +95,35 @@ export class Expediente {
     @Column({ name: 'documentos_iniciales_urls', type: 'simple-array', nullable: true })
     documentosInicialesUrls: string[];
 
+    // Campos específicos para Juzgamiento Disciplinario
+    @Column({ nullable: true, length: 50 })
+    etapa: string;
+
+    @Column({ name: 'cargo_investigado', nullable: true, length: 255 })
+    cargoInvestigado: string;
+
+    @Column({ name: 'ley_aplicable', nullable: true, length: 100 })
+    leyAplicable: string;
+
+    @Column({ type: 'text', nullable: true })
+    hechos: string;
+
+    @Column({ name: 'fecha_limite_etapa', type: 'timestamp', nullable: true })
+    fechaLimiteEtapa: Date;
+
+    // Campos específicos para Control de Términos e Informes
+    @Column({ name: 'tipo_solicitud', nullable: true, length: 100 })
+    tipoSolicitud: string;
+
+    @Column({ name: 'radicado_externo', nullable: true, length: 50 })
+    radicadoExterno: string;
+
+    @Column({ nullable: true, length: 255 })
+    asunto: string;
+
+    @Column({ name: 'datos_requeridos', type: 'text', nullable: true })
+    datosRequeridos: string;
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 
