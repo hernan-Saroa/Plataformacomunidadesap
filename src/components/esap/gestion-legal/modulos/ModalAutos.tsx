@@ -3,13 +3,15 @@
  * Autos = Decisiones judiciales emitidas por el juzgado durante el proceso
  */
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
+import { Input } from '../../../ui/input';
 import { 
   Scale, Download, Eye, FileText, Calendar, 
-  AlertCircle, CheckCircle, Clock, X, Upload, Plus
+  AlertCircle, CheckCircle, Clock, X, Upload, Plus,
+  Trash2, Edit, Search, Filter
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState } from 'react';
@@ -83,22 +85,102 @@ const autosMock = [
 export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
   const [autos, setAutos] = useState(autosMock);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
+  const [busqueda, setBusqueda] = useState('');
+  const [editandoId, setEditandoId] = useState<number | null>(null);
 
   const handleDescargarAuto = (auto: typeof autosMock[0]) => {
-    toast.success('Descargando auto procesal', {
-      description: `${auto.numero} - ${auto.archivo}`
+    toast.success('✅ Descarga iniciada', {
+      description: `${auto.numero} - ${auto.archivo} (${auto.tamaño})`
     });
   };
 
   const handleVerAuto = (auto: typeof autosMock[0]) => {
-    toast.info('Abriendo visor de documento', {
-      description: auto.numero
+    toast.info('👁️ Abriendo visor de documento', {
+      description: `${auto.numero} - ${auto.tipo}`
     });
   };
 
   const handleCargarNuevoAuto = () => {
-    toast.info('Funcionalidad de carga', {
-      description: 'Seleccione el archivo PDF del auto judicial'
+    toast.info('📄 Abriendo carga de auto procesal', {
+      description: 'Selecciona el archivo del auto judicial',
+      duration: 2000
+    });
+    
+    // Simular apertura de input file
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx';
+    
+    input.onchange = (e: any) => {
+      const file = e.target?.files?.[0];
+      if (file) {
+        // Mostrar toast de procesamiento
+        toast.info('⏳ Procesando auto procesal...', {
+          description: `${file.name} - ${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+          duration: 2000
+        });
+        
+        // Simular carga después de 2 segundos
+        setTimeout(() => {
+          const nuevoAuto = {
+            id: autos.length + 1,
+            tipo: 'Auto de Sustanciación',
+            numero: `AUTO-00${autos.length + 1}-2024`,
+            fecha: new Date().toLocaleDateString('es-CO'),
+            juzgado: 'Juzgado 1° Administrativo',
+            resumen: `Nuevo auto cargado al expediente: ${file.name.replace(/\.[^/.]+$/, '')}. Pendiente de revisión, clasificación y notificación a las partes.`,
+            estado: 'Pendiente',
+            estadoColor: 'orange',
+            archivo: file.name,
+            tamaño: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+            cumplimiento: 'Pendiente',
+            fechaNotificacion: null
+          };
+          
+          setAutos([nuevoAuto, ...autos]);
+          
+          // Reset filtros para mostrar el nuevo auto inmediatamente
+          setFiltroTipo('TODOS');
+          setBusqueda('');
+          
+          toast.success('✅ Auto procesal cargado exitosamente', {
+            description: `${nuevoAuto.numero} agregado al expediente - Pendiente de notificación`,
+            duration: 5000
+          });
+        }, 2000);
+      }
+    };
+    
+    input.click();
+  };
+
+  const handleEliminarAuto = (id: number, numero: string) => {
+    setAutos(autos.filter(a => a.id !== id));
+    toast.success('🗑️ Auto eliminado', {
+      description: `${numero} fue removido del expediente`
+    });
+  };
+
+  const handleMarcarNotificado = (id: number) => {
+    setAutos(autos.map(auto => 
+      auto.id === id 
+        ? { 
+            ...auto, 
+            estado: 'Notificado', 
+            estadoColor: 'green', 
+            fechaNotificacion: new Date().toLocaleDateString('es-CO'),
+            cumplimiento: 'Completado'
+          }
+        : auto
+    ));
+    toast.success('✅ Estado actualizado', {
+      description: 'Auto marcado como notificado'
+    });
+  };
+
+  const handleDescargarTodos = () => {
+    toast.success('📦 Descargando todos los autos', {
+      description: `Preparando archivo ZIP con ${autos.length} documentos`
     });
   };
 
@@ -125,13 +207,22 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
     );
   };
 
-  const autosFiltrados = filtroTipo === 'TODOS' 
-    ? autos 
-    : autos.filter(a => a.tipo === filtroTipo);
+  // Aplicar filtros y búsqueda
+  const autosFiltrados = autos
+    .filter(a => filtroTipo === 'TODOS' || a.tipo === filtroTipo)
+    .filter(a => 
+      busqueda === '' || 
+      a.numero.toLowerCase().includes(busqueda.toLowerCase()) ||
+      a.tipo.toLowerCase().includes(busqueda.toLowerCase()) ||
+      a.resumen.toLowerCase().includes(busqueda.toLowerCase())
+    );
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+        <DialogDescription className="sr-only">
+          Gestión de autos procesales del expediente {expediente.id}
+        </DialogDescription>
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
           <div className="flex items-start justify-between">
@@ -166,8 +257,31 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
             </Button>
           </div>
 
-          {/* Filtros */}
+          {/* Barra de búsqueda */}
           <div className="flex items-center gap-2 mt-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Buscar por número, tipo o contenido..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                className="pl-10 text-sm"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleCargarNuevoAuto}
+              className="font-bold"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              Nuevo Auto
+            </Button>
+          </div>
+
+          {/* Filtros */}
+          <div className="flex items-center gap-2 mt-3 overflow-x-auto">
+            <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
             <Button
               size="sm"
               variant={filtroTipo === 'TODOS' ? 'default' : 'outline'}
@@ -176,17 +290,20 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
             >
               Todos ({autos.length})
             </Button>
-            {tiposAuto.slice(0, 4).map((tipo) => (
-              <Button
-                key={tipo}
-                size="sm"
-                variant={filtroTipo === tipo ? 'default' : 'outline'}
-                onClick={() => setFiltroTipo(tipo)}
-                className="text-xs"
-              >
-                {tipo}
-              </Button>
-            ))}
+            {tiposAuto.slice(0, 5).map((tipo) => {
+              const count = autos.filter(a => a.tipo === tipo).length;
+              return (
+                <Button
+                  key={tipo}
+                  size="sm"
+                  variant={filtroTipo === tipo ? 'default' : 'outline'}
+                  onClick={() => setFiltroTipo(tipo)}
+                  className="text-xs whitespace-nowrap"
+                >
+                  {tipo} ({count})
+                </Button>
+              );
+            })}
           </div>
         </div>
 
@@ -279,7 +396,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                         </div>
                       )}
 
-                      {/* Archivo */}
+                      {/* Archivo y acciones */}
                       <div className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200">
                         <FileText className="w-4 h-4 text-red-600" />
                         <div className="flex-1 min-w-0">
@@ -294,6 +411,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                             variant="ghost"
                             onClick={() => handleVerAuto(auto)}
                             title="Ver documento"
+                            className="hover:bg-blue-100"
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
@@ -302,8 +420,29 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                             variant="ghost"
                             onClick={() => handleDescargarAuto(auto)}
                             title="Descargar"
+                            className="hover:bg-green-100"
                           >
                             <Download className="w-3.5 h-3.5" />
+                          </Button>
+                          {auto.estado !== 'Notificado' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleMarcarNotificado(auto.id)}
+                              title="Marcar como notificado"
+                              className="hover:bg-green-100 text-green-600"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleEliminarAuto(auto.id, auto.numero)}
+                            title="Eliminar auto"
+                            className="hover:bg-red-100 text-red-600"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
                       </div>
@@ -316,22 +455,32 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-3">
+        <div className="sticky bottom-0 bg-white border-t px-6 py-4">
           <div className="flex items-center justify-between">
-            <Button variant="outline" onClick={onClose}>
-              Cerrar
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={onClose}>
+                <X className="w-3.5 h-3.5 mr-1.5" />
+                Cerrar
+              </Button>
+              <div className="text-xs text-gray-600">
+                Mostrando <strong>{autosFiltrados.length}</strong> de <strong>{autos.length}</strong> autos
+              </div>
+            </div>
             <div className="flex items-center gap-2">
+              <Button
+                onClick={handleDescargarTodos}
+                variant="outline"
+                className="font-bold"
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Descargar Todos (ZIP)
+              </Button>
               <Button
                 onClick={handleCargarNuevoAuto}
                 className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
               >
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
                 Cargar Auto Nuevo
-              </Button>
-              <Button style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                <Download className="w-3.5 h-3.5 mr-1.5" />
-                Descargar Todos
               </Button>
             </div>
           </div>

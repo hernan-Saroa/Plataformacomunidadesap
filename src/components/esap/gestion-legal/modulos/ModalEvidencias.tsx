@@ -3,13 +3,15 @@
  * Evidencias = Pruebas aportadas por las partes para sustentar sus pretensiones
  */
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
+import { Input } from '../../../ui/input';
 import { 
   Paperclip, Download, Eye, FileText, Image as ImageIcon, 
-  Video, File, X, Upload, Plus, Trash2, CheckCircle, AlertCircle
+  Video, File, X, Upload, Plus, Trash2, CheckCircle, AlertCircle,
+  Search, Star, Filter, Edit
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState } from 'react';
@@ -109,37 +111,136 @@ const evidenciasMock = [
 export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidenciasProps) {
   const [evidencias, setEvidencias] = useState(evidenciasMock);
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
+  const [busqueda, setBusqueda] = useState('');
   const [vistaDetallada, setVistaDetallada] = useState(true);
 
   const handleDescargarEvidencia = (evidencia: typeof evidenciasMock[0]) => {
-    toast.success('Descargando evidencia', {
-      description: evidencia.nombre
+    toast.success('✅ Descarga iniciada', {
+      description: `${evidencia.nombre} (${evidencia.tamaño})`
     });
   };
 
   const handleVerEvidencia = (evidencia: typeof evidenciasMock[0]) => {
-    toast.info('Abriendo visor', {
-      description: evidencia.nombre
+    toast.info('👁️ Abriendo visor de documento', {
+      description: `${evidencia.nombre} - ${evidencia.categoria}`
     });
   };
 
   const handleCargarNuevaEvidencia = () => {
-    toast.info('Cargar nueva evidencia', {
-      description: 'Seleccione el archivo de la prueba a aportar'
+    toast.info('📎 Abriendo formulario de carga', {
+      description: 'Selecciona archivos y categoría de evidencia',
+      duration: 2000
+    });
+    
+    // Simular apertura de input file
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.mp4,.mp3,.zip';
+    
+    input.onchange = (e: any) => {
+      const files = e.target?.files;
+      if (files && files.length > 0) {
+        const archivosArray = Array.from(files) as File[];
+        
+        // Mostrar toast de progreso
+        toast.info('⏳ Procesando archivos...', {
+          description: `${archivosArray.length} archivo(s) seleccionado(s)`,
+          duration: 2000
+        });
+        
+        // Simular carga después de 2 segundos
+        setTimeout(() => {
+          const nuevasEvidencias = archivosArray.map((file, index) => {
+            const extension = file.name.split('.').pop()?.toLowerCase() || 'pdf';
+            let tipoArchivo = 'pdf';
+            let categoria = 'Documentales';
+            
+            // Determinar tipo y categoría según extensión
+            if (['jpg', 'jpeg', 'png', 'gif'].includes(extension)) {
+              tipoArchivo = 'image';
+              categoria = 'Fotográficas';
+            } else if (['mp4', 'avi', 'mov'].includes(extension)) {
+              tipoArchivo = 'video';
+              categoria = 'Audiovisuales';
+            } else if (['zip', 'rar'].includes(extension)) {
+              tipoArchivo = 'file';
+              categoria = 'Digitales';
+            }
+            
+            return {
+              id: evidencias.length + index + 1,
+              nombre: file.name,
+              categoria,
+              tipo: tipoArchivo,
+              tamaño: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+              fecha: new Date().toLocaleDateString('es-CO'),
+              aportadoPor: 'ESAP',
+              descripcion: `Evidencia cargada al expediente. Pendiente de clasificación, revisión y asignación de folios.`,
+              estado: 'Pendiente Revisión',
+              estadoColor: 'orange',
+              relevancia: 'Media',
+              folios: 'Por asignar'
+            };
+          });
+          
+          setEvidencias([...nuevasEvidencias, ...evidencias]);
+          
+          toast.success(`✅ ${archivosArray.length} evidencia(s) cargada(s) exitosamente`, {
+            description: 'Las evidencias están listas para revisión y clasificación',
+            duration: 4000
+          });
+        }, 2000);
+      }
+    };
+    
+    input.click();
+  };
+
+  const handleEliminarEvidencia = (id: number, nombre: string) => {
+    setEvidencias(evidencias.filter(e => e.id !== id));
+    toast.success('🗑️ Evidencia eliminada', {
+      description: nombre
     });
   };
 
-  const handleEliminarEvidencia = (id: number) => {
-    toast.warning('Eliminar evidencia', {
-      description: '¿Está seguro de eliminar esta evidencia?',
-      action: {
-        label: 'Eliminar',
-        onClick: () => {
-          setEvidencias(evidencias.filter(e => e.id !== id));
-          toast.success('Evidencia eliminada');
-        }
-      }
+  const handleMarcarAdmitida = (id: number) => {
+    setEvidencias(evidencias.map(ev => 
+      ev.id === id 
+        ? { ...ev, estado: 'Admitida', estadoColor: 'green' }
+        : ev
+    ));
+    toast.success('✅ Evidencia marcada como admitida');
+  };
+
+  const handleDescargarTodas = () => {
+    const totalEvidencias = evidencias.length;
+    const totalSize = evidencias.reduce((acc, ev) => {
+      const size = parseFloat(ev.tamaño.replace(' MB', '').replace(' KB', ''));
+      return acc + size;
+    }, 0);
+    
+    toast.success('📦 Preparando descarga masiva', {
+      description: `${totalEvidencias} evidencias · Tamaño estimado: ${totalSize.toFixed(2)} MB`,
+      duration: 3000
     });
+    
+    // Simulación de compresión
+    setTimeout(() => {
+      toast.info('⏳ Comprimiendo archivos...', {
+        description: 'Creando archivo ZIP con todas las evidencias',
+        duration: 2500
+      });
+    }, 1500);
+    
+    // Simulación de descarga completada
+    setTimeout(() => {
+      const fileName = `Evidencias_${expediente.id.replace(/\//g, '_')}_${new Date().toISOString().split('T')[0]}.zip`;
+      toast.success('✅ Descarga completada exitosamente', {
+        description: fileName,
+        duration: 4000
+      });
+    }, 4500);
   };
 
   const getIconoTipo = (tipo: string) => {
@@ -184,9 +285,14 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     );
   };
 
-  const evidenciasFiltradas = filtroCategoria === 'TODOS' 
-    ? evidencias 
-    : evidencias.filter(e => e.categoria === filtroCategoria);
+  const evidenciasFiltradas = evidencias
+    .filter(e => filtroCategoria === 'TODOS' || e.categoria === filtroCategoria)
+    .filter(e => 
+      busqueda === '' || 
+      e.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+      e.descripcion.toLowerCase().includes(busqueda.toLowerCase()) ||
+      e.categoria.toLowerCase().includes(busqueda.toLowerCase())
+    );
 
   // Estadísticas
   const totalEvidencias = evidencias.length;
@@ -196,6 +302,9 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+        <DialogDescription className="sr-only">
+          Gestión de evidencias y pruebas documentales del expediente {expediente.id}
+        </DialogDescription>
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
           <div className="flex items-start justify-between">
@@ -234,10 +343,34 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
             </Button>
           </div>
 
+          {/* Búsqueda */}
+          <div className="flex items-center gap-2 mt-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Buscar por nombre, categoría o descripción..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                className="pl-10 text-sm"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleCargarNuevaEvidencia}
+              className="font-bold"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              Nueva Evidencia
+            </Button>
+          </div>
+
           {/* Filtros */}
-          <div className="flex items-center justify-between mt-4">
-            <div className="flex items-center gap-2 overflow-x-auto pb-2">
-              {categorias.map((cat) => (
+          <div className="flex items-center gap-2 mt-3 overflow-x-auto">
+            <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
+            {categorias.map((cat) => {
+              const count = cat === 'TODOS' ? evidencias.length : evidencias.filter(e => e.categoria === cat).length;
+              return (
                 <Button
                   key={cat}
                   size="sm"
@@ -245,10 +378,10 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                   onClick={() => setFiltroCategoria(cat)}
                   className="text-xs whitespace-nowrap"
                 >
-                  {cat}
+                  {cat} ({count})
                 </Button>
-              ))}
-            </div>
+              );
+            })}
           </div>
         </div>
 
@@ -355,10 +488,21 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                           <Download className="w-3 h-3 mr-1" />
                           Descargar
                         </Button>
+                        {evidencia.estado !== 'Admitida' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleMarcarAdmitida(evidencia.id)}
+                            className="text-xs text-green-600 hover:bg-green-50"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Admitir
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleEliminarEvidencia(evidencia.id)}
+                          onClick={() => handleEliminarEvidencia(evidencia.id, evidencia.nombre)}
                           className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
                         >
                           <Trash2 className="w-3 h-3 mr-1" />
@@ -374,32 +518,34 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-3">
+        <div className="sticky bottom-0 bg-white border-t px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="text-xs">
-                <p className="font-bold text-gray-900">
-                  {totalEvidencias} evidencias totales
-                </p>
-                <p className="text-gray-600">
-                  {evidenciasAdmitidas} admitidas · {evidenciasPendientes} pendientes
-                </p>
+              <Button variant="outline" onClick={onClose}>
+                <X className="w-3.5 h-3.5 mr-1.5" />
+                Cerrar
+              </Button>
+              <div className="text-xs text-gray-600">
+                <strong>{evidenciasFiltradas.length}</strong> de <strong>{totalEvidencias}</strong> evidencias 
+                · <strong className="text-green-600">{evidenciasAdmitidas} admitidas</strong> 
+                · <strong className="text-orange-600">{evidenciasPendientes} pendientes</strong>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={onClose}>
-                Cerrar
+              <Button
+                onClick={handleDescargarTodas}
+                variant="outline"
+                className="font-bold"
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Descargar Todas ({totalEvidencias})
               </Button>
               <Button
                 onClick={handleCargarNuevaEvidencia}
                 className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
               >
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
-                Cargar Evidencia
-              </Button>
-              <Button style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                <Download className="w-3.5 h-3.5 mr-1.5" />
-                Descargar Todas
+                Cargar Evidencias
               </Button>
             </div>
           </div>

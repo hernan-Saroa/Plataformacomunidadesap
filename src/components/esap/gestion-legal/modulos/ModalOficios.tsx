@@ -3,14 +3,16 @@
  * Oficios = Comunicaciones formales enviadas/recibidas durante el proceso
  */
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
+import { Input } from '../../../ui/input';
 import { 
   Send, Download, Eye, FileText, Mail, ArrowRight, 
-  ArrowLeft, X, Upload, Plus, CheckCircle, Clock, AlertCircle
+  ArrowLeft, X, Upload, Plus, CheckCircle, Clock, AlertCircle,
+  Search, Trash2, Edit, Filter
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState } from 'react';
@@ -117,23 +119,147 @@ const oficiosRecibidosMock = [
 export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps) {
   const [oficiosEnviados, setOficiosEnviados] = useState(oficiosEnviadosMock);
   const [oficiosRecibidos, setOficiosRecibidos] = useState(oficiosRecibidosMock);
+  const [busquedaEnviados, setBusquedaEnviados] = useState('');
+  const [busquedaRecibidos, setBusquedaRecibidos] = useState('');
 
   const handleDescargarOficio = (oficio: any) => {
-    toast.success('Descargando oficio', {
-      description: oficio.numero
+    toast.success('✅ Descarga iniciada', {
+      description: `${oficio.numero} - ${oficio.archivo}`
     });
   };
 
   const handleVerOficio = (oficio: any) => {
-    toast.info('Abriendo visor', {
-      description: oficio.numero
+    toast.info('👁️ Abriendo visor de documento', {
+      description: `${oficio.numero} - ${oficio.asunto}`
     });
   };
 
   const handleNuevoOficio = () => {
-    toast.info('Redactar nuevo oficio', {
-      description: 'Abriendo editor de oficios...'
+    toast.info('📝 Abriendo editor de oficios', {
+      description: 'Preparando plantilla de oficio oficial ESAP',
+      duration: 2000
     });
+    
+    // Simular apertura de modal de redacción
+    setTimeout(() => {
+      const nuevoOficio = {
+        id: oficiosEnviados.length + 1,
+        numero: `OF-ESAP-2024-00${oficiosEnviados.length + 1}`,
+        asunto: 'Nuevo Oficio - Pendiente de Asunto',
+        destinatario: 'Juzgado 1° Administrativo de Bogotá',
+        fecha: new Date().toLocaleDateString('es-CO'),
+        estado: 'En Preparación',
+        estadoColor: 'orange',
+        respuesta: 'N/A',
+        contenido: 'Contenido del oficio pendiente de redacción. Este oficio debe incluir: membrete oficial ESAP, radicado del proceso, asunto específico, cuerpo del mensaje formal y firma del representante legal.',
+        archivo: `oficio_00${oficiosEnviados.length + 1}_borrador.pdf`,
+        tamaño: '0 KB'
+      };
+      
+      setOficiosEnviados([nuevoOficio, ...oficiosEnviados]);
+      
+      toast.success('✅ Oficio creado en modo borrador', {
+        description: `${nuevoOficio.numero} - Listo para editar y enviar. Recuerda revisar el contenido antes de radicar.`,
+        duration: 5000
+      });
+      
+      // Toast adicional con recordatorio
+      setTimeout(() => {
+        toast.info('💡 Recordatorio legal', {
+          description: 'Los oficios deben incluir: radicado del proceso, firma autorizada y anexos si aplica',
+          duration: 4000
+        });
+      }, 1500);
+    }, 1000);
+  };
+
+  const handleEliminarOficioEnviado = (id: number, numero: string) => {
+    setOficiosEnviados(oficiosEnviados.filter(o => o.id !== id));
+    toast.success('🗑️ Oficio eliminado', {
+      description: numero
+    });
+  };
+
+  const handleMarcarOficioRecibidoAtendido = (id: number) => {
+    setOficiosRecibidos(oficiosRecibidos.map(of => 
+      of.id === id 
+        ? { 
+            ...of, 
+            estado: 'Atendido', 
+            estadoColor: 'green',
+            fechaRespuesta: new Date().toLocaleDateString('es-CO')
+          }
+        : of
+    ));
+    toast.success('✅ Oficio marcado como atendido', {
+      description: 'Respuesta registrada exitosamente'
+    });
+  };
+
+  const handleDescargarTodos = () => {
+    const total = oficiosEnviados.length + oficiosRecibidos.length;
+    
+    toast.info('📦 Iniciando descarga masiva', {
+      description: `Preparando ${total} documentos (${oficiosEnviados.length} enviados + ${oficiosRecibidos.length} recibidos)`,
+      duration: 3000
+    });
+    
+    // Fase 1: Recopilando documentos
+    setTimeout(() => {
+      toast.info('📂 Recopilando documentos...', {
+        description: 'Organizando oficios por categoría y fecha',
+        duration: 2000
+      });
+    }, 1000);
+    
+    // Fase 2: Comprimiendo
+    setTimeout(() => {
+      // Calcular tamaño total aproximado
+      const calcularTamañoTotal = () => {
+        let totalBytes = 0;
+        oficiosEnviados.forEach(of => {
+          const tamaño = of.tamaño.includes('MB') 
+            ? parseFloat(of.tamaño) * 1024 
+            : parseFloat(of.tamaño);
+          totalBytes += tamaño;
+        });
+        oficiosRecibidos.forEach(of => {
+          const tamaño = of.tamaño.includes('MB') 
+            ? parseFloat(of.tamaño) * 1024 
+            : parseFloat(of.tamaño);
+          totalBytes += tamaño;
+        });
+        return totalBytes >= 1024 
+          ? `${(totalBytes / 1024).toFixed(2)} MB` 
+          : `${totalBytes.toFixed(0)} KB`;
+      };
+      
+      const tamañoTotal = calcularTamañoTotal();
+      
+      toast.info('⏳ Comprimiendo archivo ZIP...', {
+        description: `Tamaño estimado: ${tamañoTotal}`,
+        duration: 2500
+      });
+    }, 3500);
+    
+    // Fase 3: Completado
+    setTimeout(() => {
+      const fechaActual = new Date().toISOString().split('T')[0];
+      const nombreArchivo = `Oficios_Expediente_${expediente.id.replace(/\//g, '_')}_${fechaActual}.zip`;
+      
+      toast.success('✅ Descarga completada', {
+        description: `${nombreArchivo} - ${total} documentos descargados exitosamente`,
+        duration: 5000
+      });
+      
+      // Toast informativo adicional
+      setTimeout(() => {
+        toast.info('📋 Contenido del ZIP', {
+          description: `Carpetas: /Enviados (${oficiosEnviados.length}) | /Recibidos (${oficiosRecibidos.length})`,
+          duration: 4000
+        });
+      }, 1000);
+    }, 6500);
   };
 
   const getEstadoBadge = (estado: string, color: string) => {
@@ -174,6 +300,9 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+        <DialogDescription className="sr-only">
+          Gestión de oficios y comunicaciones oficiales del expediente {expediente.id}
+        </DialogDescription>
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
           <div className="flex items-start justify-between">
@@ -240,60 +369,72 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                 </p>
               </Card>
 
-              {oficiosEnviados.map((oficio) => (
-                <Card key={oficio.id} className="p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 flex-shrink-0">
-                      <Send className="w-6 h-6 text-blue-600" />
-                    </div>
+              <Input
+                placeholder="Buscar oficio enviado..."
+                value={busquedaEnviados}
+                onChange={(e) => setBusquedaEnviados(e.target.value)}
+                className="mb-4"
+              />
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-black text-gray-900">{oficio.numero}</h4>
-                            {getEstadoBadge(oficio.estado, oficio.estadoColor)}
+              {oficiosEnviados
+                .filter(oficio => oficio.numero.includes(busquedaEnviados) || oficio.asunto.includes(busquedaEnviados))
+                .map((oficio) => (
+                  <Card key={oficio.id} className="p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 flex-shrink-0">
+                        <Send className="w-6 h-6 text-blue-600" />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-black text-gray-900">{oficio.numero}</h4>
+                              {getEstadoBadge(oficio.estado, oficio.estadoColor)}
+                            </div>
+                            <p className="font-bold text-sm text-gray-700 mb-1">{oficio.asunto}</p>
+                            <Badge variant="outline" className="text-xs mb-2">
+                              📍 {oficio.destinatario}
+                            </Badge>
                           </div>
-                          <p className="font-bold text-sm text-gray-700 mb-1">{oficio.asunto}</p>
-                          <Badge variant="outline" className="text-xs mb-2">
-                            📍 {oficio.destinatario}
-                          </Badge>
                         </div>
-                      </div>
 
-                      <p className="text-sm text-gray-700 mb-3 leading-relaxed">
-                        {oficio.contenido}
-                      </p>
+                        <p className="text-sm text-gray-700 mb-3 leading-relaxed">
+                          {oficio.contenido}
+                        </p>
 
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-                        <div>
-                          <p className="text-xs text-gray-500 mb-0.5">📅 Fecha Envío</p>
-                          <p className="text-xs font-bold text-gray-900">{oficio.fecha}</p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">📅 Fecha Envío</p>
+                            <p className="text-xs font-bold text-gray-900">{oficio.fecha}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">📋 Respuesta</p>
+                            <p className="text-xs font-bold text-gray-900">{oficio.respuesta}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">📦 Tamaño</p>
+                            <p className="text-xs font-bold text-gray-900">{oficio.tamaño}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-0.5">📋 Respuesta</p>
-                          <p className="text-xs font-bold text-gray-900">{oficio.respuesta}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-0.5">📦 Tamaño</p>
-                          <p className="text-xs font-bold text-gray-900">{oficio.tamaño}</p>
-                        </div>
-                      </div>
 
-                      <div className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200">
-                        <FileText className="w-4 h-4 text-red-600" />
-                        <p className="text-xs font-bold text-gray-900 flex-1">{oficio.archivo}</p>
-                        <Button size="sm" variant="ghost" onClick={() => handleVerOficio(oficio)}>
-                          <Eye className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleDescargarOficio(oficio)}>
-                          <Download className="w-3.5 h-3.5" />
-                        </Button>
+                        <div className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200">
+                          <FileText className="w-4 h-4 text-red-600" />
+                          <p className="text-xs font-bold text-gray-900 flex-1">{oficio.archivo}</p>
+                          <Button size="sm" variant="ghost" onClick={() => handleVerOficio(oficio)}>
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleDescargarOficio(oficio)}>
+                            <Download className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleEliminarOficioEnviado(oficio.id, oficio.numero)}>
+                            <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))}
             </TabsContent>
 
             {/* TAB: OFICIOS RECIBIDOS */}
@@ -311,93 +452,119 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                 </p>
               </Card>
 
-              {oficiosRecibidos.map((oficio) => (
-                <Card key={oficio.id} className="p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-lg bg-green-50 border border-green-200 flex-shrink-0">
-                      <ArrowLeft className="w-6 h-6 text-green-600" />
-                    </div>
+              <Input
+                placeholder="Buscar oficio recibido..."
+                value={busquedaRecibidos}
+                onChange={(e) => setBusquedaRecibidos(e.target.value)}
+                className="mb-4"
+              />
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h4 className="font-black text-gray-900">{oficio.numero}</h4>
-                            {getEstadoBadge(oficio.estado, oficio.estadoColor)}
-                            {getPrioridadBadge(oficio.prioridad)}
+              {oficiosRecibidos
+                .filter(oficio => oficio.numero.includes(busquedaRecibidos) || oficio.asunto.includes(busquedaRecibidos))
+                .map((oficio) => (
+                  <Card key={oficio.id} className="p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-lg bg-green-50 border border-green-200 flex-shrink-0">
+                        <ArrowLeft className="w-6 h-6 text-green-600" />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <h4 className="font-black text-gray-900">{oficio.numero}</h4>
+                              {getEstadoBadge(oficio.estado, oficio.estadoColor)}
+                              {getPrioridadBadge(oficio.prioridad)}
+                            </div>
+                            <p className="font-bold text-sm text-gray-700 mb-1">{oficio.asunto}</p>
+                            <Badge variant="outline" className="text-xs mb-2">
+                              📨 {oficio.remitente}
+                            </Badge>
                           </div>
-                          <p className="font-bold text-sm text-gray-700 mb-1">{oficio.asunto}</p>
-                          <Badge variant="outline" className="text-xs mb-2">
-                            📨 {oficio.remitente}
-                          </Badge>
                         </div>
-                      </div>
 
-                      <p className="text-sm text-gray-700 mb-3 leading-relaxed">
-                        {oficio.contenido}
-                      </p>
+                        <p className="text-sm text-gray-700 mb-3 leading-relaxed">
+                          {oficio.contenido}
+                        </p>
 
-                      {oficio.requiereRespuesta && (
-                        <div className={`p-2 rounded-lg mb-3 ${oficio.fechaRespuesta ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}`}>
-                          <p className={`text-xs font-bold flex items-center gap-1.5 ${oficio.fechaRespuesta ? 'text-green-900' : 'text-orange-900'}`}>
-                            {oficio.fechaRespuesta ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-                            {oficio.fechaRespuesta 
-                              ? `Respuesta enviada el ${oficio.fechaRespuesta}`
-                              : 'Requiere respuesta - PENDIENTE'}
-                          </p>
-                        </div>
-                      )}
+                        {oficio.requiereRespuesta && (
+                          <div className={`p-2 rounded-lg mb-3 ${oficio.fechaRespuesta ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}`}>
+                            <p className={`text-xs font-bold flex items-center gap-1.5 ${oficio.fechaRespuesta ? 'text-green-900' : 'text-orange-900'}`}>
+                              {oficio.fechaRespuesta ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                              {oficio.fechaRespuesta 
+                                ? `Respuesta enviada el ${oficio.fechaRespuesta}`
+                                : 'Requiere respuesta - PENDIENTE'}
+                            </p>
+                          </div>
+                        )}
 
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-                        <div>
-                          <p className="text-xs text-gray-500 mb-0.5">📅 Fecha Recepción</p>
-                          <p className="text-xs font-bold text-gray-900">{oficio.fecha}</p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">📅 Fecha Recepción</p>
+                            <p className="text-xs font-bold text-gray-900">{oficio.fecha}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">⚠️ Prioridad</p>
+                            <p className="text-xs font-bold text-gray-900">{oficio.prioridad}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">📦 Tamaño</p>
+                            <p className="text-xs font-bold text-gray-900">{oficio.tamaño}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-0.5">⚠️ Prioridad</p>
-                          <p className="text-xs font-bold text-gray-900">{oficio.prioridad}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-0.5">📦 Tamaño</p>
-                          <p className="text-xs font-bold text-gray-900">{oficio.tamaño}</p>
-                        </div>
-                      </div>
 
-                      <div className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200">
-                        <FileText className="w-4 h-4 text-red-600" />
-                        <p className="text-xs font-bold text-gray-900 flex-1">{oficio.archivo}</p>
-                        <Button size="sm" variant="ghost" onClick={() => handleVerOficio(oficio)}>
-                          <Eye className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleDescargarOficio(oficio)}>
-                          <Download className="w-3.5 h-3.5" />
-                        </Button>
+                        <div className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200">
+                          <FileText className="w-4 h-4 text-red-600" />
+                          <p className="text-xs font-bold text-gray-900 flex-1">{oficio.archivo}</p>
+                          <Button size="sm" variant="ghost" onClick={() => handleVerOficio(oficio)}>
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleDescargarOficio(oficio)}>
+                            <Download className="w-3.5 h-3.5" />
+                          </Button>
+                          {oficio.requiereRespuesta && oficio.estado !== 'Atendido' && (
+                            <Button size="sm" variant="ghost" onClick={() => handleMarcarOficioRecibidoAtendido(oficio.id)}>
+                              <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))}
             </TabsContent>
           </Tabs>
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-3">
+        <div className="sticky bottom-0 bg-white border-t px-6 py-4">
           <div className="flex items-center justify-between">
-            <Button variant="outline" onClick={onClose}>
-              Cerrar
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={onClose}>
+                <X className="w-3.5 h-3.5 mr-1.5" />
+                Cerrar
+              </Button>
+              <div className="text-xs text-gray-600">
+                <strong className="text-blue-600">{oficiosEnviados.length} enviados</strong> · 
+                <strong className="text-green-600"> {oficiosRecibidos.length} recibidos</strong> · 
+                <strong className="text-orange-600"> {oficiosRecibidos.filter(o => o.estado === 'Pendiente').length} pendientes</strong>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
+              <Button
+                onClick={handleDescargarTodos}
+                variant="outline"
+                className="font-bold"
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Descargar Todos (ZIP)
+              </Button>
               <Button
                 onClick={handleNuevoOficio}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
               >
                 <Plus className="w-3.5 h-3.5 mr-1.5" />
                 Redactar Oficio
-              </Button>
-              <Button style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                <Download className="w-3.5 h-3.5 mr-1.5" />
-                Descargar Todos
               </Button>
             </div>
           </div>

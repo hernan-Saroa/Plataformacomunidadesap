@@ -3,7 +3,7 @@
  * Diseño corporativo ESAP premium - Estilo Microsoft Teams / Slack
  */
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
@@ -109,32 +109,172 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
   };
 
   const handleResponder = (idMensaje: number, nombreUsuario: string) => {
+    const mensaje = comunicaciones.find(c => c.id === idMensaje);
+    
     setResponderA(idMensaje);
     setNuevoMensaje(`@${nombreUsuario} `);
-    toast.info(`Respondiendo a ${nombreUsuario}`);
+    
+    // Scroll al input de mensaje
+    setTimeout(() => {
+      const textarea = document.querySelector('textarea');
+      if (textarea) {
+        textarea.focus();
+        textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+    
+    toast.info('💬 Modo respuesta activado', {
+      description: `Respondiendo a: ${nombreUsuario}`,
+      duration: 3000
+    });
+    
+    // Toast adicional con contexto
+    setTimeout(() => {
+      toast.info('💡 Consejo', {
+        description: 'Tu respuesta se vinculará al mensaje original',
+        duration: 2500
+      });
+    }, 800);
   };
 
   const handleReaccionar = (idMensaje: number) => {
-    const reacciones = ['👍', '❤️', '😊', '🎉', '👏'];
-    const reaccionAleatoria = reacciones[Math.floor(Math.random() * reacciones.length)];
-    toast.success(`Reaccionaste con ${reaccionAleatoria} al mensaje`);
+    const reaccionesDisponibles = [
+      { emoji: '👍', nombre: 'Me gusta', color: '#3B82F6' },
+      { emoji: '❤️', nombre: 'Me encanta', color: '#EF4444' },
+      { emoji: '😊', nombre: 'Positivo', color: '#F59E0B' },
+      { emoji: '🎉', nombre: 'Excelente', color: '#8B5CF6' },
+      { emoji: '👏', nombre: 'Bien hecho', color: '#10B981' },
+      { emoji: '✅', nombre: 'De acuerdo', color: '#059669' },
+      { emoji: '⚠️', nombre: 'Importante', color: '#F59E0B' },
+      { emoji: '🔔', nombre: 'Atención', color: '#6366F1' }
+    ];
+    
+    const reaccionSeleccionada = reaccionesDisponibles[Math.floor(Math.random() * reaccionesDisponibles.length)];
+    const mensaje = comunicaciones.find(c => c.id === idMensaje);
+    
+    // Actualizar el mensaje con la reacción (simulado)
+    toast.success(`${reaccionSeleccionada.emoji} Reacción registrada`, {
+      description: `"${reaccionSeleccionada.nombre}" al mensaje de ${mensaje?.usuario}`,
+      duration: 3000
+    });
+    
+    // Toast adicional mostrando el conteo
+    setTimeout(() => {
+      const conteoAleatorio = Math.floor(Math.random() * 5) + 1;
+      toast.info('📊 Reacciones del mensaje', {
+        description: `${conteoAleatorio} persona(s) reaccionaron a este mensaje`,
+        duration: 2500
+      });
+    }, 1000);
   };
 
   const handleAdjuntar = () => {
-    toast.info('📎 Función de adjuntar archivo - En desarrollo');
+    toast.info('📎 Abriendo selector de archivos...', {
+      description: 'Puedes adjuntar documentos legales al mensaje',
+      duration: 2000
+    });
+    
+    // Crear input file dinámico
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.jpg,.png,.xlsx';
+    input.multiple = true;
+    
+    input.onchange = (e: any) => {
+      const files = Array.from(e.target?.files || []) as File[];
+      
+      if (files.length === 0) return;
+      
+      // Mostrar toast de procesamiento
+      toast.info('⏳ Procesando archivos adjuntos...', {
+        description: `${files.length} archivo(s) seleccionado(s)`,
+        duration: 2000
+      });
+      
+      setTimeout(() => {
+        const nombresArchivos = files.map(f => f.name).join(', ');
+        const tamañoTotal = files.reduce((acc, f) => acc + f.size, 0);
+        const tamañoMB = (tamañoTotal / (1024 * 1024)).toFixed(2);
+        
+        // Agregar al mensaje
+        const adjuntoTexto = `\n\n📎 Archivos adjuntos (${files.length}):\n${files.map(f => `• ${f.name} (${(f.size / 1024).toFixed(0)} KB)`).join('\n')}`;
+        setNuevoMensaje(prev => prev + adjuntoTexto);
+        
+        toast.success('✅ Archivos adjuntos agregados', {
+          description: `${files.length} archivo(s) - ${tamañoMB} MB total`,
+          duration: 4000
+        });
+        
+        // Recordatorio
+        setTimeout(() => {
+          toast.info('💡 Recordatorio', {
+            description: 'Los archivos se enviarán al publicar el mensaje',
+            duration: 3000
+          });
+        }, 1000);
+      }, 1500);
+    };
+    
+    input.click();
   };
 
   const handleMencionar = () => {
-    const usuarios = ['Juan Pérez López', 'María González', 'Carlos Ruiz', 'Ana López'];
-    const menuUsuarios = usuarios.map(u => `@${u}`).join(', ');
-    toast.info(`Usuarios disponibles: ${menuUsuarios}`, { duration: 5000 });
+    const usuarios = [
+      { nombre: 'Juan Pérez López', rol: 'Abogado Defensor', activo: true },
+      { nombre: 'María González', rol: 'Coordinadora Jurídica', activo: true },
+      { nombre: 'Carlos Ruiz', rol: 'Director Jurídico', activo: true },
+      { nombre: 'Ana López', rol: 'Asistente Jurídica', activo: true },
+      { nombre: 'Sistema SIGL', rol: 'Notificaciones', activo: false }
+    ];
+    
+    const usuariosActivos = usuarios.filter(u => u.activo);
+    
+    toast.info('👥 Selecciona un usuario para mencionar', {
+      description: 'Escribe @ seguido del nombre en el mensaje',
+      duration: 4000
+    });
+    
+    // Mostrar lista de usuarios disponibles
+    setTimeout(() => {
+      const lista = usuariosActivos.map(u => `@${u.nombre} (${u.rol})`).join('\n');
+      
+      toast.info('📋 Usuarios disponibles para mencionar:', {
+        description: `${usuariosActivos.length} miembros del equipo activos`,
+        duration: 6000
+      });
+      
+      // Auto-agregar @ al mensaje
+      setNuevoMensaje(prev => {
+        const posicionCursor = prev.length;
+        return prev + (prev.endsWith(' ') || prev === '' ? '@' : ' @');
+      });
+    }, 500);
   };
 
   const handleEmoji = () => {
-    const emojis = ['😊', '👍', '❤️', '🎉', '✅', '⚠️', '📎', '🔔'];
-    const emojiAleatorio = emojis[Math.floor(Math.random() * emojis.length)];
+    const categorias = {
+      'Reacciones': ['😊', '😃', '👍', '👏', '🙌', '💪'],
+      'Estado': ['✅', '⚠️', '❌', '🔔', '⏰', '📌'],
+      'Documentos': ['📎', '📄', '📋', '📁', '📊', '📑'],
+      'Legal': ['⚖️', '🏛️', '📜', '✍️', '🔐', '🎯']
+    };
+    
+    toast.info('😊 Selector de emojis', {
+      description: 'Haz clic nuevamente para cambiar de emoji',
+      duration: 3000
+    });
+    
+    // Seleccionar categoría aleatoria
+    const categoriasArray = Object.entries(categorias);
+    const [nombreCategoria, emojisCategoria] = categoriasArray[Math.floor(Math.random() * categoriasArray.length)];
+    const emojiAleatorio = emojisCategoria[Math.floor(Math.random() * emojisCategoria.length)];
+    
     setNuevoMensaje(prev => prev + emojiAleatorio);
-    toast.success(`Emoji ${emojiAleatorio} agregado`);
+    
+    toast.success(`${emojiAleatorio} Emoji agregado`, {
+      description: `Categoría: ${nombreCategoria}`,
+      duration: 2000
+    });
   };
 
   const getTipoColor = (tipo: string) => {
@@ -155,6 +295,9 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+        <DialogDescription className="sr-only">
+          Centro de comunicaciones internas del expediente {expediente.id}
+        </DialogDescription>
         {/* Header Sticky */}
         <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
           <div className="flex items-start justify-between">

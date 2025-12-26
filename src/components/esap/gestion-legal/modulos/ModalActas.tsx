@@ -3,13 +3,15 @@
  * Actas = Registro oficial de lo acontecido en audiencias y diligencias procesales
  */
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
+import { Input } from '../../../ui/input';
 import { 
   FileCheck, Download, Eye, FileText, Calendar, 
-  Users, Clock, X, Upload, CheckCircle, AlertCircle, Play
+  Users, Clock, X, Upload, CheckCircle, AlertCircle, Play,
+  Search, Trash2, Edit, Filter, Plus
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState } from 'react';
@@ -119,35 +121,212 @@ const actasMock = [
 export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
   const [actas, setActas] = useState(actasMock);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODAS');
+  const [busqueda, setBusqueda] = useState('');
 
   const handleDescargarActa = (acta: typeof actasMock[0]) => {
     if (!acta.archivo) {
-      toast.warning('Acta no disponible', {
+      toast.warning('⚠️ Acta no disponible', {
         description: 'Esta acta aún no ha sido firmada y digitalizada'
       });
       return;
     }
-    toast.success('Descargando acta', {
-      description: acta.numero
+    toast.success('✅ Descarga iniciada', {
+      description: `${acta.numero} - ${acta.archivo}`
     });
   };
 
   const handleVerActa = (acta: typeof actasMock[0]) => {
     if (!acta.archivo) {
-      toast.warning('Acta no disponible', {
+      toast.warning('⚠️ Acta no disponible', {
         description: 'Esta acta aún no ha sido firmada y digitalizada'
       });
       return;
     }
-    toast.info('Abriendo visor', {
-      description: acta.numero
+    toast.info('👁️ Abriendo visor de documento', {
+      description: `${acta.numero} - ${acta.tipo}`
     });
   };
 
   const handleCargarActa = () => {
-    toast.info('Cargar acta', {
-      description: 'Seleccione el archivo PDF del acta firmada'
+    toast.info('📋 Abriendo gestor de actas', {
+      description: 'Preparando formulario de nueva acta procesal',
+      duration: 2000
     });
+    
+    // Simular apertura de input file para cargar el acta
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx';
+    
+    input.onchange = (e: any) => {
+      const file = e.target?.files?.[0];
+      if (file) {
+        // Mostrar toast de procesamiento
+        toast.info('⏳ Procesando acta procesal...', {
+          description: `${file.name} - ${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+          duration: 2000
+        });
+        
+        // Simular carga después de 2 segundos
+        setTimeout(() => {
+          const nuevaActa = {
+            id: actas.length + 1,
+            tipo: 'Audiencia de Pruebas',
+            numero: `ACTA-PRUE-00${actas.length + 1}-2025`,
+            fecha: new Date().toLocaleDateString('es-CO'),
+            hora: '10:00 AM - 12:00 PM',
+            lugar: 'Juzgado 1° Administrativo - Sala 1',
+            presidente: 'Dra. María Fernanda Torres',
+            participantes: [
+              'Dra. María Fernanda Torres (Jueza)',
+              'Dr. Juan Pérez López (Apoderado ESAP)',
+              'Dr. Carlos Gómez (Apoderado Demandante)',
+              'Secretaria Judicial'
+            ],
+            resumen: `Nueva acta procesal cargada: ${file.name.replace(/\.[^/.]+$/, '')}. Documento firmado y digitalizado. Pendiente de revisión de decisiones y clasificación final.`,
+            decisiones: ['Pendiente de registro de decisiones tomadas'],
+            estado: 'Firmada',
+            estadoColor: 'green',
+            archivo: file.name,
+            tamaño: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+            duracion: '2h'
+          };
+          
+          setActas([nuevaActa, ...actas]);
+          
+          // Reset filtros
+          setFiltroTipo('TODAS');
+          setBusqueda('');
+          
+          toast.success('✅ Acta procesal cargada exitosamente', {
+            description: `${nuevaActa.numero} - Acta firmada y disponible para consulta`,
+            duration: 5000
+          });
+          
+          // Toast adicional con recordatorio
+          setTimeout(() => {
+            toast.info('💡 Recordatorio', {
+              description: 'Verifica que el acta contenga firmas del juez, las partes y la secretaria judicial',
+              duration: 4000
+            });
+          }, 1500);
+        }, 2000);
+      }
+    };
+    
+    input.click();
+  };
+
+  const handleEliminarActa = (id: number, numero: string) => {
+    setActas(actas.filter(a => a.id !== id));
+    toast.success('🗑️ Acta eliminada', {
+      description: numero
+    });
+  };
+
+  const handleMarcarFirmada = (id: number) => {
+    setActas(actas.map(acta => 
+      acta.id === id 
+        ? { 
+            ...acta, 
+            estado: 'Firmada', 
+            estadoColor: 'green',
+            archivo: acta.archivo || `acta_firmada_${id}.pdf`,
+            tamaño: acta.tamaño || '1.5 MB'
+          }
+        : acta
+    ));
+    toast.success('✅ Acta marcada como firmada', {
+      description: 'Documento ahora disponible para descarga'
+    });
+  };
+
+  const handleDescargarTodas = () => {
+    const actasFirmadas = actas.filter(a => a.archivo);
+    
+    if (actasFirmadas.length === 0) {
+      toast.warning('⚠️ No hay actas firmadas', {
+        description: 'No hay actas disponibles para descargar. Las actas deben estar firmadas y digitalizadas.',
+        duration: 4000
+      });
+      return;
+    }
+    
+    toast.info('📦 Iniciando descarga de actas firmadas', {
+      description: `Preparando ${actasFirmadas.length} documentos firmados y digitalizados`,
+      duration: 3000
+    });
+    
+    // Fase 1: Recopilando actas
+    setTimeout(() => {
+      toast.info('📂 Recopilando actas firmadas...', {
+        description: 'Organizando por tipo de audiencia y fecha',
+        duration: 2000
+      });
+    }, 1000);
+    
+    // Fase 2: Validando firmas
+    setTimeout(() => {
+      toast.info('✍️ Validando firmas digitales...', {
+        description: 'Verificando autenticidad de documentos',
+        duration: 2000
+      });
+    }, 3500);
+    
+    // Fase 3: Comprimiendo
+    setTimeout(() => {
+      // Calcular tamaño total
+      const calcularTamañoTotal = () => {
+        let totalBytes = 0;
+        actasFirmadas.forEach(acta => {
+          if (acta.tamaño) {
+            const tamaño = acta.tamaño.includes('MB') 
+              ? parseFloat(acta.tamaño) * 1024 
+              : parseFloat(acta.tamaño);
+            totalBytes += tamaño;
+          }
+        });
+        return totalBytes >= 1024 
+          ? `${(totalBytes / 1024).toFixed(2)} MB` 
+          : `${totalBytes.toFixed(0)} KB`;
+      };
+      
+      const tamañoTotal = calcularTamañoTotal();
+      
+      toast.info('⏳ Comprimiendo archivo ZIP...', {
+        description: `Tamaño total: ${tamañoTotal}`,
+        duration: 2500
+      });
+    }, 6000);
+    
+    // Fase 4: Completado
+    setTimeout(() => {
+      const fechaActual = new Date().toISOString().split('T')[0];
+      const nombreArchivo = `Actas_Firmadas_Expediente_${expediente.id.replace(/\//g, '_')}_${fechaActual}.zip`;
+      
+      // Agrupar por tipo
+      const porTipo: Record<string, number> = {};
+      actasFirmadas.forEach(acta => {
+        porTipo[acta.tipo] = (porTipo[acta.tipo] || 0) + 1;
+      });
+      
+      toast.success('✅ Descarga completada', {
+        description: `${nombreArchivo} - ${actasFirmadas.length} actas procesales descargadas`,
+        duration: 5000
+      });
+      
+      // Toast informativo adicional
+      setTimeout(() => {
+        const desglose = Object.entries(porTipo)
+          .map(([tipo, cant]) => `${tipo} (${cant})`)
+          .join(' | ');
+        
+        toast.info('📋 Contenido del archivo ZIP', {
+          description: desglose,
+          duration: 5000
+        });
+      }, 1000);
+    }, 9000);
   };
 
   const getEstadoBadge = (estado: string, color: string) => {
@@ -175,9 +354,18 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
     ? actas 
     : actas.filter(a => a.tipo === filtroTipo);
 
+  const actasBuscadas = actasFiltradas.filter(a => 
+    a.numero.toLowerCase().includes(busqueda.toLowerCase()) ||
+    a.tipo.toLowerCase().includes(busqueda.toLowerCase()) ||
+    a.resumen.toLowerCase().includes(busqueda.toLowerCase())
+  );
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+        <DialogDescription className="sr-only">
+          Gestión de actas de audiencias y diligencias del expediente {expediente.id}
+        </DialogDescription>
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
           <div className="flex items-start justify-between">
@@ -248,7 +436,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
           {/* Lista de actas */}
           <div className="space-y-4">
-            {actasFiltradas.length === 0 ? (
+            {actasBuscadas.length === 0 ? (
               <Card className="p-8 text-center">
                 <FileCheck className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                 <p className="text-sm font-bold text-gray-600 mb-1">
@@ -259,7 +447,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                 </p>
               </Card>
             ) : (
-              actasFiltradas.map((acta) => (
+              actasBuscadas.map((acta) => (
                 <Card key={acta.id} className="p-5 hover:shadow-lg transition-shadow border-l-4 border-l-purple-500">
                   <div className="flex items-start gap-4">
                     {/* Icono */}
@@ -372,6 +560,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                               size="sm"
                               variant="ghost"
                               onClick={() => handleVerActa(acta)}
+                              className="hover:bg-blue-100"
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </Button>
@@ -379,17 +568,37 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                               size="sm"
                               variant="ghost"
                               onClick={() => handleDescargarActa(acta)}
+                              className="hover:bg-green-100"
                             >
                               <Download className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleEliminarActa(acta.id, acta.numero)}
+                              className="hover:bg-red-100 text-red-600"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           </div>
                         </div>
                       ) : (
-                        <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
-                          <p className="text-xs font-bold text-orange-900 flex items-center gap-1.5">
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            Acta pendiente de firma y digitalización
-                          </p>
+                        <div className="space-y-2">
+                          <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
+                            <p className="text-xs font-bold text-orange-900 flex items-center gap-1.5">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Acta pendiente de firma y digitalización
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleMarcarFirmada(acta.id)}
+                            className="w-full text-xs font-bold text-green-600 hover:bg-green-50"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Marcar como Firmada
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -401,22 +610,34 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-3">
+        <div className="sticky bottom-0 bg-white border-t px-6 py-4">
           <div className="flex items-center justify-between">
-            <Button variant="outline" onClick={onClose}>
-              Cerrar
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={onClose}>
+                <X className="w-3.5 h-3.5 mr-1.5" />
+                Cerrar
+              </Button>
+              <div className="text-xs text-gray-600">
+                <strong>{actasBuscadas.length}</strong> de <strong>{actas.length}</strong> actas · 
+                <strong className="text-green-600"> {actas.filter(a => a.estado === 'Firmada').length} firmadas</strong> · 
+                <strong className="text-blue-600"> {actas.filter(a => a.estado === 'Programada').length} programadas</strong>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
+              <Button
+                onClick={handleDescargarTodas}
+                variant="outline"
+                className="font-bold"
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Descargar Firmadas (ZIP)
+              </Button>
               <Button
                 onClick={handleCargarActa}
                 className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
               >
-                <Upload className="w-3.5 h-3.5 mr-1.5" />
-                Cargar Acta
-              </Button>
-              <Button style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                <Download className="w-3.5 h-3.5 mr-1.5" />
-                Descargar Todas
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Nueva Acta
               </Button>
             </div>
           </div>

@@ -27,6 +27,12 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { ModalProcesoDisciplinario } from './ModalProcesoDisciplinario';
+import { ModalComunicaciones } from './ModalComunicaciones';
+import { ModalAutos } from './ModalAutos';
+import { ModalEvidencias } from './ModalEvidencias';
+import { ModalOficios } from './ModalOficios';
+import { ModalActas } from './ModalActas';
 
 // DATOS MOCK INLINE (temporales para demo)
 const procesosDisciplinariosMock: any[] = [
@@ -524,6 +530,14 @@ interface TarjetaProcesoProps {
 }
 
 function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
+  // Estados para modales
+  const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
+  const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
+  const [modalAutosOpen, setModalAutosOpen] = useState(false);
+  const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
+  const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
+  const [modalActasOpen, setModalActasOpen] = useState(false);
+
   // Determinar semáforo
   const getSemaforoColor = (diasRestantes: number) => {
     if (diasRestantes <= 3) return { color: '#DC2626', label: 'Vencido' };
@@ -534,6 +548,15 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
   const semaforo = getSemaforoColor(proceso.diasRestantes);
   const porcentajeTiempo = Math.round(((proceso.diasTotales - proceso.diasRestantes) / proceso.diasTotales) * 100);
   const ultimaActuacion = proceso.ultimaActuacion || `Proceso en etapa de ${proceso.etapa}`;
+
+  // Convertir ProcesoDisciplinario a ExpedienteJudicial para compatibilidad con modales
+  const expedienteParaModales = {
+    ...proceso,
+    medioControl: proceso.tipoFalta,
+    demandante: proceso.disciplinado,
+    juzgado: 'Control Interno Disciplinario',
+    etapa: proceso.etapa
+  };
 
   return (
     <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
@@ -636,7 +659,7 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
         {/* Acciones */}
         <div className="space-y-1 pt-2 border-t border-gray-200">
           <Button
-            onClick={() => toast.info('Ver Expediente', { description: proceso.id })}
+            onClick={() => setModalProcesoOpen(true)}
             size="sm"
             className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
             style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -648,7 +671,7 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
           {/* Gestión Documental */}
           <div className="grid grid-cols-2 gap-1">
             <Button
-              onClick={() => toast.info('Autos')}
+              onClick={() => setModalAutosOpen(true)}
               size="sm"
               variant="outline"
               className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
@@ -658,7 +681,7 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
             </Button>
             
             <Button
-              onClick={() => toast.info('Evidencias')}
+              onClick={() => setModalEvidenciasOpen(true)}
               size="sm"
               variant="outline"
               className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
@@ -670,7 +693,7 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
 
           <div className="grid grid-cols-2 gap-1">
             <Button
-              onClick={() => toast.info('Oficios')}
+              onClick={() => setModalOficiosOpen(true)}
               size="sm"
               variant="outline"
               className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
@@ -680,7 +703,7 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
             </Button>
             
             <Button
-              onClick={() => toast.info('Actas')}
+              onClick={() => setModalActasOpen(true)}
               size="sm"
               variant="outline"
               className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
@@ -691,7 +714,7 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
           </div>
 
           <Button
-            onClick={() => toast.info('Comentarios')}
+            onClick={() => setModalComunicacionesOpen(true)}
             size="sm"
             className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
             style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -701,6 +724,38 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
           </Button>
         </div>
       </div>
+
+      {/* Modales */}
+      <ModalProcesoDisciplinario
+        isOpen={modalProcesoOpen}
+        onClose={() => setModalProcesoOpen(false)}
+        proceso={proceso}
+      />
+      <ModalComunicaciones
+        isOpen={modalComunicacionesOpen}
+        onClose={() => setModalComunicacionesOpen(false)}
+        expediente={expedienteParaModales as any}
+      />
+      <ModalAutos
+        isOpen={modalAutosOpen}
+        onClose={() => setModalAutosOpen(false)}
+        expediente={expedienteParaModales as any}
+      />
+      <ModalEvidencias
+        isOpen={modalEvidenciasOpen}
+        onClose={() => setModalEvidenciasOpen(false)}
+        expediente={expedienteParaModales as any}
+      />
+      <ModalOficios
+        isOpen={modalOficiosOpen}
+        onClose={() => setModalOficiosOpen(false)}
+        expediente={expedienteParaModales as any}
+      />
+      <ModalActas
+        isOpen={modalActasOpen}
+        onClose={() => setModalActasOpen(false)}
+        expediente={expedienteParaModales as any}
+      />
     </Card>
   );
 }

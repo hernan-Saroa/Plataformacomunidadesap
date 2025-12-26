@@ -35,6 +35,7 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { VistaListaDefensaJudicial } from './VistaListaDefensaJudicial';
 
 type VistaModulo = 'kanban' | 'lista';
 
@@ -258,6 +259,15 @@ export function ModuloDefensaJudicialV3() {
         </div>
       )}
 
+      {/* Vista de Lista - NUEVA IMPLEMENTACIÓN */}
+      {tipoVista === 'lista' && (
+        <VistaListaDefensaJudicial
+          expedientes={etapas.flatMap(e => e.expedientes)}
+          isMobile={isMobile}
+          isTablet={isTablet}
+        />
+      )}
+
       {/* Modal Nueva Demanda */}
       <ModalNuevaDemanda
         isOpen={modalNuevaDemandaOpen}
@@ -354,6 +364,17 @@ function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
   const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
   const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
   const [modalActasOpen, setModalActasOpen] = useState(false);
+
+  // Handler para abrir modal de expediente con logging
+  const handleAbrirExpediente = () => {
+    console.log('🔍 Abriendo modal de expediente:', expediente.id);
+    try {
+      setModalExpedienteOpen(true);
+      console.log('✅ Modal de expediente abierto');
+    } catch (error) {
+      console.error('❌ Error al abrir modal de expediente:', error);
+    }
+  };
 
   // Determinar semáforo
   const getSemaforoColor = (diasRestantes: number) => {
@@ -467,7 +488,7 @@ function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
         {/* Acciones */}
         <div className="space-y-1 pt-2 border-t border-gray-200">
           <Button
-            onClick={() => setModalExpedienteOpen(true)}
+            onClick={handleAbrirExpediente}
             size="sm"
             className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
             style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -570,5 +591,26 @@ function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
         expediente={expediente}
       />
     </Card>
+  );
+}
+
+// ==================== COMPONENTE VISTA LISTA ====================
+interface VistaListaProps {
+  expedientes: ExpedienteJudicial[];
+  isMobile: boolean;
+  isTablet: boolean;
+}
+
+function VistaLista({ expedientes, isMobile, isTablet }: VistaListaProps) {
+  return (
+    <div className="space-y-3">
+      {expedientes.map((expediente) => (
+        <TarjetaExpediente
+          key={expediente.id}
+          expediente={expediente}
+          isMobile={isMobile}
+        />
+      ))}
+    </div>
   );
 }
