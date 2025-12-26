@@ -171,6 +171,9 @@ playwright/.cache/
 .local
 .dev
 
+#Data produccion
+db/prod/
+
 # Uploads
 backend/internal-disciplinary-control-service/uploads/
 backend/legal-management-service/uploads/
