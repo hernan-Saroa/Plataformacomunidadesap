@@ -392,6 +392,39 @@ export interface Documento {
   descripcion?: string;
 }
 
+export interface Evidencia {
+  id: string;
+  expedienteId: string;
+  descripcion: string;
+  aportadoPor: string;
+  fechaPresentacion: string;
+  archivoNombre: string;
+  archivoUrl: string;
+  archivoTamano: number;
+  tipo: string;
+  prioridad: 'Alta' | 'Media' | 'Baja';
+  estado: 'En Revisión' | 'Admitida';
+}
+
+export interface Acta {
+  id: string;
+  expedienteId: string;
+  numeroActa: string;
+  fecha: string;
+  horario: string;
+  duracion: string;
+  lugar: string;
+  presidente: string;
+  participantes: string;
+  resumen: string;
+  decisionesTomadas: string;
+  estado: 'Programada' | 'Firmada';
+  archivoNombre: string;
+  archivoUrl: string;
+  archivoTamano: number;
+  tipo: string;
+}
+
 export interface Actuacion {
   id: string;
   tipo: string; // "Presentación Memorial", "Solicitud", "Alegatos", etc.
