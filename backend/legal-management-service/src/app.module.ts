@@ -7,21 +7,24 @@ import { Expediente } from './entities/expediente.entity';
 import { Actuacion } from './entities/actuacion.entity';
 import { Abogado } from './entities/abogado.entity';
 import { Audiencia } from './entities/audiencia.entity';
+import { Requerimiento } from './entities/requerimiento.entity';
+import { OrganismoControl } from './entities/organismo-control.entity';
+import { Comentario } from './entities/comentario.entity';
 import { ExpedienteController } from './controllers/expediente.controller';
 import { ActuacionController } from './controllers/actuacion.controller';
 import { AbogadoController, AbogadoStatsController } from './controllers/abogado.controller';
 import { AudienciaController } from './controllers/audiencia.controller';
+import { RequerimientoController } from './controllers/requerimiento.controller';
+import { FilesController } from './controllers/files.controller';
+import { ComentarioController } from './controllers/comentario.controller';
+import { JuzgamientoController } from './controllers/juzgamiento.controller';
+import { TerminosController } from './controllers/terminos.controller';
 import { ExpedienteService } from './services/expediente.service';
 import { ActuacionService } from './services/actuacion.service';
 import { AbogadoService } from './services/abogado.service';
 import { AudienciaService } from './services/audiencia.service';
-
-import { Requerimiento } from './entities/requerimiento.entity';
-import { OrganismoControl } from './entities/organismo-control.entity';
-import { RequerimientoController } from './controllers/requerimiento.controller';
-import { FilesController } from './controllers/files.controller';
 import { RequerimientoService } from './services/requerimiento.service';
-import { JuzgamientoController } from './controllers/juzgamiento.controller';
+import { ComentarioService } from './services/comentario.service';
 
 @Module({
   imports: [
@@ -33,77 +36,30 @@ import { JuzgamientoController } from './controllers/juzgamiento.controller';
       Audiencia,
       Requerimiento,
       OrganismoControl,
-      Comentario
+      Comentario,
     ]),
   ],
   controllers: [
+    AppController,
     ExpedienteController,
     ActuacionController,
     AbogadoController,
-import { JuzgamientoController } from './controllers/juzgamiento.controller';
-  import { TerminosController } from './controllers/terminos.controller';
-
-@Module({
-    imports: [
-      TypeOrmModule.forRoot(databaseConfig),
-      TypeOrmModule.forFeature([
-        Expediente,
-        Actuacion,
-        Abogado,
-        Audiencia,
-        Requerimiento,
-        OrganismoControl,
-        Comentario
-      ]),
-    ],
-    controllers: [
-      ExpedienteController,
-      ActuacionController,
-      AbogadoController,
-      AbogadoStatsController,
-      AudienciaController,
-      RequerimientoController,
-      FilesController,
-      ComentarioController,
-      JuzgamientoController,
-      TerminosController
-    ],
-    providers: [
-      ExpedienteService,
-      ActuacionService,
-      AbogadoService,
-      AudienciaService,
-      RequerimientoService,
-      ComentarioService
-    ],
-  })
-  export class AppModule { }
-  imports: [
-  TypeOrmModule.forRoot(databaseConfig),
-  TypeOrmModule.forFeature([
-    Expediente,
-    Actuacion,
-    Abogado,
-    Audiencia,
-    Requerimiento,
-    OrganismoControl
-  ]),
-],
-  controllers: [
-  ExpedienteController,
-  ActuacionController,
-  AbogadoController,
-  AbogadoStatsController,
-  AudienciaController,
-  RequerimientoController,
-  FilesController
-],
+    AbogadoStatsController,
+    AudienciaController,
+    RequerimientoController,
+    FilesController,
+    ComentarioController,
+    JuzgamientoController,
+    TerminosController,
+  ],
   providers: [
-  ExpedienteService,
-  ActuacionService,
-  AbogadoService,
-  AudienciaService,
-  RequerimientoService
-],
+    AppService,
+    ExpedienteService,
+    ActuacionService,
+    AbogadoService,
+    AudienciaService,
+    RequerimientoService,
+    ComentarioService,
+  ],
 })
-export class AppModule { }
+export class AppModule {}
