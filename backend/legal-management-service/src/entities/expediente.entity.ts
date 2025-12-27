@@ -105,6 +105,12 @@ export class Expediente {
     @Column({ name: 'ley_aplicable', nullable: true, length: 100 })
     leyAplicable: string;
 
+    @Column({ name: 'tipo_falta', nullable: true, length: 50 })
+    tipoFalta: string;
+
+    @Column({ name: 'dependencia_investigado', nullable: true, length: 150 })
+    dependenciaInvestigado: string;
+
     @Column({ type: 'text', nullable: true })
     hechos: string;
 

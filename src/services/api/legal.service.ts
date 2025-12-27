@@ -4,7 +4,7 @@ import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
 // Dedicated client for Legal Management Service to ensure direct connection if needed
 // or we can reuse the logic if we align endpoints. 
 // Given the backend is at /api/legal/expedientes and strictly on port 3008:
-const BASE_URL = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3002';
+const BASE_URL = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
 
 export const legalApiClient = new ApiClient(BASE_URL);
 
@@ -59,6 +59,19 @@ export class LegalService {
         return legalApiClient.get<Expediente[]>('/api/legal/expedientes', filtros);
     }
 
+    async getJuzgamientoProcesos(): Promise<any[]> {
+        return legalApiClient.get<any[]>('/api/legal/juzgamiento');
+    }
+
+    async uploadJuzgamientoDocumento(radicado: string, file: File, tipo: string = 'DOCUMENTO', descripcion?: string): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('tipo', tipo);
+        if (descripcion) formData.append('descripcion', descripcion);
+
+        return legalApiClient.upload<any>(`/api/legal/juzgamiento/${radicado}/documentos`, formData);
+    }
+
     // Renaming getExpedienteById to getExpediente as per instruction, and adapting the signature
     async getExpediente(id: string): Promise<Expediente> {
         return legalApiClient.get<Expediente>(`/api/legal/expedientes/${id}`);
@@ -108,6 +121,34 @@ export class LegalService {
 
     async createAudiencia(data: any): Promise<any> {
         return legalApiClient.post<any>('/api/legal/audiencias', data);
+    }
+    async getAutos(radicado: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/autos/expediente/${radicado}`);
+    }
+
+    async createAuto(radicado: string, data: any, file: File): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('tipo', data.tipo);
+        formData.append('numero', data.numero);
+        formData.append('fechaAuto', data.fechaAuto);
+        formData.append('juzgado', data.juzgado);
+        formData.append('resumen', data.resumen);
+
+        return legalApiClient.upload<any>(`/api/legal/autos/${radicado}`, formData);
+    }
+
+    async updateAutoEstado(id: string, estado: string): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/autos/${id}/estado`, { estado });
+    }
+
+    async deleteAuto(id: string): Promise<any> {
+        return legalApiClient.delete<any>(`/api/legal/autos/${id}`);
+    }
+
+    getAutosDownloadUrl(radicado: string): string {
+        const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
+        return `${baseUrl}/api/legal/autos/download-all/${radicado}`;
     }
 }
 

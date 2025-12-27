@@ -27,6 +27,10 @@ import { RequerimientoService } from './services/requerimiento.service';
 import { JuzgamientoController } from './controllers/juzgamiento.controller';
 import { TerminosController } from './controllers/terminos.controller';
 
+import { Auto } from './entities/auto.entity';
+import { AutosController } from './controllers/autos.controller';
+import { AutosService } from './services/autos.service';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
@@ -37,7 +41,8 @@ import { TerminosController } from './controllers/terminos.controller';
       Audiencia,
       Requerimiento,
       OrganismoControl,
-      Comentario
+      Comentario,
+      Auto
     ]),
   ],
   controllers: [
@@ -50,7 +55,8 @@ import { TerminosController } from './controllers/terminos.controller';
     FilesController,
     ComentarioController,
     JuzgamientoController,
-    TerminosController
+    TerminosController,
+    AutosController
   ],
   providers: [
     ExpedienteService,
@@ -58,7 +64,8 @@ import { TerminosController } from './controllers/terminos.controller';
     AbogadoService,
     AudienciaService,
     RequerimientoService,
-    ComentarioService
+    ComentarioService,
+    AutosService
   ],
 })
 export class AppModule { }
