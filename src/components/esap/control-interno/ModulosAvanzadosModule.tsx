@@ -1,11 +1,10 @@
 /**
  * ============================================
- * MÓDULOS AVANZADOS (RF015-RF020) - WORLD CLASS
+ * MÓDULOS AVANZADOS (RF015, RF018, RF020) - WORLD CLASS
  * ============================================
  * 
  * Módulo consolidador de funcionalidades transversales:
  * - RF015: Roles y Permisos (RBAC)
- * - RF016: Reportes Ejecutivos
  * - RF018: Auditorías Especiales
  * - RF020: Auditoría de Cambios ⭐ NUEVO
  * 
@@ -16,20 +15,19 @@
  * ✅ Navegación intuitiva con breadcrumbs
  * ✅ Indicadores visuales de estado
  * ✅ Tooltips informativos
- * ✅ Shortcuts de teclado (Cmd 1-4)
+ * ✅ Shortcuts de teclado (Cmd 1-3)
  * ✅ Loading states profesionales
  * ✅ Panel de ayuda contextual
  * ✅ Responsive mejorado
  * ✅ Accesibilidad (ARIA labels)
  * 
- * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
+ * ÚLTIMA ACTUALIZACIÓN: 25 Diciembre 2025
  */
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield,
-  BarChart3,
   Zap,
   Settings,
   ChevronRight,
@@ -49,7 +47,6 @@ import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 // Importar módulos
 import { RolesYPermisos } from './RolesYPermisos';
 import { DashboardEjecutivoCIG } from './DashboardEjecutivoCIG';
-import { ReportesEjecutivosModule } from './ReportesEjecutivosModule';
 import { AuditoriasEspecialesModuleCompleto } from './AuditoriasEspecialesModuleCompleto';
 import { AuditoriaCambiosModule } from './AuditoriaCambiosModule';
 
@@ -57,7 +54,7 @@ import { AuditoriaCambiosModule } from './AuditoriaCambiosModule';
 // TIPOS Y CONFIGURACIÓN
 // ====================================
 
-type TabActiva = 'roles' | 'reportes' | 'especiales' | 'auditoria_cambios';
+type TabActiva = 'roles' | 'especiales' | 'auditoria_cambios';
 
 interface TabConfig {
   id: TabActiva;
@@ -84,16 +81,6 @@ const TABS_CONFIG: TabConfig[] = [
     requiresPermission: true
   },
   {
-    id: 'reportes',
-    label: 'Reportes Ejecutivos',
-    description: 'Generación de informes y dashboards analíticos',
-    icon: BarChart3,
-    color: '#8B5CF6',
-    bgColor: 'from-purple-500/10 to-purple-600/5',
-    badge: 'RF016',
-    shortcut: '2'
-  },
-  {
     id: 'especiales',
     label: 'Auditorías Especiales',
     description: 'Auditorías no programadas y casos extraordinarios',
@@ -101,7 +88,7 @@ const TABS_CONFIG: TabConfig[] = [
     color: '#F59E0B',
     bgColor: 'from-yellow-500/10 to-yellow-600/5',
     badge: 'RF018',
-    shortcut: '3'
+    shortcut: '2'
   },
   {
     id: 'auditoria_cambios',
@@ -111,7 +98,7 @@ const TABS_CONFIG: TabConfig[] = [
     color: '#65A30D',
     bgColor: 'from-lime-500/10 to-lime-600/5',
     badge: 'RF020',
-    shortcut: '4'
+    shortcut: '3'
   }
 ];
 
@@ -336,12 +323,6 @@ export function ModulosAvanzadosModule() {
                       <span>5 Roles Activos</span>
                     </div>
                   )}
-                  {tabActiva === 'reportes' && (
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <FileText className="w-4 h-4" />
-                      <span>6 Reportes Disponibles</span>
-                    </div>
-                  )}
                   {tabActiva === 'especiales' && (
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <TrendingUp className="w-4 h-4" />
@@ -384,7 +365,6 @@ export function ModulosAvanzadosModule() {
                 className="min-h-[600px]"
               >
                 {tabActiva === 'roles' && <RolesYPermisos />}
-                {tabActiva === 'reportes' && <DashboardEjecutivoCIG />}
                 {tabActiva === 'especiales' && <AuditoriasEspecialesModuleCompleto />}
                 {tabActiva === 'auditoria_cambios' && <AuditoriaCambiosModule />}
               </motion.div>

@@ -15,9 +15,9 @@ import { AuditModulePremium } from './AuditModulePremium';
 import { GraduatesManagementModule } from './GraduatesManagementModule';
 import { EnrollmentManagementModule } from './EnrollmentManagementModule';
 import { CommunityManagementModulePremium } from './CommunityManagementModulePremium';
-import { CommunityPostsModule } from './CommunityPostsModule';
-import { CommunityEventsModule } from './CommunityEventsModule';
-import { CommunityAnnouncementsModule } from './CommunityAnnouncementsModule';
+import { CommunityPostsModuleUnified } from './CommunityPostsModuleUnified';
+import { CommunityEventsModuleUnified } from './CommunityEventsModuleUnified';
+import { CommunityAnnouncementsModuleUnified } from './CommunityAnnouncementsModuleUnified';
 import { JobBoardManagementModulePremium } from './JobBoardManagementModulePremium';
 import { CertificateRequestsModule } from './CertificateRequestsModule';
 import { GraduateCertificatesWrapper } from './GraduateCertificatesWrapper';
@@ -55,6 +55,9 @@ import { ProfileModal } from './ProfileModal';
 // Importar módulo de Arquitectura Empresarial
 import { ArquitecturaEmpresarialModule } from '../arquitectura-empresarial/ArquitecturaEmpresarialModule';
 
+// ✅ NUEVO: Provider de Tour Guiado
+import { TourProvider } from './gestion-legal/design-system/TourContext';
+
 type ModuleView = 
   | 'dashboard'
   | 'users-persons' 
@@ -91,28 +94,45 @@ interface BackofficeAppProps {
     personId: string;
     module?: string;
     hasBothSystemsAccess?: boolean;
+    roles?: string[];
   };
   userRoles?: string[];
 }
 
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, userData, userRoles }: BackofficeAppProps = {}) {
   // Si el usuario tiene acceso restringido, abrir directamente su módulo específico
-  const initialModule = userData?.module === 'control-interno'
+  console.log('🚀 BackofficeApp: userData:', userData);
+  // const initialModule = userData?.module === 'control-interno'
+  //   ? 'control-interno'
+  //   : userData?.module === 'control-disciplinario'
+  //   ? 'control-disciplinario'
+  //   : userData?.module === 'registro-academico'
+  //   ? 'graduates'
+  //   : userData?.module === 'certificados-laborales' 
+  //   ? 'certificados-laborales' 
+  //   : userData?.module === 'arquitectura-empresarial'
+  //   ? 'dashboard' // Abrir en Dashboard Ejecutivo que muestra métricas de Arquitectura
+  //   : userData?.module === 'gestion-legal' 
+  //   ? 'gestion-legal'
+  //   : userData?.module === 'gestion-profesoral'
+  //   ? 'gestion-profesoral'
+  //   : 'dashboard';
+  const initialModule = userData?.roles?.includes('CONTROL_INTERNO') 
     ? 'control-interno'
-    : userData?.module === 'control-disciplinario'
+    : userData?.roles?.includes('CONTROL_DISCIPLINARIO')
     ? 'control-disciplinario'
-    : userData?.module === 'registro-academico'
+    : userData?.roles?.includes('REGISTRO_ACADEMICO')
     ? 'graduates'
-    : userData?.module === 'certificados-laborales' 
-    ? 'certificados-laborales' 
-    : userData?.module === 'arquitectura-empresarial'
-    ? 'dashboard' // Abrir en Dashboard Ejecutivo que muestra métricas de Arquitectura
-    : userData?.module === 'gestion-legal' 
+    : userData?.roles?.includes('COORDINADOR_CERT_LABORAL')
+    ? 'certificados-laborales'
+    : userData?.roles?.includes('GESTION_LEGAL')
     ? 'gestion-legal'
-    : userData?.module === 'gestion-profesoral'
+    : userData?.roles?.includes('GESTION_PROFESORAL')
     ? 'gestion-profesoral'
-    : 'dashboard';
+      : 'dashboard';
+
   const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
+  const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(''); // Nuevo: Guardar el módulo del sidebar
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false); // Estado para mobile sidebar
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
@@ -218,13 +238,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return <CommunityManagementModulePremium />;
       
       case 'community-posts':
-        return <CommunityPostsModule />;
+        return <CommunityPostsModuleUnified />;
       
       case 'community-events':
-        return <CommunityEventsModule />;
+        return <CommunityEventsModuleUnified />;
       
       case 'community-announcements':
-        return <CommunityAnnouncementsModule />;
+        return <CommunityAnnouncementsModuleUnified />;
       
       case 'job-board':
         return <JobBoardManagementModulePremium />;
@@ -274,98 +294,113 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   return (
     <NotificationsProvider>
-      <div className="min-h-screen bg-gray-50">
-      {/* Sidebar */}
-      <SidebarPremium
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        isCollapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        currentModule={currentModule}
-        onModuleChange={(sidebarModule) => {
-          const mappedModule = mapSidebarToModule(sidebarModule);
-          setCurrentModule(mappedModule);
-          setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
-        }}
-        certificatesPendingCount={certificatesPendingCount}
-        restrictedMode={
-          userData?.module === 'certificados-laborales' 
-            ? 'certificados-laborales' 
-            : userData?.module === 'arquitectura-empresarial'
-            ? 'arquitectura-empresarial'
-            : undefined
-        }
-      />
-
-      {/* Main Content */}
-      <div
-        className="transition-all duration-300 md:ml-20 lg:ml-20"
-        style={{
-          marginLeft: typeof window !== 'undefined' && window.innerWidth >= 768 
-            ? (sidebarCollapsed ? '80px' : '260px')
-            : '0px',
-        }}
-      >
-        {/* Top Bar */}
-        <TopBar
-          onToggleSidebar={() => {
-            // En mobile abre el sidebar, en desktop colapsa/expande
-            if (typeof window !== 'undefined' && window.innerWidth < 768) {
-              setSidebarOpen(!sidebarOpen);
-            } else {
-              setSidebarCollapsed(!sidebarCollapsed);
+      <TourProvider>
+        <div className="min-h-screen bg-gray-50">
+          {/* Sidebar */}
+          <SidebarPremium
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+            isCollapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+            currentModule={currentModule}
+            currentSidebarModule={currentSidebarModule}
+            onModuleChange={(sidebarModule) => {
+              console.log('🔍 Sidebar module clicked:', sidebarModule);
+              const mappedModule = mapSidebarToModule(sidebarModule);
+              console.log('📍 Mapped to:', mappedModule);
+              setCurrentSidebarModule(sidebarModule);
+              setCurrentModule(mappedModule);
+              setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
+            }}
+            certificatesPendingCount={certificatesPendingCount}
+            restrictedMode={
+              userData?.module === 'control-interno'
+                ? 'control-interno'
+                : userData?.module === 'control-disciplinario'
+                ? 'control-disciplinario'
+                : userData?.module === 'registro-academico'
+                ? 'registro-academico'
+                : userData?.module === 'certificados-laborales' 
+                ? 'certificados-laborales' 
+                : userData?.module === 'arquitectura-empresarial'
+                ? 'arquitectura-empresarial'
+                : userData?.module === 'gestion-legal'
+                ? 'gestion-legal'
+                : userData?.module === 'gestion-profesoral'
+                ? 'gestion-profesoral'
+                : undefined
             }
-          }}
-          density={density}
-          onDensityChange={setDensity}
-          onLogout={handleLogout}
-          onViewProfile={handleViewProfile}
-          userName={mockUser.name}
-          userEmail={mockUser.email}
-          userInitials={mockUser.initials}
-          onBackToSystemSelector={onBackToSystemSelector}
-          hasBothSystemsAccess={userData?.hasBothSystemsAccess}
-          onSystemChange={onSystemChange}
-          currentSystem="backoffice"
-          certificatesPendingCount={certificatesPendingCount}
-          restrictedMode={
-            userData?.module === 'control-interno'
-              ? 'control-interno'
-              : userData?.module === 'control-disciplinario'
-              ? 'control-disciplinario'
-              : userData?.module === 'registro-academico'
-              ? 'registro-academico'
-              : userData?.module === 'certificados-laborales' 
-              ? 'certificados-laborales' 
-              : userData?.module === 'arquitectura-empresarial'
-              ? 'arquitectura-empresarial'
-              : userData?.module === 'gestion-legal'
-              ? 'gestion-legal'
-              : userData?.module === 'gestion-profesoral'
-              ? 'gestion-profesoral'
-              : undefined
-          }
-        />
+          />
 
-        {/* Module Content - Con espacio superior para evitar superposición */}
-        <main className="p-4 md:p-6 lg:p-8 min-h-screen">
-          {renderModule()}
-        </main>
-      </div>
+          {/* Main Content - Con margen izquierdo para el sidebar */}
+          <div 
+            className={`transition-all duration-300 ${
+              sidebarCollapsed 
+                ? 'md:ml-[80px]' 
+                : 'md:ml-[260px] lg:ml-[220px] xl:ml-[240px] 2xl:ml-[260px]'
+            }`}
+          >
+            {/* Top Bar */}
+            <TopBar
+              onToggleSidebar={() => {
+                // En mobile abre el sidebar, en desktop colapsa/expande
+                if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                  setSidebarOpen(!sidebarOpen);
+                } else {
+                  setSidebarCollapsed(!sidebarCollapsed);
+                }
+              }}
+              density={density}
+              onDensityChange={setDensity}
+              onLogout={handleLogout}
+              onViewProfile={handleViewProfile}
+              userName={mockUser.name}
+              userEmail={mockUser.email}
+              userInitials={mockUser.initials}
+              onBackToSystemSelector={onBackToSystemSelector}
+              hasBothSystemsAccess={userData?.hasBothSystemsAccess}
+              onSystemChange={onSystemChange}
+              currentSystem="backoffice"
+              certificatesPendingCount={certificatesPendingCount}
+              restrictedMode={
+              userData?.module === 'control-interno'
+                ? 'control-interno'
+                : userData?.module === 'control-disciplinario'
+                ? 'control-disciplinario'
+                : userData?.module === 'registro-academico'
+                ? 'registro-academico'
+                : userData?.module === 'certificados-laborales' 
+                ? 'certificados-laborales' 
+                : userData?.module === 'arquitectura-empresarial'
+                ? 'arquitectura-empresarial'
+                : userData?.module === 'gestion-legal'
+                ? 'gestion-legal'
+                : userData?.module === 'gestion-profesoral'
+                ? 'gestion-profesoral'
+                : undefined
+            }
+            />
 
-      {/* Profile Modal */}
-      {showProfile && (
-        <ProfileModal
-          isOpen={showProfile}
-          onClose={() => setShowProfile(false)}
-          userName={mockUser.name}
-          userEmail={mockUser.email}
-          userRole="Super Administrador"
-          userInitials={mockUser.initials}
-          onLogout={handleLogout}
-        />
-      )}
-      </div>
+            {/* Module Content */}
+            <main className="p-4 md:p-6 lg:p-8 min-h-screen">
+              {renderModule()}
+            </main>
+          </div>
+
+          {/* Profile Modal */}
+          {showProfile && (
+            <ProfileModal
+              isOpen={showProfile}
+              onClose={() => setShowProfile(false)}
+              userName={mockUser.name}
+              userEmail={mockUser.email}
+              userRole="Super Administrador"
+              userInitials={mockUser.initials}
+              onLogout={handleLogout}
+            />
+          )}
+        </div>
+      </TourProvider>
     </NotificationsProvider>
   );
 }

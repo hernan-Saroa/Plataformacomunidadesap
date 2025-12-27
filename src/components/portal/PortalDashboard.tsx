@@ -16,7 +16,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RoleSelector } from './RoleSelector';
-import { UnifiedPortalViewV2 } from './UnifiedPortalViewV2';
+import { UnifiedPortalViewV5 } from './UnifiedPortalViewV5';
 import { AuthenticatedPortalNavbar } from './AuthenticatedPortalNavbar';
 
 interface PortalDashboardProps {
@@ -109,7 +109,7 @@ export function PortalDashboard({
           transition={{ duration: 0.3 }}
         >
           {activeRole === 'Estudiante' && (
-            <UnifiedPortalViewV2
+            <UnifiedPortalViewV5
               userName={userName}
               userEmail={userEmail}
               activeRole="Estudiante"
@@ -118,7 +118,7 @@ export function PortalDashboard({
           )}
 
           {activeRole === 'Docente' && (
-            <UnifiedPortalViewV2
+            <UnifiedPortalViewV5
               userName={userName}
               userEmail={userEmail}
               activeRole="Docente"
@@ -127,7 +127,7 @@ export function PortalDashboard({
           )}
 
           {activeRole === 'Graduado' && (
-            <UnifiedPortalViewV2
+            <UnifiedPortalViewV5
               userName={userName}
               userEmail={userEmail}
               activeRole="Graduado"
@@ -136,7 +136,7 @@ export function PortalDashboard({
           )}
 
           {activeRole === 'Administrativo' && (
-            <UnifiedPortalViewV2
+            <UnifiedPortalViewV5
               userName={userName}
               userEmail={userEmail}
               activeRole="Administrativo"
@@ -145,7 +145,7 @@ export function PortalDashboard({
           )}
 
           {activeRole === 'Aspirante' && (
-            <UnifiedPortalViewV2
+            <UnifiedPortalViewV5
               userName={userName}
               userEmail={userEmail}
               activeRole="Aspirante"

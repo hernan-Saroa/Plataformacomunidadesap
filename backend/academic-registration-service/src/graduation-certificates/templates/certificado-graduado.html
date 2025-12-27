@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificación de Título - ESAP</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 2cm;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #000;
+            background: white;
+        }
+
+        .certificado-container {
+            width: 100%;
+            max-width: 21.59cm;
+            margin: 0 auto;
+            padding: 1cm;
+            background: white;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1cm;
+            padding-bottom: 0.5cm;
+            border-bottom: 2px solid #000;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .escudo {
+            width: 60px;
+            height: 60px;
+        }
+
+        .header-text {
+            font-size: 11pt;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .codigo-validacion {
+            text-align: right;
+            font-size: 9pt;
+        }
+
+        .fecha-ciudad {
+            text-align: left;
+            margin-bottom: 1.5cm;
+            font-size: 11pt;
+        }
+
+        .titulo-principal {
+            text-align: center;
+            font-size: 16pt;
+            font-weight: bold;
+            margin: 1.5cm 0 1cm 0;
+            text-transform: uppercase;
+        }
+
+        .subtitulo {
+            text-align: center;
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 1.5cm;
+        }
+
+        .contenido {
+            text-align: justify;
+            margin-bottom: 1.5cm;
+            padding: 0 1cm;
+        }
+
+        .contenido p {
+            margin-bottom: 1em;
+        }
+
+        .datos-tabla {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5cm 0;
+        }
+
+        .datos-tabla td {
+            padding: 8px 12px;
+            border: 1px solid #000;
+            font-size: 11pt;
+        }
+
+        .datos-tabla td:first-child {
+            font-weight: bold;
+            background-color: #f5f5f5;
+            width: 40%;
+        }
+
+        .firma-seccion {
+            margin-top: 2cm;
+            text-align: center;
+        }
+
+        .firma-linea {
+            width: 300px;
+            margin: 0 auto 5px auto;
+            border-top: 2px solid #000;
+        }
+
+        .firma-nombre {
+            font-weight: bold;
+            font-size: 11pt;
+        }
+
+        .firma-cargo {
+            font-size: 10pt;
+            margin-top: 3px;
+        }
+
+        .pie-pagina {
+            margin-top: 1.5cm;
+            padding-top: 0.5cm;
+            border-top: 1px solid #ccc;
+            font-size: 9pt;
+            text-align: center;
+            color: #666;
+        }
+
+        .validacion-url {
+            margin-top: 1cm;
+            text-align: center;
+            font-size: 10pt;
+            font-weight: bold;
+        }
+
+        .qr-code {
+            text-align: center;
+            margin: 1cm 0;
+        }
+
+        .qr-code img {
+            width: 150px;
+            height: 150px;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+
+            .certificado-container {
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="certificado-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <svg class="escudo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="45" fill="#FFD700" stroke="#000" stroke-width="2"/>
+                    <text x="50" y="60" font-size="40" font-weight="bold" text-anchor="middle" fill="#000">E</text>
+                </svg>
+                <div class="header-text">
+                    FUNCIÓN PÚBLICA
+                </div>
+            </div>
+            <div class="codigo-validacion">
+                <strong>Código para validaciones:</strong> {{CODIGO_VALIDACION}}
+            </div>
+        </div>
+
+        <!-- Fecha y Ciudad -->
+        <div class="fecha-ciudad">
+            Bogotá, D.C., {{FECHA_EXPEDICION}}
+        </div>
+
+        <!-- Título Principal -->
+        <div class="titulo-principal">
+            Escuela Superior de Administración Pública - ESAP
+        </div>
+
+        <div class="subtitulo">
+            Verificación de título
+        </div>
+
+        <div style="text-align: center; font-weight: bold; margin-bottom: 1.5cm;">
+            A QUIEN INTERESE
+        </div>
+
+        <!-- Contenido -->
+        <div class="contenido">
+            <p>
+                De conformidad con los registros en el Sistema de Control Académico de la Escuela Superior de
+                Administración Pública -ESAP-, nos permitimos informar la verificación del siguiente título académico:
+            </p>
+        </div>
+
+        <!-- Tabla de Datos -->
+        <table class="datos-tabla">
+            <tr>
+                <td>Título otorgado:</td>
+                <td>{{TITULO_OTORGADO}}</td>
+            </tr>
+            <tr>
+                <td>Nombres y apellidos del egresado graduado:</td>
+                <td>{{NOMBRE_COMPLETO}}</td>
+            </tr>
+            <tr>
+                <td>Número de documento de identificación:</td>
+                <td>{{NUMERO_DOCUMENTO}}</td>
+            </tr>
+            <tr>
+                <td>Lugar y fecha de expedición del título:</td>
+                <td>{{LUGAR_FECHA_EXPEDICION}}</td>
+            </tr>
+            <tr>
+                <td>Registro – Folio - Libro:</td>
+                <td>{{REGISTRO_FOLIO}}</td>
+            </tr>
+        </table>
+
+        <!-- Cordialmente -->
+        <div class="contenido">
+            <p>Cordialmente,</p>
+        </div>
+
+        <!-- Firma -->
+        <div class="firma-seccion">
+            <div class="firma-linea"></div>
+            <div class="firma-nombre">{{FIRMANTE_NOMBRE}}</div>
+            <div class="firma-cargo">{{FIRMANTE_CARGO}}</div>
+        </div>
+
+        <!-- QR Code -->
+        <div class="qr-code">
+            <img src="{{QR_CODE_URL}}" alt="Código QR de Validación" />
+        </div>
+
+        <!-- URL de Validación -->
+        <div class="validacion-url">
+            Puede validar la autenticidad de esta verificación en<br/>
+            <a href="{{URL_VALIDACION}}">{{URL_VALIDACION}}</a>
+        </div>
+
+        <!-- Pie de Página -->
+        <div class="pie-pagina">
+            Sede Nacional - Bogotá - Calle 44 No. 53 - 37 CAN<br/>
+            PBX: 2202700 - Fax: (091) 2202790 Ext. 7205<br/>
+            Correo Electrónico: ventanillaunica@esap.edu.co<br/>
+            www.esap.edu.co
+        </div>
+    </div>
+</body>
+</html>
