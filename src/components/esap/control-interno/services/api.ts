@@ -25,15 +25,41 @@ import {
 
 // ==================== CONFIGURACIÓN ====================
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/control-interno';
+// Usar import.meta.env para Vite (no process.env que es de Node.js)
+// El backend NO tiene prefijo /esap, las rutas son directas: /auditorias, /documentos, etc.
+// Ruta del gateway: /control-institucional/api/v1/auditorias
+// Ruta directa: http://localhost:3007/auditorias
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    const base = import.meta.env.VITE_API_URL;
+    // Si ya incluye /auditorias o /esap, usarla tal cual
+    if (base.includes('/auditorias') || base.includes('/esap')) {
+      return base.replace(/\/esap.*$/, ''); // Remover /esap si existe
+    }
+    // Si incluye /control-institucional, agregar /api/v1
+    if (base.includes('/control-institucional')) {
+      return `${base}/api/v1`;
+    }
+    // Si es solo el gateway base, agregar el prefijo completo
+    return `${base}/control-institucional/api/v1`;
+  }
+  // Fallback: intentar directo al microservicio (sin prefijo)
+  return 'http://localhost:3007';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Helper para requests
 async function apiRequest<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    console.log('[API Request]', options?.method || 'GET', url);
+    
+    const response = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
         ...options?.headers,
@@ -41,20 +67,73 @@ async function apiRequest<T>(
       ...options,
     });
 
-    const data = await response.json();
+    console.log('[API Response]', response.status, response.statusText, response.headers.get('content-type'));
+
+    // Leer el texto de la respuesta una sola vez
+    const responseText = await response.text();
+    
+    // Verificar si la respuesta tiene contenido JSON
+    const contentType = response.headers.get('content-type');
+    const isJson = contentType && contentType.includes('application/json');
+    
+    let data: any = null;
+    
+    if (response.status === 204) {
+      // No Content sin body
+      data = null;
+    } else if (isJson || (response.status === 201 && responseText && responseText.trim())) {
+      // Intentar parsear JSON (incluyendo 201 Created que puede tener body)
+      if (responseText && responseText.trim()) {
+        try {
+          data = JSON.parse(responseText);
+          console.log('[API Response Data]', data);
+        } catch (parseError) {
+          console.error('[API Error] Error al parsear JSON:', parseError);
+          console.error('[API Error] Response text (primeros 500 chars):', responseText.substring(0, 500));
+          return {
+            success: false,
+            error: 'Error al parsear respuesta del servidor (la respuesta no es JSON válido)',
+          };
+        }
+      } else {
+        data = null;
+      }
+    } else if (responseText) {
+      // Respuesta no es JSON (probablemente HTML de error)
+      console.error('[API Error] Respuesta no es JSON. Status:', response.status);
+      console.error('[API Error] Content-Type:', contentType);
+      console.error('[API Error] Response preview:', responseText.substring(0, 200));
+      
+      // Si es HTML, probablemente es un error de routing
+      if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
+        return {
+          success: false,
+          error: `Error de routing: La URL ${url} no existe o está mal configurada. El servidor devolvió HTML en lugar de JSON.`,
+        };
+      }
+      
+      return {
+        success: false,
+        error: responseText || `Error HTTP ${response.status}`,
+      };
+    }
 
     if (!response.ok) {
       return {
         success: false,
-        error: data.error || 'Error en la petición',
+        error: data?.error || data?.message || `Error HTTP ${response.status}`,
       };
     }
 
-    return {
+    const result = {
       success: true,
-      data: data,
+      data: data?.data || data,
     };
+    console.log('[apiRequest] Resultado final:', result);
+    return result;
   } catch (error) {
+    console.error('[API Error] Error en fetch:', error);
+    console.error('[API Error] URL intentada:', url);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Error desconocido',
@@ -124,7 +203,7 @@ export const auditoriasApi = {
    */
   update: async (id: string, data: Partial<Auditoria>): Promise<ApiResponse<Auditoria>> => {
     return apiRequest<Auditoria>(`/auditorias/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   },
@@ -155,6 +234,93 @@ export const auditoriasApi = {
     return apiRequest<Auditoria>(`/auditorias/${id}/progreso`, {
       method: 'PATCH',
       body: JSON.stringify({ progreso }),
+    });
+  },
+
+  // ============ NOTAS DE AUDITORÍA ============
+
+  /**
+   * Obtener todas las notas de una auditoría
+   */
+  getNotas: async (auditoriaId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/auditorias/${auditoriaId}/notas`);
+  },
+
+  /**
+   * Crear una nueva nota
+   */
+  createNota: async (auditoriaId: string, data: {
+    contenido: string;
+    categoria: string;
+    importante?: boolean;
+  }): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/${auditoriaId}/notas`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Actualizar una nota existente
+   */
+  updateNota: async (auditoriaId: string, notaId: string, data: {
+    contenido?: string;
+    categoria?: string;
+    importante?: boolean;
+  }): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/${auditoriaId}/notas/${notaId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Eliminar una nota
+   */
+  deleteNota: async (auditoriaId: string, notaId: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>(`/auditorias/${auditoriaId}/notas/${notaId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Marcar o desmarcar una nota como importante
+   */
+  toggleImportanteNota: async (auditoriaId: string, notaId: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/${auditoriaId}/notas/${notaId}/importante`, {
+      method: 'PATCH',
+    });
+  },
+
+  // ============ APROBACIÓN DE AUDITORÍA ============
+
+  /**
+   * Aprobar una auditoría
+   */
+  aprobar: async (auditoriaId: string, comentarios?: string): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${auditoriaId}/aprobar`, {
+      method: 'POST',
+      body: JSON.stringify({ comentarios }),
+    });
+  },
+
+  /**
+   * Rechazar una auditoría
+   */
+  rechazar: async (auditoriaId: string, justificacion: string): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${auditoriaId}/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify({ justificacion }),
+    });
+  },
+
+  /**
+   * Solicitar modificación de una auditoría
+   */
+  solicitarModificacion: async (auditoriaId: string, observaciones: string): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${auditoriaId}/modificacion`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
     });
   },
 };

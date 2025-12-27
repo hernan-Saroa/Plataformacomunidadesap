@@ -11,13 +11,14 @@
  * - Preview del archivo seleccionado
  */
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
   X, Upload, FileText, Clock, FileSearch, ClipboardCheck
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
+import { controlInternoService } from '../../../services/api/controlInternoService';
 
 // ============ TIPOS ============
 
@@ -32,11 +33,12 @@ interface DocumentoExpediente {
 interface ModalCargarDocumentoProps {
   onClose: () => void;
   onGuardar: (documento: Partial<DocumentoExpediente>) => void;
+  auditoriaId?: string;
 }
 
 // ============ COMPONENTE ============
 
-export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocumentoProps) {
+export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalCargarDocumentoProps) {
   const [nombreDocumento, setNombreDocumento] = useState('');
   const [tipoDocumento, setTipoDocumento] = useState<DocumentoExpediente['tipo']>('Oficio');
   const [faseDocumento, setFaseDocumento] = useState<DocumentoExpediente['fase']>('planeacion');
@@ -44,30 +46,109 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
   const [archivoSeleccionado, setArchivoSeleccionado] = useState<File | null>(null);
   const [progresoCarga, setProgresoCarga] = useState(0);
   const [cargando, setCargando] = useState(false);
-  const [fileInputRef, setFileInputRef] = useState<HTMLInputElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const validarArchivo = (file: File): boolean => {
+    // Validar tamaño (máx 10 MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Archivo demasiado grande', {
+        description: 'El tamaño máximo permitido es 10 MB',
+      });
+      return false;
+    }
+
+    // Validar tipo de archivo
+    const tiposPermitidos = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+    ];
+
+    if (!tiposPermitidos.includes(file.type) && !file.name.match(/\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png)$/i)) {
+      toast.error('Tipo de archivo no permitido', {
+        description: 'Solo se permiten: PDF, Word, Excel, JPG, PNG',
+      });
+      return false;
+    }
+
+    return true;
+  };
+
+  const procesarArchivo = (file: File) => {
+    if (!validarArchivo(file)) {
+      return;
+    }
+
+    setArchivoSeleccionado(file);
+    if (!nombreDocumento) {
+      // Auto-completar nombre del documento sin extensión
+      setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
+    }
+  };
 
   const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validar tamaño (máx 10 MB)
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error('Archivo demasiado grande', {
-          description: 'El tamaño máximo permitido es 10 MB',
-        });
-        return;
-      }
-
-      setArchivoSeleccionado(file);
-      if (!nombreDocumento) {
-        // Auto-completar nombre del documento sin extensión
-        setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
-      }
+      procesarArchivo(file);
+    }
+    // Limpiar el input para permitir seleccionar el mismo archivo de nuevo
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
   const handleClickSeleccionar = () => {
-    if (fileInputRef) {
-      fileInputRef.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!cargando && e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Solo cambiar el estado si realmente salimos del área (no de un hijo)
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Cambiar el cursor para indicar que se puede soltar
+    if (e.dataTransfer.types.includes('Files')) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    if (cargando) return;
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      procesarArchivo(file);
+    } else {
+      toast.error('No se pudo obtener el archivo', {
+        description: 'Por favor, intente nuevamente',
+      });
     }
   };
 
@@ -96,6 +177,20 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
     });
   };
 
+  // Mapear tipo de documento del frontend al backend
+  const mapearTipoDocumento = (tipo: DocumentoExpediente['tipo']): string => {
+    const mapeo: Record<string, string> = {
+      'Oficio': 'oficio_anuncio',
+      'Carta': 'carta_compromiso',
+      'Acta': 'acta_reunion_apertura',
+      'Informe': 'informe_final',
+      'Evidencia': 'evidencia_hallazgo',
+      'Lista-Chequeo': 'lista_chequeo',
+      'Otro': 'otro',
+    };
+    return mapeo[tipo] || 'otro';
+  };
+
   const handleGuardar = async () => {
     if (!archivoSeleccionado || !nombreDocumento) {
       toast.error('Faltan datos requeridos', {
@@ -104,27 +199,55 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
       return;
     }
 
+    if (!auditoriaId) {
+      toast.error('Error', {
+        description: 'No se ha especificado la auditoría',
+      });
+      return;
+    }
+
     setCargando(true);
     setProgresoCarga(0);
 
     try {
-      // Simular carga del archivo
-      await simularCarga();
+      // Subir documento a la base de datos con progreso
+      const documentoSubido = await controlInternoService.createDocumento(
+        archivoSeleccionado,
+        {
+          nombre: nombreDocumento,
+          descripcion: descripcion || undefined,
+          tipoDocumento: mapearTipoDocumento(tipoDocumento),
+          etapa: faseDocumento,
+          auditoriaId: auditoriaId,
+          subidoPor: 'Usuario Actual', // TODO: Obtener del contexto de autenticación
+        },
+        (progress) => {
+          setProgresoCarga(progress);
+        }
+      );
 
+      // El documento ya viene del backend con todos los datos
       const nuevoDocumento: Partial<DocumentoExpediente> = {
-        nombre: nombreDocumento,
+        nombre: documentoSubido.nombre || nombreDocumento,
         tipo: tipoDocumento,
         fase: faseDocumento,
         size: formatFileSize(archivoSeleccionado.size),
-        descripcion,
+        descripcion: documentoSubido.descripcion || descripcion,
       };
 
+      toast.success('Documento cargado exitosamente', {
+        description: `${nombreDocumento} agregado al expediente`,
+      });
+
       onGuardar(nuevoDocumento);
+      setCargando(false);
     } catch (error) {
+      console.error('Error al cargar documento:', error);
       toast.error('Error al cargar el documento', {
-        description: 'Por favor, intente nuevamente',
+        description: error instanceof Error ? error.message : 'Por favor, intente nuevamente',
       });
       setCargando(false);
+      setProgresoCarga(0);
     }
   };
 
@@ -178,7 +301,7 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
             </label>
             <input
               type="file"
-              ref={setFileInputRef}
+              ref={fileInputRef}
               onChange={handleSeleccionarArchivo}
               accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
               className="hidden"
@@ -186,11 +309,19 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
             />
             <div
               onClick={handleClickSeleccionar}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
               className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
-                archivoSeleccionado
+                cargando
+                  ? 'opacity-50 cursor-not-allowed border-gray-300 bg-gray-50'
+                  : archivoSeleccionado
                   ? 'border-green-300 bg-green-50'
+                  : isDragging
+                  ? 'border-blue-500 bg-blue-100 scale-105'
                   : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50'
-              } ${cargando ? 'opacity-50 cursor-not-allowed' : ''}`}
+              }`}
             >
               {archivoSeleccionado ? (
                 <div className="space-y-2">
@@ -206,6 +337,9 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
                       onClick={(e) => {
                         e.stopPropagation();
                         setArchivoSeleccionado(null);
+                        if (fileInputRef.current) {
+                          fileInputRef.current.value = '';
+                        }
                       }}
                       className="text-xs text-blue-600 hover:text-blue-700"
                     >
@@ -215,11 +349,19 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto">
-                    <Upload className="w-8 h-8 text-gray-400" />
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto transition-colors ${
+                    isDragging ? 'bg-blue-200' : 'bg-gray-200'
+                  }`}>
+                    <Upload className={`w-8 h-8 transition-colors ${
+                      isDragging ? 'text-blue-600' : 'text-gray-400'
+                    }`} />
                   </div>
-                  <p className="text-sm text-gray-700">
-                    Haz clic para seleccionar o arrastra el archivo aquí
+                  <p className={`text-sm transition-colors ${
+                    isDragging ? 'text-blue-700 font-medium' : 'text-gray-700'
+                  }`}>
+                    {isDragging 
+                      ? 'Suelta el archivo aquí' 
+                      : 'Haz clic para seleccionar o arrastra el archivo aquí'}
                   </p>
                   <p className="text-xs text-gray-500">
                     PDF, Word, Excel, Imágenes (Máx. 10 MB)

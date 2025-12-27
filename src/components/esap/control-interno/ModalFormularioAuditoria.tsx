@@ -171,7 +171,7 @@ export function ModalFormularioAuditoria({
 }: ModalFormularioAuditoriaProps) {
   // Estado del formulario
   const [formData, setFormData] = useState<AuditoriaFormData>({
-    tipoAuditoria: initialData?.tipoAuditoria || 'regular',
+    tipoAuditoria: initialData?.tipoAuditoria || 'Gestión',
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
@@ -202,7 +202,7 @@ export function ModalFormularioAuditoria({
       
       setFormData({
         codigo: initialData.codigo || '',
-        tipoAuditoria: initialData.tipoAuditoria || 'regular',
+        tipoAuditoria: initialData.tipoAuditoria || 'Gestión',
         titulo: initialData.titulo || '',
         descripcion: initialData.descripcion || '',
         territorial: initialData.territorial || '',
@@ -296,7 +296,9 @@ export function ModalFormularioAuditoria({
           ? '✅ Auditoría creada exitosamente'
           : '✅ Auditoría actualizada exitosamente'
       );
-      handleClose();
+      // Cerrar directamente sin mostrar modal de confirmación
+      setHasChanges(false);
+      onClose();
     } catch (error) {
       toast.error('Error al guardar la auditoría');
       console.error(error);
@@ -306,12 +308,6 @@ export function ModalFormularioAuditoria({
   };
 
   const handleClose = () => {
-    if (hasChanges) {
-      const confirm = window.confirm(
-        '¿Estás seguro de que deseas salir? Los cambios no guardados se perderán.'
-      );
-      if (!confirm) return;
-    }
     onClose();
   };
 
@@ -435,56 +431,30 @@ export function ModalFormularioAuditoria({
                       {/* Tipo de Auditoría */}
                       <FieldWrapper
                         label="Tipo de Auditoría"
+                        error={touched.tipoAuditoria ? getFieldError(errors, 'Tipo de auditoría') : null}
                         required
                         helpText="Seleccione el tipo de auditoría a realizar"
                       >
-                        <div className="grid grid-cols-3 gap-3">
-                          <button
-                            type="button"
-                            onClick={() => handleChange('tipoAuditoria', 'regular')}
-                            className={`
-                              px-4 py-3 rounded-lg border-2 transition-all duration-200
-                              flex items-center justify-center gap-2 font-medium
-                              ${formData.tipoAuditoria === 'regular'
-                                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                              }
-                            `}
-                          >
-                            <Shield className="w-5 h-5" />
-                            Regular
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleChange('tipoAuditoria', 'territorial')}
-                            className={`
-                              px-4 py-3 rounded-lg border-2 transition-all duration-200
-                              flex items-center justify-center gap-2 font-medium
-                              ${formData.tipoAuditoria === 'territorial'
-                                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                              }
-                            `}
-                          >
-                            <Target className="w-5 h-5" />
-                            Territorial
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleChange('tipoAuditoria', 'especial')}
-                            className={`
-                              px-4 py-3 rounded-lg border-2 transition-all duration-200
-                              flex items-center justify-center gap-2 font-medium
-                              ${formData.tipoAuditoria === 'especial'
-                                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                              }
-                            `}
-                          >
-                            <AlertCircle className="w-5 h-5" />
-                            Especial
-                          </button>
-                        </div>
+                        <select
+                          value={formData.tipoAuditoria}
+                          onChange={(e) => handleChange('tipoAuditoria', e.target.value)}
+                          onBlur={() => handleBlur('tipoAuditoria')}
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                            hasFieldError(errors, 'Tipo de auditoría') && touched.tipoAuditoria
+                              ? 'border-red-500 focus:ring-red-500'
+                              : 'border-gray-300'
+                          }`}
+                        >
+                          <option value="">Seleccione un tipo...</option>
+                          <option value="Gestión">Gestión</option>
+                          <option value="Control Interno">Control Interno</option>
+                          <option value="Académica">Académica</option>
+                          <option value="RRHH">RRHH</option>
+                          <option value="Financiera">Financiera</option>
+                          <option value="TI">TI</option>
+                          <option value="Cumplimiento">Cumplimiento</option>
+                          <option value="Operacional">Operacional</option>
+                        </select>
                       </FieldWrapper>
 
                       {/* Título */}

@@ -67,6 +67,7 @@ import { ModalNotasAuditoria } from './ModalNotasAuditoria';
 import { ModalHistorialAuditoria } from './ModalHistorialAuditoria';
 import { ModalAprobacionAuditoria } from './ModalAprobacionAuditoria';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
+import { ModalFormularioAuditoria } from './ModalFormularioAuditoria';
 import { ModalAsignarAuditorIndividual } from './ModalAsignarAuditorIndividual';
 import { ModalCambiarEstadoAuditoria } from './ModalCambiarEstadoAuditoria';
 import { ModalConfirmacionAccion } from './ModalConfirmacionAccion';
@@ -155,10 +156,17 @@ interface Auditoria {
   // ✅ INTEGRACIÓN: Validación de actividades del proceso de auditoría
   actividadesCompletas?: boolean; // ¿Completó las 3 actividades de la fase actual?
   actividadesPendientes?: number; // Número de actividades pendientes (0-3)
+  
+  // Campos adicionales del formulario
+  alcance?: string; // Alcance de la auditoría
 }
 
-// ============ DATOS DE PRUEBA ============
+// ============ SERVICIO API ============
+import { controlInternoService } from '../../../services/api/controlInternoService';
+import { auditoriasApi } from './services/api';
 
+// ============ DATOS DE PRUEBA (ELIMINADOS - AHORA SE OBTIENEN DE LA BD) ============
+/*
 const AUDITORIAS_MOCK: Auditoria[] = [
   // PLANEACIÓN (3)
   {
@@ -757,6 +765,47 @@ const AUDITORIAS_MOCK: Auditoria[] = [
     equipoAuditores: ['Sandra Morales', 'Claudia Martínez']
   }
 ];
+
+// ============ CONFIGURACIÓN DE COLUMNAS ============
+
+const COLUMNAS_KANBAN = [
+  {
+    id: 'Planeación',
+    titulo: 'Planeación',
+    count: 3,
+    icono: <ClipboardCheck className="w-4 h-4" style={{ color: '#003DA5' }} />,
+    diasEstimados: 30
+  },
+  {
+    id: 'Ejecución',
+    titulo: 'Ejecución',
+    count: 3,
+    icono: <Target className="w-4 h-4" style={{ color: '#003DA5' }} />,
+    diasEstimados: 60
+  },
+  {
+    id: 'Comunicación',
+    titulo: 'Comunicación',
+    count: 2,
+    icono: <MessageSquare className="w-4 h-4" style={{ color: '#003DA5' }} />,
+    diasEstimados: 15
+  },
+  {
+    id: 'Seguimiento',
+    titulo: 'Seguimiento',
+    count: 2,
+    icono: <History className="w-4 h-4" style={{ color: '#003DA5' }} />,
+    diasEstimados: 30
+  },
+  {
+    id: 'Finalizada',
+    titulo: 'Finalizada',
+    count: 3,
+    icono: <CheckCircle className="w-4 h-4" style={{ color: '#003DA5' }} />,
+    diasEstimados: 0
+  }
+];
+*/
 
 // ============ CONFIGURACIÓN DE COLUMNAS ============
 
@@ -1706,7 +1755,9 @@ function ColumnaKanban({
 // ============ COMPONENTE PRINCIPAL ============
 
 export function GestionAuditoriasKanbanSimple() {
-  const [auditorias, setAuditorias] = useState<Auditoria[]>(AUDITORIAS_MOCK);
+  const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [vistaActiva, setVistaActiva] = useState<'kanban' | 'lista'>('kanban');
   const [filtroTerritorial, setFiltroTerritorial] = useState<string>('Todas las Territoriales');
   const [busqueda, setBusqueda] = useState('');
@@ -1725,6 +1776,39 @@ export function GestionAuditoriasKanbanSimple() {
   const [tipoAccionConfirmacion, setTipoAccionConfirmacion] = useState<'archivar' | 'eliminar'>('archivar');
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
+
+  // Función para cargar auditorías desde la API
+  const cargarAuditorias = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await controlInternoService.getAuditoriasKanban();
+      console.log('[cargarAuditorias] Datos recibidos del backend:', data);
+      // Verificar que los datos incluyan alcance y riesgoKanban
+      if (data && data.length > 0) {
+        console.log('[cargarAuditorias] Primera auditoría:', {
+          codigo: data[0].codigo,
+          alcance: (data[0] as any).alcance,
+          riesgo: (data[0] as any).riesgo,
+          riesgoKanban: (data[0] as any).riesgoKanban
+        });
+      }
+      setAuditorias(data as Auditoria[]);
+    } catch (err: any) {
+      console.error('Error al cargar auditorías:', err);
+      setError(err.message || 'Error al cargar las auditorías');
+      toast.error('Error al cargar auditorías', {
+        description: err.message || 'No se pudieron cargar las auditorías desde el servidor'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cargar auditorías al montar el componente
+  useEffect(() => {
+    cargarAuditorias();
+  }, []);
 
   // Toggle colapso de tarjeta individual
   const toggleTarjetaColapsada = (id: string) => {
@@ -1787,19 +1871,61 @@ export function GestionAuditoriasKanbanSimple() {
     setModalAprobacionOpen(true);
   };
 
-  const handleAprobado = (auditoria: Auditoria, comentarios: string) => {
-    console.log('Aprobado:', auditoria, comentarios);
-    // Aquí iría la lógica real de aprobación
+  const handleAprobado = async (auditoria: Auditoria, comentarios: string) => {
+    try {
+      const response = await auditoriasApi.aprobar(auditoria.id, comentarios);
+      if (response.success) {
+        toast.success(`✅ Auditoría ${auditoria.codigo} aprobada exitosamente`);
+        // Recargar las auditorías para reflejar el cambio
+        await cargarAuditorias();
+        setModalAprobacionOpen(false);
+      } else {
+        throw new Error(response.error || 'Error al aprobar la auditoría');
+      }
+    } catch (error) {
+      console.error('Error al aprobar auditoría:', error);
+      toast.error('Error al aprobar auditoría', {
+        description: error instanceof Error ? error.message : 'No se pudo aprobar la auditoría',
+      });
+    }
   };
 
-  const handleRechazado = (auditoria: Auditoria, justificacion: string) => {
-    console.log('Rechazado:', auditoria, justificacion);
-    // Aquí iría la lógica real de rechazo
+  const handleRechazado = async (auditoria: Auditoria, justificacion: string) => {
+    try {
+      const response = await auditoriasApi.rechazar(auditoria.id, justificacion);
+      if (response.success) {
+        toast.error(`❌ Auditoría ${auditoria.codigo} rechazada`);
+        // Recargar las auditorías para reflejar el cambio
+        await cargarAuditorias();
+        setModalAprobacionOpen(false);
+      } else {
+        throw new Error(response.error || 'Error al rechazar la auditoría');
+      }
+    } catch (error) {
+      console.error('Error al rechazar auditoría:', error);
+      toast.error('Error al rechazar auditoría', {
+        description: error instanceof Error ? error.message : 'No se pudo rechazar la auditoría',
+      });
+    }
   };
 
-  const handleModificacion = (auditoria: Auditoria, observaciones: string) => {
-    console.log('Modificación:', auditoria, observaciones);
-    // Aquí iría la lógica real de solicitud de modificación
+  const handleModificacion = async (auditoria: Auditoria, observaciones: string) => {
+    try {
+      const response = await auditoriasApi.solicitarModificacion(auditoria.id, observaciones);
+      if (response.success) {
+        toast.warning(`⚠️ Modificación solicitada para ${auditoria.codigo}`);
+        // Recargar las auditorías para reflejar el cambio
+        await cargarAuditorias();
+        setModalAprobacionOpen(false);
+      } else {
+        throw new Error(response.error || 'Error al solicitar modificación');
+      }
+    } catch (error) {
+      console.error('Error al solicitar modificación:', error);
+      toast.error('Error al solicitar modificación', {
+        description: error instanceof Error ? error.message : 'No se pudo solicitar la modificación',
+      });
+    }
   };
 
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
@@ -1827,43 +1953,169 @@ export function GestionAuditoriasKanbanSimple() {
   const handleActualizarAuditoria = async (data: AuditoriaFormData) => {
     if (!auditoriaParaEditar) return;
     
-    console.log('Actualizar auditoría:', auditoriaParaEditar.id, data);
-    
-    // Simulación de delay (para testing de estados de carga)
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Actualizar en el estado
-    setAuditorias(prev =>
-      prev.map(aud =>
-        aud.id === auditoriaParaEditar.id
-          ? {
-              ...aud,
-              titulo: data.titulo,
-              descripcion: data.descripcion,
-              territorial: data.territorial,
-              riesgo: data.riesgo as RiesgoAuditoria,
-              fechaInicio: data.fechaInicio,
-              fechaFin: data.fechaFin,
-              objetivos: data.objetivos || []
-            }
-          : aud
-      )
-    );
-    
-    toast.success('Auditoría actualizada correctamente', {
-      description: `"${data.titulo}" ha sido modificada exitosamente`
-    });
-    
-    setModalEdicionOpen(false);
-    setAuditoriaParaEditar(null);
+    try {
+      // Mapear datos del formulario al DTO del backend
+      // IMPORTANTE: Incluir todos los campos, incluso si están vacíos, para que se actualicen correctamente
+      const updateData: any = {
+        nombre: data.titulo || '',
+        descripcion: data.descripcion || '', // Asegurar que siempre se envíe, incluso si está vacío
+        territorial: data.territorial || '',
+        // Asegurar que riesgoKanban siempre se envíe (Bajo, Medio, Alto)
+        riesgoKanban: (data.riesgo || 'Medio') as any,
+        objetivos: data.objetivos || [],
+        // Asegurar que alcance siempre se envíe, incluso si está vacío
+        alcance: data.alcance !== undefined ? data.alcance : '',
+      };
+
+      // Mapear tipo de auditoría - usar el valor directamente si es uno de los tipos válidos
+      // Los tipos válidos son: 'Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional'
+      if (data.tipoAuditoria) {
+        const tiposValidos = ['Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional'];
+        // Si el tipo es válido, usarlo directamente; si no, usar 'Gestión' como default
+        if (tiposValidos.includes(data.tipoAuditoria)) {
+          updateData.tipo = data.tipoAuditoria;
+        } else {
+          // Si viene como 'regular', 'territorial', 'especial', usar 'Gestión' como default
+          updateData.tipo = 'Gestión';
+        }
+      } else {
+        // Si no hay tipo, usar 'Gestión' como default
+        updateData.tipo = 'Gestión';
+      }
+
+      // Convertir fechas a formato ISO 8601 (YYYY-MM-DD)
+      if (data.fechaInicio) {
+        updateData.fechaInicio = convertirFechaAISO(data.fechaInicio);
+      }
+
+      if (data.fechaFin) {
+        updateData.fechaFin = convertirFechaAISO(data.fechaFin);
+      }
+
+      // Mapear IDs de auditores
+      // El formulario puede enviar el nombre o el ID
+      // Si es un nombre, necesitamos buscar el ID en la base de datos
+      // Por ahora, si viene como string que no es numérico, lo ignoramos
+      // TODO: Implementar búsqueda de ID por nombre si es necesario
+      
+      if (data.auditorLider) {
+        // Intentar convertir a número si es posible
+        const auditorLiderId = typeof data.auditorLider === 'string' && !isNaN(Number(data.auditorLider))
+          ? parseInt(data.auditorLider, 10)
+          : null;
+        
+        // Si no es numérico, podría ser un nombre - por ahora lo ignoramos
+        // En el futuro, buscar el ID en la BD por nombre
+        if (auditorLiderId && auditorLiderId > 0) {
+          updateData.auditorLiderId = auditorLiderId;
+        }
+      }
+
+      if (data.auditorAsignado) {
+        // Intentar convertir a número si es posible
+        const auditorAsignadoId = typeof data.auditorAsignado === 'string' && !isNaN(Number(data.auditorAsignado))
+          ? parseInt(data.auditorAsignado, 10)
+          : null;
+        
+        // Si no es numérico, podría ser un nombre - por ahora lo ignoramos
+        // En el futuro, buscar el ID en la BD por nombre
+        if (auditorAsignadoId && auditorAsignadoId > 0) {
+          updateData.auditorAsignadoId = auditorAsignadoId;
+        }
+      }
+
+      // Log para depuración
+      console.log('[handleActualizarAuditoria] Datos a enviar:', updateData);
+      console.log('[handleActualizarAuditoria] Alcance:', updateData.alcance);
+      console.log('[handleActualizarAuditoria] RiesgoKanban:', updateData.riesgoKanban);
+      
+      // Actualizar en el backend usando TypeORM
+      await controlInternoService.updateAuditoria(auditoriaParaEditar.id, updateData);
+      
+      // Recargar auditorías desde la BD para ver los cambios reales
+      await cargarAuditorias();
+      
+      toast.success('Auditoría actualizada correctamente', {
+        description: `"${data.titulo}" ha sido modificada exitosamente en la base de datos`
+      });
+      
+      setModalEdicionOpen(false);
+      setAuditoriaParaEditar(null);
+    } catch (err: any) {
+      console.error('Error al actualizar auditoría:', err);
+      toast.error('Error al actualizar auditoría', {
+        description: err.message || 'No se pudo actualizar la auditoría en el servidor'
+      });
+    }
   };
 
-  const handleDrop = (item: Auditoria, nuevoEstado: EstadoAuditoria) => {
+  // Helper para convertir fecha DD/MM/YYYY a YYYY-MM-DD (para input date)
+  const convertirFechaDDMMYYYYaISO = (fecha: string): string => {
+    if (!fecha) return '';
+    
+    // Si ya está en formato ISO (YYYY-MM-DD), devolver tal cual
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return fecha;
+    }
+    
+    // Si está en formato DD/MM/YYYY, convertir
+    if (fecha.includes('/')) {
+      const partes = fecha.split('/');
+      if (partes.length === 3) {
+        const [dia, mes, anio] = partes;
+        return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+      }
+    }
+    
+    return fecha;
+  };
+
+  // Helper para convertir fecha a formato ISO 8601 (YYYY-MM-DD)
+  const convertirFechaAISO = (fecha: string | Date): string => {
+    if (!fecha) return '';
+    
+    // Si es un objeto Date, convertir a ISO
+    if (fecha instanceof Date) {
+      return fecha.toISOString().split('T')[0];
+    }
+    
+    // Si es string y ya está en formato ISO (YYYY-MM-DD), devolver tal cual
+    if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return fecha;
+    }
+    
+    // Si es string y está en formato DD/MM/YYYY, convertir
+    if (typeof fecha === 'string' && fecha.includes('/')) {
+      const partes = fecha.split('/');
+      if (partes.length === 3) {
+        const [dia, mes, anio] = partes;
+        return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+      }
+    }
+    
+    // Intentar parsear como fecha y convertir
+    if (typeof fecha === 'string') {
+      try {
+        const fechaDate = new Date(fecha);
+        if (!isNaN(fechaDate.getTime())) {
+          return fechaDate.toISOString().split('T')[0];
+        }
+      } catch (e) {
+        console.warn('No se pudo convertir la fecha:', fecha);
+      }
+    }
+    
+    // Si no se puede convertir, devolver tal cual (puede causar error, pero es mejor que fallar silenciosamente)
+    return typeof fecha === 'string' ? fecha : '';
+  };
+
+  const handleDrop = async (item: Auditoria, nuevoEstado: EstadoAuditoria) => {
     if (item.estado === nuevoEstado) return;
 
     const estadoAnterior = item.estado;
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
     
+    // Actualizar estado localmente primero (optimistic update)
     setAuditorias(prev =>
       prev.map(aud =>
         aud.id === item.id
@@ -1877,25 +2129,46 @@ export function GestionAuditoriasKanbanSimple() {
       )
     );
 
-    // Registrar en trazabilidad/historial
-    const eventoTrazabilidad = {
-      id: `evt-${Date.now()}`,
-      tipo: 'cambio-estado' as const,
-      titulo: `Cambio de estado: ${estadoAnterior} → ${nuevoEstado}`,
-      descripcion: `La auditoría fue movida de "${estadoAnterior}" a "${nuevoEstado}" mediante arrastrar y soltar`,
-      usuario: usuario,
-      fecha: new Date(),
-      auditoriaId: item.id,
-      estadoAnterior: estadoAnterior,
-      estadoNuevo: nuevoEstado
-    };
-    
-    // En producción, esto se guardaría en el backend
-    console.log('📋 Trazabilidad - Movimiento de tarjeta:', eventoTrazabilidad);
+    try {
+      // Actualizar estado en la base de datos
+      await controlInternoService.updateAuditoria(item.id, {
+        estadoKanban: nuevoEstado,
+        ultimaActuacion: `Cambio de estado mediante drag & drop: ${estadoAnterior} → ${nuevoEstado}`
+      });
 
-    toast.success(`${item.codigo} movido a ${nuevoEstado}`, {
-      description: `Cambio registrado en trazabilidad`
-    });
+      // Registrar en trazabilidad/historial
+      const eventoTrazabilidad = {
+        id: `evt-${Date.now()}`,
+        tipo: 'cambio-estado' as const,
+        titulo: `Cambio de estado: ${estadoAnterior} → ${nuevoEstado}`,
+        descripcion: `La auditoría fue movida de "${estadoAnterior}" a "${nuevoEstado}" mediante arrastrar y soltar`,
+        usuario: usuario,
+        fecha: new Date(),
+        auditoriaId: item.id,
+        estadoAnterior: estadoAnterior,
+        estadoNuevo: nuevoEstado
+      };
+      
+      console.log('📋 Trazabilidad - Movimiento de tarjeta:', eventoTrazabilidad);
+
+      toast.success(`${item.codigo} movido a ${nuevoEstado}`, {
+        description: `Estado actualizado en la base de datos`
+      });
+    } catch (error) {
+      // Revertir cambio local si falla la actualización
+      setAuditorias(prev =>
+        prev.map(aud =>
+          aud.id === item.id
+            ? { ...aud, estado: estadoAnterior }
+            : aud
+        )
+      );
+
+      console.error('Error al actualizar estado:', error);
+      toast.error('Error al actualizar el estado', {
+        description: error instanceof Error ? error.message : 'No se pudo guardar el cambio en la base de datos'
+      });
+    }
   };
 
   // ============ HANDLERS INDIVIDUALES PARA ACCIONES DE TARJETA ============
@@ -1907,12 +2180,13 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // Guardar cambio de estado con comentario
-  const handleGuardarCambioEstado = (auditoriaId: string, nuevoEstado: EstadoAuditoria, comentario: string) => {
+  const handleGuardarCambioEstado = async (auditoriaId: string, nuevoEstado: EstadoAuditoria, comentario: string) => {
     const auditoriaActual = auditorias.find(a => a.id === auditoriaId);
     if (!auditoriaActual) return;
 
     const estadoAnterior = auditoriaActual.estado;
 
+    // Actualizar estado localmente primero (optimistic update)
     setAuditorias(prev =>
       prev.map(aud =>
         aud.id === auditoriaId
@@ -1921,28 +2195,50 @@ export function GestionAuditoriasKanbanSimple() {
       )
     );
 
-    // Registrar en trazabilidad
-    const eventoTrazabilidad = {
-      id: `evt-${Date.now()}`,
-      tipo: 'cambio-estado-manual' as const,
-      titulo: `Cambio de estado: ${estadoAnterior} → ${nuevoEstado}`,
-      descripcion: comentario,
-      usuario: 'Usuario Actual', // En producción vendría del contexto
-      fecha: new Date(),
-      auditoriaId: auditoriaId,
-      estadoAnterior: estadoAnterior,
-      estadoNuevo: nuevoEstado
-    };
+    try {
+      // Actualizar estado en la base de datos
+      await controlInternoService.updateAuditoria(auditoriaId, {
+        estadoKanban: nuevoEstado,
+        ultimaActuacion: comentario || `Cambio de estado: ${estadoAnterior} → ${nuevoEstado}`
+      });
 
-    console.log('📋 Trazabilidad - Cambio manual de estado:', eventoTrazabilidad);
+      // Registrar en trazabilidad
+      const eventoTrazabilidad = {
+        id: `evt-${Date.now()}`,
+        tipo: 'cambio-estado-manual' as const,
+        titulo: `Cambio de estado: ${estadoAnterior} → ${nuevoEstado}`,
+        descripcion: comentario,
+        usuario: 'Usuario Actual', // En producción vendría del contexto
+        fecha: new Date(),
+        auditoriaId: auditoriaId,
+        estadoAnterior: estadoAnterior,
+        estadoNuevo: nuevoEstado
+      };
 
-    toast.success(`${auditoriaActual.codigo} cambió a ${nuevoEstado}`, {
-      description: `Estado anterior: ${estadoAnterior}`,
-      duration: 4000
-    });
+      console.log('📋 Trazabilidad - Cambio manual de estado:', eventoTrazabilidad);
 
-    setModalCambiarEstadoOpen(false);
-    setAuditoriaSeleccionada(null);
+      toast.success(`${auditoriaActual.codigo} cambió a ${nuevoEstado}`, {
+        description: `Estado actualizado en la base de datos`,
+        duration: 4000
+      });
+
+      setModalCambiarEstadoOpen(false);
+      setAuditoriaSeleccionada(null);
+    } catch (error) {
+      // Revertir cambio local si falla la actualización
+      setAuditorias(prev =>
+        prev.map(aud =>
+          aud.id === auditoriaId
+            ? { ...aud, estado: estadoAnterior }
+            : aud
+        )
+      );
+
+      console.error('Error al actualizar estado:', error);
+      toast.error('Error al actualizar el estado', {
+        description: error instanceof Error ? error.message : 'No se pudo guardar el cambio en la base de datos'
+      });
+    }
   };
 
   // Asignar auditor individual
@@ -2177,6 +2473,34 @@ export function GestionAuditoriasKanbanSimple() {
 
   // FUNCIÓN REMOVIDA: toggleTodasColumnas (botón eliminado del UI)
   // Las columnas se pueden colapsar individualmente desde sus headers
+
+  // Mostrar loading mientras se cargan los datos
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <LoadingSpinner size="lg" />
+        </div>
+      </div>
+    );
+  }
+
+  // Mostrar error si hay
+  if (error) {
+    return (
+      <div className="p-6">
+        <Card className="p-8">
+          <EmptyState
+            icon={AlertCircle}
+            title="Error al cargar auditorías"
+            description={error}
+            actionLabel="Reintentar"
+            onAction={() => window.location.reload()}
+          />
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -2437,30 +2761,38 @@ export function GestionAuditoriasKanbanSimple() {
                           <User className="w-4 h-4 text-gray-500" />
                           <span className="text-xs text-gray-500">Auditor Líder:</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs text-white" style={{ background: '#1e5da8' }}>
-                            {auditoria.auditorLider.iniciales}
+                        {auditoria.auditorLider ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs text-white" style={{ background: '#1e5da8' }}>
+                              {auditoria.auditorLider.iniciales}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{auditoria.auditorLider.nombre}</p>
+                              <p className="text-xs text-gray-500">{auditoria.auditorLider.tipoIdentificacion} {auditoria.auditorLider.numeroIdentificacion}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">{auditoria.auditorLider.nombre}</p>
-                            <p className="text-xs text-gray-500">{auditoria.auditorLider.tipoIdentificacion} {auditoria.auditorLider.numeroIdentificacion}</p>
-                          </div>
-                        </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">No asignado</span>
+                        )}
                       </div>
                       <div>
                         <div className="flex items-center gap-2 mb-2">
                           <User className="w-4 h-4 text-gray-500" />
                           <span className="text-xs text-gray-500">Auditor Asignado:</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs text-white" style={{ background: '#2a6dbd' }}>
-                            {auditoria.auditorAsignado.iniciales}
+                        {auditoria.auditorAsignado ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs text-white" style={{ background: '#2a6dbd' }}>
+                              {auditoria.auditorAsignado.iniciales}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{auditoria.auditorAsignado.nombre}</p>
+                              <p className="text-xs text-gray-500">{auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">{auditoria.auditorAsignado.nombre}</p>
-                            <p className="text-xs text-gray-500">{auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}</p>
-                          </div>
-                        </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">No asignado</span>
+                        )}
                       </div>
                     </div>
 
@@ -2837,15 +3169,20 @@ export function GestionAuditoriasKanbanSimple() {
             initialData={{
               codigo: auditoriaParaEditar.codigo,
               titulo: auditoriaParaEditar.titulo,
-              descripcion: auditoriaParaEditar.descripcion,
+              descripcion: auditoriaParaEditar.descripcion || '',
               territorial: auditoriaParaEditar.territorial,
-              riesgo: auditoriaParaEditar.riesgo,
-              fechaInicio: auditoriaParaEditar.fechaInicio,
-              fechaFin: auditoriaParaEditar.fechaFin,
-              objetivos: auditoriaParaEditar.objetivos.map(obj => obj.descripcion),
-              auditorLider: auditoriaParaEditar.auditorLider.nombre,
-              auditorAsignado: auditoriaParaEditar.auditorAsignado.nombre,
-              alcance: ''
+              riesgo: auditoriaParaEditar.riesgo || 'Medio', // Asegurar que siempre tenga un valor
+              // Convertir fechas DD/MM/YYYY a YYYY-MM-DD para el input date
+              fechaInicio: convertirFechaDDMMYYYYaISO(auditoriaParaEditar.fechaInicio || ''),
+              fechaFin: convertirFechaDDMMYYYYaISO(auditoriaParaEditar.fechaFin || ''),
+              objetivos: auditoriaParaEditar.objetivos?.map(obj => obj.descripcion) || [],
+              // Pasar el ID del auditor si está disponible, o el nombre como fallback
+              auditorLider: (auditoriaParaEditar as any).auditorLiderId?.toString() || auditoriaParaEditar.auditorLider?.nombre || '',
+              auditorAsignado: (auditoriaParaEditar as any).auditorAsignadoId?.toString() || auditoriaParaEditar.auditorAsignado?.nombre || '',
+              // Obtener el tipo real de la auditoría (no tipoKanban)
+              tipoAuditoria: (auditoriaParaEditar as any).tipo || 'Gestión',
+              // Obtener alcance desde la auditoría (puede venir del backend o estar vacío)
+              alcance: auditoriaParaEditar.alcance || (auditoriaParaEditar as any).alcance || ''
             }}
           />
         )}

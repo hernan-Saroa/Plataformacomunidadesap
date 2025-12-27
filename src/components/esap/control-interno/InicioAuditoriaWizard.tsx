@@ -48,6 +48,9 @@ import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 
+// Servicios API
+import { auditoriasApi } from './services/api';
+
 // ============ TIPOS ============
 
 type PasoWizard = 1 | 2 | 3 | 4;
@@ -506,14 +509,49 @@ export function InicioAuditoriaWizard({
   const confirmarInicio = async () => {
     setLoading(true);
     
-    // Simular creación de expediente y notificaciones
-    setTimeout(() => {
-      toast.success('🎉 Auditoría iniciada exitosamente');
-      toast.info('📧 Notificaciones enviadas al área auditada');
-      toast.info('📁 Expediente digital creado');
+    try {
+      // Convertir objetivo (string) a array
+      const objetivosArray = configuracion.objetivo 
+        ? [configuracion.objetivo.trim()].filter(o => o.length > 0)
+        : [];
+
+      // Convertir criterios (string) a array - separar por líneas o comas
+      const criteriosArray = configuracion.criterios
+        ? configuracion.criterios
+            .split(/[\n,;]/)
+            .map(c => c.trim())
+            .filter(c => c.length > 0)
+        : [];
+
+      // Preparar datos para actualizar
+      const updateData = {
+        alcance: configuracion.alcance || undefined,
+        fechaReunionApertura: configuracion.fechaReunionApertura?.toISOString() || undefined,
+        observacionesAdicionales: configuracion.observaciones || undefined,
+        objetivos: objetivosArray.length > 0 ? objetivosArray : undefined,
+        criterios: criteriosArray.length > 0 ? criteriosArray : undefined,
+        estadoKanban: 'Planeación' as const, // Cambiar estado a Planeación
+      };
+
+      // Llamar a la API para actualizar la auditoría
+      const response = await auditoriasApi.update(auditoria.id, updateData);
+
+      if (response.success) {
+        toast.success('🎉 Auditoría iniciada exitosamente');
+        toast.info('📧 Configuración guardada en la base de datos');
+        toast.info('📁 Expediente digital actualizado');
+        setLoading(false);
+        onComplete(auditoria.id);
+      } else {
+        throw new Error(response.error || 'Error al guardar la configuración');
+      }
+    } catch (error) {
+      console.error('Error al iniciar auditoría:', error);
+      toast.error('Error al guardar la configuración', {
+        description: error instanceof Error ? error.message : 'Error desconocido'
+      });
       setLoading(false);
-      onComplete(auditoria.id);
-    }, 2000);
+    }
   };
 
   const avanzarPaso = () => {
