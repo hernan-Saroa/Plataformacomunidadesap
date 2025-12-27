@@ -52,17 +52,31 @@ export type MedioControl =
   | 'Cumplimiento';
 
 export interface ExpedienteJudicial {
-  id: string; // "PJ-2025-001"
+  uuid?: string; // ID real de la base de datos (UUID)
+  id: string; // "PJ-2025-001" - para mostrar (puede ser radicado)
   tipo: string; // "Nulidad y Restablecimiento del Derecho"
   medioControl: MedioControl;
   jurisdiccion: Jurisdiccion;
   etapa: EtapaDefensaJudicial;
 
   // Partes procesales
+  // Partes procesales
   demandante: string;
+  demandado?: string;
   apoderado: string;
   juzgado: string;
   radicado: string;
+
+  // Identificación de las partes
+  tipoIdDemandante?: string;
+  numeroIdDemandante?: string;
+  tipoIdDemandado?: string;
+  numeroIdDemandado?: string;
+  // Contacto del demandante
+  demandanteDireccion?: string;
+  demandanteTelefono?: string;
+  demandanteEmail?: string;
+  demandanteApoderado?: string;
 
   // Financiero
   cuantia: number;

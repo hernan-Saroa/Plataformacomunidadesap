@@ -122,6 +122,8 @@ export class LegalService {
     async createAudiencia(data: any): Promise<any> {
         return legalApiClient.post<any>('/api/legal/audiencias', data);
     }
+
+    // Autos
     async getAutos(radicado: string): Promise<any[]> {
         return legalApiClient.get<any[]>(`/api/legal/autos/expediente/${radicado}`);
     }
@@ -150,6 +152,64 @@ export class LegalService {
         const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
         return `${baseUrl}/api/legal/autos/download-all/${radicado}`;
     }
+
+    // Documentos
+    async getDocumentos(expedienteId: string): Promise<Documento[]> {
+        return legalApiClient.get<Documento[]>(`/api/legal/documentos/expediente/${expedienteId}`);
+    }
+
+    async getDocumento(id: string): Promise<Documento> {
+        return legalApiClient.get<Documento>(`/api/legal/documentos/${id}`);
+    }
+
+    async crearDocumento(data: CreateDocumentoData | FormData): Promise<Documento> {
+        if (data instanceof FormData) {
+            return legalApiClient.upload<Documento>('/api/legal/documentos', data);
+        }
+        return legalApiClient.post<Documento>('/api/legal/documentos', data);
+    }
+
+    async actualizarDocumento(id: string, data: Partial<Documento>): Promise<Documento> {
+        return legalApiClient.put<Documento>(`/api/legal/documentos/${id}`, data);
+    }
+
+    async eliminarDocumento(id: string): Promise<void> {
+        return legalApiClient.delete(`/api/legal/documentos/${id}`);
+    }
+}
+
+// Documento interface for frontend
+export interface Documento {
+    id: string;
+    expedienteId: string;
+    nombre: string;
+    tipo: string;
+    descripcion?: string;
+    archivoUrl?: string;
+    archivoNombreOriginal?: string;
+    archivoTamano?: number;
+    archivoMimeType?: string;
+    fechaDocumento?: string;
+    numeroFolios?: number;
+    confidencial?: boolean;
+    subidoPor?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateDocumentoData {
+    expedienteId: string;
+    nombre: string;
+    tipo: string;
+    descripcion?: string;
+    archivoUrl?: string;
+    archivoNombreOriginal?: string;
+    archivoTamano?: number;
+    archivoMimeType?: string;
+    fechaDocumento?: string;
+    numeroFolios?: number;
+    confidencial?: boolean;
+    subidoPor?: string;
 }
 
 export const legalService = new LegalService();

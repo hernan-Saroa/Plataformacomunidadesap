@@ -70,19 +70,33 @@ export function ModuloDefensaJudicialV3() {
       const data = await legalService.getExpedientes();
       // Mapear datos del backend al tipo ExpedienteJudicial del frontend
       const mapped: ExpedienteJudicial[] = data.map((exp: any) => ({
+        uuid: exp.id, // Guardar UUID real para operaciones de API
         id: exp.radicado || exp.id, // Usar radicado como ID visible, fallback al UUID
         tipo: exp.tipoProceso || 'declarativo',
         medioControl: exp.medioControl || 'NRD Art.138',
         jurisdiccion: exp.jurisdiccion || 'Contencioso Administrativo',
         etapa: (exp.etapaProcesal as EtapaDefensaJudicial) || 'NOTIFICADA',
         demandante: exp.demandante || 'Sin demandante',
-        apoderado: '',
+        demandado: exp.demandado || 'ESAP - Escuela Superior de Administración Pública',
+        tipoIdDemandante: exp.tipoIdDemandante,
+        numeroIdDemandante: exp.numeroIdDemandante,
+        tipoIdDemandado: exp.tipoIdDemandado,
+        numeroIdDemandado: exp.numeroIdDemandado,
+        // Campos de contacto del demandante
+        demandanteDireccion: exp.demandanteDireccion,
+        demandanteTelefono: exp.demandanteTelefono,
+        demandanteEmail: exp.demandanteEmail,
+        demandanteApoderado: exp.demandanteApoderado,
+        apoderado: exp.demandanteApoderado || '',
         juzgado: exp.juzgadoConocimiento || '',
         radicado: exp.radicado,
         cuantia: exp.cuantia || 0,
         fechaNotificacion: new Date(exp.fechaNotificacion || exp.fechaRadicacion),
-        diasTotales: exp.terminoProcesalDias || 90,
-        diasRestantes: calcularDiasRestantes(new Date(exp.fechaVencimientoTermino || exp.fechaRadicacion)),
+        diasTotales: calcularDiasTotales(
+          new Date(exp.fechaNotificacion || exp.fechaRadicacion),
+          new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))
+        ),
+        diasRestantes: calcularDiasRestantes(new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))),
         // Para abogado, buscar el nombre en la relación o usar valor directo si es string
         abogadoAsignado: exp.abogado?.nombreCompleto || exp.abogadoNombre || (
           typeof exp.abogadoSustanciador === 'string' && exp.abogadoSustanciador.length < 50
@@ -108,7 +122,13 @@ export function ModuloDefensaJudicialV3() {
     }
   };
 
-  // Calcular días restantes
+  // Calcular días totales entre dos fechas
+  const calcularDiasTotales = (fechaInicio: Date, fechaFin: Date): number => {
+    const diff = fechaFin.getTime() - fechaInicio.getTime();
+    return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  // Calcular días restantes hasta vencimiento
   const calcularDiasRestantes = (fechaVencimiento: Date): number => {
     const hoy = new Date();
     const diff = fechaVencimiento.getTime() - hoy.getTime();
@@ -340,6 +360,7 @@ export function ModuloDefensaJudicialV3() {
                 etapa={etapa}
                 isMobile={isMobile}
                 isTablet={isTablet}
+                onRefresh={loadExpedientes}
               />
             ))}
           </div>
@@ -376,9 +397,10 @@ interface ColumnaKanbanProps {
   };
   isMobile: boolean;
   isTablet: boolean;
+  onRefresh?: () => void;
 }
 
-function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
+function ColumnaKanban({ etapa, isMobile, isTablet, onRefresh }: ColumnaKanbanProps) {
   return (
     <motion.div
       className="flex-shrink-0"
@@ -420,6 +442,7 @@ function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
               key={expediente.id}
               expediente={expediente}
               isMobile={isMobile}
+              onRefresh={onRefresh}
             />
           ))}
 
@@ -441,9 +464,10 @@ function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
 interface TarjetaExpedienteProps {
   expediente: ExpedienteJudicial;
   isMobile: boolean;
+  onRefresh?: () => void;
 }
 
-function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
+function TarjetaExpediente({ expediente, isMobile, onRefresh }: TarjetaExpedienteProps) {
   // Estados para modales
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
@@ -549,12 +573,12 @@ function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
             <p className="text-xs text-gray-500">Docs</p>
           </div>
           <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{expediente.diasTotales - expediente.diasRestantes}</p>
-            <p className="text-xs text-gray-500">Días</p>
+            <p className="text-xs font-bold text-gray-700">{expediente.diasRestantes}</p>
+            <p className="text-xs text-gray-500">Restantes</p>
           </div>
           <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{porcentajeTiempo}%</p>
-            <p className="text-xs text-gray-500">Tiempo</p>
+            <p className="text-xs font-bold text-gray-700">{Math.min(100, Math.max(0, porcentajeTiempo))}%</p>
+            <p className="text-xs text-gray-500">Avance</p>
           </div>
         </div>
 
@@ -646,6 +670,7 @@ function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
         isOpen={modalExpedienteOpen}
         onClose={() => setModalExpedienteOpen(false)}
         expediente={expediente}
+        onUpdate={onRefresh}
       />
 
       <ModalComunicaciones
