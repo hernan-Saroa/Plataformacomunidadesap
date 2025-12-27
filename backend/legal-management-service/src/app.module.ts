@@ -46,6 +46,14 @@ import { ConsultaJuridica } from './entities/consulta-juridica.entity';
 import { ConsultasJuridicasController } from './controllers/consultas-juridicas.controller';
 import { ConsultasJuridicasService } from './services/consultas-juridicas.service';
 
+// Órganos de Control - Nuevo módulo
+import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
+import { RequerimientoOC } from './entities/requerimiento-oc.entity';
+import { SolicitudInsumo } from './entities/solicitud-insumo.entity';
+import { Hallazgo } from './entities/hallazgo.entity';
+import { RequerimientosOCController } from './controllers/requerimientos-oc.controller';
+import { RequerimientosOCService } from './services/requerimientos-oc.service';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
@@ -61,7 +69,12 @@ import { ConsultasJuridicasService } from './services/consultas-juridicas.servic
       Documento,
       Evidencia,
       Acta,
-      ConsultaJuridica
+      ConsultaJuridica,
+      // Órganos de Control
+      OrganismoControlOC,
+      RequerimientoOC,
+      SolicitudInsumo,
+      Hallazgo
     ]),
   ],
   controllers: [
@@ -79,7 +92,8 @@ import { ConsultasJuridicasService } from './services/consultas-juridicas.servic
     DocumentoController,
     EvidenciasController,
     ActasController,
-    ConsultasJuridicasController
+    ConsultasJuridicasController,
+    RequerimientosOCController
   ],
   providers: [
     ExpedienteService,
@@ -92,7 +106,8 @@ import { ConsultasJuridicasService } from './services/consultas-juridicas.servic
     DocumentoService,
     EvidenciasService,
     ActasService,
-    ConsultasJuridicasService
+    ConsultasJuridicasService,
+    RequerimientosOCService
   ],
 })
 export class AppModule { }

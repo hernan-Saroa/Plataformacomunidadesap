@@ -239,6 +239,53 @@ export class LegalService {
     async deleteConsultaJuridica(id: string): Promise<void> {
         return legalApiClient.delete(`/api/legal/consultas-juridicas/${id}`);
     }
+
+    // ============================================
+    // ÓRGANOS DE CONTROL
+    // ============================================
+
+    // Catálogo de organismos
+    async getOrganismosControl(): Promise<any[]> {
+        return legalApiClient.get<any[]>('/api/legal/requerimientos-oc/organismos');
+    }
+
+    // Requerimientos OC
+    async getRequerimientosOC(): Promise<any[]> {
+        return legalApiClient.get<any[]>('/api/legal/requerimientos-oc');
+    }
+
+    async getRequerimientoOC(id: string): Promise<any> {
+        return legalApiClient.get<any>(`/api/legal/requerimientos-oc/${id}`);
+    }
+
+    async createRequerimientoOC(data: any): Promise<any> {
+        return legalApiClient.post<any>('/api/legal/requerimientos-oc', data);
+    }
+
+    async updateRequerimientoOC(id: string, data: any): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/requerimientos-oc/${id}`, data);
+    }
+
+    async cambiarEstadoRequerimientoOC(id: string, estado: string): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/requerimientos-oc/${id}/estado`, { estado });
+    }
+
+    async deleteRequerimientoOC(id: string): Promise<void> {
+        return legalApiClient.delete(`/api/legal/requerimientos-oc/${id}`);
+    }
+
+    // Solicitudes de Insumos (Delegación)
+    async getSolicitudesInsumo(requerimientoId: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/requerimientos-oc/${requerimientoId}/insumos`);
+    }
+
+    async createSolicitudInsumo(requerimientoId: string, data: any): Promise<any> {
+        return legalApiClient.post<any>(`/api/legal/requerimientos-oc/${requerimientoId}/insumos`, data);
+    }
+
+    async responderSolicitudInsumo(insumoId: string, data: any): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/requerimientos-oc/insumos/${insumoId}/responder`, data);
+    }
 }
 
 // Documento interface for frontend
