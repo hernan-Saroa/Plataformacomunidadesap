@@ -28,6 +28,22 @@ BEGIN
     END LOOP;
 END $$;
 
+-- Drop ALL CHECK constraints from the table (legacy constraints)
+DO $$
+DECLARE
+    con RECORD;
+BEGIN
+    FOR con IN 
+        SELECT conname 
+        FROM pg_constraint 
+        WHERE conrelid = 'legal_management.consultas_juridicas'::regclass 
+        AND contype = 'c'
+    LOOP
+        EXECUTE format('ALTER TABLE legal_management.consultas_juridicas DROP CONSTRAINT %I', con.conname);
+        RAISE NOTICE 'Dropped CHECK constraint: %', con.conname;
+    END LOOP;
+END $$;
+
 -- Add ALL columns (safe to run if they already exist)
 ALTER TABLE legal_management.consultas_juridicas ADD COLUMN IF NOT EXISTS fecha_recepcion TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE legal_management.consultas_juridicas ADD COLUMN IF NOT EXISTS descripcion TEXT;

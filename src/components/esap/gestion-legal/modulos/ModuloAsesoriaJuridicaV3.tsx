@@ -9,7 +9,7 @@ import {
   Scale, FileText, Clock, AlertTriangle, CheckCircle, User, Building,
   Eye, Edit, Plus, Download, Filter, Search, Calendar, TrendingUp,
   Archive, MessageSquare, History, Send, FileCheck, Mail, Columns3, List,
-  AlertCircle, FolderOpen, FileQuestion, SortAsc, SortDesc, XCircle
+  AlertCircle, FolderOpen, FileQuestion, SortAsc, SortDesc, XCircle, Trash2
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -43,6 +43,8 @@ export function ModuloAsesoriaJuridicaV3() {
   const [consultas, setConsultas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [selectedConsulta, setSelectedConsulta] = useState<any>(null);
+  const [isExpedienteOpen, setIsExpedienteOpen] = useState(false);
   const [newConsultaData, setNewConsultaData] = useState({
     tipoSolicitud: 'consulta',
     canalEntrada: 'correo_electronico',
@@ -107,6 +109,28 @@ export function ModuloAsesoriaJuridicaV3() {
     return map[estado] || 'RADICADA';
   };
 
+  const formatMateriaJuridica = (materia: string): string => {
+    const map: Record<string, string> = {
+      'laboral': 'Laboral',
+      'contractual': 'Contractual',
+      'administrativo': 'Administrativo',
+      'disciplinario': 'Disciplinario',
+      'presupuestal': 'Presupuestal',
+      'academico': 'Académico',
+      'otra': 'Otra'
+    };
+    return map[materia?.toLowerCase()] || materia || 'Sin clasificar';
+  };
+
+  const formatPrioridad = (prioridad: string): { label: string; color: string; bg: string } => {
+    const map: Record<string, { label: string; color: string; bg: string }> = {
+      'alta': { label: '🔴 Alta', color: '#DC2626', bg: '#FEE2E2' },
+      'media': { label: '🟡 Media', color: '#D97706', bg: '#FEF3C7' },
+      'baja': { label: '🟢 Baja', color: '#059669', bg: '#D1FAE5' }
+    };
+    return map[prioridad?.toLowerCase()] || { label: prioridad || 'N/A', color: '#6B7280', bg: '#F3F4F6' };
+  };
+
   const handleCreateConsulta = async () => {
     if (!newConsultaData.descripcion || !newConsultaData.nombreSolicitante) {
       toast.error('Completa los campos obligatorios');
@@ -135,6 +159,26 @@ export function ModuloAsesoriaJuridicaV3() {
     } catch (error) {
       console.error(error);
       toast.error('Error al crear consulta', { id: toastId });
+    }
+  };
+
+  const handleOpenExpediente = (consulta: any) => {
+    setSelectedConsulta(consulta);
+    setIsExpedienteOpen(true);
+  };
+
+  const handleDeleteConsulta = async (uuid: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta consulta? Esta acción no se puede deshacer.')) return;
+    const toastId = toast.loading('Eliminando consulta...');
+    try {
+      await legalService.deleteConsultaJuridica(uuid);
+      toast.success('Consulta eliminada', { id: toastId });
+      setIsExpedienteOpen(false);
+      setSelectedConsulta(null);
+      loadConsultas();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al eliminar', { id: toastId });
     }
   };
 
@@ -336,10 +380,146 @@ export function ModuloAsesoriaJuridicaV3() {
           orden={orden}
           direccionOrden={direccionOrden}
           onOrdenar={handleOrdenar}
+          onOpenExpediente={handleOpenExpediente}
         />
       ) : (
-        <TarjetasConsultas consultas={consultasFiltradas} />
+        <TarjetasConsultas consultas={consultasFiltradas} onOpenExpediente={handleOpenExpediente} />
       )}
+
+      {/* Modal Expediente */}
+      <Dialog open={isExpedienteOpen} onOpenChange={setIsExpedienteOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+          {selectedConsulta && (
+            <>
+              {/* Header con gradiente */}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 rounded-t-lg">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-white/20 rounded-lg backdrop-blur">
+                    <Scale className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">{selectedConsulta.id}</h2>
+                    <p className="text-blue-100 text-sm">Consulta Jurídica</p>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-4 flex-wrap">
+                  <Badge className="bg-white/20 text-white border-white/30">
+                    📅 {new Date(selectedConsulta.fechaRadicacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </Badge>
+                  <Badge className="bg-white/20 text-white border-white/30">
+                    {selectedConsulta.etapa}
+                  </Badge>
+                  <Badge style={{
+                    background: formatPrioridad(selectedConsulta.prioridad).bg,
+                    color: formatPrioridad(selectedConsulta.prioridad).color,
+                    border: 'none'
+                  }}>
+                    {formatPrioridad(selectedConsulta.prioridad).label}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Semáforo de días */}
+                <div className="flex items-center justify-between p-4 rounded-xl" style={{
+                  background: selectedConsulta.diasRestantes <= 3 ? '#FEE2E2' : selectedConsulta.diasRestantes <= 5 ? '#FEF3C7' : '#D1FAE5'
+                }}>
+                  <div className="flex items-center gap-3">
+                    <Clock className="w-8 h-8" style={{
+                      color: selectedConsulta.diasRestantes <= 3 ? '#DC2626' : selectedConsulta.diasRestantes <= 5 ? '#D97706' : '#059669'
+                    }} />
+                    <div>
+                      <p className="text-sm font-medium" style={{
+                        color: selectedConsulta.diasRestantes <= 3 ? '#991B1B' : selectedConsulta.diasRestantes <= 5 ? '#92400E' : '#065F46'
+                      }}>Tiempo Restante</p>
+                      <p className="text-2xl font-bold" style={{
+                        color: selectedConsulta.diasRestantes <= 3 ? '#DC2626' : selectedConsulta.diasRestantes <= 5 ? '#D97706' : '#059669'
+                      }}>{selectedConsulta.diasRestantes} días</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-600">de {selectedConsulta.diasTotales} días hábiles</p>
+                    <div className="w-32 h-2 bg-gray-200 rounded-full mt-1 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, (selectedConsulta.diasRestantes / selectedConsulta.diasTotales) * 100))}%`,
+                          background: selectedConsulta.diasRestantes <= 3 ? '#DC2626' : selectedConsulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Grid de información */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-gray-50 rounded-xl">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">📁 Materia Jurídica</p>
+                    <p className="font-bold text-gray-900">{formatMateriaJuridica(selectedConsulta.temaJuridico)}</p>
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-xl">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">👨‍💼 Abogado Asignado</p>
+                    <p className="font-bold text-gray-900">{selectedConsulta.abogadoAsignado || 'Sin asignar'}</p>
+                  </div>
+                </div>
+
+                {/* Solicitante */}
+                <div className="border border-gray-200 rounded-xl p-4">
+                  <h4 className="font-bold text-sm text-gray-700 mb-3 flex items-center gap-2">
+                    <User className="w-4 h-4" /> Información del Solicitante
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-500">Dependencia</p>
+                      <p className="font-semibold text-gray-800">{selectedConsulta.solicitante || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Funcionario</p>
+                      <p className="font-semibold text-gray-800">{selectedConsulta.funcionarioSolicitante || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Descripción */}
+                <div className="border border-gray-200 rounded-xl p-4">
+                  <h4 className="font-bold text-sm text-gray-700 mb-2 flex items-center gap-2">
+                    <FileText className="w-4 h-4" /> Descripción de la Consulta
+                  </h4>
+                  <p className="text-gray-700 whitespace-pre-wrap bg-gray-50 p-3 rounded-lg text-sm">
+                    {selectedConsulta.consulta || 'Sin descripción'}
+                  </p>
+                </div>
+
+                {/* Info legal */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <h4 className="font-bold text-sm text-blue-800 flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-4 h-4" /> Término Legal
+                  </h4>
+                  <p className="text-sm text-blue-700">
+                    El término de respuesta es de <strong>{selectedConsulta.diasTotales} días hábiles</strong> según CPACA Art. 50.
+                    El sistema calcula automáticamente los días restantes desde la fecha de radicación.
+                  </p>
+                </div>
+
+                {/* Acciones */}
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <Button
+                    variant="destructive"
+                    onClick={() => handleDeleteConsulta(selectedConsulta.uuid)}
+                    className="gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Eliminar Consulta
+                  </Button>
+                  <Button variant="outline" onClick={() => setIsExpedienteOpen(false)}>
+                    Cerrar
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog para crear nueva consulta */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -501,9 +681,10 @@ interface TablaConsultasProps {
   orden: OrdenColumna;
   direccionOrden: 'asc' | 'desc';
   onOrdenar: (columna: OrdenColumna) => void;
+  onOpenExpediente: (consulta: any) => void;
 }
 
-function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaConsultasProps) {
+function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onOpenExpediente }: TablaConsultasProps) {
   return (
     <Card className="bg-white border border-gray-200">
       <table className="w-full">
@@ -589,7 +770,7 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaCo
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.abogadoAsignado}</td>
               <td className="px-4 py-3 text-sm text-gray-500">
                 <Button
-                  onClick={(e) => { e.stopPropagation(); toast.success('Consulta Jurídica', { description: `Abriendo ${consulta.id}` }); }}
+                  onClick={(e) => { e.stopPropagation(); onOpenExpediente(consulta); }}
                   size="sm"
                   className="w-full text-xs font-bold truncate"
                   style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -607,9 +788,10 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaCo
 
 interface TarjetasConsultasProps {
   consultas: ConsultaJuridica[];
+  onOpenExpediente: (consulta: any) => void;
 }
 
-function TarjetasConsultas({ consultas }: TarjetasConsultasProps) {
+function TarjetasConsultas({ consultas, onOpenExpediente }: TarjetasConsultasProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {consultas.map((consulta) => (
@@ -691,7 +873,7 @@ function TarjetasConsultas({ consultas }: TarjetasConsultasProps) {
 
             <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
               <Button
-                onClick={(e) => { e.stopPropagation(); toast.success('Consulta Jurídica', { description: `Abriendo ${consulta.id}` }); }}
+                onClick={(e) => { e.stopPropagation(); onOpenExpediente(consulta); }}
                 size="sm"
                 className="w-full text-xs font-bold truncate"
                 style={{ background: '#003DA5', color: '#FFFFFF' }}
