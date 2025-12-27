@@ -21,6 +21,9 @@ import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import type { CorreoOJ } from '../core/types';
 import { correosOficinaJuridica } from '../data/datosBuzonOficinaJuridica';
 import { toast } from 'sonner@2.0.3';
+import { ModuleHeader } from '../design-system/ModuleHeader';
+import { ModuleMetrics } from '../design-system/ModuleMetrics';
+import { ModuleFilters } from '../design-system/ModuleFilters';
 
 type TabBandejaType = 'pendientes' | 'leidas' | 'archivadas' | 'urgentes';
 type VistaModulo = 'inbox' | 'lista';
@@ -69,6 +72,7 @@ export function ModuloBuzonOficinaJuridicaV3() {
   const [busqueda, setBusqueda] = useState('');
   const [comunicacionSeleccionada, setComunicacionSeleccionada] = useState<CorreoOJ | null>(null);
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   // Filtrar comunicaciones
   const comunicacionesFiltradas = useMemo(() => {
@@ -129,121 +133,44 @@ export function ModuloBuzonOficinaJuridicaV3() {
   const totalArchivadas = correosOficinaJuridica.filter(c => c.etapa === 'ARCHIVADO').length;
   const totalClasificadas = correosOficinaJuridica.filter(c => c.etapa === 'CLASIFICADO').length;
 
-  // Calcular precisión IA
-  const precisionIA = totalClasificadas > 0 ? 96 : 0; // Mock - en producción vendría del backend
-
   return (
     <div className="space-y-4">
-      {/* Header Responsive - IGUAL A DEFENSA JUDICIAL */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex-1">
-          <h2 
-            className="font-black leading-tight"
-            style={{ 
-              color: '#003DA5',
-              fontSize: '1.5rem'
-            }}
-          >
-            Buzón Clasificador Inteligente
-          </h2>
-          <p className="text-sm text-gray-600 mt-0.5">
-            Gestión de comunicaciones con clasificación IA automática
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Toggle de Vista - ESTILO DEFENSA JUDICIAL */}
-          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
-            <button
-              onClick={() => setTipoVista('inbox')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                tipoVista === 'inbox'
-                  ? 'bg-white shadow-sm' 
-                  : 'hover:bg-gray-200'
-              }`}
-              style={{ 
-                color: tipoVista === 'inbox' ? '#003DA5' : '#6B7280'
-              }}
-            >
-              <Inbox className="w-4 h-4" />
-              Inbox
-            </button>
-            <button
-              onClick={() => setTipoVista('lista')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                tipoVista === 'lista'
-                  ? 'bg-white shadow-sm' 
-                  : 'hover:bg-gray-200'
-              }`}
-              style={{ 
-                color: tipoVista === 'lista' ? '#003DA5' : '#6B7280'
-              }}
-            >
-              <List className="w-4 h-4" />
-              Lista
-            </button>
-          </div>
-
-          <button
-            className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-blue-400 transition-all"
-            style={{ color: '#003DA5' }}
-          >
-            <Plus className="w-4 h-4" />
-            Nueva Comunicación
-          </button>
-        </div>
-      </div>
+      {/* Header con ModuleHeader - SIN toggleView */}
+      <ModuleHeader
+        title={isMobile ? 'Buzón OJ' : 'Buzón Oficina Jurídica'}
+        subtitle="Gestión inteligente de correos con clasificación IA"
+        buttons={[
+          {
+            label: 'Nuevo Correo',
+            labelMobile: 'Nuevo',
+            icon: <Plus className="w-4 h-4" />,
+            onClick: () => toast.info('Redactar Nuevo Correo'),
+            variant: 'primary'
+          }
+        ]}
+      />
 
       {/* Métricas Compactas - ESTILO DEFENSA JUDICIAL (3 COLUMNAS) */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-blue-50 flex-shrink-0">
-              <Mail className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {totalPendientes}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Sin Clasificar
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-red-50 flex-shrink-0">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {totalUrgentes}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Urgentes
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-purple-50 flex-shrink-0">
-              <Sparkles className="w-5 h-5 text-purple-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {precisionIA}%
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Precisión IA
-              </p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <ModuleMetrics
+        metrics={[
+          {
+            icon: <Mail className="w-5 h-5 text-blue-600" />,
+            value: totalPendientes,
+            label: 'Sin Clasificar'
+          },
+          {
+            icon: <AlertTriangle className="w-5 h-5 text-red-600" />,
+            value: totalUrgentes,
+            label: 'Urgentes'
+          },
+          {
+            icon: <Sparkles className="w-5 h-5 text-purple-600" />,
+            value: totalClasificadas > 0 ? 96 : 0,
+            label: 'Precisión IA',
+            suffix: '%'
+          }
+        ]}
+      />
 
       {/* Vista Inbox */}
       {tipoVista === 'inbox' && (

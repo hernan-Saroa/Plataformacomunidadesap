@@ -15,15 +15,13 @@ import { ExpedienteService } from './services/expediente.service';
 import { ActuacionService } from './services/actuacion.service';
 import { AbogadoService } from './services/abogado.service';
 import { AudienciaService } from './services/audiencia.service';
-import { Comentario } from './entities/comentario.entity';
-import { ComentarioController } from './controllers/comentario.controller';
-import { ComentarioService } from './services/comentario.service';
 
 import { Requerimiento } from './entities/requerimiento.entity';
 import { OrganismoControl } from './entities/organismo-control.entity';
 import { RequerimientoController } from './controllers/requerimiento.controller';
 import { FilesController } from './controllers/files.controller';
 import { RequerimientoService } from './services/requerimiento.service';
+import { JuzgamientoController } from './controllers/juzgamiento.controller';
 
 @Module({
   imports: [
@@ -42,19 +40,70 @@ import { RequerimientoService } from './services/requerimiento.service';
     ExpedienteController,
     ActuacionController,
     AbogadoController,
-    AbogadoStatsController,
-    AudienciaController,
-    RequerimientoController,
-    FilesController,
-    ComentarioController
-  ],
+import { JuzgamientoController } from './controllers/juzgamiento.controller';
+  import { TerminosController } from './controllers/terminos.controller';
+
+@Module({
+    imports: [
+      TypeOrmModule.forRoot(databaseConfig),
+      TypeOrmModule.forFeature([
+        Expediente,
+        Actuacion,
+        Abogado,
+        Audiencia,
+        Requerimiento,
+        OrganismoControl,
+        Comentario
+      ]),
+    ],
+    controllers: [
+      ExpedienteController,
+      ActuacionController,
+      AbogadoController,
+      AbogadoStatsController,
+      AudienciaController,
+      RequerimientoController,
+      FilesController,
+      ComentarioController,
+      JuzgamientoController,
+      TerminosController
+    ],
+    providers: [
+      ExpedienteService,
+      ActuacionService,
+      AbogadoService,
+      AudienciaService,
+      RequerimientoService,
+      ComentarioService
+    ],
+  })
+  export class AppModule { }
+  imports: [
+  TypeOrmModule.forRoot(databaseConfig),
+  TypeOrmModule.forFeature([
+    Expediente,
+    Actuacion,
+    Abogado,
+    Audiencia,
+    Requerimiento,
+    OrganismoControl
+  ]),
+],
+  controllers: [
+  ExpedienteController,
+  ActuacionController,
+  AbogadoController,
+  AbogadoStatsController,
+  AudienciaController,
+  RequerimientoController,
+  FilesController
+],
   providers: [
-    ExpedienteService,
-    ActuacionService,
-    AbogadoService,
-    AudienciaService,
-    RequerimientoService,
-    ComentarioService
-  ],
+  ExpedienteService,
+  ActuacionService,
+  AbogadoService,
+  AudienciaService,
+  RequerimientoService
+],
 })
 export class AppModule { }

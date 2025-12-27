@@ -11,7 +11,7 @@
  *   • Cada validación registra: IP, ubicación, dispositivo, fecha/hora
  */
 
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -46,10 +46,16 @@ import { toast } from 'sonner@2.0.3';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import React from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import graduadosService, {
+  CertificadoGraduado,
+  DescargaCertificado,
+  SolicitudCertificadoGraduado,
+  ValidacionCertificado,
+} from '../../services/api/graduados.service';
 
 // Tipo de certificado con QR único (reutilizable por misma combinación)
 interface CertificateRequest {
@@ -115,211 +121,291 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [selectedCertificate, setSelectedCertificate] = useState<CertificateRecord | null>(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
+  const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Mock data: Solicitudes de certificados con trazabilidad completa
-  const mockCertificates: CertificateRecord[] = [
-    {
-      id: 'CERT-001',
-      certificateNumber: 'ESAP-CERT-2025-A4E23',
-      certificateHash: 'sha256:a7f2c9b8d4e5f6a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5',
-      qrCode: 'QR-XYZ789ABC123',
-      graduate: {
-        fullName: 'María Fernanda Rodríguez Sánchez',
-        document: '1052789456',
-        program: 'Administración Pública',
-        graduationDate: '2024-06-15'
-      },
-      requester: {
-        name: 'Empresa ABC S.A.S.',
-        email: 'rrhh@empresaabc.com',
-        type: 'entidad'
-      },
-      status: 'active',
-      firstRequestedAt: '2025-01-10T09:00:00Z',
-      lastRequestedAt: '2025-01-11T16:30:00Z',
-      generatedAt: '2025-01-10T10:30:00Z',
-      generatedBy: 'Admin ESAP',
-      requestCount: 3,
-      qrScanCount: 8,
-      viewCount: 15,
-      downloadCount: 3,
-      lastActivity: '2025-01-12T14:20:00Z',
-      requestHistory: [
-        {
-          id: 'REQ-001',
-          requestedAt: '2025-01-10T09:00:00Z',
-          requestedBy: 'Empresa ABC S.A.S.',
-          ipAddress: '192.168.1.50'
-        },
-        {
-          id: 'REQ-002',
-          requestedAt: '2025-01-10T15:20:00Z',
-          requestedBy: 'Empresa ABC S.A.S.',
-          ipAddress: '192.168.1.50'
-        },
-        {
-          id: 'REQ-003',
-          requestedAt: '2025-01-11T16:30:00Z',
-          requestedBy: 'Empresa ABC S.A.S.',
-          ipAddress: '192.168.1.50'
-        }
-      ],
-      scanHistory: [
-        {
-          id: 'SCAN-001',
-          scannedAt: '2025-01-12T14:20:00Z',
-          ipAddress: '192.168.1.100',
-          location: 'Bogotá, Colombia',
-          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-          verified: true
-        },
-        {
-          id: 'SCAN-002',
-          scannedAt: '2025-01-11T09:15:00Z',
-          ipAddress: '192.168.1.101',
-          location: 'Medellín, Colombia',
-          userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6)',
-          verified: true
-        },
-        {
-          id: 'SCAN-003',
-          scannedAt: '2025-01-10T16:45:00Z',
-          ipAddress: '192.168.1.102',
-          location: 'Cali, Colombia',
-          userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-          verified: true
-        }
-      ]
-    },
-    {
-      id: 'CERT-002',
-      certificateNumber: 'ESAP-CERT-2025-D8E54',
-      certificateHash: 'sha256:b8c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3',
-      qrCode: 'QR-DEF456GHI789',
-      graduate: {
-        fullName: 'Carlos Andrés Mendoza Pérez',
-        document: '1098765432',
-        program: 'Ciencia Política',
-        graduationDate: '2024-05-20'
-      },
-      requester: {
-        name: 'Carlos Andrés Mendoza Pérez',
-        email: 'ca.mendoza@email.com',
-        type: 'graduado'
-      },
-      status: 'active',
-      firstRequestedAt: '2025-01-11T14:00:00Z',
-      lastRequestedAt: '2025-01-11T14:00:00Z',
-      generatedAt: '2025-01-11T15:45:00Z',
-      generatedBy: 'Admin ESAP',
-      requestCount: 1,
-      qrScanCount: 3,
-      viewCount: 5,
-      downloadCount: 1,
-      lastActivity: '2025-01-12T10:30:00Z',
-      requestHistory: [
-        {
-          id: 'REQ-004',
-          requestedAt: '2025-01-11T14:00:00Z',
-          requestedBy: 'Carlos Andrés Mendoza Pérez',
-          ipAddress: '192.168.1.103'
-        }
-      ],
-      scanHistory: [
-        {
-          id: 'SCAN-004',
-          scannedAt: '2025-01-12T10:30:00Z',
-          ipAddress: '192.168.1.103',
-          location: 'Barranquilla, Colombia',
-          userAgent: 'Mozilla/5.0 (Android 11; Mobile)',
-          verified: true
-        }
-      ]
-    },
-    {
-      id: 'CERT-003',
-      certificateNumber: 'ESAP-CERT-2025-G5G6N1',
-      certificateHash: 'sha256:c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0',
-      qrCode: 'QR-JKL012MNO345',
-      graduate: {
-        fullName: 'Ana Cristina García López',
-        document: '1034567890',
-        program: 'Gestión Pública',
-        graduationDate: '2024-07-10'
-      },
-      requester: {
-        name: 'Universidad XYZ',
-        email: 'admisiones@universidadxyz.edu',
-        type: 'entidad'
-      },
-      status: 'active',
-      firstRequestedAt: '2025-01-12T08:00:00Z',
-      lastRequestedAt: '2025-01-12T11:30:00Z',
-      generatedAt: '2025-01-12T09:20:00Z',
-      generatedBy: 'Admin ESAP',
-      requestCount: 2,
-      qrScanCount: 12,
-      viewCount: 22,
-      downloadCount: 5,
-      lastActivity: '2025-01-12T16:00:00Z',
-      requestHistory: [
-        {
-          id: 'REQ-005',
-          requestedAt: '2025-01-12T08:00:00Z',
-          requestedBy: 'Universidad XYZ',
-          ipAddress: '192.168.1.200'
-        },
-        {
-          id: 'REQ-006',
-          requestedAt: '2025-01-12T11:30:00Z',
-          requestedBy: 'Universidad XYZ',
-          ipAddress: '192.168.1.200'
-        }
-      ],
-      scanHistory: [
-        {
-          id: 'SCAN-005',
-          scannedAt: '2025-01-12T16:00:00Z',
-          ipAddress: '192.168.1.104',
-          location: 'Cartagena, Colombia',
-          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-          verified: true
-        },
-        {
-          id: 'SCAN-006',
-          scannedAt: '2025-01-12T11:30:00Z',
-          ipAddress: '192.168.1.105',
-          location: 'Pereira, Colombia',
-          userAgent: 'Mozilla/5.0 (Linux; Android 12)',
-          verified: true
-        }
-      ]
-    }
-  ];
-
-  // Stats calculadas
-  const stats = {
-    total: mockCertificates.length, // Total de certificados/QR únicos
-    active: mockCertificates.filter(c => c.status === 'active').length,
-    totalRequests: mockCertificates.reduce((sum, c) => sum + c.requestCount, 0), // Total de solicitudes (incluyendo reutilizaciones)
-    totalScans: mockCertificates.reduce((sum, c) => sum + c.qrScanCount, 0),
-    totalViews: mockCertificates.reduce((sum, c) => sum + c.viewCount, 0),
-    reusedQRs: mockCertificates.filter(c => c.requestCount > 1).length // QRs reutilizados
+  const mapStatus = (status: CertificadoGraduado['status']): CertificateRecord['status'] => {
+    if (status === 'REVOKED') return 'revoked';
+    if (status === 'EXPIRED') return 'expired';
+    return 'active';
   };
 
-  // Filtrado
-  const filteredCertificates = mockCertificates.filter(cert => {
-    const matchesSearch = searchQuery === '' ||
-      cert.graduate.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cert.certificateNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cert.requester.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cert.requester.email.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || cert.status === statusFilter;
-    const matchesType = requesterTypeFilter === 'all' || cert.requester.type === requesterTypeFilter;
-    
-    return matchesSearch && matchesStatus && matchesType;
-  });
+  const mapRequesterType = (value?: string): CertificateRecord['requester']['type'] => {
+    if (value === 'COMPANY') return 'entidad';
+    return 'graduado';
+  };
+
+  const normalizeDate = (value?: string) => {
+    if (!value) return '';
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+    return isDateOnly ? `${value}T00:00:00` : value;
+  };
+
+  const buildRequestKey = (request: SolicitudCertificadoGraduado) => {
+    const dateKey = request.graduationDate?.slice(0, 10) || '';
+    return `${request.idNumber}|${request.programName}|${dateKey}`;
+  };
+
+  const ensureArray = <T,>(value: T[] | { data?: T[] } | undefined | null): T[] => {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object' && Array.isArray((value as { data?: T[] }).data)) {
+      return (value as { data?: T[] }).data as T[];
+    }
+    return [];
+  };
+
+  const loadCertificates = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [certificatesResponse, requestsResponse, validationsResponse, downloadsResponse] = await Promise.all([
+        graduadosService.certificados.listar(),
+        graduadosService.solicitudes.listar(),
+        graduadosService.validaciones.listar(),
+        graduadosService.descargas.listar(),
+      ]);
+
+      const certificatesData = ensureArray<CertificadoGraduado>(certificatesResponse);
+      const requestsData = ensureArray<SolicitudCertificadoGraduado>(requestsResponse);
+      const validationsData = ensureArray<ValidacionCertificado>(validationsResponse);
+      const downloadsData = ensureArray<DescargaCertificado>(downloadsResponse);
+
+      const requestsByKey = new Map<string, SolicitudCertificadoGraduado[]>();
+      const requestsById = new Map<string, SolicitudCertificadoGraduado>();
+      requestsData.forEach((request) => {
+        const key = buildRequestKey(request);
+        if (!requestsByKey.has(key)) {
+          requestsByKey.set(key, []);
+        }
+        requestsByKey.get(key)!.push(request);
+        requestsById.set(request.id, request);
+      });
+
+      const validationsByCertificate = new Map<string, ValidacionCertificado[]>();
+      validationsData.forEach((validation) => {
+        if (!validationsByCertificate.has(validation.certificateId)) {
+          validationsByCertificate.set(validation.certificateId, []);
+        }
+        validationsByCertificate.get(validation.certificateId)!.push(validation);
+      });
+
+      const downloadsByCertificate = new Map<string, DescargaCertificado[]>();
+      downloadsData.forEach((download) => {
+        if (!downloadsByCertificate.has(download.certificateId)) {
+          downloadsByCertificate.set(download.certificateId, []);
+        }
+        downloadsByCertificate.get(download.certificateId)!.push(download);
+      });
+
+      const mappedCertificates = certificatesData.map((certificate) => {
+          const requestKey = `${certificate.idNumber}|${certificate.programName}|${certificate.graduationDate?.slice(0, 10) || ''}`;
+          const relatedRequests = requestsByKey.get(requestKey) || [];
+          const landingRequests = relatedRequests.filter((request) =>
+            request.observations?.toLowerCase().includes('landing')
+          );
+          const effectiveRequests =
+            landingRequests.length > 0 ? landingRequests : relatedRequests;
+          const mainRequest = requestsById.get(certificate.requestId) || relatedRequests[0];
+
+          const requestDates = effectiveRequests
+            .map((req) => req.requestDate)
+            .filter(Boolean)
+            .map((date) => new Date(normalizeDate(date)).getTime())
+            .filter((time) => !Number.isNaN(time));
+
+          const firstRequestedAt = requestDates.length
+            ? new Date(Math.min(...requestDates)).toISOString()
+            : normalizeDate(certificate.issueDate);
+          const lastRequestedAt = requestDates.length
+            ? new Date(Math.max(...requestDates)).toISOString()
+            : normalizeDate(certificate.issueDate);
+
+          const scanHistory = (validationsByCertificate.get(certificate.id) || []).map((validation) => ({
+            id: validation.id,
+            scannedAt: normalizeDate(validation.validationDate),
+            ipAddress: validation.ipAddress || 'N/A',
+            location: validation.location || 'No disponible',
+            userAgent: validation.userAgent || 'No disponible',
+            verified: validation.result === 'VALID',
+          }));
+          const downloadCount = (downloadsByCertificate.get(certificate.id) || []).length;
+
+          const lastScan = scanHistory.length
+            ? scanHistory[0].scannedAt
+            : '';
+
+          const lastActivityCandidates = [lastRequestedAt, lastScan, normalizeDate(certificate.issueDate)]
+            .filter(Boolean)
+            .map((value) => new Date(value).getTime())
+            .filter((time) => !Number.isNaN(time));
+
+          const lastActivity = lastActivityCandidates.length
+            ? new Date(Math.max(...lastActivityCandidates)).toISOString()
+            : normalizeDate(certificate.issueDate);
+
+          return {
+            id: certificate.id,
+            certificateNumber: certificate.certificateNumber,
+            certificateHash: certificate.verificationCode,
+            qrCode: certificate.verificationCode,
+            graduate: {
+              fullName: certificate.fullName,
+              document: certificate.idNumber,
+              program: certificate.programName,
+              graduationDate: certificate.graduationDate,
+            },
+            requester: {
+              name: mainRequest?.requesterName || certificate.fullName,
+              email: mainRequest?.requesterEmail || '',
+              type: mapRequesterType(mainRequest?.requesterType),
+            },
+            status: mapStatus(certificate.status),
+            firstRequestedAt,
+            lastRequestedAt,
+            generatedAt: normalizeDate(certificate.issueDate),
+            generatedBy: certificate.signerName || 'Registro Academico',
+            requestCount: effectiveRequests.length || 1,
+            qrScanCount: scanHistory.length,
+            viewCount: effectiveRequests.length || 1,
+            downloadCount,
+            lastActivity,
+            requestHistory: effectiveRequests.map((request) => ({
+              id: request.id,
+              requestedAt: normalizeDate(request.requestDate),
+              requestedBy: request.requesterName || request.fullName,
+              ipAddress: 'N/A',
+            })),
+            scanHistory,
+          } as CertificateRecord;
+        });
+
+        const normalizeTime = (value?: string) => {
+          if (!value) return 0;
+          const date = new Date(value);
+          return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+        };
+
+        const statusPriority = (status: CertificateRecord['status']) => {
+          if (status === 'active') return 3;
+          if (status === 'revoked') return 2;
+          return 1;
+        };
+
+        const groupedCertificates = new Map<string, CertificateRecord>();
+        mappedCertificates.forEach((cert) => {
+          const groupKey = `${cert.graduate.document}|${cert.graduate.program}|${cert.graduate.graduationDate}`;
+          const existing = groupedCertificates.get(groupKey);
+          if (!existing) {
+            groupedCertificates.set(groupKey, cert);
+            return;
+          }
+
+          const mergedRequestHistory = [...existing.requestHistory, ...cert.requestHistory].reduce(
+            (acc, item) => {
+              acc.set(item.id, item);
+              return acc;
+            },
+            new Map<string, CertificateRecord['requestHistory'][number]>()
+          );
+          const mergedScanHistory = [...existing.scanHistory, ...cert.scanHistory].reduce(
+            (acc, item) => {
+              acc.set(item.id, item);
+              return acc;
+            },
+            new Map<string, CertificateRecord['scanHistory'][number]>()
+          );
+          const mergedRequests = Array.from(mergedRequestHistory.values());
+          const mergedScans = Array.from(mergedScanHistory.values());
+
+          const latestCandidate =
+            normalizeTime(cert.generatedAt) > normalizeTime(existing.generatedAt) ? cert : existing;
+
+          groupedCertificates.set(groupKey, {
+            ...latestCandidate,
+            requestCount: mergedRequests.length || 1,
+            qrScanCount: mergedScans.length,
+            viewCount: mergedRequests.length || 1,
+            downloadCount: existing.downloadCount + cert.downloadCount,
+            requestHistory: mergedRequests,
+            scanHistory: mergedScans,
+            firstRequestedAt:
+              normalizeTime(existing.firstRequestedAt) === 0
+                ? cert.firstRequestedAt
+                : normalizeTime(cert.firstRequestedAt) === 0
+                ? existing.firstRequestedAt
+                : normalizeTime(cert.firstRequestedAt) < normalizeTime(existing.firstRequestedAt)
+                ? cert.firstRequestedAt
+                : existing.firstRequestedAt,
+            lastRequestedAt:
+              normalizeTime(cert.lastRequestedAt) > normalizeTime(existing.lastRequestedAt)
+                ? cert.lastRequestedAt
+                : existing.lastRequestedAt,
+            lastActivity:
+              normalizeTime(cert.lastActivity) > normalizeTime(existing.lastActivity)
+                ? cert.lastActivity
+                : existing.lastActivity,
+            status:
+              statusPriority(cert.status) > statusPriority(existing.status)
+                ? cert.status
+                : existing.status,
+          });
+        });
+
+      const uniqueCertificates = Array.from(groupedCertificates.values());
+
+      setCertificates(uniqueCertificates);
+    } catch (error) {
+      console.error('Error cargando certificados:', error);
+      toast.error('No se pudieron cargar los certificados', {
+        description: 'Verifica la conexion con el servicio academico.',
+      });
+      setCertificates([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCertificates();
+  }, [loadCertificates]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      void loadCertificates();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [loadCertificates]);
+
+  const stats = useMemo(() => {
+    return {
+      total: certificates.length,
+      active: certificates.filter(c => c.status === 'active').length,
+      totalRequests: certificates.reduce((sum, c) => sum + c.requestCount, 0),
+      totalScans: certificates.reduce((sum, c) => sum + c.qrScanCount, 0),
+      totalViews: certificates.reduce((sum, c) => sum + c.viewCount, 0),
+      reusedQRs: certificates.filter(c => c.requestCount > 1).length,
+    };
+  }, [certificates]);
+
+  const filteredCertificates = useMemo(() => {
+    return certificates.filter(cert => {
+      const matchesSearch = searchQuery === '' ||
+        cert.graduate.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cert.certificateNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cert.requester.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cert.requester.email.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesStatus = statusFilter === 'all' || cert.status === statusFilter;
+      const matchesType = requesterTypeFilter === 'all' || cert.requester.type === requesterTypeFilter;
+      
+      return matchesSearch && matchesStatus && matchesType;
+    });
+  }, [certificates, searchQuery, statusFilter, requesterTypeFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, requesterTypeFilter]);
 
   // Paginación
   const totalPages = Math.ceil(filteredCertificates.length / itemsPerPage);
@@ -395,7 +481,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     );
   };
 
-  const formatLastActivity = (dateString: string) => {
+  const formatLastActivity = (dateString?: string) => {
+    if (!dateString) return 'Sin actividad';
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -409,6 +496,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     if (diffDays === 1) return 'Ayer';
     if (diffDays < 7) return `Hace ${diffDays} días`;
     return date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
+  };
+
+  const formatDateTime = (
+    value: string | undefined,
+    options: Intl.DateTimeFormatOptions
+  ) => {
+    if (!value) return 'Sin fecha';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Sin fecha';
+    return date.toLocaleString('es-CO', options);
   };
 
   const handleViewDetails = (cert: CertificateRecord) => {
@@ -443,7 +540,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   };
 
   const getPublicValidationUrl = (qrCode: string) => {
-    return `https://esap.edu.co/verificar/${qrCode}`;
+    return `${window.location.origin}/verificar-certificado/${qrCode}`;
   };
 
   const handleDownloadQR = () => {
@@ -813,7 +910,17 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         transition={{ duration: 0.3, delay: 0.25 }}
         className="space-y-3"
       >
-        {paginatedCertificates.length === 0 ? (
+        {isLoading ? (
+          <div className="bg-white rounded-xl border border-[#E5E7EB] p-12 text-center">
+            <Award className="w-16 h-16 mx-auto mb-4" style={{ color: '#D1D5DB' }} />
+            <h3 className="text-lg font-semibold text-[#1F2937] mb-2">
+              Cargando certificados...
+            </h3>
+            <p className="text-sm text-[#6B7280]">
+              Consultando la base de datos academica.
+            </p>
+          </div>
+        ) : paginatedCertificates.length === 0 ? (
           <div className="bg-white rounded-xl border border-[#E5E7EB] p-12 text-center">
             <Award className="w-16 h-16 mx-auto mb-4" style={{ color: '#D1D5DB' }} />
             <h3 className="text-lg font-semibold text-[#1F2937] mb-2">
@@ -872,7 +979,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             className="text-white font-semibold text-sm"
                             style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)' }}
                           >
-                            {cert.graduate.fullName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                            {(cert.graduate.fullName || 'GR').split(' ').map(n => n[0]).join('').slice(0, 2)}
                           </AvatarFallback>
                         </Avatar>
 
@@ -978,57 +1085,18 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <Eye className="w-4 h-4" />
                       </button>
 
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            className="p-2 rounded-lg transition-all"
-                            style={{
-                              background: '#F9FAFB',
-                              color: '#6B7280'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = '#F3F4F6';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = '#F9FAFB';
-                            }}
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleViewQR(cert)}>
-                            <QrCode className="w-4 h-4 mr-2" />
-                            Ver Código QR Único
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleCopyToClipboard(cert.qrCode, 'Código QR')}>
-                            <Copy className="w-4 h-4 mr-2" />
-                            Copiar Código QR
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleCopyToClipboard(cert.certificateHash, 'Hash')}>
-                            <Hash className="w-4 h-4 mr-2" />
-                            Copiar Hash
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleCopyToClipboard(cert.certificateNumber, 'Número de certificado')}>
-                            <Copy className="w-4 h-4 mr-2" />
-                            Copiar Número
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => toast.info('Descargando certificado...')}>
-                            <Download className="w-4 h-4 mr-2" />
-                            Descargar PDF
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            onClick={() => handleRevokeCertificate(cert)}
-                            className="text-red-600"
-                          >
-                            <XCircle className="w-4 h-4 mr-2" />
-                            Revocar Certificado
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <button
+                        className="p-2 rounded-lg transition-all cursor-not-allowed opacity-50"
+                        style={{
+                          background: '#F9FAFB',
+                          color: '#6B7280'
+                        }}
+                        title="Opciones deshabilitadas temporalmente"
+                        disabled
+                        aria-disabled="true"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1268,7 +1336,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                       <div>
                                         <p className="text-gray-600">Fecha y Hora</p>
                                         <p className="font-semibold text-gray-900">
-                                          {new Date(scan.scannedAt).toLocaleString('es-CO', {
+                                          {formatDateTime(scan.scannedAt, {
                                             month: 'short',
                                             day: 'numeric',
                                             hour: '2-digit',
@@ -1453,7 +1521,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             {/* QR Placeholder + Estado */}
             <div className={`${qrPreviewCertificate?.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-6`}>
               <div className="flex flex-col items-center text-center">
-                {/* QR Placeholder */}
+                {/* QR real */}
                 <div 
                   className="w-48 h-48 rounded-xl flex items-center justify-center mb-4"
                   style={{ 
@@ -1461,13 +1529,19 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     border: `2px solid ${qrPreviewCertificate?.status === 'active' ? '#10B981' : '#D1D5DB'}`
                   }}
                 >
-                  <div className="text-center p-4">
-                    <QrCode 
-                      className="w-32 h-32 mx-auto mb-2" 
-                      style={{ color: qrPreviewCertificate?.status === 'active' ? '#10B981' : '#9CA3AF' }}
-                    />
-                    <p className="text-xs font-mono font-semibold" style={{ color: '#6B7280' }}>
-                      {qrPreviewCertificate?.qrCode}
+                  <div className="text-center p-2">
+                    {qrPreviewCertificate?.qrCode ? (
+                      <QRCodeSVG
+                        value={qrPreviewCertificate.qrCode}
+                        size={160}
+                        level="M"
+                        includeMargin
+                      />
+                    ) : (
+                      <QrCode className="w-32 h-32 mx-auto" style={{ color: '#9CA3AF' }} />
+                    )}
+                    <p className="text-xs font-mono font-semibold mt-2" style={{ color: '#6B7280' }}>
+                      {qrPreviewCertificate?.qrCode || 'Sin codigo'}
                     </p>
                   </div>
                 </div>
@@ -1557,7 +1631,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-gray-900 mb-1">{req.requestedBy}</p>
                         <p className="text-gray-600 mb-1">
-                          📅 {new Date(req.requestedAt).toLocaleString('es-CO', {
+                          📅 {formatDateTime(req.requestedAt, {
                             year: 'numeric',
                             month: 'short',
                             day: '2-digit',
@@ -1600,7 +1674,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           </span>
                         </div>
                         <p className="text-gray-700 font-medium mb-2">
-                          📅 {new Date(scan.scannedAt).toLocaleString('es-CO', {
+                          📅 {formatDateTime(scan.scannedAt, {
                             year: 'numeric',
                             month: 'long',
                             day: '2-digit',
@@ -1721,3 +1795,5 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     </div>
   );
 }
+
+

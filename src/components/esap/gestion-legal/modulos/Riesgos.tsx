@@ -28,6 +28,10 @@ import {
 import type { Riesgo, EtapaRiesgo } from '../core/types';
 import { riesgos } from '../data/datosRiesgos';
 import { toast } from 'sonner@2.0.3';
+import { ModuleHeader } from '../design-system/ModuleHeader';
+import { ModuleMetrics } from '../design-system/ModuleMetrics';
+import { ModuleFilters } from '../design-system/ModuleFilters';
+import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 
 type VistaModulo = 'matriz' | 'tabla';
 
@@ -50,6 +54,7 @@ export function Riesgos() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroZona, setFiltroZona] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   const riesgosFiltrados = useMemo(() => {
     let resultado = [...riesgos].filter(r => r.estado === 'ACTIVO');
@@ -81,175 +86,140 @@ export function Riesgos() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex-1">
-          <h2 className="font-black leading-tight" style={{ color: '#003DA5', fontSize: '1.5rem' }}>
-            Gestión de Riesgos Institucionales
-          </h2>
-          <p className="text-sm text-gray-600 mt-0.5">
-            Matriz de riesgos según metodología DAFP e ISO 31000
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
-            <button
-              onClick={() => setVistaActual('matriz')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                vistaActual === 'matriz' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-              }`}
-              style={{ color: vistaActual === 'matriz' ? '#003DA5' : '#6B7280' }}
-            >
-              <Grid3x3 className="w-4 h-4" />Matriz
-            </button>
-            <button
-              onClick={() => setVistaActual('tabla')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                vistaActual === 'tabla' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-              }`}
-              style={{ color: vistaActual === 'tabla' ? '#003DA5' : '#6B7280' }}
-            >
-              <List className="w-4 h-4" />Tabla
-            </button>
-          </div>
-          <button className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-blue-400 transition-all" style={{ color: '#003DA5' }}>
-            <Plus className="w-4 h-4" />Nuevo Riesgo
-          </button>
-        </div>
-      </div>
+      {/* Header con ModuleHeader */}
+      <ModuleHeader
+        title="Matriz de Riesgos"
+        subtitle="Gestión y seguimiento de riesgos institucionales"
+        toggleView={{
+          current: vistaActual,
+          onChange: (view) => setVistaActual(view as VistaModulo),
+          options: [
+            { label: 'Matriz', icon: <Grid3x3 className="w-4 h-4" />, value: 'matriz' },
+            { label: 'Tabla', icon: <List className="w-4 h-4" />, value: 'tabla' }
+          ]
+        }}
+        buttons={[
+          {
+            label: 'Nuevo Riesgo',
+            labelMobile: 'Nuevo',
+            icon: <Plus className="w-4 h-4" />,
+            onClick: () => toast.info('Nuevo Riesgo'),
+            variant: 'primary'
+          }
+        ]}
+        infoTooltip={
+          <ModuleInfoTooltip
+            title="Guía de Gestión de Riesgos"
+            variant="icon"
+            sections={[
+              {
+                label: "🛡️ Propósito del Módulo",
+                content: "Identificación, evaluación y seguimiento de riesgos institucionales que puedan afectar la gestión jurídica de ESAP. Permite priorizar controles y acciones preventivas mediante una matriz de probabilidad × impacto según metodología DAFP (Departamento Administrativo de la Función Pública).",
+                type: "default"
+              },
+              {
+                label: "📊 Matriz de Riesgos 5x5",
+                content: "La matriz cruza PROBABILIDAD (Raro, Improbable, Posible, Probable, Casi Seguro) con IMPACTO (Insignificante, Menor, Moderado, Mayor, Catastrófico) para clasificar riesgos en 4 zonas: 🟢 Bajo, 🟡 Moderado, 🟠 Alto, 🔴 Extremo.",
+                type: "premium"
+              },
+              {
+                label: "🗂️ Tipos de Riesgos (4 Categorías)",
+                content: "📊 GESTIÓN: Procesos, recursos, planeación | ⚠️ CORRUPCIÓN: Fraude, soborno, conflicto de interés | 🔒 SEGURIDAD DIGITAL: Ciberseguridad, pérdida de datos | 💰 FISCAL: Sanciones, multas, pérdidas económicas.",
+                type: "info"
+              },
+              {
+                label: "🚦 Zonas de Riesgo y Acciones",
+                content: "🔴 EXTREMO (20-25): Acción inmediata obligatoria, escalamiento a Alta Dirección | 🟠 ALTO (12-19): Plan de tratamiento prioritario | 🟡 MODERADO (5-11): Monitoreo mensual, controles preventivos | 🟢 BAJO (1-4): Seguimiento trimestral.",
+                type: "warning"
+              },
+              {
+                label: "📋 Etapas del Ciclo de Gestión",
+                content: "1️⃣ IDENTIFICADO: Riesgo detectado y documentado | 2️⃣ EVALUADO: Probabilidad e impacto cuantificados | 3️⃣ EN TRATAMIENTO: Controles implementándose | 4️⃣ MONITOREADO: Seguimiento activo de controles | 5️⃣ CERRADO: Riesgo mitigado o materializado.",
+                type: "default"
+              },
+              {
+                label: "🎯 Metodología DAFP",
+                content: "Este módulo implementa la Guía de Administración del Riesgo del DAFP. Los riesgos se identifican por proceso, se evalúan con probabilidad × impacto, se diseñan controles y se monitorean trimestralmente. Requerido por el MECI (Modelo Estándar de Control Interno).",
+                type: "success"
+              },
+              {
+                label: "🔗 Integración con Otros Módulos",
+                content: "Los riesgos se vinculan con: • Planes de Mejoramiento (acciones correctivas) • Órganos de Control (hallazgos de auditorías) • Defensa Judicial (riesgos de procesos judiciales) • Juzgamiento (riesgos de conductas irregulares).",
+                type: "success"
+              },
+              {
+                label: "💡 Cómo Usar",
+                content: "1️⃣ Vista 'Matriz': Visualiza distribución de riesgos por probabilidad e impacto → 2️⃣ Vista 'Tabla': Lista completa con filtros → 3️⃣ Filtra por zona (Extremo, Alto, etc.) o tipo → 4️⃣ Click 'Ver Detalle' para análisis completo y controles → 5️⃣ Actualiza probabilidades e impactos según cambios en contexto.",
+                type: "default"
+              },
+              {
+                label: "⏭️ Siguiente Paso",
+                content: "Los riesgos Extremos y Altos se escalan automáticamente al módulo 'Planes de Mejoramiento' para gestión de acciones correctivas. Los informes de riesgos se presentan trimestralmente al Comité de Riesgos y a Órganos de Control.",
+                type: "info"
+              }
+            ]}
+          />
+        }
+      />
 
       {/* Métricas */}
-      <div className="grid grid-cols-4 gap-3">
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-blue-50 flex-shrink-0">
-              <Shield className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {totalRiesgos}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Riesgos Activos</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-red-50 flex-shrink-0">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {extremos}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Extremos</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-orange-50 flex-shrink-0">
-              <Activity className="w-5 h-5 text-orange-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {altos}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Altos</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-yellow-50 flex-shrink-0">
-              <CheckCircle2 className="w-5 h-5 text-yellow-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {moderados}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Moderados</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <ModuleMetrics
+        metrics={[
+          {
+            label: 'Riesgos Activos',
+            value: totalRiesgos,
+            icon: <Shield className="w-5 h-5 text-blue-600" />,
+            color: 'blue'
+          },
+          {
+            label: 'Extremos',
+            value: extremos,
+            icon: <AlertTriangle className="w-5 h-5 text-red-600" />,
+            color: 'red'
+          },
+          {
+            label: 'Altos',
+            value: altos,
+            icon: <Activity className="w-5 h-5 text-orange-600" />,
+            color: 'orange'
+          },
+          {
+            label: 'Moderados',
+            value: moderados,
+            icon: <CheckCircle2 className="w-5 h-5 text-yellow-600" />,
+            color: 'yellow'
+          }
+        ]}
+      />
 
       {/* Filtros */}
-      <Card className="bg-white border border-gray-200">
-        <div className="p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-500" />
-            <h3 className="font-bold text-sm text-gray-900">Filtros de búsqueda</h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div className="md:col-span-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Buscar por ID, descripción, proceso..."
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-
-            <div>
-              <select
-                value={filtroZona}
-                onChange={(e) => setFiltroZona(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="TODAS">Todas las zonas</option>
-                <option value="EXTREMO">🔴 Extremo</option>
-                <option value="ALTO">🟠 Alto</option>
-                <option value="MODERADO">🟡 Moderado</option>
-                <option value="BAJO">🟢 Bajo</option>
-              </select>
-            </div>
-
-            <div>
-              <select
-                value={filtroTipo}
-                onChange={(e) => setFiltroTipo(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="TODOS">Todos los tipos</option>
-                <option value="GESTION">📊 Gestión</option>
-                <option value="CORRUPCION">⚠️ Corrupción</option>
-                <option value="SEGURIDAD_DIGITAL">🔒 Seguridad Digital</option>
-                <option value="FISCAL">💰 Fiscal</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              Mostrando <span className="font-bold">{riesgosFiltrados.length}</span> de <span className="font-bold">{totalRiesgos}</span> riesgos
-            </p>
-            {(busqueda || filtroZona !== 'TODAS' || filtroTipo !== 'TODOS') && (
-              <Button
-                onClick={() => {
-                  setBusqueda('');
-                  setFiltroZona('TODAS');
-                  setFiltroTipo('TODOS');
-                }}
-                variant="outline"
-                size="sm"
-                className="text-xs"
-              >
-                <XCircle className="w-3 h-3 mr-1" />
-                Limpiar filtros
-              </Button>
-            )}
-          </div>
-        </div>
-      </Card>
+      <ModuleFilters
+        onSearchChange={(value) => setBusqueda(value)}
+        onZoneChange={(value) => setFiltroZona(value)}
+        onTypeChange={(value) => setFiltroTipo(value)}
+        zones={[
+          { value: 'TODAS', label: 'Todas las zonas' },
+          { value: 'EXTREMO', label: '🔴 Extremo' },
+          { value: 'ALTO', label: '🟠 Alto' },
+          { value: 'MODERADO', label: '🟡 Moderado' },
+          { value: 'BAJO', label: '🟢 Bajo' }
+        ]}
+        types={[
+          { value: 'TODOS', label: 'Todos los tipos' },
+          { value: 'GESTION', label: '📊 Gestión' },
+          { value: 'CORRUPCION', label: '⚠️ Corrupción' },
+          { value: 'SEGURIDAD_DIGITAL', label: '🔒 Seguridad Digital' },
+          { value: 'FISCAL', label: '💰 Fiscal' }
+        ]}
+        searchPlaceholder="Buscar por ID, descripción, proceso..."
+        filteredCount={riesgosFiltrados.length}
+        totalCount={totalRiesgos}
+        onClearFilters={() => {
+          setBusqueda('');
+          setFiltroZona('TODAS');
+          setFiltroTipo('TODOS');
+        }}
+      />
 
       {/* Contenido principal */}
       {vistaActual === 'matriz' ? (

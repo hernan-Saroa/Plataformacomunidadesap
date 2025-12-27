@@ -5,7 +5,7 @@
  * - Generación de certificados de verificación de títulos
  */
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
@@ -46,15 +46,40 @@ import {
 import { toast } from 'sonner@2.0.3';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { PaginationPremium } from '../shared/PaginationPremium';
-import { MOCK_USERS_WITH_SEDES as MOCK_USERS } from '../../data/mockUsersWithSedes';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import React from 'react';
+import graduadosService, { GraduadoData } from '../../services/api/graduados.service';
+
+type GraduateRow = {
+  id: string;
+  personId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  status: 'active' | 'blocked' | 'inactive';
+  roles: Array<{
+    name: string;
+    color: string;
+    since?: string;
+  }>;
+  location: string;
+  program?: string;
+  document: string;
+  enrollmentMethod: 'qr' | 'manual' | 'massive';
+  enrollmentDate: string;
+  graduationDate: string;
+  lastActivity?: string;
+  documentsCount: number;
+  createdBy?: string;
+  asignacionesSedes?: Array<{ nombreSede: string }>;
+  certificatesCount: number;
+};
 
 export function GraduatesManagementModule() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,6 +90,8 @@ export function GraduatesManagementModule() {
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const [graduates, setGraduates] = useState<GraduateRow[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Estados para modales
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -73,7 +100,11 @@ export function GraduatesManagementModule() {
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<typeof MOCK_USERS[0] | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<GraduateRow | null>(null);
 
   // Estados para formularios
   const [editForm, setEditForm] = useState({
@@ -97,40 +128,195 @@ export function GraduatesManagementModule() {
     format: 'pdf' as 'pdf' | 'docx'
   });
 
-  // Filtrar solo usuarios con rol "Graduado"
-  const graduatesOnly = MOCK_USERS.filter(user => 
-    user.roles.some(role => role.name === 'Graduado')
-  );
-
-  // Stats calculadas
-  const stats = {
-    total: graduatesOnly.length,
-    active: graduatesOnly.filter(u => u.status === 'active').length,
-    blocked: graduatesOnly.filter(u => u.status === 'blocked').length,
-    growth: 8.5
+  const parseDateOnly = (value?: string) => {
+    if (!value) return null;
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+    const date = new Date(isDateOnly ? `${value}T00:00:00` : value);
+    return Number.isNaN(date.getTime()) ? null : date;
   };
 
-  // Filtros únicos para los selectores
-  const uniquePrograms = Array.from(new Set(graduatesOnly.filter(u => u.program).map(u => u.program!)));
-  const uniqueLocations = Array.from(new Set(graduatesOnly.map(u => u.location)));
+  const formatDateOnly = (
+    value?: string,
+    options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric' }
+  ) => {
+    const date = parseDateOnly(value);
+    if (!date) return 'N/A';
+    return date.toLocaleDateString('es-CO', options);
+  };
 
-  // Filtrado
-  const filteredUsers = graduatesOnly.filter(user => {
-    const matchesSearch = searchQuery === '' ||
-      `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.document.includes(searchQuery);
-    
-    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
-    const matchesProgram = programFilter === 'all' || user.program === programFilter;
-    const matchesLocation = locationFilter === 'all' || user.location === locationFilter;
-    
-    // ✅ NUEVO: Filtro por sede (basado en asignacionesSedes)
-    const matchesSede = sedeFilter === 'all' || 
-      (user.asignacionesSedes && user.asignacionesSedes.some(asig => asig.nombreSede === sedeFilter));
-    
-    return matchesSearch && matchesStatus && matchesProgram && matchesLocation && matchesSede;
-  });
+  const formatDateShort = (value?: string) =>
+    formatDateOnly(value, { year: 'numeric', month: 'short', day: 'numeric' });
+
+  const formatDateISO = (value?: string) => {
+    const date = parseDateOnly(value);
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const splitFullName = (fullName?: string) => {
+    const safeName = (fullName || '').trim();
+    if (!safeName) {
+      return { firstName: 'Graduado', lastName: '' };
+    }
+    const parts = safeName.split(/\s+/);
+    if (parts.length === 1) {
+      return { firstName: parts[0], lastName: '' };
+    }
+    return { firstName: parts.slice(0, -1).join(' '), lastName: parts.slice(-1).join(' ') };
+  };
+
+  const mapGraduateStatus = (status: GraduadoData['status']): GraduateRow['status'] => {
+    if (status === 'ACTIVE') return 'active';
+    if (status === 'REVOKED') return 'blocked';
+    return 'inactive';
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadGraduates = async () => {
+      setIsLoading(true);
+      try {
+        const [graduatesResponse, certificatesResponse] = await Promise.all([
+          graduadosService.graduados.listarRegistroAcademico(),
+          graduadosService.certificados.listar().catch(() => []),
+        ]);
+
+        const certificateCounts = new Map<string, number>();
+        const certificatePrograms = new Map<string, Set<string>>();
+        (certificatesResponse || []).forEach((certificate) => {
+          if (!certificate.idNumber) return;
+          const programKey = `${certificate.programName || ''}::${certificate.degreeTitle || ''}`.trim();
+          if (!certificatePrograms.has(certificate.idNumber)) {
+            certificatePrograms.set(certificate.idNumber, new Set());
+          }
+          if (programKey) {
+            certificatePrograms.get(certificate.idNumber)!.add(programKey);
+          } else {
+            certificatePrograms.get(certificate.idNumber)!.add(certificate.certificateNumber);
+          }
+        });
+        certificatePrograms.forEach((programs, idNumber) => {
+          certificateCounts.set(idNumber, programs.size);
+        });
+
+        const mappedGraduates = (graduatesResponse || []).map((graduate) => {
+          const { firstName, lastName } = splitFullName(graduate.fullName);
+          const campus = graduate.campus || 'Sin sede';
+          return {
+            id: graduate.id,
+            personId: graduate.personId,
+            firstName,
+            lastName,
+            email: graduate.email || '',
+            phone: graduate.phone || 'N/A',
+            status: mapGraduateStatus(graduate.status),
+            roles: [
+              {
+                name: 'Graduado',
+                color: 'green',
+                since: graduate.graduationDate,
+              },
+            ],
+            location: campus,
+            program: graduate.programName || 'No especificado',
+            document: graduate.idNumber,
+            enrollmentMethod: 'manual',
+            enrollmentDate: graduate.enrollmentDate || graduate.graduationDate,
+            graduationDate: graduate.graduationDate,
+            lastActivity: graduate.graduationDate,
+            documentsCount: 0,
+            createdBy: 'Registro Academico',
+            asignacionesSedes: campus ? [{ nombreSede: campus }] : undefined,
+            certificatesCount:
+              certificateCounts.get(graduate.idNumber) ??
+              (graduate.graduationDate ? 1 : 0),
+          } as GraduateRow;
+        });
+
+        if (isMounted) {
+          setGraduates(mappedGraduates);
+        }
+      } catch (error) {
+        console.error('Error cargando graduados:', error);
+        toast.error('No se pudieron cargar los graduados', {
+          description: 'Intenta recargar la pagina o verifica tu conexion.',
+        });
+        if (isMounted) {
+          setGraduates([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadGraduates();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const graduatesOnly = useMemo(() => graduates, [graduates]);
+
+  const stats = useMemo(() => {
+    const active = graduatesOnly.filter(u => u.status === 'active').length;
+    const blocked = graduatesOnly.filter(u => u.status === 'blocked').length;
+    return {
+      total: graduatesOnly.length,
+      active,
+      blocked,
+      growth: 8.5,
+    };
+  }, [graduatesOnly]);
+
+  const uniquePrograms = useMemo(
+    () => Array.from(new Set(graduatesOnly.filter(u => u.program).map(u => u.program!))),
+    [graduatesOnly]
+  );
+
+  const uniqueLocations = useMemo(
+    () => Array.from(new Set(graduatesOnly.map(u => u.location).filter(Boolean))),
+    [graduatesOnly]
+  );
+
+  const uniqueSedes = useMemo(() => {
+    const sedes = new Set<string>();
+    graduatesOnly.forEach((user) => {
+      user.asignacionesSedes?.forEach((asig) => {
+        if (asig?.nombreSede) {
+          sedes.add(asig.nombreSede);
+        }
+      });
+    });
+    return Array.from(sedes);
+  }, [graduatesOnly]);
+
+  const filteredUsers = useMemo(() => {
+    return graduatesOnly.filter(user => {
+      const matchesSearch = searchQuery === '' ||
+        `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.document.includes(searchQuery);
+      
+      const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
+      const matchesProgram = programFilter === 'all' || user.program === programFilter;
+      const matchesLocation = locationFilter === 'all' || user.location === locationFilter;
+      const matchesSede = sedeFilter === 'all' || 
+        (user.asignacionesSedes && user.asignacionesSedes.some(asig => asig.nombreSede === sedeFilter));
+      
+      return matchesSearch && matchesStatus && matchesProgram && matchesLocation && matchesSede;
+    });
+  }, [graduatesOnly, searchQuery, statusFilter, programFilter, locationFilter, sedeFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, programFilter, locationFilter, sedeFilter]);
 
   // Paginación
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
@@ -220,8 +406,9 @@ export function GraduatesManagementModule() {
     );
   };
 
-  const formatLastActivity = (dateString: string) => {
-    const date = new Date(dateString);
+  const formatLastActivity = (dateString?: string) => {
+    const date = parseDateOnly(dateString);
+    if (!date) return 'Sin actividad';
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -236,7 +423,7 @@ export function GraduatesManagementModule() {
     return date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
   };
 
-  const handleEdit = (user: typeof MOCK_USERS[0]) => {
+  const handleEdit = (user: GraduateRow) => {
     setSelectedUser(user);
     setEditForm({
       firstName: user.firstName,
@@ -250,37 +437,37 @@ export function GraduatesManagementModule() {
     setIsEditModalOpen(true);
   };
 
-  const handleDelete = (user: typeof MOCK_USERS[0]) => {
+  const handleDelete = (user: GraduateRow) => {
     setSelectedUser(user);
     setIsDeleteModalOpen(true);
   };
 
-  const handleViewDetails = (user: typeof MOCK_USERS[0]) => {
+  const handleViewDetails = (user: GraduateRow) => {
     setExpandedUserId(expandedUserId === user.id ? null : user.id);
   };
 
-  const handleBlockUser = (user: typeof MOCK_USERS[0]) => {
+  const handleBlockUser = (user: GraduateRow) => {
     setSelectedUser(user);
     setIsBlockModalOpen(true);
   };
 
-  const handleActivateUser = (user: typeof MOCK_USERS[0]) => {
+  const handleActivateUser = (user: GraduateRow) => {
     toast.success('Graduado Activado', { 
       description: `${user.firstName} ${user.lastName} ha sido activado exitosamente.`
     });
   };
 
-  const handleVerifyTitle = (user: typeof MOCK_USERS[0]) => {
+  const handleVerifyTitle = (user: GraduateRow) => {
     setSelectedUser(user);
-    setIsVerifyTitleModalOpen(true);
+    window.location.href = '/verificar-certificado-graduado';
   };
 
-  const handleGenerateCertificate = (user: typeof MOCK_USERS[0]) => {
+  const handleGenerateCertificate = (user: GraduateRow) => {
     setSelectedUser(user);
     setIsGenerateCertModalOpen(true);
   };
 
-  const handleSendEmail = (user: typeof MOCK_USERS[0]) => {
+  const handleSendEmail = (user: GraduateRow) => {
     setSelectedUser(user);
     setEmailForm({
       subject: `Información importante para graduado - ${user.firstName} ${user.lastName}`,
@@ -332,14 +519,100 @@ export function GraduatesManagementModule() {
     setIsEmailModalOpen(false);
   };
 
+  const escapeCsvValue = (value: string | number | null | undefined) => {
+    const safeValue = value === null || value === undefined ? '' : String(value);
+    return `"${safeValue.replace(/"/g, '""')}"`;
+  };
+
+  const handleExportGraduates = () => {
+    if (isExporting) return;
+
+    const startDate = parseDateOnly(exportStartDate);
+    const endDate = parseDateOnly(exportEndDate);
+
+    if (startDate && endDate && startDate > endDate) {
+      toast.error('Rango de fechas invalido', {
+        description: 'La fecha inicial no puede ser mayor que la fecha final.',
+      });
+      return;
+    }
+
+    setIsExporting(true);
+
+    const rows = filteredUsers.filter((user) => {
+      if (!startDate && !endDate) return true;
+      const gradDate = parseDateOnly(user.graduationDate);
+      if (!gradDate) return false;
+      if (startDate && gradDate < startDate) return false;
+      if (endDate && gradDate > endDate) return false;
+      return true;
+    });
+
+    if (rows.length === 0) {
+      toast.info('No hay graduados en el rango seleccionado');
+      setIsExporting(false);
+      return;
+    }
+
+    const headers = [
+      'Documento',
+      'Nombre completo',
+      'Correo',
+      'Telefono',
+      'Programa',
+      'Sede',
+      'Estado',
+      'Fecha de grado',
+      'Fecha de enrolamiento',
+      'Certificados',
+    ];
+
+    const csvRows = [
+      headers.map(escapeCsvValue).join(','),
+      ...rows.map((user) =>
+        [
+          user.document,
+          `${user.firstName} ${user.lastName}`.trim(),
+          user.email,
+          user.phone,
+          user.program || '',
+          user.location || '',
+          user.status,
+          formatDateISO(user.graduationDate),
+          formatDateISO(user.enrollmentDate),
+          user.certificatesCount,
+        ]
+          .map(escapeCsvValue)
+          .join(',')
+      ),
+    ];
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `graduados_${stamp}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    toast.success('Exportacion completada', {
+      description: `Se exportaron ${rows.length} graduados.`,
+    });
+    setIsExportModalOpen(false);
+    setIsExporting(false);
+  };
+
   const clearAllFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
+    setSedeFilter('all');
     setProgramFilter('all');
     setLocationFilter('all');
   };
 
-  const hasActiveFilters = searchQuery || statusFilter !== 'all' || programFilter !== 'all' || locationFilter !== 'all';
+  const hasActiveFilters = searchQuery || statusFilter !== 'all' || programFilter !== 'all' || locationFilter !== 'all' || sedeFilter !== 'all';
 
   return (
     <div className="space-y-6">
@@ -388,7 +661,7 @@ export function GraduatesManagementModule() {
         {/* Botones de Acción */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <button
-            onClick={() => toast.info('Exportar graduados')}
+            onClick={() => setIsExportModalOpen(true)}
             className="inline-flex items-center justify-center gap-2 transition-all"
             style={{
               background: '#FFFFFF',
@@ -415,11 +688,7 @@ export function GraduatesManagementModule() {
 
           <button
             onClick={() => {
-              if (filteredUsers.length > 0) {
-                handleVerifyTitle(filteredUsers[0]);
-              } else {
-                toast.error('No hay graduados para generar certificado');
-              }
+              window.location.href = '/verificar-certificado-graduado';
             }}
             className="inline-flex items-center justify-center gap-2 transition-all"
             style={{
@@ -579,12 +848,9 @@ export function GraduatesManagementModule() {
               }}
             >
               <option value="all">Todas las sedes</option>
-              <option value="Bogotá">Bogotá</option>
-              <option value="Medellín">Medellín</option>
-              <option value="Cali">Cali</option>
-              <option value="Barranquilla">Barranquilla</option>
-              <option value="Bucaramanga">Bucaramanga</option>
-              <option value="Cartagena">Cartagena</option>
+              {uniqueSedes.map((sede) => (
+                <option key={sede} value={sede}>{sede}</option>
+              ))}
             </select>
 
             {/* Filtro Ubicación */}
@@ -644,7 +910,17 @@ export function GraduatesManagementModule() {
         transition={{ duration: 0.3, delay: 0.2 }}
         className="space-y-3"
       >
-        {paginatedUsers.length === 0 ? (
+        {isLoading ? (
+          <div className="bg-white rounded-xl border border-[#E5E7EB] p-12 text-center">
+            <GraduationCap className="w-16 h-16 mx-auto mb-4" style={{ color: '#D1D5DB' }} />
+            <h3 className="text-lg font-semibold text-[#1F2937] mb-2">
+              Cargando graduados...
+            </h3>
+            <p className="text-sm text-[#6B7280]">
+              Estamos consultando la base de datos academica.
+            </p>
+          </div>
+        ) : paginatedUsers.length === 0 ? (
           <div className="bg-white rounded-xl border border-[#E5E7EB] p-12 text-center">
             <GraduationCap className="w-16 h-16 mx-auto mb-4" style={{ color: '#D1D5DB' }} />
             <h3 className="text-lg font-semibold text-[#1F2937] mb-2">
@@ -703,7 +979,7 @@ export function GraduatesManagementModule() {
                             className="text-white font-semibold text-sm"
                             style={{ background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)' }}
                           >
-                            {user.firstName[0]}{user.lastName[0]}
+                            {(user.firstName?.[0] || 'G')}{user.lastName?.[0] || ''}
                           </AvatarFallback>
                         </Avatar>
 
@@ -736,13 +1012,7 @@ export function GraduatesManagementModule() {
                             Graduado
                           </p>
                           <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                            {user.roles.find(r => r.name === 'Graduado')?.since 
-                              ? new Date(user.roles.find(r => r.name === 'Graduado')!.since).toLocaleDateString('es-CO', { 
-                                  year: 'numeric', 
-                                  month: 'short', 
-                                  day: 'numeric' 
-                                })
-                              : 'N/A'}
+                            {formatDateShort(user.graduationDate)}
                           </p>
                         </div>
                       </div>
@@ -759,10 +1029,10 @@ export function GraduatesManagementModule() {
                         </div>
                         <div>
                           <p className="text-xs font-medium" style={{ color: '#6B7280' }}>
-                            Descargas
+                            Certificados
                           </p>
                           <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                            {Math.floor(Math.random() * 15) + 1} veces
+                            {user.certificatesCount} {user.certificatesCount === 1 ? 'certificado' : 'certificados'}
                           </p>
                         </div>
                       </div>
@@ -802,62 +1072,18 @@ export function GraduatesManagementModule() {
                         <Eye className="w-4 h-4" />
                       </button>
 
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            className="p-2 rounded-lg transition-all"
-                            style={{
-                              background: '#F9FAFB',
-                              color: '#6B7280'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = '#F3F4F6';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = '#F9FAFB';
-                            }}
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleEdit(user)}>
-                            <Edit className="w-4 h-4 mr-2" />
-                            Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleVerifyTitle(user)}>
-                            <BadgeCheck className="w-4 h-4 mr-2" />
-                            Verificar Título
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleGenerateCertificate(user)}>
-                            <Award className="w-4 h-4 mr-2" />
-                            Generar Certificado
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleSendEmail(user)}>
-                            <Mail className="w-4 h-4 mr-2" />
-                            Enviar Email
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {user.status === 'active' ? (
-                            <DropdownMenuItem onClick={() => handleBlockUser(user)}>
-                              <Lock className="w-4 h-4 mr-2" />
-                              Bloquear
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onClick={() => handleActivateUser(user)}>
-                              <Unlock className="w-4 h-4 mr-2" />
-                              Activar
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem 
-                            onClick={() => handleDelete(user)}
-                            className="text-red-600"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Eliminar
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <button
+                        className="p-2 rounded-lg transition-all cursor-not-allowed opacity-50"
+                        style={{
+                          background: '#F9FAFB',
+                          color: '#6B7280'
+                        }}
+                        title="Opciones deshabilitadas temporalmente"
+                        disabled
+                        aria-disabled="true"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -961,11 +1187,7 @@ export function GraduatesManagementModule() {
                           <div className="flex items-center gap-1.5">
                             <Calendar className="w-4 h-4" style={{ color: '#6B7280' }} />
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                              {new Date(user.enrollmentDate).toLocaleDateString('es-CO', { 
-                                year: 'numeric', 
-                                month: 'long', 
-                                day: 'numeric' 
-                              })}
+                              {formatDateOnly(user.enrollmentDate)}
                             </p>
                           </div>
                         </div>
@@ -1010,6 +1232,69 @@ export function GraduatesManagementModule() {
       )}
 
       {/* ==================== MODALES ==================== */}
+
+      {/* Modal: Exportar Graduados */}
+      <Dialog open={isExportModalOpen} onOpenChange={setIsExportModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="w-5 h-5" style={{ color: '#003DA5' }} />
+              Exportar Graduados
+            </DialogTitle>
+            <DialogDescription>
+              Filtra por fecha de grado y descarga el listado en CSV.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="export-start">Fecha inicial</Label>
+              <Input
+                id="export-start"
+                type="date"
+                value={exportStartDate}
+                onChange={(e) => setExportStartDate(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="export-end">Fecha final</Label>
+              <Input
+                id="export-end"
+                type="date"
+                value={exportEndDate}
+                onChange={(e) => setExportEndDate(e.target.value)}
+              />
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-700">
+                Se exportaran los graduados que cumplan con los filtros activos y el rango de fechas.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <button
+              onClick={() => setIsExportModalOpen(false)}
+              className="px-4 py-2 text-sm font-medium rounded-lg border-2"
+              style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+              disabled={isExporting}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleExportGraduates}
+              className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+              disabled={isExporting}
+            >
+              <Download className="w-4 h-4" />
+              {isExporting ? 'Exportando...' : 'Exportar'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal: Editar Graduado */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
@@ -1153,13 +1438,7 @@ export function GraduatesManagementModule() {
                     <p><strong>Graduado:</strong> {selectedUser?.firstName} {selectedUser?.lastName}</p>
                     <p><strong>Documento:</strong> {selectedUser?.document}</p>
                     <p><strong>Programa:</strong> {selectedUser?.program}</p>
-                    <p><strong>Fecha de Grado:</strong> {selectedUser?.roles.find(r => r.name === 'Graduado')?.since 
-                      ? new Date(selectedUser.roles.find(r => r.name === 'Graduado')!.since).toLocaleDateString('es-CO', { 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })
-                      : 'N/A'}</p>
+                    <p><strong>Fecha de Grado:</strong> {formatDateOnly(selectedUser?.graduationDate)}</p>
                   </div>
                 </div>
               </div>
@@ -1233,13 +1512,7 @@ export function GraduatesManagementModule() {
                 <div>
                   <p className="text-gray-600 mb-1">Fecha de Grado</p>
                   <p className="font-semibold text-gray-900">
-                    {selectedUser?.roles.find(r => r.name === 'Graduado')?.since 
-                      ? new Date(selectedUser.roles.find(r => r.name === 'Graduado')!.since).toLocaleDateString('es-CO', { 
-                          year: 'numeric', 
-                          month: 'short', 
-                          day: 'numeric' 
-                        })
-                      : 'N/A'}
+                    {formatDateShort(selectedUser?.graduationDate)}
                   </p>
                 </div>
               </div>

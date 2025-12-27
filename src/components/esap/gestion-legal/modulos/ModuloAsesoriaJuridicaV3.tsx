@@ -19,6 +19,10 @@ import { Input } from '../../../ui/input';
 import { ConsultaJuridica } from '../core/types';
 import { consultasJuridicasMock, estadisticasAsesoriaJuridica } from '../data/datosConsultasJuridicas';
 import { toast } from 'sonner@2.0.3';
+import { ModuleHeader } from '../design-system/ModuleHeader';
+import { ModuleMetrics } from '../design-system/ModuleMetrics';
+import { ModuleFilters } from '../design-system/ModuleFilters';
+import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 
 type VistaModulo = 'tabla' | 'tarjetas';
 type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema';
@@ -30,6 +34,7 @@ export function ModuloAsesoriaJuridicaV3() {
   const [filtroSemaforo, setFiltroSemaforo] = useState<string>('TODOS');
   const [orden, setOrden] = useState<OrdenColumna>('dias');
   const [direccionOrden, setDireccionOrden] = useState<'asc' | 'desc'>('asc');
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   const consultasFiltradas = useMemo(() => {
     let resultado = [...consultasJuridicasMock];
@@ -91,171 +96,136 @@ export function ModuloAsesoriaJuridicaV3() {
     }
   };
 
-  const limpiarFiltros = () => {
-    setBusqueda('');
-    setFiltroEtapa('TODAS');
-    setFiltroSemaforo('TODOS');
-  };
-
-  const consultasCriticas = consultasJuridicasMock.filter(c => c.diasRestantes <= 3).length;
-  const consultasEnTermino = consultasJuridicasMock.filter(c => c.diasRestantes > 5).length;
-
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex-1">
-          <h2 className="font-black leading-tight" style={{ color: '#003DA5', fontSize: '1.5rem' }}>
-            Asesoría Jurídica Institucional
-          </h2>
-          <p className="text-sm text-gray-600 mt-0.5">
-            Gestión de consultas y conceptos jurídicos internos
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
-            <button
-              onClick={() => setTipoVista('tabla')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                tipoVista === 'tabla' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-              }`}
-              style={{ color: tipoVista === 'tabla' ? '#003DA5' : '#6B7280' }}
-            >
-              <List className="w-4 h-4" />Tabla
-            </button>
-            <button
-              onClick={() => setTipoVista('tarjetas')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                tipoVista === 'tarjetas' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-              }`}
-              style={{ color: tipoVista === 'tarjetas' ? '#003DA5' : '#6B7280' }}
-            >
-              <Columns3 className="w-4 h-4" />Tarjetas
-            </button>
-          </div>
-          <button className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-blue-400 transition-all" style={{ color: '#003DA5' }}>
-            <Plus className="w-4 h-4" />Nueva Consulta
-          </button>
-        </div>
-      </div>
+      {/* Header con ModuleHeader - SIN toggleView */}
+      <ModuleHeader
+        title="Asesoría Jurídica"
+        subtitle="Seguimiento a consultas y términos de respuesta"
+        buttons={[
+          {
+            label: 'Nueva Consulta',
+            labelMobile: 'Nueva',
+            icon: <Plus className="w-4 h-4" />,
+            onClick: () => toast.info('Nueva Consulta Jurídica'),
+            variant: 'primary'
+          }
+        ]}
+        infoTooltip={
+          <ModuleInfoTooltip
+            title="Guía de Asesoría Jurídica"
+            variant="icon"
+            sections={[
+              {
+                label: "🔗 Procedencia del Flujo",
+                content: "Las consultas llegan de dos formas: 1) Correos clasificados por IA desde Centro de Comunicaciones, 2) Solicitudes directas de áreas administrativas de ESAP (Contratación, Talento Humano, Académica, etc.).",
+                type: "info"
+              },
+              {
+                label: "⚖️ Propósito del Módulo",
+                content: "Gestión de consultas jurídicas internas sobre: contratación pública, laboral, administrativo, disciplinario, regulatorio, propiedad intelectual y demás temas legales que requieran conceptos técnicos especializados.",
+                type: "default"
+              },
+              {
+                label: "🔄 Flujo de Trabajo (5 Etapas)",
+                content: "1️⃣ PENDIENTE: Consulta recibida, pendiente de asignación → 2️⃣ EN ANÁLISIS: Profesional asignado investiga normativa y jurisprudencia → 3️⃣ BORRADOR: Concepto redactado, pendiente de revisión → 4️⃣ REVISIÓN: Coordinador jurídico valida concepto → 5️⃣ CONCEPTO EMITIDO: Respuesta enviada al área solicitante.",
+                type: "premium"
+              },
+              {
+                label: "⏰ SLA (Service Level Agreement)",
+                content: "Plazos de respuesta según prioridad: 🔴 URGENTE: 24 horas | 🟠 ALTA: 3 días | 🟡 MEDIA: 5 días | 🟢 BAJA: 10 días. El sistema alerta 1 día antes del vencimiento.",
+                type: "warning"
+              },
+              {
+                label: "📊 Temas de Consulta",
+                content: "Clasificación automática por materia: Contratación (35%), Laboral (25%), Administrativo (20%), Disciplinario (10%), Otros (10%). Permite análisis de demanda de asesoría por área.",
+                type: "default"
+              },
+              {
+                label: "👨‍💼 Asignación Inteligente",
+                content: "El sistema sugiere el profesional más adecuado según: 1) Especialización en el tema, 2) Carga de trabajo actual, 3) Experiencia previa en temas similares.",
+                type: "premium"
+              },
+              {
+                label: "🔗 Integración con Otros Módulos",
+                content: "Se conecta con: • Centro Comunicaciones (recepción de consultas) • Defensa Judicial (conceptos para contestación de demandas) • Juzgamiento (conceptos sobre calificación de faltas) • Términos e Informes (SLA tracking).",
+                type: "success"
+              },
+              {
+                label: "💡 Cómo Usar",
+                content: "1️⃣ Click 'Nueva Consulta' si llega por canal no digital → 2️⃣ Sistema asigna automáticamente o asigna manualmente → 3️⃣ Profesional mueve a 'En Análisis' al iniciar → 4️⃣ Redacta concepto y mueve a 'Borrador' → 5️⃣ Coordinador revisa y aprueba → 6️⃣ Sistema notifica al solicitante.",
+                type: "default"
+              },
+              {
+                label: "⏭️ Siguiente Paso",
+                content: "Cuando el concepto emitido recomienda acciones legales: • Si es demanda → Derivar a Defensa Judicial • Si es proceso disciplinario → Derivar a Juzgamiento • Si es contrato → Coordinar con Contratación.",
+                type: "info"
+              }
+            ]}
+          />
+        }
+      />
 
       {/* Métricas */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-purple-50 flex-shrink-0">
-              <FileQuestion className="w-5 h-5 text-purple-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {consultasJuridicasMock.length}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Consultas Totales</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-red-50 flex-shrink-0">
-              <AlertCircle className="w-5 h-5 text-red-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {consultasCriticas}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Críticas</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-green-50 flex-shrink-0">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {consultasEnTermino}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">En Término</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <ModuleMetrics
+        metrics={[
+          {
+            icon: <FileQuestion className="w-5 h-5 text-purple-600" />,
+            value: consultasJuridicasMock.length,
+            label: 'Consultas Totales'
+          },
+          {
+            icon: <AlertCircle className="w-5 h-5 text-red-600" />,
+            value: consultasFiltradas.filter(c => c.diasRestantes <= 3).length,
+            label: 'Críticas'
+          },
+          {
+            icon: <CheckCircle className="w-5 h-5 text-green-600" />,
+            value: consultasFiltradas.filter(c => c.diasRestantes > 5).length,
+            label: 'En Término'
+          }
+        ]}
+      />
 
       {/* Filtros y búsqueda */}
-      <Card className="bg-white border border-gray-200">
-        <div className="p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-500" />
-            <h3 className="font-bold text-sm text-gray-900">Filtros de búsqueda</h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            {/* Búsqueda global */}
-            <div className="md:col-span-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Buscar por ID, tema, solicitante, abogado..."
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-
-            {/* Filtro por etapa */}
-            <div>
-              <select
-                value={filtroEtapa}
-                onChange={(e) => setFiltroEtapa(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="TODAS">Todas las etapas</option>
-                <option value="RADICADA">Radicada</option>
-                <option value="ANÁLISIS">En Análisis</option>
-                <option value="RESPUESTA">En Respuesta</option>
-                <option value="ENVIADA">Enviada</option>
-              </select>
-            </div>
-
-            {/* Filtro por prioridad */}
-            <div>
-              <select
-                value={filtroSemaforo}
-                onChange={(e) => setFiltroSemaforo(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="TODOS">Todas las prioridades</option>
-                <option value="ROJO">🔴 Críticas (≤3 días)</option>
-                <option value="AMARILLO">🟡 Urgentes (4-5 días)</option>
-                <option value="VERDE">🟢 En término (&gt;5 días)</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Contador y limpiar */}
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              Mostrando <span className="font-bold">{consultasFiltradas.length}</span> de <span className="font-bold">{consultasJuridicasMock.length}</span> consultas
-            </p>
-            {(busqueda || filtroEtapa !== 'TODAS' || filtroSemaforo !== 'TODOS') && (
-              <Button
-                onClick={limpiarFiltros}
-                variant="outline"
-                size="sm"
-                className="text-xs"
-              >
-                <XCircle className="w-3 h-3 mr-1" />
-                Limpiar filtros
-              </Button>
-            )}
-          </div>
-        </div>
-      </Card>
+      <ModuleFilters
+        searchValue={busqueda}
+        onSearchChange={setBusqueda}
+        searchPlaceholder="Buscar por ID, tema, solicitante, abogado..."
+        filters={[
+          {
+            type: 'select',
+            value: filtroEtapa,
+            onChange: setFiltroEtapa,
+            options: [
+              { value: 'TODAS', label: 'Todas las etapas' },
+              { value: 'RADICADA', label: 'Radicada' },
+              { value: 'ANÁLISIS', label: 'En Análisis' },
+              { value: 'RESPUESTA', label: 'En Respuesta' },
+              { value: 'ENVIADA', label: 'Enviada' }
+            ]
+          },
+          {
+            type: 'select',
+            value: filtroSemaforo,
+            onChange: setFiltroSemaforo,
+            options: [
+              { value: 'TODOS', label: 'Todas las prioridades' },
+              { value: 'ROJO', label: '🔴 Críticas (≤3 días)' },
+              { value: 'AMARILLO', label: '🟡 Urgentes (4-5 días)' },
+              { value: 'VERDE', label: '🟢 En término (>5 días)' }
+            ]
+          }
+        ]}
+        totalItems={consultasJuridicasMock.length}
+        filteredItems={consultasFiltradas.length}
+        onClearFilters={() => {
+          setBusqueda('');
+          setFiltroEtapa('TODAS');
+          setFiltroSemaforo('TODOS');
+        }}
+        counterText={`Mostrando ${consultasFiltradas.length} de ${consultasJuridicasMock.length} consultas`}
+      />
 
       {/* Tabla o Tarjetas */}
       {tipoVista === 'tabla' ? (
@@ -350,9 +320,13 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaCo
               <td className="px-4 py-3 text-sm text-gray-500">
                 <Badge
                   className="text-xs flex items-center gap-1 font-semibold"
-                  style={{ color: consulta.diasRestantes <= 3 ? '#DC2626' : consulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981' }}
+                  style={{ 
+                    background: consulta.diasRestantes <= 3 ? '#DC2626' : consulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
+                    color: '#FFFFFF',
+                    border: 'none'
+                  }}
                 >
-                  <div className="w-2 h-2 rounded-full" style={{ background: consulta.diasRestantes <= 3 ? '#DC2626' : consulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981' }} />
+                  <div className="w-2 h-2 rounded-full bg-white" />
                   {consulta.diasRestantes} días
                 </Badge>
               </td>
@@ -430,9 +404,13 @@ function TarjetasConsultas({ consultas }: TarjetasConsultasProps) {
             <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
               <Badge
                 className="text-xs flex items-center gap-1 font-semibold"
-                style={{ color: consulta.diasRestantes <= 3 ? '#DC2626' : consulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981' }}
+                style={{ 
+                  background: consulta.diasRestantes <= 3 ? '#DC2626' : consulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
+                  color: '#FFFFFF',
+                  border: 'none'
+                }}
               >
-                <div className="w-2 h-2 rounded-full" style={{ background: consulta.diasRestantes <= 3 ? '#DC2626' : consulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981' }} />
+                <div className="w-2 h-2 rounded-full bg-white" />
                 {consulta.diasRestantes} días
               </Badge>
             </div>

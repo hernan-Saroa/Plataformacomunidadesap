@@ -29,7 +29,8 @@ import { EnrollmentQRLandingUnified } from './components/portal/EnrollmentQRLand
 import { VinculacionForm } from './components/portal/VinculacionForm';
 import { PublicTitleVerification } from './components/portal/PublicTitleVerification';
 import { SolicitarCertificadoLaboral } from './components/portal/SolicitarCertificadoLaboral';
-import { VerificarCertificado } from './components/certificados-laborales/VerificarCertificado';
+import { VerificarCertificadoPublico } from './components/portal/VerificarCertificadoPublico';
+import ValidarCertificadoGraduado from './components/portal/ValidarCertificadoGraduado';
 
 /** Entrante */
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -187,7 +188,7 @@ export default function App() {
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
         : [];
       const hasAdminRole = roles.includes('ADMIN');
-      const hasCertLaboralRole = roles.includes('COORDINADOR_CERT_LABORAL');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO');
       const emailLower = userEmail.toLowerCase();
 
       let nextView: Vista = 'portal';
@@ -201,11 +202,11 @@ export default function App() {
         nextCurrentView = 'backoffice';
         nextUserType = 'administrativo';
         portalRoles.push('Administrativo');
-      } else if (hasCertLaboralRole) {
+      } else if (hasConfigRole) {
         nextView = 'backoffice';
         nextCurrentView = 'backoffice';
         nextUserType = 'administrativo';
-        module = 'certificados-laborales';
+        module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' : 'control-interno';
         portalRoles.push('Coordinador de Certificados Laborales');
       } else {
         if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
@@ -226,6 +227,7 @@ export default function App() {
         name: userName,
         email: userEmail,
         personId: user?.person?.id || user?.id,
+        roles,
         module
       });
       setUsuarioActual({
@@ -292,6 +294,14 @@ export default function App() {
       localStorage.removeItem('esap-sesion-activa');
     }
   }, [usuarioActual, vistaActual]);
+
+  // Deep link: si ingresan directamente a /solicitar-certificado-laboral, abrir la vista pública de certificados laborales
+  useEffect(() => {
+    if (window.location.pathname === '/solicitar-certificado-laboral') {
+      setCurrentView('solicitar-certificados-laborales');
+      setVistaActual('solicitar-certificados-laborales');
+    }
+  }, []);
 
   // ============================================
   // SISTEMA DE DETECCIÓN DE INACTIVIDAD
@@ -409,7 +419,7 @@ export default function App() {
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
       const hasAdminRole = roles.includes('ADMIN');
-      const hasCertLaboralRole = roles.includes('COORDINADOR_CERT_LABORAL');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO');
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -421,7 +431,8 @@ export default function App() {
         setUserData({
           name: userName,
           email: userEmail,
-          personId: user?.person?.id || user?.id
+          personId: user?.person?.id || user?.id,
+          roles
         });
         setUsuarioActual({
           id: user?.id || user?.person?.id || 'unknown',
@@ -445,15 +456,17 @@ export default function App() {
         let currentView: AppView = 'portal-transaccional';
         const portalRoles: string[] = [];
 
-        if (hasCertLaboralRole) {
+        if (hasConfigRole) {
           userType = 'administrativo';
           currentView = 'backoffice'
           vistaActualCurrent = 'backoffice';
+          const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' : 'control-interno';
           setUserData({ 
             name: userName, 
             email: userEmail, 
             personId: user?.person?.id || user?.id,
-            module: 'certificados-laborales' // Módulo específico de acceso
+            roles,
+            module: module // Módulo específico de acceso
           });
           portalRoles.push('Coordinador de Certificados Laborales');
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
@@ -476,7 +489,8 @@ export default function App() {
                 nivel_educativo: 'Doctorado',
                 anos_experiencia: 10,
               }
-            }
+            },
+            roles
           };
           setUserData(userDataWithDetails);
         } else if (emailLower.includes('graduado') || emailLower.includes('egresado')) {
@@ -485,7 +499,8 @@ export default function App() {
           setUserData({
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id
+            personId: user?.person?.id || user?.id,
+            roles
           });
         } else {
           userType = 'estudiante';
@@ -493,7 +508,8 @@ export default function App() {
           setUserData({
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id
+            personId: user?.person?.id || user?.id,
+            roles
           });
         }
 
@@ -576,6 +592,7 @@ export default function App() {
   // Handler para volver al home desde login
   const handleBackToHome = () => {
     setCurrentView('landing');
+    setVistaActual('landing');
     navigate('/');
   };
 
@@ -660,6 +677,8 @@ export default function App() {
 
     if (section === 'solicitar-certificados-laborales') {
       setCurrentView('solicitar-certificados-laborales');
+      setVistaActual('solicitar-certificados-laborales');
+      navigate('/solicitar-certificado-laboral');
       return;
     }
 
@@ -697,6 +716,9 @@ export default function App() {
     switch (vistaActual) {
       case 'landing':
         return renderViewLanding();
+      
+      case 'solicitar-certificados-laborales':
+        return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
       
       case 'login':
         return (
@@ -766,27 +788,27 @@ export default function App() {
       
       case 'backoffice':
         // Determinar si el usuario tiene acceso restringido a un módulo específico
-        const userData = usuarioActual?.email === 'OCIG@esap.edu.co' || usuarioActual?.email === 'ocig@esap.edu.co'
-          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ci-001', restrictedAccess: true, module: 'control-interno' }
-          : usuarioActual?.email === 'c.disciplinario@esap.edu.co'
-          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cd-001', restrictedAccess: true, module: 'control-disciplinario' }
-          : usuarioActual?.email === 'registro.academico@esap.edu.co'
-          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ra-001', restrictedAccess: true, module: 'registro-academico' }
-          : usuarioActual?.email === 'cerlaboral@esap.edu.co'
-          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cl-001', restrictedAccess: true, module: 'certificados-laborales' }
-          : usuarioActual?.email === 'arqempresarial@esap.edu.co' || usuarioActual?.email === 'ar.empresarial@esap.edu.co'
-          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ae-001', restrictedAccess: true, module: 'arquitectura-empresarial' }
-          : usuarioActual?.email === 'gestion.legal@esap.edu.co'
-          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gl-001', restrictedAccess: true, module: 'gestion-legal' }
-          : usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
-          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gp-001', restrictedAccess: true, module: 'gestion-profesoral' }
-          : usuarioActual?.email === 'funcionario@esap.edu.co'
-          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'func-001', restrictedAccess: true, module: 'procesos' }
-          : undefined;
+        // const userData1 = usuarioActual?.email === 'OCIG@esap.edu.co' || usuarioActual?.email === 'ocig@esap.edu.co'
+        //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ci-001', restrictedAccess: true, module: 'control-interno' }
+        //   : usuarioActual?.email === 'c.disciplinario@esap.edu.co'
+        //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cd-001', restrictedAccess: true, module: 'control-disciplinario' }
+        //   : usuarioActual?.email === 'registro.academico@esap.edu.co'
+        //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ra-001', restrictedAccess: true, module: 'registro-academico' }
+        //   : usuarioActual?.email === 'cerlaboral@esap.edu.co'
+        //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cl-001', restrictedAccess: true, module: 'certificados-laborales' }
+        //   : usuarioActual?.email === 'arqempresarial@esap.edu.co' || usuarioActual?.email === 'ar.empresarial@esap.edu.co'
+        //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ae-001', restrictedAccess: true, module: 'arquitectura-empresarial' }
+        //   : usuarioActual?.email === 'gestion.legal@esap.edu.co'
+        //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gl-001', restrictedAccess: true, module: 'gestion-legal' }
+        //   : usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
+        //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gp-001', restrictedAccess: true, module: 'gestion-profesoral' }
+        //   : usuarioActual?.email === 'funcionario@esap.edu.co'
+        //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'func-001', restrictedAccess: true, module: 'procesos' }
+        //   : undefined;
 
         return (
           <BackofficeApp
-            usuario={usuarioActual!}
+            // usuario={usuarioActual!}
             onLogout={handleLogout}
             onBackToSystemSelector={handleBackToSystemSelector}
             onSystemChange={handleSystemChange}
@@ -870,7 +892,14 @@ export default function App() {
       `}</style>
       
       <Routes>
-        <Route path="/verificar-certificado/:codigo" element={<VerificarCertificado />} />
+        <Route
+          path="/verificar-certificado-graduado"
+          element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
+        />
+        <Route
+          path="/verificar-certificado/:codigo"
+          element={<VerificarCertificadoPublico />}
+        />
         <Route path="*" element={renderVista()} />
       </Routes>
       
