@@ -10,6 +10,9 @@ import { OrganismoControl } from './entities/organismo-control.entity';
 import { Auto } from './entities/auto.entity';
 import { Documento } from './entities/documento.entity';
 import { Comentario } from './entities/comentario.entity';
+import { Evidencia } from './entities/evidencia.entity';
+import { Acta } from './entities/acta.entity';
+import { ConsultaJuridica } from './entities/consulta-juridica.entity';
 
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
@@ -22,7 +25,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     password: process.env.DB_PASS,
     database: process.env.DB_NAME || 'esap_db',
     // No especificar schema por defecto para permitir múltiples schemas
-    entities: [Expediente, Actuacion, Abogado, Audiencia, Requerimiento, OrganismoControl, Auto, Documento, Comentario],
+    entities: [Expediente, Actuacion, Abogado, Audiencia, Requerimiento, OrganismoControl, Auto, Documento, Comentario, Evidencia, Acta, ConsultaJuridica],
     synchronize: false, // ⚠️ Cambiado a false para usar migraciones en producción
     logging: ['error'], // Solo mostrar errores, no queries
 };

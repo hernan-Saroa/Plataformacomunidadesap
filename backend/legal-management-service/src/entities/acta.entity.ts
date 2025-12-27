@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Expediente } from './expediente.entity';
 
-@Entity('actas')
+@Entity('actas', { schema: 'legal_management' })
 export class Acta {
     @PrimaryGeneratedColumn('uuid')
     id: string;

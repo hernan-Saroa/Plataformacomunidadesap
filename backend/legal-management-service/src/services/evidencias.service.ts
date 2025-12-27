@@ -27,7 +27,7 @@ export class EvidenciasService {
         const nuevaEvidencia = this.evidenciaRepository.create({
             ...data,
             expedienteId: expedienteId,
-            archivoNombre: file.originalname,
+            archivoNombre: data.archivoNombre || file.originalname, // Keep custom or use original
             archivoUrl: `http://localhost:3008/api/legal/files/${file.filename}`,
             archivoTamano: file.size,
             // tipo is handled in data

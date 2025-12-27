@@ -30,12 +30,17 @@ export class EvidenciasController {
     ) {
         if (!file) throw new BadRequestException('El archivo es obligatorio');
 
+        // Get file extension from original filename
+        const fileExt = file.originalname.split('.').pop()?.toLowerCase() || 'pdf';
+
         const evidenciaData = {
             descripcion: body.descripcion,
-            aportadoPor: body.aportadoPor, // or 'sistema' if not provided
-            tipo: body.tipo, // e.g., 'Documental', 'Testimonial'
-            prioridad: body.prioridad, // 'Alta', 'Media', 'Baja'
-            estado: 'En Revisión'
+            aportadoPor: body.aportadoPor,
+            tipo: body.tipo,
+            prioridad: body.prioridad,
+            estado: 'En Revisión',
+            archivoNombre: body.nombre || file.originalname, // Use custom name or fallback to filename
+            tipoArchivo: fileExt // Store the actual file extension
         };
 
         return this.evidenciasService.create(expedienteId, evidenciaData, file);

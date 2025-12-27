@@ -3,7 +3,7 @@
  * DISEÑO DATATABLE PROFESIONAL CON FILTROS AVANZADOS
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Scale, FileText, Clock, AlertTriangle, CheckCircle, User, Building,
@@ -16,13 +16,16 @@ import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { Input } from '../../../ui/input';
-import { ConsultaJuridica } from '../core/types';
-import { consultasJuridicasMock, estadisticasAsesoriaJuridica } from '../data/datosConsultasJuridicas';
+import { Textarea } from '../../../ui/textarea';
+import { Label } from '../../../ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { toast } from 'sonner@2.0.3';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { legalService } from '../../../../services/api/legal.service';
 
 type VistaModulo = 'tabla' | 'tarjetas';
 type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema';
@@ -36,12 +39,111 @@ export function ModuloAsesoriaJuridicaV3() {
   const [direccionOrden, setDireccionOrden] = useState<'asc' | 'desc'>('asc');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
+  // Data from API
+  const [consultas, setConsultas] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newConsultaData, setNewConsultaData] = useState({
+    tipoSolicitud: 'consulta',
+    canalEntrada: 'correo_electronico',
+    dependenciaSolicitante: '',
+    nombreSolicitante: '',
+    cargoSolicitante: '',
+    emailSolicitante: '',
+    telefonoSolicitante: '',
+    tipoUsuario: 'interno',
+    materiaJuridica: 'administrativo',
+    descripcion: '',
+    antecedentes: '',
+    prioridad: 'media'
+  });
+
+  // Load data from API
+  useEffect(() => {
+    loadConsultas();
+  }, []);
+
+  const loadConsultas = async () => {
+    try {
+      setLoading(true);
+      const data = await legalService.getConsultasJuridicas();
+      // Map backend data to frontend format
+      const mapped = data.map((c: any) => ({
+        id: c.numeroRadicado,
+        uuid: c.id,
+        etapa: mapEstadoToEtapa(c.estado),
+        temaJuridico: c.materiaJuridica || 'Administrativo',
+        solicitante: c.dependenciaSolicitante || 'Sin dependencia',
+        funcionarioSolicitante: c.nombreSolicitante || 'Sin asignar',
+        consulta: c.descripcion || '',
+        fechaRadicacion: new Date(c.fechaRecepcion),
+        diasTotales: c.terminoLegalDias || 30,
+        diasRestantes: c.diasRestantes || 30,
+        abogadoAsignado: c.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+        prioridad: c.prioridad || 'media',
+        normativaAplicable: [],
+        documentosAdjuntos: []
+      }));
+      setConsultas(mapped);
+    } catch (error) {
+      console.error('Error loading consultas:', error);
+      toast.error('Error al cargar consultas');
+      setConsultas([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const mapEstadoToEtapa = (estado: string): string => {
+    const map: Record<string, string> = {
+      'en_radicacion': 'RADICADA',
+      'asignado': 'ANÁLISIS',
+      'en_analisis': 'ANÁLISIS',
+      'en_revision': 'RESPUESTA',
+      'respondido': 'ENVIADA',
+      'cerrado': 'ENVIADA',
+      'vencido': 'VENCIDA'
+    };
+    return map[estado] || 'RADICADA';
+  };
+
+  const handleCreateConsulta = async () => {
+    if (!newConsultaData.descripcion || !newConsultaData.nombreSolicitante) {
+      toast.error('Completa los campos obligatorios');
+      return;
+    }
+    const toastId = toast.loading('Creando consulta...');
+    try {
+      await legalService.createConsultaJuridica(newConsultaData);
+      toast.success('Consulta creada exitosamente', { id: toastId });
+      setIsCreateOpen(false);
+      setNewConsultaData({
+        tipoSolicitud: 'consulta',
+        canalEntrada: 'correo_electronico',
+        dependenciaSolicitante: '',
+        nombreSolicitante: '',
+        cargoSolicitante: '',
+        emailSolicitante: '',
+        telefonoSolicitante: '',
+        tipoUsuario: 'interno',
+        materiaJuridica: 'administrativo',
+        descripcion: '',
+        antecedentes: '',
+        prioridad: 'media'
+      });
+      loadConsultas();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al crear consulta', { id: toastId });
+    }
+  };
+
   const consultasFiltradas = useMemo(() => {
-    let resultado = [...consultasJuridicasMock];
+    let resultado = [...consultas];
 
     // Filtro de búsqueda
     if (busqueda) {
-      resultado = resultado.filter(c => 
+      resultado = resultado.filter(c =>
         c.id.toLowerCase().includes(busqueda.toLowerCase()) ||
         c.temaJuridico.toLowerCase().includes(busqueda.toLowerCase()) ||
         c.solicitante.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -85,7 +187,7 @@ export function ModuloAsesoriaJuridicaV3() {
     });
 
     return resultado;
-  }, [busqueda, filtroEtapa, filtroSemaforo, orden, direccionOrden]);
+  }, [consultas, busqueda, filtroEtapa, filtroSemaforo, orden, direccionOrden]);
 
   const handleOrdenar = (columna: OrdenColumna) => {
     if (orden === columna) {
@@ -107,7 +209,7 @@ export function ModuloAsesoriaJuridicaV3() {
             label: 'Nueva Consulta',
             labelMobile: 'Nueva',
             icon: <Plus className="w-4 h-4" />,
-            onClick: () => toast.info('Nueva Consulta Jurídica'),
+            onClick: () => setIsCreateOpen(true),
             variant: 'primary'
           }
         ]}
@@ -171,7 +273,7 @@ export function ModuloAsesoriaJuridicaV3() {
         metrics={[
           {
             icon: <FileQuestion className="w-5 h-5 text-purple-600" />,
-            value: consultasJuridicasMock.length,
+            value: consultas.length,
             label: 'Consultas Totales'
           },
           {
@@ -217,19 +319,19 @@ export function ModuloAsesoriaJuridicaV3() {
             ]
           }
         ]}
-        totalItems={consultasJuridicasMock.length}
+        totalItems={consultas.length}
         filteredItems={consultasFiltradas.length}
         onClearFilters={() => {
           setBusqueda('');
           setFiltroEtapa('TODAS');
           setFiltroSemaforo('TODOS');
         }}
-        counterText={`Mostrando ${consultasFiltradas.length} de ${consultasJuridicasMock.length} consultas`}
+        counterText={`Mostrando ${consultasFiltradas.length} de ${consultas.length} consultas`}
       />
 
       {/* Tabla o Tarjetas */}
       {tipoVista === 'tabla' ? (
-        <TablaConsultas 
+        <TablaConsultas
           consultas={consultasFiltradas}
           orden={orden}
           direccionOrden={direccionOrden}
@@ -238,6 +340,158 @@ export function ModuloAsesoriaJuridicaV3() {
       ) : (
         <TarjetasConsultas consultas={consultasFiltradas} />
       )}
+
+      {/* Dialog para crear nueva consulta */}
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scale className="w-5 h-5 text-blue-600" />
+              Nueva Consulta Jurídica
+            </DialogTitle>
+            <DialogDescription>Registra una nueva solicitud de asesoría jurídica.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {/* Tipo y Canal */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Tipo de Solicitud *</Label>
+                <Select
+                  value={newConsultaData.tipoSolicitud}
+                  onValueChange={(v: string) => setNewConsultaData({ ...newConsultaData, tipoSolicitud: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent className="z-[9999]">
+                    <SelectItem value="consulta">Consulta</SelectItem>
+                    <SelectItem value="concepto_juridico">Concepto Jurídico</SelectItem>
+                    <SelectItem value="control_legalidad">Control de Legalidad</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Canal de Entrada</Label>
+                <Select
+                  value={newConsultaData.canalEntrada}
+                  onValueChange={(v: string) => setNewConsultaData({ ...newConsultaData, canalEntrada: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent className="z-[9999]">
+                    <SelectItem value="correo_electronico">Correo Electrónico</SelectItem>
+                    <SelectItem value="active_document">Active Document</SelectItem>
+                    <SelectItem value="ventanilla_unica">Ventanilla Única</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Solicitante */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Dependencia Solicitante</Label>
+                <Input
+                  placeholder="Ej: Dirección de Contratación"
+                  value={newConsultaData.dependenciaSolicitante}
+                  onChange={e => setNewConsultaData({ ...newConsultaData, dependenciaSolicitante: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Nombre del Solicitante *</Label>
+                <Input
+                  placeholder="Nombre completo"
+                  value={newConsultaData.nombreSolicitante}
+                  onChange={e => setNewConsultaData({ ...newConsultaData, nombreSolicitante: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Cargo</Label>
+                <Input
+                  placeholder="Cargo del solicitante"
+                  value={newConsultaData.cargoSolicitante}
+                  onChange={e => setNewConsultaData({ ...newConsultaData, cargoSolicitante: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  placeholder="correo@esap.edu.co"
+                  value={newConsultaData.emailSolicitante}
+                  onChange={e => setNewConsultaData({ ...newConsultaData, emailSolicitante: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Materia y Prioridad */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Materia Jurídica</Label>
+                <Select
+                  value={newConsultaData.materiaJuridica}
+                  onValueChange={(v: string) => setNewConsultaData({ ...newConsultaData, materiaJuridica: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent className="z-[9999]">
+                    <SelectItem value="laboral">Laboral</SelectItem>
+                    <SelectItem value="contractual">Contractual</SelectItem>
+                    <SelectItem value="administrativo">Administrativo</SelectItem>
+                    <SelectItem value="disciplinario">Disciplinario</SelectItem>
+                    <SelectItem value="presupuestal">Presupuestal</SelectItem>
+                    <SelectItem value="academico">Académico</SelectItem>
+                    <SelectItem value="otra">Otra</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Prioridad</Label>
+                <Select
+                  value={newConsultaData.prioridad}
+                  onValueChange={(v: string) => setNewConsultaData({ ...newConsultaData, prioridad: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent className="z-[9999]">
+                    <SelectItem value="alta">Alta</SelectItem>
+                    <SelectItem value="media">Media</SelectItem>
+                    <SelectItem value="baja">Baja</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Descripción */}
+            <div className="grid gap-2">
+              <Label>Descripción de la Consulta *</Label>
+              <Textarea
+                placeholder="Describe detalladamente la consulta o solicitud..."
+                value={newConsultaData.descripcion}
+                onChange={e => setNewConsultaData({ ...newConsultaData, descripcion: e.target.value })}
+                className="min-h-[100px]"
+              />
+            </div>
+
+            {/* Antecedentes */}
+            <div className="grid gap-2">
+              <Label>Antecedentes (opcional)</Label>
+              <Textarea
+                placeholder="Antecedentes relevantes si los hay..."
+                value={newConsultaData.antecedentes}
+                onChange={e => setNewConsultaData({ ...newConsultaData, antecedentes: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCreateConsulta} style={{ background: '#003DA5' }}>
+              <Plus className="w-4 h-4 mr-2" />
+              Crear Consulta
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -320,7 +574,7 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaCo
               <td className="px-4 py-3 text-sm text-gray-500">
                 <Badge
                   className="text-xs flex items-center gap-1 font-semibold"
-                  style={{ 
+                  style={{
                     background: consulta.diasRestantes <= 3 ? '#DC2626' : consulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
                     color: '#FFFFFF',
                     border: 'none'
@@ -404,7 +658,7 @@ function TarjetasConsultas({ consultas }: TarjetasConsultasProps) {
             <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
               <Badge
                 className="text-xs flex items-center gap-1 font-semibold"
-                style={{ 
+                style={{
                   background: consulta.diasRestantes <= 3 ? '#DC2626' : consulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
                   color: '#FFFFFF',
                   border: 'none'

@@ -176,6 +176,69 @@ export class LegalService {
     async eliminarDocumento(id: string): Promise<void> {
         return legalApiClient.delete(`/api/legal/documentos/${id}`);
     }
+
+    // ==================== EVIDENCIAS ====================
+    async getEvidencias(expedienteId: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/evidencias/expediente/${expedienteId}`);
+    }
+
+    async createEvidencia(expedienteId: string, formData: FormData): Promise<any> {
+        return legalApiClient.upload<any>(`/api/legal/evidencias/${expedienteId}`, formData);
+    }
+
+    async updateEvidenciaEstado(id: string, estado: string): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/evidencias/${id}/estado`, { estado });
+    }
+
+    async deleteEvidencia(id: string): Promise<void> {
+        return legalApiClient.delete(`/api/legal/evidencias/${id}`);
+    }
+
+    // ==================== ACTAS ====================
+    async getActas(expedienteId: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/actas/expediente/${expedienteId}`);
+    }
+
+    async createActa(expedienteId: string, formData: FormData): Promise<any> {
+        return legalApiClient.upload<any>(`/api/legal/actas/${expedienteId}`, formData);
+    }
+
+    async updateActaEstado(id: string, estado: string): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/actas/${id}/estado`, { estado });
+    }
+
+    async deleteActa(id: string): Promise<void> {
+        return legalApiClient.delete(`/api/legal/actas/${id}`);
+    }
+
+    // ===== CONSULTAS JURÍDICAS (Asesoría Jurídica) =====
+    async getConsultasJuridicas(): Promise<any[]> {
+        return legalApiClient.get<any[]>('/api/legal/consultas-juridicas');
+    }
+
+    async getConsultaJuridica(id: string): Promise<any> {
+        return legalApiClient.get<any>(`/api/legal/consultas-juridicas/${id}`);
+    }
+
+    async createConsultaJuridica(data: any): Promise<any> {
+        return legalApiClient.post<any>('/api/legal/consultas-juridicas', data);
+    }
+
+    async updateConsultaJuridica(id: string, data: any): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/consultas-juridicas/${id}`, data);
+    }
+
+    async updateConsultaEstado(id: string, estado: string): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/consultas-juridicas/${id}/estado`, { estado });
+    }
+
+    async responderConsulta(id: string, respuestaData: any): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/consultas-juridicas/${id}/respuesta`, respuestaData);
+    }
+
+    async deleteConsultaJuridica(id: string): Promise<void> {
+        return legalApiClient.delete(`/api/legal/consultas-juridicas/${id}`);
+    }
 }
 
 // Documento interface for frontend

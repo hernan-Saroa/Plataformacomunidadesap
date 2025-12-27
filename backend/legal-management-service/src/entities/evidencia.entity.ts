@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Expediente } from './expediente.entity';
 
-@Entity('evidencias')
+@Entity('evidencias', { schema: 'legal_management' })
 export class Evidencia {
     @PrimaryGeneratedColumn('uuid')
     id: string;
@@ -39,6 +39,9 @@ export class Evidencia {
 
     @Column({ default: 'En Revisión' })
     estado: string;
+
+    @Column({ name: 'tipo_archivo', nullable: true })
+    tipoArchivo: string;
 
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;

@@ -147,10 +147,11 @@ export function ModuloDefensaJudicialV3() {
     ALEGATOS: expedientes.filter(exp => exp.etapa === 'ALEGATOS'),
   };
 
-  // Calcular estadísticas
-  const totalExpedientes = expedientes.length;
-  const expedientesCriticos = expedientes.filter(e => e.diasRestantes <= 5).length;
-  const expedientesEnTermino = expedientes.filter(e => e.diasRestantes > 15).length;
+  // Calcular estadísticas - solo expedientes en las 4 etapas visibles del Kanban
+  const expedientesVisibles = [...expedientesPorEtapa.NOTIFICADA, ...expedientesPorEtapa.CONTESTACIÓN, ...expedientesPorEtapa.PROBATORIA, ...expedientesPorEtapa.ALEGATOS];
+  const totalExpedientes = expedientesVisibles.length;
+  const expedientesCriticos = expedientesVisibles.filter(e => e.diasRestantes <= 5).length;
+  const expedientesEnTermino = expedientesVisibles.filter(e => e.diasRestantes > 15).length;
 
   const etapas = [
     {

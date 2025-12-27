@@ -34,6 +34,18 @@ import { Auto } from './entities/auto.entity';
 import { AutosController } from './controllers/autos.controller';
 import { AutosService } from './services/autos.service';
 
+import { Evidencia } from './entities/evidencia.entity';
+import { EvidenciasController } from './controllers/evidencias.controller';
+import { EvidenciasService } from './services/evidencias.service';
+
+import { Acta } from './entities/acta.entity';
+import { ActasController } from './controllers/actas.controller';
+import { ActasService } from './services/actas.service';
+
+import { ConsultaJuridica } from './entities/consulta-juridica.entity';
+import { ConsultasJuridicasController } from './controllers/consultas-juridicas.controller';
+import { ConsultasJuridicasService } from './services/consultas-juridicas.service';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
@@ -46,7 +58,10 @@ import { AutosService } from './services/autos.service';
       OrganismoControl,
       Comentario,
       Auto,
-      Documento
+      Documento,
+      Evidencia,
+      Acta,
+      ConsultaJuridica
     ]),
   ],
   controllers: [
@@ -61,7 +76,10 @@ import { AutosService } from './services/autos.service';
     JuzgamientoController,
     TerminosController,
     AutosController,
-    DocumentoController
+    DocumentoController,
+    EvidenciasController,
+    ActasController,
+    ConsultasJuridicasController
   ],
   providers: [
     ExpedienteService,
@@ -71,7 +89,10 @@ import { AutosService } from './services/autos.service';
     RequerimientoService,
     ComentarioService,
     AutosService,
-    DocumentoService
+    DocumentoService,
+    EvidenciasService,
+    ActasService,
+    ConsultasJuridicasService
   ],
 })
 export class AppModule { }
