@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Actuacion } from '../entities/actuacion.entity';
 import { ExpedienteService } from './expediente.service';
+import { TerminosService } from './terminos.service';
 
 @Injectable()
 export class ActuacionService {
@@ -10,6 +11,7 @@ export class ActuacionService {
         @InjectRepository(Actuacion)
         private actuacionRepository: Repository<Actuacion>,
         private expedienteService: ExpedienteService,
+        private terminosService: TerminosService
     ) { }
 
     async registrarActuacion(expedienteId: string, data: Partial<Actuacion>): Promise<Actuacion> {
@@ -23,11 +25,25 @@ export class ActuacionService {
 
         const saved = await this.actuacionRepository.save(nuevaActuacion);
 
-        // Lógica de cambio de estado automático
+        // Lógica de cambio de estado automático y creación de términos
         if (data.tipoActuacion === 'FALLO') {
             await this.expedienteService.updateExpediente(expedienteId, { estado: 'FALLO_PRIMERA_INSTANCIA' });
         } else if (data.tipoActuacion === 'AUTO_ADMISORIO') {
             await this.expedienteService.updateExpediente(expedienteId, { estado: 'EN_TRAMITE' });
+
+            // Trigger automatic term creation
+            const expediente = await this.expedienteService.findOne(expedienteId);
+            if (expediente) {
+                await this.terminosService.createAutomatico(
+                    'DEFENSA',
+                    expediente.id,
+                    expediente.radicado,
+                    'Contestación de Demanda',
+                    new Date(), // Start counting from today (notification date)
+                    30, // Default 30 days for testing. Real logic depends on jurisdiction.
+                    undefined // No specific responsible yet, or could be expediente.abogadoSustanciador
+                );
+            }
         }
 
         return saved;

@@ -5,6 +5,7 @@ import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
 // or we can reuse the logic if we align endpoints. 
 // Given the backend is at /api/legal/expedientes and strictly on port 3008:
 const BASE_URL = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
+const LEGAL_SERVICE_PREFIX = '/api';
 
 export const legalApiClient = new ApiClient(BASE_URL);
 
@@ -238,6 +239,35 @@ export class LegalService {
 
     async deleteConsultaJuridica(id: string): Promise<void> {
         return legalApiClient.delete(`/api/legal/consultas-juridicas/${id}`);
+    }
+
+    // --- CONTROL DE TÉRMINOS E INFORMES ---
+
+    async getTerminosListado(responsableId?: string): Promise<any[]> {
+        const params = new URLSearchParams();
+        if (responsableId) params.append('responsableId', responsableId);
+
+        // Endpoint: /legal-management/api/v1/legal/terminos/listado
+        return legalApiClient.get(`${LEGAL_SERVICE_PREFIX}/legal/terminos/listado?${params.toString()}`);
+    }
+
+    async getTerminosCalendario(start: string, end: string, responsableId?: string): Promise<any[]> {
+        const params = new URLSearchParams({ start, end });
+        if (responsableId) params.append('responsableId', responsableId);
+
+        return legalApiClient.get(`${LEGAL_SERVICE_PREFIX}/legal/terminos/calendario?${params.toString()}`);
+    }
+
+    async createTerminoManual(data: any): Promise<any> {
+        return legalApiClient.post(`${LEGAL_SERVICE_PREFIX}/legal/terminos/manual`, data);
+    }
+
+    async sincronizarTerminos(): Promise<any> {
+        return legalApiClient.post(`${LEGAL_SERVICE_PREFIX}/legal/terminos/sincronizar`, {});
+    }
+
+    async getTerminoDetalle(id: string): Promise<any> {
+        return legalApiClient.get(`${LEGAL_SERVICE_PREFIX}/legal/terminos/${id}`);
     }
 }
 

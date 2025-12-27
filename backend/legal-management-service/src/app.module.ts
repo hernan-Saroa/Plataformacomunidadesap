@@ -1,3 +1,4 @@
+import { ConsultasJuridicasController } from './controllers/consultas-juridicas.controller';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -29,22 +30,19 @@ import { FilesController } from './controllers/files.controller';
 import { RequerimientoService } from './services/requerimiento.service';
 import { JuzgamientoController } from './controllers/juzgamiento.controller';
 import { TerminosController } from './controllers/terminos.controller';
-
-import { Auto } from './entities/auto.entity';
+import { TerminosService } from './services/terminos.service';
 import { AutosController } from './controllers/autos.controller';
 import { AutosService } from './services/autos.service';
-
-import { Evidencia } from './entities/evidencia.entity';
-import { EvidenciasController } from './controllers/evidencias.controller';
 import { EvidenciasService } from './services/evidencias.service';
-
-import { Acta } from './entities/acta.entity';
-import { ActasController } from './controllers/actas.controller';
 import { ActasService } from './services/actas.service';
-
-import { ConsultaJuridica } from './entities/consulta-juridica.entity';
-import { ConsultasJuridicasController } from './controllers/consultas-juridicas.controller';
 import { ConsultasJuridicasService } from './services/consultas-juridicas.service';
+import { Evidencia } from './entities/evidencia.entity';
+import { Acta } from './entities/acta.entity';
+import { ConsultaJuridica } from './entities/consulta-juridica.entity';
+import { TerminoProcesal } from './entities/termino-procesal.entity';
+import { Auto } from './entities/auto.entity';
+
+// ... (existing imports)
 
 @Module({
   imports: [
@@ -61,27 +59,28 @@ import { ConsultasJuridicasService } from './services/consultas-juridicas.servic
       Documento,
       Evidencia,
       Acta,
-      ConsultaJuridica
+      ConsultaJuridica,
+      TerminoProcesal
     ]),
   ],
   controllers: [
+    AppController,
     ExpedienteController,
     ActuacionController,
     AbogadoController,
     AbogadoStatsController,
     AudienciaController,
+    DocumentoController,
+    ComentarioController,
     RequerimientoController,
     FilesController,
-    ComentarioController,
     JuzgamientoController,
     TerminosController,
     AutosController,
-    DocumentoController,
-    EvidenciasController,
-    ActasController,
-    ConsultasJuridicasController
+    ConsultasJuridicasController,
   ],
   providers: [
+    AppService,
     ExpedienteService,
     ActuacionService,
     AbogadoService,
@@ -92,7 +91,9 @@ import { ConsultasJuridicasService } from './services/consultas-juridicas.servic
     DocumentoService,
     EvidenciasService,
     ActasService,
-    ConsultasJuridicasService
+    ConsultasJuridicasService,
+    TerminosService
   ],
 })
 export class AppModule { }
+

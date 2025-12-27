@@ -2,12 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
+import { TerminosService } from './terminos.service';
 
 @Injectable()
 export class ConsultasJuridicasService {
     constructor(
         @InjectRepository(ConsultaJuridica)
-        private readonly consultaRepository: Repository<ConsultaJuridica>
+        private readonly consultaRepository: Repository<ConsultaJuridica>,
+        private readonly terminosService: TerminosService
     ) { }
 
     async findAll(): Promise<ConsultaJuridica[]> {
@@ -44,7 +46,20 @@ export class ConsultasJuridicasService {
             estado: 'en_radicacion'
         });
 
-        return this.consultaRepository.save(nuevaConsulta);
+        const savedConsulta = await this.consultaRepository.save(nuevaConsulta);
+
+        // Sync with Control de Términos
+        await this.terminosService.createAutomatico(
+            'ASESORIA',
+            savedConsulta.id,
+            savedConsulta.numeroRadicado,
+            data.tipoSolicitud || 'Consulta Jurídica',
+            new Date(),
+            data.terminoLegalDias || 30,
+            data.abogadoAsignadoId // If assigned on creation
+        );
+
+        return savedConsulta;
     }
 
     async update(id: string, data: Partial<ConsultaJuridica>): Promise<ConsultaJuridica> {

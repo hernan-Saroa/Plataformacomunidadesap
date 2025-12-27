@@ -2,6 +2,8 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { Actuacion } from './actuacion.entity';
 
+import { Documento } from './documento.entity';
+
 @Entity('expedientes', { schema: 'legal_management' })
 export class Expediente {
     @PrimaryGeneratedColumn('uuid')
@@ -9,6 +11,9 @@ export class Expediente {
 
     @OneToMany(() => Actuacion, (actuacion) => actuacion.expediente)
     actuaciones: Actuacion[];
+
+    @OneToMany(() => Documento, (doc) => doc.expediente)
+    documentos: Documento[];
 
     @Column({ unique: true, length: 50 })
     radicado: string;
