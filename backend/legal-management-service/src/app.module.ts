@@ -68,6 +68,11 @@ import { DocumentoOC } from './entities/documento-oc.entity';
 import { ComentariosDocumentosOCService } from './services/comentarios-documentos-oc.service';
 import { ComentariosDocumentosOCController } from './controllers/comentarios-documentos-oc.controller';
 
+// Módulo de Riesgos
+import { Riesgo } from './entities/riesgo.entity';
+import { RiesgosService } from './services/riesgos.service';
+import { RiesgosController } from './controllers/riesgos.controller';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
@@ -95,7 +100,9 @@ import { ComentariosDocumentosOCController } from './controllers/comentarios-doc
       NotaExpediente,
       // Comentarios y Documentos OC
       ComentarioOC,
-      DocumentoOC
+      DocumentoOC,
+      // Riesgos
+      Riesgo
     ]),
     PeiModule
   ],
@@ -118,7 +125,8 @@ import { ComentariosDocumentosOCController } from './controllers/comentarios-doc
     ActasController,
     RequerimientosOCController,
     TareasNotasController,
-    ComentariosDocumentosOCController
+    ComentariosDocumentosOCController,
+    RiesgosController
   ],
   providers: [
     AppService,
@@ -136,7 +144,8 @@ import { ComentariosDocumentosOCController } from './controllers/comentarios-doc
     TerminosService,
     RequerimientosOCService,
     TareasNotasService,
-    ComentariosDocumentosOCService
+    ComentariosDocumentosOCService,
+    RiesgosService
   ],
 })
 export class AppModule { }

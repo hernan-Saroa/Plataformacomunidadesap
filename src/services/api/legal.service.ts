@@ -445,6 +445,85 @@ class OCService {
     }
 }
 
+// ==================== Riesgos API ====================
+
+export interface RiesgoAPI {
+    id: string;
+    codigo: string;
+    nombre: string;
+    descripcion: string;
+    proceso: string;
+    tipoRiesgo: 'GESTION' | 'CORRUPCION' | 'SEGURIDAD_DIGITAL' | 'FISCAL';
+    etapa: 'IDENTIFICADO' | 'ANALIZADO' | 'VALORADO' | 'TRATAMIENTO' | 'MONITOREO' | 'CERRADO' | 'MATERIALIZADO';
+    probabilidadInherente: number;
+    impactoInherente: number;
+    zonaInherente: 'EXTREMO' | 'ALTO' | 'MODERADO' | 'BAJO';
+    probabilidadResidual: number;
+    impactoResidual: number;
+    zonaResidual: 'EXTREMO' | 'ALTO' | 'MODERADO' | 'BAJO';
+    causas: string[];
+    consecuencias: string[];
+    controlesExistentes: { id: string; descripcion: string; efectividad: number; }[];
+    planTratamiento: { accion: string; responsable: string; fechaLimite: Date; estado: string; avance: number; }[];
+    responsable: string;
+    estado: 'ACTIVO' | 'ARCHIVADO' | 'CERRADO';
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateRiesgoData {
+    nombre: string;
+    descripcion: string;
+    proceso: string;
+    tipoRiesgo: 'GESTION' | 'CORRUPCION' | 'SEGURIDAD_DIGITAL' | 'FISCAL';
+    probabilidadInherente: number;
+    impactoInherente: number;
+    causas?: string[];
+    consecuencias?: string[];
+    responsable: string;
+}
+
+class RiesgosService {
+    async getAll(): Promise<RiesgoAPI[]> {
+        return legalApiClient.get<RiesgoAPI[]>('/api/legal/riesgos');
+    }
+
+    async getById(id: string): Promise<RiesgoAPI> {
+        return legalApiClient.get<RiesgoAPI>(`/api/legal/riesgos/${id}`);
+    }
+
+    async create(data: CreateRiesgoData): Promise<RiesgoAPI> {
+        return legalApiClient.post<RiesgoAPI>('/api/legal/riesgos', data);
+    }
+
+    async update(id: string, data: Partial<CreateRiesgoData>): Promise<RiesgoAPI> {
+        return legalApiClient.patch<RiesgoAPI>(`/api/legal/riesgos/${id}`, data);
+    }
+
+    async delete(id: string): Promise<void> {
+        await legalApiClient.delete(`/api/legal/riesgos/${id}`);
+    }
+
+    async cambiarEtapa(id: string, etapa: string): Promise<RiesgoAPI> {
+        return legalApiClient.patch<RiesgoAPI>(`/api/legal/riesgos/${id}/etapa`, { etapa });
+    }
+
+    async archivar(id: string): Promise<RiesgoAPI> {
+        return legalApiClient.patch<RiesgoAPI>(`/api/legal/riesgos/${id}/archivar`, {});
+    }
+
+    async getEstadisticas(): Promise<{
+        total: number;
+        porZona: Record<string, number>;
+        porTipo: Record<string, number>;
+        porEtapa: Record<string, number>;
+    }> {
+        return legalApiClient.get('/api/legal/riesgos/estadisticas');
+    }
+}
+
 export const legalService = new LegalService();
 export const ocService = new OCService();
+export const riesgosService = new RiesgosService();
+
 

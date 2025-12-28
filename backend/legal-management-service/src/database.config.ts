@@ -31,6 +31,9 @@ import { NotaExpediente } from './entities/nota-expediente.entity';
 import { ComentarioOC } from './entities/comentario-oc.entity';
 import { DocumentoOC } from './entities/documento-oc.entity';
 
+// Módulo de Riesgos
+import { Riesgo } from './entities/riesgo.entity';
+
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
@@ -52,7 +55,9 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Tareas y Notas
         TareaExpediente, NotaExpediente,
         // Comentarios y Documentos OC
-        ComentarioOC, DocumentoOC
+        ComentarioOC, DocumentoOC,
+        // Riesgos
+        Riesgo
     ],
     synchronize: false, // ⚠️ Cambiado a false para usar migraciones en producción
     logging: ['error'], // Solo mostrar errores, no queries

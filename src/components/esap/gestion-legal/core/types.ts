@@ -720,6 +720,7 @@ export interface Riesgo {
   etapa: EtapaRiesgo;
   proceso: string;
   tipo: TipoRiesgo;
+  tipoRiesgo?: TipoRiesgo; // Alias for UI compatibility
   nombre: string;
   descripcion: string;
   causas: string[];
