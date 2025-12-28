@@ -35,14 +35,16 @@ import { AutosController } from './controllers/autos.controller';
 import { AutosService } from './services/autos.service';
 import { EvidenciasService } from './services/evidencias.service';
 import { ActasService } from './services/actas.service';
+import { EvidenciasController } from './controllers/evidencias.controller';
+import { ActasController } from './controllers/actas.controller';
+
+// Restoration of missing imports
 import { ConsultasJuridicasService } from './services/consultas-juridicas.service';
 import { Evidencia } from './entities/evidencia.entity';
 import { Acta } from './entities/acta.entity';
 import { ConsultaJuridica } from './entities/consulta-juridica.entity';
 import { TerminoProcesal } from './entities/termino-procesal.entity';
 import { Auto } from './entities/auto.entity';
-
-// ... (existing imports)
 
 // Órganos de Control - Nuevo módulo
 import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
@@ -91,7 +93,6 @@ import { RequerimientosOCService } from './services/requerimientos-oc.service';
     TerminosController,
     AutosController,
     ConsultasJuridicasController,
-    DocumentoController,
     EvidenciasController,
     ActasController,
     RequerimientosOCController
