@@ -18,7 +18,7 @@ import {
   Building2, Gavel, MapPin, DollarSign, FileCheck,
   MessageSquare, Send, Edit, Filter, ChevronDown,
   Briefcase, Phone, Mail, Hash, Activity, Bell,
-  Shield, Target, Flag, Bookmark, Archive, Upload
+  Shield, Target, Flag, Bookmark, Archive, Upload, Trash2
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
@@ -60,10 +60,24 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     cuantia: 0
   });
 
-  // Cargar documentos cuando se abre el modal
+  // Estado para tareas desde la API
+  const [tareas, setTareas] = useState<any[]>([]);
+  const [loadingTareas, setLoadingTareas] = useState(false);
+  const [showNuevaTarea, setShowNuevaTarea] = useState(false);
+  const [nuevaTarea, setNuevaTarea] = useState({ titulo: '', descripcion: '', prioridad: 'media', fechaVencimiento: '' });
+
+  // Estado para notas desde la API
+  const [notas, setNotas] = useState<any[]>([]);
+  const [loadingNotas, setLoadingNotas] = useState(false);
+  const [showNuevaNota, setShowNuevaNota] = useState(false);
+  const [nuevaNota, setNuevaNota] = useState({ contenido: '', tipo: 'general' });
+
+  // Cargar documentos, tareas y notas cuando se abre el modal
   useEffect(() => {
     if (isOpen && expediente.uuid) {
       loadDocumentos();
+      loadTareas();
+      loadNotas();
       // Inicializar form
       setEditForm({
         juzgado: expediente.juzgado || '',
@@ -72,6 +86,106 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       });
     }
   }, [isOpen, expediente]);
+
+  const loadTareas = async () => {
+    try {
+      setLoadingTareas(true);
+      const data = await legalService.getTareasByExpediente(expediente.uuid || expediente.id);
+      setTareas(data);
+    } catch (error) {
+      console.error('Error cargando tareas:', error);
+      setTareas([]);
+    } finally {
+      setLoadingTareas(false);
+    }
+  };
+
+  const loadNotas = async () => {
+    try {
+      setLoadingNotas(true);
+      const data = await legalService.getNotasByExpediente(expediente.uuid || expediente.id);
+      setNotas(data);
+    } catch (error) {
+      console.error('Error cargando notas:', error);
+      setNotas([]);
+    } finally {
+      setLoadingNotas(false);
+    }
+  };
+
+  const handleCrearTarea = async () => {
+    if (!nuevaTarea.titulo.trim()) {
+      toast.error('El título es requerido');
+      return;
+    }
+    try {
+      await legalService.createTarea(expediente.uuid || expediente.id, {
+        titulo: nuevaTarea.titulo,
+        descripcion: nuevaTarea.descripcion,
+        prioridad: nuevaTarea.prioridad,
+        fechaVencimiento: nuevaTarea.fechaVencimiento || undefined,
+        responsableNombre: expediente.abogadoAsignado
+      });
+      toast.success('Tarea creada exitosamente');
+      setNuevaTarea({ titulo: '', descripcion: '', prioridad: 'media', fechaVencimiento: '' });
+      setShowNuevaTarea(false);
+      loadTareas();
+    } catch (error) {
+      console.error('Error creando tarea:', error);
+      toast.error('Error al crear la tarea');
+    }
+  };
+
+  const handleCrearNota = async () => {
+    if (!nuevaNota.contenido.trim()) {
+      toast.error('El contenido es requerido');
+      return;
+    }
+    try {
+      await legalService.createNota(expediente.uuid || expediente.id, {
+        contenido: nuevaNota.contenido,
+        tipo: nuevaNota.tipo,
+        autorNombre: expediente.abogadoAsignado || 'Usuario'
+      });
+      toast.success('Nota creada exitosamente');
+      setNuevaNota({ contenido: '', tipo: 'general' });
+      setShowNuevaNota(false);
+      loadNotas();
+    } catch (error) {
+      console.error('Error creando nota:', error);
+      toast.error('Error al crear la nota');
+    }
+  };
+
+  const handleEliminarTarea = async (tareaId: string) => {
+    try {
+      await legalService.deleteTarea(tareaId);
+      toast.success('Tarea eliminada');
+      loadTareas();
+    } catch (error) {
+      toast.error('Error al eliminar la tarea');
+    }
+  };
+
+  const handleActualizarEstadoTarea = async (tareaId: string, nuevoEstado: string) => {
+    try {
+      await legalService.updateTarea(tareaId, { estado: nuevoEstado });
+      toast.success('Estado actualizado');
+      loadTareas();
+    } catch (error) {
+      toast.error('Error al actualizar el estado');
+    }
+  };
+
+  const handleEliminarNota = async (notaId: string) => {
+    try {
+      await legalService.deleteNota(notaId);
+      toast.success('Nota eliminada');
+      loadNotas();
+    } catch (error) {
+      toast.error('Error al eliminar la nota');
+    }
+  };
 
   const loadDocumentos = async () => {
     try {
@@ -272,12 +386,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     });
   };
 
-  const handleAgregarNota = () => {
-    toast.success('📝 Nota agregada al expediente', {
-      description: 'La anotación se guardó correctamente',
-      duration: 3000
-    });
-  };
+  // handleAgregarNota removed - using handleCrearNota (line 139) instead
 
   const handleEnviarNotificacion = () => {
     toast.success('📧 Notificación enviada', {
@@ -332,12 +441,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   };
 
-  const handleCrearTarea = () => {
-    toast.success('✅ Tarea creada', {
-      description: 'Se asignó una nueva tarea al expediente',
-      duration: 3000
-    });
-  };
+  // handleCrearTarea is defined at line 116 - removed duplicate mock here
 
   const handleGuardarCambios = async () => {
     try {
@@ -431,38 +535,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   ];
 
-  const tareas = [
-    {
-      id: 1,
-      titulo: 'Presentar alegatos de conclusión',
-      descripcion: 'Redactar alegatos finales antes del vencimiento del término',
-      vencimiento: '05/01/2025',
-      diasRestantes: 10,
-      prioridad: 'Alta',
-      responsable: expediente.abogadoAsignado,
-      estado: 'Pendiente'
-    },
-    {
-      id: 2,
-      titulo: 'Solicitar práctica de testimonios',
-      descripcion: 'Radicar memorial solicitando citación de testigos',
-      vencimiento: '30/12/2024',
-      diasRestantes: 4,
-      prioridad: 'Alta',
-      responsable: expediente.abogadoAsignado,
-      estado: 'En proceso'
-    },
-    {
-      id: 3,
-      titulo: 'Revisar actuaciones del juzgado',
-      descripcion: 'Consultar el expediente digital para nuevas providencias',
-      vencimiento: '28/12/2024',
-      diasRestantes: 2,
-      prioridad: 'Media',
-      responsable: 'Auxiliar Jurídico',
-      estado: 'Pendiente'
-    }
-  ];
+  // Tareas now loaded from API via loadTareas()
 
   const partes = [
     {
@@ -489,29 +562,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   ];
 
-  const notasInternas = [
-    {
-      id: 1,
-      fecha: '24/12/2024',
-      autor: 'Coordinador Jurídico',
-      nota: 'Importante: El demandante tiene antecedentes de litigiosidad. Revisar jurisprudencia similar.',
-      tipo: 'Importante'
-    },
-    {
-      id: 2,
-      fecha: '21/12/2024',
-      autor: expediente.abogadoAsignado,
-      nota: 'Se solicitó al área de talento humano certificación de nómina de los últimos 6 meses.',
-      tipo: 'Seguimiento'
-    },
-    {
-      id: 3,
-      fecha: '18/12/2024',
-      autor: 'Auxiliar Jurídico',
-      nota: 'El juzgado tiene agenda cargada. Es probable que las audiencias se programen con retraso.',
-      tipo: 'Información'
-    }
-  ];
+  // Notas now loaded from API via loadNotas()
 
   // Pretensiones del expediente (de la BD o fallback)
   const pretensionesTexto = expediente.pretensiones || 'No se han registrado pretensiones en el sistema';
@@ -1188,7 +1239,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Button
                       size="sm"
                       className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                      onClick={handleCrearTarea}
+                      onClick={() => setShowNuevaTarea(true)}
                     >
                       <Plus className="w-3 h-3 mr-1" />
                       Nueva Tarea
@@ -1196,88 +1247,174 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   </div>
                 </Card>
 
-                <div className="space-y-3">
-                  {tareas.map((tarea) => {
-                    const semaforoTarea = getSemaforoColor(tarea.diasRestantes);
-
-                    return (
-                      <Card
-                        key={tarea.id}
-                        className="p-4 border-l-4 hover:shadow-md transition-shadow"
-                        style={{ borderLeftColor: semaforoTarea.color }}
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <h5 className="text-sm font-bold text-gray-900 mb-1">{tarea.titulo}</h5>
-                            <p className="text-xs text-gray-600">{tarea.descripcion}</p>
-                          </div>
-                          <Badge
-                            className="ml-3 font-bold text-xs"
-                            style={{
-                              background: tarea.prioridad === 'Alta' ? '#FEE2E2' : '#FEF3C7',
-                              color: tarea.prioridad === 'Alta' ? '#DC2626' : '#F59E0B',
-                              border: `1px solid ${tarea.prioridad === 'Alta' ? '#DC2626' : '#F59E0B'}`
-                            }}
+                {/* Formulario Nueva Tarea */}
+                {showNuevaTarea && (
+                  <Card className="p-4 border-2 border-orange-300 bg-orange-50">
+                    <h5 className="text-sm font-bold mb-3 text-orange-700">Crear Nueva Tarea</h5>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700">Título *</label>
+                        <input
+                          type="text"
+                          className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                          placeholder="Título de la tarea"
+                          value={nuevaTarea.titulo}
+                          onChange={(e) => setNuevaTarea({ ...nuevaTarea, titulo: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700">Descripción</label>
+                        <textarea
+                          className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500"
+                          placeholder="Descripción de la tarea"
+                          rows={2}
+                          value={nuevaTarea.descripcion}
+                          onChange={(e) => setNuevaTarea({ ...nuevaTarea, descripcion: e.target.value })}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-gray-700">Prioridad</label>
+                          <select
+                            className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500"
+                            value={nuevaTarea.prioridad}
+                            onChange={(e) => setNuevaTarea({ ...nuevaTarea, prioridad: e.target.value })}
                           >
-                            {tarea.prioridad}
-                          </Badge>
+                            <option value="alta">Alta</option>
+                            <option value="media">Media</option>
+                            <option value="baja">Baja</option>
+                          </select>
                         </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-700">Fecha Vencimiento</label>
+                          <input
+                            type="date"
+                            className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500"
+                            value={nuevaTarea.fechaVencimiento}
+                            onChange={(e) => setNuevaTarea({ ...nuevaTarea, fechaVencimiento: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setShowNuevaTarea(false)}>
+                          Cancelar
+                        </Button>
+                        <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white" onClick={handleCrearTarea}>
+                          Guardar Tarea
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                )}
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                          <div>
-                            <p className="text-xs text-gray-500 mb-0.5">Vencimiento</p>
-                            <p className="text-xs font-bold text-gray-900 flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {tarea.vencimiento}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500 mb-0.5">Días restantes</p>
+                {/* Lista de Tareas */}
+                {loadingTareas ? (
+                  <div className="text-center py-4 text-gray-500">Cargando tareas...</div>
+                ) : tareas.length === 0 ? (
+                  <Card className="p-6 text-center text-gray-500">
+                    <Target className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm">No hay tareas registradas para este expediente</p>
+                    <p className="text-xs text-gray-400">Haz clic en "Nueva Tarea" para agregar una</p>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {tareas.map((tarea) => {
+                      const diasRestantes = tarea.fechaVencimiento
+                        ? Math.ceil((new Date(tarea.fechaVencimiento).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                        : 999;
+                      const semaforoTarea = getSemaforoColor(diasRestantes);
+
+                      return (
+                        <Card
+                          key={tarea.id}
+                          className="p-4 border-l-4 hover:shadow-md transition-shadow"
+                          style={{ borderLeftColor: semaforoTarea.color }}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1">
+                              <h5 className="text-sm font-bold text-gray-900 mb-1">{tarea.titulo}</h5>
+                              <p className="text-xs text-gray-600">{tarea.descripcion}</p>
+                            </div>
                             <Badge
-                              className="text-xs font-bold"
+                              className="ml-3 font-bold text-xs"
                               style={{
-                                background: semaforoTarea.bg,
-                                color: semaforoTarea.color,
-                                border: `1px solid ${semaforoTarea.color}`
+                                background: tarea.prioridad === 'alta' ? '#FEE2E2' : (tarea.prioridad === 'media' ? '#FEF3C7' : '#E5E7EB'),
+                                color: tarea.prioridad === 'alta' ? '#DC2626' : (tarea.prioridad === 'media' ? '#F59E0B' : '#6B7280'),
+                                border: `1px solid ${tarea.prioridad === 'alta' ? '#DC2626' : (tarea.prioridad === 'media' ? '#F59E0B' : '#9CA3AF')}`
                               }}
                             >
-                              {tarea.diasRestantes} días
+                              {tarea.prioridad}
                             </Badge>
                           </div>
-                          <div>
-                            <p className="text-xs text-gray-500 mb-0.5">Responsable</p>
-                            <p className="text-xs font-bold text-gray-900 truncate flex items-center gap-1">
-                              <User className="w-3 h-3" />
-                              {tarea.responsable}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500 mb-0.5">Estado</p>
-                            <Badge
-                              className="text-xs font-semibold"
-                              style={{
-                                background: tarea.estado === 'Completado' ? '#D1FAE5' : (tarea.estado === 'En proceso' ? '#DBEAFE' : '#FEF3C7'),
-                                color: tarea.estado === 'Completado' ? '#065F46' : (tarea.estado === 'En proceso' ? '#1E40AF' : '#92400E')
-                              }}
-                            >
-                              {tarea.estado}
-                            </Badge>
-                          </div>
-                        </div>
 
-                        <div className="flex items-center gap-2">
-                          <Button size="sm" variant="outline" className="text-xs flex-1 font-bold">
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                            Marcar Completada
-                          </Button>
-                          <Button size="sm" variant="outline" className="text-xs font-bold">
-                            <Edit className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">Vencimiento</p>
+                              <p className="text-xs font-bold text-gray-900 flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {tarea.fechaVencimiento ? new Date(tarea.fechaVencimiento).toLocaleDateString() : 'Sin fecha'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">Días restantes</p>
+                              <Badge
+                                className="text-xs font-bold"
+                                style={{
+                                  background: semaforoTarea.bg,
+                                  color: semaforoTarea.color,
+                                  border: `1px solid ${semaforoTarea.color}`
+                                }}
+                              >
+                                {diasRestantes} días
+                              </Badge>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">Responsable</p>
+                              <p className="text-xs font-bold text-gray-900 truncate flex items-center gap-1">
+                                <User className="w-3 h-3" />
+                                {tarea.responsableNombre || tarea.responsable?.nombre || expediente.abogadoAsignado || 'Sin asignar'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">Estado</p>
+                              <Badge
+                                className="text-xs font-semibold"
+                                style={{
+                                  background: tarea.estado === 'completada' ? '#D1FAE5' : (tarea.estado === 'en_proceso' ? '#DBEAFE' : '#FEF3C7'),
+                                  color: tarea.estado === 'completada' ? '#065F46' : (tarea.estado === 'en_proceso' ? '#1E40AF' : '#92400E')
+                                }}
+                              >
+                                {tarea.estado === 'completada' ? 'Completada' : (tarea.estado === 'en_proceso' ? 'En proceso' : 'Pendiente')}
+                              </Badge>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {tarea.estado !== 'completada' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs flex-1 font-bold"
+                                onClick={() => handleActualizarEstadoTarea(tarea.id, 'completada')}
+                              >
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Marcar Completada
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs font-bold text-red-600 hover:bg-red-50"
+                              onClick={() => handleEliminarTarea(tarea.id)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
               </TabsContent>
 
               {/* ==================== TAB: NOTAS ==================== */}
@@ -1291,7 +1428,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Button
                       size="sm"
                       className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
-                      onClick={handleAgregarNota}
+                      onClick={() => setShowNuevaNota(true)}
                     >
                       <Plus className="w-3 h-3 mr-1" />
                       Agregar Nota
@@ -1302,38 +1439,100 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   </p>
                 </Card>
 
-                <div className="space-y-3">
-                  {notasInternas.map((nota) => (
-                    <Card
-                      key={nota.id}
-                      className="p-4 border-l-4"
-                      style={{
-                        borderLeftColor: nota.tipo === 'Importante' ? '#DC2626' : (nota.tipo === 'Seguimiento' ? '#3B82F6' : '#10B981')
-                      }}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <Badge
-                          className="text-xs font-bold"
-                          style={{
-                            background: nota.tipo === 'Importante' ? '#FEE2E2' : (nota.tipo === 'Seguimiento' ? '#DBEAFE' : '#D1FAE5'),
-                            color: nota.tipo === 'Importante' ? '#DC2626' : (nota.tipo === 'Seguimiento' ? '#1E40AF' : '#065F46')
-                          }}
-                        >
-                          {nota.tipo}
-                        </Badge>
-                        <span className="text-xs text-gray-500 flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {nota.fecha}
-                        </span>
+                {/* Formulario Nueva Nota */}
+                {showNuevaNota && (
+                  <Card className="p-4 border-2 border-yellow-300 bg-yellow-50">
+                    <h5 className="text-sm font-bold mb-3 text-yellow-700">Agregar Nueva Nota</h5>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700">Contenido *</label>
+                        <textarea
+                          className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-yellow-500"
+                          placeholder="Escribe tu nota aquí..."
+                          rows={3}
+                          value={nuevaNota.contenido}
+                          onChange={(e) => setNuevaNota({ ...nuevaNota, contenido: e.target.value })}
+                        />
                       </div>
-                      <p className="text-sm text-gray-800 mb-2">{nota.nota}</p>
-                      <p className="text-xs text-gray-600 flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        {nota.autor}
-                      </p>
-                    </Card>
-                  ))}
-                </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700">Tipo</label>
+                        <select
+                          className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-yellow-500"
+                          value={nuevaNota.tipo}
+                          onChange={(e) => setNuevaNota({ ...nuevaNota, tipo: e.target.value })}
+                        >
+                          <option value="general">General</option>
+                          <option value="importante">Importante</option>
+                          <option value="seguimiento">Seguimiento</option>
+                          <option value="informacion">Información</option>
+                          <option value="alerta">Alerta</option>
+                        </select>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setShowNuevaNota(false)}>
+                          Cancelar
+                        </Button>
+                        <Button size="sm" className="bg-yellow-600 hover:bg-yellow-700 text-white" onClick={handleCrearNota}>
+                          Guardar Nota
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Lista de Notas */}
+                {loadingNotas ? (
+                  <div className="text-center py-4 text-gray-500">Cargando notas...</div>
+                ) : notas.length === 0 ? (
+                  <Card className="p-6 text-center text-gray-500">
+                    <Bookmark className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm">No hay notas registradas para este expediente</p>
+                    <p className="text-xs text-gray-400">Haz clic en "Agregar Nota" para crear una</p>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {notas.map((nota) => (
+                      <Card
+                        key={nota.id}
+                        className="p-4 border-l-4"
+                        style={{
+                          borderLeftColor: nota.tipo === 'importante' ? '#DC2626' : (nota.tipo === 'seguimiento' ? '#3B82F6' : (nota.tipo === 'alerta' ? '#F59E0B' : '#10B981'))
+                        }}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <Badge
+                            className="text-xs font-bold"
+                            style={{
+                              background: nota.tipo === 'importante' ? '#FEE2E2' : (nota.tipo === 'seguimiento' ? '#DBEAFE' : (nota.tipo === 'alerta' ? '#FEF3C7' : '#D1FAE5')),
+                              color: nota.tipo === 'importante' ? '#DC2626' : (nota.tipo === 'seguimiento' ? '#1E40AF' : (nota.tipo === 'alerta' ? '#92400E' : '#065F46'))
+                            }}
+                          >
+                            {nota.tipo}
+                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {nota.createdAt ? new Date(nota.createdAt).toLocaleDateString() : ''}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-red-600 hover:bg-red-50"
+                              onClick={() => handleEliminarNota(nota.id)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-800 mb-2">{nota.contenido}</p>
+                        <p className="text-xs text-gray-600 flex items-center gap-1">
+                          <User className="w-3 h-3" />
+                          {nota.autorNombre || nota.autor?.nombre || expediente.abogadoAsignado || 'Usuario'}
+                        </p>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </div >
@@ -1362,33 +1561,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 >
                   <Bell className="w-3.5 h-3.5 mr-1" />
                   Notificar
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCompartir}
-                  className="font-bold text-xs"
-                >
-                  <Share className="w-3.5 h-3.5 mr-1" />
-                  Compartir
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDescargarPDF}
-                  className="font-bold text-xs"
-                >
-                  <Download className="w-3.5 h-3.5 mr-1" />
-                  PDF
-                </Button>
-                <Button
-                  size="sm"
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                  className="font-bold text-xs"
-                  onClick={handleAbrirNuevaPestana}
-                >
-                  <ExternalLink className="w-3.5 h-3.5 mr-1" />
-                  Abrir en Pestaña
                 </Button>
               </div>
             </div>

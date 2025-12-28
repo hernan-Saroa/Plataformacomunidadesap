@@ -56,6 +56,18 @@ import { RequerimientosOCService } from './services/requerimientos-oc.service';
 
 import { PeiModule } from './pei/pei.module';
 
+// Tareas y Notas de Expedientes
+import { TareaExpediente } from './entities/tarea-expediente.entity';
+import { NotaExpediente } from './entities/nota-expediente.entity';
+import { TareasNotasService } from './services/tareas-notas.service';
+import { TareasNotasController } from './controllers/tareas-notas.controller';
+
+// Comentarios y Documentos de Órganos de Control
+import { ComentarioOC } from './entities/comentario-oc.entity';
+import { DocumentoOC } from './entities/documento-oc.entity';
+import { ComentariosDocumentosOCService } from './services/comentarios-documentos-oc.service';
+import { ComentariosDocumentosOCController } from './controllers/comentarios-documentos-oc.controller';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
@@ -77,7 +89,13 @@ import { PeiModule } from './pei/pei.module';
       OrganismoControlOC,
       RequerimientoOC,
       SolicitudInsumo,
-      Hallazgo
+      Hallazgo,
+      // Tareas y Notas
+      TareaExpediente,
+      NotaExpediente,
+      // Comentarios y Documentos OC
+      ComentarioOC,
+      DocumentoOC
     ]),
     PeiModule
   ],
@@ -98,7 +116,9 @@ import { PeiModule } from './pei/pei.module';
     ConsultasJuridicasController,
     EvidenciasController,
     ActasController,
-    RequerimientosOCController
+    RequerimientosOCController,
+    TareasNotasController,
+    ComentariosDocumentosOCController
   ],
   providers: [
     AppService,
@@ -114,7 +134,9 @@ import { PeiModule } from './pei/pei.module';
     ActasService,
     ConsultasJuridicasService,
     TerminosService,
-    RequerimientosOCService
+    RequerimientosOCService,
+    TareasNotasService,
+    ComentariosDocumentosOCService
   ],
 })
 export class AppModule { }

@@ -316,6 +316,42 @@ export class LegalService {
     async responderSolicitudInsumo(insumoId: string, data: any): Promise<any> {
         return legalApiClient.patch<any>(`/api/legal/requerimientos-oc/insumos/${insumoId}/responder`, data);
     }
+
+    // --- TAREAS DE EXPEDIENTE ---
+
+    async getTareasByExpediente(expedienteId: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/expedientes/${expedienteId}/tareas`);
+    }
+
+    async createTarea(expedienteId: string, data: any): Promise<any> {
+        return legalApiClient.post<any>(`/api/legal/expedientes/${expedienteId}/tareas`, data);
+    }
+
+    async updateTarea(tareaId: string, data: any): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/expedientes/tareas/${tareaId}`, data);
+    }
+
+    async deleteTarea(tareaId: string): Promise<void> {
+        return legalApiClient.delete(`/api/legal/expedientes/tareas/${tareaId}`);
+    }
+
+    // --- NOTAS DE EXPEDIENTE ---
+
+    async getNotasByExpediente(expedienteId: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/expedientes/${expedienteId}/notas`);
+    }
+
+    async createNota(expedienteId: string, data: any): Promise<any> {
+        return legalApiClient.post<any>(`/api/legal/expedientes/${expedienteId}/notas`, data);
+    }
+
+    async updateNota(notaId: string, data: any): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/expedientes/notas/${notaId}`, data);
+    }
+
+    async deleteNota(notaId: string): Promise<void> {
+        return legalApiClient.delete(`/api/legal/expedientes/notas/${notaId}`);
+    }
 }
 
 // Documento interface for frontend
@@ -352,4 +388,63 @@ export interface CreateDocumentoData {
     subidoPor?: string;
 }
 
+// ==================== OC Comments and Documents API ====================
+
+export interface ComentarioOC {
+    id: string;
+    requerimientoId: string;
+    contenido: string;
+    tipo: string;
+    autorNombre?: string;
+    createdAt: string;
+}
+
+export interface DocumentoOC {
+    id: string;
+    requerimientoId: string;
+    nombre: string;
+    tipoDocumento: string;
+    descripcion?: string;
+    archivoUrl?: string;
+    subidoPor?: string;
+    createdAt: string;
+}
+
+class OCService {
+    // Comentarios
+    async getComentariosByRequerimiento(requerimientoId: string): Promise<ComentarioOC[]> {
+        return legalApiClient.get<ComentarioOC[]>(`/api/legal/requerimientos-oc/${requerimientoId}/comentarios`);
+    }
+
+    async createComentario(requerimientoId: string, data: { contenido: string; tipo?: string; autorNombre?: string }): Promise<ComentarioOC> {
+        return legalApiClient.post<ComentarioOC>(`/api/legal/requerimientos-oc/${requerimientoId}/comentarios`, data);
+    }
+
+    async deleteComentario(comentarioId: string): Promise<void> {
+        await legalApiClient.delete(`/api/legal/requerimientos-oc/comentarios/${comentarioId}`);
+    }
+
+    // Documentos
+    async getDocumentosByRequerimiento(requerimientoId: string): Promise<DocumentoOC[]> {
+        return legalApiClient.get<DocumentoOC[]>(`/api/legal/requerimientos-oc/${requerimientoId}/documentos`);
+    }
+
+    async createDocumento(requerimientoId: string, data: { nombre: string; tipoDocumento?: string; descripcion?: string; archivo?: File; subidoPor?: string }): Promise<DocumentoOC> {
+        const formData = new FormData();
+        formData.append('nombre', data.nombre);
+        formData.append('tipoDocumento', data.tipoDocumento || 'otro');
+        if (data.descripcion) formData.append('descripcion', data.descripcion);
+        if (data.subidoPor) formData.append('subidoPor', data.subidoPor);
+        if (data.archivo) formData.append('archivo', data.archivo);
+
+        return legalApiClient.upload<DocumentoOC>(`/api/legal/requerimientos-oc/${requerimientoId}/documentos`, formData);
+    }
+
+    async deleteDocumento(documentoId: string): Promise<void> {
+        await legalApiClient.delete(`/api/legal/requerimientos-oc/documentos/${documentoId}`);
+    }
+}
+
 export const legalService = new LegalService();
+export const ocService = new OCService();
+

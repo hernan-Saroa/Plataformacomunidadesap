@@ -41,6 +41,7 @@ export function ModuloAsesoriaJuridicaV3() {
 
   // Data from API
   const [consultas, setConsultas] = useState<any[]>([]);
+  const [abogados, setAbogados] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedConsulta, setSelectedConsulta] = useState<any>(null);
@@ -57,13 +58,25 @@ export function ModuloAsesoriaJuridicaV3() {
     materiaJuridica: 'administrativo',
     descripcion: '',
     antecedentes: '',
-    prioridad: 'media'
+    abogadoAsignadoId: '' // Abogado will be assigned from DB
+    // prioridad removed - calculated automatically based on time
   });
 
   // Load data from API
   useEffect(() => {
     loadConsultas();
+    loadAbogados();
   }, []);
+
+  const loadAbogados = async () => {
+    try {
+      const data = await legalService.getAbogadosDashboard();
+      setAbogados(data || []);
+    } catch (error) {
+      console.error('Error loading abogados:', error);
+      setAbogados([]);
+    }
+  };
 
   const loadConsultas = async () => {
     try {
@@ -82,6 +95,7 @@ export function ModuloAsesoriaJuridicaV3() {
         diasTotales: c.terminoLegalDias || 30,
         diasRestantes: c.diasRestantes || 30,
         abogadoAsignado: c.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+        abogadoAsignadoId: c.abogadoAsignadoId || c.abogadoAsignado?.id || '', // ID needed for Select
         prioridad: c.prioridad || 'media',
         normativaAplicable: [],
         documentosAdjuntos: []
@@ -153,7 +167,7 @@ export function ModuloAsesoriaJuridicaV3() {
         materiaJuridica: 'administrativo',
         descripcion: '',
         antecedentes: '',
-        prioridad: 'media'
+        abogadoAsignadoId: ''
       });
       loadConsultas();
     } catch (error) {
@@ -388,7 +402,11 @@ export function ModuloAsesoriaJuridicaV3() {
 
       {/* Modal Expediente */}
       <Dialog open={isExpedienteOpen} onOpenChange={setIsExpedienteOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0" aria-describedby="exp-js-desc">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Expediente de Consulta Jurídica</DialogTitle>
+            <DialogDescription id="exp-js-desc">Detalle de la consulta jurídica</DialogDescription>
+          </DialogHeader>
           {selectedConsulta && (
             <>
               {/* Header con gradiente */}
@@ -454,12 +472,39 @@ export function ModuloAsesoriaJuridicaV3() {
                 {/* Grid de información */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">📁 Materia Jurídica</p>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Materia Jurídica</p>
                     <p className="font-bold text-gray-900">{formatMateriaJuridica(selectedConsulta.temaJuridico)}</p>
                   </div>
                   <div className="p-4 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">👨‍💼 Abogado Asignado</p>
-                    <p className="font-bold text-gray-900">{selectedConsulta.abogadoAsignado || 'Sin asignar'}</p>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Abogado Asignado</p>
+                    <Select
+                      value={selectedConsulta.abogadoAsignadoId || 'none'}
+                      onValueChange={async (value: string) => {
+                        const toastId = toast.loading('Reasignando abogado...');
+                        try {
+                          const newAbogadoId = value === 'none' ? null : value;
+                          await legalService.updateConsultaJuridica(selectedConsulta.uuid, { abogadoAsignadoId: newAbogadoId });
+                          toast.success('Abogado reasignado', { id: toastId });
+                          await loadConsultas();
+                          setIsExpedienteOpen(false);
+                        } catch (error) {
+                          console.error('Error reasignando:', error);
+                          toast.error('Error al reasignar', { id: toastId });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue placeholder={selectedConsulta.abogadoAsignado || 'Sin asignar'} />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999]">
+                        <SelectItem value="none">Sin asignar</SelectItem>
+                        {abogados.map((abogado) => (
+                          <SelectItem key={abogado.id} value={abogado.id}>
+                            {abogado.nombreCompleto || abogado.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -605,7 +650,7 @@ export function ModuloAsesoriaJuridicaV3() {
               </div>
             </div>
 
-            {/* Materia y Prioridad */}
+            {/* Materia y Abogado Asignado */}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>Materia Jurídica</Label>
@@ -626,16 +671,19 @@ export function ModuloAsesoriaJuridicaV3() {
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label>Prioridad</Label>
+                <Label>Abogado Asignado</Label>
                 <Select
-                  value={newConsultaData.prioridad}
-                  onValueChange={(v: string) => setNewConsultaData({ ...newConsultaData, prioridad: v })}
+                  value={newConsultaData.abogadoAsignadoId || 'none'}
+                  onValueChange={(v: string) => setNewConsultaData({ ...newConsultaData, abogadoAsignadoId: v === 'none' ? '' : v })}
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar abogado..." /></SelectTrigger>
                   <SelectContent className="z-[9999]">
-                    <SelectItem value="alta">Alta</SelectItem>
-                    <SelectItem value="media">Media</SelectItem>
-                    <SelectItem value="baja">Baja</SelectItem>
+                    <SelectItem value="none">Sin asignar</SelectItem>
+                    {abogados.map((abogado) => (
+                      <SelectItem key={abogado.id} value={abogado.id}>
+                        {abogado.nombreCompleto || abogado.nombre}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -12,10 +12,21 @@ export class ConsultasJuridicasService {
         private readonly terminosService: TerminosService
     ) { }
 
-    async findAll(): Promise<ConsultaJuridica[]> {
-        return this.consultaRepository.find({
+    async findAll(): Promise<any[]> {
+        const consultas = await this.consultaRepository.find({
             relations: ['abogadoAsignado'],
             order: { fechaRecepcion: 'DESC' }
+        });
+
+        // Return with calculated diasRestantes and prioridad
+        return consultas.map(c => {
+            const diasRestantes = this.calcularDiasRestantes(c.fechaMaximaRespuesta);
+            const prioridad = this.calcularPrioridadAutomatica(diasRestantes);
+            return {
+                ...c,
+                diasRestantes,
+                prioridad
+            };
         });
     }
 
@@ -64,17 +75,19 @@ export class ConsultasJuridicasService {
 
     async update(id: string, data: Partial<ConsultaJuridica>): Promise<ConsultaJuridica> {
         const consulta = await this.findOne(id);
+        const updateData: any = { ...data };
 
-        // If assigning abogado, update estado and fechaAsignacion
+        // If assigning abogado for the first time, update estado and fechaAsignacion
         if (data.abogadoAsignadoId && !consulta.abogadoAsignadoId) {
-            data.fechaAsignacion = new Date();
+            updateData.fechaAsignacion = new Date();
             if (consulta.estado === 'en_radicacion') {
-                data.estado = 'asignado';
+                updateData.estado = 'asignado';
             }
         }
 
-        Object.assign(consulta, data);
-        return this.consultaRepository.save(consulta);
+        // Use update() instead of save() to avoid TypeORM relation issues
+        await this.consultaRepository.update(id, updateData);
+        return this.findOne(id);
     }
 
     async updateEstado(id: string, estado: string): Promise<ConsultaJuridica> {
@@ -112,5 +125,12 @@ export class ConsultasJuridicasService {
         const hoy = new Date();
         const diff = fechaMaxima.getTime() - hoy.getTime();
         return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+    }
+
+    // Calcular prioridad automáticamente basándose en días restantes
+    calcularPrioridadAutomatica(diasRestantes: number): string {
+        if (diasRestantes <= 3) return 'alta';      // Crítico
+        if (diasRestantes <= 7) return 'media';     // Urgente
+        return 'baja';                               // Normal
     }
 }

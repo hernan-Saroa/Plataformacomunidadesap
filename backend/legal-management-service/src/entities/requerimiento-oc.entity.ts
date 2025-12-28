@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { OrganismoControlOC } from './organismo-control-legal.entity';
 import { Abogado } from './abogado.entity';
+import { DocumentoOC } from './documento-oc.entity';
 
 export type TipoRequerimiento = 'SOLICITUD_INFORMACION' | 'APERTURA_AUDITORIA' | 'NOTIFICACION_HALLAZGO' | 'PLAN_MEJORAMIENTO' | 'OTRO';
 export type UnidadTiempo = 'HORAS' | 'DIAS_CALENDARIO' | 'DIAS_HABILES';
@@ -89,6 +90,10 @@ export class RequerimientoOC {
     @UpdateDateColumn({ name: 'updated_at' })
     updatedAt: Date;
 
+    @OneToMany(() => DocumentoOC, (doc: DocumentoOC) => doc.requerimiento)
+    documentos: DocumentoOC[];
+
     // Campos calculados (no en BD)
+    documentosCount?: number;
     diasRestantes?: number;
 }

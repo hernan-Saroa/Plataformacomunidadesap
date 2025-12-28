@@ -27,10 +27,13 @@ export class RequerimientosOCService {
     // REQUERIMIENTOS
     // ============================================
     async findAll(): Promise<RequerimientoOC[]> {
-        const reqs = await this.requerimientoRepo.find({
-            relations: ['organismo', 'abogadoAsignado'],
-            order: { fechaVencimiento: 'ASC' }
-        });
+        const reqs = await this.requerimientoRepo.createQueryBuilder('req')
+            .leftJoinAndSelect('req.organismo', 'organismo')
+            .leftJoinAndSelect('req.abogadoAsignado', 'abogado') // Map to 'abogado' alias matching property name if possible, or use property name
+            .loadRelationCountAndMap('req.documentosCount', 'req.documentos')
+            .orderBy('req.fechaVencimiento', 'ASC')
+            .getMany();
+
         return reqs.map(r => this.calcularDiasRestantes(r));
     }
 

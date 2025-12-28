@@ -27,7 +27,7 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
-import { legalService } from '../../../../services/api/legal.service';
+import { legalService, ocService, ComentarioOC, DocumentoOC } from '../../../../services/api/legal.service';
 
 // Types
 interface RequerimientoOC {
@@ -47,6 +47,7 @@ interface RequerimientoOC {
   abogadoAsignado?: { id: string; nombre: string };
   estado: string;
   prioridad: string;
+  documentosCount?: number;
   archivoAdjuntoUrl?: string;
   oficioRespuestaUrl?: string;
   acuseReciboUrl?: string;
@@ -76,6 +77,17 @@ export function OrganosControl() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedReq, setSelectedReq] = useState<RequerimientoOC | null>(null);
   const [isExpedienteOpen, setIsExpedienteOpen] = useState(false);
+
+  // Comentarios y Documentos Modal
+  const [isComentariosOpen, setIsComentariosOpen] = useState(false);
+  const [isDocumentosOpen, setIsDocumentosOpen] = useState(false);
+  const [comentariosReq, setComentariosReq] = useState<RequerimientoOC | null>(null);
+  const [comentarios, setComentarios] = useState<ComentarioOC[]>([]);
+  const [documentos, setDocumentos] = useState<DocumentoOC[]>([]);
+  const [loadingComentarios, setLoadingComentarios] = useState(false);
+  const [loadingDocumentos, setLoadingDocumentos] = useState(false);
+  const [nuevoComentario, setNuevoComentario] = useState({ contenido: '', tipo: 'general' });
+  const [nuevoDocumento, setNuevoDocumento] = useState<{ nombre: string; descripcion: string; archivo?: File }>({ nombre: '', descripcion: '' });
 
   // Filters
   const [filtroOrganismo, setFiltroOrganismo] = useState('TODOS');
@@ -185,6 +197,118 @@ export function OrganosControl() {
   const handleOpenExpediente = (req: RequerimientoOC) => {
     setSelectedReq(req);
     setIsExpedienteOpen(true);
+  };
+
+  // ==== COMENTARIOS ====
+  const handleOpenComentarios = async (req: RequerimientoOC) => {
+    setComentariosReq(req);
+    setIsComentariosOpen(true);
+    setLoadingComentarios(true);
+    try {
+      const data = await ocService.getComentariosByRequerimiento(req.id);
+      setComentarios(data);
+    } catch (error) {
+      console.error('Error cargando comentarios:', error);
+      toast.error('Error al cargar comentarios');
+      setComentarios([]);
+    } finally {
+      setLoadingComentarios(false);
+    }
+  };
+
+  const handleCrearComentario = async () => {
+    if (!comentariosReq || !nuevoComentario.contenido.trim()) {
+      toast.error('El contenido es requerido');
+      return;
+    }
+    try {
+      await ocService.createComentario(comentariosReq.id, {
+        contenido: nuevoComentario.contenido,
+        tipo: nuevoComentario.tipo,
+        autorNombre: 'Usuario'
+      });
+      toast.success('Comentario agregado');
+      setNuevoComentario({ contenido: '', tipo: 'general' });
+      const data = await ocService.getComentariosByRequerimiento(comentariosReq.id);
+      setComentarios(data);
+    } catch (error) {
+      toast.error('Error al crear comentario');
+    }
+  };
+
+  const handleEliminarComentario = async (id: string) => {
+    if (!comentariosReq) return;
+    try {
+      await ocService.deleteComentario(id);
+      toast.success('Comentario eliminado');
+      const data = await ocService.getComentariosByRequerimiento(comentariosReq.id);
+      setComentarios(data);
+    } catch (error) {
+      toast.error('Error al eliminar comentario');
+    }
+  };
+
+  // ==== DOCUMENTOS ====
+  const handleOpenDocumentos = async (req: RequerimientoOC) => {
+    setComentariosReq(req); // reuse for docs context
+    setIsDocumentosOpen(true);
+    setLoadingDocumentos(true);
+    try {
+      const data = await ocService.getDocumentosByRequerimiento(req.id);
+      setDocumentos(data);
+    } catch (error) {
+      console.error('Error cargando documentos:', error);
+      toast.error('Error al cargar documentos');
+      setDocumentos([]);
+    } finally {
+      setLoadingDocumentos(false);
+    }
+  };
+
+  const handleCrearDocumento = async () => {
+    if (!comentariosReq || !nuevoDocumento.nombre.trim()) {
+      toast.error('El nombre es requerido');
+      return;
+    }
+    try {
+      await ocService.createDocumento(comentariosReq.id, {
+        nombre: nuevoDocumento.nombre,
+        tipoDocumento: 'otro',
+        descripcion: nuevoDocumento.descripcion,
+        archivo: nuevoDocumento.archivo, // Pass the file here
+        subidoPor: 'Usuario' // TODO: Get from auth context
+      });
+      toast.success('Documento agregado');
+      setNuevoDocumento({ nombre: '', descripcion: '', archivo: undefined }); // Reset file
+      const data = await ocService.getDocumentosByRequerimiento(comentariosReq.id);
+      setDocumentos(data);
+
+      // Actualizar contador en la lista principal
+      setRequerimientos(prev => prev.map(r =>
+        r.id === comentariosReq.id ? { ...r, documentosCount: (r.documentosCount || 0) + 1 } : r
+      ));
+    } catch (error) {
+      toast.error('Error al subir documento');
+      console.error('Error al subir documento:', error);
+    }
+  };
+
+  const handleEliminarDocumento = async (id: string) => {
+    if (!comentariosReq) return;
+    try {
+      await ocService.deleteDocumento(id);
+      setDocumentos(documentos.filter(d => d.id !== id));
+      toast.success('Documento eliminado');
+
+      // Actualizar contador en la lista principal
+      if (comentariosReq) {
+        setRequerimientos(prev => prev.map(r =>
+          r.id === comentariosReq.id ? { ...r, documentosCount: Math.max(0, (r.documentosCount || 0) - 1) } : r
+        ));
+      }
+    } catch (error) {
+      toast.error('Error al eliminar documento');
+    }
   };
 
   // Filtered data
@@ -453,6 +577,8 @@ export function OrganosControl() {
                 isMobile={isMobile}
                 isTablet={isTablet}
                 onOpenExpediente={handleOpenExpediente}
+                onOpenComentarios={handleOpenComentarios}
+                onOpenDocumentos={handleOpenDocumentos}
                 getOrganoIcon={getOrganoIcon}
                 getSemaforoColor={getSemaforoColor}
               />
@@ -723,6 +849,290 @@ export function OrganosControl() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Comentarios */}
+      <Dialog open={isComentariosOpen} onOpenChange={setIsComentariosOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-0" aria-describedby="comentarios-description">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Comentarios del Requerimiento</DialogTitle>
+            <DialogDescription id="comentarios-description">Gestionar comentarios</DialogDescription>
+          </DialogHeader>
+
+          {/* Header con gradiente */}
+          <div className="p-4 border-b" style={{ background: 'linear-gradient(135deg, #EDE9FE 0%, #F3E8FF 100%)' }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#7C3AED' }}>
+                  <MessageSquare className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-900">Comentarios</h2>
+                  <p className="text-sm text-gray-600">{comentariosReq?.radicadoInterno} - {comentariosReq?.asunto?.substring(0, 40)}...</p>
+                </div>
+              </div>
+
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Los comentarios son visibles para todo el equipo asignado al requerimiento
+            </p>
+          </div>
+
+          <div className="p-4 space-y-4">
+            {/* Formulario nuevo comentario */}
+            <Card className="p-4 border-2 border-purple-300 bg-purple-50">
+              <h5 className="text-sm font-bold mb-3 text-purple-700">Nuevo Comentario</h5>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">Contenido *</label>
+                  <textarea
+                    className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500"
+                    placeholder="Escribe tu comentario aquí..."
+                    rows={3}
+                    value={nuevoComentario.contenido}
+                    onChange={(e) => setNuevoComentario({ ...nuevoComentario, contenido: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">Tipo</label>
+                  <select
+                    className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500"
+                    value={nuevoComentario.tipo}
+                    onChange={(e) => setNuevoComentario({ ...nuevoComentario, tipo: e.target.value })}
+                  >
+                    <option value="general">General</option>
+                    <option value="importante">Importante</option>
+                    <option value="seguimiento">Seguimiento</option>
+                    <option value="interno">Interno</option>
+                    <option value="alerta">Alerta</option>
+                  </select>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setNuevoComentario({ contenido: '', tipo: 'general' })}>
+                    Limpiar
+                  </Button>
+                  <Button size="sm" className="text-white" style={{ background: '#7C3AED' }} onClick={handleCrearComentario}>
+                    Guardar Comentario
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            {/* Lista de comentarios */}
+            {loadingComentarios ? (
+              <div className="text-center py-8 text-gray-500">
+                <MessageSquare className="w-8 h-8 mx-auto mb-2 animate-pulse text-purple-400" />
+                <p className="text-sm">Cargando comentarios...</p>
+              </div>
+            ) : comentarios.length === 0 ? (
+              <Card className="p-6 text-center text-gray-500">
+                <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                <p className="text-sm">No hay comentarios registrados para este requerimiento</p>
+                <p className="text-xs text-gray-400">Utiliza el formulario de arriba para agregar uno</p>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {comentarios.map((com) => (
+                  <Card
+                    key={com.id}
+                    className="p-4 border-l-4"
+                    style={{
+                      borderLeftColor: com.tipo === 'importante' ? '#DC2626' :
+                        com.tipo === 'seguimiento' ? '#3B82F6' :
+                          com.tipo === 'alerta' ? '#F59E0B' :
+                            com.tipo === 'interno' ? '#6366F1' : '#10B981'
+                    }}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <Badge
+                        className="text-xs font-bold"
+                        style={{
+                          background: com.tipo === 'importante' ? '#FEE2E2' :
+                            com.tipo === 'seguimiento' ? '#DBEAFE' :
+                              com.tipo === 'alerta' ? '#FEF3C7' :
+                                com.tipo === 'interno' ? '#E0E7FF' : '#D1FAE5',
+                          color: com.tipo === 'importante' ? '#DC2626' :
+                            com.tipo === 'seguimiento' ? '#1E40AF' :
+                              com.tipo === 'alerta' ? '#92400E' :
+                                com.tipo === 'interno' ? '#4338CA' : '#065F46'
+                        }}
+                      >
+                        {com.tipo}
+                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(com.createdAt).toLocaleDateString()}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 text-red-600 hover:bg-red-50"
+                          onClick={() => handleEliminarComentario(com.id)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-800 mb-2">{com.contenido}</p>
+                    <p className="text-xs text-gray-600 flex items-center gap-1">
+                      <User className="w-3 h-3" />
+                      {com.autorNombre || 'Usuario'}
+                    </p>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+
+      {/* Modal Documentos */}
+      <Dialog open={isDocumentosOpen} onOpenChange={setIsDocumentosOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-0" aria-describedby="documentos-description">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Documentos del Requerimiento</DialogTitle>
+            <DialogDescription id="documentos-description">Gestionar documentos</DialogDescription>
+          </DialogHeader>
+
+          {/* Header con gradiente */}
+          <div className="p-4 border-b" style={{ background: 'linear-gradient(135deg, #DBEAFE 0%, #EFF6FF 100%)' }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#2563EB' }}>
+                  <FileCheck className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-900">Documentos</h2>
+                  <p className="text-sm text-gray-600">{comentariosReq?.radicadoInterno} - {comentariosReq?.asunto?.substring(0, 40)}...</p>
+                </div>
+              </div>
+
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Gestión de documentos asociados al requerimiento
+            </p>
+          </div>
+
+          <div className="p-4 space-y-4">
+            {/* Formulario nuevo documento */}
+            <Card className="p-4 border-2 border-blue-200 bg-blue-50">
+              <h5 className="text-sm font-bold mb-3 text-blue-700">Nuevo Documento</h5>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">Nombre *</label>
+                  <Input
+                    className="w-full mt-1 border-blue-200 focus:ring-blue-500"
+                    placeholder="Nombre del documento..."
+                    value={nuevoDocumento.nombre}
+                    onChange={(e) => setNuevoDocumento({ ...nuevoDocumento, nombre: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">Archivo</label>
+                  <Input
+                    type="file"
+                    className="w-full mt-1 border-blue-200 focus:ring-blue-500 text-xs"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) setNuevoDocumento({ ...nuevoDocumento, archivo: file });
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">Descripción (Opcional)</label>
+                  <Textarea
+                    className="w-full mt-1 border-blue-200 focus:ring-blue-500"
+                    placeholder="Breve descripción..."
+                    rows={2}
+                    value={nuevoDocumento.descripcion}
+                    onChange={(e) => setNuevoDocumento({ ...nuevoDocumento, descripcion: e.target.value })}
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setNuevoDocumento({ nombre: '', descripcion: '' })}>
+                    Limpiar
+                  </Button>
+                  <Button size="sm" className="text-white" style={{ background: '#2563EB' }} onClick={handleCrearDocumento}>
+                    Guardar Documento
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            {/* Lista de documentos */}
+            {loadingDocumentos ? (
+              <div className="text-center py-8 text-gray-500">
+                <FileCheck className="w-8 h-8 mx-auto mb-2 animate-pulse text-blue-400" />
+                <p className="text-sm">Cargando documentos...</p>
+              </div>
+            ) : documentos.length === 0 ? (
+              <Card className="p-6 text-center text-gray-500">
+                <FileCheck className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                <p className="text-sm">No hay documentos registrados</p>
+                <p className="text-xs text-gray-400">Utiliza el formulario de arriba para agregar uno</p>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {documentos.map((doc) => (
+                  <Card key={doc.id} className="p-4 border-l-4 border-blue-500 hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-1 p-2 bg-blue-50 rounded-lg">
+                          <FileText className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">{doc.nombre}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs border-blue-200 text-blue-700 bg-blue-50">
+                              {doc.tipoDocumento}
+                            </Badge>
+                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {new Date(doc.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          {doc.descripcion && (
+                            <p className="text-xs text-gray-600 mt-2 line-clamp-2">
+                              {doc.descripcion}
+                            </p>
+                          )}
+                          <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            {doc.subidoPor || 'Usuario'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        {doc.archivoUrl && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-blue-600 hover:bg-blue-50"
+                            onClick={() => {
+                              const filename = doc.archivoUrl?.split('/').pop();
+                              if (filename) {
+                                const baseUrl = 'http://localhost:3008/api/legal/files';
+                                window.open(`${baseUrl}/${filename}`, '_blank');
+                              }
+                            }}
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" className="text-red-500 hover:bg-red-50" onClick={() => handleEliminarDocumento(doc.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -740,11 +1150,13 @@ interface ColumnaKanbanProps {
   isMobile: boolean;
   isTablet: boolean;
   onOpenExpediente: (req: RequerimientoOC) => void;
+  onOpenComentarios: (req: RequerimientoOC) => void;
+  onOpenDocumentos: (req: RequerimientoOC) => void;
   getOrganoIcon: (sigla?: string) => string;
   getSemaforoColor: (dias?: number, unidad?: string) => { color: string; label: string; bg: string };
 }
 
-function ColumnaKanban({ etapa, isMobile, isTablet, onOpenExpediente, getOrganoIcon, getSemaforoColor }: ColumnaKanbanProps) {
+function ColumnaKanban({ etapa, isMobile, isTablet, onOpenExpediente, onOpenComentarios, onOpenDocumentos, getOrganoIcon, getSemaforoColor }: ColumnaKanbanProps) {
   return (
     <motion.div className="flex-shrink-0" initial={{ width: 320 }} animate={{ width: 320 }}>
       <Card className="h-full border border-gray-200 bg-white">
@@ -782,6 +1194,8 @@ function ColumnaKanban({ etapa, isMobile, isTablet, onOpenExpediente, getOrganoI
               requerimiento={req}
               isMobile={isMobile}
               onOpenExpediente={onOpenExpediente}
+              onOpenComentarios={onOpenComentarios}
+              onOpenDocumentos={onOpenDocumentos}
               getOrganoIcon={getOrganoIcon}
               getSemaforoColor={getSemaforoColor}
             />
@@ -804,11 +1218,13 @@ interface TarjetaRequerimientoProps {
   requerimiento: RequerimientoOC;
   isMobile: boolean;
   onOpenExpediente: (req: RequerimientoOC) => void;
+  onOpenComentarios: (req: RequerimientoOC) => void;
+  onOpenDocumentos: (req: RequerimientoOC) => void;
   getOrganoIcon: (sigla?: string) => string;
   getSemaforoColor: (dias?: number, unidad?: string) => { color: string; label: string; bg: string };
 }
 
-function TarjetaRequerimiento({ requerimiento, isMobile, onOpenExpediente, getOrganoIcon, getSemaforoColor }: TarjetaRequerimientoProps) {
+function TarjetaRequerimiento({ requerimiento, isMobile, onOpenExpediente, onOpenComentarios, onOpenDocumentos, getOrganoIcon, getSemaforoColor }: TarjetaRequerimientoProps) {
   const semaforo = getSemaforoColor(requerimiento.diasRestantes, requerimiento.unidadTiempo);
 
   // Calcular porcentaje de tiempo transcurrido
@@ -875,7 +1291,7 @@ function TarjetaRequerimiento({ requerimiento, isMobile, onOpenExpediente, getOr
         {/* Grid con métricas: Docs / Transcurrido / % Tiempo */}
         <div className="grid grid-cols-3 gap-1.5 mb-2">
           <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">0</p>
+            <p className="text-xs font-bold text-gray-700">{requerimiento.documentosCount || 0}</p>
             <p className="text-xs text-gray-500">Docs</p>
           </div>
           <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
@@ -916,7 +1332,7 @@ function TarjetaRequerimiento({ requerimiento, isMobile, onOpenExpediente, getOr
 
           <div className="grid grid-cols-2 gap-1">
             <Button
-              onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Documentos del requerimiento'); }}
+              onClick={(e: React.MouseEvent) => { e.stopPropagation(); onOpenDocumentos(requerimiento); }}
               size="sm"
               variant="outline"
               className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
@@ -937,7 +1353,7 @@ function TarjetaRequerimiento({ requerimiento, isMobile, onOpenExpediente, getOr
           </div>
 
           <Button
-            onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Comentarios del requerimiento'); }}
+            onClick={(e: React.MouseEvent) => { e.stopPropagation(); onOpenComentarios(requerimiento); }}
             size="sm"
             className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
             style={{ background: '#7C3AED', color: '#FFFFFF' }}
