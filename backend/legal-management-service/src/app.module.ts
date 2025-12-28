@@ -54,6 +54,8 @@ import { Hallazgo } from './entities/hallazgo.entity';
 import { RequerimientosOCController } from './controllers/requerimientos-oc.controller';
 import { RequerimientosOCService } from './services/requerimientos-oc.service';
 
+import { PeiModule } from './pei/pei.module';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
@@ -77,6 +79,7 @@ import { RequerimientosOCService } from './services/requerimientos-oc.service';
       SolicitudInsumo,
       Hallazgo
     ]),
+    PeiModule
   ],
   controllers: [
     AppController,

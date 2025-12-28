@@ -20,6 +20,8 @@ import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
 import { RequerimientoOC } from './entities/requerimiento-oc.entity';
 import { SolicitudInsumo } from './entities/solicitud-insumo.entity';
 import { Hallazgo } from './entities/hallazgo.entity';
+import { PeiIndicador } from './entities/pei-indicador.entity';
+import { PeiRegistroAvance } from './entities/pei-registro-avance.entity';
 
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
@@ -36,7 +38,9 @@ export const databaseConfig: TypeOrmModuleOptions = {
         Expediente, Actuacion, Abogado, Audiencia, Requerimiento, OrganismoControl,
         Auto, Documento, Comentario, Evidencia, Acta, ConsultaJuridica, TerminoProcesal,
         // Órganos de Control
-        OrganismoControlOC, RequerimientoOC, SolicitudInsumo, Hallazgo
+        OrganismoControlOC, RequerimientoOC, SolicitudInsumo, Hallazgo,
+        // PEI
+        PeiIndicador, PeiRegistroAvance
     ],
     synchronize: false, // ⚠️ Cambiado a false para usar migraciones en producción
     logging: ['error'], // Solo mostrar errores, no queries
