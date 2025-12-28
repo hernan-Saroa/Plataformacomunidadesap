@@ -44,6 +44,14 @@ import { Auto } from './entities/auto.entity';
 
 // ... (existing imports)
 
+// Órganos de Control - Nuevo módulo
+import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
+import { RequerimientoOC } from './entities/requerimiento-oc.entity';
+import { SolicitudInsumo } from './entities/solicitud-insumo.entity';
+import { Hallazgo } from './entities/hallazgo.entity';
+import { RequerimientosOCController } from './controllers/requerimientos-oc.controller';
+import { RequerimientosOCService } from './services/requerimientos-oc.service';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
@@ -60,7 +68,12 @@ import { Auto } from './entities/auto.entity';
       Evidencia,
       Acta,
       ConsultaJuridica,
-      TerminoProcesal
+      TerminoProcesal,
+      // Órganos de Control
+      OrganismoControlOC,
+      RequerimientoOC,
+      SolicitudInsumo,
+      Hallazgo
     ]),
   ],
   controllers: [
@@ -78,6 +91,10 @@ import { Auto } from './entities/auto.entity';
     TerminosController,
     AutosController,
     ConsultasJuridicasController,
+    DocumentoController,
+    EvidenciasController,
+    ActasController,
+    RequerimientosOCController
   ],
   providers: [
     AppService,
@@ -92,7 +109,8 @@ import { Auto } from './entities/auto.entity';
     EvidenciasService,
     ActasService,
     ConsultasJuridicasService,
-    TerminosService
+    TerminosService,
+    RequerimientosOCService
   ],
 })
 export class AppModule { }
