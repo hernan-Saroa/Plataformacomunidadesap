@@ -6,6 +6,7 @@ import { Label } from '../../../../ui/label';
 import { Textarea } from '../../../../ui/textarea';
 import { toast } from 'sonner';
 import axios from 'axios';
+import confetti from 'canvas-confetti';
 
 interface ModalActualizarAvanceProps {
     open: boolean;
@@ -32,6 +33,43 @@ export function ModalActualizarAvance({ open, onClose, onSuccess, indicador }: M
                 observaciones
             });
             toast.success('Avance registrado exitosamente');
+
+            // Check for Celebration 🎉
+            const nuevoValor = parseFloat(valor);
+            let porcentaje = 0;
+            if (indicador.unidadMedida === 'PORCENTAJE') {
+                porcentaje = nuevoValor;
+            } else {
+                porcentaje = (nuevoValor / indicador.metaObjetivo) * 100;
+            }
+
+            if (porcentaje >= 100) {
+                const duration = 3000;
+                const end = Date.now() + duration;
+
+                const frame = () => {
+                    confetti({
+                        particleCount: 2,
+                        angle: 60,
+                        spread: 55,
+                        origin: { x: 0 },
+                        colors: ['#003DA5', '#ffffff', '#10B981'] // ESAP colors
+                    });
+                    confetti({
+                        particleCount: 2,
+                        angle: 120,
+                        spread: 55,
+                        origin: { x: 1 },
+                        colors: ['#003DA5', '#ffffff', '#10B981']
+                    });
+
+                    if (Date.now() < end) {
+                        requestAnimationFrame(frame);
+                    }
+                };
+                frame();
+            }
+
             onSuccess();
             onClose();
         } catch (error) {
