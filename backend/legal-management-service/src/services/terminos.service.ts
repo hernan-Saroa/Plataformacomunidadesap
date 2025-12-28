@@ -1,10 +1,10 @@
-
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TerminoProcesal } from '../entities/termino-procesal.entity';
 import { Expediente } from '../entities/expediente.entity';
 import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
+import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
 
 @Injectable()
 export class TerminosService {
@@ -17,6 +17,8 @@ export class TerminosService {
         private expedienteRepository: Repository<Expediente>,
         @InjectRepository(ConsultaJuridica)
         private consultaRepository: Repository<ConsultaJuridica>,
+        @InjectRepository(RequerimientoOC)
+        private requerimientoOCRepository: Repository<RequerimientoOC>,
     ) { }
 
     async create(data: Partial<TerminoProcesal>): Promise<TerminoProcesal> {
@@ -44,7 +46,7 @@ export class TerminosService {
     }
 
     async createAutomatico(
-        origen: 'DEFENSA' | 'JUZGAMIENTO' | 'ASESORIA' | 'MANUAL',
+        origen: 'DEFENSA' | 'JUZGAMIENTO' | 'ASESORIA' | 'MANUAL' | 'ORGANOS_CONTROL',
         referenciaId: string,
         radicado: string,
         nombreActuacion: string,
@@ -253,6 +255,36 @@ export class TerminosService {
             }
         }
 
+        if (termino.origenModulo === 'ORGANOS_CONTROL') {
+            const req = await this.requerimientoOCRepository.findOne({ where: { id: termino.referenciaId } });
+            if (req) {
+                if (req.archivoAdjuntoUrl) {
+                    docs.push({
+                        nombre: 'Requerimiento Inicial',
+                        tipo: 'REQUERIMIENTO',
+                        url: req.archivoAdjuntoUrl,
+                        fecha: req.fechaRecepcion
+                    });
+                }
+                if (req.oficioRespuestaUrl) {
+                    docs.push({
+                        nombre: 'Oficio Respuesta',
+                        tipo: 'RESPUESTA',
+                        url: req.oficioRespuestaUrl,
+                        fecha: req.fechaRespuesta
+                    });
+                }
+                if (req.acuseReciboUrl) {
+                    docs.push({
+                        nombre: 'Acuse de Recibo',
+                        tipo: 'ACUSE',
+                        url: req.acuseReciboUrl,
+                        fecha: req.fechaRespuesta
+                    });
+                }
+            }
+        }
+
         return docs;
     }
 
@@ -293,7 +325,7 @@ export class TerminosService {
         return 'green';
     }
 
-    async sincronizar(): Promise<{ total: number; nuevos: number }> {
+    async sincronizar(): Promise<{ total: number; nuevos: number; detalles?: any }> {
         let nuevos = 0;
         this.logger.log('Iniciando sincronización de términos...');
 
@@ -403,7 +435,54 @@ export class TerminosService {
             }
         }
 
+        // 3. Órganos de Control
+        const requerimientosOC = await this.requerimientoOCRepository.find({ relations: ['abogadoAsignado'] });
+
+        this.logger.log(`[ORGANOS_CONTROL] Encontrados ${requerimientosOC.length} requerimientos para procesar.`);
+
+        for (const req of requerimientosOC) {
+            const responsableUUID = req.abogadoAsignadoId || undefined;
+            // Use assigned lawyer name OR "funcionario_responsable" text field
+            const responsableNombre = req.abogadoAsignado?.nombreCompleto || req.funcionarioResponsable || 'Sin asignar';
+            const descripcion = req.descripcion || 'Requerimiento Ente de Control';
+
+            // Additional logging to debug specific Skipping reasons
+            const hasVencimiento = !!req.fechaVencimiento;
+            const validEstado = req.estado !== 'CERRADO' && req.estado !== 'ENVIADO';
+
+            this.logger.debug(`[ORGANOS_CONTROL] Procesando ${req.radicadoInterno}: Vencimiento=${req.fechaVencimiento}, Estado=${req.estado}, Valido=${validEstado}`);
+
+            if (req.fechaVencimiento && validEstado) {
+                this.logger.debug(`[ORGANOS_CONTROL] Sincronizando ${req.radicadoInterno}...`);
+                await this.createAutomatico(
+                    'ORGANOS_CONTROL',
+                    req.id,
+                    req.radicadoInterno || req.radicadoExterno || 'REQ-OC',
+                    req.tipoRequerimiento || 'Requerimiento',
+                    req.fechaRecepcion || new Date(),
+                    req.plazoOtorgado || 0,
+                    responsableUUID,
+                    responsableNombre,
+                    req.unidadTiempo === 'DIAS_CALENDARIO' ? 'CALENDARIO' : 'HABILES', // Map unit time
+                    req.fechaVencimiento,
+                    `[OC] ${req.asunto}. ${descripcion}`
+                );
+                nuevos++;
+            } else {
+                this.logger.warn(`[ORGANOS_CONTROL] SKIPPING ${req.radicadoInterno}: HasVencimiento=${hasVencimiento}, Estado=${req.estado}`);
+            }
+        }
+
         this.logger.log(`Sincronización finalizada. Procesados: ${nuevos}`);
-        return { total: expedientes.length + consultas.length, nuevos };
+
+        return {
+            total: expedientes.length + consultas.length + requerimientosOC.length,
+            nuevos,
+            detalles: {
+                expedientes: expedientes.length,
+                consultas: consultas.length,
+                requerimientosOC: requerimientosOC.length
+            }
+        };
     }
 }
