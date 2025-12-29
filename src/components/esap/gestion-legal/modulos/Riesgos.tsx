@@ -9,7 +9,7 @@ import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
-import { 
+import {
   AlertTriangle,
   Shield,
   Activity,
@@ -26,12 +26,14 @@ import {
   Circle
 } from 'lucide-react';
 import type { Riesgo, EtapaRiesgo } from '../core/types';
-import { riesgos } from '../data/datosRiesgos';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { ModalNuevoRiesgo } from './ModalNuevoRiesgo';
+import { ModalDetalleRiesgo } from './ModalDetalleRiesgo';
+import { riesgosService, RiesgoAPI } from '../../../../services/api/legal.service';
 
 type VistaModulo = 'matriz' | 'tabla';
 
@@ -42,12 +44,46 @@ const ZONA_RIESGO_CONFIG = {
   BAJO: { color: '#10B981', label: '🟢 Bajo', bg: '#D1FAE5', border: '#10B981' }
 };
 
-const TIPO_RIESGO_MAP = {
+const TIPO_RIESGO_MAP: Record<string, string> = {
   GESTION: '📊 Gestión',
   CORRUPCION: '⚠️ Corrupción',
   SEGURIDAD_DIGITAL: '🔒 Seguridad Digital',
   FISCAL: '💰 Fiscal'
 };
+
+// Función para convertir RiesgoAPI a Riesgo (tipo local)
+function apiToLocalRiesgo(api: RiesgoAPI): Riesgo {
+  return {
+    id: api.codigo || api.id,
+    codigo: api.codigo,
+    etapa: api.etapa as EtapaRiesgo,
+    proceso: api.proceso,
+    tipo: api.tipoRiesgo,
+    tipoRiesgo: api.tipoRiesgo,
+    nombre: api.nombre,
+    descripcion: api.descripcion,
+    causas: api.causas || [],
+    consecuencias: api.consecuencias || [],
+    probabilidadInherente: api.probabilidadInherente,
+    impactoInherente: api.impactoInherente,
+    zonaInherente: api.zonaInherente,
+    probabilidadResidual: api.probabilidadResidual,
+    impactoResidual: api.impactoResidual,
+    zonaResidual: api.zonaResidual,
+    controlesExistentes: api.controlesExistentes || [],
+    planTratamiento: (api.planTratamiento || []).map(p => ({
+      ...p,
+      fechaLimite: new Date(p.fechaLimite),
+      estado: p.estado as 'PENDIENTE' | 'EN_CURSO' | 'COMPLETADA'
+    })),
+    responsable: api.responsable,
+    documentos: [],
+    timeline: [],
+    fechaCreacion: new Date(api.createdAt),
+    fechaActualizacion: new Date(api.updatedAt),
+    estado: api.estado
+  };
+}
 
 export function Riesgos() {
   const [vistaActual, setVistaActual] = useState<VistaModulo>('matriz');
@@ -55,6 +91,36 @@ export function Riesgos() {
   const [filtroZona, setFiltroZona] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  // Estado para lista de riesgos (solo API, sin mocks)
+  const [riesgos, setRiesgos] = useState<Riesgo[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Estado para el modal de nuevo riesgo
+  const [modalNuevoOpen, setModalNuevoOpen] = useState(false);
+
+  // Estado para el modal de detalle
+  const [riesgoSeleccionado, setRiesgoSeleccionado] = useState<Riesgo | null>(null);
+  const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
+
+  // Cargar riesgos del API al montar
+  React.useEffect(() => {
+    const fetchRiesgos = async () => {
+      try {
+        const data = await riesgosService.getAll();
+        if (data && data.length > 0) {
+          const riesgosConvertidos = data.map(apiToLocalRiesgo);
+          setRiesgos(riesgosConvertidos);
+        }
+      } catch (error) {
+        console.log('API de riesgos no disponible');
+        toast.error('No se pudieron cargar los riesgos');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRiesgos();
+  }, []);
 
   const riesgosFiltrados = useMemo(() => {
     let resultado = [...riesgos].filter(r => r.estado === 'ACTIVO');
@@ -76,13 +142,24 @@ export function Riesgos() {
     }
 
     return resultado;
-  }, [busqueda, filtroZona, filtroTipo]);
+  }, [riesgos, busqueda, filtroZona, filtroTipo]);
 
   // Métricas
   const totalRiesgos = riesgos.filter(r => r.estado === 'ACTIVO').length;
   const extremos = riesgos.filter(r => r.zonaResidual === 'EXTREMO').length;
   const altos = riesgos.filter(r => r.zonaResidual === 'ALTO').length;
   const moderados = riesgos.filter(r => r.zonaResidual === 'MODERADO').length;
+
+  // Handler para agregar nuevo riesgo
+  const handleRiesgoCreado = (nuevoRiesgo: Riesgo) => {
+    setRiesgos(prev => [nuevoRiesgo, ...prev]);
+  };
+
+  // Handler para ver detalle de riesgo
+  const handleVerDetalle = (riesgo: Riesgo) => {
+    setRiesgoSeleccionado(riesgo);
+    setModalDetalleOpen(true);
+  };
 
   return (
     <div className="space-y-4">
@@ -103,7 +180,7 @@ export function Riesgos() {
             label: 'Nuevo Riesgo',
             labelMobile: 'Nuevo',
             icon: <Plus className="w-4 h-4" />,
-            onClick: () => toast.info('Nuevo Riesgo'),
+            onClick: () => setModalNuevoOpen(true),
             variant: 'primary'
           }
         ]}
@@ -194,26 +271,39 @@ export function Riesgos() {
 
       {/* Filtros */}
       <ModuleFilters
-        onSearchChange={(value) => setBusqueda(value)}
-        onZoneChange={(value) => setFiltroZona(value)}
-        onTypeChange={(value) => setFiltroTipo(value)}
-        zones={[
-          { value: 'TODAS', label: 'Todas las zonas' },
-          { value: 'EXTREMO', label: '🔴 Extremo' },
-          { value: 'ALTO', label: '🟠 Alto' },
-          { value: 'MODERADO', label: '🟡 Moderado' },
-          { value: 'BAJO', label: '🟢 Bajo' }
-        ]}
-        types={[
-          { value: 'TODOS', label: 'Todos los tipos' },
-          { value: 'GESTION', label: '📊 Gestión' },
-          { value: 'CORRUPCION', label: '⚠️ Corrupción' },
-          { value: 'SEGURIDAD_DIGITAL', label: '🔒 Seguridad Digital' },
-          { value: 'FISCAL', label: '💰 Fiscal' }
-        ]}
+        searchValue={busqueda}
+        onSearchChange={(value: string) => setBusqueda(value)}
         searchPlaceholder="Buscar por ID, descripción, proceso..."
-        filteredCount={riesgosFiltrados.length}
-        totalCount={totalRiesgos}
+        filters={[
+          {
+            type: 'select',
+            value: filtroZona,
+            onChange: (value: string) => setFiltroZona(value),
+            options: [
+              { value: 'TODAS', label: 'Todas las zonas' },
+              { value: 'EXTREMO', label: '🔴 Extremo' },
+              { value: 'ALTO', label: '🟠 Alto' },
+              { value: 'MODERADO', label: '🟡 Moderado' },
+              { value: 'BAJO', label: '🟢 Bajo' }
+            ],
+            placeholder: 'Zona de Riesgo'
+          },
+          {
+            type: 'select',
+            value: filtroTipo,
+            onChange: (value: string) => setFiltroTipo(value),
+            options: [
+              { value: 'TODOS', label: 'Todos los tipos' },
+              { value: 'GESTION', label: '📊 Gestión' },
+              { value: 'CORRUPCION', label: '⚠️ Corrupción' },
+              { value: 'SEGURIDAD_DIGITAL', label: '🔒 Seguridad Digital' },
+              { value: 'FISCAL', label: '💰 Fiscal' }
+            ],
+            placeholder: 'Tipo de Riesgo'
+          }
+        ]}
+        filteredItems={riesgosFiltrados.length}
+        totalItems={totalRiesgos}
         onClearFilters={() => {
           setBusqueda('');
           setFiltroZona('TODAS');
@@ -221,21 +311,35 @@ export function Riesgos() {
         }}
       />
 
-      {/* Contenido principal */}
       {vistaActual === 'matriz' ? (
-        <MatrizRiesgos riesgos={riesgosFiltrados} />
+        <MatrizRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalle} />
       ) : (
-        <TablaRiesgos riesgos={riesgosFiltrados} />
+        <TablaRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalle} />
       )}
+
+      {/* Modal Nuevo Riesgo */}
+      <ModalNuevoRiesgo
+        open={modalNuevoOpen}
+        onClose={() => setModalNuevoOpen(false)}
+        onRiesgoCreado={handleRiesgoCreado}
+      />
+
+      {/* Modal Detalle Riesgo */}
+      <ModalDetalleRiesgo
+        open={modalDetalleOpen}
+        onClose={() => setModalDetalleOpen(false)}
+        riesgo={riesgoSeleccionado}
+      />
     </div>
   );
 }
 
 interface MatrizRiesgosProps {
   riesgos: Riesgo[];
+  onVerDetalle: (riesgo: Riesgo) => void;
 }
 
-function MatrizRiesgos({ riesgos }: MatrizRiesgosProps) {
+function MatrizRiesgos({ riesgos, onVerDetalle }: MatrizRiesgosProps) {
   // Matriz 5x5 (Probabilidad x Impacto)
   const probabilidades = ['Raro', 'Improbable', 'Posible', 'Probable', 'Casi Seguro'];
   const impactos = ['Insignificante', 'Menor', 'Moderado', 'Mayor', 'Catastrófico'];
@@ -288,18 +392,21 @@ function MatrizRiesgos({ riesgos }: MatrizRiesgosProps) {
                     <div className="text-[10px] text-gray-400">({5 - probIdx})</div>
                   </td>
                   {impactos.map((imp, impIdx) => {
-                    const nivelRiesgo = getNivelRiesgo(5 - probIdx, impIdx + 1);
+                    const probValor = 5 - probIdx; // 5 arriba, 1 abajo
+                    const impValor = impIdx + 1;    // 1 izq, 5 der
+                    const nivelRiesgo = getNivelRiesgo(probValor, impValor);
                     const config = ZONA_RIESGO_CONFIG[nivelRiesgo];
-                    const riesgosEnCelda = riesgos.filter(r => 
-                      Math.abs((r.probabilidadInherente || 1) - (5 - probIdx)) <= 0.5 &&
-                      Math.abs((r.impactoInherente || 1) - (impIdx + 1)) <= 0.5
+                    // Filtrar riesgos que coincidan exactamente con esta celda
+                    const riesgosEnCelda = riesgos.filter(r =>
+                      (r.probabilidadInherente || 3) === probValor &&
+                      (r.impactoInherente || 3) === impValor
                     );
 
                     return (
                       <td
                         key={`${prob}-${imp}`}
                         className="border border-gray-300 p-2 text-center relative"
-                        style={{ 
+                        style={{
                           backgroundColor: config.bg,
                           minHeight: '60px',
                           minWidth: '100px'
@@ -309,7 +416,7 @@ function MatrizRiesgos({ riesgos }: MatrizRiesgosProps) {
                           <div className="space-y-1">
                             <Badge
                               className="text-xs font-bold"
-                              style={{ 
+                              style={{
                                 backgroundColor: config.color,
                                 color: '#FFFFFF'
                               }}
@@ -351,10 +458,12 @@ function MatrizRiesgos({ riesgos }: MatrizRiesgosProps) {
 
       {/* Lista de riesgos debajo de la matriz */}
       <div className="mt-6 pt-6 border-t border-gray-200">
-        <h4 className="font-bold text-sm text-gray-900 mb-3">Detalle de Riesgos</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {riesgos.slice(0, 6).map(riesgo => (
-            <TarjetaRiesgoCompacta key={riesgo.id} riesgo={riesgo} />
+        <h4 className="font-bold text-sm text-gray-900 mb-3">
+          Detalle de Riesgos ({riesgos.length} total)
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {riesgos.map(riesgo => (
+            <TarjetaRiesgoCompacta key={riesgo.id} riesgo={riesgo} onVerDetalle={onVerDetalle} />
           ))}
         </div>
       </div>
@@ -364,9 +473,10 @@ function MatrizRiesgos({ riesgos }: MatrizRiesgosProps) {
 
 interface TablaRiesgosProps {
   riesgos: Riesgo[];
+  onVerDetalle: (riesgo: Riesgo) => void;
 }
 
-function TablaRiesgos({ riesgos }: TablaRiesgosProps) {
+function TablaRiesgos({ riesgos, onVerDetalle }: TablaRiesgosProps) {
   return (
     <Card className="bg-white border border-gray-200">
       <div className="overflow-x-auto">
@@ -393,12 +503,12 @@ function TablaRiesgos({ riesgos }: TablaRiesgosProps) {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{riesgo.proceso}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">
-                    {TIPO_RIESGO_MAP[riesgo.tipoRiesgo]}
+                    {TIPO_RIESGO_MAP[riesgo.tipoRiesgo || riesgo.tipo || 'GESTION'] || 'Gestión'}
                   </td>
                   <td className="px-4 py-3">
                     <Badge
                       className="text-xs font-bold"
-                      style={{ 
+                      style={{
                         backgroundColor: config.color,
                         color: '#FFFFFF'
                       }}
@@ -409,7 +519,7 @@ function TablaRiesgos({ riesgos }: TablaRiesgosProps) {
                   <td className="px-4 py-3 text-sm text-gray-600">{riesgo.etapa}</td>
                   <td className="px-4 py-3">
                     <Button
-                      onClick={() => toast.success('Detalle Riesgo', { description: riesgo.id })}
+                      onClick={() => onVerDetalle(riesgo)}
                       size="sm"
                       style={{ background: '#003DA5', color: '#FFFFFF' }}
                     >
@@ -429,17 +539,20 @@ function TablaRiesgos({ riesgos }: TablaRiesgosProps) {
 
 interface TarjetaRiesgoCompactaProps {
   riesgo: Riesgo;
+  onVerDetalle: (riesgo: Riesgo) => void;
 }
 
-function TarjetaRiesgoCompacta({ riesgo }: TarjetaRiesgoCompactaProps) {
-  const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual];
+function TarjetaRiesgoCompacta({ riesgo, onVerDetalle }: TarjetaRiesgoCompactaProps) {
+  const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual] || ZONA_RIESGO_CONFIG.MODERADO;
+  const tipoLabel = TIPO_RIESGO_MAP[riesgo.tipoRiesgo || riesgo.tipo || 'GESTION'] || 'Gestión';
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="border rounded-lg p-3 hover:shadow-md transition-all"
+      className="border rounded-lg p-3 hover:shadow-md transition-all cursor-pointer"
       style={{ borderColor: config.border, borderWidth: '2px' }}
+      onClick={() => onVerDetalle(riesgo)}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div>
@@ -448,7 +561,7 @@ function TarjetaRiesgoCompacta({ riesgo }: TarjetaRiesgoCompactaProps) {
         </div>
         <Badge
           className="text-xs font-bold flex-shrink-0"
-          style={{ 
+          style={{
             backgroundColor: config.color,
             color: '#FFFFFF'
           }}
@@ -464,13 +577,13 @@ function TarjetaRiesgoCompacta({ riesgo }: TarjetaRiesgoCompactaProps) {
         </div>
         <div>
           <span className="text-gray-500">Tipo:</span>
-          <p className="font-semibold text-gray-900">{TIPO_RIESGO_MAP[riesgo.tipoRiesgo]}</p>
+          <p className="font-semibold text-gray-900">{tipoLabel}</p>
         </div>
       </div>
 
       <div className="mt-2 pt-2 border-t border-gray-200">
         <Button
-          onClick={() => toast.success('Detalle Riesgo', { description: riesgo.id })}
+          onClick={(e: React.MouseEvent) => { e.stopPropagation(); onVerDetalle(riesgo); }}
           size="sm"
           className="w-full"
           style={{ background: '#003DA5', color: '#FFFFFF' }}

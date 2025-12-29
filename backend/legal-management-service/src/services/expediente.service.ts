@@ -1,14 +1,53 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { Expediente } from '../entities/expediente.entity';
+import { Actuacion } from '../entities/actuacion.entity';
 
 @Injectable()
 export class ExpedienteService {
     constructor(
         @InjectRepository(Expediente)
         private expedienteRepository: Repository<Expediente>,
+        @InjectRepository(Actuacion)
+        private actuacionRepository: Repository<Actuacion>,
     ) { }
+
+    // ... (existing methods like crearExpediente)
+
+    async findOneByRadicado(radicado: string): Promise<Expediente | null> {
+        return this.expedienteRepository.findOne({
+            where: { radicado },
+            relations: ['actuaciones'],
+            order: {
+                actuaciones: {
+                    fechaActuacion: 'DESC'
+                }
+            }
+        });
+    }
+
+    async agregarActuacion(expedienteId: string, data: Partial<Actuacion>): Promise<Actuacion> {
+        const expediente = await this.findOne(expedienteId);
+        if (!expediente) throw new NotFoundException('Expediente no encontrado');
+
+        const nuevaActuacion = this.actuacionRepository.create({
+            ...data,
+            expedienteId: expediente.id,
+            fechaActuacion: new Date()
+        });
+
+        const saved = await this.actuacionRepository.save(nuevaActuacion);
+
+        // Update expediente ultima actuacion fields if needed
+        await this.expedienteRepository.update(expedienteId, {
+            // UpdatedAt handled by TypeORM
+        });
+
+        return saved;
+    }
+
+    // ... (rest of methods)
 
     async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
         // Validar radicado único
@@ -50,6 +89,7 @@ export class ExpedienteService {
 
     async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
         const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
+        queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Eager load for lists too if needed
 
         if (filtros.estado) {
             queryBuilder.andWhere('expediente.estado = :estado', { estado: filtros.estado });

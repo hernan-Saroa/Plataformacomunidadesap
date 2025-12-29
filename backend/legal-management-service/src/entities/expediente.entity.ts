@@ -2,6 +2,8 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { Actuacion } from './actuacion.entity';
 
+import { Documento } from './documento.entity';
+
 @Entity('expedientes', { schema: 'legal_management' })
 export class Expediente {
     @PrimaryGeneratedColumn('uuid')
@@ -10,7 +12,10 @@ export class Expediente {
     @OneToMany(() => Actuacion, (actuacion) => actuacion.expediente)
     actuaciones: Actuacion[];
 
-    @Column({ unique: true, length: 23 })
+    @OneToMany(() => Documento, (doc) => doc.expediente)
+    documentos: Documento[];
+
+    @Column({ unique: true, length: 50 })
     radicado: string;
 
     @Column({ default: 'Disciplinaria' })
@@ -89,6 +94,29 @@ export class Expediente {
     @Column({ name: 'numero_id_demandado', nullable: true })
     numeroIdDemandado: string;
 
+    // Campos de contacto del demandante
+    @Column({ name: 'demandante_direccion', length: 500, nullable: true })
+    demandanteDireccion: string;
+
+    @Column({ name: 'demandante_telefono', length: 50, nullable: true })
+    demandanteTelefono: string;
+
+    @Column({ name: 'demandante_email', length: 255, nullable: true })
+    demandanteEmail: string;
+
+    @Column({ name: 'demandante_apoderado', length: 255, nullable: true })
+    demandanteApoderado: string;
+
+    // Campos de contacto del demandado (opcional)
+    @Column({ name: 'demandado_direccion', length: 500, nullable: true })
+    demandadoDireccion: string;
+
+    @Column({ name: 'demandado_telefono', length: 50, nullable: true })
+    demandadoTelefono: string;
+
+    @Column({ name: 'demandado_email', length: 255, nullable: true })
+    demandadoEmail: string;
+
     @Column({ name: 'etapa_procesal', default: 'RADICACION' })
     etapaProcesal: string;
 
@@ -104,6 +132,12 @@ export class Expediente {
 
     @Column({ name: 'ley_aplicable', nullable: true, length: 100 })
     leyAplicable: string;
+
+    @Column({ name: 'tipo_falta', nullable: true, length: 50 })
+    tipoFalta: string;
+
+    @Column({ name: 'dependencia_investigado', nullable: true, length: 150 })
+    dependenciaInvestigado: string;
 
     @Column({ type: 'text', nullable: true })
     hechos: string;
