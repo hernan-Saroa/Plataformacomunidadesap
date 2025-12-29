@@ -4,7 +4,7 @@
  * - Formato de TABLA con columnas igual a Casos Pendientes
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -36,6 +36,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Card } from '../ui/card';
 import { toast } from 'sonner';
 import type { ReviewRequest, ReviewRequestStats } from '../../types';
+import graduadosService, { SolicitudCertificadoGraduado } from '../../services/api/graduados.service';
 
 export function ReviewRequestsModule() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,99 +49,25 @@ export function ReviewRequestsModule() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<ReviewRequest | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
-  const [resolution, setResolution] = useState<'graduate_found' | 'graduate_not_found' | 'invalid_data' | 'duplicate_request'>('graduate_found');
-
-  // Mock data
-  const mockStats: ReviewRequestStats = {
-    total: 24,
-    pending: 8,
-    underReview: 5,
-    approved: 9,
-    rejected: 2,
-    avgResolutionTime: 4.5
-  };
-
-  const mockRequests: ReviewRequest[] = [
-    {
-      id: '1',
-      requestNumber: 'REV-2024-001',
-      graduateDocumentNumber: '1234567890',
-      graduateDocumentIssueDate: '2015-05-20',
-      requester: {
-        name: 'Tech Solutions S.A.S.',
-        email: 'rrhh@techsolutions.com',
-        type: 'empresa'
-      },
-      status: 'pending',
-      createdAt: '2024-11-13T10:30:00Z'
-    },
-    {
-      id: '2',
-      requestNumber: 'REV-2024-002',
-      graduateDocumentNumber: '9876543210',
-      graduateDocumentIssueDate: '2018-03-15',
-      requester: {
-        name: 'Juan Carlos Pérez',
-        email: 'jc.perez@email.com',
-        type: 'graduado'
-      },
-      status: 'under_review',
-      createdAt: '2024-11-12T14:20:00Z',
-      reviewedBy: 'USR-001',
-      reviewerName: 'Admin ESAP'
-    },
-    {
-      id: '3',
-      requestNumber: 'REV-2024-003',
-      graduateDocumentNumber: '1122334455',
-      graduateDocumentIssueDate: '2020-07-10',
-      requester: {
-        name: 'Consulting Group Ltda',
-        email: 'info@consultinggroup.com',
-        type: 'empresa'
-      },
-      status: 'approved',
-      createdAt: '2024-11-10T09:15:00Z',
-      reviewedAt: '2024-11-11T11:30:00Z',
-      reviewedBy: 'USR-001',
-      reviewerName: 'Admin ESAP',
-      resolution: 'graduate_found',
-      reviewNotes: 'Graduado encontrado en el sistema. Certificado generado exitosamente.',
-      certificateGenerated: true,
-      certificateId: 'CERT-2024-ABC123'
-    },
-    {
-      id: '4',
-      requestNumber: 'REV-2024-004',
-      graduateDocumentNumber: '5544332211',
-      graduateDocumentIssueDate: '2010-12-05',
-      requester: {
-        name: 'María Fernanda Gómez',
-        email: 'mf.gomez@email.com',
-        type: 'graduado'
-      },
-      status: 'rejected',
-      createdAt: '2024-11-09T16:45:00Z',
-      reviewedAt: '2024-11-09T18:20:00Z',
-      reviewedBy: 'USR-002',
-      reviewerName: 'Coordinador Académico',
-      resolution: 'graduate_not_found',
-      reviewNotes: 'No se encontró registro del graduado en la base de datos institucional.'
-    },
-    {
-      id: '5',
-      requestNumber: 'REV-2024-005',
-      graduateDocumentNumber: '7788990011',
-      graduateDocumentIssueDate: '2019-08-22',
-      requester: {
-        name: 'Global Services Inc',
-        email: 'hr@globalservices.com',
-        type: 'empresa'
-      },
-      status: 'pending',
-      createdAt: '2024-11-13T08:00:00Z'
-    }
-  ];
+  const [reviewAction, setReviewAction] = useState<'approve' | 'reject'>('approve');
+  const [requests, setRequests] = useState<ReviewRequest[]>([]);
+  const [stats, setStats] = useState<ReviewRequestStats>({
+    total: 0,
+    pending: 0,
+    underReview: 0,
+    approved: 0,
+    rejected: 0,
+    avgResolutionTime: 0
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    type: 'start_review' | 'approve' | 'reject';
+    request: ReviewRequest;
+    notes?: string;
+  } | null>(null);
 
   // Funciones auxiliares
   const getStatusBadge = (status: string) => {
@@ -227,8 +154,127 @@ export function ReviewRequestsModule() {
     }
   };
 
+  const mapStatus = (status: SolicitudCertificadoGraduado['status']): ReviewRequest['status'] => {
+    switch (status) {
+      case 'PENDING':
+        return 'pending';
+      case 'PROCESSING':
+        return 'under_review';
+      case 'COMPLETED':
+        return 'approved';
+      case 'REJECTED':
+        return 'rejected';
+      default:
+        return 'pending';
+    }
+  };
+
+  const mapRequesterType = (
+    type: SolicitudCertificadoGraduado['requesterType']
+  ): ReviewRequest['requester']['type'] => (type === 'COMPANY' ? 'empresa' : 'graduado');
+
+  const mapRequest = (request: SolicitudCertificadoGraduado): ReviewRequest => {
+    return {
+      id: request.id,
+      requestNumber: request.requestNumber,
+      graduateDocumentNumber: request.idNumber,
+      graduateDocumentIssueDate:
+        request.idIssueDate || request.graduationDate || request.requestDate,
+      requester: {
+        name: request.requesterName || request.companyName || 'Solicitante',
+        email: request.requesterEmail,
+        type: mapRequesterType(request.requesterType),
+      },
+      status: mapStatus(request.status),
+      createdAt: request.requestDate,
+      reviewedAt: request.reviewedAt || request.completionDate,
+      reviewedBy: request.reviewedBy,
+      reviewerName: request.reviewerName,
+      reviewNotes: request.reviewNotes || request.rejectionReason,
+      resolution: request.reviewResolution as ReviewRequest['resolution'],
+      certificateGenerated: request.status === 'COMPLETED',
+    };
+  };
+
+  const calculateStats = (items: ReviewRequest[]): ReviewRequestStats => {
+    const totals = {
+      total: items.length,
+      pending: 0,
+      underReview: 0,
+      approved: 0,
+      rejected: 0,
+      avgResolutionTime: 0,
+    };
+
+    let resolvedCount = 0;
+    let totalHours = 0;
+
+    items.forEach((item) => {
+      switch (item.status) {
+        case 'pending':
+          totals.pending += 1;
+          break;
+        case 'under_review':
+          totals.underReview += 1;
+          break;
+        case 'approved':
+          totals.approved += 1;
+          break;
+        case 'rejected':
+          totals.rejected += 1;
+          break;
+        default:
+          break;
+      }
+
+      if (item.reviewedAt) {
+        const created = new Date(item.createdAt).getTime();
+        const reviewed = new Date(item.reviewedAt).getTime();
+        if (!Number.isNaN(created) && !Number.isNaN(reviewed) && reviewed >= created) {
+          totalHours += (reviewed - created) / (1000 * 60 * 60);
+          resolvedCount += 1;
+        }
+      }
+    });
+
+    totals.avgResolutionTime =
+      resolvedCount > 0 ? Number((totalHours / resolvedCount).toFixed(1)) : 0;
+
+    return totals;
+  };
+
+  const loadRequests = async () => {
+    setIsLoading(true);
+    setLoadError(null);
+
+    try {
+      let data = await graduadosService.solicitudes.listarRevision();
+
+      if (!Array.isArray(data) || data.length === 0) {
+        const all = await graduadosService.solicitudes.listar();
+        data = all.filter((item) => {
+          const observation = item.observations?.toLowerCase() || '';
+          return item.manualReview || observation.includes('revision manual') || observation.includes('revisión manual');
+        });
+      }
+
+      const mapped = data.map(mapRequest);
+      setRequests(mapped);
+      setStats(calculateStats(mapped));
+    } catch (error) {
+      console.error('Error cargando solicitudes de revisión:', error);
+      setLoadError('No se pudieron cargar las solicitudes de revisión.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRequests();
+  }, []);
+
   // Filtros
-  const filteredRequests = mockRequests.filter(request => {
+  const filteredRequests = requests.filter(request => {
     const matchesSearch = 
       request.requestNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       request.graduateDocumentNumber.includes(searchQuery) ||
@@ -253,10 +299,15 @@ export function ReviewRequestsModule() {
   };
 
   const handleStartReview = (request: ReviewRequest) => {
+    setConfirmAction({ type: 'start_review', request });
+    setShowConfirmModal(true);
+  };
+
+  const handleOpenReviewModal = (request: ReviewRequest, action: 'approve' | 'reject') => {
     setSelectedRequest(request);
-    setShowReviewModal(true);
+    setReviewAction(action);
     setReviewNotes('');
-    setResolution('graduate_found');
+    setShowReviewModal(true);
   };
 
   const handleSubmitReview = () => {
@@ -265,9 +316,54 @@ export function ReviewRequestsModule() {
       return;
     }
 
-    toast.success('Revisión completada exitosamente');
     setShowReviewModal(false);
-    setSelectedRequest(null);
+    if (selectedRequest) {
+      setConfirmAction({
+        type: reviewAction,
+        request: selectedRequest,
+        notes: reviewNotes.trim(),
+      });
+      setShowConfirmModal(true);
+    }
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmAction) {
+      return;
+    }
+
+    setIsUpdating(true);
+
+    try {
+      if (confirmAction.type === 'start_review') {
+        await graduadosService.solicitudes.marcarEnRevision(confirmAction.request.id);
+        toast.success('Solicitud marcada como en revisión');
+      } else if (confirmAction.type === 'approve') {
+        await graduadosService.solicitudes.aprobar(
+          confirmAction.request.id,
+          confirmAction.notes || 'Aprobado por revisión manual'
+        );
+        toast.success('Solicitud aprobada y certificado generado');
+      } else if (confirmAction.type === 'reject') {
+        await graduadosService.solicitudes.rechazar(
+          confirmAction.request.id,
+          confirmAction.notes || 'Solicitud rechazada'
+        );
+        toast.success('Solicitud rechazada');
+      }
+
+      setSelectedRequest(null);
+      setConfirmAction(null);
+      setShowConfirmModal(false);
+      await loadRequests();
+    } catch (error: any) {
+      console.error('Error actualizando solicitud:', error);
+      toast.error('No se pudo actualizar la solicitud', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   const hasActiveFilters = searchQuery !== '' || statusFilter !== 'all';
@@ -278,6 +374,14 @@ export function ReviewRequestsModule() {
     setCurrentPage(1);
   };
 
+  const reviewActionLabel = reviewAction === 'approve' ? 'Aprobar' : 'Rechazar';
+  const confirmActionLabel =
+    confirmAction?.type === 'start_review'
+      ? 'Enviar a revisión'
+      : confirmAction?.type === 'approve'
+        ? 'Aprobar solicitud'
+        : 'Rechazar solicitud';
+
   return (
     <div className="space-y-6">
       {/* Cards de Estadísticas */}
@@ -285,7 +389,7 @@ export function ReviewRequestsModule() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4"
       >
         {/* Card 1: Total */}
         <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
@@ -296,7 +400,7 @@ export function ReviewRequestsModule() {
                   Total
                 </p>
                 <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {mockStats.total}
+                  {stats.total}
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
                   Solicitudes
@@ -321,7 +425,7 @@ export function ReviewRequestsModule() {
                   Pendientes
                 </p>
                 <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {mockStats.pending}
+                  {stats.pending}
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
                   Sin revisar
@@ -346,7 +450,7 @@ export function ReviewRequestsModule() {
                   En Revisión
                 </p>
                 <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {mockStats.underReview}
+                  {stats.underReview}
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
                   En proceso
@@ -371,7 +475,7 @@ export function ReviewRequestsModule() {
                   Aprobadas
                 </p>
                 <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {mockStats.approved}
+                  {stats.approved}
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
                   Resueltas
@@ -387,7 +491,32 @@ export function ReviewRequestsModule() {
           </div>
         </Card>
 
-        {/* Card 5: Tiempo Promedio */}
+        {/* Card 5: Rechazadas */}
+        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
+          <div className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
+                  Rechazadas
+                </p>
+                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
+                  {stats.rejected}
+                </p>
+                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
+                  No aprobadas
+                </p>
+              </div>
+              <div
+                className="w-14 h-14 rounded-xl flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' }}
+              >
+                <XCircle className="w-7 h-7 text-white" />
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Card 6: Tiempo Promedio */}
         <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
           <div className="p-6">
             <div className="flex items-center justify-between">
@@ -396,7 +525,7 @@ export function ReviewRequestsModule() {
                   Tiempo Promedio
                 </p>
                 <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {mockStats.avgResolutionTime}h
+                  {stats.avgResolutionTime}h
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
                   Resolución
@@ -520,7 +649,30 @@ export function ReviewRequestsModule() {
         transition={{ duration: 0.3, delay: 0.2 }}
         className="space-y-3"
       >
-        {paginatedRequests.length === 0 ? (
+        {isLoading ? (
+          <div className="bg-white rounded-xl border border-[#E5E7EB] p-12 text-center">
+            <Clock className="w-16 h-16 mx-auto mb-4 animate-pulse" style={{ color: '#D1D5DB' }} />
+            <h3 className="text-lg font-semibold text-[#1F2937] mb-2">
+              Cargando solicitudes...
+            </h3>
+          </div>
+        ) : loadError ? (
+          <div className="bg-white rounded-xl border border-[#E5E7EB] p-12 text-center">
+            <AlertCircle className="w-16 h-16 mx-auto mb-4" style={{ color: '#EF4444' }} />
+            <h3 className="text-lg font-semibold text-[#1F2937] mb-2">
+              No se pudieron cargar las solicitudes
+            </h3>
+            <p className="text-sm text-[#6B7280] mb-6">{loadError}</p>
+            <button
+              onClick={loadRequests}
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              <RefreshCw className="w-4 h-4" />
+              Reintentar
+            </button>
+          </div>
+        ) : paginatedRequests.length === 0 ? (
           <div className="bg-white rounded-xl border border-[#E5E7EB] p-12 text-center">
             <AlertCircle className="w-16 h-16 mx-auto mb-4" style={{ color: '#D1D5DB' }} />
             <h3 className="text-lg font-semibold text-[#1F2937] mb-2">
@@ -694,8 +846,21 @@ export function ReviewRequestsModule() {
                           {request.status === 'pending' && (
                             <>
                               <DropdownMenuItem onClick={() => handleStartReview(request)}>
-                                <Eye className="w-4 h-4 mr-2" />
-                                Revisar Solicitud
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                Enviar a Revisión
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
+                          {request.status === 'under_review' && (
+                            <>
+                              <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'approve')}>
+                                <CheckCircle className="w-4 h-4 mr-2" />
+                                Aprobar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'reject')}>
+                                <XCircle className="w-4 h-4 mr-2" />
+                                Rechazar
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                             </>
@@ -892,10 +1057,10 @@ export function ReviewRequestsModule() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-600" />
-              Revisar Solicitud
+              {reviewActionLabel} Solicitud
             </DialogTitle>
             <DialogDescription>
-              Completa la revisión de la solicitud de verificación
+              Confirma los detalles antes de {reviewActionLabel.toLowerCase()} la solicitud
             </DialogDescription>
           </DialogHeader>
 
@@ -915,22 +1080,6 @@ export function ReviewRequestsModule() {
                   </p>
                 </div>
               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">
-                Resolución *
-              </label>
-              <select
-                value={resolution}
-                onChange={(e) => setResolution(e.target.value as any)}
-                className="w-full p-3 border-2 border-gray-300 rounded-lg text-sm focus:border-[#003DA5]"
-              >
-                <option value="graduate_found">Graduado Encontrado</option>
-                <option value="graduate_not_found">Graduado No Encontrado</option>
-                <option value="invalid_data">Datos Inválidos</option>
-                <option value="duplicate_request">Solicitud Duplicada</option>
-              </select>
             </div>
 
             <div>
@@ -975,7 +1124,72 @@ export function ReviewRequestsModule() {
               style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
               <CheckCircle className="w-4 h-4" />
-              Completar Revisión
+              Continuar
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Confirmar Cambio de Estado */}
+      <Dialog
+        open={showConfirmModal}
+        onOpenChange={(open) => {
+          setShowConfirmModal(open);
+          if (!open) {
+            setConfirmAction(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-600" />
+              Confirmar Acción
+            </DialogTitle>
+            <DialogDescription>
+              Verifica que deseas continuar con esta acción.
+            </DialogDescription>
+          </DialogHeader>
+
+          {confirmAction && (
+            <div className="py-4 space-y-4">
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-700">
+                <p className="font-semibold text-gray-900 mb-1">{confirmActionLabel}</p>
+                <p>
+                  Solicitud: <strong>{confirmAction.request.requestNumber}</strong>
+                </p>
+                <p>
+                  Cédula: <strong>{confirmAction.request.graduateDocumentNumber}</strong>
+                </p>
+                {confirmAction.notes && (
+                  <div className="mt-3">
+                    <p className="text-xs text-gray-500 mb-1">Notas:</p>
+                    <p className="text-xs text-gray-700 bg-white border border-gray-200 rounded p-2">
+                      {confirmAction.notes}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <button
+              onClick={() => setShowConfirmModal(false)}
+              className="px-4 py-2 text-sm font-medium rounded-lg border-2"
+              style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+              disabled={isUpdating}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleConfirmAction}
+              className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+              disabled={isUpdating}
+            >
+              <CheckCircle className="w-4 h-4" />
+              {isUpdating ? 'Procesando...' : 'Confirmar'}
             </button>
           </DialogFooter>
         </DialogContent>
