@@ -1759,6 +1759,7 @@ export function GestionAuditoriasKanbanSimple() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [vistaActiva, setVistaActiva] = useState<'kanban' | 'lista'>('kanban');
+  const [mostrarArchivadas, setMostrarArchivadas] = useState<boolean>(false);
   const [filtroTerritorial, setFiltroTerritorial] = useState<string>('Todas las Territoriales');
   const [busqueda, setBusqueda] = useState('');
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<Auditoria | null>(null);
@@ -1782,33 +1783,59 @@ export function GestionAuditoriasKanbanSimple() {
     try {
       setLoading(true);
       setError(null);
-      const data = await controlInternoService.getAuditoriasKanban();
-      console.log('[cargarAuditorias] Datos recibidos del backend:', data);
+      
+      let auditoriasData: Auditoria[] = [];
+      
+      if (mostrarArchivadas) {
+        // Cargar archivadas - respuesta es ApiResponse
+        const response = await auditoriasApi.getAllKanbanArchivadas();
+        if (response.success && response.data && Array.isArray(response.data)) {
+          auditoriasData = response.data as Auditoria[];
+        } else {
+          console.warn('[cargarAuditorias] Respuesta de archivadas no válida:', response);
+          auditoriasData = [];
+        }
+      } else {
+        // Cargar activas - respuesta es array directo
+        const data = await controlInternoService.getAuditoriasKanban();
+        if (Array.isArray(data)) {
+          auditoriasData = data as Auditoria[];
+        } else {
+          console.warn('[cargarAuditorias] Respuesta de activas no es un array:', data);
+          auditoriasData = [];
+        }
+      }
+      
+      console.log('[cargarAuditorias] Datos recibidos del backend:', auditoriasData);
       // Verificar que los datos incluyan alcance y riesgoKanban
-      if (data && data.length > 0) {
+      if (auditoriasData && auditoriasData.length > 0) {
         console.log('[cargarAuditorias] Primera auditoría:', {
-          codigo: data[0].codigo,
-          alcance: (data[0] as any).alcance,
-          riesgo: (data[0] as any).riesgo,
-          riesgoKanban: (data[0] as any).riesgoKanban
+          codigo: auditoriasData[0].codigo,
+          alcance: (auditoriasData[0] as any).alcance,
+          riesgo: (auditoriasData[0] as any).riesgo,
+          riesgoKanban: (auditoriasData[0] as any).riesgoKanban
         });
       }
-      setAuditorias(data as Auditoria[]);
+      
+      // Asegurar que siempre sea un array
+      setAuditorias(Array.isArray(auditoriasData) ? auditoriasData : []);
     } catch (err: any) {
       console.error('Error al cargar auditorías:', err);
       setError(err.message || 'Error al cargar las auditorías');
       toast.error('Error al cargar auditorías', {
         description: err.message || 'No se pudieron cargar las auditorías desde el servidor'
       });
+      // Asegurar que siempre sea un array incluso en caso de error
+      setAuditorias([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Cargar auditorías al montar el componente
+  // Cargar auditorías al montar el componente o cuando cambie el filtro de archivadas
   useEffect(() => {
     cargarAuditorias();
-  }, []);
+  }, [mostrarArchivadas]);
 
   // Toggle colapso de tarjeta individual
   const toggleTarjetaColapsada = (id: string) => {
@@ -2418,24 +2445,39 @@ export function GestionAuditoriasKanbanSimple() {
   */
 
   // Confirmar acción (archivar o eliminar) - NUEVO
-  const handleConfirmarAccion = (auditoriaId: string, comentario?: string) => {
+  const handleConfirmarAccion = async (auditoriaId: string, comentario?: string) => {
     const auditoria = auditorias.find(a => a.id === auditoriaId);
     if (!auditoria) return;
 
     if (tipoAccionConfirmacion === 'archivar') {
-      setAuditorias(prev => prev.filter(aud => aud.id !== auditoriaId));
-      
-      toast.success(`${auditoria.codigo} archivada`, {
-        description: 'La auditoría se movió al archivo histórico',
-        duration: 4000
-      });
+      try {
+        // Archivar en el backend
+        const response = await auditoriasApi.archivar(auditoriaId, comentario);
+        
+        if (response.success) {
+          // Remover de la lista actual
+          setAuditorias(prev => prev.filter(aud => aud.id !== auditoriaId));
+          
+          toast.success(`${auditoria.codigo} archivada`, {
+            description: 'La auditoría se movió al archivo histórico',
+            duration: 4000
+          });
 
-      console.log('📦 Auditoría archivada:', {
-        auditoria: auditoria,
-        comentario: comentario,
-        fecha: new Date(),
-        usuario: 'Usuario Actual'
-      });
+          console.log('📦 Auditoría archivada:', {
+            auditoria: auditoria,
+            comentario: comentario,
+            fecha: new Date(),
+            usuario: 'Usuario Actual'
+          });
+        } else {
+          throw new Error(response.error || 'Error al archivar la auditoría');
+        }
+      } catch (error) {
+        console.error('Error al archivar auditoría:', error);
+        toast.error('Error al archivar auditoría', {
+          description: error instanceof Error ? error.message : 'No se pudo archivar la auditoría'
+        });
+      }
     } else if (tipoAccionConfirmacion === 'eliminar') {
       setAuditorias(prev => prev.filter(aud => aud.id !== auditoriaId));
       
@@ -2512,10 +2554,10 @@ export function GestionAuditoriasKanbanSimple() {
               className="font-black leading-tight text-2xl"
               style={{ color: '#F97316' }}
             >
-              Tablero Auditorías
+              {mostrarArchivadas ? 'Auditorías Archivadas' : 'Tablero Auditorías'}
             </h2>
             <p className="text-sm text-gray-600 mt-0.5">
-              Gestión visual del flujo de auditorías
+              {mostrarArchivadas ? 'Visualización de auditorías archivadas' : 'Gestión visual del flujo de auditorías'}
             </p>
           </div>
 
@@ -2569,6 +2611,20 @@ export function GestionAuditoriasKanbanSimple() {
                 Lista
               </button>
             </div>
+
+            {/* Botón para ver archivadas */}
+            <button
+              onClick={() => setMostrarArchivadas(!mostrarArchivadas)}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all border-2 ${
+                mostrarArchivadas 
+                  ? 'bg-gray-100 border-gray-400 text-gray-700' 
+                  : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+              }`}
+              title={mostrarArchivadas ? 'Ver auditorías activas' : 'Ver auditorías archivadas'}
+            >
+              <Archive className="w-4 h-4" />
+              <span className="hidden sm:inline">{mostrarArchivadas ? 'Activas' : 'Archivadas'}</span>
+            </button>
             {/* Botón "Nueva Auditoría" eliminado según requerimiento */}
           </div>
         </div>

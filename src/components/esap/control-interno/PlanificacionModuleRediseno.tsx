@@ -18,7 +18,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ClipboardList, Layers, Calendar, CheckCircle2, 
@@ -34,6 +34,7 @@ import { ProgramaAnualCIG } from './ProgramaAnualCIG';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
 import { toast } from 'sonner@2.0.3';
+import { universoAuditoriasApi, planAnual5RolesApi, auditoriasApi } from './services/api';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -83,12 +84,113 @@ export function PlanificacionModuleRediseno() {
   const [tabActiva, setTabActiva] = useState<TabActiva>('universo');
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
   const [modalNuevaAuditoriaOpen, setModalNuevaAuditoriaOpen] = useState(false);
+  const [estadisticas, setEstadisticas] = useState<EstadisticasGlobales>(ESTADISTICAS_MOCK);
+  const [loadingEstadisticas, setLoadingEstadisticas] = useState(true);
   const [filtros, setFiltros] = useState<FiltrosAvanzados>({
     año: 2025,
     estado: 'TODOS',
     area: 'TODAS',
     busqueda: ''
   });
+
+  // Cargar estadísticas desde la BD
+  useEffect(() => {
+    const cargarEstadisticas = async () => {
+      try {
+        setLoadingEstadisticas(true);
+        console.log('[Dashboard] Cargando estadísticas desde BD...');
+        
+        // Cargar datos en paralelo
+        const [procesosResponse, planesResponse, auditoriasResponse] = await Promise.all([
+          universoAuditoriasApi.getAllProcesos(),
+          planAnual5RolesApi.findAll(),
+          auditoriasApi.getAllKanban()
+        ]);
+
+        console.log('[Dashboard] Respuestas recibidas:', {
+          procesos: procesosResponse,
+          planes: planesResponse,
+          auditorias: auditoriasResponse
+        });
+
+        // Calcular estadísticas
+        const procesos = procesosResponse.success && procesosResponse.data ? procesosResponse.data : [];
+        const planes = planesResponse.success && planesResponse.data ? planesResponse.data : [];
+        const auditorias = auditoriasResponse.success && auditoriasResponse.data ? auditoriasResponse.data : [];
+
+        // Filtrar auditorías del año actual
+        const añoActual = filtros.año;
+        const auditoriasAnoActual = auditorias.filter((aud: any) => {
+          if (!aud.fechaInicio) return false;
+          const fechaInicio = new Date(aud.fechaInicio);
+          return fechaInicio.getFullYear() === añoActual;
+        });
+
+        // Procesos seleccionados (prioridad = 1)
+        const procesosSeleccionados = procesos.filter((p: any) => p.prioridad === 1);
+        
+        // Auditorías aprobadas (estado aprobado o en ejecución)
+        const auditoriasAprobadas = auditoriasAnoActual.filter((aud: any) => 
+          aud.estado === 'aprobado' || aud.estado === 'en-ejecucion' || aud.estadoKanban
+        );
+
+        // Auditorías calendarizadas (con fecha de inicio)
+        const auditoriasCalendarizadas = auditoriasAnoActual.filter((aud: any) => 
+          aud.fechaInicio && aud.fechaFin
+        );
+
+        // Calcular áreas involucradas (procesos únicos)
+        const areasInvolucradas = new Set(procesosSeleccionados.map((p: any) => p.dependencia || p.territorial || 'Sede')).size;
+
+        // Calcular auditores asignados (de todas las auditorías)
+        const auditoresUnicos = new Set();
+        auditoriasAnoActual.forEach((aud: any) => {
+          if (aud.auditorLiderId) auditoresUnicos.add(aud.auditorLiderId);
+          if (aud.auditorAsignadoId) auditoresUnicos.add(aud.auditorAsignadoId);
+          if (aud.equipoAuditores && Array.isArray(aud.equipoAuditores)) {
+            aud.equipoAuditores.forEach((eq: any) => {
+              if (eq.personaId) auditoresUnicos.add(eq.personaId);
+            });
+          }
+        });
+
+        // Calcular cumplimiento (auditorías completadas / total)
+        const auditoriasCompletadas = auditoriasAnoActual.filter((aud: any) => 
+          aud.estado === 'cerrada' || aud.fase === 'completada'
+        );
+        const cumplimientoPrograma = auditoriasAnoActual.length > 0
+          ? Math.round((auditoriasCompletadas.length / auditoriasAnoActual.length) * 100)
+          : 0;
+
+        const nuevasEstadisticas: EstadisticasGlobales = {
+          totalAuditoriasPlanificadas: planes.reduce((sum: number, plan: any) => {
+            // Sumar actividades de todos los roles
+            return sum + (plan.roles?.reduce((rolSum: number, rol: any) => {
+              return rolSum + (rol.actividades?.length || 0);
+            }, 0) || 0);
+          }, 0),
+          auditoriasAprobadas: auditoriasAprobadas.length,
+          procesosUniverso: procesos.length,
+          procesosAuditables: procesosSeleccionados.length, // Solo los seleccionados (prioridad = 1)
+          auditoriasCalendarizadas: auditoriasCalendarizadas.length,
+          cumplimientoPrograma,
+          areasInvolucradas,
+          auditoresAsignados: auditoresUnicos.size
+        };
+
+        console.log('[Dashboard] Estadísticas calculadas:', nuevasEstadisticas);
+        setEstadisticas(nuevasEstadisticas);
+      } catch (error) {
+        console.error('[Dashboard] Error al cargar estadísticas:', error);
+        // Mantener datos mock en caso de error
+        setEstadisticas(ESTADISTICAS_MOCK);
+      } finally {
+        setLoadingEstadisticas(false);
+      }
+    };
+
+    cargarEstadisticas();
+  }, [filtros.año]);
 
   // Handler para crear auditoría
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
@@ -103,8 +205,6 @@ export function PlanificacionModuleRediseno() {
     
     setModalNuevaAuditoriaOpen(false);
   };
-
-  const estadisticas = ESTADISTICAS_MOCK;
 
   // Calcular métricas derivadas
   const metricas = useMemo(() => ({

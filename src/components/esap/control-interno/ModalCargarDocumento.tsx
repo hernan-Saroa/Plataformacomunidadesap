@@ -50,11 +50,11 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const validarArchivo = (file: File): boolean => {
-    // Validar tamaño (máx 10 MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Archivo demasiado grande', {
-        description: 'El tamaño máximo permitido es 10 MB',
-      });
+      // Validar tamaño (máx 10 MB)
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('Archivo demasiado grande', {
+          description: 'El tamaño máximo permitido es 10 MB',
+        });
       return false;
     }
 
@@ -82,14 +82,14 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
 
   const procesarArchivo = (file: File) => {
     if (!validarArchivo(file)) {
-      return;
-    }
+        return;
+      }
 
-    setArchivoSeleccionado(file);
-    if (!nombreDocumento) {
-      // Auto-completar nombre del documento sin extensión
-      setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
-    }
+      setArchivoSeleccionado(file);
+      if (!nombreDocumento) {
+        // Auto-completar nombre del documento sin extensión
+        setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
+      }
   };
 
   const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -162,6 +162,15 @@ export class AuditoriasController {
   }
 
   /**
+   * GET /esap/auditorias/kanban/archivadas
+   * Obtiene todas las auditorías archivadas para el Kanban
+   */
+  @Get('kanban/archivadas')
+  findAllKanbanArchivadas() {
+    return this.auditoriasService.findAllKanbanArchivadas();
+  }
+
+  /**
    * GET /esap/auditorias/codigo/:codigo
    * Busca una auditoría por código
    */

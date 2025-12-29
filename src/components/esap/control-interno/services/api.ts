@@ -58,6 +58,12 @@ async function apiRequest<T>(
   
   try {
     console.log('[API Request]', options?.method || 'GET', url);
+    console.log('[API Request] API_BASE_URL:', API_BASE_URL);
+    console.log('[API Request] Endpoint:', endpoint);
+    console.log('[API Request] URL completa:', url);
+    if (options?.body) {
+      console.log('[API Request] Body:', options.body);
+    }
     
     const response = await fetch(url, {
       headers: {
@@ -323,11 +329,59 @@ export const auditoriasApi = {
       body: JSON.stringify({ observaciones }),
     });
   },
+
+  /**
+   * Obtener todas las auditorías para el Kanban
+   */
+  getAllKanban: async (): Promise<ApiResponse<Auditoria[]>> => {
+    return apiRequest<Auditoria[]>('/auditorias/kanban/all');
+  },
+
+  /**
+   * Obtener todas las auditorías archivadas para el Kanban
+   */
+  getAllKanbanArchivadas: async (): Promise<ApiResponse<Auditoria[]>> => {
+    return apiRequest<Auditoria[]>('/auditorias/kanban/archivadas');
+  },
+
+  /**
+   * Archivar una auditoría
+   */
+  archivar: async (id: string, comentario?: string): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        archivada: true,
+        activa: false,
+        observacionesAdicionales: comentario ? `Archivada: ${comentario}` : 'Archivada por el usuario'
+      }),
+    });
+  },
 };
 
 // ==================== UNIVERSO DE AUDITORÍAS ====================
 
 export const universoAuditoriasApi = {
+  /**
+   * Obtener todos los procesos auditables
+   */
+  getAllProcesos: async (filters?: {
+    tipo?: string;
+    macroproceso?: string;
+    nivelRiesgo?: string;
+    territorial?: string;
+    search?: string;
+  }): Promise<ApiResponse<any[]>> => {
+    const queryParams = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value) queryParams.append(key, String(value));
+      });
+    }
+    const query = queryParams.toString();
+    return apiRequest<any[]>(`/universo-auditorias/procesos${query ? `?${query}` : ''}`);
+  },
+
   /**
    * Obtener universo de auditorías del año
    */
@@ -356,6 +410,16 @@ export const universoAuditoriasApi = {
   },
 
   /**
+   * Crear proceso auditable (sin necesidad de universoId)
+   */
+  createProceso: async (proceso: Partial<ProcesoAuditable>): Promise<ApiResponse<ProcesoAuditable>> => {
+    return apiRequest<ProcesoAuditable>(`/universo-auditorias/procesos`, {
+      method: 'POST',
+      body: JSON.stringify(proceso),
+    });
+  },
+
+  /**
    * Agregar proceso auditable
    */
   addProceso: async (universoId: string, proceso: Partial<ProcesoAuditable>): Promise<ApiResponse<ProcesoAuditable>> => {
@@ -369,7 +433,7 @@ export const universoAuditoriasApi = {
    * Actualizar proceso auditable
    */
   updateProceso: async (procesoId: string, data: Partial<ProcesoAuditable>): Promise<ApiResponse<ProcesoAuditable>> => {
-    return apiRequest<ProcesoAuditable>(`/procesos-auditables/${procesoId}`, {
+    return apiRequest<ProcesoAuditable>(`/universo-auditorias/procesos/${procesoId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -379,7 +443,7 @@ export const universoAuditoriasApi = {
    * Eliminar proceso auditable
    */
   deleteProceso: async (procesoId: string): Promise<ApiResponse<void>> => {
-    return apiRequest<void>(`/procesos-auditables/${procesoId}`, {
+    return apiRequest<void>(`/universo-auditorias/procesos/${procesoId}`, {
       method: 'DELETE',
     });
   },
@@ -616,17 +680,25 @@ export const planesMejoramientoApi = {
 
 export const planAnual5RolesApi = {
   /**
+   * Obtener todos los planes anuales
+   */
+  findAll: async (year?: number): Promise<ApiResponse<PlanAnual5Roles[]>> => {
+    const query = year ? `?year=${year}` : '';
+    return apiRequest<PlanAnual5Roles[]>(`/plan-anual-5-roles${query}`);
+  },
+
+  /**
    * Obtener plan anual del año
    */
   getByYear: async (year: number): Promise<ApiResponse<PlanAnual5Roles>> => {
-    return apiRequest<PlanAnual5Roles>(`/plan-anual-5roles/${year}`);
+    return apiRequest<PlanAnual5Roles>(`/plan-anual-5-roles/year/${year}`);
   },
 
   /**
    * Crear plan anual
    */
   create: async (data: Partial<PlanAnual5Roles>): Promise<ApiResponse<PlanAnual5Roles>> => {
-    return apiRequest<PlanAnual5Roles>('/plan-anual-5roles', {
+    return apiRequest<PlanAnual5Roles>('/plan-anual-5-roles', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -636,7 +708,7 @@ export const planAnual5RolesApi = {
    * Actualizar plan anual
    */
   update: async (id: string, data: Partial<PlanAnual5Roles>): Promise<ApiResponse<PlanAnual5Roles>> => {
-    return apiRequest<PlanAnual5Roles>(`/plan-anual-5roles/${id}`, {
+    return apiRequest<PlanAnual5Roles>(`/plan-anual-5-roles/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -645,8 +717,8 @@ export const planAnual5RolesApi = {
   /**
    * Agregar actividad
    */
-  addActividad: async (planId: string, actividad: Partial<Actividad>): Promise<ApiResponse<Actividad>> => {
-    return apiRequest<Actividad>(`/plan-anual-5roles/${planId}/actividades`, {
+  addActividad: async (rolId: string, actividad: Partial<Actividad>): Promise<ApiResponse<Actividad>> => {
+    return apiRequest<Actividad>(`/plan-anual-5-roles/${rolId}/actividades`, {
       method: 'POST',
       body: JSON.stringify(actividad),
     });
@@ -656,7 +728,7 @@ export const planAnual5RolesApi = {
    * Actualizar actividad
    */
   updateActividad: async (actividadId: string, data: Partial<Actividad>): Promise<ApiResponse<Actividad>> => {
-    return apiRequest<Actividad>(`/actividades/${actividadId}`, {
+    return apiRequest<Actividad>(`/plan-anual-5-roles/actividades/${actividadId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
