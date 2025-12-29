@@ -195,6 +195,78 @@ export class GraduationCertificatesController {
   }
 
   /**
+   * GET /academic-registration/api/v1/certificates/solicitudes/revision
+   * Listar solicitudes de revisi?n manual
+   */
+  @Get('solicitudes/revision')
+  async listarSolicitudesRevision() {
+    return await this.service.listarSolicitudesRevision();
+  }
+
+  /**
+   * GET /academic-registration/api/v1/certificates/solicitudes/:id
+   * Obtener solicitud por ID
+   */
+  @Get('solicitudes/:id')
+  async obtenerSolicitud(@Param('id') id: string) {
+    return await this.service.obtenerSolicitud(id);
+  }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/solicitudes/:id/en-revision
+   * Marcar solicitud como en revisión
+   */
+  @Post('solicitudes/:id/en-revision')
+  @HttpCode(HttpStatus.OK)
+  async marcarEnRevision(
+    @Param('id') id: string,
+    @Body() body: { reviewerName?: string; reviewerId?: string },
+  ) {
+    return await this.service.marcarEnRevision(
+      id,
+      body.reviewerName,
+      body.reviewerId,
+    );
+  }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/solicitudes/:id/aprobar
+   * Aprobar solicitud y generar certificado
+   */
+  @Post('solicitudes/:id/aprobar')
+  @HttpCode(HttpStatus.OK)
+  async aprobarSolicitud(
+    @Param('id') id: string,
+    @Body()
+    body: { reviewNotes: string; reviewerName?: string; reviewerId?: string },
+  ) {
+    return await this.service.aprobarSolicitud(
+      id,
+      body.reviewNotes,
+      body.reviewerName,
+      body.reviewerId,
+    );
+  }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/solicitudes/:id/rechazar
+   * Rechazar solicitud de revisión
+   */
+  @Post('solicitudes/:id/rechazar')
+  @HttpCode(HttpStatus.OK)
+  async rechazarSolicitud(
+    @Param('id') id: string,
+    @Body() body: { reason: string; reviewerName?: string; reviewerId?: string },
+  ) {
+    return await this.service.rechazarSolicitud(
+      id,
+      body.reason,
+      body.reviewerName,
+      body.reviewerId,
+    );
+  }
+
+  /**
    * GET /academic-registration/api/v1/certificates
    * Listar todos los certificados emitidos
    */

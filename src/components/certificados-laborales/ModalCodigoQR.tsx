@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner@2.0.3';
 import { QRCodeCanvas } from 'qrcode.react';
 import { getPublicBaseUrl } from '../../config/environment';
+import { copyToClipboard } from '../../utils/browser';
 
 interface ModalCodigoQRProps {
   isOpen: boolean;
@@ -61,11 +62,19 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
     });
   };
 
-  const handleCopiarEnlace = () => {
-    navigator.clipboard.writeText(urlVerificacion);
-    toast.success('Enlace copiado', {
-      description: 'El enlace de verificación fue copiado al portapapeles',
-      duration: 3000
+  const handleCopiarEnlace = async () => {
+    const copied = await copyToClipboard(urlVerificacion);
+    if (copied) {
+      toast.success('Enlace copiado', {
+        description: 'El enlace de verificación fue copiado al portapapeles',
+        duration: 3000
+      });
+      return;
+    }
+
+    toast.error('No se pudo copiar el enlace', {
+      description: 'Copia manualmente la URL de verificación',
+      duration: 4000
     });
   };
 
@@ -95,7 +104,7 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
         return;
       } catch (error) {
         if ((error as Error).name !== 'AbortError') {
-          handleCopiarEnlace();
+          await handleCopiarEnlace();
           return;
         }
         return;
@@ -103,7 +112,7 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
     }
 
     // Fallback: copiar enlace
-    handleCopiarEnlace();
+    await handleCopiarEnlace();
     toast.info('Enlace copiado al portapapeles');
   };
 

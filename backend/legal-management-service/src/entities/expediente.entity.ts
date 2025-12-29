@@ -156,7 +156,7 @@ export class Expediente {
     asunto: string;
 
     @Column({ name: 'datos_requeridos', type: 'text', nullable: true })
-    datosRequeridos: string;
+    datosRequeridos: string | null;
 
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;

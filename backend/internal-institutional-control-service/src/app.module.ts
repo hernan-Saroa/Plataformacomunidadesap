@@ -12,6 +12,14 @@ import { ActividadPlanAnual5 } from './esap/plan-anual-5-roles/entities/activida
 import { InformeLey } from './esap/informes-ley/entities/informe-ley.entity';
 import { EntregaInformeLey } from './esap/informes-ley/entities/entrega-informe-ley.entity';
 import { Auditoria } from './esap/auditorias/entities/auditoria.entity';
+import { ObjetivoAuditoria } from './esap/auditorias/entities/objetivo-auditoria.entity';
+import { EquipoAuditor } from './esap/auditorias/entities/equipo-auditor.entity';
+import { NotaAuditoria } from './esap/auditorias/entities/nota-auditoria.entity';
+import { HistorialAuditoria } from './esap/auditorias/entities/historial-auditoria.entity';
+import { AuditoriaTerritorialInfo } from './esap/auditorias/entities/auditoria-territorial-info.entity';
+import { AuditoriaEspecialInfo } from './esap/auditorias/entities/auditoria-especial-info.entity';
+import { AuditorPerfil } from './esap/auditorias/entities/auditor-perfil.entity';
+import { CriterioAuditoria } from './esap/auditorias/entities/criterio-auditoria.entity';
 import { Hallazgo } from './esap/hallazgos/entities/hallazgo.entity';
 import { PlanMejoramiento } from './esap/planes-mejoramiento/entities/plan-mejoramiento.entity';
 import { AccionCorrectiva } from './esap/planes-mejoramiento/entities/accion-correctiva.entity';
@@ -67,6 +75,14 @@ import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferen
             InformeLey,
             EntregaInformeLey,
             Auditoria,
+            ObjetivoAuditoria,
+            EquipoAuditor,
+            NotaAuditoria,
+            HistorialAuditoria,
+            AuditoriaTerritorialInfo,
+            AuditoriaEspecialInfo,
+            AuditorPerfil,
+            CriterioAuditoria,
             Hallazgo,
             PlanMejoramiento,
             AccionCorrectiva,

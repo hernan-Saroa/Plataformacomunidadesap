@@ -6,6 +6,9 @@
 -- Extensión para UUID
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Crear esquema si no existe
+CREATE SCHEMA IF NOT EXISTS academic_registration;
+
 -- =====================================================
 -- 1. TABLA: graduates (Graduados)
 -- Almacena información de los egresados/graduados

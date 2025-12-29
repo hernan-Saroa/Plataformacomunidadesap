@@ -14,6 +14,9 @@ import { CertificateDownload } from './certificate-download.entity';
 import { Signer } from './signer.entity';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { LandingCertificateRequestDto } from './dto/landing-certificate-request.dto';
+import * as nodemailer from 'nodemailer';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class GraduationCertificatesService {
@@ -34,6 +37,7 @@ export class GraduationCertificatesService {
   ) {}
 
   private readonly logger = new Logger(GraduationCertificatesService.name);
+  private mailTransporter: nodemailer.Transporter | null = null;
 
   /**
    * AUTOSERVICIO: Verificar si un graduado existe en la base de datos
@@ -100,6 +104,7 @@ export class GraduationCertificatesService {
       requesterType: 'GRADUATE',
       graduateId: graduate.id,
       idNumber: graduate.idNumber,
+      idIssueDate: graduate.idIssueDate,
       fullName: graduate.fullName,
       programName: graduate.programName,
       graduationDate: graduate.graduationDate,
@@ -155,11 +160,15 @@ export class GraduationCertificatesService {
     }
 
     const requestNumber = await this.generateRequestNumber();
+    const idIssueDate =
+      graduate?.idIssueDate ?? this.parseDate(dto.idIssueDate) ?? undefined;
+
     const requestPayload: DeepPartial<GraduationCertificateRequest> = {
       requestNumber,
       requesterType: this.normalizeRequesterType(dto.requesterType),
       graduateId: graduate?.id,
       idNumber: dto.idNumber,
+      idIssueDate,
       fullName: graduate?.fullName || dto.requesterName,
       programName: graduate?.programName || dto.programName || 'No disponible',
       graduationDate:
@@ -175,6 +184,7 @@ export class GraduationCertificatesService {
       validationExpiresAt: undefined,
       isValidated: false,
       status: graduate ? 'PROCESSING' : 'PENDING',
+      manualReview: !graduate,
       observations: graduate
         ? 'Solicitud automática desde la landing de certificados'
         : 'Solicitud de revisión manual: graduado no localizado',
@@ -506,12 +516,104 @@ export class GraduationCertificatesService {
     email: string,
     certificate: GraduationCertificate,
   ): Promise<void> {
+    return this.sendCertificateEmail(email, certificate);
+  }
+
+  private getMailTransporter() {
+    const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
+    if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
+      this.logger.warn(
+        'SMTP no configurado, no se envía email. Variables requeridas: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM',
+      );
+      return null;
+    }
+
+    if (!this.mailTransporter) {
+      this.mailTransporter = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: Number(SMTP_PORT),
+        secure: Number(SMTP_PORT) === 465,
+        auth: {
+          user: SMTP_USER,
+          pass: SMTP_PASS,
+        },
+      });
+    }
+
+    return this.mailTransporter;
+  }
+
+  private async resolveCertificatePdf(certificate: GraduationCertificate) {
+    if (certificate.pdfFilename) {
+      const storagePath =
+        process.env.STORAGE_PATH || './uploads/graduation-certificates';
+      const pdfFilePath = path.join(storagePath, certificate.pdfFilename);
+      if (fs.existsSync(pdfFilePath)) {
+        return {
+          filename: certificate.pdfFilename,
+          content: fs.readFileSync(pdfFilePath),
+        };
+      }
+    }
+
+    const buffer =
+      await this.pdfGeneratorService.generateCertificatePDF(certificate);
+    return {
+      filename: `${certificate.certificateNumber}.pdf`,
+      content: buffer,
+    };
+  }
+
+  private async sendCertificateEmail(
+    email: string,
+    certificate: GraduationCertificate,
+  ): Promise<void> {
     this.logger.log(
       `Preparando envío del certificado ${certificate.certificateNumber} a ${email}`,
     );
     this.logger.debug(`Documento almacenado en ${certificate.pdfUrl}`);
-    // TODO: conectar con correo real o proveedor de notificaciones
-    return Promise.resolve();
+
+    const transporter = this.getMailTransporter();
+    if (!transporter) {
+      return;
+    }
+
+    const from = process.env.SMTP_FROM || 'certificados@esap.edu.co';
+    const validationUrl = `${
+      process.env.FRONTEND_URL || 'https://certificados.esap.edu.co'
+    }/validar/${certificate.verificationCode}`;
+
+    const attachment = await this.resolveCertificatePdf(certificate);
+
+    try {
+      await transporter.sendMail({
+        from,
+        to: email,
+        subject: `Certificado de verificación de título - ${certificate.certificateNumber}`,
+        text: `Adjunto encontrarás el certificado de verificación de título.\n\nCódigo de verificación: ${certificate.verificationCode}\nURL de validación: ${validationUrl}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6;">
+            <p>Hola,</p>
+            <p>Adjunto encontrarás el certificado de verificación de título solicitado.</p>
+            <p><strong>Código de verificación:</strong> ${certificate.verificationCode}</p>
+            <p><strong>URL de validación:</strong> <a href="${validationUrl}">${validationUrl}</a></p>
+            <p>Gracias por utilizar el sistema de verificación de títulos ESAP.</p>
+          </div>
+        `,
+        attachments: [
+          {
+            filename: attachment.filename,
+            content: attachment.content,
+          },
+        ],
+      });
+
+      this.logger.log(`Certificado enviado a ${email}`);
+    } catch (error: any) {
+      this.logger.warn(
+        `No se pudo enviar el certificado por email: ${error?.message || error}`,
+      );
+    }
   }
 
   private normalizeDateString(value?: string | Date): string | null {
@@ -599,6 +701,146 @@ export class GraduationCertificatesService {
       relations: ['graduate'],
       order: { requestDate: 'DESC' },
     });
+  }
+
+  /**
+   * ADMIN: Obtener una solicitud por ID
+   */
+  async obtenerSolicitud(id: string) {
+    const request = await this.requestRepository.findOne({
+      where: { id },
+      relations: ['graduate'],
+    });
+
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    return request;
+  }
+
+  /**
+   * ADMIN: Listar solicitudes de revisión manual (graduados no encontrados)
+   */
+  async listarSolicitudesRevision() {
+    return await this.requestRepository.find({
+      where: { manualReview: true },
+      relations: ['graduate'],
+      order: { requestDate: 'DESC' },
+    });
+  }
+
+  /**
+   * ADMIN: Marcar solicitud en revisión
+   */
+  async marcarEnRevision(
+    id: string,
+    reviewerName?: string,
+    reviewerId?: string,
+  ) {
+    const request = await this.requestRepository.findOne({
+      where: { id },
+      relations: ['graduate'],
+    });
+
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    request.status = 'PROCESSING';
+    request.reviewerName = reviewerName || request.reviewerName;
+    request.reviewedBy = reviewerId || request.reviewedBy;
+
+    return await this.requestRepository.save(request);
+  }
+
+  /**
+   * ADMIN: Aprobar solicitud y generar certificado
+   */
+  async aprobarSolicitud(
+    id: string,
+    reviewNotes: string,
+    reviewerName?: string,
+    reviewerId?: string,
+  ) {
+    const request = await this.requestRepository.findOne({
+      where: { id },
+      relations: ['graduate'],
+    });
+
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    const graduate =
+      request.graduate ||
+      (await this.graduateRepository.findOne({
+        where: { idNumber: request.idNumber, status: 'ACTIVE' },
+      }));
+
+    if (!graduate) {
+      this.logger.warn(
+        `No se encontró graduado activo para solicitud ${request.requestNumber}. Se generará certificado con datos de la solicitud.`,
+      );
+    } else {
+      request.graduate = graduate;
+      request.graduateId = graduate.id;
+    }
+    request.isValidated = true;
+    request.validationDate = new Date();
+    request.status = 'COMPLETED';
+    request.reviewedAt = new Date();
+    request.reviewNotes = reviewNotes;
+    request.reviewResolution = 'graduate_found';
+    request.reviewerName = reviewerName || request.reviewerName;
+    request.reviewedBy = reviewerId || request.reviewedBy;
+    request.completionDate = new Date();
+
+    await this.requestRepository.save(request);
+
+    const certificate = await this.generateCertificate(request);
+
+    await this.notifyCertificateDelivery(request.requesterEmail, certificate);
+
+    return {
+      request,
+      certificate,
+    };
+  }
+
+  /**
+   * ADMIN: Rechazar solicitud de revisión
+   */
+  async rechazarSolicitud(
+    id: string,
+    reason: string,
+    reviewerName?: string,
+    reviewerId?: string,
+  ) {
+    const request = await this.requestRepository.findOne({
+      where: { id },
+    });
+
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    request.status = 'REJECTED';
+    request.reviewedAt = new Date();
+    request.reviewNotes = reason;
+    request.reviewResolution = 'graduate_not_found';
+    request.rejectionReason = reason;
+    request.reviewerName = reviewerName || request.reviewerName;
+    request.reviewedBy = reviewerId || request.reviewedBy;
+    request.completionDate = new Date();
+
+    await this.requestRepository.save(request);
+
+    this.logger.log(
+      `Solicitud ${request.requestNumber} rechazada. Notificar a ${request.requesterEmail}`,
+    );
+
+    return request;
   }
 
   /**

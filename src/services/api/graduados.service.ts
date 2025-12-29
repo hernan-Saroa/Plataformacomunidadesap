@@ -44,6 +44,7 @@ export interface SolicitudCertificadoGraduado {
   requesterType: 'GRADUATE' | 'COMPANY';
   graduateId?: string;
   idNumber: string;
+  idIssueDate?: string;
   fullName: string;
   programName: string;
   graduationDate: string;
@@ -58,6 +59,12 @@ export interface SolicitudCertificadoGraduado {
   status: 'PENDING' | 'VALIDATED' | 'PROCESSING' | 'COMPLETED' | 'REJECTED';
   observations?: string;
   rejectionReason?: string;
+  manualReview?: boolean;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewerName?: string;
+  reviewNotes?: string;
+  reviewResolution?: string;
   requestDate: string;
   validationDate?: string;
   completionDate?: string;
@@ -340,23 +347,53 @@ const graduadosService = {
       );
       return response;
     },
+    /**
+     * Listar solicitudes de revisión manual
+     */
+    listarRevision: async (): Promise<SolicitudCertificadoGraduado[]> => {
+      const response = await apiClient.get(
+        `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes/revision`
+      );
+      return response;
+    },
 
     /**
      * Obtener una solicitud por ID
      */
     obtenerPorId: async (id: string): Promise<SolicitudCertificadoGraduado> => {
       const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/certificate-requests/${id}`
+        `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes/${id}`
       );
       return response;
     },
 
     /**
-     * Aprobar solicitud de empresa
+     * Marcar solicitud como en revisión
      */
-    aprobar: async (id: string): Promise<SolicitudCertificadoGraduado> => {
+    marcarEnRevision: async (
+      id: string,
+      reviewerName?: string,
+      reviewerId?: string
+    ): Promise<SolicitudCertificadoGraduado> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificate-requests/${id}/aprobar`
+        `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes/${id}/en-revision`,
+        { reviewerName, reviewerId }
+      );
+      return response;
+    },
+
+    /**
+     * Aprobar solicitud y generar certificado
+     */
+    aprobar: async (
+      id: string,
+      reviewNotes: string,
+      reviewerName?: string,
+      reviewerId?: string
+    ): Promise<{ request: SolicitudCertificadoGraduado; certificate: CertificadoGraduado }> => {
+      const response = await apiClient.post(
+        `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes/${id}/aprobar`,
+        { reviewNotes, reviewerName, reviewerId }
       );
       return response;
     },
@@ -366,11 +403,13 @@ const graduadosService = {
      */
     rechazar: async (
       id: string,
-      razon: string
+      razon: string,
+      reviewerName?: string,
+      reviewerId?: string
     ): Promise<SolicitudCertificadoGraduado> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificate-requests/${id}/rechazar`,
-        { razon }
+        `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes/${id}/rechazar`,
+        { reason: razon, reviewerName, reviewerId }
       );
       return response;
     },

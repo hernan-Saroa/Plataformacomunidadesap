@@ -28,6 +28,7 @@ import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
 import { toast } from 'sonner@2.0.3';
 import { ConfirmationDialog } from '../../ui/confirmation-dialog';
+import { auditoriasApi } from './services/api';
 
 // ============ TIPOS ============
 
@@ -42,13 +43,15 @@ interface Nota {
   auditoriaId: string;
   contenido: string;
   categoria: CategoriaNota;
-  autor: string;
-  cargoAutor: string;
-  fecha: string;
+  autor?: string;
+  autorNombre?: string;
+  cargoAutor?: string;
+  autorCargo?: string;
+  fecha: string | Date;
   hora: string;
   importante: boolean;
   editada: boolean;
-  fechaEdicion?: string;
+  fechaEdicion?: string | Date;
 }
 
 type CategoriaNota = 
@@ -65,140 +68,14 @@ interface ModalNotasProps {
   onClose: () => void;
 }
 
-// ============ DATOS MOCK ============
-
-const NOTAS_MOCK: Record<string, Nota[]> = {
-  'aud-001': [
-    {
-      id: 'nota-001',
-      auditoriaId: 'aud-001',
-      contenido: 'Se realizó reunión de apertura con el equipo territorial. Todos los participantes confirmaron disponibilidad para las fechas programadas.',
-      categoria: 'General',
-      autor: 'Juan Pérez Gómez',
-      cargoAutor: 'Auditor Senior',
-      fecha: '2025-01-05',
-      hora: '09:30',
-      importante: false,
-      editada: false
-    },
-    {
-      id: 'nota-002',
-      auditoriaId: 'aud-001',
-      contenido: 'Se identificó faltante en la documentación del proceso de contratación del Q4 2024. Se solicitó al área responsable enviar los documentos faltantes antes del 10 de enero.',
-      categoria: 'Hallazgo',
-      autor: 'Ana María López Silva',
-      cargoAutor: 'Auditor Junior',
-      fecha: '2025-01-08',
-      hora: '14:20',
-      importante: true,
-      editada: false
-    },
-    {
-      id: 'nota-003',
-      auditoriaId: 'aud-001',
-      contenido: 'Revisar normativa actualizada sobre gestión documental según Ley 594 de 2000 y Decreto 1080 de 2015.',
-      categoria: 'Recomendación',
-      autor: 'Juan Pérez Gómez',
-      cargoAutor: 'Auditor Senior',
-      fecha: '2025-01-10',
-      hora: '11:15',
-      importante: false,
-      editada: false
-    },
-    {
-      id: 'nota-004',
-      auditoriaId: 'aud-001',
-      contenido: 'Se recibieron los documentos faltantes. Se procede a validar su contenido y conformidad.',
-      categoria: 'Seguimiento',
-      autor: 'Ana María López Silva',
-      cargoAutor: 'Auditor Junior',
-      fecha: '2025-01-12',
-      hora: '10:45',
-      importante: false,
-      editada: true,
-      fechaEdicion: '2025-01-12 16:30'
-    }
-  ],
-  'aud-004': [
-    {
-      id: 'nota-005',
-      auditoriaId: 'aud-004',
-      contenido: 'Reunión de apertura realizada. Se presentó el equipo auditor y se explicó el alcance de la auditoría al Director de Recursos Humanos.',
-      categoria: 'General',
-      autor: 'Carlos Ramírez Díaz',
-      cargoAutor: 'Auditor Senior',
-      fecha: '2025-01-08',
-      hora: '09:00',
-      importante: false,
-      editada: false
-    },
-    {
-      id: 'nota-006',
-      auditoriaId: 'aud-004',
-      contenido: 'CRÍTICO: Se detectó que el 45% de las evaluaciones de desempeño del 2024 no se realizaron dentro del plazo establecido por la normativa.',
-      categoria: 'Hallazgo',
-      autor: 'Carlos Ramírez Díaz',
-      cargoAutor: 'Auditor Senior',
-      fecha: '2025-01-10',
-      hora: '15:30',
-      importante: true,
-      editada: false
-    },
-    {
-      id: 'nota-007',
-      auditoriaId: 'aud-004',
-      contenido: 'Se solicitó al área de Gestión Humana el plan de capacitación para 2025 y el informe de ejecución del plan 2024.',
-      categoria: 'Observación',
-      autor: 'Patricia Gómez Silva',
-      cargoAutor: 'Auditor',
-      fecha: '2025-01-12',
-      hora: '11:20',
-      importante: false,
-      editada: false
-    },
-    {
-      id: 'nota-008',
-      auditoriaId: 'aud-004',
-      contenido: 'Se revisaron 150 hojas de vida y se encontraron inconsistencias en 12 de ellas (8%). Principalmente falta de documentos de soporte de estudios.',
-      categoria: 'Evidencia',
-      autor: 'Patricia Gómez Silva',
-      cargoAutor: 'Auditor',
-      fecha: '2025-01-14',
-      hora: '16:45',
-      importante: true,
-      editada: false
-    },
-    {
-      id: 'nota-009',
-      auditoriaId: 'aud-004',
-      contenido: 'Recomendar implementar un sistema de alertas automáticas para evaluaciones de desempeño pendientes.',
-      categoria: 'Recomendación',
-      autor: 'Carlos Ramírez Díaz',
-      cargoAutor: 'Auditor Senior',
-      fecha: '2025-01-15',
-      hora: '10:00',
-      importante: false,
-      editada: false
-    },
-    {
-      id: 'nota-010',
-      auditoriaId: 'aud-004',
-      contenido: 'El área de Gestión Humana presentó el cronograma de recuperación de evaluaciones pendientes. Se realizará seguimiento quincenal.',
-      categoria: 'Seguimiento',
-      autor: 'Carlos Ramírez Díaz',
-      cargoAutor: 'Auditor Senior',
-      fecha: '2025-01-18',
-      hora: '14:30',
-      importante: false,
-      editada: false
-    }
-  ]
-};
-
 // ============ UTILIDADES ============
 
-const formatearFecha = (fecha: string) => {
-  return new Date(fecha).toLocaleDateString('es-CO', {
+const formatearFecha = (fecha: string | Date) => {
+  const fechaObj = typeof fecha === 'string' ? new Date(fecha) : fecha;
+  if (isNaN(fechaObj.getTime())) {
+    return 'Fecha inválida';
+  }
+  return fechaObj.toLocaleDateString('es-CO', {
     day: '2-digit',
     month: 'long',
     year: 'numeric'
@@ -241,23 +118,86 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
   const [filtroCategoria, setFiltroCategoria] = useState<CategoriaNota | 'Todas'>('Todas');
   const [soloImportantes, setSoloImportantes] = useState(false);
   const [mostrarConfirmEliminar, setMostrarConfirmEliminar] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [guardando, setGuardando] = useState(false);
 
-  // Cargar notas cuando se abre el modal
+  // Cargar notas desde la BD cuando se abre el modal
   useEffect(() => {
     if (auditoria && open) {
-      setNotas(NOTAS_MOCK[auditoria.id] || []);
+      cargarNotas();
+    } else {
+      // Limpiar notas al cerrar
+      setNotas([]);
     }
   }, [auditoria, open]);
 
+  const cargarNotas = async () => {
+    if (!auditoria) return;
+    
+    setLoading(true);
+    try {
+      const response = await auditoriasApi.getNotas(auditoria.id);
+      if (response.success && response.data) {
+        // Mapear datos del backend al formato del componente
+        const notasMapeadas: Nota[] = response.data.map((nota: any) => {
+          // Manejar fecha: puede venir como string o Date
+          let fecha: string | Date = nota.fecha;
+          if (typeof fecha === 'string' && fecha.includes('T')) {
+            // Si viene como ISO string, convertir a Date
+            fecha = new Date(fecha);
+          } else if (typeof fecha === 'string') {
+            // Si viene como YYYY-MM-DD, mantener como string
+            fecha = fecha;
+          }
+
+          // Manejar fechaEdicion
+          let fechaEdicion: string | Date | undefined = nota.fechaEdicion;
+          if (fechaEdicion && typeof fechaEdicion === 'string' && fechaEdicion.includes('T')) {
+            fechaEdicion = new Date(fechaEdicion);
+          }
+
+          return {
+            id: nota.id,
+            auditoriaId: nota.auditoriaId,
+            contenido: nota.contenido,
+            categoria: nota.categoria,
+            autor: nota.autorNombre || nota.autor || 'Usuario Desconocido',
+            cargoAutor: nota.autorCargo || nota.cargoAutor || 'Auditor',
+            fecha: fecha,
+            hora: nota.hora || '00:00',
+            importante: nota.importante || false,
+            editada: nota.editada || false,
+            fechaEdicion: fechaEdicion,
+          };
+        });
+        setNotas(notasMapeadas);
+      } else {
+        toast.error('Error al cargar notas', {
+          description: response.error || 'No se pudieron cargar las notas',
+        });
+        setNotas([]);
+      }
+    } catch (error) {
+      console.error('Error al cargar notas:', error);
+      toast.error('Error al cargar notas', {
+        description: error instanceof Error ? error.message : 'Error desconocido',
+      });
+      setNotas([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!auditoria) return null;
 
-  // Usuario actual (mock)
+  // Usuario actual (TODO: Obtener del contexto de autenticación)
   const usuarioActual = 'Juan Pérez Gómez';
 
   // Filtrar notas
   const notasFiltradas = notas.filter(nota => {
+    const autorNombre = nota.autor || nota.autorNombre || '';
     const cumpleBusqueda = nota.contenido.toLowerCase().includes(busqueda.toLowerCase()) ||
-                          nota.autor.toLowerCase().includes(busqueda.toLowerCase());
+                          autorNombre.toLowerCase().includes(busqueda.toLowerCase());
     const cumpleCategoria = filtroCategoria === 'Todas' || nota.categoria === filtroCategoria;
     const cumpleImportante = !soloImportantes || nota.importante;
     
@@ -265,67 +205,154 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
   });
 
   // Handlers
-  const handleAgregarNota = () => {
-    if (!nuevaNota.trim()) {
-      toast.error('El contenido de la nota no puede estar vacío');
+  const handleAgregarNota = async () => {
+    if (!nuevaNota.trim() || nuevaNota.trim().length < 10) {
+      toast.error('El contenido de la nota debe tener al menos 10 caracteres');
       return;
     }
 
-    const ahora = new Date();
-    const nota: Nota = {
-      id: `nota-${Date.now()}`,
-      auditoriaId: auditoria.id,
-      contenido: nuevaNota,
-      categoria: categoriaSeleccionada,
-      autor: usuarioActual,
-      cargoAutor: 'Auditor Senior',
-      fecha: ahora.toISOString().split('T')[0],
-      hora: ahora.toTimeString().slice(0, 5),
-      importante: false,
-      editada: false
-    };
+    if (!auditoria) return;
 
-    setNotas([nota, ...notas]);
-    setNuevaNota('');
-    setCategoriaSeleccionada('General');
-    setModoEdicion(false);
-    toast.success('Nota agregada exitosamente');
+    setGuardando(true);
+    try {
+      const response = await auditoriasApi.createNota(auditoria.id, {
+        contenido: nuevaNota,
+        categoria: categoriaSeleccionada,
+        importante: false,
+      });
+
+      console.log('[handleAgregarNota] Response completa:', response);
+      console.log('[handleAgregarNota] response.success:', response.success);
+      console.log('[handleAgregarNota] response.data:', response.data);
+
+      if (response.success) {
+        // El backend puede devolver la nota directamente o dentro de data
+        const notaData = response.data;
+        if (!notaData) {
+          // Si no hay data, recargar las notas desde el servidor
+          await cargarNotas();
+          setNuevaNota('');
+          setCategoriaSeleccionada('General');
+          setModoEdicion(false);
+          toast.success('Nota agregada exitosamente');
+          return;
+        }
+
+        const notaNueva: Nota = {
+          id: notaData.id,
+          auditoriaId: notaData.auditoriaId,
+          contenido: notaData.contenido,
+          categoria: notaData.categoria,
+          autor: notaData.autorNombre || notaData.autor || 'Usuario Desconocido',
+          cargoAutor: notaData.autorCargo || notaData.cargoAutor || 'Auditor',
+          fecha: notaData.fecha,
+          hora: notaData.hora || new Date().toTimeString().slice(0, 5),
+          importante: notaData.importante || false,
+          editada: false,
+        };
+        setNotas([notaNueva, ...notas]);
+        setNuevaNota('');
+        setCategoriaSeleccionada('General');
+        setModoEdicion(false);
+        toast.success('Nota agregada exitosamente');
+      } else {
+        throw new Error(response.error || 'Error al crear la nota');
+      }
+    } catch (error) {
+      console.error('Error al agregar nota:', error);
+      toast.error('Error al agregar nota', {
+        description: error instanceof Error ? error.message : 'No se pudo guardar la nota',
+      });
+    } finally {
+      setGuardando(false);
+    }
   };
 
-  const handleToggleImportante = (notaId: string) => {
-    setNotas(notas.map(nota =>
-      nota.id === notaId
-        ? { ...nota, importante: !nota.importante }
-        : nota
-    ));
-    toast.success('Nota actualizada');
+  const handleToggleImportante = async (notaId: string) => {
+    if (!auditoria) return;
+
+    try {
+      const response = await auditoriasApi.toggleImportanteNota(auditoria.id, notaId);
+      if (response.success && response.data) {
+        setNotas(notas.map(nota =>
+          nota.id === notaId
+            ? { ...nota, importante: response.data.importante }
+            : nota
+        ));
+        toast.success('Nota actualizada');
+      } else {
+        throw new Error(response.error || 'Error al actualizar la nota');
+      }
+    } catch (error) {
+      console.error('Error al actualizar nota:', error);
+      toast.error('Error al actualizar nota', {
+        description: error instanceof Error ? error.message : 'No se pudo actualizar la nota',
+      });
+    }
   };
 
-  const handleEliminarNota = (notaId: string) => {
-    setNotas(notas.filter(nota => nota.id !== notaId));
-    setMostrarConfirmEliminar(null);
-    toast.success('Nota eliminada');
+  const handleEliminarNota = async (notaId: string) => {
+    if (!auditoria) return;
+
+    try {
+      const response = await auditoriasApi.deleteNota(auditoria.id, notaId);
+      if (response.success) {
+        setNotas(notas.filter(nota => nota.id !== notaId));
+        setMostrarConfirmEliminar(null);
+        toast.success('Nota eliminada');
+      } else {
+        throw new Error(response.error || 'Error al eliminar la nota');
+      }
+    } catch (error) {
+      console.error('Error al eliminar nota:', error);
+      toast.error('Error al eliminar nota', {
+        description: error instanceof Error ? error.message : 'No se pudo eliminar la nota',
+      });
+    }
   };
 
-  const handleEditarNota = (notaId: string, nuevoContenido: string) => {
+  const handleEditarNota = async (notaId: string, nuevoContenido: string) => {
     if (!nuevoContenido.trim()) {
       toast.error('El contenido no puede estar vacío');
       return;
     }
 
-    const ahora = new Date();
-    setNotas(notas.map(nota =>
-      nota.id === notaId
-        ? {
-            ...nota,
-            contenido: nuevoContenido,
-            editada: true,
-            fechaEdicion: `${ahora.toISOString().split('T')[0]} ${ahora.toTimeString().slice(0, 5)}`
-          }
-        : nota
-    ));
-    setNotaEditando(null);
-    toast.success('Nota actualizada');
+    if (!auditoria) return;
+
+    setGuardando(true);
+    try {
+      const notaOriginal = notas.find(n => n.id === notaId);
+      if (!notaOriginal) return;
+
+      const response = await auditoriasApi.updateNota(auditoria.id, notaId, {
+        contenido: nuevoContenido,
+        categoria: notaOriginal.categoria,
+      });
+
+      if (response.success && response.data) {
+        setNotas(notas.map(nota =>
+          nota.id === notaId
+            ? {
+                ...nota,
+                contenido: response.data.contenido,
+                editada: response.data.editada || true,
+                fechaEdicion: response.data.fechaEdicion,
+              }
+            : nota
+        ));
+        setNotaEditando(null);
+        toast.success('Nota actualizada');
+      } else {
+        throw new Error(response.error || 'Error al actualizar la nota');
+      }
+    } catch (error) {
+      console.error('Error al editar nota:', error);
+      toast.error('Error al editar nota', {
+        description: error instanceof Error ? error.message : 'No se pudo actualizar la nota',
+      });
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const handleCancelarEdicion = () => {
@@ -424,12 +451,17 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
 
                   {/* Botón nueva nota */}
                   <Button
-                    onClick={() => setModoEdicion(true)}
-                    style={{ backgroundColor: '#003DA5' }}
+                    onClick={() => {
+                      setModoEdicion(true);
+                      setNuevaNota('');
+                      setCategoriaSeleccionada('General');
+                    }}
+                    style={{ backgroundColor: modoEdicion ? '#6B7280' : '#003DA5' }}
                     className="text-white gap-2"
+                    disabled={modoEdicion}
                   >
                     <Plus className="w-4 h-4" />
-                    Nueva Nota
+                    {modoEdicion ? 'Agregando nota...' : 'Nueva Nota'}
                   </Button>
                 </div>
 
@@ -442,83 +474,113 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
               </div>
 
               {/* FORMULARIO NUEVA NOTA */}
-              <AnimatePresence>
-                {modoEdicion && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden border-b border-gray-200"
-                  >
-                    <div className="p-4 bg-blue-50">
-                      <h3 className="font-bold text-sm mb-3" style={{ color: '#003DA5' }}>
+              {modoEdicion && (
+                <div className="border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+                  <div className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: '#003DA5' }}>
+                        <Plus className="w-5 h-5" />
                         Nueva Nota
                       </h3>
-                      
-                      <div className="space-y-3">
-                        {/* Categoría */}
-                        <div>
-                          <label className="text-sm font-medium text-gray-700 block mb-1">
-                            Categoría <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            value={categoriaSeleccionada}
-                            onChange={(e) => setCategoriaSeleccionada(e.target.value as CategoriaNota)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="General">General</option>
-                            <option value="Hallazgo">Hallazgo</option>
-                            <option value="Seguimiento">Seguimiento</option>
-                            <option value="Evidencia">Evidencia</option>
-                            <option value="Observación">Observación</option>
-                            <option value="Recomendación">Recomendación</option>
-                          </select>
-                        </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCancelarEdicion}
+                        className="text-gray-500 hover:text-gray-700"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    
+                    <div className="space-y-4 bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+                      {/* Categoría */}
+                      <div>
+                        <label className="text-sm font-semibold text-gray-700 block mb-2">
+                          Categoría <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          value={categoriaSeleccionada}
+                          onChange={(e) => setCategoriaSeleccionada(e.target.value as CategoriaNota)}
+                          disabled={guardando}
+                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white"
+                        >
+                          <option value="General">General</option>
+                          <option value="Hallazgo">Hallazgo</option>
+                          <option value="Seguimiento">Seguimiento</option>
+                          <option value="Evidencia">Evidencia</option>
+                          <option value="Observación">Observación</option>
+                          <option value="Recomendación">Recomendación</option>
+                        </select>
+                      </div>
 
-                        {/* Contenido */}
-                        <div>
-                          <label className="text-sm font-medium text-gray-700 block mb-1">
-                            Contenido <span className="text-red-500">*</span>
-                          </label>
-                          <textarea
-                            value={nuevaNota}
-                            onChange={(e) => setNuevaNota(e.target.value)}
-                            placeholder="Escriba aquí el contenido de la nota..."
-                            rows={4}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
-                          />
-                          <p className="text-xs text-gray-500 mt-1">
+                      {/* Contenido */}
+                      <div>
+                        <label className="text-sm font-semibold text-gray-700 block mb-2">
+                          Contenido <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                          value={nuevaNota}
+                          onChange={(e) => setNuevaNota(e.target.value)}
+                          placeholder="Escriba aquí el contenido de la nota..."
+                          rows={5}
+                          disabled={guardando}
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        <div className="flex items-center justify-between mt-2">
+                          <p className="text-xs text-gray-500">
                             {nuevaNota.length} caracteres
                           </p>
-                        </div>
-
-                        {/* Botones */}
-                        <div className="flex gap-2 justify-end">
-                          <Button
-                            variant="outline"
-                            onClick={handleCancelarEdicion}
-                          >
-                            Cancelar
-                          </Button>
-                          <Button
-                            onClick={handleAgregarNota}
-                            style={{ backgroundColor: '#003DA5' }}
-                            className="text-white gap-2"
-                            disabled={!nuevaNota.trim()}
-                          >
-                            <Save className="w-4 h-4" />
-                            Guardar Nota
-                          </Button>
+                          {nuevaNota.trim().length < 10 && (
+                            <p className="text-xs text-amber-600">
+                              Mínimo 10 caracteres
+                            </p>
+                          )}
                         </div>
                       </div>
+
+                      {/* Botones */}
+                      <div className="flex gap-3 justify-end pt-2 border-t border-gray-200">
+                        <Button
+                          variant="outline"
+                          onClick={handleCancelarEdicion}
+                          disabled={guardando}
+                          className="min-w-[100px]"
+                        >
+                          <XCircle className="w-4 h-4 mr-2" />
+                          Cancelar
+                        </Button>
+                        <Button
+                          onClick={handleAgregarNota}
+                          style={{ backgroundColor: '#003DA5' }}
+                          className="text-white gap-2 min-w-[140px]"
+                          disabled={!nuevaNota.trim() || nuevaNota.trim().length < 10 || guardando}
+                        >
+                          {guardando ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                              Guardando...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-4 h-4" />
+                              Guardar Nota
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  </div>
+                </div>
+              )}
 
               {/* LISTADO DE NOTAS */}
               <div className="flex-1 overflow-y-auto p-6">
-                {notasFiltradas.length === 0 ? (
+                {loading ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-500">Cargando notas...</p>
+                  </div>
+                ) : notasFiltradas.length === 0 ? (
                   <div className="text-center py-12">
                     <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                     <p className="text-gray-500 mb-2">
@@ -540,7 +602,9 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
                 ) : (
                   <div className="space-y-4">
                     {notasFiltradas.map((nota) => {
-                      const esPropia = nota.autor === usuarioActual;
+                      const autorNombre = nota.autor || nota.autorNombre || 'Usuario Desconocido';
+                      const cargoAutor = nota.cargoAutor || nota.autorCargo || 'Auditor';
+                      const esPropia = autorNombre === usuarioActual; // TODO: Comparar con ID real del usuario
                       const estaEditando = notaEditando === nota.id;
 
                       return (
@@ -639,13 +703,23 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
                                   size="sm"
                                   style={{ backgroundColor: '#003DA5' }}
                                   className="text-white"
+                                  disabled={guardando}
                                   onClick={() => {
                                     const textarea = document.getElementById(`edit-${nota.id}`) as HTMLTextAreaElement;
                                     handleEditarNota(nota.id, textarea.value);
                                   }}
                                 >
-                                  <Save className="w-3 h-3 mr-1" />
-                                  Guardar
+                                  {guardando ? (
+                                    <>
+                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                                      Guardando...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Save className="w-3 h-3 mr-1" />
+                                      Guardar
+                                    </>
+                                  )}
                                 </Button>
                               </div>
                             </div>
@@ -660,8 +734,8 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
                             <div className="flex items-center gap-4">
                               <span className="flex items-center gap-1">
                                 <User className="w-3 h-3" />
-                                <span className="font-medium">{nota.autor}</span>
-                                <span className="text-gray-400">({nota.cargoAutor})</span>
+                                <span className="font-medium">{autorNombre}</span>
+                                <span className="text-gray-400">({cargoAutor})</span>
                               </span>
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
@@ -674,7 +748,7 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
                             </div>
                             {nota.editada && nota.fechaEdicion && (
                               <span className="text-gray-400 italic">
-                                Editada el {nota.fechaEdicion}
+                                Editada el {formatearFecha(nota.fechaEdicion)}
                               </span>
                             )}
                           </div>

@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional, IsObject } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsObject, IsInt, Min, Max } from 'class-validator';
 import { TipoProceso } from '../entities/proceso-auditable.entity';
 
 export class UpdateProcesoAuditableDto {
@@ -48,6 +48,12 @@ export class UpdateProcesoAuditableDto {
     };
     factoresRiesgo?: string[];
   };
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  prioridad?: number;
 
   @IsOptional()
   @IsString()

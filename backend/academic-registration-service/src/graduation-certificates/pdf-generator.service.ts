@@ -35,6 +35,10 @@ export class PdfGeneratorService {
     // Leer plantilla HTML
     const templateHtml = fs.readFileSync(this.templatePath, 'utf-8');
 
+    // Imágenes de encabezado y pie
+    const headerImg = this.loadImageDataUrl('img_primera.png');
+    const footerImg = this.loadImageDataUrl('img_segunda.png');
+
     // Generar código QR
     const qrCodeDataUrl = await this.generateQRCode(
       certificate.verificationCode,
@@ -58,10 +62,10 @@ export class PdfGeneratorService {
       .replace(/{{NUMERO_DOCUMENTO}}/g, `CC ${certificate.idNumber}`)
       .replace(/{{LUGAR_FECHA_EXPEDICION}}/g, lugarFechaExpedicion)
       .replace(/{{REGISTRO_FOLIO}}/g, certificate.actaNumber || 'N/A')
-      .replace(/{{FIRMANTE_NOMBRE}}/g, certificate.signerName)
-      .replace(/{{FIRMANTE_CARGO}}/g, certificate.signerPosition)
       .replace(/{{QR_CODE_URL}}/g, qrCodeDataUrl)
-      .replace(/{{URL_VALIDACION}}/g, validationUrl);
+      .replace(/{{URL_VALIDACION}}/g, validationUrl)
+      .replace(/{{HEADER_IMG}}/g, headerImg)
+      .replace(/{{FOOTER_IMG}}/g, footerImg);
 
     // Generar PDF con Puppeteer
     const browser = await puppeteer.launch({
@@ -106,6 +110,38 @@ export class PdfGeneratorService {
       console.error('Error generando QR Code:', error);
       return '';
     }
+  }
+
+  private loadImageDataUrl(filename: string): string {
+    const candidates = [
+      path.join(process.cwd(), 'uploads', 'graduation-certificates', filename),
+      path.join(
+        process.cwd(),
+        'backend',
+        'academic-registration-service',
+        'uploads',
+        'graduation-certificates',
+        filename,
+      ),
+      path.join(
+        process.cwd(),
+        'src',
+        'graduation-certificates',
+        'templates',
+        filename,
+      ),
+      path.join(__dirname, 'templates', filename),
+    ];
+
+    const filePath = candidates.find((candidate) => fs.existsSync(candidate));
+    if (!filePath) {
+      return '';
+    }
+
+    const buffer = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+    return `data:${mime};base64,${buffer.toString('base64')}`;
   }
 
   /**

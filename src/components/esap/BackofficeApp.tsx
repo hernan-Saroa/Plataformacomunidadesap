@@ -94,27 +94,43 @@ interface BackofficeAppProps {
     personId: string;
     module?: string;
     hasBothSystemsAccess?: boolean;
+    roles?: string[];
   };
   userRoles?: string[];
 }
 
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, userData, userRoles }: BackofficeAppProps = {}) {
   // Si el usuario tiene acceso restringido, abrir directamente su módulo específico
-  const initialModule = userData?.module === 'control-interno'
+  console.log('🚀 BackofficeApp: userData:', userData);
+  // const initialModule = userData?.module === 'control-interno'
+  //   ? 'control-interno'
+  //   : userData?.module === 'control-disciplinario'
+  //   ? 'control-disciplinario'
+  //   : userData?.module === 'registro-academico'
+  //   ? 'graduates'
+  //   : userData?.module === 'certificados-laborales' 
+  //   ? 'certificados-laborales' 
+  //   : userData?.module === 'arquitectura-empresarial'
+  //   ? 'dashboard' // Abrir en Dashboard Ejecutivo que muestra métricas de Arquitectura
+  //   : userData?.module === 'gestion-legal' 
+  //   ? 'gestion-legal'
+  //   : userData?.module === 'gestion-profesoral'
+  //   ? 'gestion-profesoral'
+  //   : 'dashboard';
+  const initialModule = userData?.roles?.includes('CONTROL_INTERNO') 
     ? 'control-interno'
-    : userData?.module === 'control-disciplinario'
+    : userData?.roles?.includes('CONTROL_DISCIPLINARIO')
     ? 'control-disciplinario'
-    : userData?.module === 'registro-academico'
+    : userData?.roles?.includes('REGISTRO_ACADEMICO')
     ? 'graduates'
-    : userData?.module === 'certificados-laborales' 
-    ? 'certificados-laborales' 
-    : userData?.module === 'arquitectura-empresarial'
-    ? 'dashboard' // Abrir en Dashboard Ejecutivo que muestra métricas de Arquitectura
-    : userData?.module === 'gestion-legal' 
+    : userData?.roles?.includes('COORDINADOR_CERT_LABORAL')
+    ? 'certificados-laborales'
+    : userData?.roles?.includes('GESTION_LEGAL')
     ? 'gestion-legal'
-    : userData?.module === 'gestion-profesoral'
+    : userData?.roles?.includes('GESTION_PROFESORAL')
     ? 'gestion-profesoral'
-    : 'dashboard';
+      : 'dashboard';
+
   const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(''); // Nuevo: Guardar el módulo del sidebar
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);

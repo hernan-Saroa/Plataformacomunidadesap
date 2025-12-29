@@ -16,9 +16,10 @@ import { PublicTitleVerification } from './PublicTitleVerification';
 interface LandingPageProps {
   onIrALogin?: () => void;
   onLoginClick?: () => void;
+  onNavigate?: (section: string) => void;
 }
 
-export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
+export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPageProps) {
   const [vistaActual, setVistaActual] = useState<'landing' | 'certificados-laborales' | 'certificados-graduados'>('landing');
   
   const handleLoginClick = () => {
@@ -48,7 +49,13 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
       icon: <Briefcase className="w-7 h-7" />,
       title: 'Certificados Laborales',
       description: 'Solicita tu certificado laboral de forma automática. Validamos tu identidad por correo y generas tu certificado al instante.',
-      action: () => setVistaActual('certificados-laborales'),
+      action: () => {
+        if (onNavigate) {
+          onNavigate('solicitar-certificados-laborales');
+        } else {
+          setVistaActual('certificados-laborales');
+        }
+      },
       gradient: 'from-sky-600 to-blue-700',
       badge: 'Abierto'
     }
