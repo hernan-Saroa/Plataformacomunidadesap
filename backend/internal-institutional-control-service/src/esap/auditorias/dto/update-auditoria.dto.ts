@@ -198,4 +198,21 @@ export class UpdateAuditoriaDto {
   // Estado de checkboxes de actividades (JSON)
   @IsOptional()
   checklistCompletados?: Record<string, boolean>;
+
+  // Metadata del programa anual (JSONB flexible)
+  @IsOptional()
+  programaAnualMetadata?: any;
+
+  // Campos de archivo
+  @IsBoolean()
+  @IsOptional()
+  archivada?: boolean;
+
+  @IsDateString()
+  @IsOptional()
+  fechaArchivo?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  activa?: boolean;
 }

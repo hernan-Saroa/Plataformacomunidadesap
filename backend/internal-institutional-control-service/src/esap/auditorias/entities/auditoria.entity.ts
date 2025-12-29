@@ -226,6 +226,18 @@ export class Auditoria {
   @Column({ name: 'checklist_completados', type: 'jsonb', nullable: true })
   checklistCompletados?: Record<string, boolean>;
 
+  // Metadata del programa anual (duraciones de fases, mes/semana de inicio)
+  @Column({ name: 'programa_anual_metadata', type: 'jsonb', nullable: true })
+  programaAnualMetadata?: {
+    mesInicio?: number; // 0-11
+    semanaInicio?: number; // 1-4
+    duraciones?: {
+      planeacion?: number;
+      ejecucion?: number;
+      comunicacion?: number;
+    };
+  };
+
   // Soft delete / Archivo
   @Column({ name: 'archivada', type: 'boolean', default: false })
   archivada: boolean;

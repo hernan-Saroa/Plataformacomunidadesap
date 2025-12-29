@@ -8,7 +8,7 @@
  * FLUJO: Plan → Universo → Programa
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Target, Database, CalendarDays, Users, Shield, Award,
@@ -23,6 +23,7 @@ import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { toast } from 'sonner@2.0.3';
+import { auditoriasApi } from './services/api';
 
 // ============ TIPOS ============
 
@@ -1458,20 +1459,125 @@ function TabUniverso() {
 
 function TabPrograma() {
   const [vistaPrograma, setVistaPrograma] = useState<'cronograma' | 'tabla'>('cronograma');
+  const [auditoriasPrograma, setAuditoriasPrograma] = useState<AuditoriaPrograma[]>([]);
+  const [loading, setLoading] = useState(true);
+  const añoActual = new Date().getFullYear();
 
-  const auditoriaPorTrimestre = {
-    'Q1': PROGRAMA_ANUAL_2025.filter(a => a.trimestre === 'Q1'),
-    'Q2': PROGRAMA_ANUAL_2025.filter(a => a.trimestre === 'Q2'),
-    'Q3': PROGRAMA_ANUAL_2025.filter(a => a.trimestre === 'Q3'),
-    'Q4': PROGRAMA_ANUAL_2025.filter(a => a.trimestre === 'Q4')
+  // Función para mapear Auditoria (backend) a AuditoriaPrograma (frontend)
+  const mapearAuditoriaACard = (aud: any): AuditoriaPrograma => {
+    // Determinar trimestre basado en fecha de inicio
+    let trimestre: TrimestrePrograma = 'Q1';
+    let mes = 1;
+    if (aud.fechaInicio) {
+      const fecha = new Date(aud.fechaInicio);
+      mes = fecha.getMonth() + 1;
+      if (mes <= 3) trimestre = 'Q1';
+      else if (mes <= 6) trimestre = 'Q2';
+      else if (mes <= 9) trimestre = 'Q3';
+      else trimestre = 'Q4';
+    }
+
+    // Calcular duración
+    let duracionDias = 30;
+    if (aud.fechaInicio && aud.fechaFin) {
+      const inicio = new Date(aud.fechaInicio);
+      const fin = new Date(aud.fechaFin);
+      duracionDias = Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
+    }
+
+    // Mapear estado
+    let estado: AuditoriaPrograma['estado'] = 'programada';
+    if (aud.estado === 'en-ejecucion' || aud.estado === 'en-planeacion') estado = 'en-ejecucion';
+    else if (aud.estado === 'cerrada') estado = 'completada';
+    else if (aud.estado === 'cancelada') estado = 'reprogramada';
+
+    return {
+      id: aud.id,
+      codigo: aud.codigo || '',
+      nombre: aud.nombre || aud.titulo || '',
+      areaAuditableId: aud.procesoAuditableId || '',
+      tipo: aud.tipo || 'Gestión',
+      alcance: aud.alcance || '',
+      objetivoGeneral: aud.objetivos || '',
+      trimestre,
+      mes,
+      duracionDias,
+      liderAsignado: aud.auditorLider || null,
+      equipoAsignado: aud.equipoAuditor || [],
+      presupuesto: 0, // TODO: obtener desde backend
+      estado,
+      fechaInicio: aud.fechaInicio || null,
+      fechaFin: aud.fechaFin || null,
+      prioridad: aud.prioridad === 'Alta' ? 'alta' : aud.prioridad === 'Media' ? 'media' : 'baja'
+    };
   };
 
-  const estadisticas = {
-    total: PROGRAMA_ANUAL_2025.length,
-    programadas: PROGRAMA_ANUAL_2025.filter(a => a.estado === 'programada').length,
-    enEjecucion: PROGRAMA_ANUAL_2025.filter(a => a.estado === 'en-ejecucion').length,
-    presupuestoTotal: PROGRAMA_ANUAL_2025.reduce((sum, a) => sum + a.presupuesto, 0)
-  };
+  // Cargar auditorías desde la BD
+  useEffect(() => {
+    const cargarAuditorias = async () => {
+      try {
+        setLoading(true);
+        console.log('[ProgramaAnual] Cargando auditorías desde BD...');
+        const response = await auditoriasApi.getAllKanban();
+        
+        console.log('[ProgramaAnual] Respuesta recibida:', response);
+        
+        if (response.success && response.data) {
+          console.log('[ProgramaAnual] Total auditorías recibidas:', response.data.length);
+          
+          // Filtrar solo las del año actual
+          const auditoriasAnoActual = response.data.filter((aud: any) => {
+            if (!aud.fechaInicio) return false;
+            const fechaInicio = new Date(aud.fechaInicio);
+            return fechaInicio.getFullYear() === añoActual;
+          });
+
+          console.log('[ProgramaAnual] Auditorías del año actual:', auditoriasAnoActual.length);
+
+          // Mapear a formato de card
+          const auditoriasMapeadas = auditoriasAnoActual.map(mapearAuditoriaACard);
+          console.log('[ProgramaAnual] Auditorías mapeadas:', auditoriasMapeadas.length);
+          setAuditoriasPrograma(auditoriasMapeadas);
+          
+          if (auditoriasMapeadas.length === 0) {
+            toast.info('No hay auditorías programadas para este año', {
+              description: 'Las auditorías aparecerán aquí cuando se programen'
+            });
+          }
+        } else {
+          console.warn('[ProgramaAnual] No se recibieron datos válidos. Response:', response);
+          setAuditoriasPrograma([]);
+          toast.info('No hay auditorías en la base de datos', {
+            description: 'Las auditorías aparecerán aquí cuando se creen'
+          });
+        }
+      } catch (error) {
+        console.error('[ProgramaAnual] Error al cargar auditorías:', error);
+        toast.error('Error al cargar auditorías', {
+          description: error instanceof Error ? error.message : 'No se pudieron obtener las auditorías del programa anual'
+        });
+        setAuditoriasPrograma([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarAuditorias();
+  }, [añoActual]);
+
+  const auditoriaPorTrimestre = useMemo(() => ({
+    'Q1': auditoriasPrograma.filter(a => a.trimestre === 'Q1'),
+    'Q2': auditoriasPrograma.filter(a => a.trimestre === 'Q2'),
+    'Q3': auditoriasPrograma.filter(a => a.trimestre === 'Q3'),
+    'Q4': auditoriasPrograma.filter(a => a.trimestre === 'Q4')
+  }), [auditoriasPrograma]);
+
+  const estadisticas = useMemo(() => ({
+    total: auditoriasPrograma.length,
+    programadas: auditoriasPrograma.filter(a => a.estado === 'programada').length,
+    enEjecucion: auditoriasPrograma.filter(a => a.estado === 'en-ejecucion').length,
+    presupuestoTotal: auditoriasPrograma.reduce((sum, a) => sum + a.presupuesto, 0)
+  }), [auditoriasPrograma]);
 
   return (
     <motion.div
@@ -1578,7 +1684,7 @@ function TabPrograma() {
                 </tr>
               </thead>
               <tbody>
-                {PROGRAMA_ANUAL_2025.map(auditoria => (
+                {auditoriasPrograma.map(auditoria => (
                   <tr key={auditoria.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <Badge variant="outline">{auditoria.codigo}</Badge>
@@ -1589,7 +1695,7 @@ function TabPrograma() {
                     </td>
                     <td className="px-4 py-3 text-sm">{getTrimestreLabel(auditoria.trimestre)}</td>
                     <td className="px-4 py-3 text-sm">{auditoria.liderAsignado || 'Sin asignar'}</td>
-                    <td className="px-4 py-3 text-sm">{auditoria.duracionDias} días</td>
+                    <td className="px-4 py-3 text-sm">{auditoria.duracionDias || 0} días</td>
                     <td className="px-4 py-3 text-sm">
                       ${(auditoria.presupuesto / 1000000).toFixed(1)}M
                     </td>
@@ -1619,6 +1725,8 @@ function TabPrograma() {
             </table>
           </div>
         </Card>
+      )}
+      </>
       )}
     </motion.div>
   );

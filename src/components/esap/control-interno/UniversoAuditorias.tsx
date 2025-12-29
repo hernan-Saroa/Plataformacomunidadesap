@@ -60,6 +60,9 @@ import { Input } from '../../ui/input';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner@2.0.3';
 import { TERRITORIALES_ESAP } from '../../../data/territoriales-cetap-completo';
+import { controlInternoService } from '../../../services/api/controlInternoService';
+import { universoAuditoriasApi } from './services/api';
+import { useEffect } from 'react';
 
 // ============ TIPOS ============
 
@@ -534,7 +537,8 @@ const getEstadoInfo = (estado: EstadoSeleccion) => {
 // ============ COMPONENTE PRINCIPAL ============
 
 export function UniversoAuditorias() {
-  const [areas, setAreas] = useState<AreaAuditable[]>(AREAS_AUDITABLES_MOCK);
+  const [areas, setAreas] = useState<AreaAuditable[]>([]);
+  const [loading, setLoading] = useState(true);
   const [vistaActiva, setVistaActiva] = useState<'dashboard' | 'lista' | 'crear'>('dashboard');
   const [modoVista, setModoVista] = useState<'grid' | 'tabla'>('grid');
   const [busqueda, setBusqueda] = useState('');
@@ -543,6 +547,103 @@ export function UniversoAuditorias() {
   const [filtroEstado, setFiltroEstado] = useState<'Todos' | EstadoSeleccion>('Todos');
   const [areaEditando, setAreaEditando] = useState<string | null>(null);
   const [modalNuevaArea, setModalNuevaArea] = useState(false);
+
+  // Función para mapear ProcesoAuditable a AreaAuditable
+  const mapearProcesoAArea = (proceso: any): AreaAuditable => {
+    const evaluacionRiesgo = proceso.evaluacionRiesgo || {};
+    const nivelRiesgo = evaluacionRiesgo.nivelRiesgo || 'Bajo';
+    
+    // Mapear prioridad a estado (1=seleccionada, 2=pendiente, 3=no-aplica)
+    let estado: EstadoSeleccion = 'pendiente';
+    if (proceso.prioridad === 1) estado = 'seleccionada';
+    else if (proceso.prioridad === 2) estado = 'pendiente';
+    else if (proceso.prioridad === 3) estado = 'no-aplica';
+
+    // Mapear criticidad y exposición desde evaluacionRiesgo
+    const criticidad = evaluacionRiesgo.impacto === 5 ? 5 : evaluacionRiesgo.impacto === 3 ? 3 : 1;
+    const exposicion = evaluacionRiesgo.probabilidad === 5 ? 5 : evaluacionRiesgo.probabilidad === 3 ? 3 : 1;
+    const mitigantes = evaluacionRiesgo.nivelControl || 1;
+
+    const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
+
+    // Determinar si es Sede o Territorial basado en el campo territorial
+    // Si tiene territorial definido, es Territorial, sino es Sede
+    const tipoArea: TipoArea = proceso.territorial ? 'Territorial' : 'Sede';
+
+    return {
+      id: proceso.id,
+      codigo: proceso.codigo || '',
+      nombre: proceso.nombre || '',
+      tipo: tipoArea,
+      descripcion: proceso.descripcion || '',
+      responsable: proceso.responsable || '',
+      criticidad: criticidad as CriticidadNivel,
+      factorExposicion: exposicion as ExposicionNivel,
+      factoresMitigantes: mitigantes,
+      nivelRiesgo: nivelRiesgo as NivelRiesgo,
+      scoreRiesgo: score,
+      estado,
+      ultimaAuditoria: proceso.ultimaAuditoria,
+      proximaAuditoria: proceso.proximaAuditoria,
+      numeroAuditorias: 0 // TODO: calcular desde auditorías relacionadas
+    };
+  };
+
+  // Cargar procesos desde la BD
+  useEffect(() => {
+    const cargarProcesos = async () => {
+      try {
+        setLoading(true);
+        console.log('[UniversoAuditorias] Cargando procesos desde BD...');
+        const response = await universoAuditoriasApi.getAllProcesos();
+        
+        console.log('[UniversoAuditorias] Respuesta recibida:', response);
+        
+        if (response.success && response.data) {
+          console.log('[UniversoAuditorias] Datos recibidos:', response.data.length, 'procesos');
+          console.log('[UniversoAuditorias] Primer proceso ejemplo:', response.data[0]);
+          const areasMapeadas = response.data.map(mapearProcesoAArea);
+          console.log('[UniversoAuditorias] Áreas mapeadas:', areasMapeadas.length);
+          console.log('[UniversoAuditorias] Primer área mapeada:', areasMapeadas[0]);
+          setAreas(areasMapeadas);
+          
+          if (areasMapeadas.length === 0) {
+            toast.info('No hay procesos auditables en la base de datos', {
+              description: 'Puedes crear nuevos procesos desde el botón "Nueva Área"'
+            });
+          } else {
+            toast.success(`${areasMapeadas.length} áreas auditables cargadas`, {
+              description: 'Datos actualizados desde la base de datos'
+            });
+          }
+        } else {
+          console.warn('[UniversoAuditorias] No se recibieron datos válidos. Response:', response);
+          // Si no hay datos, mostrar array vacío en lugar de mock
+          setAreas([]);
+          if (!response.success) {
+            toast.error('Error al cargar procesos', {
+              description: response.error || 'No se pudieron obtener los datos'
+            });
+          } else {
+            toast.info('No hay procesos auditables en la base de datos', {
+              description: 'Puedes crear nuevos procesos desde el botón "Nueva Área"'
+            });
+          }
+        }
+      } catch (error) {
+        console.error('[UniversoAuditorias] Error al cargar procesos:', error);
+        toast.error('Error al cargar áreas auditables', {
+          description: error instanceof Error ? error.message : 'No se pudieron obtener los datos desde el servidor'
+        });
+        // Mostrar array vacío en lugar de mock para que el usuario sepa que no hay datos
+        setAreas([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarProcesos();
+  }, []);
 
   // Filtrado de áreas
   const areasFiltradas = useMemo(() => {
@@ -571,38 +672,80 @@ export function UniversoAuditorias() {
     return { total, sede, territorial, critico, alto, medio, bajo, seleccionadas };
   }, [areas]);
 
-  const handleCambiarEstado = (areaId: string, nuevoEstado: EstadoSeleccion) => {
-    setAreas(prev => prev.map(area => 
-      area.id === areaId ? { ...area, estado: nuevoEstado } : area
-    ));
-    toast.success('Estado actualizado', {
-      description: `Área ${areas.find(a => a.id === areaId)?.nombre} marcada como ${nuevoEstado}`
-    });
+  const handleCambiarEstado = async (areaId: string, nuevoEstado: EstadoSeleccion) => {
+    try {
+      // Mapear estado a prioridad (1=seleccionada, 2=pendiente, 3=no-aplica)
+      // Nota: La prioridad en BD es inversa: 1 = mayor prioridad (4 años), 4 = menor prioridad (1 año)
+      // Pero para el estado usamos: 1=seleccionada, 2=pendiente, 3=no-aplica
+      // Necesitamos mapear: seleccionada=1, pendiente=2, no-aplica=3
+      const prioridad = nuevoEstado === 'seleccionada' ? 1 : nuevoEstado === 'pendiente' ? 2 : 3;
+      
+      const response = await universoAuditoriasApi.updateProceso(areaId, { prioridad } as any);
+      
+      if (response.success) {
+        setAreas(prev => prev.map(area => 
+          area.id === areaId ? { ...area, estado: nuevoEstado } : area
+        ));
+        toast.success('Estado actualizado', {
+          description: `Área ${areas.find(a => a.id === areaId)?.nombre} marcada como ${nuevoEstado}`
+        });
+      } else {
+        throw new Error('Error al actualizar estado');
+      }
+    } catch (error) {
+      console.error('Error al actualizar estado:', error);
+      toast.error('Error al actualizar estado', {
+        description: 'No se pudo guardar el cambio en el servidor'
+      });
+    }
   };
 
-  const handleActualizarRiesgo = (
+  const handleActualizarRiesgo = async (
     areaId: string, 
     criticidad: CriticidadNivel, 
     exposicion: ExposicionNivel, 
     mitigantes: number
   ) => {
-    const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
-    
-    setAreas(prev => prev.map(area => 
-      area.id === areaId ? {
-        ...area,
-        criticidad,
-        factorExposicion: exposicion,
-        factoresMitigantes: mitigantes,
-        nivelRiesgo: nivel,
-        scoreRiesgo: score
-      } : area
-    ));
-    
-    setAreaEditando(null);
-    toast.success('Riesgo actualizado', {
-      description: `Nuevo nivel de riesgo: ${nivel} (${score})`
-    });
+    try {
+      const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
+      
+      // Mapear a formato del backend
+      const evaluacionRiesgo = {
+        probabilidad: exposicion,
+        impacto: criticidad,
+        nivelControl: mitigantes,
+        nivelRiesgo: nivel
+      };
+
+      const response = await universoAuditoriasApi.updateProceso(areaId, { 
+        evaluacionRiesgo 
+      } as any);
+      
+      if (response.success) {
+        setAreas(prev => prev.map(area => 
+          area.id === areaId ? {
+            ...area,
+            criticidad,
+            factorExposicion: exposicion,
+            factoresMitigantes: mitigantes,
+            nivelRiesgo: nivel,
+            scoreRiesgo: score
+          } : area
+        ));
+        
+        setAreaEditando(null);
+        toast.success('Riesgo actualizado', {
+          description: `Nuevo nivel de riesgo: ${nivel} (${score})`
+        });
+      } else {
+        throw new Error('Error al actualizar riesgo');
+      }
+    } catch (error) {
+      console.error('Error al actualizar riesgo:', error);
+      toast.error('Error al actualizar riesgo', {
+        description: 'No se pudo guardar el cambio en el servidor'
+      });
+    }
   };
 
   return (
@@ -802,12 +945,86 @@ export function UniversoAuditorias() {
       {modalNuevaArea && (
         <ModalNuevaArea
           onClose={() => setModalNuevaArea(false)}
-          onGuardar={(nuevaArea) => {
-            setAreas(prev => [...prev, nuevaArea]);
-            setModalNuevaArea(false);
-            toast.success('¡Área creada exitosamente!', {
-              description: `${nuevaArea.nombre} agregada al universo de auditorías`
-            });
+          onGuardar={async (nuevaArea) => {
+            try {
+              // Mapear AreaAuditable a formato del backend (CreateProcesoAuditableDto)
+              const mapearCriticidadAImpacto = (criticidad: CriticidadNivel): number => {
+                // 5 -> 3 (alta), 3 -> 2 (media), 1 -> 1 (baja)
+                return criticidad === 5 ? 3 : criticidad === 3 ? 2 : 1;
+              };
+
+              const mapearExposicionAProbabilidad = (exposicion: ExposicionNivel): number => {
+                // 5 -> 3 (alta), 3 -> 2 (media), 1 -> 1 (baja)
+                return exposicion === 5 ? 3 : exposicion === 3 ? 2 : 1;
+              };
+
+              const mapearMitigantesANivelControl = (mitigantes: number): number => {
+                // 1-3 -> 1 (bajo), 4-6 -> 2 (medio), 7-10 -> 3 (alto)
+                if (mitigantes <= 3) return 1;
+                if (mitigantes <= 6) return 2;
+                return 3;
+              };
+
+              const mapearNivelRiesgo = (nivel: NivelRiesgo): 'bajo' | 'medio' | 'alto' => {
+                if (nivel === 'Crítico' || nivel === 'Alto') return 'alto';
+                if (nivel === 'Medio') return 'medio';
+                return 'bajo';
+              };
+
+              const mapearTipo = (tipo: TipoArea): 'estrategico' | 'misional' | 'apoyo' | 'evaluacion' => {
+                // Mapear Sede/Territorial a tipos de proceso
+                // Por defecto, usar 'misional' para ambos
+                return 'misional';
+              };
+
+              const impacto = mapearCriticidadAImpacto(nuevaArea.criticidad);
+              const probabilidad = mapearExposicionAProbabilidad(nuevaArea.factorExposicion);
+              const nivelControl = mapearMitigantesANivelControl(nuevaArea.factoresMitigantes);
+
+              // El backend calcula automáticamente riesgoInherente, riesgoResidual y nivelRiesgo
+              // Solo enviamos los campos base que el DTO acepta
+              const procesoData = {
+                codigo: nuevaArea.codigo,
+                nombre: nuevaArea.nombre,
+                descripcion: nuevaArea.descripcion,
+                tipo: mapearTipo(nuevaArea.tipo),
+                macroproceso: nuevaArea.tipo === 'Sede' ? 'Procesos Sede' : 'Procesos Territoriales',
+                responsable: nuevaArea.responsable,
+                dependencia: nuevaArea.tipo === 'Sede' ? 'Sede Central' : nuevaArea.nombre,
+                territorial: nuevaArea.tipo === 'Territorial' ? nuevaArea.nombre : undefined,
+                evaluacionRiesgo: {
+                  probabilidad,
+                  impacto,
+                  nivelControl,
+                  // NO enviar: riesgoInherente, riesgoResidual, nivelRiesgo
+                  // El backend los calcula automáticamente
+                },
+                frecuenciaAuditoria: 'Anual',
+              };
+
+              // Guardar en la base de datos
+              const response = await universoAuditoriasApi.createProceso(procesoData);
+              
+              if (!response.success || !response.data) {
+                throw new Error('Error al crear el proceso');
+              }
+              
+              const procesoGuardado = response.data;
+
+              // Mapear el proceso guardado a AreaAuditable
+              const areaGuardada = mapearProcesoAArea(procesoGuardado);
+
+              setAreas(prev => [...prev, areaGuardada]);
+              setModalNuevaArea(false);
+              toast.success('¡Área creada exitosamente!', {
+                description: `${nuevaArea.nombre} guardada en la base de datos`
+              });
+            } catch (error) {
+              console.error('Error al guardar área:', error);
+              toast.error('Error al guardar el área', {
+                description: error instanceof Error ? error.message : 'No se pudo guardar en la base de datos'
+              });
+            }
           }}
           ultimoCodigo={areas.length > 0 ? Math.max(...areas.map(a => {
             const num = parseInt(a.codigo.split('-')[1]);
@@ -1191,7 +1408,7 @@ function TablaAreasAuditables({ areas, onCambiarEstado }: TablaAreasAuditablesPr
 
 interface ModalNuevaAreaProps {
   onClose: () => void;
-  onGuardar: (nuevaArea: AreaAuditable) => void;
+  onGuardar: (nuevaArea: AreaAuditable) => Promise<void>;
   ultimoCodigo: number;
 }
 
@@ -1219,25 +1436,44 @@ function ModalNuevaArea({ onClose, onGuardar, ultimoCodigo }: ModalNuevaAreaProp
     }
   };
 
-  const handleGuardar = () => {
-    const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
-    const nuevoCodigo = `SEDE-${ultimoCodigo + 1}`;
-    const nuevaArea: AreaAuditable = {
-      id: `area-${ultimoCodigo + 1}`,
-      codigo: nuevoCodigo,
-      nombre,
-      tipo,
-      descripcion,
-      responsable,
-      criticidad,
-      factorExposicion: exposicion,
-      factoresMitigantes: mitigantes,
-      nivelRiesgo: nivel,
-      scoreRiesgo: score,
-      estado: 'pendiente',
-      numeroAuditorias: 0
-    };
-    onGuardar(nuevaArea);
+  const [guardando, setGuardando] = useState(false);
+
+  const handleGuardar = async () => {
+    if (!nombre || !descripcion || !responsable) {
+      toast.error('Datos incompletos', {
+        description: 'Por favor completa todos los campos obligatorios'
+      });
+      return;
+    }
+
+    setGuardando(true);
+    try {
+      const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
+      // Generar código según el tipo
+      const prefijoCodigo = tipo === 'Sede' ? 'SEDE' : 'TERR';
+      const nuevoCodigo = `${prefijoCodigo}-${String(ultimoCodigo + 1).padStart(3, '0')}`;
+      const nuevaArea: AreaAuditable = {
+        id: `area-${ultimoCodigo + 1}`, // ID temporal, se reemplazará con el de la BD
+        codigo: nuevoCodigo,
+        nombre,
+        tipo,
+        descripcion,
+        responsable,
+        criticidad,
+        factorExposicion: exposicion,
+        factoresMitigantes: mitigantes,
+        nivelRiesgo: nivel,
+        scoreRiesgo: score,
+        estado: 'pendiente',
+        numeroAuditorias: 0
+      };
+      await onGuardar(nuevaArea);
+    } catch (error) {
+      console.error('Error en handleGuardar:', error);
+      // El error ya se maneja en onGuardar
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -1439,10 +1675,10 @@ function ModalNuevaArea({ onClose, onGuardar, ultimoCodigo }: ModalNuevaAreaProp
             style={{ background: '#003DA5' }}
             className="gap-2"
             onClick={handleGuardar}
-            disabled={!nombre || !descripcion || !responsable}
+            disabled={!nombre || !descripcion || !responsable || guardando}
           >
             <Save className="w-4 h-4" />
-            Crear Área
+            {guardando ? 'Guardando...' : 'Crear Área'}
           </Button>
         </div>
       </Card>

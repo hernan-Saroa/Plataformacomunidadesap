@@ -246,6 +246,7 @@ export class AuditoriasService {
       prioridad: createDto.prioridad || PrioridadAuditoria.MEDIA,
       progreso: createDto.progreso ?? 0,
       hallazgos: 0,
+      activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
     });
 
     const saved = await this.auditoriaRepository.save(auditoria);
@@ -342,6 +343,13 @@ export class AuditoriasService {
       auditoria.observacionesAdicionales = updateDto.observacionesAdicionales;
     }
 
+    // Actualizar metadata del programa anual
+    if (updateDto.programaAnualMetadata !== undefined) {
+      console.log('[AuditoriasService] Actualizando programaAnualMetadata:', updateDto.programaAnualMetadata);
+      auditoria.programaAnualMetadata = updateDto.programaAnualMetadata;
+      console.log('[AuditoriasService] programaAnualMetadata asignado a auditoría:', auditoria.programaAnualMetadata);
+    }
+
     // Actualizar estado de checkboxes de actividades
     if (updateDto.checklistCompletados !== undefined) {
       // Si ya existe, mergear con el existente, si no, crear nuevo
@@ -350,6 +358,26 @@ export class AuditoriasService {
         ...estadoActual,
         ...updateDto.checklistCompletados,
       };
+    }
+
+    // Actualizar campos de archivo
+    if (updateDto.archivada !== undefined) {
+      auditoria.archivada = updateDto.archivada;
+      // Si se archiva, también desactivar y establecer fecha de archivo
+      if (updateDto.archivada) {
+        auditoria.activa = false;
+        auditoria.fechaArchivo = new Date();
+      } else {
+        // Si se desarchiva, reactivar
+        auditoria.activa = true;
+        auditoria.fechaArchivo = null;
+      }
+    }
+    if (updateDto.fechaArchivo !== undefined && updateDto.fechaArchivo) {
+      auditoria.fechaArchivo = new Date(updateDto.fechaArchivo);
+    }
+    if (updateDto.activa !== undefined) {
+      auditoria.activa = updateDto.activa;
     }
 
     // Log para depuración
@@ -367,10 +395,14 @@ export class AuditoriasService {
     });
 
     // Guardar cambios en la auditoría
+    // Log antes de guardar
+    console.log('[AuditoriasService.update] programaAnualMetadata antes de save:', auditoria.programaAnualMetadata);
+    
     const saved = await this.auditoriaRepository.save(auditoria);
     
     console.log('[AuditoriasService.update] Valores después de guardar:', {
       alcance: saved.alcance,
+      programaAnualMetadata: saved.programaAnualMetadata,
       riesgoKanban: saved.riesgoKanban,
       auditorLiderId: saved.auditorLiderId,
       auditorAsignadoId: saved.auditorAsignadoId,
@@ -711,6 +743,137 @@ export class AuditoriasService {
           actividadesCompletas: auditoria.actividadesCompletas,
           actividadesPendientes: auditoria.actividadesPendientes,
           alcance: auditoria.alcance || '', // Agregar alcance al DTO
+        };
+      })
+    );
+
+    return auditoriasConPersonas;
+  }
+
+  /**
+   * Obtiene todas las auditorías archivadas para el Kanban
+   */
+  async findAllKanbanArchivadas(): Promise<AuditoriaKanbanDto[]> {
+    const auditorias = await this.auditoriaRepository.find({
+      where: { archivada: true },
+      relations: ['objetivos', 'equipoAuditores', 'territorialInfo', 'especialInfo'],
+      order: { fechaArchivo: 'DESC' },
+    });
+
+    // Obtener información de personas desde auth.personas usando query raw
+    const auditoriasConPersonas = await Promise.all(
+      auditorias.map(async (auditoria) => {
+        // Obtener datos de personas desde auth.personas
+        let auditorLider: PersonaDto | undefined;
+        let auditorAsignado: PersonaDto | undefined;
+
+        if (auditoria.auditorLiderId) {
+          const lider = await this.auditoriaRepository.query(
+            `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+             FROM auth.personas 
+             WHERE id_tercero = $1`,
+            [auditoria.auditorLiderId]
+          );
+          if (lider && lider.length > 0) {
+            const p = lider[0];
+            const iniciales = p.sig_tercero || this.getIniciales(p.nom_largo);
+            auditorLider = {
+              nombre: p.nom_largo,
+              cargo: 'Auditor Líder',
+              iniciales,
+              tipoIdentificacion: p.tip_identificacion || 'CC',
+              numeroIdentificacion: p.num_identificacion,
+            };
+          }
+        }
+
+        if (auditoria.auditorAsignadoId) {
+          const asignado = await this.auditoriaRepository.query(
+            `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+             FROM auth.personas 
+             WHERE id_tercero = $1`,
+            [auditoria.auditorAsignadoId]
+          );
+          if (asignado && asignado.length > 0) {
+            const p = asignado[0];
+            const iniciales = p.sig_tercero || this.getIniciales(p.nom_largo);
+            auditorAsignado = {
+              nombre: p.nom_largo,
+              cargo: 'Auditor',
+              iniciales,
+              tipoIdentificacion: p.tip_identificacion || 'CC',
+              numeroIdentificacion: p.num_identificacion,
+            };
+          }
+        }
+
+        // Obtener nombres del equipo de auditores
+        const equipoActivo = auditoria.equipoAuditores?.filter(e => e.activo) || [];
+        const equipoNombres = await Promise.all(
+          equipoActivo.map(async (equipo) => {
+            const persona = await this.auditoriaRepository.query(
+              `SELECT nom_largo FROM auth.personas WHERE id_tercero = $1`,
+              [equipo.personaId]
+            );
+            return persona && persona.length > 0 ? persona[0].nom_largo : 'N/A';
+          })
+        );
+
+        // Formatear fechas a DD/MM/YYYY
+        const fechaInicio = this.formatDateDDMMYYYY(auditoria.fechaInicio);
+        const fechaFin = this.formatDateDDMMYYYY(auditoria.fechaFin);
+
+        // Mapear objetivos
+        const objetivos: ObjetivoDto[] = (auditoria.objetivos || [])
+          .filter(obj => obj.activo)
+          .sort((a, b) => a.orden - b.orden)
+          .map(obj => ({
+            id: obj.id,
+            descripcion: obj.descripcion,
+          }));
+
+        return {
+          id: auditoria.id,
+          codigo: auditoria.codigo,
+          titulo: auditoria.nombre,
+          descripcion: auditoria.descripcion,
+          estado: auditoria.estadoKanban || this.mapFaseToEstadoKanban(auditoria.fase),
+          riesgo: auditoria.riesgoKanban || 'Medio',
+          semaforo: auditoria.semaforo || 'verde',
+          territorial: auditoria.territorial,
+          auditorLider,
+          auditorAsignado,
+          fechaInicio,
+          fechaFin,
+          progreso: auditoria.progreso,
+          hallazgos: auditoria.hallazgos,
+          diasRestantes: auditoria.diasRestantes || this.calcularDiasRestantes(auditoria.fechaFin),
+          porcentajeTiempo: auditoria.porcentajeTiempo || this.calcularPorcentajeTiempo(auditoria.fechaInicio, auditoria.fechaFin),
+          ultimaActuacion: auditoria.ultimaActuacion,
+          objetivos,
+          calificacionRiesgo: auditoria.calificacionRiesgo,
+          documentos: auditoria.totalDocumentos,
+          informes: auditoria.totalInformes,
+          tareas: auditoria.totalTareas,
+          tipo: auditoria.tipo || 'Gestión',
+          tipoKanban: auditoria.tipoKanban || 'regular',
+          prioridad: auditoria.prioridadKanban || 'media',
+          areaObjetivo: auditoria.areaObjetivo,
+          permiteCambiarObjetivos: auditoria.permiteCambiarObjetivos,
+          equipoAuditores: equipoNombres,
+          territorialInfo: auditoria.territorialInfo ? {
+            nombre: auditoria.territorialInfo.nombre,
+            ciudad: auditoria.territorialInfo.ciudad,
+            departamento: auditoria.territorialInfo.departamento,
+          } : undefined,
+          especial: auditoria.especialInfo ? {
+            tipoMotivo: auditoria.especialInfo.tipoMotivo,
+            solicitante: auditoria.especialInfo.solicitante,
+            justificacion: auditoria.especialInfo.justificacion,
+          } : undefined,
+          actividadesCompletas: auditoria.actividadesCompletas,
+          actividadesPendientes: auditoria.actividadesPendientes,
+          alcance: auditoria.alcance || '',
         };
       })
     );
