@@ -3,26 +3,29 @@
  * DISEÑO DATATABLE PROFESIONAL CON FILTROS AVANZADOS
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Scale, FileText, Clock, AlertTriangle, CheckCircle, User, Building,
   Eye, Edit, Plus, Download, Filter, Search, Calendar, TrendingUp,
   Archive, MessageSquare, History, Send, FileCheck, Mail, Columns3, List,
-  AlertCircle, FolderOpen, FileQuestion, SortAsc, SortDesc, XCircle
+  AlertCircle, FolderOpen, FileQuestion, SortAsc, SortDesc, XCircle, Trash2
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { Input } from '../../../ui/input';
-import { ConsultaJuridica } from '../core/types';
-import { consultasJuridicasMock, estadisticasAsesoriaJuridica } from '../data/datosConsultasJuridicas';
+import { Textarea } from '../../../ui/textarea';
+import { Label } from '../../../ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { toast } from 'sonner@2.0.3';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { legalService } from '../../../../services/api/legal.service';
 
 type VistaModulo = 'tabla' | 'tarjetas';
 type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema';
@@ -36,12 +39,169 @@ export function ModuloAsesoriaJuridicaV3() {
   const [direccionOrden, setDireccionOrden] = useState<'asc' | 'desc'>('asc');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
+  // Data from API
+  const [consultas, setConsultas] = useState<any[]>([]);
+  const [abogados, setAbogados] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [selectedConsulta, setSelectedConsulta] = useState<any>(null);
+  const [isExpedienteOpen, setIsExpedienteOpen] = useState(false);
+  const [newConsultaData, setNewConsultaData] = useState({
+    tipoSolicitud: 'consulta',
+    canalEntrada: 'correo_electronico',
+    dependenciaSolicitante: '',
+    nombreSolicitante: '',
+    cargoSolicitante: '',
+    emailSolicitante: '',
+    telefonoSolicitante: '',
+    tipoUsuario: 'interno',
+    materiaJuridica: 'administrativo',
+    descripcion: '',
+    antecedentes: '',
+    abogadoAsignadoId: '' // Abogado will be assigned from DB
+    // prioridad removed - calculated automatically based on time
+  });
+
+  // Load data from API
+  useEffect(() => {
+    loadConsultas();
+    loadAbogados();
+  }, []);
+
+  const loadAbogados = async () => {
+    try {
+      const data = await legalService.getAbogadosDashboard();
+      setAbogados(data || []);
+    } catch (error) {
+      console.error('Error loading abogados:', error);
+      setAbogados([]);
+    }
+  };
+
+  const loadConsultas = async () => {
+    try {
+      setLoading(true);
+      const data = await legalService.getConsultasJuridicas();
+      // Map backend data to frontend format
+      const mapped = data.map((c: any) => ({
+        id: c.numeroRadicado,
+        uuid: c.id,
+        etapa: mapEstadoToEtapa(c.estado),
+        temaJuridico: c.materiaJuridica || 'Administrativo',
+        solicitante: c.dependenciaSolicitante || 'Sin dependencia',
+        funcionarioSolicitante: c.nombreSolicitante || 'Sin asignar',
+        consulta: c.descripcion || '',
+        fechaRadicacion: new Date(c.fechaRecepcion),
+        diasTotales: c.terminoLegalDias || 30,
+        diasRestantes: c.diasRestantes || 30,
+        abogadoAsignado: c.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+        abogadoAsignadoId: c.abogadoAsignadoId || c.abogadoAsignado?.id || '', // ID needed for Select
+        prioridad: c.prioridad || 'media',
+        normativaAplicable: [],
+        documentosAdjuntos: []
+      }));
+      setConsultas(mapped);
+    } catch (error) {
+      console.error('Error loading consultas:', error);
+      toast.error('Error al cargar consultas');
+      setConsultas([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const mapEstadoToEtapa = (estado: string): string => {
+    const map: Record<string, string> = {
+      'en_radicacion': 'RADICADA',
+      'asignado': 'ANÁLISIS',
+      'en_analisis': 'ANÁLISIS',
+      'en_revision': 'RESPUESTA',
+      'respondido': 'ENVIADA',
+      'cerrado': 'ENVIADA',
+      'vencido': 'VENCIDA'
+    };
+    return map[estado] || 'RADICADA';
+  };
+
+  const formatMateriaJuridica = (materia: string): string => {
+    const map: Record<string, string> = {
+      'laboral': 'Laboral',
+      'contractual': 'Contractual',
+      'administrativo': 'Administrativo',
+      'disciplinario': 'Disciplinario',
+      'presupuestal': 'Presupuestal',
+      'academico': 'Académico',
+      'otra': 'Otra'
+    };
+    return map[materia?.toLowerCase()] || materia || 'Sin clasificar';
+  };
+
+  const formatPrioridad = (prioridad: string): { label: string; color: string; bg: string } => {
+    const map: Record<string, { label: string; color: string; bg: string }> = {
+      'alta': { label: '🔴 Alta', color: '#DC2626', bg: '#FEE2E2' },
+      'media': { label: '🟡 Media', color: '#D97706', bg: '#FEF3C7' },
+      'baja': { label: '🟢 Baja', color: '#059669', bg: '#D1FAE5' }
+    };
+    return map[prioridad?.toLowerCase()] || { label: prioridad || 'N/A', color: '#6B7280', bg: '#F3F4F6' };
+  };
+
+  const handleCreateConsulta = async () => {
+    if (!newConsultaData.descripcion || !newConsultaData.nombreSolicitante) {
+      toast.error('Completa los campos obligatorios');
+      return;
+    }
+    const toastId = toast.loading('Creando consulta...');
+    try {
+      await legalService.createConsultaJuridica(newConsultaData);
+      toast.success('Consulta creada exitosamente', { id: toastId });
+      setIsCreateOpen(false);
+      setNewConsultaData({
+        tipoSolicitud: 'consulta',
+        canalEntrada: 'correo_electronico',
+        dependenciaSolicitante: '',
+        nombreSolicitante: '',
+        cargoSolicitante: '',
+        emailSolicitante: '',
+        telefonoSolicitante: '',
+        tipoUsuario: 'interno',
+        materiaJuridica: 'administrativo',
+        descripcion: '',
+        antecedentes: '',
+        abogadoAsignadoId: ''
+      });
+      loadConsultas();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al crear consulta', { id: toastId });
+    }
+  };
+
+  const handleOpenExpediente = (consulta: any) => {
+    setSelectedConsulta(consulta);
+    setIsExpedienteOpen(true);
+  };
+
+  const handleDeleteConsulta = async (uuid: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta consulta? Esta acción no se puede deshacer.')) return;
+    const toastId = toast.loading('Eliminando consulta...');
+    try {
+      await legalService.deleteConsultaJuridica(uuid);
+      toast.success('Consulta eliminada', { id: toastId });
+      setIsExpedienteOpen(false);
+      setSelectedConsulta(null);
+      loadConsultas();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al eliminar', { id: toastId });
+    }
+  };
+
   const consultasFiltradas = useMemo(() => {
-    let resultado = [...consultasJuridicasMock];
+    let resultado = [...consultas];
 
     // Filtro de búsqueda
     if (busqueda) {
-      resultado = resultado.filter(c => 
+      resultado = resultado.filter(c =>
         c.id.toLowerCase().includes(busqueda.toLowerCase()) ||
         c.temaJuridico.toLowerCase().includes(busqueda.toLowerCase()) ||
         c.solicitante.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -85,7 +245,7 @@ export function ModuloAsesoriaJuridicaV3() {
     });
 
     return resultado;
-  }, [busqueda, filtroEtapa, filtroSemaforo, orden, direccionOrden]);
+  }, [consultas, busqueda, filtroEtapa, filtroSemaforo, orden, direccionOrden]);
 
   const handleOrdenar = (columna: OrdenColumna) => {
     if (orden === columna) {
@@ -107,7 +267,7 @@ export function ModuloAsesoriaJuridicaV3() {
             label: 'Nueva Consulta',
             labelMobile: 'Nueva',
             icon: <Plus className="w-4 h-4" />,
-            onClick: () => toast.info('Nueva Consulta Jurídica'),
+            onClick: () => setIsCreateOpen(true),
             variant: 'primary'
           }
         ]}
@@ -171,7 +331,7 @@ export function ModuloAsesoriaJuridicaV3() {
         metrics={[
           {
             icon: <FileQuestion className="w-5 h-5 text-purple-600" />,
-            value: consultasJuridicasMock.length,
+            value: consultas.length,
             label: 'Consultas Totales'
           },
           {
@@ -217,27 +377,349 @@ export function ModuloAsesoriaJuridicaV3() {
             ]
           }
         ]}
-        totalItems={consultasJuridicasMock.length}
+        totalItems={consultas.length}
         filteredItems={consultasFiltradas.length}
         onClearFilters={() => {
           setBusqueda('');
           setFiltroEtapa('TODAS');
           setFiltroSemaforo('TODOS');
         }}
-        counterText={`Mostrando ${consultasFiltradas.length} de ${consultasJuridicasMock.length} consultas`}
+        counterText={`Mostrando ${consultasFiltradas.length} de ${consultas.length} consultas`}
       />
 
       {/* Tabla o Tarjetas */}
       {tipoVista === 'tabla' ? (
-        <TablaConsultas 
+        <TablaConsultas
           consultas={consultasFiltradas}
           orden={orden}
           direccionOrden={direccionOrden}
           onOrdenar={handleOrdenar}
+          onOpenExpediente={handleOpenExpediente}
         />
       ) : (
-        <TarjetasConsultas consultas={consultasFiltradas} />
+        <TarjetasConsultas consultas={consultasFiltradas} onOpenExpediente={handleOpenExpediente} />
       )}
+
+      {/* Modal Expediente */}
+      <Dialog open={isExpedienteOpen} onOpenChange={setIsExpedienteOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0" aria-describedby="exp-js-desc">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Expediente de Consulta Jurídica</DialogTitle>
+            <DialogDescription id="exp-js-desc">Detalle de la consulta jurídica</DialogDescription>
+          </DialogHeader>
+          {selectedConsulta && (
+            <>
+              {/* Header con gradiente */}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 rounded-t-lg">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-white/20 rounded-lg backdrop-blur">
+                    <Scale className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">{selectedConsulta.id}</h2>
+                    <p className="text-blue-100 text-sm">Consulta Jurídica</p>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-4 flex-wrap">
+                  <Badge className="bg-white/20 text-white border-white/30">
+                    📅 {new Date(selectedConsulta.fechaRadicacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </Badge>
+                  <Badge className="bg-white/20 text-white border-white/30">
+                    {selectedConsulta.etapa}
+                  </Badge>
+                  <Badge style={{
+                    background: formatPrioridad(selectedConsulta.prioridad).bg,
+                    color: formatPrioridad(selectedConsulta.prioridad).color,
+                    border: 'none'
+                  }}>
+                    {formatPrioridad(selectedConsulta.prioridad).label}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Semáforo de días */}
+                <div className="flex items-center justify-between p-4 rounded-xl" style={{
+                  background: selectedConsulta.diasRestantes <= 3 ? '#FEE2E2' : selectedConsulta.diasRestantes <= 5 ? '#FEF3C7' : '#D1FAE5'
+                }}>
+                  <div className="flex items-center gap-3">
+                    <Clock className="w-8 h-8" style={{
+                      color: selectedConsulta.diasRestantes <= 3 ? '#DC2626' : selectedConsulta.diasRestantes <= 5 ? '#D97706' : '#059669'
+                    }} />
+                    <div>
+                      <p className="text-sm font-medium" style={{
+                        color: selectedConsulta.diasRestantes <= 3 ? '#991B1B' : selectedConsulta.diasRestantes <= 5 ? '#92400E' : '#065F46'
+                      }}>Tiempo Restante</p>
+                      <p className="text-2xl font-bold" style={{
+                        color: selectedConsulta.diasRestantes <= 3 ? '#DC2626' : selectedConsulta.diasRestantes <= 5 ? '#D97706' : '#059669'
+                      }}>{selectedConsulta.diasRestantes} días</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-600">de {selectedConsulta.diasTotales} días hábiles</p>
+                    <div className="w-32 h-2 bg-gray-200 rounded-full mt-1 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, (selectedConsulta.diasRestantes / selectedConsulta.diasTotales) * 100))}%`,
+                          background: selectedConsulta.diasRestantes <= 3 ? '#DC2626' : selectedConsulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Grid de información */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-gray-50 rounded-xl">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Materia Jurídica</p>
+                    <p className="font-bold text-gray-900">{formatMateriaJuridica(selectedConsulta.temaJuridico)}</p>
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-xl">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Abogado Asignado</p>
+                    <Select
+                      value={selectedConsulta.abogadoAsignadoId || 'none'}
+                      onValueChange={async (value: string) => {
+                        const toastId = toast.loading('Reasignando abogado...');
+                        try {
+                          const newAbogadoId = value === 'none' ? null : value;
+                          await legalService.updateConsultaJuridica(selectedConsulta.uuid, { abogadoAsignadoId: newAbogadoId });
+                          toast.success('Abogado reasignado', { id: toastId });
+                          await loadConsultas();
+                          setIsExpedienteOpen(false);
+                        } catch (error) {
+                          console.error('Error reasignando:', error);
+                          toast.error('Error al reasignar', { id: toastId });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue placeholder={selectedConsulta.abogadoAsignado || 'Sin asignar'} />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999]">
+                        <SelectItem value="none">Sin asignar</SelectItem>
+                        {abogados.map((abogado) => (
+                          <SelectItem key={abogado.id} value={abogado.id}>
+                            {abogado.nombreCompleto || abogado.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Solicitante */}
+                <div className="border border-gray-200 rounded-xl p-4">
+                  <h4 className="font-bold text-sm text-gray-700 mb-3 flex items-center gap-2">
+                    <User className="w-4 h-4" /> Información del Solicitante
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-500">Dependencia</p>
+                      <p className="font-semibold text-gray-800">{selectedConsulta.solicitante || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Funcionario</p>
+                      <p className="font-semibold text-gray-800">{selectedConsulta.funcionarioSolicitante || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Descripción */}
+                <div className="border border-gray-200 rounded-xl p-4">
+                  <h4 className="font-bold text-sm text-gray-700 mb-2 flex items-center gap-2">
+                    <FileText className="w-4 h-4" /> Descripción de la Consulta
+                  </h4>
+                  <p className="text-gray-700 whitespace-pre-wrap bg-gray-50 p-3 rounded-lg text-sm">
+                    {selectedConsulta.consulta || 'Sin descripción'}
+                  </p>
+                </div>
+
+                {/* Info legal */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <h4 className="font-bold text-sm text-blue-800 flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-4 h-4" /> Término Legal
+                  </h4>
+                  <p className="text-sm text-blue-700">
+                    El término de respuesta es de <strong>{selectedConsulta.diasTotales} días hábiles</strong> según CPACA Art. 50.
+                    El sistema calcula automáticamente los días restantes desde la fecha de radicación.
+                  </p>
+                </div>
+
+                {/* Acciones */}
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <Button
+                    variant="destructive"
+                    onClick={() => handleDeleteConsulta(selectedConsulta.uuid)}
+                    className="gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Eliminar Consulta
+                  </Button>
+                  <Button variant="outline" onClick={() => setIsExpedienteOpen(false)}>
+                    Cerrar
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para crear nueva consulta */}
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scale className="w-5 h-5 text-blue-600" />
+              Nueva Consulta Jurídica
+            </DialogTitle>
+            <DialogDescription>Registra una nueva solicitud de asesoría jurídica.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {/* Tipo y Canal */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Tipo de Solicitud *</Label>
+                <Select
+                  value={newConsultaData.tipoSolicitud}
+                  onValueChange={(v: string) => setNewConsultaData({ ...newConsultaData, tipoSolicitud: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent className="z-[9999]">
+                    <SelectItem value="consulta">Consulta</SelectItem>
+                    <SelectItem value="concepto_juridico">Concepto Jurídico</SelectItem>
+                    <SelectItem value="control_legalidad">Control de Legalidad</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Canal de Entrada</Label>
+                <Select
+                  value={newConsultaData.canalEntrada}
+                  onValueChange={(v: string) => setNewConsultaData({ ...newConsultaData, canalEntrada: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent className="z-[9999]">
+                    <SelectItem value="correo_electronico">Correo Electrónico</SelectItem>
+                    <SelectItem value="active_document">Active Document</SelectItem>
+                    <SelectItem value="ventanilla_unica">Ventanilla Única</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Solicitante */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Dependencia Solicitante</Label>
+                <Input
+                  placeholder="Ej: Dirección de Contratación"
+                  value={newConsultaData.dependenciaSolicitante}
+                  onChange={e => setNewConsultaData({ ...newConsultaData, dependenciaSolicitante: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Nombre del Solicitante *</Label>
+                <Input
+                  placeholder="Nombre completo"
+                  value={newConsultaData.nombreSolicitante}
+                  onChange={e => setNewConsultaData({ ...newConsultaData, nombreSolicitante: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Cargo</Label>
+                <Input
+                  placeholder="Cargo del solicitante"
+                  value={newConsultaData.cargoSolicitante}
+                  onChange={e => setNewConsultaData({ ...newConsultaData, cargoSolicitante: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  placeholder="correo@esap.edu.co"
+                  value={newConsultaData.emailSolicitante}
+                  onChange={e => setNewConsultaData({ ...newConsultaData, emailSolicitante: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Materia y Abogado Asignado */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Materia Jurídica</Label>
+                <Select
+                  value={newConsultaData.materiaJuridica}
+                  onValueChange={(v: string) => setNewConsultaData({ ...newConsultaData, materiaJuridica: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent className="z-[9999]">
+                    <SelectItem value="laboral">Laboral</SelectItem>
+                    <SelectItem value="contractual">Contractual</SelectItem>
+                    <SelectItem value="administrativo">Administrativo</SelectItem>
+                    <SelectItem value="disciplinario">Disciplinario</SelectItem>
+                    <SelectItem value="presupuestal">Presupuestal</SelectItem>
+                    <SelectItem value="academico">Académico</SelectItem>
+                    <SelectItem value="otra">Otra</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Abogado Asignado</Label>
+                <Select
+                  value={newConsultaData.abogadoAsignadoId || 'none'}
+                  onValueChange={(v: string) => setNewConsultaData({ ...newConsultaData, abogadoAsignadoId: v === 'none' ? '' : v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Seleccionar abogado..." /></SelectTrigger>
+                  <SelectContent className="z-[9999]">
+                    <SelectItem value="none">Sin asignar</SelectItem>
+                    {abogados.map((abogado) => (
+                      <SelectItem key={abogado.id} value={abogado.id}>
+                        {abogado.nombreCompleto || abogado.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Descripción */}
+            <div className="grid gap-2">
+              <Label>Descripción de la Consulta *</Label>
+              <Textarea
+                placeholder="Describe detalladamente la consulta o solicitud..."
+                value={newConsultaData.descripcion}
+                onChange={e => setNewConsultaData({ ...newConsultaData, descripcion: e.target.value })}
+                className="min-h-[100px]"
+              />
+            </div>
+
+            {/* Antecedentes */}
+            <div className="grid gap-2">
+              <Label>Antecedentes (opcional)</Label>
+              <Textarea
+                placeholder="Antecedentes relevantes si los hay..."
+                value={newConsultaData.antecedentes}
+                onChange={e => setNewConsultaData({ ...newConsultaData, antecedentes: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCreateConsulta} style={{ background: '#003DA5' }}>
+              <Plus className="w-4 h-4 mr-2" />
+              Crear Consulta
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -247,9 +729,10 @@ interface TablaConsultasProps {
   orden: OrdenColumna;
   direccionOrden: 'asc' | 'desc';
   onOrdenar: (columna: OrdenColumna) => void;
+  onOpenExpediente: (consulta: any) => void;
 }
 
-function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaConsultasProps) {
+function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onOpenExpediente }: TablaConsultasProps) {
   return (
     <Card className="bg-white border border-gray-200">
       <table className="w-full">
@@ -320,7 +803,7 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaCo
               <td className="px-4 py-3 text-sm text-gray-500">
                 <Badge
                   className="text-xs flex items-center gap-1 font-semibold"
-                  style={{ 
+                  style={{
                     background: consulta.diasRestantes <= 3 ? '#DC2626' : consulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
                     color: '#FFFFFF',
                     border: 'none'
@@ -335,7 +818,7 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaCo
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.abogadoAsignado}</td>
               <td className="px-4 py-3 text-sm text-gray-500">
                 <Button
-                  onClick={(e) => { e.stopPropagation(); toast.success('Consulta Jurídica', { description: `Abriendo ${consulta.id}` }); }}
+                  onClick={(e) => { e.stopPropagation(); onOpenExpediente(consulta); }}
                   size="sm"
                   className="w-full text-xs font-bold truncate"
                   style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -353,9 +836,10 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaCo
 
 interface TarjetasConsultasProps {
   consultas: ConsultaJuridica[];
+  onOpenExpediente: (consulta: any) => void;
 }
 
-function TarjetasConsultas({ consultas }: TarjetasConsultasProps) {
+function TarjetasConsultas({ consultas, onOpenExpediente }: TarjetasConsultasProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {consultas.map((consulta) => (
@@ -404,7 +888,7 @@ function TarjetasConsultas({ consultas }: TarjetasConsultasProps) {
             <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
               <Badge
                 className="text-xs flex items-center gap-1 font-semibold"
-                style={{ 
+                style={{
                   background: consulta.diasRestantes <= 3 ? '#DC2626' : consulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
                   color: '#FFFFFF',
                   border: 'none'
@@ -437,7 +921,7 @@ function TarjetasConsultas({ consultas }: TarjetasConsultasProps) {
 
             <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
               <Button
-                onClick={(e) => { e.stopPropagation(); toast.success('Consulta Jurídica', { description: `Abriendo ${consulta.id}` }); }}
+                onClick={(e) => { e.stopPropagation(); onOpenExpediente(consulta); }}
                 size="sm"
                 className="w-full text-xs font-bold truncate"
                 style={{ background: '#003DA5', color: '#FFFFFF' }}

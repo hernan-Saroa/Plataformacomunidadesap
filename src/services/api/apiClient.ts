@@ -261,8 +261,8 @@ export class ApiClient {
     skipAuth: boolean,
     skipErrorToast: boolean
   ): Promise<T> {
-    const headers = skipAuth 
-      ? { 'Content-Type': 'application/json; charset=utf-8' } 
+    const headers = skipAuth
+      ? { 'Content-Type': 'application/json; charset=utf-8' }
       : getDefaultHeaders(true);
 
     const controller = new AbortController();
@@ -323,9 +323,18 @@ export class ApiClient {
     let data: ApiResponse<T> | ApiError;
 
     try {
-      data = await response.json();
-    } catch (error) {
-      throw new Error('Error al parsear respuesta del servidor');
+      const text = await response.text();
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // If parsing fails, use text as error message or empty object
+        if (!response.ok) {
+          throw new Error(text || 'Error en la petición (sin detalles)');
+        }
+        data = {} as any; // For 200 OK with empty body
+      }
+    } catch (error: any) {
+      throw new Error(error.message || 'Error al leer respuesta del servidor');
     }
 
     // Success

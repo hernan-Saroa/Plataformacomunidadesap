@@ -1,0 +1,67 @@
+
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+
+@Entity('terminos_procesales', { schema: 'legal_management' })
+export class TerminoProcesal {
+    @PrimaryGeneratedColumn('uuid')
+    id: string;
+
+    @Column({ name: 'origen_modulo', length: 50 })
+    @Index()
+    origenModulo: string; // 'DEFENSA', 'JUZGAMIENTO', 'ASESORIA', 'MANUAL'
+
+    @Column({ name: 'referencia_id', type: 'uuid' })
+    @Index()
+    referenciaId: string;
+
+    @Column({ name: 'numero_radicado', type: 'varchar', length: 100, nullable: true })
+    numeroRadicado: string | null;
+
+    @Column({ name: 'nombre_actuacion', length: 255 })
+    nombreActuacion: string;
+
+    @Column({ name: 'fecha_base', type: 'timestamp with time zone' })
+    fechaBase: Date;
+
+    @Column({ name: 'dias_termino', type: 'int' })
+    diasTermino: number;
+
+    @Column({ name: 'tipo_dias', length: 20, default: 'HABILES' })
+    tipoDias: string;
+
+    @Column({ name: 'fecha_vencimiento', type: 'timestamp with time zone' })
+    @Index()
+    fechaVencimiento: Date;
+
+    @Column({ name: 'fecha_alerta_preventiva', type: 'timestamp with time zone', nullable: true })
+    fechaAlertaPreventiva: Date | null;
+
+    @Column({ name: 'fecha_alerta_critica', type: 'timestamp with time zone', nullable: true })
+    fechaAlertaCritica: Date | null;
+
+    @Column({ length: 20, default: 'PENDIENTE' })
+    @Index()
+    estado: string;
+
+    @Column({ length: 10, default: 'MEDIA' })
+    prioridad: string;
+
+    @Column({ name: 'responsable_id', type: 'uuid', nullable: true })
+    @Index()
+    responsableId: string | null;
+
+    @Column({ name: 'responsable_nombre', type: 'varchar', length: 255, nullable: true })
+    responsableNombre: string | null;
+
+    @Column({ type: 'text', nullable: true })
+    observaciones: string | null;
+
+    @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
+    createdAt: Date;
+
+    @UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
+    updatedAt: Date;
+
+    @Column({ name: 'closed_at', type: 'timestamp with time zone', nullable: true })
+    closedAt: Date;
+}

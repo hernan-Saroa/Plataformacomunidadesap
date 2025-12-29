@@ -500,6 +500,56 @@ class DisciplinaryService {
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/statistics`
         );
     }
+
+    // --- EVIDENCIAS ---
+    // Nota: Estos endpoints pertenecen al microservicio legal-management
+    // Prefix: /legal-management/api/v1 -> api/legal/*
+    async getEvidencias(expedienteId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`/legal-management/api/v1/evidencias/expediente/${expedienteId}`);
+    }
+
+    async createEvidencia(expedienteId: string, data: any, file: File): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('descripcion', data.descripcion || '');
+        formData.append('aportadoPor', data.aportadoPor || 'Sistema');
+        formData.append('tipo', data.tipo || 'Documental');
+        formData.append('prioridad', data.prioridad || 'Media');
+
+        return apiClient.upload<any>(`/legal-management/api/v1/evidencias/${expedienteId}`, formData);
+    }
+
+    async updateEvidenciaEstado(id: string, estado: string): Promise<any> {
+        return apiClient.patch<any>(`/legal-management/api/v1/evidencias/${id}/estado`, { estado });
+    }
+
+    async deleteEvidenciaReal(id: string): Promise<void> {
+        return apiClient.delete<void>(`/legal-management/api/v1/evidencias/${id}`);
+    }
+
+    // --- ACTAS ---
+    async getActas(expedienteId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`/legal-management/api/v1/actas/expediente/${expedienteId}`);
+    }
+
+    async createActa(expedienteId: string, data: any, file: File): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        Object.keys(data).forEach(key => {
+            if (data[key] !== undefined && data[key] !== null) {
+                formData.append(key, data[key]);
+            }
+        });
+        return apiClient.upload<any>(`/legal-management/api/v1/actas/${expedienteId}`, formData);
+    }
+
+    async updateActaEstado(id: string, estado: string): Promise<any> {
+        return apiClient.patch<any>(`/legal-management/api/v1/actas/${id}/estado`, { estado });
+    }
+
+    async deleteActaReal(id: string): Promise<void> {
+        return apiClient.delete<void>(`/legal-management/api/v1/actas/${id}`);
+    }
 }
 
 const disciplinaryService = new DisciplinaryService();
