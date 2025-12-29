@@ -33,7 +33,7 @@ import { ModuloTerminosInformesV3 } from '../modulos/ModuloTerminosInformesV3';
 // Componentes FASE 2 - 6 MÓDULOS ADICIONALES
 import { OrganosControl } from '../modulos/OrganosControl';
 import { ModuloProcesosCoactivosV3 } from '../modulos/ProcesosCoactivosV3';
-import { ModuloPlanAccionV3 } from '../modulos/PlanAccionV3';
+import { ModuloPlanAccionV4 } from '../modulos/PlanAccionV4';
 import { Riesgos } from '../modulos/Riesgos';
 import { PlanesMejoramiento } from '../modulos/PlanesMejoramiento';
 
@@ -207,7 +207,7 @@ export function GestionLegalFull() {
       case 'procesos-coactivos':
         return <ModuloProcesosCoactivosV3 />;
       case 'plan-accion':
-        return <ModuloPlanAccionV3 />;
+        return <ModuloPlanAccionV4 />;
       case 'riesgos':
         return <Riesgos />;
       case 'planes-mejoramiento':
