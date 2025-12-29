@@ -73,6 +73,12 @@ import { Riesgo } from './entities/riesgo.entity';
 import { RiesgosService } from './services/riesgos.service';
 import { RiesgosController } from './controllers/riesgos.controller';
 
+// Planes de Mejoramiento
+import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramiento.module';
+import { PlanesMejoramientoController } from './controllers/planes-mejoramiento.controller';
+import { DashboardController } from './controllers/dashboard.controller';
+import { DashboardService } from './services/dashboard.service';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
@@ -104,10 +110,12 @@ import { RiesgosController } from './controllers/riesgos.controller';
       // Riesgos
       Riesgo
     ]),
-    PeiModule
+    PeiModule,
+    PlanesMejoramientoModule
   ],
   controllers: [
     AppController,
+    DashboardController, // Nuevo Dashboard
     ExpedienteController,
     ActuacionController,
     AbogadoController,
@@ -130,6 +138,7 @@ import { RiesgosController } from './controllers/riesgos.controller';
   ],
   providers: [
     AppService,
+    DashboardService, // Nuevo Service
     ExpedienteService,
     ActuacionService,
     AbogadoService,

@@ -34,7 +34,7 @@ export function ModuloTerminosInformesV3() {
   const [mesActual, setMesActual] = useState(new Date());
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [solicitudes, setSolicitudes] = useState<SolicitudInforme[]>([]);
-  const [modalNuevoOpen, setModalNuevoOpen] = useState(false);
+  // Removed ModalNuevoTermino state
   const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
   const [modalDocsOpen, setModalDocsOpen] = useState(false);
   const [selectedSolicitud, setSelectedSolicitud] = useState<SolicitudInforme | null>(null);
@@ -131,31 +131,7 @@ export function ModuloTerminosInformesV3() {
             { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
           ]
         }}
-        buttons={[
-          {
-            label: 'Nueva Solicitud',
-            labelMobile: 'Nuevo',
-            icon: <Plus className="w-4 h-4" />,
-            onClick: () => setModalNuevoOpen(true),
-            variant: 'primary'
-          },
-          {
-            label: 'Sincronizar',
-            icon: <TrendingUp className="w-4 h-4" />, // Reusing icon for sync
-            onClick: async () => {
-              try {
-                toast.loading('Sincronizando términos...');
-                const res = await legalService.sincronizarTerminos();
-                toast.dismiss();
-                toast.success(`Sincronización completa. Nuevos: ${res.nuevos}`);
-                fetchData();
-              } catch (e) {
-                toast.error('Error al sincronizar');
-              }
-            },
-            variant: 'outline'
-          }
-        ]}
+        buttons={[]}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Términos e Informes"
@@ -234,11 +210,7 @@ export function ModuloTerminosInformesV3() {
         </>
       )}
 
-      <ModalNuevoTermino
-        open={modalNuevoOpen}
-        onOpenChange={setModalNuevoOpen}
-        onSuccess={fetchData}
-      />
+      {/* ModalNuevoTermino removed */}
 
       <ModalDetalleTermino
         open={modalDetalleOpen}

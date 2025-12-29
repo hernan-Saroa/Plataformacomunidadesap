@@ -28,6 +28,7 @@ export function ModuloPlanAccionV3() {
   const [tipoVista, setTipoVista] = useState<'timeline' | 'lista'>('timeline');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEje, setFiltroEje] = useState<string>('TODOS');
+  const [ocultarCompletados, setOcultarCompletados] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   // States for Data
@@ -74,8 +75,30 @@ export function ModuloPlanAccionV3() {
       resultado = resultado.filter(i => i.ejeEstrategico === filtroEje);
     }
 
+    if (ocultarCompletados) {
+      resultado = resultado.filter(i => {
+        const cleanValue = (val: any) => {
+          if (!val) return 0;
+          // Clean %, commas, ensure string
+          const strVal = String(val).replace(/%/g, '').replace(',', '.').trim();
+          return parseFloat(strVal) || 0;
+        };
+
+        const avance = cleanValue(i.avanceActual);
+        const meta = cleanValue(i.metaObjetivo);
+
+        // Ocultar si completó el 99% o más (to handle rounding)
+        if (avance >= 99) return false;
+
+        // Ocultar si alcanzó la meta (si la meta es válida)
+        if (meta > 0 && avance >= meta) return false;
+
+        return true;
+      });
+    }
+
     return resultado;
-  }, [busqueda, filtroEje, indicadores]);
+  }, [busqueda, filtroEje, indicadores, ocultarCompletados]);
 
   const handleVerIndicador = (ind: any) => {
     setSelectedInd(ind);
@@ -145,9 +168,54 @@ export function ModuloPlanAccionV3() {
 
       {/* Filtros */}
       <ModuleFilters
+        searchValue={busqueda}
         onSearchChange={(value) => setBusqueda(value)}
-        onEjeChange={(value) => setFiltroEje(value)}
-        onExport={() => toast.info('Exportando')}
+        filters={[
+          {
+            type: 'select',
+            value: filtroEje,
+            onChange: (val) => setFiltroEje(val),
+            options: [
+              { value: 'TODOS', label: 'Todos los ejes' },
+              { value: 'GESTION', label: 'Gestión Institucional' },
+              { value: 'TALENTO', label: 'Talento Humano' },
+              { value: 'TRANSPARENCIA', label: 'Transparencia' },
+              { value: 'TECNOLOGIA', label: 'Tecnología' }
+            ],
+            colSpan: 1
+          },
+          {
+            type: 'custom',
+            value: '',
+            onChange: () => { },
+            colSpan: 1,
+            customContent: (
+              <div className="flex items-center pt-2">
+                <label className="inline-flex items-center cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={ocultarCompletados}
+                    onChange={(e) => setOcultarCompletados(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="
+                    relative w-11 h-6 bg-gray-200 
+                    peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 
+                    rounded-full peer 
+                    peer-checked:after:translate-x-full peer-checked:after:border-white 
+                    after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
+                    after:bg-white after:border-gray-300 after:border after:rounded-full 
+                    after:h-5 after:w-5 after:transition-all after:shadow-sm
+                    peer-checked:bg-[#003DA5] transition-colors duration-300 ease-in-out
+                  "></div>
+                  <span className="ml-3 text-sm font-medium text-gray-700 group-hover:text-gray-900 transition-colors">
+                    Ocultar completados
+                  </span>
+                </label>
+              </div>
+            )
+          }
+        ]}
       />
 
       {loading ? (
@@ -479,7 +547,9 @@ function TarjetaIndicador({ indicador, onVerIndicador, onActualizar }: TarjetaIn
           <div className="mb-1.5">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] text-gray-500">Avance</span>
-              <span className="text-[10px] font-bold text-gray-700">{indicador.avanceActual || 0}%</span>
+              <span className="text-[10px] font-bold text-gray-700">
+                {indicador.avanceActual || 0}%
+              </span>
             </div>
             <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
               <div
@@ -507,7 +577,7 @@ function TarjetaIndicador({ indicador, onVerIndicador, onActualizar }: TarjetaIn
               variant="ghost"
               size="sm"
               className="text-xs h-8 justify-start gap-1.5 hover:bg-gray-50"
-              onClick={(e) => {
+              onClick={(e: React.MouseEvent) => {
                 e.stopPropagation();
                 onActualizar(indicador);
               }}
@@ -618,7 +688,7 @@ function VistaLista({ indicadores, onVerIndicador, onActualizar }: VistaListaPro
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0"
-                      onClick={(e) => {
+                      onClick={(e: React.MouseEvent) => {
                         e.stopPropagation();
                         onVerIndicador(ind);
                       }}
@@ -629,7 +699,7 @@ function VistaLista({ indicadores, onVerIndicador, onActualizar }: VistaListaPro
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0"
-                      onClick={(e) => {
+                      onClick={(e: React.MouseEvent) => {
                         e.stopPropagation();
                         onActualizar(ind);
                       }}

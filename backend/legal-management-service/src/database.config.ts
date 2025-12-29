@@ -34,6 +34,9 @@ import { DocumentoOC } from './entities/documento-oc.entity';
 // Módulo de Riesgos
 import { Riesgo } from './entities/riesgo.entity';
 
+// Planes de Mejoramiento
+import { PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario } from './entities/planes-mejoramiento.entity';
+
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
@@ -57,7 +60,9 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Comentarios y Documentos OC
         ComentarioOC, DocumentoOC,
         // Riesgos
-        Riesgo
+        Riesgo,
+        // Planes de Mejoramiento
+        PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario
     ],
     synchronize: false, // ⚠️ Cambiado a false para usar migraciones en producción
     logging: ['error'], // Solo mostrar errores, no queries
