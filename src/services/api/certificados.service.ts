@@ -336,11 +336,91 @@ export const certificadosService = {
     },
 
     /**
+      * Restablecer nombre del firmante al predeterminado
+      */
+    async resetNombreFirmante(updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
+      const url = `${TEMPLATE_BASE_URL}/certificates/template-config/reset-signer?tipo=${tipo}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ updatedBy }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return await certificadosService.plantilla.actualizarNombreFirmante('', updatedBy, tipo);
+        }
+
+        let errorMessage = `Error ${response.status}: ${response.statusText}`;
+        try {
+          const error = await response.json();
+          errorMessage = error.message || errorMessage;
+        } catch {
+          const errorText = await response.text();
+          if (errorText) {
+            errorMessage = errorText;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
+      return await response.json();
+    },
+
+    /**
+      * Restablecer titulo del cargo al predeterminado
+      */
+    async resetTituloCargo(updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
+      const url = `${TEMPLATE_BASE_URL}/certificates/template-config/reset-cargo-title?tipo=${tipo}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ updatedBy }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `Error ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    },
+
+    /**
+      * Restablecer contenido del certificado al predeterminado
+      */
+    async resetContenido(updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
+      const url = `${TEMPLATE_BASE_URL}/certificates/template-config/reset-content?tipo=${tipo}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ updatedBy }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `Error ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    },
+
+    /**
      * Obtener historial de cambios
      */
-    async obtenerHistorialCambios(tipo: 'docente' | 'administrador' = 'docente'): Promise<any[]> {
+    async obtenerHistorialCambios(
+      tipo: 'docente' | 'administrador' = 'docente',
+      limit: number = 10,
+      offset: number = 0
+    ): Promise<{ items: any[]; total: number; limit: number; offset: number }> {
       return apiClient.get(`${SERVICE_PREFIX}/certificates/template-config/change-history`, {
-        params: { tipo },
+        params: { tipo, limit, offset },
       });
     },
 
