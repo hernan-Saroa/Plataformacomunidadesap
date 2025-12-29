@@ -36,8 +36,15 @@ import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { VistaListaDefensaJudicial } from './VistaListaDefensaJudicial';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 
 type VistaModulo = 'kanban' | 'lista';
+
+// Tipo para drag and drop
+const ItemTypes = {
+  EXPEDIENTE: 'expediente'
+};
 
 export function ModuloDefensaJudicialV3() {
   const [isMobile, setIsMobile] = useState(false);
@@ -47,6 +54,9 @@ export function ModuloDefensaJudicialV3() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
+  
+  // Estado local para manejar drag and drop
+  const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>(expedientesJudicialesMock);
 
   // Detectar tamaño de pantalla
   useEffect(() => {
@@ -61,22 +71,38 @@ export function ModuloDefensaJudicialV3() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
+  // Manejar movimiento de expediente entre etapas
+  const handleMoverExpediente = (expedienteId: string, nuevaEtapa: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS') => {
+    setExpedientes((prevExpedientes) => 
+      prevExpedientes.map((exp) => 
+        exp.id === expedienteId 
+          ? { ...exp, etapa: nuevaEtapa }
+          : exp
+      )
+    );
+    
+    toast.success('Expediente movido exitosamente', {
+      description: `Cambiado a etapa: ${nuevaEtapa}`
+    });
+  };
+
   // Agrupar expedientes por etapa
   const expedientesPorEtapa = {
-    NOTIFICADA: expedientesJudicialesMock.filter(exp => exp.etapa === 'NOTIFICADA'),
-    CONTESTACIÓN: expedientesJudicialesMock.filter(exp => exp.etapa === 'CONTESTACIÓN'),
-    PROBATORIA: expedientesJudicialesMock.filter(exp => exp.etapa === 'PROBATORIA'),
-    ALEGATOS: expedientesJudicialesMock.filter(exp => exp.etapa === 'ALEGATOS'),
+    NOTIFICADA: expedientes.filter(exp => exp.etapa === 'NOTIFICADA'),
+    CONTESTACIÓN: expedientes.filter(exp => exp.etapa === 'CONTESTACIÓN'),
+    PROBATORIA: expedientes.filter(exp => exp.etapa === 'PROBATORIA'),
+    ALEGATOS: expedientes.filter(exp => exp.etapa === 'ALEGATOS'),
   };
 
   // Calcular estadísticas
-  const totalExpedientes = expedientesJudicialesMock.length;
-  const expedientesCriticos = expedientesJudicialesMock.filter(e => e.diasRestantes <= 5).length;
-  const expedientesEnTermino = expedientesJudicialesMock.filter(e => e.diasRestantes > 15).length;
+  const totalExpedientes = expedientes.length;
+  const expedientesCriticos = expedientes.filter(e => e.diasRestantes <= 5).length;
+  const expedientesEnTermino = expedientes.filter(e => e.diasRestantes > 15).length;
 
   const etapas = [
     { 
       nombre: 'Notificada', 
+      valor: 'NOTIFICADA' as const,
       color: '#6B7280', 
       icono: <FileCheck className="w-4 h-4 text-gray-600" />, 
       diasEstimados: 10,
@@ -84,6 +110,7 @@ export function ModuloDefensaJudicialV3() {
     },
     { 
       nombre: 'Contestación', 
+      valor: 'CONTESTACIÓN' as const,
       color: '#F59E0B', 
       icono: <Edit className="w-4 h-4 text-amber-600" />, 
       diasEstimados: 30,
@@ -91,6 +118,7 @@ export function ModuloDefensaJudicialV3() {
     },
     { 
       nombre: 'Probatoria', 
+      valor: 'PROBATORIA' as const,
       color: '#3B82F6', 
       icono: <Search className="w-4 h-4 text-blue-600" />, 
       diasEstimados: 60,
@@ -98,6 +126,7 @@ export function ModuloDefensaJudicialV3() {
     },
     { 
       nombre: 'Alegatos', 
+      valor: 'ALEGATOS' as const,
       color: '#003DA5', 
       icono: <Scale className="w-4 h-4" style={{ color: '#003DA5' }} />, 
       diasEstimados: 20,
@@ -228,35 +257,38 @@ export function ModuloDefensaJudicialV3() {
 
       {/* Tablero Kanban - IGUAL A DISCIPLINARIO */}
       {tipoVista === 'kanban' && (
-        <div className="relative">
-          {/* Indicador de scroll en mobile/tablet */}
-          {(isMobile || isTablet) && (
-            <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
-              <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
-                <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
-                Desliza
-              </p>
+        <DndProvider backend={HTML5Backend}>
+          <div className="relative">
+            {/* Indicador de scroll en mobile/tablet */}
+            {(isMobile || isTablet) && (
+              <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
+                <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
+                  <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
+                  Desliza
+                </p>
+              </div>
+            )}
+            
+            <div 
+              className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
+              style={{
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#CBD5E0 #F7FAFC',
+                WebkitOverflowScrolling: 'touch'
+              }}
+            >
+              {etapas.map((etapa) => (
+                <ColumnaKanban
+                  key={etapa.nombre}
+                  etapa={etapa}
+                  isMobile={isMobile}
+                  isTablet={isTablet}
+                  onMoverExpediente={handleMoverExpediente}
+                />
+              ))}
             </div>
-          )}
-          
-          <div 
-            className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
-            style={{
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#CBD5E0 #F7FAFC',
-              WebkitOverflowScrolling: 'touch'
-            }}
-          >
-            {etapas.map((etapa) => (
-              <ColumnaKanban
-                key={etapa.nombre}
-                etapa={etapa}
-                isMobile={isMobile}
-                isTablet={isTablet}
-              />
-            ))}
           </div>
-        </div>
+        </DndProvider>
       )}
 
       {/* Vista de Lista - NUEVA IMPLEMENTACIÓN */}
@@ -282,6 +314,7 @@ export function ModuloDefensaJudicialV3() {
 interface ColumnaKanbanProps {
   etapa: {
     nombre: string;
+    valor: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS';
     color: string;
     icono: React.ReactNode;
     diasEstimados: number;
@@ -289,9 +322,21 @@ interface ColumnaKanbanProps {
   };
   isMobile: boolean;
   isTablet: boolean;
+  onMoverExpediente: (expedienteId: string, nuevaEtapa: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS') => void;
 }
 
-function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
+function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente }: ColumnaKanbanProps) {
+  const [{ isOver }, drop] = useDrop({
+    accept: ItemTypes.EXPEDIENTE,
+    drop: (item: { id: string }) => onMoverExpediente(item.id, etapa.valor),
+    collect: (monitor) => ({
+      isOver: !!monitor.isOver(),
+    }),
+  });
+
+  const backgroundColor = isOver ? '#F0F7FF' : 'transparent';
+  const borderColor = isOver ? '#2962FF' : 'transparent';
+
   return (
     <motion.div
       className="flex-shrink-0"
@@ -325,22 +370,32 @@ function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
 
         {/* Lista de Expedientes */}
         <div 
+          ref={drop}
           className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`} 
-          style={{ maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)' }}
+          style={{ 
+            minHeight: isMobile ? '400px' : '500px',
+            maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)',
+            backgroundColor: backgroundColor,
+            borderLeft: `3px solid ${borderColor}`,
+            borderRight: `3px solid ${borderColor}`,
+            transition: 'all 0.2s ease'
+          }}
         >
           {etapa.expedientes.map((expediente) => (
             <TarjetaExpediente
               key={expediente.id}
               expediente={expediente}
               isMobile={isMobile}
+              onMoverExpediente={onMoverExpediente}
+              etapaActual={etapa.valor}
             />
           ))}
 
           {etapa.expedientes.length === 0 && (
-            <div className="text-center py-12 text-gray-400">
+            <div className="text-center py-12 text-gray-400" style={{ pointerEvents: 'none' }}>
               <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-xs font-semibold">
-                Sin expedientes en {etapa.nombre}
+                {isOver ? '✅ Suelte aquí' : `Sin expedientes en ${etapa.nombre}`}
               </p>
             </div>
           )}
@@ -354,9 +409,11 @@ function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
 interface TarjetaExpedienteProps {
   expediente: ExpedienteJudicial;
   isMobile: boolean;
+  onMoverExpediente: (expedienteId: string, nuevaEtapa: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS') => void;
+  etapaActual: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS';
 }
 
-function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
+function TarjetaExpediente({ expediente, isMobile, onMoverExpediente, etapaActual }: TarjetaExpedienteProps) {
   // Estados para modales
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
@@ -387,210 +444,223 @@ function TarjetaExpediente({ expediente, isMobile }: TarjetaExpedienteProps) {
   const porcentajeTiempo = Math.round(((expediente.diasTotales - expediente.diasRestantes) / expediente.diasTotales) * 100);
   const ultimaActuacion = expediente.ultimaActuacion || `Expediente en etapa de ${expediente.etapa}`;
 
+  // Drag and Drop
+  const [{ isDragging }, drag] = useDrag({
+    type: ItemTypes.EXPEDIENTE,
+    item: { id: expediente.id, etapa: etapaActual },
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  });
+
+  const opacity = isDragging ? 0.5 : 1;
+
   return (
-    <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
-      {/* Barra superior azul ESAP */}
-      <div className="h-1" style={{ background: '#003DA5' }} />
+    <div ref={drag} style={{ opacity, cursor: 'move' }}>
+      <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
+        {/* Barra superior azul ESAP */}
+        <div className="h-1" style={{ background: '#003DA5' }} />
 
-      <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
-        {/* Header */}
-        <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div 
-              className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`}
-              style={{ background: '#E0EDFF' }}
-            >
-              <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h4 className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} truncate`} style={{ color: '#003DA5' }}>
-                {expediente.id}
-              </h4>
-              <p className="text-xs text-gray-600 truncate">
-                {expediente.medioControl}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Demandante */}
-        <div className="mb-2 pb-2 border-b border-gray-200">
-          <p className="text-xs text-gray-500 mb-0.5">👤 Demandante:</p>
-          <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-            {expediente.demandante}
-          </p>
-        </div>
-
-        {/* Profesional Asignado */}
-        <div className="mb-2 pb-2 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
-              <AvatarFallback 
-                className="text-xs"
-                style={{ background: '#E0EDFF', color: '#003DA5' }}
+        <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
+          {/* Header */}
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div 
+                className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`}
+                style={{ background: '#E0EDFF' }}
               >
-                {expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500">👨‍💼 Profesional:</p>
-              <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-                {expediente.abogadoAsignado}
-              </p>
+                <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} truncate`} style={{ color: '#003DA5' }}>
+                  {expediente.id}
+                </h4>
+                <p className="text-xs text-gray-600 truncate">
+                  {expediente.medioControl}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Semáforo */}
-        <div className="flex items-center gap-1.5 mb-2">
-          <Badge 
-            className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200"
-            style={{ color: semaforo.color }}
-          >
-            <div 
-              className="w-2 h-2 rounded-full"
-              style={{ background: semaforo.color }}
-            />
-            {expediente.diasRestantes} días
-          </Badge>
-        </div>
-
-        {/* Métricas */}
-        <div className="grid grid-cols-3 gap-1.5 mb-2">
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{expediente.documentos?.length || 0}</p>
-            <p className="text-xs text-gray-500">Docs</p>
+          {/* Demandante */}
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            <p className="text-xs text-gray-500 mb-0.5">👤 Demandante:</p>
+            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+              {expediente.demandante}
+            </p>
           </div>
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{expediente.diasTotales - expediente.diasRestantes}</p>
-            <p className="text-xs text-gray-500">Días</p>
+
+          {/* Profesional Asignado */}
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            <div className="flex items-center gap-2">
+              <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
+                <AvatarFallback 
+                  className="text-xs"
+                  style={{ background: '#E0EDFF', color: '#003DA5' }}
+                >
+                  {expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500">👨‍💼 Profesional:</p>
+                <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+                  {expediente.abogadoAsignado}
+                </p>
+              </div>
+            </div>
           </div>
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{porcentajeTiempo}%</p>
-            <p className="text-xs text-gray-500">Tiempo</p>
-          </div>
-        </div>
 
-        {/* Última Actuación - IGUAL A DISCIPLINARIO */}
-        <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
-          <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#003DA5' }}>
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#003DA5' }}></span>
-            ÚLTIMA ACTUACIÓN
-          </p>
-          <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-700 line-clamp-2 mb-1`}>
-            {ultimaActuacion}
-          </p>
-          <p className="text-xs text-gray-500">
-            📅 {expediente.fechaActualizacion.toLocaleDateString('es-CO')}
-          </p>
-        </div>
-
-        {/* Acciones */}
-        <div className="space-y-1 pt-2 border-t border-gray-200">
-          <Button
-            onClick={handleAbrirExpediente}
-            size="sm"
-            className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-          >
-            <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1 flex-shrink-0`} />
-            Expediente
-          </Button>
-
-          {/* Gestión Documental */}
-          <div className="grid grid-cols-2 gap-1">
-            <Button
-              onClick={() => setModalAutosOpen(true)}
-              size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+          {/* Semáforo */}
+          <div className="flex items-center gap-1.5 mb-2">
+            <Badge 
+              className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200"
+              style={{ color: semaforo.color }}
             >
-              <Scale className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Autos
-            </Button>
-            
-            <Button
-              onClick={() => setModalEvidenciasOpen(true)}
-              size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-            >
-              <Paperclip className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Evidencias
-            </Button>
+              <div 
+                className="w-2 h-2 rounded-full"
+                style={{ background: semaforo.color }}
+              />
+              {expediente.diasRestantes} días
+            </Badge>
           </div>
 
-          <div className="grid grid-cols-2 gap-1">
-            <Button
-              onClick={() => setModalOficiosOpen(true)}
-              size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-            >
-              <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Oficios
-            </Button>
-            
-            <Button
-              onClick={() => setModalActasOpen(true)}
-              size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-            >
-              <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Actas
-            </Button>
+          {/* Métricas */}
+          <div className="grid grid-cols-3 gap-1.5 mb-2">
+            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
+              <p className="text-xs font-bold text-gray-700">{expediente.documentos?.length || 0}</p>
+              <p className="text-xs text-gray-500">Docs</p>
+            </div>
+            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
+              <p className="text-xs font-bold text-gray-700">{expediente.diasTotales - expediente.diasRestantes}</p>
+              <p className="text-xs text-gray-500">Días</p>
+            </div>
+            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
+              <p className="text-xs font-bold text-gray-700">{porcentajeTiempo}%</p>
+              <p className="text-xs text-gray-500">Tiempo</p>
+            </div>
           </div>
 
-          <Button
-            onClick={() => setModalComunicacionesOpen(true)}
-            size="sm"
-            className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-          >
-            <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-            Comunicaciones del Proceso
-          </Button>
+          {/* Última Actuación - IGUAL A DISCIPLINARIO */}
+          <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
+            <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#003DA5' }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#003DA5' }}></span>
+              ÚLTIMA ACTUACIÓN
+            </p>
+            <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-700 line-clamp-2 mb-1`}>
+              {ultimaActuacion}
+            </p>
+            <p className="text-xs text-gray-500">
+              📅 {expediente.fechaActualizacion.toLocaleDateString('es-CO')}
+            </p>
+          </div>
+
+          {/* Acciones */}
+          <div className="space-y-1 pt-2 border-t border-gray-200">
+            <Button
+              onClick={handleAbrirExpediente}
+              size="sm"
+              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1 flex-shrink-0`} />
+              Expediente
+            </Button>
+
+            {/* Gestión Documental */}
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                onClick={() => setModalAutosOpen(true)}
+                size="sm"
+                variant="outline"
+                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              >
+                <Scale className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
+                Autos
+              </Button>
+              
+              <Button
+                onClick={() => setModalEvidenciasOpen(true)}
+                size="sm"
+                variant="outline"
+                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              >
+                <Paperclip className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
+                Evidencias
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                onClick={() => setModalOficiosOpen(true)}
+                size="sm"
+                variant="outline"
+                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              >
+                <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
+                Oficios
+              </Button>
+              
+              <Button
+                onClick={() => setModalActasOpen(true)}
+                size="sm"
+                variant="outline"
+                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              >
+                <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
+                Actas
+              </Button>
+            </div>
+
+            <Button
+              onClick={() => setModalComunicacionesOpen(true)}
+              size="sm"
+              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
+              Comunicaciones del Proceso
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {/* MODALES */}
-      <ModalExpediente
-        isOpen={modalExpedienteOpen}
-        onClose={() => setModalExpedienteOpen(false)}
-        expediente={expediente}
-      />
+        {/* MODALES */}
+        <ModalExpediente
+          isOpen={modalExpedienteOpen}
+          onClose={() => setModalExpedienteOpen(false)}
+          expediente={expediente}
+        />
 
-      <ModalComunicaciones
-        isOpen={modalComunicacionesOpen}
-        onClose={() => setModalComunicacionesOpen(false)}
-        expediente={expediente}
-      />
+        <ModalComunicaciones
+          isOpen={modalComunicacionesOpen}
+          onClose={() => setModalComunicacionesOpen(false)}
+          expediente={expediente}
+        />
 
-      <ModalAutos
-        isOpen={modalAutosOpen}
-        onClose={() => setModalAutosOpen(false)}
-        expediente={expediente}
-      />
+        <ModalAutos
+          isOpen={modalAutosOpen}
+          onClose={() => setModalAutosOpen(false)}
+          expediente={expediente}
+        />
 
-      <ModalEvidencias
-        isOpen={modalEvidenciasOpen}
-        onClose={() => setModalEvidenciasOpen(false)}
-        expediente={expediente}
-      />
+        <ModalEvidencias
+          isOpen={modalEvidenciasOpen}
+          onClose={() => setModalEvidenciasOpen(false)}
+          expediente={expediente}
+        />
 
-      <ModalOficios
-        isOpen={modalOficiosOpen}
-        onClose={() => setModalOficiosOpen(false)}
-        expediente={expediente}
-      />
+        <ModalOficios
+          isOpen={modalOficiosOpen}
+          onClose={() => setModalOficiosOpen(false)}
+          expediente={expediente}
+        />
 
-      <ModalActas
-        isOpen={modalActasOpen}
-        onClose={() => setModalActasOpen(false)}
-        expediente={expediente}
-      />
-    </Card>
+        <ModalActas
+          isOpen={modalActasOpen}
+          onClose={() => setModalActasOpen(false)}
+          expediente={expediente}
+        />
+      </Card>
+    </div>
   );
 }
 
@@ -609,6 +679,8 @@ function VistaLista({ expedientes, isMobile, isTablet }: VistaListaProps) {
           key={expediente.id}
           expediente={expediente}
           isMobile={isMobile}
+          onMoverExpediente={handleMoverExpediente}
+          etapaActual={expediente.etapa as 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS'}
         />
       ))}
     </div>

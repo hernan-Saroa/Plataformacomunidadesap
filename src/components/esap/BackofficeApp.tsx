@@ -1,6 +1,5 @@
 /**
  * Backoffice App - Sistema Administrativo ESAP
- * Integra todos los módulos del backoffice incluyendo Gestión Profesoral
  */
 
 import { useState } from 'react';
@@ -22,8 +21,8 @@ import { CertificateRequestsModule } from './CertificateRequestsModule';
 import { GraduateCertificatesWrapper } from './GraduateCertificatesWrapper';
 import { RolesAdministrationModulePremium } from './RolesAdministrationModulePremium';
 
-// Importar módulos de Gestión Profesoral
-import { GestionProfesoralModule } from '../gestion-profesoral/GestionProfesoralModule';
+// Importar módulo de Firma Electrónica (World-Class)
+import { ModuloFirmaElectronicaWorldClass } from './firma-electronica/ModuloFirmaElectronicaWorldClass';
 
 // Importar módulo de Control Interno
 import { ControlInternoFull } from './control-interno/ControlInternoFull';
@@ -43,9 +42,6 @@ import { EstructuraOrganizacionalModule } from '../estructura-organizacional/Est
 // Importar módulo de Programas Académicos
 import { ProgramasAcademicosModule } from './ProgramasAcademicosModule';
 
-// Importar módulo de Aspirantes
-import { AspirantesModule } from './AspirantesModule';
-
 // Importar ProfileModal
 import { ProfileModal } from './ProfileModal';
 
@@ -57,6 +53,9 @@ import { NotificationsProvider } from './NotificationsContext';
 
 // ✅ NUEVO: Provider de Tour Guiado
 import { TourProvider } from './gestion-legal/design-system/TourContext';
+
+// ✅ NUEVO: Módulo de Gestión de Contraseñas
+import { GestionUsuariosPasswordTracking } from './admin/GestionUsuariosPasswordTracking';
 
 type ModuleView = 
   | 'dashboard'
@@ -74,15 +73,15 @@ type ModuleView =
   | 'job-board'
   | 'certificate-requests'
   | 'verification-certificates'
-  | 'gestion-profesoral'
+  | 'firma-electronica'
   | 'control-interno'
   | 'control-disciplinario'
   | 'gestion-legal'
   | 'certificados-laborales'
   | 'estructura-organizacional'
   | 'programas-academicos'
-  | 'aspirantes'
   | 'arquitectura-empresarial'
+  | 'gestion-passwords'
   | 'demo-pta-motor';
 
 interface BackofficeAppProps {
@@ -121,8 +120,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     ? 'dashboard' // Abrir en Dashboard Ejecutivo que muestra métricas de Arquitectura
     : userData?.module === 'gestion-legal' 
     ? 'gestion-legal'
-    : userData?.module === 'gestion-profesoral'
-    ? 'gestion-profesoral'
     : 'dashboard';
   const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(''); // Nuevo: Guardar el módulo del sidebar
@@ -148,7 +145,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       'graduates-verification': 'graduates',
       'graduates-certificates': 'verification-certificates',
       'graduates-review-requests': 'certificate-requests',
-      'aspirantes': 'aspirantes',
       'community': 'community-posts', // Por defecto abre Posts
       'community-posts': 'community-posts',
       'community-events': 'community-events',
@@ -158,11 +154,12 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       'certificados-laborales': 'certificados-laborales',
       'estructura-organizacional': 'estructura-organizacional',
       'programas-academicos': 'programas-academicos',
-      'gestion-profesoral': 'gestion-profesoral',
+      'firma-electronica': 'firma-electronica',
       'control-interno': 'control-interno',
       'control-disciplinario': 'control-disciplinario',
       'gestion-legal': 'gestion-legal',
-      'arquitectura-empresarial': 'arquitectura-empresarial'
+      'arquitectura-empresarial': 'arquitectura-empresarial',
+      'gestion-passwords': 'gestion-passwords'
     };
     return (mappings[sidebarModule] as ModuleView) || 'dashboard';
   };
@@ -254,8 +251,8 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'verification-certificates':
         return <GraduateCertificatesWrapper onPendingCountChange={setCertificatesPendingCount} />;
       
-      case 'gestion-profesoral':
-        return <GestionProfesoralModule />;
+      case 'firma-electronica':
+        return <ModuloFirmaElectronicaWorldClass />;
       
       case 'control-interno':
         return <ControlInternoFull />;
@@ -275,11 +272,11 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'programas-academicos':
         return <ProgramasAcademicosModule />;
       
-      case 'aspirantes':
-        return <AspirantesModule />;
-      
       case 'arquitectura-empresarial':
         return <ArquitecturaEmpresarialModule />;
+      
+      case 'gestion-passwords':
+        return <GestionUsuariosPasswordTracking />;
       
       default:
         return <ExecutiveDashboard userRole={mockUser.role} />;
@@ -320,8 +317,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
                 ? 'arquitectura-empresarial'
                 : userData?.module === 'gestion-legal'
                 ? 'gestion-legal'
-                : userData?.module === 'gestion-profesoral'
-                ? 'gestion-profesoral'
                 : undefined
             }
           />

@@ -1,5 +1,4 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
   Download, 
   Share2, 
@@ -10,11 +9,24 @@ import {
   Award,
   Copy,
   Mail,
-  MessageSquare
+  MessageSquare,
+  X,
+  Shield,
+  Hash,
+  Building2,
+  ShieldCheck,
+  Lock,
+  FileCheck,
+  Loader2,
+  ArrowUp
 } from 'lucide-react';
 import { VerificationCertificate } from '../../types';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '@/utils/browser';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { QRCodeSVG } from 'qrcode.react';
+import esapLogo from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
 interface VerificationCertificateDisplayProps {
   certificate: VerificationCertificate;

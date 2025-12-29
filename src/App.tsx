@@ -5,6 +5,8 @@ import { LoginPage } from './components/portal/LoginPage';
 import { PortalDashboard } from './components/portal/PortalDashboard';
 import { BackofficeApp } from './components/esap/BackofficeApp';
 import { VisualizadorPTAAjustes } from './components/gestion-profesoral/VisualizadorPTAAjustes';
+import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStrength';
+import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
@@ -22,6 +24,8 @@ import { AlertTriangle, Clock } from 'lucide-react';
  * 
  * DEMO ESPECIAL:
  * - Vista 'pta-demo': Visualizador de PTA con Ajustes Solicitados
+ * - Vista 'password-demo': Demo de Validación de Contraseñas
+ * - Vista 'procesos-coactivos-demo': Demo de Procesos Coactivos
  * 
  * Features:
  * - Persistencia de sesión en localStorage
@@ -29,7 +33,7 @@ import { AlertTriangle, Clock } from 'lucide-react';
  * - Alerta previa antes de cerrar sesión
  */
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo';
 
 interface Usuario {
   id: string;
@@ -352,6 +356,12 @@ export default function App() {
             onLogout={handleLogout}
           />
         );
+      
+      case 'password-demo':
+        return <DemoPasswordStrength />;
+      
+      case 'procesos-coactivos-demo':
+        return <DemoProcesosCoactivos />;
       
       default:
         return <LandingPage onIrALogin={handleIrALogin} />;

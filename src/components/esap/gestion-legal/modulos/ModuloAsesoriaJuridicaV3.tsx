@@ -23,6 +23,8 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { ModalNuevaConsulta, NuevaConsultaData } from './ModalNuevaConsulta';
+import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
 
 type VistaModulo = 'tabla' | 'tarjetas';
 type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema';
@@ -35,6 +37,11 @@ export function ModuloAsesoriaJuridicaV3() {
   const [orden, setOrden] = useState<OrdenColumna>('dias');
   const [direccionOrden, setDireccionOrden] = useState<'asc' | 'desc'>('asc');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  // Estados para modales
+  const [modalNuevaConsultaOpen, setModalNuevaConsultaOpen] = useState(false);
+  const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
+  const [consultaSeleccionada, setConsultaSeleccionada] = useState<ConsultaJuridica | null>(null);
 
   const consultasFiltradas = useMemo(() => {
     let resultado = [...consultasJuridicasMock];
@@ -96,6 +103,16 @@ export function ModuloAsesoriaJuridicaV3() {
     }
   };
 
+  const handleNuevaConsulta = (data: NuevaConsultaData) => {
+    console.log('Nueva consulta registrada:', data);
+    // Aquí se integraría con el backend
+  };
+
+  const handleAbrirExpediente = (consulta: ConsultaJuridica) => {
+    setConsultaSeleccionada(consulta);
+    setModalExpedienteOpen(true);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header con ModuleHeader - SIN toggleView */}
@@ -107,7 +124,7 @@ export function ModuloAsesoriaJuridicaV3() {
             label: 'Nueva Consulta',
             labelMobile: 'Nueva',
             icon: <Plus className="w-4 h-4" />,
-            onClick: () => toast.info('Nueva Consulta Jurídica'),
+            onClick: () => setModalNuevaConsultaOpen(true),
             variant: 'primary'
           }
         ]}
@@ -234,9 +251,33 @@ export function ModuloAsesoriaJuridicaV3() {
           orden={orden}
           direccionOrden={direccionOrden}
           onOrdenar={handleOrdenar}
+          onAbrirExpediente={handleAbrirExpediente}
         />
       ) : (
-        <TarjetasConsultas consultas={consultasFiltradas} />
+        <TarjetasConsultas 
+          consultas={consultasFiltradas}
+          onAbrirExpediente={handleAbrirExpediente}
+        />
+      )}
+
+      {/* MODALES */}
+      {modalNuevaConsultaOpen && (
+        <ModalNuevaConsulta
+          isOpen={modalNuevaConsultaOpen}
+          onClose={() => setModalNuevaConsultaOpen(false)}
+          onSubmit={handleNuevaConsulta}
+        />
+      )}
+
+      {modalExpedienteOpen && consultaSeleccionada && (
+        <ModalExpedienteConsulta
+          isOpen={modalExpedienteOpen}
+          onClose={() => {
+            setModalExpedienteOpen(false);
+            setConsultaSeleccionada(null);
+          }}
+          consulta={consultaSeleccionada}
+        />
       )}
     </div>
   );
@@ -247,9 +288,10 @@ interface TablaConsultasProps {
   orden: OrdenColumna;
   direccionOrden: 'asc' | 'desc';
   onOrdenar: (columna: OrdenColumna) => void;
+  onAbrirExpediente: (consulta: ConsultaJuridica) => void;
 }
 
-function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaConsultasProps) {
+function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirExpediente }: TablaConsultasProps) {
   return (
     <Card className="bg-white border border-gray-200">
       <table className="w-full">
@@ -335,7 +377,10 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaCo
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.abogadoAsignado}</td>
               <td className="px-4 py-3 text-sm text-gray-500">
                 <Button
-                  onClick={(e) => { e.stopPropagation(); toast.success('Consulta Jurídica', { description: `Abriendo ${consulta.id}` }); }}
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    onAbrirExpediente(consulta);
+                  }}
                   size="sm"
                   className="w-full text-xs font-bold truncate"
                   style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -353,9 +398,10 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar }: TablaCo
 
 interface TarjetasConsultasProps {
   consultas: ConsultaJuridica[];
+  onAbrirExpediente: (consulta: ConsultaJuridica) => void;
 }
 
-function TarjetasConsultas({ consultas }: TarjetasConsultasProps) {
+function TarjetasConsultas({ consultas, onAbrirExpediente }: TarjetasConsultasProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {consultas.map((consulta) => (
@@ -437,7 +483,10 @@ function TarjetasConsultas({ consultas }: TarjetasConsultasProps) {
 
             <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
               <Button
-                onClick={(e) => { e.stopPropagation(); toast.success('Consulta Jurídica', { description: `Abriendo ${consulta.id}` }); }}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  onAbrirExpediente(consulta);
+                }}
                 size="sm"
                 className="w-full text-xs font-bold truncate"
                 style={{ background: '#003DA5', color: '#FFFFFF' }}

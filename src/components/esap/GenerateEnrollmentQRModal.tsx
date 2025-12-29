@@ -5,7 +5,7 @@
 
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Download, Share2, Copy, CheckCircle } from 'lucide-react';
-import { Dialog, DialogContent } from '../ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { toast } from 'sonner@2.0.3';
 import { useState } from 'react';
@@ -88,6 +88,13 @@ export function GenerateEnrollmentQRModal({ open, onOpenChange }: GenerateEnroll
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md mx-auto p-0 overflow-hidden bg-white">
+        <DialogTitle className="sr-only">
+          Código QR de Enrolamiento - Generador
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Generador de código QR para auto-registro de usuarios en la plataforma ESAP. Comparte este código para permitir el enrolamiento de nuevos usuarios.
+        </DialogDescription>
+        
         <AnimatePresence>
           {open && (
             <motion.div

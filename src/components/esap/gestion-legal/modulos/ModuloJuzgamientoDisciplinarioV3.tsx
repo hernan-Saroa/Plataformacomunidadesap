@@ -2,7 +2,7 @@
  * ModuloJuzgamientoDisciplinarioV3 - MOD-02: Juzgamiento Disciplinario
  * DISEÑO 100% IDÉNTICO A DEFENSA JUDICIAL
  * ✅ Responsive mobile-first FUNCIONAL
- * ✅ Sin drag & drop (simplificado)
+ * ✅ Drag & Drop FUNCIONAL
  * ✅ Tarjetas 320px con bloque "Última Actuación"
  */
 
@@ -33,6 +33,15 @@ import { ModalAutos } from './ModalAutos';
 import { ModalEvidencias } from './ModalEvidencias';
 import { ModalOficios } from './ModalOficios';
 import { ModalActas } from './ModalActas';
+import { ModalNuevoProcesoDisciplinario } from './ModalNuevoProcesoDisciplinario';
+import { VistaListaJuzgamiento } from './VistaListaJuzgamiento';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+
+// Tipo para drag and drop
+const ItemTypes = {
+  PROCESO: 'proceso_disciplinario'
+};
 
 // DATOS MOCK INLINE (temporales para demo)
 const procesosDisciplinariosMock: any[] = [
@@ -225,6 +234,10 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
+  const [modalNuevoProcesoOpen, setModalNuevoProcesoOpen] = useState(false);
+  
+  // Estado local para manejar drag and drop
+  const [procesos, setProcesos] = useState(procesosDisciplinariosMock);
 
   // Detectar tamaño de pantalla
   useEffect(() => {
@@ -239,22 +252,38 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
+  // Manejar movimiento de proceso entre etapas
+  const handleMoverProceso = (procesoId: string, nuevaEtapa: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS') => {
+    setProcesos((prevProcesos) => 
+      prevProcesos.map((p) => 
+        p.id === procesoId 
+          ? { ...p, etapa: nuevaEtapa }
+          : p
+      )
+    );
+    
+    toast.success('Proceso movido exitosamente', {
+      description: `Cambiado a etapa: ${nuevaEtapa}`
+    });
+  };
+
   // Agrupar procesos por etapa
   const procesosPorEtapa = {
-    E1_AVOCAMIENTO: procesosDisciplinariosMock.filter(p => p.etapa === 'E1_AVOCAMIENTO'),
-    E2_DESCARGOS: procesosDisciplinariosMock.filter(p => p.etapa === 'E2_DESCARGOS'),
-    E3_PRUEBAS: procesosDisciplinariosMock.filter(p => p.etapa === 'E3_PRUEBAS'),
-    E4_ALEGATOS: procesosDisciplinariosMock.filter(p => p.etapa === 'E4_ALEGATOS'),
+    E1_AVOCAMIENTO: procesos.filter(p => p.etapa === 'E1_AVOCAMIENTO'),
+    E2_DESCARGOS: procesos.filter(p => p.etapa === 'E2_DESCARGOS'),
+    E3_PRUEBAS: procesos.filter(p => p.etapa === 'E3_PRUEBAS'),
+    E4_ALEGATOS: procesos.filter(p => p.etapa === 'E4_ALEGATOS'),
   };
 
   // Calcular estadísticas
-  const totalProcesos = procesosDisciplinariosMock.length;
-  const procesosCriticos = procesosDisciplinariosMock.filter(p => p.diasRestantes <= 3).length;
-  const procesosEnTermino = procesosDisciplinariosMock.filter(p => p.diasRestantes > 5).length;
+  const totalProcesos = procesos.length;
+  const procesosCriticos = procesos.filter(p => p.diasRestantes <= 3).length;
+  const procesosEnTermino = procesos.filter(p => p.diasRestantes > 5).length;
 
   const etapas = [
     { 
       nombre: 'Avocamiento', 
+      valor: 'E1_AVOCAMIENTO' as const,
       color: '#6B7280', 
       icono: <FileCheck className="w-4 h-4 text-gray-600" />, 
       diasEstimados: 5,
@@ -262,6 +291,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     },
     { 
       nombre: 'Descargos', 
+      valor: 'E2_DESCARGOS' as const,
       color: '#F59E0B', 
       icono: <Edit className="w-4 h-4 text-amber-600" />, 
       diasEstimados: 10,
@@ -269,6 +299,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     },
     { 
       nombre: 'Pruebas', 
+      valor: 'E3_PRUEBAS' as const,
       color: '#3B82F6', 
       icono: <Search className="w-4 h-4 text-blue-600" />, 
       diasEstimados: 30,
@@ -276,6 +307,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     },
     { 
       nombre: 'Alegatos', 
+      valor: 'E4_ALEGATOS' as const,
       color: '#003DA5', 
       icono: <Gavel className="w-4 h-4" style={{ color: '#003DA5' }} />, 
       diasEstimados: 10,
@@ -302,7 +334,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
             label: 'Nuevo Proceso',
             labelMobile: 'Nuevo',
             icon: <Plus className="w-4 h-4" />,
-            onClick: () => toast.info('Nuevo Proceso Disciplinario'),
+            onClick: () => setModalNuevoProcesoOpen(true),
             variant: 'primary'
           }
         ]}
@@ -417,36 +449,54 @@ export function ModuloJuzgamientoDisciplinarioV3() {
 
       {/* Tablero Kanban - IGUAL A DEFENSA JUDICIAL */}
       {tipoVista === 'kanban' && (
-        <div className="relative">
-          {/* Indicador de scroll en mobile/tablet */}
-          {(isMobile || isTablet) && (
-            <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
-              <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
-                <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
-                Desliza
-              </p>
+        <DndProvider backend={HTML5Backend}>
+          <div className="relative">
+            {/* Indicador de scroll en mobile/tablet */}
+            {(isMobile || isTablet) && (
+              <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
+                <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
+                  <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
+                  Desliza
+                </p>
+              </div>
+            )}
+            
+            <div 
+              className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
+              style={{
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#CBD5E0 #F7FAFC',
+                WebkitOverflowScrolling: 'touch'
+              }}
+            >
+              {etapas.map((etapa) => (
+                <ColumnaKanban
+                  key={etapa.nombre}
+                  etapa={etapa}
+                  isMobile={isMobile}
+                  isTablet={isTablet}
+                  handleMoverProceso={handleMoverProceso}
+                />
+              ))}
             </div>
-          )}
-          
-          <div 
-            className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
-            style={{
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#CBD5E0 #F7FAFC',
-              WebkitOverflowScrolling: 'touch'
-            }}
-          >
-            {etapas.map((etapa) => (
-              <ColumnaKanban
-                key={etapa.nombre}
-                etapa={etapa}
-                isMobile={isMobile}
-                isTablet={isTablet}
-              />
-            ))}
           </div>
-        </div>
+        </DndProvider>
       )}
+
+      {/* Vista Lista */}
+      {tipoVista === 'lista' && (
+        <VistaListaJuzgamiento
+          procesos={procesosDisciplinariosMock}
+          isMobile={isMobile}
+          isTablet={isTablet}
+        />
+      )}
+
+      {/* Modal Nuevo Proceso */}
+      <ModalNuevoProcesoDisciplinario
+        isOpen={modalNuevoProcesoOpen}
+        onClose={() => setModalNuevoProcesoOpen(false)}
+      />
     </div>
   );
 }
@@ -455,6 +505,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
 interface ColumnaKanbanProps {
   etapa: {
     nombre: string;
+    valor: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS';
     color: string;
     icono: React.ReactNode;
     diasEstimados: number;
@@ -462,9 +513,21 @@ interface ColumnaKanbanProps {
   };
   isMobile: boolean;
   isTablet: boolean;
+  handleMoverProceso: (procesoId: string, nuevaEtapa: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS') => void;
 }
 
-function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
+function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso }: ColumnaKanbanProps) {
+  const [{ isOver }, drop] = useDrop({
+    accept: ItemTypes.PROCESO,
+    drop: (item: { id: string }) => handleMoverProceso(item.id, etapa.valor),
+    collect: (monitor) => ({
+      isOver: !!monitor.isOver(),
+    }),
+  });
+
+  const backgroundColor = isOver ? '#F0F7FF' : 'transparent';
+  const borderColor = isOver ? '#2962FF' : 'transparent';
+
   return (
     <motion.div
       className="flex-shrink-0"
@@ -498,22 +561,32 @@ function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
 
         {/* Lista de Procesos */}
         <div 
+          ref={drop}
           className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`} 
-          style={{ maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)' }}
+          style={{ 
+            minHeight: isMobile ? '400px' : '500px',
+            maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)',
+            backgroundColor: backgroundColor,
+            borderLeft: `3px solid ${borderColor}`,
+            borderRight: `3px solid ${borderColor}`,
+            transition: 'all 0.2s ease'
+          }}
         >
           {etapa.procesos.map((proceso) => (
             <TarjetaProceso
               key={proceso.id}
               proceso={proceso}
               isMobile={isMobile}
+              handleMoverProceso={handleMoverProceso}
+              nuevaEtapa={etapa.valor}
             />
           ))}
 
           {etapa.procesos.length === 0 && (
-            <div className="text-center py-12 text-gray-400">
+            <div className="text-center py-12 text-gray-400" style={{ pointerEvents: 'none' }}>
               <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-xs font-semibold">
-                Sin procesos en {etapa.nombre}
+                {isOver ? '✅ Suelte aquí' : `Sin procesos en ${etapa.nombre}`}
               </p>
             </div>
           )}
@@ -527,9 +600,11 @@ function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
 interface TarjetaProcesoProps {
   proceso: ProcesoDisciplinario;
   isMobile: boolean;
+  handleMoverProceso: (procesoId: string, nuevaEtapa: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS') => void;
+  nuevaEtapa: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS';
 }
 
-function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
+function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: TarjetaProcesoProps) {
   // Estados para modales
   const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
   const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
@@ -537,6 +612,17 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
   const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
   const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
   const [modalActasOpen, setModalActasOpen] = useState(false);
+
+  // Drag and Drop
+  const [{ isDragging }, drag] = useDrag({
+    type: ItemTypes.PROCESO,
+    item: { id: proceso.id },
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  });
+
+  const opacity = isDragging ? 0.5 : 1;
 
   // Determinar semáforo
   const getSemaforoColor = (diasRestantes: number) => {
@@ -559,203 +645,205 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
   };
 
   return (
-    <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
-      {/* Barra superior azul ESAP */}
-      <div className="h-1" style={{ background: '#003DA5' }} />
+    <div ref={drag} style={{ opacity, cursor: 'move' }}>
+      <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
+        {/* Barra superior azul ESAP */}
+        <div className="h-1" style={{ background: '#003DA5' }} />
 
-      <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
-        {/* Header */}
-        <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div 
-              className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`}
-              style={{ background: '#E0EDFF' }}
-            >
-              <Gavel className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h4 className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} truncate`} style={{ color: '#003DA5' }}>
-                {proceso.id}
-              </h4>
-              <p className="text-xs text-gray-600 truncate">
-                {proceso.tipoFalta}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Disciplinado */}
-        <div className="mb-2 pb-2 border-b border-gray-200">
-          <p className="text-xs text-gray-500 mb-0.5">👤 Disciplinado:</p>
-          <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-            {proceso.disciplinado}
-          </p>
-        </div>
-
-        {/* Profesional Asignado */}
-        <div className="mb-2 pb-2 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
-              <AvatarFallback 
-                className="text-xs"
-                style={{ background: '#E0EDFF', color: '#003DA5' }}
+        <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
+          {/* Header */}
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div 
+                className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`}
+                style={{ background: '#E0EDFF' }}
               >
-                {proceso.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500">👨‍💼 Profesional:</p>
-              <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-                {proceso.abogadoAsignado}
-              </p>
+                <Gavel className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} truncate`} style={{ color: '#003DA5' }}>
+                  {proceso.id}
+                </h4>
+                <p className="text-xs text-gray-600 truncate">
+                  {proceso.tipoFalta}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Semáforo */}
-        <div className="flex items-center gap-1.5 mb-2">
-          <Badge 
-            className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200"
-            style={{ color: semaforo.color }}
-          >
-            <div 
-              className="w-2 h-2 rounded-full"
-              style={{ background: semaforo.color }}
-            />
-            {proceso.diasRestantes} días
-          </Badge>
-        </div>
-
-        {/* Métricas */}
-        <div className="grid grid-cols-3 gap-1.5 mb-2">
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{proceso.documentos?.length || 0}</p>
-            <p className="text-xs text-gray-500">Docs</p>
+          {/* Disciplinado */}
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            <p className="text-xs text-gray-500 mb-0.5">👤 Disciplinado:</p>
+            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+              {proceso.disciplinado}
+            </p>
           </div>
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{proceso.diasTotales - proceso.diasRestantes}</p>
-            <p className="text-xs text-gray-500">Días</p>
+
+          {/* Profesional Asignado */}
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            <div className="flex items-center gap-2">
+              <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
+                <AvatarFallback 
+                  className="text-xs"
+                  style={{ background: '#E0EDFF', color: '#003DA5' }}
+                >
+                  {proceso.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500">👨‍💼 Profesional:</p>
+                <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+                  {proceso.abogadoAsignado}
+                </p>
+              </div>
+            </div>
           </div>
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{porcentajeTiempo}%</p>
-            <p className="text-xs text-gray-500">Tiempo</p>
-          </div>
-        </div>
 
-        {/* Última Actuación - BLOQUE AZUL */}
-        <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
-          <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#003DA5' }}>
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#003DA5' }}></span>
-            ÚLTIMA ACTUACIÓN
-          </p>
-          <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-700 line-clamp-2 mb-1`}>
-            {ultimaActuacion}
-          </p>
-          <p className="text-xs text-gray-500">
-            📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}
-          </p>
-        </div>
-
-        {/* Acciones */}
-        <div className="space-y-1 pt-2 border-t border-gray-200">
-          <Button
-            onClick={() => setModalProcesoOpen(true)}
-            size="sm"
-            className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-          >
-            <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1 flex-shrink-0`} />
-            Expediente
-          </Button>
-
-          {/* Gestión Documental */}
-          <div className="grid grid-cols-2 gap-1">
-            <Button
-              onClick={() => setModalAutosOpen(true)}
-              size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+          {/* Semáforo */}
+          <div className="flex items-center gap-1.5 mb-2">
+            <Badge 
+              className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200"
+              style={{ color: semaforo.color }}
             >
-              <Gavel className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Autos
-            </Button>
-            
-            <Button
-              onClick={() => setModalEvidenciasOpen(true)}
-              size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-            >
-              <Paperclip className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Evidencias
-            </Button>
+              <div 
+                className="w-2 h-2 rounded-full"
+                style={{ background: semaforo.color }}
+              />
+              {proceso.diasRestantes} días
+            </Badge>
           </div>
 
-          <div className="grid grid-cols-2 gap-1">
-            <Button
-              onClick={() => setModalOficiosOpen(true)}
-              size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-            >
-              <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Oficios
-            </Button>
-            
-            <Button
-              onClick={() => setModalActasOpen(true)}
-              size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-            >
-              <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Actas
-            </Button>
+          {/* Métricas */}
+          <div className="grid grid-cols-3 gap-1.5 mb-2">
+            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
+              <p className="text-xs font-bold text-gray-700">{proceso.documentos?.length || 0}</p>
+              <p className="text-xs text-gray-500">Docs</p>
+            </div>
+            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
+              <p className="text-xs font-bold text-gray-700">{proceso.diasTotales - proceso.diasRestantes}</p>
+              <p className="text-xs text-gray-500">Días</p>
+            </div>
+            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
+              <p className="text-xs font-bold text-gray-700">{porcentajeTiempo}%</p>
+              <p className="text-xs text-gray-500">Tiempo</p>
+            </div>
           </div>
 
-          <Button
-            onClick={() => setModalComunicacionesOpen(true)}
-            size="sm"
-            className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-          >
-            <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-            Comentarios del Proceso
-          </Button>
+          {/* Última Actuación - BLOQUE AZUL */}
+          <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
+            <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#003DA5' }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#003DA5' }}></span>
+              ÚLTIMA ACTUACIÓN
+            </p>
+            <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-700 line-clamp-2 mb-1`}>
+              {ultimaActuacion}
+            </p>
+            <p className="text-xs text-gray-500">
+              📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}
+            </p>
+          </div>
+
+          {/* Acciones */}
+          <div className="space-y-1 pt-2 border-t border-gray-200">
+            <Button
+              onClick={() => setModalProcesoOpen(true)}
+              size="sm"
+              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1 flex-shrink-0`} />
+              Expediente
+            </Button>
+
+            {/* Gestión Documental */}
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                onClick={() => setModalAutosOpen(true)}
+                size="sm"
+                variant="outline"
+                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              >
+                <Gavel className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
+                Autos
+              </Button>
+              
+              <Button
+                onClick={() => setModalEvidenciasOpen(true)}
+                size="sm"
+                variant="outline"
+                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              >
+                <Paperclip className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
+                Evidencias
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                onClick={() => setModalOficiosOpen(true)}
+                size="sm"
+                variant="outline"
+                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              >
+                <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
+                Oficios
+              </Button>
+              
+              <Button
+                onClick={() => setModalActasOpen(true)}
+                size="sm"
+                variant="outline"
+                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              >
+                <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
+                Actas
+              </Button>
+            </div>
+
+            <Button
+              onClick={() => setModalComunicacionesOpen(true)}
+              size="sm"
+              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
+              Comentarios del Proceso
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {/* Modales */}
-      <ModalProcesoDisciplinario
-        isOpen={modalProcesoOpen}
-        onClose={() => setModalProcesoOpen(false)}
-        proceso={proceso}
-      />
-      <ModalComunicaciones
-        isOpen={modalComunicacionesOpen}
-        onClose={() => setModalComunicacionesOpen(false)}
-        expediente={expedienteParaModales as any}
-      />
-      <ModalAutos
-        isOpen={modalAutosOpen}
-        onClose={() => setModalAutosOpen(false)}
-        expediente={expedienteParaModales as any}
-      />
-      <ModalEvidencias
-        isOpen={modalEvidenciasOpen}
-        onClose={() => setModalEvidenciasOpen(false)}
-        expediente={expedienteParaModales as any}
-      />
-      <ModalOficios
-        isOpen={modalOficiosOpen}
-        onClose={() => setModalOficiosOpen(false)}
-        expediente={expedienteParaModales as any}
-      />
-      <ModalActas
-        isOpen={modalActasOpen}
-        onClose={() => setModalActasOpen(false)}
-        expediente={expedienteParaModales as any}
-      />
-    </Card>
+        {/* Modales */}
+        <ModalProcesoDisciplinario
+          isOpen={modalProcesoOpen}
+          onClose={() => setModalProcesoOpen(false)}
+          proceso={proceso}
+        />
+        <ModalComunicaciones
+          isOpen={modalComunicacionesOpen}
+          onClose={() => setModalComunicacionesOpen(false)}
+          expediente={expedienteParaModales as any}
+        />
+        <ModalAutos
+          isOpen={modalAutosOpen}
+          onClose={() => setModalAutosOpen(false)}
+          expediente={expedienteParaModales as any}
+        />
+        <ModalEvidencias
+          isOpen={modalEvidenciasOpen}
+          onClose={() => setModalEvidenciasOpen(false)}
+          expediente={expedienteParaModales as any}
+        />
+        <ModalOficios
+          isOpen={modalOficiosOpen}
+          onClose={() => setModalOficiosOpen(false)}
+          expediente={expedienteParaModales as any}
+        />
+        <ModalActas
+          isOpen={modalActasOpen}
+          onClose={() => setModalActasOpen(false)}
+          expediente={expedienteParaModales as any}
+        />
+      </Card>
+    </div>
   );
 }

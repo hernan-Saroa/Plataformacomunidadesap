@@ -77,6 +77,7 @@ export function GestionLegalFull() {
 
   // Definir menu items igual que Control Interno
   const menuItems: MenuItem[] = [
+    // 📊 DASHBOARD - Vista general siempre primero
     {
       id: 'dashboard',
       label: 'Dashboard',
@@ -84,27 +85,46 @@ export function GestionLegalFull() {
       icon: <LayoutDashboard className="w-5 h-5" />,
       color: '#003DA5',
     },
+    
+    // ═══════════════════════════════════════════════════════════
+    // 📋 MÓDULOS KANBAN - PRIORIZADOS POR FLUJO E IMPORTANCIA
+    // ═══════════════════════════════════════════════════════════
+    
+    // 🥇 PRIORIDAD CRÍTICA: Defensa Judicial
+    // Defensa de ESAP ante demandas externas (máxima prioridad)
     {
       id: 'defensa-judicial',
       label: 'Defensa Judicial',
-      subtitle: '15 expedientes',
+      subtitle: '15 expedientes • KANBAN',
       icon: <Scale className="w-5 h-5" />,
       color: '#10B981',
     },
+    
+    // 🥈 PRIORIDAD ALTA: Juzgamiento Disciplinario
+    // Control disciplinario interno de funcionarios
     {
       id: 'juzgamiento',
       label: 'Juzgamiento',
-      subtitle: '12 procesos',
+      subtitle: '12 procesos • KANBAN',
       icon: <Gavel className="w-5 h-5" />,
       color: '#DC2626',
     },
+    
+    // 🥉 PRIORIDAD MEDIA: Asesoría Jurídica
+    // Consultas jurídicas internas de las dependencias
     {
       id: 'asesoria',
       label: 'Asesoría Jurídica',
-      subtitle: '12 consultas',
+      subtitle: '12 consultas • KANBAN',
       icon: <FileQuestion className="w-5 h-5" />,
       color: '#8B5CF6',
     },
+    
+    // ═══════════════════════════════════════════════════════════
+    // 📦 MÓDULOS DE SOPORTE - Ordenados por relación con Kanban
+    // ═══════════════════════════════════════════════════════════
+    
+    // Comunicaciones - Alimenta los módulos Kanban
     {
       id: 'centro-comunicaciones',
       label: 'Centro Comunicaciones Jurídicas',
@@ -112,6 +132,8 @@ export function GestionLegalFull() {
       icon: <Inbox className="w-5 h-5" />,
       color: '#3B82F6',
     },
+    
+    // Términos - Crítico para gestión de vencimientos Kanban
     {
       id: 'terminos',
       label: 'Términos',
@@ -119,6 +141,8 @@ export function GestionLegalFull() {
       icon: <CalendarClock className="w-5 h-5" />,
       color: '#6366F1',
     },
+    
+    // Órganos Control - Requerimientos externos
     {
       id: 'organos-control',
       label: 'Órganos Control',
@@ -126,6 +150,8 @@ export function GestionLegalFull() {
       icon: <Building2 className="w-5 h-5" />,
       color: '#2563EB',
     },
+    
+    // Procesos Coactivos - Cobro judicial
     {
       id: 'procesos-coactivos',
       label: 'Procesos Coactivos',
@@ -133,6 +159,11 @@ export function GestionLegalFull() {
       icon: <DollarSign className="w-5 h-5" />,
       color: '#F59E0B',
     },
+    
+    // ═══════════════════════════════════════════════════════════
+    // 📈 MÓDULOS DE GESTIÓN ESTRATÉGICA
+    // ═══════════════════════════════════════════════════════════
+    
     {
       id: 'plan-accion',
       label: 'Plan de Acción',

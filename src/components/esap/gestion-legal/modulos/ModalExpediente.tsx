@@ -1,16 +1,13 @@
 /**
  * ModalExpediente - Modal COMPLETO de visualización del expediente judicial
- * ✅ Lógica de negocio jurídico implementada al 100%
- * ✅ 6 TABS funcionales con información detallada
- * ✅ Acciones rápidas profesionales
+ * ✅ Nuevo diseño corporativo ESAP 2025 premium
+ * ✅ Estilo moderno con header destacado y métricas visuales
+ * ✅ Layout de dos columnas profesional
+ * ✅ Funcionalidad real de notificaciones, compartir y PDF
  */
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
-import { Input } from '../../../ui/input';
+import { useState } from 'react';
+import { toast } from 'sonner@2.0.3';
 import { 
   FileText, Scale, User, Calendar, Clock, AlertTriangle,
   Download, Eye, ExternalLink, Paperclip, CheckCircle,
@@ -20,10 +17,21 @@ import {
   Briefcase, Phone, Mail, Hash, Activity, Bell,
   Shield, Target, Flag, Bookmark, Archive, Upload
 } from 'lucide-react';
-import type { ExpedienteJudicial } from '../core/types';
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Badge } from '../../../ui/badge';
+import { Button } from '../../../ui/button';
+import { Card } from '../../../ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
+import { Input } from '../../../ui/input';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { useState } from 'react';
-import { toast } from 'sonner@2.0.3';
+
+import type { ExpedienteJudicial } from '../core/types';
+import { ModalNotificar } from './ModalNotificar';
+import { ModalCompartir } from './ModalCompartir';
+import { ModalCrearTarea } from './ModalCrearTarea';
+import { ModalAgregarNota } from './ModalAgregarNota';
+import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface ModalExpedienteProps {
   isOpen: boolean;
@@ -35,6 +43,12 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
   const [tabActivo, setTabActivo] = useState('general');
+  
+  // Estados para modales
+  const [modalNotificarAbierto, setModalNotificarAbierto] = useState(false);
+  const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
+  const [modalCrearTareaAbierto, setModalCrearTareaAbierto] = useState(false);
+  const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
 
   // ==================== HANDLERS DE ACCIONES ====================
   
@@ -358,93 +372,76 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
   const tiposDocumento = ['TODOS', ...Array.from(new Set(documentos.map(d => d.tipo)))];
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
+        <DialogTitle className="sr-only">
+          Expediente Judicial {expediente.id} - Vista Completa
+        </DialogTitle>
         <DialogDescription className="sr-only">
           Vista completa del expediente judicial {expediente.id} con información detallada de partes, documentos, actuaciones y tareas
         </DialogDescription>
         
-        {/* ==================== HEADER STICKY ==================== */}
-        <div className="sticky top-0 z-10 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg bg-white/20 backdrop-blur-sm">
-                  <Scale className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <DialogTitle className="text-2xl font-black text-white">
-                    {expediente.id}
-                  </DialogTitle>
-                  <p className="text-sm text-blue-100">{expediente.medioControl}</p>
-                </div>
-              </div>
-              
-              {/* Badges de estado */}
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className="font-bold bg-white text-blue-700">
-                  {expediente.etapa}
-                </Badge>
-                <Badge 
-                  className="font-bold flex items-center gap-1.5 border-2"
-                  style={{ 
-                    background: semaforo.bg, 
-                    color: semaforo.color, 
-                    borderColor: semaforo.color 
-                  }}
-                >
-                  <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: semaforo.color }} />
-                  {semaforo.label} - {expediente.diasRestantes} días
-                </Badge>
-                <Badge className="bg-white/20 text-white font-bold border border-white/30">
-                  <FileText className="w-3 h-3 mr-1" />
-                  {documentos.length} documentos
-                </Badge>
-                <Badge className="bg-white/20 text-white font-bold border border-white/30">
-                  <Activity className="w-3 h-3 mr-1" />
-                  {actuaciones.length} actuaciones
-                </Badge>
-                <Badge className="bg-white/20 text-white font-bold border border-white/30">
-                  <Target className="w-3 h-3 mr-1" />
-                  {tareas.length} tareas
-                </Badge>
-              </div>
-            </div>
-
-            <Button 
-              onClick={onClose}
-              variant="ghost"
-              size="sm"
-              className="ml-4 text-white hover:bg-white/20"
-            >
-              <X className="w-5 h-5" />
-            </Button>
+        {/* ==================== HEADER LIMPIO Y USABLE ==================== */}
+        <ModalHeaderClean
+          titulo={expediente.id}
+          subtitulo={expediente.medioControl}
+          icono={Scale}
+          colorIcono="blue"
+          badgePrincipal={expediente.etapa}
+          badges={
+            <>
+              <Badge 
+                variant="outline"
+                className="font-semibold flex items-center gap-1.5 border-2"
+                style={{ 
+                  borderColor: semaforo.color,
+                  color: semaforo.color
+                }}
+              >
+                <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: semaforo.color }} />
+                {semaforo.label} - {expediente.diasRestantes} días
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
+                <FileText className="w-3 h-3 mr-1" />
+                {documentos.length} documentos
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
+                <Activity className="w-3 h-3 mr-1" />
+                {actuaciones.length} actuaciones
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                <Target className="w-3 h-3 mr-1" />
+                {tareas.length} tareas
+              </Badge>
+            </>
+          }
+          onClose={onClose}
+        />
+        
+        {/* Barra de progreso del proceso */}
+        <div className="flex-shrink-0 bg-gray-50 border-b px-6 py-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-bold text-gray-700">
+              Progreso del Proceso
+            </span>
+            <span className="text-xs font-black text-blue-600">
+              {porcentajeTiempo}%
+            </span>
           </div>
-
-          {/* Barra de progreso */}
-          <div className="mt-4">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-bold text-blue-100">
-                Progreso del Proceso
-              </span>
-              <span className="text-xs font-black text-white">
-                {porcentajeTiempo}%
-              </span>
-            </div>
-            <div className="w-full h-2.5 bg-blue-900/30 rounded-full overflow-hidden">
-              <div 
-                className="h-full transition-all duration-500 bg-gradient-to-r from-green-400 to-blue-300"
-                style={{ width: `${porcentajeTiempo}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-1">
-              <span className="text-xs text-blue-200">
-                {expediente.diasTotales - expediente.diasRestantes} días transcurridos
-              </span>
-              <span className="text-xs text-blue-200">
-                {expediente.diasRestantes} días restantes
-              </span>
-            </div>
+          <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
+            <div 
+              className="h-full transition-all duration-500 bg-gradient-to-r from-green-500 to-blue-500"
+              style={{ width: `${porcentajeTiempo}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-xs text-gray-600">
+              {expediente.diasTotales - expediente.diasRestantes} días transcurridos
+            </span>
+            <span className="text-xs text-gray-600">
+              {expediente.diasRestantes} días restantes
+            </span>
           </div>
         </div>
 
@@ -723,47 +720,108 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <Input
-                        placeholder="Buscar documentos..."
+                        placeholder="Buscar por nombre, tipo o firmante..."
                         value={busquedaDocs}
                         onChange={(e) => setBusquedaDocs(e.target.value)}
                         className="pl-10 text-sm"
+                        title="Buscar documentos por nombre, tipo o firmante"
                       />
+                      {busquedaDocs && (
+                        <button
+                          onClick={() => setBusquedaDocs('')}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          title="Limpiar búsqueda"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 w-full md:w-auto">
+                  <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
                     <select 
                       value={filtroDocTipo}
                       onChange={(e) => setFiltroDocTipo(e.target.value)}
                       className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white font-semibold"
+                      title="Filtrar por tipo de documento"
                     >
                       {tiposDocumento.map(tipo => (
                         <option key={tipo} value={tipo}>{tipo}</option>
                       ))}
                     </select>
+                    
                     <Button 
                       size="sm" 
-                      style={{ background: '#003DA5', color: '#FFFFFF' }} 
+                      variant="outline"
+                      className="font-bold border-2 border-blue-600 text-blue-600 hover:bg-blue-50"
+                      onClick={() => {
+                        toast.info('📎 Cargar documentos', {
+                          description: 'Abriendo gestor de archivos...',
+                          duration: 2000
+                        });
+                      }}
+                    >
+                      <Upload className="w-3 h-3 mr-1" />
+                      Cargar
+                    </Button>
+                    
+                    <Button 
+                      size="sm" 
+                      style={{ 
+                        background: documentosFiltrados.length > 0 ? '#003DA5' : '#E5E7EB', 
+                        color: documentosFiltrados.length > 0 ? '#FFFFFF' : '#9CA3AF' 
+                      }} 
                       onClick={handleDescargarTodos}
+                      disabled={documentosFiltrados.length === 0}
                       className="font-bold"
+                      title={documentosFiltrados.length === 0 ? 'No hay documentos para descargar' : `Descargar ${documentosFiltrados.length} documento(s)`}
                     >
                       <Download className="w-3 h-3 mr-1" />
                       Descargar Todos
                     </Button>
                   </div>
                 </div>
-                <div className="mt-3 flex items-center gap-2">
-                  <Badge className="bg-blue-100 text-blue-700 font-bold">
+                <div className="mt-3 flex items-center gap-2 flex-wrap">
+                  <Badge 
+                    className={`font-bold ${
+                      documentosFiltrados.length === 0 
+                        ? 'bg-amber-100 text-amber-700' 
+                        : documentosFiltrados.length < documentos.length
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-green-100 text-green-700'
+                    }`}
+                  >
+                    <FileText className="w-3 h-3 mr-1" />
                     {documentosFiltrados.length} de {documentos.length} documentos
                   </Badge>
+                  
+                  {(busquedaDocs || filtroDocTipo !== 'TODOS') && (
+                    <Badge variant="outline" className="text-xs font-semibold text-blue-600 border-blue-300">
+                      <Filter className="w-3 h-3 mr-1" />
+                      Filtros activos
+                    </Badge>
+                  )}
+                  
                   {busquedaDocs && (
                     <Button 
                       size="sm" 
                       variant="ghost" 
                       onClick={() => setBusquedaDocs('')}
-                      className="text-xs"
+                      className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                     >
                       <X className="w-3 h-3 mr-1" />
                       Limpiar búsqueda
+                    </Button>
+                  )}
+                  
+                  {filtroDocTipo !== 'TODOS' && (
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      onClick={() => setFiltroDocTipo('TODOS')}
+                      className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                    >
+                      <X className="w-3 h-3 mr-1" />
+                      Quitar filtro de tipo
                     </Button>
                   )}
                 </div>
@@ -825,12 +883,94 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
                   </Card>
                 ))}
 
+                {/* Estado vacío mejorado con acciones claras */}
                 {documentosFiltrados.length === 0 && (
-                  <Card className="p-8 text-center">
-                    <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                    <p className="text-sm font-bold text-gray-500">
-                      No se encontraron documentos con los filtros aplicados
-                    </p>
+                  <Card className="p-10 text-center bg-gradient-to-br from-blue-50 to-white border-2 border-dashed border-blue-200">
+                    <div className="max-w-md mx-auto">
+                      {/* Icono grande y atractivo */}
+                      <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center">
+                        <FileText className="w-10 h-10 text-blue-400" />
+                      </div>
+                      
+                      {/* Mensaje contextual */}
+                      {documentos.length === 0 ? (
+                        <>
+                          <h4 className="font-black text-gray-900 mb-2">
+                            Sin documentos adjuntos
+                          </h4>
+                          <p className="text-sm text-gray-600 mb-6">
+                            Este expediente aún no tiene documentos cargados. Los documentos aparecerán aquí una vez sean agregados al proceso judicial.
+                          </p>
+                          <Button 
+                            style={{ background: '#003DA5', color: '#FFFFFF' }}
+                            className="font-bold"
+                            onClick={() => {
+                              toast.info('📎 Función de carga de documentos', {
+                                description: 'Esta función permitirá subir documentos al expediente'
+                              });
+                            }}
+                          >
+                            <Upload className="w-4 h-4 mr-2" />
+                            Cargar Primer Documento
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <h4 className="font-black text-gray-900 mb-2">
+                            No hay resultados
+                          </h4>
+                          <p className="text-sm text-gray-600 mb-4">
+                            {busquedaDocs 
+                              ? `No se encontraron documentos con "${busquedaDocs}"` 
+                              : `No hay documentos del tipo "${filtroDocTipo}"`
+                            }
+                          </p>
+                          
+                          {/* Sugerencias de acción */}
+                          <div className="bg-white border border-blue-200 rounded-lg p-4 mb-4">
+                            <p className="text-xs font-bold text-gray-700 mb-3">💡 Sugerencias:</p>
+                            <ul className="text-xs text-left text-gray-600 space-y-2">
+                              <li className="flex items-start gap-2">
+                                <span className="text-blue-500 mt-0.5">•</span>
+                                <span>Intenta con otros términos de búsqueda</span>
+                              </li>
+                              <li className="flex items-start gap-2">
+                                <span className="text-blue-500 mt-0.5">•</span>
+                                <span>Selecciona "TODOS" para ver todos los tipos</span>
+                              </li>
+                              <li className="flex items-start gap-2">
+                                <span className="text-blue-500 mt-0.5">•</span>
+                                <span>Revisa los filtros activos arriba</span>
+                              </li>
+                            </ul>
+                          </div>
+
+                          {/* Botones de acción rápida */}
+                          <div className="flex items-center justify-center gap-2">
+                            {busquedaDocs && (
+                              <Button 
+                                variant="outline"
+                                onClick={() => setBusquedaDocs('')}
+                                className="font-semibold"
+                              >
+                                <X className="w-4 h-4 mr-1" />
+                                Limpiar búsqueda
+                              </Button>
+                            )}
+                            {filtroDocTipo !== 'TODOS' && (
+                              <Button 
+                                variant="outline"
+                                onClick={() => setFiltroDocTipo('TODOS')}
+                                className="font-semibold"
+                              >
+                                <Filter className="w-4 h-4 mr-1" />
+                                Ver todos los tipos
+                              </Button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </Card>
                 )}
               </div>
@@ -919,7 +1059,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
                   <Button 
                     size="sm" 
                     className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                    onClick={handleCrearTarea}
+                    onClick={() => setModalCrearTareaAbierto(true)}
                   >
                     <Plus className="w-3 h-3 mr-1" />
                     Nueva Tarea
@@ -1022,7 +1162,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
                   <Button 
                     size="sm" 
                     className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
-                    onClick={handleAgregarNota}
+                    onClick={() => setModalAgregarNotaAbierto(true)}
                   >
                     <Plus className="w-3 h-3 mr-1" />
                     Agregar Nota
@@ -1070,7 +1210,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
         </div>
 
         {/* ==================== FOOTER CON ACCIONES ==================== */}
-        <div className="sticky bottom-0 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-200 px-6 py-4">
+        <div className="flex-shrink-0 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-200 px-6 py-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-3 w-full md:w-auto">
               <Button variant="outline" onClick={onClose} className="font-bold">
@@ -1088,7 +1228,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={handleEnviarNotificacion} 
+                onClick={() => setModalNotificarAbierto(true)} 
                 className="font-bold text-xs"
               >
                 <Bell className="w-3.5 h-3.5 mr-1" />
@@ -1097,7 +1237,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
               <Button 
                 variant="outline"
                 size="sm" 
-                onClick={handleCompartir} 
+                onClick={() => setModalCompartirAbierto(true)} 
                 className="font-bold text-xs"
               >
                 <Share className="w-3.5 h-3.5 mr-1" />
@@ -1126,5 +1266,28 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* ==================== MODALES SECUNDARIOS (FUERA DEL DIALOG PRINCIPAL) ==================== */}
+    <ModalNotificar 
+      isOpen={modalNotificarAbierto} 
+      onClose={() => setModalNotificarAbierto(false)} 
+      expediente={expediente} 
+    />
+    <ModalCompartir 
+      isOpen={modalCompartirAbierto} 
+      onClose={() => setModalCompartirAbierto(false)} 
+      expediente={expediente} 
+    />
+    <ModalCrearTarea 
+      isOpen={modalCrearTareaAbierto} 
+      onClose={() => setModalCrearTareaAbierto(false)} 
+      expediente={expediente} 
+    />
+    <ModalAgregarNota 
+      isOpen={modalAgregarNotaAbierto} 
+      onClose={() => setModalAgregarNotaAbierto(false)} 
+      expediente={expediente} 
+    />
+    </>
   );
 }

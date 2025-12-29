@@ -1,6 +1,9 @@
 /**
  * ModalActas - Gestión de Actas de Audiencias y Diligencias
- * Actas = Registro oficial de lo acontecido en audiencias y diligencias procesales
+ * ✅ Diseño corporativo ESAP 2025 - Versión Premium
+ * ✅ Header morado con gradiente (distintivo para actas)
+ * ✅ Footer sticky con botones siempre visibles
+ * ✅ Timeline visual mejorada
  */
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -9,13 +12,16 @@ import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Input } from '../../../ui/input';
 import { 
-  FileCheck, Download, Eye, FileText, Calendar, 
-  Users, Clock, X, Upload, CheckCircle, AlertCircle, Play,
-  Search, Trash2, Edit, Filter, Plus
+  FileCheck, Download, Eye, FileText, Calendar, Clock, 
+  X, Upload, Plus, Trash2, CheckCircle, AlertCircle,
+  Search, Filter, Users, Play
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState } from 'react';
 import { toast } from 'sonner@2.0.3';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
+import { DialogoConfirmacion } from './DialogoConfirmacion';
+import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface ModalActasProps {
   isOpen: boolean;
@@ -122,6 +128,10 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
   const [actas, setActas] = useState(actasMock);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODAS');
   const [busqueda, setBusqueda] = useState('');
+  const [modalVisorAbierto, setModalVisorAbierto] = useState(false);
+  const [actaSeleccionada, setActaSeleccionada] = useState<any>(null);
+  const [modalConfirmacionAbierto, setModalConfirmacionAbierto] = useState(false);
+  const [actaEliminar, setActaEliminar] = useState<any>(null);
 
   const handleDescargarActa = (acta: typeof actasMock[0]) => {
     if (!acta.archivo) {
@@ -142,6 +152,8 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
       });
       return;
     }
+    setActaSeleccionada(acta);
+    setModalVisorAbierto(true);
     toast.info('👁️ Abriendo visor de documento', {
       description: `${acta.numero} - ${acta.tipo}`
     });
@@ -362,68 +374,92 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogTitle className="sr-only">
+          Actas de Audiencias - Expediente {expediente.id}
+        </DialogTitle>
         <DialogDescription className="sr-only">
           Gestión de actas de audiencias y diligencias del expediente {expediente.id}
         </DialogDescription>
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg" style={{ background: '#F3E5F5' }}>
-                  <FileCheck className="w-5 h-5" style={{ color: '#7B1FA2' }} />
-                </div>
-                <div>
-                  <DialogTitle className="text-xl font-black" style={{ color: '#003DA5' }}>
-                    Actas de Audiencias
-                  </DialogTitle>
-                  <p className="text-sm text-gray-600">
-                    Registro de diligencias - {expediente.id}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <Badge style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                  {expediente.etapa}
-                </Badge>
-                <Badge className="bg-purple-100 text-purple-700 font-semibold">
-                  <FileCheck className="w-3 h-3 mr-1" />
-                  {actas.length} actas
-                </Badge>
-                <Badge className="bg-green-100 text-green-700 font-semibold">
-                  {actas.filter(a => a.estado === 'Firmada').length} firmadas
-                </Badge>
-              </div>
-            </div>
+        
+        {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+        <ModalHeaderClean
+          titulo="Actas de Audiencias y Diligencias"
+          subtitulo={`Registro oficial de diligencias del expediente ${expediente.id}`}
+          icono={FileCheck}
+          colorIcono="purple"
+          badgePrincipal="CONTESTACIÓN"
+          badges={
+            <>
+              <Badge variant="outline" className="font-semibold text-xs border-gray-300 text-gray-700">
+                {expediente.etapa}
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
+                <FileCheck className="w-3 h-3 mr-1" />
+                {actas.length} actas
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                {actas.filter(a => a.estado === 'Firmada').length} firmadas
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
+                <Clock className="w-3 h-3 mr-1" />
+                {actas.filter(a => a.estado === 'Programada').length} programadas
+              </Badge>
+            </>
+          }
+          onClose={onClose}
+        />
 
-            <Button onClick={onClose} variant="ghost" size="sm" className="ml-4">
-              <X className="w-4 h-4" />
+        {/* Barra de filtros */}
+        <div className="px-6 py-4 bg-gradient-to-b from-purple-50 to-white border-b flex-shrink-0">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Buscar acta por número, tipo o contenido..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                className="pl-10 text-sm font-semibold"
+              />
+            </div>
+            <Button
+              size="sm"
+              onClick={handleCargarActa}
+              className="font-bold text-white"
+              style={{ background: '#7B1FA2' }}
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Nueva Acta
             </Button>
           </div>
 
-          {/* Filtros */}
-          <div className="flex items-center gap-2 mt-4 overflow-x-auto pb-2">
-            {tiposActa.map((tipo) => (
-              <Button
-                key={tipo}
-                size="sm"
-                variant={filtroTipo === tipo ? 'default' : 'outline'}
-                onClick={() => setFiltroTipo(tipo)}
-                className="text-xs whitespace-nowrap"
-              >
-                {tipo}
-              </Button>
-            ))}
+          {/* Filtros por tipo */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
+            {tiposActa.map((tipo) => {
+              const count = tipo === 'TODAS' ? actas.length : actas.filter(a => a.tipo === tipo).length;
+              return (
+                <Button
+                  key={tipo}
+                  size="sm"
+                  variant={filtroTipo === tipo ? 'default' : 'outline'}
+                  onClick={() => setFiltroTipo(tipo)}
+                  className="text-xs font-bold whitespace-nowrap"
+                  style={filtroTipo === tipo ? { background: '#7B1FA2', color: '#FFFFFF' } : {}}
+                >
+                  {tipo} ({count})
+                </Button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Contenido */}
+        {/* Contenido - Lista de actas */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* Información contextual */}
-          <Card className="p-4 mb-4 bg-purple-50 border-purple-200">
-            <h4 className="text-sm font-bold text-purple-900 mb-2 flex items-center gap-2">
+          <Card className="p-4 mb-4 border-l-4 border-l-purple-500" style={{ background: 'linear-gradient(135deg, #F3E5F5 0%, #FFFFFF 100%)' }}>
+            <h4 className="text-sm font-black text-purple-900 mb-2 flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />
               ¿Qué son las Actas Procesales?
             </h4>
@@ -440,18 +476,18 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
               <Card className="p-8 text-center">
                 <FileCheck className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                 <p className="text-sm font-bold text-gray-600 mb-1">
-                  No hay actas de tipo "{filtroTipo}"
+                  No hay actas {filtroTipo !== 'TODAS' ? `de tipo "${filtroTipo}"` : 'que coincidan con tu búsqueda'}
                 </p>
                 <p className="text-xs text-gray-500">
-                  Intenta con otro filtro
+                  {filtroTipo !== 'TODAS' ? 'Intenta con otro filtro' : 'Intenta con otros términos de búsqueda'}
                 </p>
               </Card>
             ) : (
               actasBuscadas.map((acta) => (
-                <Card key={acta.id} className="p-5 hover:shadow-lg transition-shadow border-l-4 border-l-purple-500">
+                <Card key={acta.id} className="p-5 hover:shadow-lg transition-all border-l-4" style={{ borderLeftColor: acta.estadoColor === 'green' ? '#4CAF50' : acta.estadoColor === 'blue' ? '#2196F3' : '#FF9800' }}>
                   <div className="flex items-start gap-4">
                     {/* Icono */}
-                    <div className="p-3 rounded-lg bg-purple-50 border border-purple-200 flex-shrink-0">
+                    <div className="p-3 rounded-lg flex-shrink-0" style={{ background: '#F3E5F5', border: '2px solid #E1BEE7' }}>
                       <FileCheck className="w-7 h-7 text-purple-600" />
                     </div>
 
@@ -460,13 +496,14 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                       {/* Header */}
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
                             <h4 className="font-black text-gray-900 text-lg">{acta.numero}</h4>
                             {getEstadoBadge(acta.estado, acta.estadoColor)}
                           </div>
                           <Badge 
                             variant="outline" 
-                            className="text-xs mb-2 bg-purple-50 text-purple-700 border-purple-300"
+                            className="text-xs mb-2 font-bold"
+                            style={{ background: '#F3E5F5', color: '#7B1FA2', borderColor: '#CE93D8' }}
                           >
                             {acta.tipo}
                           </Badge>
@@ -474,49 +511,49 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                       </div>
 
                       {/* Info de la audiencia */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3 p-3 bg-gray-50 rounded-lg">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3 p-3 rounded-lg" style={{ background: '#F5F5F5' }}>
                         <div>
-                          <p className="text-xs text-gray-500 mb-0.5 flex items-center gap-1">
+                          <p className="text-xs text-gray-500 mb-0.5 flex items-center gap-1 font-semibold">
                             <Calendar className="w-3 h-3" />
                             Fecha
                           </p>
-                          <p className="text-xs font-bold text-gray-900">{acta.fecha}</p>
+                          <p className="text-xs font-black text-gray-900">{acta.fecha}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 mb-0.5 flex items-center gap-1">
+                          <p className="text-xs text-gray-500 mb-0.5 flex items-center gap-1 font-semibold">
                             <Clock className="w-3 h-3" />
                             Horario
                           </p>
-                          <p className="text-xs font-bold text-gray-900">{acta.hora}</p>
+                          <p className="text-xs font-black text-gray-900">{acta.hora}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 mb-0.5 flex items-center gap-1">
+                          <p className="text-xs text-gray-500 mb-0.5 flex items-center gap-1 font-semibold">
                             <Play className="w-3 h-3" />
                             Duración
                           </p>
-                          <p className="text-xs font-bold text-gray-900">{acta.duracion}</p>
+                          <p className="text-xs font-black text-gray-900">{acta.duracion}</p>
                         </div>
                       </div>
 
                       <div className="mb-3">
-                        <p className="text-xs text-gray-500 mb-0.5">📍 Lugar</p>
-                        <p className="text-xs font-bold text-gray-900">{acta.lugar}</p>
+                        <p className="text-xs text-gray-500 mb-0.5 font-semibold">📍 Lugar</p>
+                        <p className="text-xs font-black text-gray-900">{acta.lugar}</p>
                       </div>
 
                       <div className="mb-3">
-                        <p className="text-xs text-gray-500 mb-1">⚖️ Presidente</p>
-                        <p className="text-xs font-bold text-gray-900">{acta.presidente}</p>
+                        <p className="text-xs text-gray-500 mb-1 font-semibold">⚖️ Presidente</p>
+                        <p className="text-xs font-black text-gray-900">{acta.presidente}</p>
                       </div>
 
                       {/* Participantes */}
                       <div className="mb-3">
-                        <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                        <p className="text-xs text-gray-500 mb-2 flex items-center gap-1 font-semibold">
                           <Users className="w-3 h-3" />
                           Participantes
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
                           {acta.participantes.map((participante, idx) => (
-                            <div key={idx} className="flex items-center gap-1.5 text-xs text-gray-700">
+                            <div key={idx} className="flex items-center gap-1.5 text-xs text-gray-700 font-semibold">
                               <div className="w-1.5 h-1.5 rounded-full bg-purple-500"></div>
                               {participante}
                             </div>
@@ -525,8 +562,8 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                       </div>
 
                       {/* Resumen */}
-                      <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                        <p className="text-xs font-bold text-blue-900 mb-1">📝 Resumen</p>
+                      <div className="mb-3 p-3 rounded-lg border-2" style={{ background: '#E3F2FD', borderColor: '#90CAF9' }}>
+                        <p className="text-xs font-black text-blue-900 mb-1">📝 Resumen</p>
                         <p className="text-sm text-blue-800 leading-relaxed">
                           {acta.resumen}
                         </p>
@@ -534,12 +571,12 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
                       {/* Decisiones */}
                       <div className="mb-3">
-                        <p className="text-xs font-bold text-gray-700 mb-2">✅ Decisiones Tomadas</p>
+                        <p className="text-xs font-black text-gray-700 mb-2">✅ Decisiones Tomadas</p>
                         <ul className="space-y-1">
                           {acta.decisiones.map((decision, idx) => (
                             <li key={idx} className="flex items-start gap-2 text-xs text-gray-700">
                               <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0 mt-0.5" />
-                              <span>{decision}</span>
+                              <span className="font-semibold">{decision}</span>
                             </li>
                           ))}
                         </ul>
@@ -547,36 +584,41 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
                       {/* Archivo */}
                       {acta.archivo ? (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-gray-50 border border-gray-200">
-                          <FileText className="w-5 h-5 text-red-600" />
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-gray-50 border-2 border-gray-200">
+                          <FileText className="w-5 h-5 text-red-600 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-gray-900 truncate">
+                            <p className="text-xs font-black text-gray-900 truncate">
                               {acta.archivo}
                             </p>
-                            <p className="text-xs text-gray-500">{acta.tamaño}</p>
+                            <p className="text-xs text-gray-500 font-semibold">{acta.tamaño}</p>
                           </div>
                           <div className="flex items-center gap-1">
                             <Button
                               size="sm"
-                              variant="ghost"
                               onClick={() => handleVerActa(acta)}
-                              className="hover:bg-blue-100"
+                              className="font-bold text-xs px-3 py-1.5 text-white"
+                              style={{ background: '#7B1FA2' }}
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5 mr-1" />
+                              Ver
                             </Button>
                             <Button
                               size="sm"
-                              variant="ghost"
                               onClick={() => handleDescargarActa(acta)}
-                              className="hover:bg-green-100"
+                              className="font-bold text-xs px-3 py-1.5 text-white"
+                              style={{ background: '#003DA5' }}
                             >
-                              <Download className="w-3.5 h-3.5" />
+                              <Download className="w-3.5 h-3.5 mr-1" />
+                              Descargar
                             </Button>
                             <Button
                               size="sm"
-                              variant="ghost"
-                              onClick={() => handleEliminarActa(acta.id, acta.numero)}
-                              className="hover:bg-red-100 text-red-600"
+                              variant="outline"
+                              onClick={() => {
+                                setActaEliminar(acta);
+                                setModalConfirmacionAbierto(true);
+                              }}
+                              className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
@@ -584,19 +626,18 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                         </div>
                       ) : (
                         <div className="space-y-2">
-                          <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
+                          <div className="p-3 rounded-lg bg-orange-50 border-2 border-orange-300">
                             <p className="text-xs font-bold text-orange-900 flex items-center gap-1.5">
                               <AlertCircle className="w-3.5 h-3.5" />
-                              Acta pendiente de firma y digitalización
+                              ⚠️ Acta pendiente de firma y digitalización
                             </p>
                           </div>
                           <Button
                             size="sm"
-                            variant="outline"
                             onClick={() => handleMarcarFirmada(acta.id)}
-                            className="w-full text-xs font-bold text-green-600 hover:bg-green-50"
+                            className="font-bold text-xs px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white"
                           >
-                            <CheckCircle className="w-3 h-3 mr-1" />
+                            <CheckCircle className="w-3.5 h-3.5 mr-1" />
                             Marcar como Firmada
                           </Button>
                         </div>
@@ -609,18 +650,23 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t px-6 py-4">
-          <div className="flex items-center justify-between">
+        {/* Footer - Botones SIEMPRE visibles */}
+        <div 
+          className="flex-shrink-0 bg-white border-t-2 px-6 py-4"
+          style={{ 
+            borderTopColor: '#7B1FA2',
+            boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)'
+          }}
+        >
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={onClose}>
-                <X className="w-3.5 h-3.5 mr-1.5" />
+              <Button variant="outline" onClick={onClose} className="font-bold">
+                <X className="w-4 h-4 mr-1.5" />
                 Cerrar
               </Button>
               <div className="text-xs text-gray-600">
-                <strong>{actasBuscadas.length}</strong> de <strong>{actas.length}</strong> actas · 
-                <strong className="text-green-600"> {actas.filter(a => a.estado === 'Firmada').length} firmadas</strong> · 
-                <strong className="text-blue-600"> {actas.filter(a => a.estado === 'Programada').length} programadas</strong>
+                Mostrando <strong className="text-purple-700">{actasBuscadas.length}</strong> de{' '}
+                <strong className="text-purple-700">{actas.length}</strong> actas
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -629,20 +675,42 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                 variant="outline"
                 className="font-bold"
               >
-                <Download className="w-3.5 h-3.5 mr-1.5" />
+                <Download className="w-4 h-4 mr-1.5" />
                 Descargar Firmadas (ZIP)
               </Button>
               <Button
                 onClick={handleCargarActa}
-                className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                className="font-bold text-white"
+                style={{ background: '#7B1FA2' }}
               >
-                <Plus className="w-3.5 h-3.5 mr-1.5" />
-                Nueva Acta
+                <Upload className="w-4 h-4 mr-1.5" />
+                Cargar Acta Firmada
               </Button>
             </div>
           </div>
         </div>
       </DialogContent>
+
+      {/* Modal visor de documentos */}
+      <VisorDocumentoModal
+        isOpen={modalVisorAbierto}
+        onClose={() => setModalVisorAbierto(false)}
+        archivo={actaSeleccionada?.archivo}
+        numero={actaSeleccionada?.numero}
+        asunto={actaSeleccionada?.tipo}
+      />
+
+      {/* Modal de confirmación para eliminar acta */}
+      <DialogoConfirmacion
+        isOpen={modalConfirmacionAbierto}
+        onClose={() => setModalConfirmacionAbierto(false)}
+        onConfirm={() => {
+          handleEliminarActa(actaEliminar.id, actaEliminar.numero);
+          setModalConfirmacionAbierto(false);
+        }}
+        titulo="Confirmar Eliminación"
+        mensaje={`¿Estás seguro de eliminar el acta ${actaEliminar?.numero}?`}
+      />
     </Dialog>
   );
 }

@@ -1,17 +1,17 @@
 /**
  * MOD-06: Órganos de Control
- * DISEÑO 100% COHERENTE CON DEFENSA JUDICIAL
- * Gestión de requerimientos de entidades de control
+ * VERSIÓN COMPLETA CON MODALES FUNCIONALES Y DRAG & DROP
  */
 
-import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { useState } from 'react';
 import {
-  Plus, FileText, FolderOpen, Clock, ChevronDown,
-  AlertCircle, CheckCircle, List, Columns3,
-  Building2, Filter, Search, Download,
-  MessageSquare, FileCheck, Send, Archive, Calendar,
-  Eye, AlertTriangle, TrendingUp, Target, Mail
+  Plus, Building2, List, Columns3,
+  CheckCircle, AlertCircle, AlertTriangle,
+  Mail, Search, FileCheck, Send, X,
+  Clock, FolderOpen, MessageSquare, Archive,
+  Eye, ArrowUpDown, ChevronLeft, ChevronRight,
+  Calendar, User, FileText, Download, Filter,
+  Upload, Paperclip, Save, MoreVertical
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -20,14 +20,23 @@ import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
-import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { Input } from '../../../ui/input';
+import { Textarea } from '../../../ui/textarea';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { ModalHeaderClean } from '../design-system/ModalHeaderClean';
+
+// Tipo para drag and drop
+const ItemTypes = {
+  REQUERIMIENTO: 'requerimiento_organo'
+};
 
 // Types
-interface RequerimientoOrganoControl {
+interface Requerimiento {
   id: string;
   numeroOficio: string;
-  organismo: 'CGR' | 'PROCURADURIA' | 'CONTRALORIA_TERRITORIAL' | 'FISCALIA' | 'DEFENSORIA' | 'PERSONERIA';
+  organismo: string;
   asunto: string;
   responsable: string;
   fechaRadicacion: Date;
@@ -40,7 +49,7 @@ interface RequerimientoOrganoControl {
 }
 
 // Datos mock
-const requerimientosMock: RequerimientoOrganoControl[] = [
+const MOCK_DATA: Requerimiento[] = [
   {
     id: 'REQ-CGR-2024-001',
     numeroOficio: 'CGR-OF-2024-00125',
@@ -52,7 +61,7 @@ const requerimientosMock: RequerimientoOrganoControl[] = [
     diasRestantes: 5,
     diasTotales: 20,
     etapa: 'RESPUESTA',
-    ultimaActuacion: 'Proyecto de respuesta en revisión de Oficina Jurídica',
+    ultimaActuacion: 'Proyecto de respuesta en revisión',
     documentos: 8
   },
   {
@@ -66,13 +75,13 @@ const requerimientosMock: RequerimientoOrganoControl[] = [
     diasRestantes: 11,
     diasTotales: 21,
     etapa: 'ANALISIS',
-    ultimaActuacion: 'Recopilación de información de territoriales',
+    ultimaActuacion: 'Recopilación de información',
     documentos: 5
   },
   {
     id: 'REQ-CTR-2024-003',
     numeroOficio: 'CTR-ANT-2024-045',
-    organismo: 'CONTRALORIA_TERRITORIAL',
+    organismo: 'CONTRALORIA',
     asunto: 'Auditoría gestión recursos públicos Q4',
     responsable: 'Dra. Laura González',
     fechaRadicacion: new Date('2024-12-01'),
@@ -80,120 +89,136 @@ const requerimientosMock: RequerimientoOrganoControl[] = [
     diasRestantes: 0,
     diasTotales: 24,
     etapa: 'ENVIADO',
-    ultimaActuacion: 'Respuesta enviada el 24/12/2024 con 15 anexos',
+    ultimaActuacion: 'Respuesta enviada el 24/12/2024',
     documentos: 15
   },
   {
     id: 'REQ-FISC-2024-004',
     numeroOficio: 'FISC-2024-00789',
     organismo: 'FISCALIA',
-    asunto: 'Información sobre proceso disciplinario funcionario',
+    asunto: 'Información sobre proceso disciplinario',
     responsable: 'Dr. Juan Pérez',
     fechaRadicacion: new Date('2024-12-20'),
     fechaVencimiento: new Date('2025-01-10'),
     diasRestantes: 16,
     diasTotales: 21,
     etapa: 'RECIBIDO',
-    ultimaActuacion: 'Requerimiento recibido, pendiente asignación',
+    ultimaActuacion: 'Pendiente asignación',
     documentos: 1
-  },
-  {
-    id: 'REQ-DEF-2024-005',
-    numeroOficio: 'DEF-2024-00234',
-    organismo: 'DEFENSORIA',
-    asunto: 'Derecho de petición acceso información pública',
-    responsable: 'Dra. Ana López',
-    fechaRadicacion: new Date('2024-12-18'),
-    fechaVencimiento: new Date('2025-01-02'),
-    diasRestantes: 8,
-    diasTotales: 15,
-    etapa: 'ANALISIS',
-    ultimaActuacion: 'Validación de información con área de sistemas',
-    documentos: 3
-  },
-  {
-    id: 'REQ-PER-2024-006',
-    numeroOficio: 'PER-BOG-2024-156',
-    organismo: 'PERSONERIA',
-    asunto: 'Verificación atención derechos de petición',
-    responsable: 'Dra. Patricia Silva',
-    fechaRadicacion: new Date('2024-12-05'),
-    fechaVencimiento: new Date('2024-12-20'),
-    diasRestantes: -5,
-    diasTotales: 15,
-    etapa: 'RESPUESTA',
-    ultimaActuacion: 'Respuesta en proceso de firma del Director',
-    documentos: 6
   },
 ];
 
+// Función auxiliar para colores de semáforo
+const getSemaforoColor = (dias: number) => {
+  if (dias < 0) return '#DC2626';
+  if (dias <= 5) return '#F59E0B';
+  return '#10B981';
+};
+
 export function OrganosControl() {
-  const [isMobile, setIsMobile] = useState(false);
-  const [isTablet, setIsTablet] = useState(false);
   const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filtroOrganismo, setFiltroOrganismo] = useState<string>('');
+  const [filtroEtapa, setFiltroEtapa] = useState<string>('');
+  const [ordenamiento, setOrdenamiento] = useState<{campo: string; direccion: 'asc' | 'desc'}>({
+    campo: 'diasRestantes',
+    direccion: 'asc'
+  });
+  const [paginaActual, setPaginaActual] = useState(1);
+  const itemsPorPagina = 10;
 
-  useEffect(() => {
-    const checkScreenSize = () => {
-      const width = window.innerWidth;
-      setIsMobile(width < 768);
-      setIsTablet(width >= 768 && width < 1024);
-    };
+  // Estado local para drag and drop
+  const [requerimientos, setRequerimientos] = useState(MOCK_DATA);
 
-    checkScreenSize();
-    window.addEventListener('resize', checkScreenSize);
-    return () => window.removeEventListener('resize', checkScreenSize);
-  }, []);
+  // Estados para modales
+  const [modalNuevoOpen, setModalNuevoOpen] = useState(false);
+  const [modalVerOpen, setModalVerOpen] = useState(false);
+  const [modalDocsOpen, setModalDocsOpen] = useState(false);
+  const [modalRespuestaOpen, setModalRespuestaOpen] = useState(false);
+  const [modalComentariosOpen, setModalComentariosOpen] = useState(false);
+  const [requerimientoSeleccionado, setRequerimientoSeleccionado] = useState<Requerimiento | null>(null);
 
-  // Agrupar por etapa
-  const requerimientosPorEtapa = {
-    RECIBIDO: requerimientosMock.filter(r => r.etapa === 'RECIBIDO'),
-    ANALISIS: requerimientosMock.filter(r => r.etapa === 'ANALISIS'),
-    RESPUESTA: requerimientosMock.filter(r => r.etapa === 'RESPUESTA'),
-    ENVIADO: requerimientosMock.filter(r => r.etapa === 'ENVIADO'),
+  // Handler para mover requerimientos entre etapas
+  const handleMoverRequerimiento = (requerimientoId: string, nuevaEtapa: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO') => {
+    setRequerimientos((prevRequerimientos) => 
+      prevRequerimientos.map((req) => 
+        req.id === requerimientoId 
+          ? { ...req, etapa: nuevaEtapa }
+          : req
+      )
+    );
+    
+    toast.success('Requerimiento movido exitosamente', {
+      description: `Cambiado a etapa: ${nuevaEtapa}`
+    });
   };
 
-  // Estadísticas
-  const totalRequerimientos = requerimientosMock.length;
-  const urgentes = requerimientosMock.filter(r => r.diasRestantes <= 5 && r.diasRestantes > 0).length;
-  const vencidos = requerimientosMock.filter(r => r.diasRestantes < 0).length;
-  const enTermino = requerimientosMock.filter(r => r.diasRestantes > 5).length;
+  // Agrupar por etapa usando el estado local
+  const porEtapa = {
+    RECIBIDO: requerimientos.filter(r => r.etapa === 'RECIBIDO'),
+    ANALISIS: requerimientos.filter(r => r.etapa === 'ANALISIS'),
+    RESPUESTA: requerimientos.filter(r => r.etapa === 'RESPUESTA'),
+    ENVIADO: requerimientos.filter(r => r.etapa === 'ENVIADO'),
+  };
+
+  // Estadísticas usando el estado local
+  const total = requerimientos.length;
+  const urgentes = requerimientos.filter(r => r.diasRestantes <= 5 && r.diasRestantes > 0).length;
+  const vencidos = requerimientos.filter(r => r.diasRestantes < 0).length;
+  const enTermino = requerimientos.filter(r => r.diasRestantes > 5).length;
 
   const etapas = [
     { 
-      nombre: 'Recibido', 
+      nombre: 'Recibido',
+      valor: 'RECIBIDO' as const,
       color: '#6B7280', 
-      icono: <Mail className="w-4 h-4 text-gray-600" />, 
-      diasEstimados: 2,
-      requerimientos: requerimientosPorEtapa.RECIBIDO
+      requerimientos: porEtapa.RECIBIDO
     },
     { 
-      nombre: 'Análisis', 
+      nombre: 'Análisis',
+      valor: 'ANALISIS' as const,
       color: '#F59E0B', 
-      icono: <Search className="w-4 h-4 text-amber-600" />, 
-      diasEstimados: 10,
-      requerimientos: requerimientosPorEtapa.ANALISIS
+      requerimientos: porEtapa.ANALISIS
     },
     { 
-      nombre: 'Respuesta', 
+      nombre: 'Respuesta',
+      valor: 'RESPUESTA' as const,
       color: '#3B82F6', 
-      icono: <FileCheck className="w-4 h-4 text-blue-600" />, 
-      diasEstimados: 5,
-      requerimientos: requerimientosPorEtapa.RESPUESTA
+      requerimientos: porEtapa.RESPUESTA
     },
     { 
-      nombre: 'Enviado', 
+      nombre: 'Enviado',
+      valor: 'ENVIADO' as const,
       color: '#10B981', 
-      icono: <CheckCircle className="w-4 h-4 text-green-600" />, 
-      diasEstimados: 0,
-      requerimientos: requerimientosPorEtapa.ENVIADO
+      requerimientos: porEtapa.ENVIADO
     },
   ];
 
+  const handleVerRequerimiento = (req: Requerimiento) => {
+    setRequerimientoSeleccionado(req);
+    setModalVerOpen(true);
+  };
+
+  const handleDocumentos = (req: Requerimiento) => {
+    setRequerimientoSeleccionado(req);
+    setModalDocsOpen(true);
+  };
+
+  const handleRespuesta = (req: Requerimiento) => {
+    setRequerimientoSeleccionado(req);
+    setModalRespuestaOpen(true);
+  };
+
+  const handleComentarios = (req: Requerimiento) => {
+    setRequerimientoSeleccionado(req);
+    setModalComentariosOpen(true);
+  };
+
   return (
-    <div className="space-y-3 md:space-y-4">
-      {/* Header con ModuleHeader */}
+    <div className="space-y-4">
+      {/* Header */}
       <ModuleHeader
-        title={isMobile ? 'Kanban Operativo' : 'Tablero Kanban Operativo'}
+        title="Tablero Kanban Operativo"
         subtitle="Gestión de requerimientos de órganos de control"
         toggleView={{
           current: tipoVista,
@@ -208,7 +233,7 @@ export function OrganosControl() {
             label: 'Nuevo Requerimiento',
             labelMobile: 'Nuevo',
             icon: <Plus className="w-4 h-4" />,
-            onClick: () => toast.info('Nuevo Requerimiento'),
+            onClick: () => setModalNuevoOpen(true),
             variant: 'primary'
           }
         ]}
@@ -218,49 +243,9 @@ export function OrganosControl() {
             variant="icon"
             sections={[
               {
-                label: "🔗 Procedencia del Flujo",
-                content: "Los requerimientos llegan desde: 1) Correos clasificados por IA desde Centro de Comunicaciones (notificaciones de Contraloría, Procuraduría, Fiscalía), 2) Oficios directos recibidos físicamente, 3) Plataformas digitales de órganos de control.",
-                type: "info"
-              },
-              {
-                label: "⚖️ Propósito del Módulo",
-                content: "Gestión de requerimientos, solicitudes de información y procesos de responsabilidad fiscal/disciplinaria iniciados por órganos de control externo: Contraloría General, Procuraduría, Fiscalía, Personerías, Defensoría del Pueblo.",
+                label: "📋 Propósito",
+                content: "Gestión de requerimientos de Contraloría, Procuraduría, Fiscalía y otros órganos de control.",
                 type: "default"
-              },
-              {
-                label: "🔄 Flujo de Trabajo",
-                content: "1️⃣ RECIBIDO: Requerimiento notificado del órgano de control → 2️⃣ EN ANÁLISIS: Área jurídica revisa solicitud y coordina con áreas técnicas → 3️⃣ INFORMACIÓN CONSOLIDADA: Respuestas recopiladas de áreas → 4️⃣ BORRADOR: Oficio de respuesta redactado → 5️⃣ RESPUESTA ENVIADA: Entregada al órgano de control.",
-                type: "premium"
-              },
-              {
-                label: "⏰ Términos Legales",
-                content: "Plazos según norma: • Contraloría: 10 días hábiles (Ley 610/2000) | • Procuraduría: 15 días hábiles (Ley 734/2002) | • Fiscalía: Según oficio | • Personería: 10 días hábiles. ⚠️ NO son prorrogables.",
-                type: "warning"
-              },
-              {
-                label: "📊 Tipos de Requerimientos",
-                content: "• Solicitud información: Datos, documentos, contratos | • Proceso de responsabilidad fiscal: Posible detrimento patrimonial | • Proceso disciplinario: Conductas irregulares funcionarios | • Querella/Denuncia: Posibles delitos | • Traslado para respuesta de PQRS ciudadanas.",
-                type: "default"
-              },
-              {
-                label: "👥 Coordinación Interáreas",
-                content: "Requiere trabajo colaborativo con: Talento Humano (info funcionarios), Contratación (contratos), Financiera (presupuesto), Académica (programas), TI (datos digitales). El sistema notifica automáticamente a las áreas requeridas.",
-                type: "default"
-              },
-              {
-                label: "🔗 Integración con Otros Módulos",
-                content: "Se conecta con: • Centro Comunicaciones (recepción de oficios) • Términos e Informes (control de plazos perentorios) • Defensa Judicial (si el requerimiento deriva en demanda) • Juzgamiento (si hay proceso disciplinario a funcionarios).",
-                type: "success"
-              },
-              {
-                label: "💡 Cómo Usar",
-                content: "1️⃣ Click 'Nuevo Requerimiento' al recibir oficio → 2️⃣ Clasifica órgano y tipo de solicitud → 3️⃣ Sistema calcula término legal automáticamente → 4️⃣ Asigna responsable y áreas de apoyo → 5️⃣ Consolida información y redacta respuesta → 6️⃣ Envía y adjunta soporte de entrega.",
-                type: "default"
-              },
-              {
-                label: "⏭️ Siguiente Paso",
-                content: "Según resultado del requerimiento: • Si órgano inicia proceso fiscal/disciplinario → Derivar a Defensa Judicial | • Si requiere acciones internas → Derivar a Juzgamiento | • Si necesita plan de mejora → Derivar a Planes de Mejoramiento.",
-                type: "info"
               }
             ]}
           />
@@ -272,7 +257,7 @@ export function OrganosControl() {
         metrics={[
           {
             label: 'Total',
-            value: totalRequerimientos,
+            value: total,
             icon: <Building2 className="w-5 h-5" />,
             color: 'blue'
           },
@@ -297,276 +282,1117 @@ export function OrganosControl() {
         ]}
       />
 
-      {/* Filtros */}
-      <ModuleFilters
-        filters={[
-          {
-            label: 'Organismo',
-            icon: <Building2 className="w-4 h-4" />,
-            options: [
-              { label: 'CGR', value: 'CGR' },
-              { label: 'Procuraduría', value: 'PROCURADURIA' },
-              { label: 'Contraloría Territorial', value: 'CONTRALORIA_TERRITORIAL' },
-              { label: 'Fiscalía', value: 'FISCALIA' },
-              { label: 'Defensoría', value: 'DEFENSORIA' },
-              { label: 'Personería', value: 'PERSONERIA' }
-            ]
-          },
-          {
-            label: 'Etapa',
-            icon: <Columns3 className="w-4 h-4" />,
-            options: [
-              { label: 'Recibido', value: 'RECIBIDO' },
-              { label: 'Análisis', value: 'ANALISIS' },
-              { label: 'Respuesta', value: 'RESPUESTA' },
-              { label: 'Enviado', value: 'ENVIADO' }
-            ]
-          }
-        ]}
-      />
-
       {/* Tablero Kanban */}
       {tipoVista === 'kanban' && (
-        <div className="relative">
-          {(isMobile || isTablet) && (
-            <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
-              <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
-                <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
-                Desliza
-              </p>
-            </div>
-          )}
-          
-          <div 
-            className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
-            style={{
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#CBD5E0 #F7FAFC',
-              WebkitOverflowScrolling: 'touch'
-            }}
-          >
+        <DndProvider backend={HTML5Backend}>
+          <div className="flex gap-4 overflow-x-auto pb-4">
             {etapas.map((etapa) => (
-              <ColumnaKanban key={etapa.nombre} etapa={etapa} isMobile={isMobile} isTablet={isTablet} />
+              <ColumnaKanban 
+                key={etapa.nombre} 
+                etapa={etapa}
+                onVerRequerimiento={handleVerRequerimiento}
+                onDocumentos={handleDocumentos}
+                onRespuesta={handleRespuesta}
+                onComentarios={handleComentarios}
+                onMoverRequerimiento={handleMoverRequerimiento}
+              />
             ))}
           </div>
-        </div>
+        </DndProvider>
+      )}
+
+      {/* Vista Lista */}
+      {tipoVista === 'lista' && (
+        <VistaLista 
+          requerimientos={MOCK_DATA}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          filtroOrganismo={filtroOrganismo}
+          setFiltroOrganismo={setFiltroOrganismo}
+          filtroEtapa={filtroEtapa}
+          setFiltroEtapa={setFiltroEtapa}
+          ordenamiento={ordenamiento}
+          setOrdenamiento={setOrdenamiento}
+          paginaActual={paginaActual}
+          setPaginaActual={setPaginaActual}
+          itemsPorPagina={itemsPorPagina}
+          onVerRequerimiento={handleVerRequerimiento}
+          onDocumentos={handleDocumentos}
+          onRespuesta={handleRespuesta}
+          onComentarios={handleComentarios}
+        />
+      )}
+
+      {/* Modales */}
+      {modalNuevoOpen && (
+        <ModalNuevoRequerimiento 
+          onClose={() => setModalNuevoOpen(false)}
+        />
+      )}
+
+      {modalVerOpen && requerimientoSeleccionado && (
+        <ModalVerRequerimiento 
+          requerimiento={requerimientoSeleccionado}
+          onClose={() => setModalVerOpen(false)}
+        />
+      )}
+
+      {modalDocsOpen && requerimientoSeleccionado && (
+        <ModalDocumentos 
+          requerimiento={requerimientoSeleccionado}
+          onClose={() => setModalDocsOpen(false)}
+        />
+      )}
+
+      {modalRespuestaOpen && requerimientoSeleccionado && (
+        <ModalRespuesta 
+          requerimiento={requerimientoSeleccionado}
+          onClose={() => setModalRespuestaOpen(false)}
+        />
+      )}
+
+      {modalComentariosOpen && requerimientoSeleccionado && (
+        <ModalComentarios 
+          requerimiento={requerimientoSeleccionado}
+          onClose={() => setModalComentariosOpen(false)}
+        />
       )}
     </div>
   );
 }
 
-// Componente Columna Kanban
-interface ColumnaKanbanProps {
-  etapa: {
-    nombre: string;
-    color: string;
-    icono: React.ReactNode;
-    diasEstimados: number;
-    requerimientos: RequerimientoOrganoControl[];
-  };
-  isMobile: boolean;
-  isTablet: boolean;
-}
+// Componente Columna
+function ColumnaKanban({ 
+  etapa,
+  onVerRequerimiento,
+  onDocumentos,
+  onRespuesta,
+  onComentarios,
+  onMoverRequerimiento
+}: { 
+  etapa: { nombre: string; valor: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO'; color: string; requerimientos: Requerimiento[] };
+  onVerRequerimiento: (req: Requerimiento) => void;
+  onDocumentos: (req: Requerimiento) => void;
+  onRespuesta: (req: Requerimiento) => void;
+  onComentarios: (req: Requerimiento) => void;
+  onMoverRequerimiento: (reqId: string, nuevaEtapa: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO') => void;
+}) {
+  const [{ isOver }, drop] = useDrop({
+    accept: ItemTypes.REQUERIMIENTO,
+    drop: (item: Requerimiento) => onMoverRequerimiento(item.id, etapa.valor),
+    collect: (monitor) => ({
+      isOver: !!monitor.isOver(),
+    }),
+  });
 
-function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
+  const backgroundColor = isOver ? '#F0F7FF' : 'transparent';
+  const borderColor = isOver ? '#2962FF' : 'transparent';
+
   return (
-    <motion.div className="flex-shrink-0" initial={{ width: 320 }} animate={{ width: 320 }}>
-      <Card className="h-full border border-gray-200 bg-white">
-        <div className={`${isMobile ? 'p-3' : 'p-4'} border-b bg-gray-50`}>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 flex-1">
-              <div className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg bg-white border border-gray-200`}>
-                {etapa.icono}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className={`font-black ${isMobile ? 'text-xs' : 'text-sm'} text-gray-800`}>
-                  {etapa.nombre}
-                </h3>
-                {etapa.diasEstimados > 0 && (
-                  <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                    <Clock className="w-2.5 h-2.5" />
-                    {etapa.diasEstimados} días
-                  </p>
-                )}
-              </div>
-            </div>
-            <Badge className={`font-semibold ${isMobile ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'} bg-white border border-gray-200 text-gray-700`}>
+    <div className="flex-shrink-0" style={{ width: 320 }}>
+      <Card className="h-full border border-gray-200">
+        <div className="p-4 border-b bg-gray-50">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-sm text-gray-800">{etapa.nombre}</h3>
+            <Badge className="font-semibold text-sm px-2 py-1 bg-white border">
               {etapa.requerimientos.length}
             </Badge>
           </div>
         </div>
 
         <div 
-          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`} 
-          style={{ maxHeight: isMobile ? 'calc(100vh - 400px)' : 'calc(100vh - 300px)' }}
+          ref={drop}
+          className="p-3 space-y-3" 
+          style={{ 
+            minHeight: '500px',
+            maxHeight: 'calc(100vh - 300px)', 
+            overflowY: 'auto',
+            backgroundColor: backgroundColor,
+            borderLeft: `3px solid ${borderColor}`,
+            borderRight: `3px solid ${borderColor}`,
+            transition: 'all 0.2s ease'
+          }}
         >
           {etapa.requerimientos.map((req) => (
-            <TarjetaRequerimiento key={req.id} requerimiento={req} isMobile={isMobile} />
+            <TarjetaRequerimiento 
+              key={req.id} 
+              req={req}
+              onVerRequerimiento={onVerRequerimiento}
+              onDocumentos={onDocumentos}
+              onRespuesta={onRespuesta}
+              onComentarios={onComentarios}
+              onMoverRequerimiento={onMoverRequerimiento}
+            />
           ))}
 
           {etapa.requerimientos.length === 0 && (
-            <div className="text-center py-12 text-gray-400">
+            <div className="text-center py-12 text-gray-400" style={{ pointerEvents: 'none' }}>
               <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="text-xs font-semibold">Sin requerimientos en {etapa.nombre}</p>
+              <p className="text-xs font-semibold">
+                {isOver ? '✅ Suelte aquí' : 'Sin requerimientos'}
+              </p>
             </div>
           )}
         </div>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
-// Componente Tarjeta Requerimiento
-interface TarjetaRequerimientoProps {
-  requerimiento: RequerimientoOrganoControl;
-  isMobile: boolean;
-}
+// Componente Tarjeta
+function TarjetaRequerimiento({ 
+  req,
+  onVerRequerimiento,
+  onDocumentos,
+  onRespuesta,
+  onComentarios,
+  onMoverRequerimiento
+}: { 
+  req: Requerimiento;
+  onVerRequerimiento: (req: Requerimiento) => void;
+  onDocumentos: (req: Requerimiento) => void;
+  onRespuesta: (req: Requerimiento) => void;
+  onComentarios: (req: Requerimiento) => void;
+  onMoverRequerimiento: (reqId: string, nuevaEtapa: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO') => void;
+}) {
+  const semaforo = getSemaforoColor(req.diasRestantes);
 
-function TarjetaRequerimiento({ requerimiento, isMobile }: TarjetaRequerimientoProps) {
-  const getSemaforoColor = (diasRestantes: number) => {
-    if (diasRestantes < 0) return { color: '#DC2626', label: 'Vencido' };
-    if (diasRestantes <= 5) return { color: '#F59E0B', label: 'Urgente' };
-    return { color: '#10B981', label: 'En término' };
-  };
-
-  const getOrganoIcon = (organo: string) => {
-    switch(organo) {
-      case 'CGR': return '🏛️';
-      case 'CONTRALORIA_TERRITORIAL': return '📊';
-      case 'PROCURADURIA': return '⚖️';
-      case 'FISCALIA': return '🔍';
-      case 'DEFENSORIA': return '🛡️';
-      case 'PERSONERIA': return '📜';
-      default: return '📋';
-    }
-  };
-
-  const semaforo = getSemaforoColor(requerimiento.diasRestantes);
-  const porcentajeTiempo = Math.round(((requerimiento.diasTotales - requerimiento.diasRestantes) / requerimiento.diasTotales) * 100);
+  const [{ isDragging }, drag] = useDrag({
+    type: ItemTypes.REQUERIMIENTO,
+    item: req,
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  });
 
   return (
-    <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
-      <div className="h-1" style={{ background: '#003DA5' }} />
+    <div ref={drag} style={{ opacity: isDragging ? 0.5 : 1, cursor: 'move' }}>
+      <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
+        <div className="h-1" style={{ background: '#003DA5' }} />
 
-      <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
-        <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`} style={{ background: '#E0EDFF' }}>
-              <Building2 className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />
+        <div className="p-3">
+          {/* ID y Organismo */}
+          <div className="flex items-start gap-2 mb-2">
+            <div className="p-1.5 rounded-lg flex-shrink-0" style={{ background: '#E0EDFF' }}>
+              <Building2 className="w-4 h-4" style={{ color: '#003DA5' }} />
             </div>
-            <div className="min-w-0 flex-1">
-              <h4 className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} truncate`} style={{ color: '#003DA5' }}>
-                {requerimiento.id}
+            <div className="flex-1 min-w-0">
+              <h4 className="font-bold text-sm truncate" style={{ color: '#003DA5' }}>
+                {req.id}
               </h4>
               <p className="text-xs text-gray-600 truncate">
-                {getOrganoIcon(requerimiento.organismo)} {requerimiento.organismo}
+                🏛️ {req.organismo}
               </p>
             </div>
           </div>
-        </div>
 
-        <div className="mb-2 pb-2 border-b border-gray-200">
-          <p className="text-xs text-gray-500 mb-0.5">📄 Asunto:</p>
-          <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-2`}>
-            {requerimiento.asunto}
-          </p>
-        </div>
+          {/* Asunto */}
+          <div className="mb-2 pb-2 border-b">
+            <p className="text-xs text-gray-500 mb-0.5">📄 Asunto:</p>
+            <p className="font-bold text-sm text-gray-900 line-clamp-2">
+              {req.asunto}
+            </p>
+          </div>
 
-        <div className="mb-2 pb-2 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
-              <AvatarFallback className="text-xs" style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                {requerimiento.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500">👨‍💼 Responsable:</p>
-              <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-                {requerimiento.responsable}
-              </p>
+          {/* Responsable */}
+          <div className="mb-2 pb-2 border-b">
+            <div className="flex items-center gap-2">
+              <Avatar className="w-6 h-6">
+                <AvatarFallback className="text-xs" style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                  {req.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500">👨‍💼 Responsable:</p>
+                <p className="font-bold text-sm text-gray-900 line-clamp-1">
+                  {req.responsable}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-1.5 mb-2">
-          <Badge className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200" style={{ color: semaforo.color }}>
-            <div className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
-            {Math.abs(requerimiento.diasRestantes)} días {requerimiento.diasRestantes < 0 ? 'vencido' : 'restantes'}
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-3 gap-1.5 mb-2">
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{requerimiento.documentos || 0}</p>
-            <p className="text-xs text-gray-500">Docs</p>
+          {/* Días restantes */}
+          <div className="mb-2">
+            <Badge className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border" style={{ color: semaforo }}>
+              <div className="w-2 h-2 rounded-full" style={{ background: semaforo }} />
+              {Math.abs(req.diasRestantes)} días {req.diasRestantes < 0 ? 'vencido' : 'restantes'}
+            </Badge>
           </div>
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{requerimiento.diasTotales - requerimiento.diasRestantes}</p>
-            <p className="text-xs text-gray-500">Días</p>
+
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-1.5 mb-2">
+            <div className="text-center p-1.5 rounded-lg bg-gray-50 border">
+              <p className="text-xs font-bold text-gray-700">{req.documentos || 0}</p>
+              <p className="text-xs text-gray-500">Docs</p>
+            </div>
+            <div className="text-center p-1.5 rounded-lg bg-gray-50 border">
+              <p className="text-xs font-bold text-gray-700">{req.diasTotales - req.diasRestantes}</p>
+              <p className="text-xs text-gray-500">Días</p>
+            </div>
+            <div className="text-center p-1.5 rounded-lg bg-gray-50 border">
+              <p className="text-xs font-bold text-gray-700">
+                {Math.round(((req.diasTotales - req.diasRestantes) / req.diasTotales) * 100)}%
+              </p>
+              <p className="text-xs text-gray-500">Tiempo</p>
+            </div>
           </div>
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{porcentajeTiempo}%</p>
-            <p className="text-xs text-gray-500">Tiempo</p>
+
+          {/* Última actuación */}
+          <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
+            <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#003DA5' }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#003DA5' }}></span>
+              ÚLTIMA ACTUACIÓN
+            </p>
+            <p className="text-sm text-gray-700 line-clamp-2 mb-1">
+              {req.ultimaActuacion || 'Sin actuaciones'}
+            </p>
+            <p className="text-xs text-gray-500">
+              📅 {req.fechaRadicacion.toLocaleDateString('es-CO')}
+            </p>
+          </div>
+
+          {/* Botones */}
+          <div className="space-y-1 pt-2 border-t">
+            <Button
+              onClick={() => onVerRequerimiento(req)}
+              size="sm"
+              className="w-full text-xs font-bold"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              <Archive className="w-3 h-3 mr-1" />
+              Ver Requerimiento
+            </Button>
+
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                onClick={() => onDocumentos(req)}
+                size="sm"
+                variant="outline"
+                className="text-[11px] px-2 justify-start"
+              >
+                <FileCheck className="w-3 h-3 mr-0.5" />
+                Docs
+              </Button>
+              
+              <Button
+                onClick={() => onRespuesta(req)}
+                size="sm"
+                variant="outline"
+                className="text-[11px] px-2 justify-start"
+              >
+                <Send className="w-3 h-3 mr-0.5" />
+                Respuesta
+              </Button>
+            </div>
+
+            <Button
+              onClick={() => onComentarios(req)}
+              size="sm"
+              className="w-full text-xs font-bold"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              <MessageSquare className="w-3 h-3 mr-1" />
+              Comentarios
+            </Button>
           </div>
         </div>
+      </Card>
+    </div>
+  );
+}
 
-        <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
-          <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#003DA5' }}>
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#003DA5' }}></span>
-            ÚLTIMA ACTUACIÓN
-          </p>
-          <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-700 line-clamp-2 mb-1`}>
-            {requerimiento.ultimaActuacion || 'Sin actuaciones registradas'}
-          </p>
-          <p className="text-xs text-gray-500">
-            📅 {requerimiento.fechaRadicacion.toLocaleDateString('es-CO')}
-          </p>
+// Componente Vista Lista
+function VistaLista({
+  requerimientos,
+  searchTerm,
+  setSearchTerm,
+  filtroOrganismo,
+  setFiltroOrganismo,
+  filtroEtapa,
+  setFiltroEtapa,
+  ordenamiento,
+  setOrdenamiento,
+  paginaActual,
+  setPaginaActual,
+  itemsPorPagina,
+  onVerRequerimiento,
+  onDocumentos,
+  onRespuesta,
+  onComentarios
+}: {
+  requerimientos: Requerimiento[];
+  searchTerm: string;
+  setSearchTerm: (term: string) => void;
+  filtroOrganismo: string;
+  setFiltroOrganismo: (organismo: string) => void;
+  filtroEtapa: string;
+  setFiltroEtapa: (etapa: string) => void;
+  ordenamiento: {campo: string; direccion: 'asc' | 'desc'};
+  setOrdenamiento: (ordenamiento: {campo: string; direccion: 'asc' | 'desc'}) => void;
+  paginaActual: number;
+  setPaginaActual: (pagina: number) => void;
+  itemsPorPagina: number;
+  onVerRequerimiento: (req: Requerimiento) => void;
+  onDocumentos: (req: Requerimiento) => void;
+  onRespuesta: (req: Requerimiento) => void;
+  onComentarios: (req: Requerimiento) => void;
+}) {
+  const organos = Array.from(new Set(requerimientos.map(r => r.organismo)));
+  const etapas = Array.from(new Set(requerimientos.map(r => r.etapa)));
+
+  const filtrarRequerimientos = (req: Requerimiento) => {
+    const matchesSearch = req.asunto.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         req.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         req.responsable.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesOrganismo = filtroOrganismo ? req.organismo === filtroOrganismo : true;
+    const matchesEtapa = filtroEtapa ? req.etapa === filtroEtapa : true;
+    return matchesSearch && matchesOrganismo && matchesEtapa;
+  };
+
+  const requerimientosFiltrados = requerimientos.filter(filtrarRequerimientos);
+
+  const ordenarRequerimientos = (req1: Requerimiento, req2: Requerimiento) => {
+    if (ordenamiento.campo === 'diasRestantes') {
+      return ordenamiento.direccion === 'asc' ? req1.diasRestantes - req2.diasRestantes : req2.diasRestantes - req1.diasRestantes;
+    }
+    if (ordenamiento.campo === 'asunto') {
+      return ordenamiento.direccion === 'asc' ? req1.asunto.localeCompare(req2.asunto) : req2.asunto.localeCompare(req1.asunto);
+    }
+    return 0;
+  };
+
+  const requerimientosOrdenados = [...requerimientosFiltrados].sort(ordenarRequerimientos);
+
+  const requerimientosPaginados = requerimientosOrdenados.slice((paginaActual - 1) * itemsPorPagina, paginaActual * itemsPorPagina);
+
+  const totalPaginas = Math.ceil(requerimientosFiltrados.length / itemsPorPagina);
+
+  return (
+    <Card className="p-4">
+      {/* Filtros y búsqueda */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-10 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
         </div>
 
-        <div className="space-y-1 pt-2 border-t border-gray-200">
-          <Button
-            onClick={() => toast.info('Ver Requerimiento', { description: requerimiento.id })}
-            size="sm"
-            className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
+        <div className="relative">
+          <Building2 className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <select
+            value={filtroOrganismo}
+            onChange={(e) => setFiltroOrganismo(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-10 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
-            <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-            Ver Requerimiento
+            <option value="">Todos los órganos</option>
+            {organos.map(org => (
+              <option key={org} value={org}>{org}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="relative">
+          <Filter className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <select
+            value={filtroEtapa}
+            onChange={(e) => setFiltroEtapa(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-10 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">Todas las etapas</option>
+            {etapas.map(etapa => (
+              <option key={etapa} value={etapa}>{etapa}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex gap-2">
+          <select
+            value={ordenamiento.campo}
+            onChange={(e) => setOrdenamiento({ ...ordenamiento, campo: e.target.value })}
+            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="diasRestantes">Días restantes</option>
+            <option value="asunto">Asunto</option>
+          </select>
+          <Button
+            onClick={() => setOrdenamiento({ ...ordenamiento, direccion: ordenamiento.direccion === 'asc' ? 'desc' : 'asc' })}
+            size="sm"
+            variant="outline"
+            className="px-3"
+          >
+            {ordenamiento.direccion === 'asc' ? '↑' : '↓'}
           </Button>
+        </div>
+      </div>
 
-          <div className="grid grid-cols-2 gap-1">
-            <Button
-              onClick={() => toast.info('Documentos')}
-              size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-            >
-              <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Docs
-            </Button>
-            
-            <Button
-              onClick={() => toast.info('Respuesta')}
-              size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-            >
-              <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Respuesta
-            </Button>
-          </div>
+      {/* Tabla */}
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">ID</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Organismo</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Asunto</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Responsable</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Días restantes</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Docs</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Etapa</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Última actuación</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {requerimientosPaginados.map(req => (
+              <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+                <td className="px-4 py-3">
+                  <span className="font-bold text-sm" style={{ color: '#003DA5' }}>{req.id}</span>
+                </td>
+                <td className="px-4 py-3">
+                  <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                    {req.organismo}
+                  </Badge>
+                </td>
+                <td className="px-4 py-3">
+                  <p className="text-sm text-gray-900 font-medium line-clamp-2 max-w-xs">
+                    {req.asunto}
+                  </p>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <Avatar className="w-7 h-7">
+                      <AvatarFallback className="text-xs" style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                        {req.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm text-gray-700">{req.responsable}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <Badge className="text-xs flex items-center gap-1 font-semibold w-fit" style={{ 
+                    color: getSemaforoColor(req.diasRestantes),
+                    backgroundColor: `${getSemaforoColor(req.diasRestantes)}20`,
+                    border: `1px solid ${getSemaforoColor(req.diasRestantes)}`
+                  }}>
+                    <div className="w-2 h-2 rounded-full" style={{ background: getSemaforoColor(req.diasRestantes) }} />
+                    {Math.abs(req.diasRestantes)} días
+                  </Badge>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="text-sm font-semibold text-gray-700">{req.documentos || 0}</span>
+                </td>
+                <td className="px-4 py-3">
+                  <Badge variant="outline" className="text-xs">
+                    {req.etapa}
+                  </Badge>
+                </td>
+                <td className="px-4 py-3">
+                  <p className="text-xs text-gray-600 line-clamp-2 max-w-xs">
+                    {req.ultimaActuacion || 'Sin actuaciones'}
+                  </p>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-center">
+                    <MenuAcciones 
+                      req={req}
+                      onVerRequerimiento={onVerRequerimiento}
+                      onDocumentos={onDocumentos}
+                      onRespuesta={onRespuesta}
+                      onComentarios={onComentarios}
+                    />
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
+      {/* Paginación */}
+      <div className="flex items-center justify-between mt-4">
+        <p className="text-sm text-gray-600">
+          Mostrando <span className="font-semibold">{(paginaActual - 1) * itemsPorPagina + 1}</span> a{' '}
+          <span className="font-semibold">{Math.min(paginaActual * itemsPorPagina, requerimientosFiltrados.length)}</span> de{' '}
+          <span className="font-semibold">{requerimientosFiltrados.length}</span> resultados
+        </p>
+
+        <div className="flex items-center gap-2">
           <Button
-            onClick={() => toast.info('Comentarios')}
+            onClick={() => setPaginaActual(Math.max(1, paginaActual - 1))}
+            disabled={paginaActual === 1}
             size="sm"
-            className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
+            variant="outline"
+            className="px-3"
           >
-            <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-            Comentarios
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          
+          <span className="text-sm font-semibold text-gray-700">
+            Página {paginaActual} de {totalPaginas}
+          </span>
+          
+          <Button
+            onClick={() => setPaginaActual(Math.min(totalPaginas, paginaActual + 1))}
+            disabled={paginaActual === totalPaginas}
+            size="sm"
+            variant="outline"
+            className="px-3"
+          >
+            <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
       </div>
     </Card>
+  );
+}
+
+// Componente MenuAcciones
+function MenuAcciones({
+  req,
+  onVerRequerimiento,
+  onDocumentos,
+  onRespuesta,
+  onComentarios
+}: {
+  req: Requerimiento;
+  onVerRequerimiento: (req: Requerimiento) => void;
+  onDocumentos: (req: Requerimiento) => void;
+  onRespuesta: (req: Requerimiento) => void;
+  onComentarios: (req: Requerimiento) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <Button
+        onClick={() => setIsOpen(!isOpen)}
+        size="sm"
+        variant="ghost"
+        className="p-1 h-8 w-8"
+      >
+        <MoreVertical className="w-4 h-4" />
+      </Button>
+
+      {isOpen && (
+        <>
+          {/* Backdrop para cerrar al hacer clic fuera */}
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setIsOpen(false)}
+          />
+
+          {/* Menú desplegable */}
+          <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+            <button
+              onClick={() => {
+                onVerRequerimiento(req);
+                setIsOpen(false);
+              }}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors"
+            >
+              <Eye className="w-4 h-4" style={{ color: '#003DA5' }} />
+              <span>Ver Requerimiento</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onDocumentos(req);
+                setIsOpen(false);
+              }}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors"
+            >
+              <FileCheck className="w-4 h-4 text-gray-600" />
+              <span>Documentos</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onRespuesta(req);
+                setIsOpen(false);
+              }}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors"
+            >
+              <Send className="w-4 h-4 text-gray-600" />
+              <span>Redactar Respuesta</span>
+            </button>
+
+            <div className="border-t border-gray-100 my-1" />
+
+            <button
+              onClick={() => {
+                onComentarios(req);
+                setIsOpen(false);
+              }}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors"
+            >
+              <MessageSquare className="w-4 h-4 text-gray-600" />
+              <span>Comentarios</span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Modal Nuevo Requerimiento
+function ModalNuevoRequerimiento({ onClose }: { onClose: () => void }) {
+  const [numeroOficio, setNumeroOficio] = useState('');
+  const [organismo, setOrganismo] = useState('');
+  const [asunto, setAsunto] = useState('');
+  const [responsable, setResponsable] = useState('');
+  const [fechaRadicacion, setFechaRadicacion] = useState('');
+  const [fechaVencimiento, setFechaVencimiento] = useState('');
+  const [etapa, setEtapa] = useState('RECIBIDO');
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo="Nuevo Requerimiento"
+          subtitulo="Registro de requerimiento de órgano de control"
+          icono={Building2}
+          colorIcono="blue"
+          onClose={onClose}
+        />
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Número de Oficio</label>
+              <Input
+                value={numeroOficio}
+                onChange={(e) => setNumeroOficio(e.target.value)}
+                placeholder="Ej. CGR-OF-2024-00125"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Organismo</label>
+              <Input
+                value={organismo}
+                onChange={(e) => setOrganismo(e.target.value)}
+                placeholder="Ej. CGR"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Asunto</label>
+              <Textarea
+                value={asunto}
+                onChange={(e) => setAsunto(e.target.value)}
+                placeholder="Ej. Solicitud de información sobre contratación 2024"
+                rows={3}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Responsable</label>
+              <Input
+                value={responsable}
+                onChange={(e) => setResponsable(e.target.value)}
+                placeholder="Ej. Dra. María Fernández"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Fecha Radicación</label>
+              <Input
+                type="date"
+                value={fechaRadicacion}
+                onChange={(e) => setFechaRadicacion(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Fecha Vencimiento</label>
+              <Input
+                type="date"
+                value={fechaVencimiento}
+                onChange={(e) => setFechaVencimiento(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Etapa</label>
+              <select
+                value={etapa}
+                onChange={(e) => setEtapa(e.target.value as 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO')}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="RECIBIDO">Recibido</option>
+                <option value="ANALISIS">Análisis</option>
+                <option value="RESPUESTA">Respuesta</option>
+                <option value="ENVIADO">Enviado</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
+          <Button onClick={onClose} variant="outline">Cancelar</Button>
+          <Button 
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
+            onClick={() => {
+              toast.success('Requerimiento creado correctamente');
+              onClose();
+            }}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Crear Requerimiento
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Modal Ver Requerimiento
+function ModalVerRequerimiento({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo={requerimiento.id}
+          subtitulo={`${requerimiento.organismo} • ${requerimiento.numeroOficio}`}
+          icono={Eye}
+          colorIcono="blue"
+          badgePrincipal={requerimiento.etapa}
+          onClose={onClose}
+        />
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">ID Requerimiento</label>
+              <p className="text-sm font-bold mt-1" style={{ color: '#003DA5' }}>{requerimiento.id}</p>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Número de Oficio</label>
+              <p className="text-sm font-bold mt-1">{requerimiento.numeroOficio}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Organismo</label>
+              <Badge className="mt-1 bg-blue-50 text-blue-700 border-blue-200">
+                {requerimiento.organismo}
+              </Badge>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Etapa</label>
+              <Badge className="mt-1" variant="outline">
+                {requerimiento.etapa}
+              </Badge>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Asunto</label>
+            <p className="text-sm mt-1 font-medium">{requerimiento.asunto}</p>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Responsable</label>
+            <div className="flex items-center gap-2 mt-1">
+              <Avatar className="w-8 h-8">
+                <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                  {requerimiento.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm font-medium">{requerimiento.responsable}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Fecha Radicación</label>
+              <p className="text-sm mt-1">{requerimiento.fechaRadicacion.toLocaleDateString('es-CO')}</p>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Fecha Vencimiento</label>
+              <p className="text-sm mt-1">{requerimiento.fechaVencimiento.toLocaleDateString('es-CO')}</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Días Restantes</label>
+            <Badge className="mt-1 text-sm flex items-center gap-2 w-fit" style={{ 
+              color: getSemaforoColor(requerimiento.diasRestantes),
+              backgroundColor: `${getSemaforoColor(requerimiento.diasRestantes)}20`,
+              border: `1px solid ${getSemaforoColor(requerimiento.diasRestantes)}`
+            }}>
+              <div className="w-3 h-3 rounded-full" style={{ background: getSemaforoColor(requerimiento.diasRestantes) }} />
+              {Math.abs(requerimiento.diasRestantes)} días {requerimiento.diasRestantes < 0 ? 'vencido' : 'restantes'}
+            </Badge>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Última Actuación</label>
+            <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
+              <p className="text-sm">{requerimiento.ultimaActuacion || 'Sin actuaciones'}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center p-4 rounded-lg bg-gray-50 border">
+              <p className="text-2xl font-bold text-gray-700">{requerimiento.documentos || 0}</p>
+              <p className="text-xs text-gray-500 mt-1">Documentos</p>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-gray-50 border">
+              <p className="text-2xl font-bold text-gray-700">{requerimiento.diasTotales - requerimiento.diasRestantes}</p>
+              <p className="text-xs text-gray-500 mt-1">Días transcurridos</p>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-gray-50 border">
+              <p className="text-2xl font-bold text-gray-700">
+                {Math.round(((requerimiento.diasTotales - requerimiento.diasRestantes) / requerimiento.diasTotales) * 100)}%
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Progreso</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
+          <Button onClick={onClose} variant="outline">Cerrar</Button>
+          <Button style={{ background: '#003DA5', color: '#FFFFFF' }}>
+            <Download className="w-4 h-4 mr-2" />
+            Exportar PDF
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Modal Documentos
+function ModalDocumentos({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
+  const documentosMock = [
+    { nombre: 'Oficio Original CGR-OF-2024-00125.pdf', fecha: new Date(), tipo: 'PDF', tamaño: '2.4 MB' },
+    { nombre: 'Anexo 1 - Contratos 2024.xlsx', fecha: new Date(), tipo: 'EXCEL', tamaño: '1.1 MB' },
+    { nombre: 'Respuesta Preliminar.docx', fecha: new Date(), tipo: 'WORD', tamaño: '850 KB' },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo="Documentos del Requerimiento"
+          subtitulo={`${requerimiento.id} • ${requerimiento.documentos || 0} archivos`}
+          icono={FileText}
+          colorIcono="blue"
+          onClose={onClose}
+        />
+
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-600">
+              Total de documentos: <span className="font-bold">{requerimiento.documentos || 0}</span>
+            </p>
+            <Button size="sm" style={{ background: '#003DA5', color: '#FFFFFF' }}>
+              <Upload className="w-4 h-4 mr-2" />
+              Cargar Documento
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            {documentosMock.map((doc, idx) => (
+              <Card key={idx} className="p-4 hover:shadow-md transition-all">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg" style={{ background: '#E0EDFF' }}>
+                      <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">{doc.nombre}</p>
+                      <p className="text-xs text-gray-500">
+                        {doc.tipo} • {doc.tamaño} • {doc.fecha.toLocaleDateString('es-CO')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => toast.info('Descargando...')}>
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => toast.info('Abriendo vista previa...')}>
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
+          <Button onClick={onClose} variant="outline">Cerrar</Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Modal Respuesta
+function ModalRespuesta({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
+  const [contenido, setContenido] = useState('');
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo="Redactar Respuesta"
+          subtitulo={`${requerimiento.id} - ${requerimiento.organismo}`}
+          icono={Send}
+          colorIcono="blue"
+          onClose={onClose}
+        />
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Destinatario</label>
+              <Input value={requerimiento.organismo} readOnly />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Referencia</label>
+              <Input value={requerimiento.numeroOficio} readOnly />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Asunto</label>
+            <Input value={`Respuesta a: ${requerimiento.asunto}`} readOnly />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Contenido de la Respuesta</label>
+            <Textarea
+              placeholder="Redacte aquí la respuesta al requerimiento..."
+              value={contenido}
+              onChange={(e) => setContenido(e.target.value)}
+              rows={12}
+              className="w-full"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Adjuntar Documentos</label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
+              <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+              <p className="text-sm font-semibold text-gray-600">Haga clic o arrastre archivos aquí</p>
+              <p className="text-xs text-gray-500 mt-1">PDF, Word, Excel - Máx. 10MB</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
+          <Button onClick={onClose} variant="outline">Cancelar</Button>
+          <Button variant="outline" onClick={() => toast.success('Guardado como borrador')}>
+            <Save className="w-4 h-4 mr-2" />
+            Guardar Borrador
+          </Button>
+          <Button 
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
+            onClick={() => {
+              toast.success('Respuesta enviada correctamente');
+              onClose();
+            }}
+          >
+            <Send className="w-4 h-4 mr-2" />
+            Enviar Respuesta
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Modal Comentarios
+function ModalComentarios({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
+  const [nuevoComentario, setNuevoComentario] = useState('');
+
+  const comentariosMock = [
+    {
+      autor: 'Dra. María Fernández',
+      fecha: new Date('2024-12-28 10:30'),
+      texto: 'Se está revisando la documentación solicitada. Falta el certificado de contratos.'
+    },
+    {
+      autor: 'Dr. Carlos Méndez',
+      fecha: new Date('2024-12-27 15:45'),
+      texto: 'Coordinado con el área de contratación para obtener la información requerida.'
+    }
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo="Comentarios y Seguimiento"
+          subtitulo={`${requerimiento.id} • ${comentariosMock.length} comentarios`}
+          icono={MessageSquare}
+          colorIcono="blue"
+          onClose={onClose}
+        />
+
+        <div className="p-6 space-y-4">
+          <div className="space-y-3">
+            {comentariosMock.map((comentario, idx) => (
+              <Card key={idx} className="p-4 bg-gray-50">
+                <div className="flex items-start gap-3">
+                  <Avatar className="w-8 h-8">
+                    <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                      {comentario.autor.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="font-semibold text-sm">{comentario.autor}</p>
+                      <p className="text-xs text-gray-500">
+                        {comentario.fecha.toLocaleDateString('es-CO')} {comentario.fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <p className="text-sm text-gray-700">{comentario.texto}</p>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          <div className="border-t pt-4">
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Nuevo Comentario</label>
+            <Textarea
+              placeholder="Escriba su comentario..."
+              value={nuevoComentario}
+              onChange={(e) => setNuevoComentario(e.target.value)}
+              rows={4}
+              className="w-full"
+            />
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
+          <Button onClick={onClose} variant="outline">Cerrar</Button>
+          <Button 
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
+            onClick={() => {
+              toast.success('Comentario agregado');
+              setNuevoComentario('');
+            }}
+          >
+            <MessageSquare className="w-4 h-4 mr-2" />
+            Agregar Comentario
+          </Button>
+        </div>
+      </Card>
+    </div>
   );
 }

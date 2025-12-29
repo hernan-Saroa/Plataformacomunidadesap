@@ -1,6 +1,9 @@
 /**
  * ModalEvidencias - Gestión de Evidencias y Pruebas Documentales
- * Evidencias = Pruebas aportadas por las partes para sustentar sus pretensiones
+ * ✅ Diseño corporativo ESAP 2025 - Versión Premium
+ * ✅ Header naranja con gradiente (distintivo para evidencias)
+ * ✅ Footer sticky con botones siempre visibles
+ * ✅ Categorización visual mejorada
  */
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -16,6 +19,7 @@ import {
 import type { ExpedienteJudicial } from '../core/types';
 import { useState } from 'react';
 import { toast } from 'sonner@2.0.3';
+import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface ModalEvidenciasProps {
   isOpen: boolean;
@@ -301,72 +305,65 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogTitle className="sr-only">
+          Evidencias y Pruebas - Expediente {expediente.id}
+        </DialogTitle>
         <DialogDescription className="sr-only">
           Gestión de evidencias y pruebas documentales del expediente {expediente.id}
         </DialogDescription>
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg" style={{ background: '#FFF3E0' }}>
-                  <Paperclip className="w-5 h-5" style={{ color: '#F57C00' }} />
-                </div>
-                <div>
-                  <DialogTitle className="text-xl font-black" style={{ color: '#003DA5' }}>
-                    Evidencias y Pruebas
-                  </DialogTitle>
-                  <p className="text-sm text-gray-600">
-                    Material probatorio - {expediente.id}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <Badge style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                  {expediente.etapa}
-                </Badge>
-                <Badge className="bg-green-100 text-green-700 font-semibold">
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  {evidenciasAdmitidas} admitidas
-                </Badge>
-                <Badge className="bg-orange-100 text-orange-700 font-semibold">
-                  <AlertCircle className="w-3 h-3 mr-1" />
-                  {evidenciasPendientes} pendientes
-                </Badge>
-              </div>
-            </div>
+        
+        {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+        <ModalHeaderClean
+          titulo="Evidencias y Pruebas Documentales"
+          subtitulo={`Material probatorio del expediente ${expediente.id}`}
+          icono={Paperclip}
+          colorIcono="orange"
+          badgePrincipal={expediente.etapa}
+          badges={
+            <>
+              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                {evidenciasAdmitidas} admitidas
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                {evidenciasPendientes} pendientes
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
+                <Paperclip className="w-3 h-3 mr-1" />
+                {totalEvidencias} total
+              </Badge>
+            </>
+          }
+          onClose={onClose}
+        />
 
-            <Button onClick={onClose} variant="ghost" size="sm" className="ml-4">
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-
-          {/* Búsqueda */}
-          <div className="flex items-center gap-2 mt-4">
+        {/* Barra de búsqueda y filtros */}
+        <div className="px-6 py-4 bg-gradient-to-b from-orange-50 to-white border-b flex-shrink-0">
+          <div className="flex items-center gap-2 mb-3">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
-                placeholder="Buscar por nombre, categoría o descripción..."
+                placeholder="Buscar por nombre, categoría o descripción de la evidencia..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                className="pl-10 text-sm"
+                className="pl-10 text-sm font-semibold"
               />
             </div>
             <Button
               size="sm"
-              variant="outline"
               onClick={handleCargarNuevaEvidencia}
-              className="font-bold"
+              className="font-bold text-white"
+              style={{ background: '#F57C00' }}
             >
-              <Plus className="w-3.5 h-3.5 mr-1" />
+              <Plus className="w-4 h-4 mr-1.5" />
               Nueva Evidencia
             </Button>
           </div>
 
-          {/* Filtros */}
-          <div className="flex items-center gap-2 mt-3 overflow-x-auto">
+          {/* Filtros por categoría */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
             <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
             {categorias.map((cat) => {
               const count = cat === 'TODOS' ? evidencias.length : evidencias.filter(e => e.categoria === cat).length;
@@ -376,7 +373,8 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                   size="sm"
                   variant={filtroCategoria === cat ? 'default' : 'outline'}
                   onClick={() => setFiltroCategoria(cat)}
-                  className="text-xs whitespace-nowrap"
+                  className="text-xs font-bold whitespace-nowrap"
+                  style={filtroCategoria === cat ? { background: '#F57C00', color: '#FFFFFF' } : {}}
                 >
                   {cat} ({count})
                 </Button>
@@ -385,11 +383,11 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
           </div>
         </div>
 
-        {/* Contenido */}
+        {/* Contenido - Lista de evidencias */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* Información contextual */}
-          <Card className="p-4 mb-4 bg-orange-50 border-orange-200">
-            <h4 className="text-sm font-bold text-orange-900 mb-2 flex items-center gap-2">
+          <Card className="p-4 mb-4 border-l-4 border-l-orange-500" style={{ background: 'linear-gradient(135deg, #FFF3E0 0%, #FFFFFF 100%)' }}>
+            <h4 className="text-sm font-black text-orange-900 mb-2 flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />
               Gestión de Evidencias
             </h4>
@@ -415,10 +413,10 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
               </Card>
             ) : (
               evidenciasFiltradas.map((evidencia) => (
-                <Card key={evidencia.id} className="p-4 hover:shadow-md transition-shadow">
+                <Card key={evidencia.id} className="p-4 hover:shadow-lg transition-all border-l-4" style={{ borderLeftColor: evidencia.estadoColor === 'green' ? '#4CAF50' : evidencia.estadoColor === 'blue' ? '#2196F3' : '#FF9800' }}>
                   <div className="flex items-start gap-4">
                     {/* Icono del tipo */}
-                    <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 flex-shrink-0">
+                    <div className="p-3 rounded-lg bg-gray-50 border-2 border-gray-200 flex-shrink-0">
                       {getIconoTipo(evidencia.tipo)}
                     </div>
 
@@ -433,11 +431,11 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                             {getRelevanciaBadge(evidencia.relevancia)}
                           </div>
                           <div className="flex items-center gap-2 mb-2">
-                            <Badge variant="outline" className="text-xs">
-                              {evidencia.categoria}
+                            <Badge variant="outline" className="text-xs font-bold">
+                              📁 {evidencia.categoria}
                             </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              Folios {evidencia.folios}
+                            <Badge variant="outline" className="text-xs font-bold">
+                              📄 Folios {evidencia.folios}
                             </Badge>
                           </div>
                         </div>
@@ -451,62 +449,64 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                       {/* Metadata */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                         <div>
-                          <p className="text-xs text-gray-500 mb-0.5">📅 Fecha</p>
-                          <p className="text-xs font-bold text-gray-900">{evidencia.fecha}</p>
+                          <p className="text-xs text-gray-500 mb-0.5 font-semibold">📅 Fecha Carga</p>
+                          <p className="text-xs font-black text-gray-900">{evidencia.fecha}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 mb-0.5">📤 Aportado por</p>
-                          <p className="text-xs font-bold text-gray-900">{evidencia.aportadoPor}</p>
+                          <p className="text-xs text-gray-500 mb-0.5 font-semibold">📤 Aportado por</p>
+                          <p className="text-xs font-black text-gray-900">{evidencia.aportadoPor}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 mb-0.5">📦 Tamaño</p>
-                          <p className="text-xs font-bold text-gray-900">{evidencia.tamaño}</p>
+                          <p className="text-xs text-gray-500 mb-0.5 font-semibold">📦 Tamaño</p>
+                          <p className="text-xs font-black text-gray-900">{evidencia.tamaño}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 mb-0.5">📄 Tipo</p>
-                          <p className="text-xs font-bold text-gray-900 uppercase">{evidencia.tipo}</p>
+                          <p className="text-xs text-gray-500 mb-0.5 font-semibold">⚠️ Relevancia</p>
+                          <p className="text-xs font-black text-gray-900">{evidencia.relevancia}</p>
                         </div>
                       </div>
 
                       {/* Acciones */}
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button 
+                          size="sm" 
                           onClick={() => handleVerEvidencia(evidencia)}
-                          className="text-xs"
+                          className="font-bold text-xs px-3 py-1.5 text-white"
+                          style={{ background: '#F57C00' }}
                         >
-                          <Eye className="w-3 h-3 mr-1" />
+                          <Eye className="w-3.5 h-3.5 mr-1" />
                           Ver
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
+                        <Button 
+                          size="sm" 
                           onClick={() => handleDescargarEvidencia(evidencia)}
-                          className="text-xs"
+                          className="font-bold text-xs px-3 py-1.5 text-white"
+                          style={{ background: '#003DA5' }}
                         >
-                          <Download className="w-3 h-3 mr-1" />
+                          <Download className="w-3.5 h-3.5 mr-1" />
                           Descargar
                         </Button>
                         {evidencia.estado !== 'Admitida' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
+                          <Button 
+                            size="sm" 
                             onClick={() => handleMarcarAdmitida(evidencia.id)}
-                            className="text-xs text-green-600 hover:bg-green-50"
+                            className="font-bold text-xs px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white"
                           >
-                            <CheckCircle className="w-3 h-3 mr-1" />
+                            <CheckCircle className="w-3.5 h-3.5 mr-1" />
                             Admitir
                           </Button>
                         )}
-                        <Button
-                          size="sm"
+                        <Button 
+                          size="sm" 
                           variant="outline"
-                          onClick={() => handleEliminarEvidencia(evidencia.id, evidencia.nombre)}
-                          className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => {
+                            if (confirm(`¿Estás seguro de eliminar "${evidencia.nombre}"?`)) {
+                              handleEliminarEvidencia(evidencia.id, evidencia.nombre);
+                            }
+                          }}
+                          className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
                         >
-                          <Trash2 className="w-3 h-3 mr-1" />
-                          Eliminar
+                          <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
                     </div>
@@ -517,18 +517,23 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t px-6 py-4">
-          <div className="flex items-center justify-between">
+        {/* Footer - Botones SIEMPRE visibles */}
+        <div 
+          className="flex-shrink-0 bg-white border-t-2 px-6 py-4"
+          style={{ 
+            borderTopColor: '#F57C00',
+            boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)'
+          }}
+        >
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={onClose}>
-                <X className="w-3.5 h-3.5 mr-1.5" />
+              <Button variant="outline" onClick={onClose} className="font-bold">
+                <X className="w-4 h-4 mr-1.5" />
                 Cerrar
               </Button>
               <div className="text-xs text-gray-600">
-                <strong>{evidenciasFiltradas.length}</strong> de <strong>{totalEvidencias}</strong> evidencias 
-                · <strong className="text-green-600">{evidenciasAdmitidas} admitidas</strong> 
-                · <strong className="text-orange-600">{evidenciasPendientes} pendientes</strong>
+                Mostrando <strong className="text-orange-700">{evidenciasFiltradas.length}</strong> de{' '}
+                <strong className="text-orange-700">{totalEvidencias}</strong> evidencias
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -537,15 +542,16 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                 variant="outline"
                 className="font-bold"
               >
-                <Download className="w-3.5 h-3.5 mr-1.5" />
-                Descargar Todas ({totalEvidencias})
+                <Download className="w-4 h-4 mr-1.5" />
+                Descargar Todas (ZIP)
               </Button>
               <Button
                 onClick={handleCargarNuevaEvidencia}
-                className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                className="font-bold text-white"
+                style={{ background: '#F57C00' }}
               >
-                <Upload className="w-3.5 h-3.5 mr-1.5" />
-                Cargar Evidencias
+                <Upload className="w-4 h-4 mr-1.5" />
+                Cargar Evidencia
               </Button>
             </div>
           </div>

@@ -94,11 +94,10 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         { id: '7', nombre: 'Funcionario', tipo: 'interno', email: 'funcionario@esap.edu.co', rol: 'funcionario', password: 'Esap2026*' },
         { id: '8', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'ar.empresarial@esap.edu.co', rol: 'arquitectura', password: 'Esap2026*' },
         { id: '9', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'arqempresarial@esap.edu.co', rol: 'arquitectura', password: 'Esap2026*' },
-        { id: '10', nombre: 'Docente Planta', tipo: 'interno', email: 'planta@esap.edu.co', rol: 'planta-profesoral', password: 'Esap2026*' }, // ✅ NUEVO: Gestión Profesoral
-        { id: '11', nombre: 'Gestión Legal', tipo: 'interno', email: 'gestion.legal@esap.edu.co', rol: 'gestion-legal', password: 'Esap2026*' }, // ✅ NUEVO: Gestión Legal
-        { id: '12', nombre: 'Control Interno', tipo: 'interno', email: 'OCIG@esap.edu.co', rol: 'control-interno', password: 'Esap2026*' }, // ✅ NUEVO: Control Interno OCIG
-        { id: '13', nombre: 'Control Disciplinario', tipo: 'interno', email: 'c.disciplinario@esap.edu.co', rol: 'control-disciplinario', password: 'Esap2026*' }, // ✅ NUEVO: Control Disciplinario
-        { id: '14', nombre: 'Registro Académico', tipo: 'interno', email: 'registro.academico@esap.edu.co', rol: 'registro-academico', password: 'Esap2026*' }, // ✅ NUEVO: Registro Académico
+        { id: '10', nombre: 'Gestión Legal', tipo: 'interno', email: 'gestion.legal@esap.edu.co', rol: 'gestion-legal', password: 'Esap2026*' }, // ✅ Gestión Legal
+        { id: '11', nombre: 'Control Interno', tipo: 'interno', email: 'OCIG@esap.edu.co', rol: 'control-interno', password: 'Esap2026*' }, // ✅ Control Interno OCIG
+        { id: '12', nombre: 'Control Disciplinario', tipo: 'interno', email: 'c.disciplinario@esap.edu.co', rol: 'control-disciplinario', password: 'Esap2026*' }, // ✅ Control Disciplinario
+        { id: '13', nombre: 'Registro Académico', tipo: 'interno', email: 'registro.academico@esap.edu.co', rol: 'registro-academico', password: 'Esap2026*' }, // ✅ Registro Académico
       ];
 
       // Verificar si el email existe en las credenciales válidas
@@ -156,11 +155,6 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       } else if (emailLower === 'ar.empresarial@esap.edu.co' || emailLower === 'arqempresarial@esap.edu.co') {
         toast.success('🏛️ ¡Bienvenido Coordinador de Arquitectura Empresarial!', {
           description: 'Acceso al Módulo de Arquitectura Empresarial MRAE concedido',
-          duration: 3500,
-        });
-      } else if (emailLower === 'planta@esap.edu.co') {
-        toast.success('💼 ¡Bienvenido Docente Planta!', {
-          description: 'Acceso a la Gestión Profesoral concedido',
           duration: 3500,
         });
       } else if (emailLower === 'gestion.legal@esap.edu.co') {
@@ -458,10 +452,6 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   <div className="flex items-center justify-between">
                     <span className="font-medium">🎓 Estudiante:</span>
                     <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">estudiante@esap.edu.co</code>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">🟣 Docente Planta:</span>
-                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">planta@esap.edu.co</code>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="font-medium">🔵 Docente Cátedra:</span>
