@@ -55,7 +55,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
   const [modalNuevoProcesoOpen, setModalNuevoProcesoOpen] = useState(false);
-  
+
   // Estado local para manejar drag and drop
   const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
 
@@ -97,14 +97,14 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   }, []);
   // Manejar movimiento de proceso entre etapas
   const handleMoverProceso = (procesoId: string, nuevaEtapa: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS') => {
-    setProcesos((prevProcesos) => 
-      prevProcesos.map((p) => 
-        p.id === procesoId 
+    setProcesos((prevProcesos) =>
+      prevProcesos.map((p) =>
+        p.id === procesoId
           ? { ...p, etapa: nuevaEtapa }
           : p
       )
     );
-    
+
     toast.success('Proceso movido exitosamente', {
       description: `Cambiado a etapa: ${nuevaEtapa}`
     });
@@ -124,35 +124,35 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const procesosEnTermino = procesos.filter(p => p.diasRestantes > 5).length;
 
   const etapas = [
-    { 
-      nombre: 'Avocamiento', 
+    {
+      nombre: 'Avocamiento',
       valor: 'E1_AVOCAMIENTO' as const,
-      color: '#6B7280', 
-      icono: <FileCheck className="w-4 h-4 text-gray-600" />, 
+      color: '#6B7280',
+      icono: <FileCheck className="w-4 h-4 text-gray-600" />,
       diasEstimados: 5,
       procesos: procesosPorEtapa.E1_AVOCAMIENTO
     },
-    { 
-      nombre: 'Descargos', 
+    {
+      nombre: 'Descargos',
       valor: 'E2_DESCARGOS' as const,
-      color: '#F59E0B', 
-      icono: <Edit className="w-4 h-4 text-amber-600" />, 
+      color: '#F59E0B',
+      icono: <Edit className="w-4 h-4 text-amber-600" />,
       diasEstimados: 10,
       procesos: procesosPorEtapa.E2_DESCARGOS
     },
-    { 
-      nombre: 'Pruebas', 
+    {
+      nombre: 'Pruebas',
       valor: 'E3_PRUEBAS' as const,
-      color: '#3B82F6', 
-      icono: <Search className="w-4 h-4 text-blue-600" />, 
+      color: '#3B82F6',
+      icono: <Search className="w-4 h-4 text-blue-600" />,
       diasEstimados: 30,
       procesos: procesosPorEtapa.E3_PRUEBAS
     },
-    { 
-      nombre: 'Alegatos', 
+    {
+      nombre: 'Alegatos',
       valor: 'E4_ALEGATOS' as const,
-      color: '#003DA5', 
-      icono: <Gavel className="w-4 h-4" style={{ color: '#003DA5' }} />, 
+      color: '#003DA5',
+      icono: <Gavel className="w-4 h-4" style={{ color: '#003DA5' }} />,
       diasEstimados: 10,
       procesos: procesosPorEtapa.E4_ALEGATOS
     },
@@ -404,10 +404,10 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso }: Column
         </div>
 
         {/* Lista de Procesos */}
-        <div 
+        <div
           ref={drop}
-          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`} 
-          style={{ 
+          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`}
+          style={{
             minHeight: isMobile ? '400px' : '500px',
             maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)',
             backgroundColor: backgroundColor,
@@ -467,6 +467,30 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
   });
 
   const opacity = isDragging ? 0.5 : 1;
+
+  // Lógica de semáforo y cálculos
+  const getSemaforo = (dias: number) => {
+    if (dias > 5) return { color: '#10B981', label: 'En término' };
+    if (dias >= 3) return { color: '#F59E0B', label: 'Por vencer' };
+    return { color: '#EF4444', label: 'Crítico' };
+  };
+  const semaforo = getSemaforo(proceso.diasRestantes);
+
+  const porcentajeTiempo = Math.min(100, Math.round(((proceso.diasTotales - proceso.diasRestantes) / proceso.diasTotales) * 100));
+
+  const ultimaActuacion = proceso.ultimaActuacion || 'Sin actuaciones registradas';
+
+  // Adaptador para modales de gestión legal que esperan "ExpedienteJudicial"
+  const expedienteParaModales = {
+    id: proceso.id,
+    uuid: proceso.id,
+    radicado: proceso.id, // Fallback
+    demandante: proceso.disciplinado,
+    demandado: 'ESAP',
+    estado: 'ACTIVO',
+    etapaProcesal: proceso.etapa,
+    abogadoAsignado: proceso.abogadoAsignado
+  };
 
   return (
     <div ref={drag} style={{ opacity, cursor: 'move' }}>

@@ -9,6 +9,66 @@ import type { Response } from 'express';
 export class AutosController {
     constructor(private readonly autosService: AutosService) { }
 
+    @Get('expediente/:radicado/download-zip')
+    async downloadAll(@Param('radicado') radicado: string, @Res() res: Response) {
+        try {
+            const autos = await this.autosService.findAllByExpediente(radicado);
+            const autosConArchivo = autos.filter(a => a.archivoUrl);
+
+            if (!autosConArchivo || autosConArchivo.length === 0) {
+                res.status(404).json({ message: 'No hay autos con archivos para descargar' });
+                return;
+            }
+
+            const archiver = require('archiver');
+            const path = require('path');
+            const fs = require('fs');
+
+            res.set({
+                'Content-Type': 'application/zip',
+                'Content-Disposition': `attachment; filename=autos_${radicado.replace(/[^a-zA-Z0-9]/g, '_')}.zip`,
+            });
+
+            const archive = archiver('zip', { zlib: { level: 9 } });
+
+            archive.on('error', (err: Error) => {
+                console.error('Error en archiver:', err);
+                if (!res.headersSent) {
+                    res.status(500).json({ message: 'Error al crear el archivo ZIP' });
+                }
+            });
+
+            archive.pipe(res);
+
+            for (const auto of autosConArchivo) {
+                if (auto.archivoUrl) {
+                    let filePath: string;
+                    // Handle different URL formats
+                    if (auto.archivoUrl.includes('/api/legal/files/')) {
+                        const filename = auto.archivoUrl.split('/api/legal/files/').pop();
+                        filePath = path.join(process.cwd(), 'uploads', filename);
+                    } else {
+                        // Assume it might be a direct filename or relative path
+                        filePath = path.join(process.cwd(), 'uploads', path.basename(auto.archivoUrl));
+                    }
+
+                    if (fs.existsSync(filePath)) {
+                        const fileName = auto.archivoNombre || `auto_${auto.numero}_${auto.id.substring(0, 8)}.pdf`;
+                        archive.file(filePath, { name: fileName });
+                    }
+                }
+            }
+
+            await archive.finalize();
+
+        } catch (error) {
+            console.error('Error generando ZIP de autos:', error);
+            if (!res.headersSent) {
+                res.status(500).json({ message: 'Error al generar el archivo ZIP' });
+            }
+        }
+    }
+
     @Get('expediente/:radicado')
     async getAutos(@Param('radicado') radicado: string) {
         return this.autosService.findAllByExpediente(radicado);
@@ -54,12 +114,5 @@ export class AutosController {
         return this.autosService.delete(id);
     }
 
-    // @Get('download-all/:radicado')
-    // async downloadAll(@Param('radicado') radicado: string, @Res() res: Response) {
-    //     const archive = await this.autosService.getAutosZip(radicado);
-    //     
-    //     res.attachment(`autos_${radicado}.zip`);
-    //     archive.pipe(res);
-    //     await archive.finalize();
-    // }
+
 }
