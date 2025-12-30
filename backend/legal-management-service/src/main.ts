@@ -15,6 +15,7 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
+  // Force restart 2025-12-30
   await app.listen(process.env.PORT ?? 3008);
 }
 bootstrap();

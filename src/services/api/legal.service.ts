@@ -160,7 +160,7 @@ export class LegalService {
 
     getAutosDownloadUrl(radicado: string): string {
         const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
-        return `${baseUrl}/api/legal/autos/download-all/${radicado}`;
+        return `${baseUrl}/api/legal/autos/expediente/${radicado}/download-zip`;
     }
 
     // Documentos

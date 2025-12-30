@@ -149,36 +149,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
     }
   };
 
-  const handleCargarNuevoAuto = () => {
-    toast.info('📄 Abriendo carga de auto procesal', {
-      description: 'Selecciona el archivo del auto judicial',
-      duration: 2000
-    });
-    
-    // Simular apertura de input file
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.pdf,.doc,.docx';
-    
-    input.onchange = (e: any) => {
-      const file = e.target?.files?.[0];
-      if (file) {
-        // Mostrar toast de procesamiento
-        toast.info('⏳ Procesando auto procesal...', {
-          description: `${file.name} - ${(file.size / (1024 * 1024)).toFixed(2)} MB`,
-          duration: 2000
-        });
-        
-        // Reset filtros para mostrar el nuevo auto inmediatamente
-        setFiltroTipo('TODOS');
-        setBusqueda('');
 
-        toast.success('✅ Auto procesal cargado exitosamente');
-      }
-    };
-    
-    input.click();
-  };
 
   const handleEliminarAuto = async (id: string, numero: string) => {
     if (!confirm(`¿Estás seguro de eliminar el auto ${numero}?`)) return;
@@ -247,7 +218,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
         <DialogDescription className="sr-only">
           Gestión de autos procesales del expediente {expediente.id}
         </DialogDescription>
-        
+
         {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
         <ModalHeaderClean
           titulo="Autos Procesales"
@@ -286,18 +257,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 className="pl-10 text-sm font-semibold"
               />
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setIsCreateOpen(true)}
-              className="font-bold"
-              // onClick={() => setModalNuevoAutoAbierto(true)}
-              // className="font-bold text-white"
-              // style={{ background: '#F57C00' }}
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              Nuevo Auto
-            </Button>
+
           </div>
 
           {/* Filtros por tipo */}
@@ -441,7 +401,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                             <Eye className="w-3.5 h-3.5 mr-1" />
                             Ver
                           </Button>
-                          
+
                           {/* Botón Descargar */}
                           <Button
                             size="sm"
@@ -454,16 +414,6 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                             Descargar
                           </Button>
 
-                          {/* Botón Eliminar - Rojo peligro */}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEliminarAuto(auto.id, auto.numero)}
-                            title="Eliminar auto del expediente"
-                            className="font-semibold text-xs px-2 py-1.5 border-red-300 text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
 
                           {/* Botón Notificado (condicional) */}
                           {auto.estado !== 'Notificado' && (
@@ -477,16 +427,12 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                               <CheckCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          
+
                           {/* Botón Eliminar */}
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => {
-                              if (confirm(`¿Estás seguro de eliminar el auto ${auto.numero}?`)) {
-                                handleEliminarAuto(auto.id, auto.numero);
-                              }
-                            }}
+                            onClick={() => handleEliminarAuto(auto.id, auto.numero)}
                             title="Eliminar auto"
                             className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
                           >
@@ -503,9 +449,9 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
         </div>
 
         {/* Footer - Botones SIEMPRE visibles */}
-        <div 
+        <div
           className="flex-shrink-0 bg-white border-t-2 px-6 py-4"
-          style={{ 
+          style={{
             borderTopColor: '#003DA5',
             boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)'
           }}
@@ -531,13 +477,11 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 Descargar Todos (ZIP)
               </Button>
               <Button
-                // onClick={() => setIsCreateOpen(true)}
-                // className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                onClick={handleCargarNuevoAuto}
+                onClick={() => setIsCreateOpen(true)}
                 className="font-bold text-white"
                 style={{ background: '#F57C00' }}
               >
-                <Upload className="w-4 h-4 mr-1.5" />
+                <Plus className="w-4 h-4 mr-1.5" />
                 Cargar Auto Nuevo
               </Button>
             </div>

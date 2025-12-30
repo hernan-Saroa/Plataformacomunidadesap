@@ -468,6 +468,30 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
 
   const opacity = isDragging ? 0.5 : 1;
 
+  // Lógica de semáforo y cálculos
+  const getSemaforo = (dias: number) => {
+    if (dias > 5) return { color: '#10B981', label: 'En término' };
+    if (dias >= 3) return { color: '#F59E0B', label: 'Por vencer' };
+    return { color: '#EF4444', label: 'Crítico' };
+  };
+  const semaforo = getSemaforo(proceso.diasRestantes);
+
+  const porcentajeTiempo = Math.min(100, Math.round(((proceso.diasTotales - proceso.diasRestantes) / proceso.diasTotales) * 100));
+
+  const ultimaActuacion = proceso.ultimaActuacion || 'Sin actuaciones registradas';
+
+  // Adaptador para modales de gestión legal que esperan "ExpedienteJudicial"
+  const expedienteParaModales = {
+    id: proceso.id,
+    uuid: proceso.id,
+    radicado: proceso.id, // Fallback
+    demandante: proceso.disciplinado,
+    demandado: 'ESAP',
+    estado: 'ACTIVO',
+    etapaProcesal: proceso.etapa,
+    abogadoAsignado: proceso.abogadoAsignado
+  };
+
   return (
     <div ref={drag} style={{ opacity, cursor: 'move' }}>
       <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
