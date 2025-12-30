@@ -34,6 +34,9 @@ export class GraduationCertificateRequest {
   @Column({ name: 'id_number', length: 50 })
   idNumber: string;
 
+  @Column({ name: 'id_issue_date', type: 'date', nullable: true })
+  idIssueDate: Date;
+
   @Column({ name: 'full_name', length: 255 })
   fullName: string;
 
@@ -81,6 +84,25 @@ export class GraduationCertificateRequest {
 
   @Column({ name: 'rejection_reason', type: 'text', nullable: true })
   rejectionReason: string;
+
+  // Revisión manual (casos no encontrados)
+  @Column({ name: 'manual_review', type: 'boolean', default: false })
+  manualReview: boolean;
+
+  @Column({ name: 'reviewed_at', type: 'timestamp', nullable: true })
+  reviewedAt: Date;
+
+  @Column({ name: 'reviewed_by', length: 100, nullable: true })
+  reviewedBy: string;
+
+  @Column({ name: 'reviewer_name', length: 255, nullable: true })
+  reviewerName: string;
+
+  @Column({ name: 'review_notes', type: 'text', nullable: true })
+  reviewNotes: string;
+
+  @Column({ name: 'review_resolution', length: 50, nullable: true })
+  reviewResolution: string;
 
   // Fechas
   @CreateDateColumn({ name: 'request_date' })

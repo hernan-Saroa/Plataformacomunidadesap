@@ -228,6 +228,14 @@ export class UniversoAuditoriasService {
       proceso.priorizacionAnos = priorizacionAnos;
     }
 
+    // Si se actualiza la prioridad directamente (sin cambiar evaluación de riesgo)
+    if (updateDto.prioridad !== undefined) {
+      proceso.prioridad = updateDto.prioridad;
+      // Recalcular priorizacionAnos basado en la prioridad
+      // prioridad 1 = 4 años, 2 = 3 años, 3 = 2 años, 4 = 1 año
+      proceso.priorizacionAnos = 5 - updateDto.prioridad;
+    }
+
     return this.procesoRepository.save(proceso);
   }
 

@@ -25,15 +25,47 @@ import {
 
 // ==================== CONFIGURACIÓN ====================
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/control-interno';
+// Usar import.meta.env para Vite (no process.env que es de Node.js)
+// El backend NO tiene prefijo /esap, las rutas son directas: /auditorias, /documentos, etc.
+// Ruta del gateway: /control-institucional/api/v1/auditorias
+// Ruta directa: http://localhost:3007/auditorias
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    const base = import.meta.env.VITE_API_URL;
+    // Si ya incluye /auditorias o /esap, usarla tal cual
+    if (base.includes('/auditorias') || base.includes('/esap')) {
+      return base.replace(/\/esap.*$/, ''); // Remover /esap si existe
+    }
+    // Si incluye /control-institucional, agregar /api/v1
+    if (base.includes('/control-institucional')) {
+      return `${base}/api/v1`;
+    }
+    // Si es solo el gateway base, agregar el prefijo completo
+    return `${base}/control-institucional/api/v1`;
+  }
+  // Fallback: intentar directo al microservicio (sin prefijo)
+  return 'http://localhost:3007';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Helper para requests
 async function apiRequest<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    console.log('[API Request]', options?.method || 'GET', url);
+    console.log('[API Request] API_BASE_URL:', API_BASE_URL);
+    console.log('[API Request] Endpoint:', endpoint);
+    console.log('[API Request] URL completa:', url);
+    if (options?.body) {
+      console.log('[API Request] Body:', options.body);
+    }
+    
+    const response = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
         ...options?.headers,
@@ -41,20 +73,73 @@ async function apiRequest<T>(
       ...options,
     });
 
-    const data = await response.json();
+    console.log('[API Response]', response.status, response.statusText, response.headers.get('content-type'));
+
+    // Leer el texto de la respuesta una sola vez
+    const responseText = await response.text();
+    
+    // Verificar si la respuesta tiene contenido JSON
+    const contentType = response.headers.get('content-type');
+    const isJson = contentType && contentType.includes('application/json');
+    
+    let data: any = null;
+    
+    if (response.status === 204) {
+      // No Content sin body
+      data = null;
+    } else if (isJson || (response.status === 201 && responseText && responseText.trim())) {
+      // Intentar parsear JSON (incluyendo 201 Created que puede tener body)
+      if (responseText && responseText.trim()) {
+        try {
+          data = JSON.parse(responseText);
+          console.log('[API Response Data]', data);
+        } catch (parseError) {
+          console.error('[API Error] Error al parsear JSON:', parseError);
+          console.error('[API Error] Response text (primeros 500 chars):', responseText.substring(0, 500));
+          return {
+            success: false,
+            error: 'Error al parsear respuesta del servidor (la respuesta no es JSON válido)',
+          };
+        }
+      } else {
+        data = null;
+      }
+    } else if (responseText) {
+      // Respuesta no es JSON (probablemente HTML de error)
+      console.error('[API Error] Respuesta no es JSON. Status:', response.status);
+      console.error('[API Error] Content-Type:', contentType);
+      console.error('[API Error] Response preview:', responseText.substring(0, 200));
+      
+      // Si es HTML, probablemente es un error de routing
+      if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
+        return {
+          success: false,
+          error: `Error de routing: La URL ${url} no existe o está mal configurada. El servidor devolvió HTML en lugar de JSON.`,
+        };
+      }
+      
+      return {
+        success: false,
+        error: responseText || `Error HTTP ${response.status}`,
+      };
+    }
 
     if (!response.ok) {
       return {
         success: false,
-        error: data.error || 'Error en la petición',
+        error: data?.error || data?.message || `Error HTTP ${response.status}`,
       };
     }
 
-    return {
+    const result = {
       success: true,
-      data: data,
+      data: data?.data || data,
     };
+    console.log('[apiRequest] Resultado final:', result);
+    return result;
   } catch (error) {
+    console.error('[API Error] Error en fetch:', error);
+    console.error('[API Error] URL intentada:', url);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Error desconocido',
@@ -124,7 +209,7 @@ export const auditoriasApi = {
    */
   update: async (id: string, data: Partial<Auditoria>): Promise<ApiResponse<Auditoria>> => {
     return apiRequest<Auditoria>(`/auditorias/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   },
@@ -157,11 +242,146 @@ export const auditoriasApi = {
       body: JSON.stringify({ progreso }),
     });
   },
+
+  // ============ NOTAS DE AUDITORÍA ============
+
+  /**
+   * Obtener todas las notas de una auditoría
+   */
+  getNotas: async (auditoriaId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/auditorias/${auditoriaId}/notas`);
+  },
+
+  /**
+   * Crear una nueva nota
+   */
+  createNota: async (auditoriaId: string, data: {
+    contenido: string;
+    categoria: string;
+    importante?: boolean;
+  }): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/${auditoriaId}/notas`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Actualizar una nota existente
+   */
+  updateNota: async (auditoriaId: string, notaId: string, data: {
+    contenido?: string;
+    categoria?: string;
+    importante?: boolean;
+  }): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/${auditoriaId}/notas/${notaId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Eliminar una nota
+   */
+  deleteNota: async (auditoriaId: string, notaId: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>(`/auditorias/${auditoriaId}/notas/${notaId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Marcar o desmarcar una nota como importante
+   */
+  toggleImportanteNota: async (auditoriaId: string, notaId: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/${auditoriaId}/notas/${notaId}/importante`, {
+      method: 'PATCH',
+    });
+  },
+
+  // ============ APROBACIÓN DE AUDITORÍA ============
+
+  /**
+   * Aprobar una auditoría
+   */
+  aprobar: async (auditoriaId: string, comentarios?: string): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${auditoriaId}/aprobar`, {
+      method: 'POST',
+      body: JSON.stringify({ comentarios }),
+    });
+  },
+
+  /**
+   * Rechazar una auditoría
+   */
+  rechazar: async (auditoriaId: string, justificacion: string): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${auditoriaId}/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify({ justificacion }),
+    });
+  },
+
+  /**
+   * Solicitar modificación de una auditoría
+   */
+  solicitarModificacion: async (auditoriaId: string, observaciones: string): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${auditoriaId}/modificacion`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    });
+  },
+
+  /**
+   * Obtener todas las auditorías para el Kanban
+   */
+  getAllKanban: async (): Promise<ApiResponse<Auditoria[]>> => {
+    return apiRequest<Auditoria[]>('/auditorias/kanban/all');
+  },
+
+  /**
+   * Obtener todas las auditorías archivadas para el Kanban
+   */
+  getAllKanbanArchivadas: async (): Promise<ApiResponse<Auditoria[]>> => {
+    return apiRequest<Auditoria[]>('/auditorias/kanban/archivadas');
+  },
+
+  /**
+   * Archivar una auditoría
+   */
+  archivar: async (id: string, comentario?: string): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        archivada: true,
+        activa: false,
+        observacionesAdicionales: comentario ? `Archivada: ${comentario}` : 'Archivada por el usuario'
+      }),
+    });
+  },
 };
 
 // ==================== UNIVERSO DE AUDITORÍAS ====================
 
 export const universoAuditoriasApi = {
+  /**
+   * Obtener todos los procesos auditables
+   */
+  getAllProcesos: async (filters?: {
+    tipo?: string;
+    macroproceso?: string;
+    nivelRiesgo?: string;
+    territorial?: string;
+    search?: string;
+  }): Promise<ApiResponse<any[]>> => {
+    const queryParams = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value) queryParams.append(key, String(value));
+      });
+    }
+    const query = queryParams.toString();
+    return apiRequest<any[]>(`/universo-auditorias/procesos${query ? `?${query}` : ''}`);
+  },
+
   /**
    * Obtener universo de auditorías del año
    */
@@ -190,6 +410,16 @@ export const universoAuditoriasApi = {
   },
 
   /**
+   * Crear proceso auditable (sin necesidad de universoId)
+   */
+  createProceso: async (proceso: Partial<ProcesoAuditable>): Promise<ApiResponse<ProcesoAuditable>> => {
+    return apiRequest<ProcesoAuditable>(`/universo-auditorias/procesos`, {
+      method: 'POST',
+      body: JSON.stringify(proceso),
+    });
+  },
+
+  /**
    * Agregar proceso auditable
    */
   addProceso: async (universoId: string, proceso: Partial<ProcesoAuditable>): Promise<ApiResponse<ProcesoAuditable>> => {
@@ -203,7 +433,7 @@ export const universoAuditoriasApi = {
    * Actualizar proceso auditable
    */
   updateProceso: async (procesoId: string, data: Partial<ProcesoAuditable>): Promise<ApiResponse<ProcesoAuditable>> => {
-    return apiRequest<ProcesoAuditable>(`/procesos-auditables/${procesoId}`, {
+    return apiRequest<ProcesoAuditable>(`/universo-auditorias/procesos/${procesoId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -213,7 +443,7 @@ export const universoAuditoriasApi = {
    * Eliminar proceso auditable
    */
   deleteProceso: async (procesoId: string): Promise<ApiResponse<void>> => {
-    return apiRequest<void>(`/procesos-auditables/${procesoId}`, {
+    return apiRequest<void>(`/universo-auditorias/procesos/${procesoId}`, {
       method: 'DELETE',
     });
   },
@@ -450,17 +680,25 @@ export const planesMejoramientoApi = {
 
 export const planAnual5RolesApi = {
   /**
+   * Obtener todos los planes anuales
+   */
+  findAll: async (year?: number): Promise<ApiResponse<PlanAnual5Roles[]>> => {
+    const query = year ? `?year=${year}` : '';
+    return apiRequest<PlanAnual5Roles[]>(`/plan-anual-5-roles${query}`);
+  },
+
+  /**
    * Obtener plan anual del año
    */
   getByYear: async (year: number): Promise<ApiResponse<PlanAnual5Roles>> => {
-    return apiRequest<PlanAnual5Roles>(`/plan-anual-5roles/${year}`);
+    return apiRequest<PlanAnual5Roles>(`/plan-anual-5-roles/year/${year}`);
   },
 
   /**
    * Crear plan anual
    */
   create: async (data: Partial<PlanAnual5Roles>): Promise<ApiResponse<PlanAnual5Roles>> => {
-    return apiRequest<PlanAnual5Roles>('/plan-anual-5roles', {
+    return apiRequest<PlanAnual5Roles>('/plan-anual-5-roles', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -470,7 +708,7 @@ export const planAnual5RolesApi = {
    * Actualizar plan anual
    */
   update: async (id: string, data: Partial<PlanAnual5Roles>): Promise<ApiResponse<PlanAnual5Roles>> => {
-    return apiRequest<PlanAnual5Roles>(`/plan-anual-5roles/${id}`, {
+    return apiRequest<PlanAnual5Roles>(`/plan-anual-5-roles/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -479,8 +717,8 @@ export const planAnual5RolesApi = {
   /**
    * Agregar actividad
    */
-  addActividad: async (planId: string, actividad: Partial<Actividad>): Promise<ApiResponse<Actividad>> => {
-    return apiRequest<Actividad>(`/plan-anual-5roles/${planId}/actividades`, {
+  addActividad: async (rolId: string, actividad: Partial<Actividad>): Promise<ApiResponse<Actividad>> => {
+    return apiRequest<Actividad>(`/plan-anual-5-roles/${rolId}/actividades`, {
       method: 'POST',
       body: JSON.stringify(actividad),
     });
@@ -490,7 +728,7 @@ export const planAnual5RolesApi = {
    * Actualizar actividad
    */
   updateActividad: async (actividadId: string, data: Partial<Actividad>): Promise<ApiResponse<Actividad>> => {
-    return apiRequest<Actividad>(`/actividades/${actividadId}`, {
+    return apiRequest<Actividad>(`/plan-anual-5-roles/actividades/${actividadId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });

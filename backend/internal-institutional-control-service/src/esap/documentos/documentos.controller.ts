@@ -226,6 +226,15 @@ export class DocumentosController {
   }
 
   /**
+   * GET /documentos/auditoria/:auditoriaId
+   * Obtiene todos los documentos de una auditoría
+   */
+  @Get('auditoria/:auditoriaId')
+  getDocumentosPorAuditoria(@Param('auditoriaId') auditoriaId: string) {
+    return this.documentosService.findAll({ auditoriaId });
+  }
+
+  /**
    * GET /documentos/auditoria/:auditoriaId/etapa/:etapa
    * Obtiene documentos por auditoría y etapa
    */

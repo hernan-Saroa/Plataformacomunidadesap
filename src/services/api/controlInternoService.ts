@@ -235,6 +235,78 @@ class ControlInternoAPIClient {
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: 'DELETE' });
   }
+
+  async upload<T>(
+    endpoint: string,
+    formData: FormData,
+    onProgress?: (progress: number) => void
+  ): Promise<T> {
+    const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
+    
+    // Agregar token si existe
+    const headers: HeadersInit = {};
+    const token = localStorage.getItem('esap_access_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    // NO establecer Content-Type para FormData - el navegador lo hará automáticamente con el boundary
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      // Manejar progreso
+      if (onProgress) {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const percentComplete = (e.loaded / e.total) * 100;
+            onProgress(percentComplete);
+          }
+        });
+      }
+
+      // Manejar respuesta
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = xhr.responseText 
+              ? JSON.parse(xhr.responseText) 
+              : {};
+            resolve(response as T);
+          } catch (error) {
+            resolve({} as T);
+          }
+        } else {
+          try {
+            const error = xhr.responseText 
+              ? JSON.parse(xhr.responseText) 
+              : { message: `HTTP ${xhr.status}` };
+            reject(new Error(error.message || `HTTP ${xhr.status}`));
+          } catch {
+            reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+          }
+        }
+      });
+
+      // Manejar errores
+      xhr.addEventListener('error', () => {
+        reject(new Error('Error de red al subir el archivo'));
+      });
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Carga cancelada'));
+      });
+
+      // Abrir y enviar
+      xhr.open('POST', url);
+      
+      // Establecer headers
+      Object.keys(headers).forEach(key => {
+        xhr.setRequestHeader(key, headers[key]);
+      });
+
+      xhr.send(formData);
+    });
+  }
 }
 
 const client = new ControlInternoAPIClient();
@@ -957,10 +1029,34 @@ class ControlInternoService {
   }
 
   /**
-   * Crea un documento
+   * Crea un documento (sube archivo)
    */
-  async createDocumento(data: any): Promise<any> {
-    return client.post<any>('/documentos', data);
+  async createDocumento(
+    file: File,
+    metadata: {
+      nombre: string;
+      descripcion?: string;
+      tipoDocumento: string;
+      etapa?: string;
+      auditoriaId?: string;
+      hallazgoId?: string;
+      planMejoramientoId?: string;
+      subidoPor?: string;
+    },
+    onProgress?: (progress: number) => void
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('nombre', metadata.nombre);
+    if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
+    formData.append('tipoDocumento', metadata.tipoDocumento);
+    if (metadata.etapa) formData.append('etapa', metadata.etapa);
+    if (metadata.auditoriaId) formData.append('auditoriaId', metadata.auditoriaId);
+    if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
+    if (metadata.planMejoramientoId) formData.append('planMejoramientoId', metadata.planMejoramientoId);
+    if (metadata.subidoPor) formData.append('subidoPor', metadata.subidoPor);
+
+    return client.upload<any>('/documentos', formData, onProgress);
   }
 
   /**
@@ -1126,7 +1222,7 @@ class ControlInternoService {
    * Actualiza una auditoría
    */
   async updateAuditoria(id: string, data: any): Promise<any> {
-    return client.put<any>(`/auditorias/${id}`, data);
+    return client.patch<any>(`/auditorias/${id}`, data);
   }
 
   /**
@@ -1184,6 +1280,13 @@ class ControlInternoService {
     porPrioridad: { prioridad: string; cantidad: number }[];
   }> {
     return client.get('/auditorias/estadisticas');
+  }
+
+  /**
+   * Obtiene todas las auditorías para el Kanban con todas las relaciones
+   */
+  async getAuditoriasKanban(): Promise<any[]> {
+    return client.get<any[]>('/auditorias/kanban/all');
   }
 
   // ==========================================================================

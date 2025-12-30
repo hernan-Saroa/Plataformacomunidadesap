@@ -35,11 +35,15 @@ export class TemplateConfigService {
     return content.replace(/<(b|strong)>\s*(\[[^\]]+\])\s*<\/\1>/gi, '$2');
   }
 
+  private getDefaultCargoTitle(_templateType: string): string {
+    return 'LA DIRECTORA T\u00C9CNICA DE TALENTO HUMANO DE LA\nESCUELA SUPERIOR DE ADMINISTRACI\u00D3N P\u00DABLICA - ESAP';
+  }
+
   private getDefaultContent(templateType: string): string {
     if (templateType === 'administrador') {
-      return 'Que [NOMBRE_EMPLEADO] identificado con cédula de ciudadanía No. [DOCUMENTO], se encuentra vinculado con la Escuela Superior de Administración Pública - ESAP mediante nombramiento [CARGO] desde el [FECHA_INICIO], desempeñando el cargo de [DEPENDENCIA] [DATO6] ubicado en [DATO7].<br><br>Que el señor [NOMBRE_EMPLEADO] percibe mensualmente una asignación salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.<br><br>Se expide en la ciudad de Bogotá D.C., a solicitud del interesado(a) a los [FECHA_EXPEDICION_COMPLETA].';
+      return 'Que [NOMBRE_EMPLEADO] identificado con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado con la Escuela Superior de Administraci\u00F3n P\u00FAblica - ESAP mediante nombramiento [CARGO] desde el [FECHA_INICIO], desempe\u00F1ando el cargo de [DEPENDENCIA] [DATO6] ubicado en [DATO7].<br><br><div>Que el se\u00F1or [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.<br><br></div><div>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los [FECHA_EXPEDICION_COMPLETA].</div>';
     }
-    return 'Que [NOMBRE_EMPLEADO] identificado(a) con cédula de ciudadanía No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administración Pública – ESAP, mediante nombramiento Docente [CARGO] desde el [FECHA_INICIO], en la categoría [DEPENDENCIA] ubicado en [DATO6].<br><br>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignación salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.<br><br>Se expide en la ciudad de Bogotá D.C., a solicitud del interesado(a) a los [FECHA_EXPEDICION_COMPLETA].';
+    return '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [CARGO] desde el [FECHA_INICIO], en la categor\u00EDa [DEPENDENCIA] ubicado en [DATO6].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
   }
 
   private async getOrCreateConfig(templateType: string): Promise<TemplateConfig> {
@@ -89,7 +93,7 @@ export class TemplateConfigService {
       typography: {
         font: config.typographyFont || 'Times New Roman',
       },
-      cargoTitle: config.cargoTitle || 'LA DIRECTORA TÉCNICA DE TALENTO HUMANO DE LA ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA – ESAP',
+      cargoTitle: config.cargoTitle || this.getDefaultCargoTitle(templateType),
       certificateContentHtml: this.stripVariableBold(
         config.certificateContentHtml || this.getDefaultContent(templateType),
       ),
@@ -119,6 +123,41 @@ export class TemplateConfigService {
       fieldName: 'signer_name_override',
       oldValue: oldValue,
       newValue: signerName,
+      changedBy: updatedBy,
+    });
+
+    return this.getActiveConfig(config.templateType);
+  }
+
+  /**
+   * Restablece el nombre del firmante al valor predeterminado
+   */
+  async resetSignerName(updatedBy: string, templateType = 'docente'): Promise<any> {
+    const config = await this.getOrCreateConfig(templateType);
+
+    let firmante = config.firmante;
+    if (!firmante) {
+      const firmantePrincipal = await this.firmanteRepository.findOne({
+        where: { es_principal: true, activo: true },
+      });
+      if (firmantePrincipal) {
+        firmante = firmantePrincipal;
+      }
+    }
+
+    const defaultName = firmante?.nombre_completo || '';
+    const oldValue = config.signerNameOverride || defaultName;
+
+    config.signerNameOverride = null;
+    config.updatedBy = updatedBy;
+    await this.templateConfigRepository.save(config);
+
+    await this.recordChange({
+      templateConfigId: config.id,
+      changeType: 'nombre',
+      fieldName: 'signer_name_override',
+      oldValue: oldValue,
+      newValue: defaultName,
       changedBy: updatedBy,
     });
 
@@ -275,15 +314,14 @@ export class TemplateConfigService {
   /**
    * Obtiene el historial de cambios de la configuración activa
    */
-  async getChangeHistory(templateType = 'docente'): Promise<any[]> {
+  async getChangeHistory(
+    templateType = 'docente',
+    limit?: number,
+    offset?: number,
+  ): Promise<any[] | { items: any[]; total: number; limit: number; offset: number }> {
     const config = await this.getOrCreateConfig(templateType);
 
-    const changes = await this.changeRepository.find({
-      where: { templateConfigId: config.id },
-      order: { changedAt: 'DESC' },
-    });
-
-    return changes.map((change) => ({
+    const mapChange = (change: TemplateConfigChange) => ({
       id: change.id,
       changeType: change.changeType,
       fieldName: change.fieldName,
@@ -292,7 +330,31 @@ export class TemplateConfigService {
       changedAt: change.changedAt,
       changedBy: change.changedBy,
       metadata: change.metadata,
-    }));
+    });
+
+    if (typeof limit === 'number') {
+      const safeLimit = Math.max(1, limit);
+      const safeOffset = Math.max(0, offset || 0);
+      const [changes, total] = await this.changeRepository.findAndCount({
+        where: { templateConfigId: config.id },
+        order: { changedAt: 'DESC' },
+        take: safeLimit,
+        skip: safeOffset,
+      });
+      return {
+        items: changes.map(mapChange),
+        total,
+        limit: safeLimit,
+        offset: safeOffset,
+      };
+    }
+
+    const changes = await this.changeRepository.find({
+      where: { templateConfigId: config.id },
+      order: { changedAt: 'DESC' },
+    });
+
+    return changes.map(mapChange);
   }
 
   /**
@@ -395,7 +457,53 @@ export class TemplateConfigService {
 
     return this.getActiveConfig(config.templateType);
   }
+  /**
+   * Restablece el titulo del cargo al predeterminado
+   */
+  async resetCargoTitle(updatedBy: string, templateType = 'docente'): Promise<any> {
+    const config = await this.getOrCreateConfig(templateType);
+    const defaultTitle = this.getDefaultCargoTitle(templateType);
+    const oldValue = config.cargoTitle || '';
 
+    config.cargoTitle = defaultTitle;
+    config.updatedBy = updatedBy;
+    await this.templateConfigRepository.save(config);
+
+    await this.recordChange({
+      templateConfigId: config.id,
+      changeType: 'titulo_cargo',
+      fieldName: 'cargo_title',
+      oldValue: oldValue,
+      newValue: defaultTitle,
+      changedBy: updatedBy,
+    });
+
+    return this.getActiveConfig(config.templateType);
+  }
+
+  /**
+   * Restablece el contenido del certificado al predeterminado
+   */
+  async resetCertificateContent(updatedBy: string, templateType = 'docente'): Promise<any> {
+    const config = await this.getOrCreateConfig(templateType);
+    const defaultContent = this.getDefaultContent(templateType);
+    const oldValue = config.certificateContentHtml || '';
+
+    config.certificateContentHtml = defaultContent;
+    config.updatedBy = updatedBy;
+    await this.templateConfigRepository.save(config);
+
+    await this.recordChange({
+      templateConfigId: config.id,
+      changeType: 'contenido',
+      fieldName: 'certificate_content_html',
+      oldValue: oldValue,
+      newValue: defaultContent,
+      changedBy: updatedBy,
+    });
+
+    return this.getActiveConfig(config.templateType);
+  }
   /**
    * Crea una configuración por defecto
    */
@@ -417,6 +525,7 @@ export class TemplateConfigService {
       entityLogoSize: defaultLogo.size,
       templateType,
       certificateContentHtml: this.getDefaultContent(templateType),
+      cargoTitle: this.getDefaultCargoTitle(templateType),
     });
 
     return await this.templateConfigRepository.save(config);
@@ -462,3 +571,4 @@ export class TemplateConfigService {
     return defaultLogo;
   }
 }
+

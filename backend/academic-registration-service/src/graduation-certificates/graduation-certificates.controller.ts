@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   Query,
@@ -12,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { GraduationCertificatesService } from './graduation-certificates.service';
 import { LandingCertificateRequestDto } from './dto/landing-certificate-request.dto';
+import { ApproveRequestDto } from './dto/approve-request.dto';
+import type { UpdateCertificateDto } from './dto/update-certificate.dto';
 import type { Request, Response } from 'express';
 
 @Controller('academic-registration/api/v1/certificates')
@@ -195,6 +198,72 @@ export class GraduationCertificatesController {
   }
 
   /**
+   * GET /academic-registration/api/v1/certificates/solicitudes/revision
+   * Listar solicitudes de revisi?n manual
+   */
+  @Get('solicitudes/revision')
+  async listarSolicitudesRevision() {
+    return await this.service.listarSolicitudesRevision();
+  }
+
+  /**
+   * GET /academic-registration/api/v1/certificates/solicitudes/:id
+   * Obtener solicitud por ID
+   */
+  @Get('solicitudes/:id')
+  async obtenerSolicitud(@Param('id') id: string) {
+    return await this.service.obtenerSolicitud(id);
+  }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/solicitudes/:id/en-revision
+   * Marcar solicitud como en revisión
+   */
+  @Post('solicitudes/:id/en-revision')
+  @HttpCode(HttpStatus.OK)
+  async marcarEnRevision(
+    @Param('id') id: string,
+    @Body() body: { reviewerName?: string; reviewerId?: string },
+  ) {
+    return await this.service.marcarEnRevision(
+      id,
+      body.reviewerName,
+      body.reviewerId,
+    );
+  }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/solicitudes/:id/aprobar
+   * Aprobar solicitud y generar certificado
+   */
+  @Post('solicitudes/:id/aprobar')
+  @HttpCode(HttpStatus.OK)
+  async aprobarSolicitud(
+    @Param('id') id: string,
+    @Body() body: ApproveRequestDto,
+  ) {
+    return await this.service.aprobarSolicitud(id, body);
+  }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/solicitudes/:id/rechazar
+   * Rechazar solicitud de revisión
+   */
+  @Post('solicitudes/:id/rechazar')
+  @HttpCode(HttpStatus.OK)
+  async rechazarSolicitud(
+    @Param('id') id: string,
+    @Body() body: { reason: string; reviewerName?: string; reviewerId?: string },
+  ) {
+    return await this.service.rechazarSolicitud(
+      id,
+      body.reason,
+      body.reviewerName,
+      body.reviewerId,
+    );
+  }
+
+  /**
    * GET /academic-registration/api/v1/certificates
    * Listar todos los certificados emitidos
    */
@@ -220,6 +289,18 @@ export class GraduationCertificatesController {
   async obtenerCertificado(@Param('id') id: string) {
     // TODO: Implementar
     return { message: 'Endpoint en desarrollo' };
+  }
+
+  /**
+   * PUT /academic-registration/api/v1/certificates/:id
+   * Actualizar datos del certificado
+   */
+  @Put(':id')
+  async actualizarCertificado(
+    @Param('id') id: string,
+    @Body() payload: UpdateCertificateDto,
+  ) {
+    return await this.service.actualizarCertificado(id, payload);
   }
 
   /**
