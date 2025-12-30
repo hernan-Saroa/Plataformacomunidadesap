@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   Query,
@@ -12,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { GraduationCertificatesService } from './graduation-certificates.service';
 import { LandingCertificateRequestDto } from './dto/landing-certificate-request.dto';
+import { ApproveRequestDto } from './dto/approve-request.dto';
+import type { UpdateCertificateDto } from './dto/update-certificate.dto';
 import type { Request, Response } from 'express';
 
 @Controller('academic-registration/api/v1/certificates')
@@ -237,15 +240,9 @@ export class GraduationCertificatesController {
   @HttpCode(HttpStatus.OK)
   async aprobarSolicitud(
     @Param('id') id: string,
-    @Body()
-    body: { reviewNotes: string; reviewerName?: string; reviewerId?: string },
+    @Body() body: ApproveRequestDto,
   ) {
-    return await this.service.aprobarSolicitud(
-      id,
-      body.reviewNotes,
-      body.reviewerName,
-      body.reviewerId,
-    );
+    return await this.service.aprobarSolicitud(id, body);
   }
 
   /**
@@ -292,6 +289,18 @@ export class GraduationCertificatesController {
   async obtenerCertificado(@Param('id') id: string) {
     // TODO: Implementar
     return { message: 'Endpoint en desarrollo' };
+  }
+
+  /**
+   * PUT /academic-registration/api/v1/certificates/:id
+   * Actualizar datos del certificado
+   */
+  @Put(':id')
+  async actualizarCertificado(
+    @Param('id') id: string,
+    @Body() payload: UpdateCertificateDto,
+  ) {
+    return await this.service.actualizarCertificado(id, payload);
   }
 
   /**

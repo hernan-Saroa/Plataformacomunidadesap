@@ -33,6 +33,7 @@ export interface GraduadoData {
   status: 'ACTIVE' | 'REVOKED' | 'SUSPENDED';
   isVerified: boolean;
   campus: string;
+  seccionalName?: string;
 }
 
 /**
@@ -98,6 +99,22 @@ export interface CertificadoGraduado {
   expiryDate?: string;
   revocationDate?: string;
   revocationReason?: string;
+}
+
+export interface AprobarSolicitudPayload {
+  reviewNotes: string;
+  reviewerName?: string;
+  reviewerId?: string;
+  fullName?: string;
+  idNumber?: string;
+  email?: string;
+  phone?: string;
+  programName?: string;
+  programType?: string;
+  degreeTitle?: string;
+  graduationDate?: string;
+  campus?: string;
+  seccionalName?: string;
 }
 
 /**
@@ -387,13 +404,11 @@ const graduadosService = {
      */
     aprobar: async (
       id: string,
-      reviewNotes: string,
-      reviewerName?: string,
-      reviewerId?: string
+      payload: AprobarSolicitudPayload
     ): Promise<{ request: SolicitudCertificadoGraduado; certificate: CertificadoGraduado }> => {
       const response = await apiClient.post(
         `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes/${id}/aprobar`,
-        { reviewNotes, reviewerName, reviewerId }
+        payload
       );
       return response;
     },
@@ -435,6 +450,20 @@ const graduadosService = {
     obtenerPorId: async (id: string): Promise<CertificadoGraduado> => {
       const response = await apiClient.get(
         `${BASE_URL}${SERVICE_PREFIX}/certificates/${id}`
+      );
+      return response;
+    },
+
+    /**
+     * Actualizar certificado
+     */
+    actualizar: async (
+      id: string,
+      payload: Partial<CertificadoGraduado>
+    ): Promise<CertificadoGraduado> => {
+      const response = await apiClient.put(
+        `${BASE_URL}${SERVICE_PREFIX}/certificates/${id}`,
+        payload
       );
       return response;
     },
@@ -486,6 +515,16 @@ const graduadosService = {
      */
     listar: async (): Promise<GraduadoData[]> => {
       const response = await apiClient.get(`${BASE_URL}${SERVICE_PREFIX}/graduates`);
+      return response;
+    },
+
+    /**
+     * Obtener graduado por ID
+     */
+    obtenerPorId: async (id: string): Promise<GraduadoData> => {
+      const response = await apiClient.get(
+        `${BASE_URL}${SERVICE_PREFIX}/graduates/${id}`
+      );
       return response;
     },
 

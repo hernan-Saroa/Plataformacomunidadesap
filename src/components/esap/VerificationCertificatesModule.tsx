@@ -36,6 +36,7 @@ import {
   TrendingUp,
   Globe,
   MoreVertical,
+  Edit,
   ExternalLink,
   Copy,
   RefreshCw,
@@ -48,18 +49,29 @@ import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { PROGRAMAS_ESAP } from '../../data/oferta-academica-esap';
 import graduadosService, {
   CertificadoGraduado,
   DescargaCertificado,
   SolicitudCertificadoGraduado,
   ValidacionCertificado,
 } from '../../services/api/graduados.service';
+import estructuraService from '../../services/estructuraService';
 
 // Tipo de certificado con QR único (reutilizable por misma combinación)
 interface CertificateRequest {
   id: string;
+  graduateId?: string;
   certificateNumber: string;
   certificateHash: string;
   qrCode: string; // QR único para la combinación graduado+datos+entidad
@@ -68,7 +80,13 @@ interface CertificateRequest {
     document: string;
     program: string;
     graduationDate: string;
+    campus?: string;
   };
+  programType?: string;
+  degreeTitle?: string;
+  diplomaNumber?: string;
+  actaNumber?: string;
+  campus?: string;
   requester: {
     name: string;
     email: string;
@@ -123,6 +141,26 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [sedesOptions, setSedesOptions] = useState<string[]>([]);
+  const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
+  const [isEditGraduateModalOpen, setIsEditGraduateModalOpen] = useState(false);
+  const [isSavingGraduate, setIsSavingGraduate] = useState(false);
+  const [isLoadingGraduate, setIsLoadingGraduate] = useState(false);
+  const [isExistingGraduate, setIsExistingGraduate] = useState(false);
+  const [editCertificateForm, setEditCertificateForm] = useState({
+    fullName: '',
+    idNumber: '',
+    email: '',
+    phone: '',
+    programName: '',
+    programType: '',
+    degreeTitle: '',
+    graduationDate: '',
+    diplomaNumber: '',
+    actaNumber: '',
+    campus: '',
+    seccionalName: '',
+  });
 
   const mapStatus = (status: CertificadoGraduado['status']): CertificateRecord['status'] => {
     if (status === 'REVOKED') return 'revoked';
@@ -141,6 +179,24 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     return isDateOnly ? `${value}T00:00:00` : value;
   };
 
+  const generateDiplomaNumber = () => {
+    const stamp = new Date();
+    const year = stamp.getFullYear();
+    const month = String(stamp.getMonth() + 1).padStart(2, '0');
+    const day = String(stamp.getDate()).padStart(2, '0');
+    const suffix = Math.floor(1000 + Math.random() * 9000);
+    return `DIPL-${year}${month}${day}-${suffix}`;
+  };
+
+  const generateActaNumber = () => {
+    const stamp = new Date();
+    const year = stamp.getFullYear();
+    const month = String(stamp.getMonth() + 1).padStart(2, '0');
+    const day = String(stamp.getDate()).padStart(2, '0');
+    const suffix = Math.floor(1000 + Math.random() * 9000);
+    return `ACTA-${year}${month}${day}-${suffix}`;
+  };
+
   const buildRequestKey = (request: SolicitudCertificadoGraduado) => {
     const dateKey = request.graduationDate?.slice(0, 10) || '';
     return `${request.idNumber}|${request.programName}|${dateKey}`;
@@ -153,6 +209,38 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     }
     return [];
   };
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSedes = async () => {
+      try {
+        const estructura = await estructuraService.obtenerEstructura();
+        const sedes = estructura?.data?.sedes || [];
+        const seccionales = estructura?.data?.seccionales || [];
+        const options = Array.from(
+          new Set(sedes.map((sede) => sede?.nomSede).filter(Boolean))
+        );
+        const seccionalesOptions = Array.from(
+          new Set(
+            seccionales.map((seccional) => seccional?.nomSeccional).filter(Boolean)
+          )
+        );
+        if (active) {
+          setSedesOptions(options);
+          setSeccionalesOptions(seccionalesOptions);
+        }
+      } catch (error) {
+        console.error('Error cargando sedes:', error);
+      }
+    };
+
+    loadSedes();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const loadCertificates = useCallback(async () => {
     setIsLoading(true);
@@ -244,6 +332,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
           return {
             id: certificate.id,
+            graduateId: certificate.graduateId,
             certificateNumber: certificate.certificateNumber,
             certificateHash: certificate.verificationCode,
             qrCode: certificate.verificationCode,
@@ -252,7 +341,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               document: certificate.idNumber,
               program: certificate.programName,
               graduationDate: certificate.graduationDate,
+              campus: certificate.campus || '',
             },
+            programType: certificate.programType,
+            degreeTitle: certificate.degreeTitle,
+            diplomaNumber: certificate.diplomaNumber,
+            actaNumber: certificate.actaNumber,
+            campus: certificate.campus || '',
             requester: {
               name: mainRequest?.requesterName || certificate.fullName,
               email: mainRequest?.requesterEmail || '',
@@ -377,6 +472,185 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     return () => window.removeEventListener('focus', handleFocus);
   }, [loadCertificates]);
 
+  const handleOpenEditCertificate = async (cert: CertificateRecord) => {
+    setSelectedCertificate(cert);
+    setIsExistingGraduate(false);
+    setEditCertificateForm({
+      fullName: cert.graduate.fullName || '',
+      idNumber: cert.graduate.document || '',
+      email: '',
+      phone: '',
+      programName: cert.graduate.program || '',
+      programType: cert.programType || '',
+      degreeTitle: cert.degreeTitle || '',
+      graduationDate: cert.graduate.graduationDate?.slice(0, 10) || '',
+      diplomaNumber: cert.diplomaNumber || '',
+      actaNumber: cert.actaNumber || '',
+      campus: cert.campus || cert.graduate.campus || '',
+      seccionalName: '',
+    });
+    setIsEditGraduateModalOpen(true);
+    setIsLoadingGraduate(true);
+
+    try {
+      if (!cert.graduateId) {
+        setIsLoadingGraduate(false);
+        return;
+      }
+
+      const graduate = await graduadosService.graduados.obtenerPorId(cert.graduateId);
+      setIsExistingGraduate(true);
+      setEditCertificateForm((prev) => ({
+        ...prev,
+        fullName: graduate.fullName || prev.fullName,
+        idNumber: graduate.idNumber || prev.idNumber,
+        email: graduate.email || '',
+        phone: graduate.phone || '',
+        campus: graduate.campus || prev.campus,
+        seccionalName: graduate.seccionalName || '',
+        programName: graduate.programName || prev.programName,
+        programType: graduate.programType || prev.programType,
+        degreeTitle: graduate.degreeTitle || prev.degreeTitle,
+        graduationDate: graduate.graduationDate?.toString().slice(0, 10) || prev.graduationDate,
+      }));
+    } catch (error) {
+      const status = error?.response?.status;
+      if (status === 404) {
+        setIsExistingGraduate(false);
+        toast.info('Graduado no encontrado', {
+          description: 'Este certificado no tiene graduado asociado; puedes completar los datos aquí.',
+        });
+      } else {
+        console.error('Error cargando graduado:', error);
+        toast.error('No se pudo cargar el graduado', {
+          description: error?.response?.data?.message || error?.message,
+        });
+      }
+    } finally {
+      setIsLoadingGraduate(false);
+    }
+  };
+
+  const handleSaveCertificate = async () => {
+    if (!selectedCertificate) return;
+    if (!editCertificateForm.fullName || !editCertificateForm.idNumber) {
+      toast.error('Nombre y documento son obligatorios');
+      return;
+    }
+    if (!editCertificateForm.programName || (!isExistingGraduate && !editCertificateForm.graduationDate)) {
+      toast.error('Programa y fecha de graduación son obligatorios');
+      return;
+    }
+
+    setIsSavingGraduate(true);
+    try {
+      const diplomaNumber =
+        editCertificateForm.diplomaNumber || generateDiplomaNumber();
+      const actaNumber = editCertificateForm.actaNumber || generateActaNumber();
+      const nextForm = {
+        ...editCertificateForm,
+        diplomaNumber,
+        actaNumber,
+      };
+      setEditCertificateForm(nextForm);
+
+      const certificatePayload: Partial<CertificadoGraduado> = isExistingGraduate
+        ? {
+            fullName: nextForm.fullName,
+            programName: nextForm.programName,
+            programType: nextForm.programType,
+            degreeTitle: nextForm.degreeTitle,
+            campus: nextForm.campus,
+            diplomaNumber,
+            actaNumber,
+          }
+        : {
+            fullName: nextForm.fullName,
+            idNumber: nextForm.idNumber,
+            programName: nextForm.programName,
+            programType: nextForm.programType,
+            degreeTitle: nextForm.degreeTitle,
+            graduationDate: nextForm.graduationDate,
+            diplomaNumber,
+            actaNumber,
+            campus: nextForm.campus,
+          };
+
+      await graduadosService.certificados.actualizar(
+        selectedCertificate.id,
+        certificatePayload
+      );
+
+      if (selectedCertificate.graduateId) {
+        const graduatePayload: Partial<GraduadoData> = isExistingGraduate
+          ? {
+              fullName: nextForm.fullName,
+              email: nextForm.email,
+              phone: nextForm.phone,
+              programName: nextForm.programName,
+              programType: nextForm.programType,
+              degreeTitle: nextForm.degreeTitle,
+              campus: nextForm.campus,
+              seccionalName: nextForm.seccionalName,
+            }
+          : {
+              fullName: nextForm.fullName,
+              idNumber: nextForm.idNumber,
+              email: nextForm.email,
+              phone: nextForm.phone,
+              programName: nextForm.programName,
+              programType: nextForm.programType,
+              degreeTitle: nextForm.degreeTitle,
+              graduationDate: nextForm.graduationDate,
+              diplomaNumber,
+              actaNumber,
+              campus: nextForm.campus,
+              seccionalName: nextForm.seccionalName,
+            };
+
+        await graduadosService.graduados.actualizar(
+          selectedCertificate.graduateId,
+          graduatePayload
+        );
+      }
+
+      setCertificates((prev) =>
+        prev.map((cert) =>
+          cert.id === selectedCertificate.id
+            ? {
+                ...cert,
+                graduate: {
+                  ...cert.graduate,
+                  fullName: nextForm.fullName,
+                  document: nextForm.idNumber,
+                  program: nextForm.programName,
+                  graduationDate: nextForm.graduationDate,
+                  campus: nextForm.campus,
+                },
+                programType: nextForm.programType,
+                degreeTitle: nextForm.degreeTitle,
+                diplomaNumber,
+                actaNumber,
+                campus: nextForm.campus,
+              }
+            : cert
+        )
+      );
+
+      toast.success('Certificado actualizado', {
+        description: 'Los datos del certificado fueron actualizados.',
+      });
+      setIsEditGraduateModalOpen(false);
+    } catch (error: any) {
+      console.error('Error actualizando certificado:', error);
+      toast.error('No se pudo actualizar el certificado', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    } finally {
+      setIsSavingGraduate(false);
+    }
+  };
+
   const stats = useMemo(() => {
     return {
       total: certificates.length,
@@ -386,6 +660,46 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       totalViews: certificates.reduce((sum, c) => sum + c.viewCount, 0),
       reusedQRs: certificates.filter(c => c.requestCount > 1).length,
     };
+  }, [certificates]);
+
+  const programNameOptions = useMemo(() => {
+    const names = new Set<string>();
+    PROGRAMAS_ESAP.forEach((programa) => {
+      if (programa?.nombre) {
+        names.add(programa.nombre);
+      }
+    });
+    certificates.forEach((cert) => {
+      if (cert.graduate.program) {
+        names.add(cert.graduate.program);
+      }
+    });
+    return Array.from(names);
+  }, [certificates]);
+
+  const programTypeOptions = useMemo(() => {
+    const types = new Set<string>();
+    PROGRAMAS_ESAP.forEach((programa) => {
+      if (programa?.nivel) {
+        types.add(programa.nivel);
+      }
+    });
+    certificates.forEach((cert) => {
+      if (cert.programType) {
+        types.add(cert.programType);
+      }
+    });
+    return Array.from(types);
+  }, [certificates]);
+
+  const degreeTitleOptions = useMemo(() => {
+    const titles = new Set<string>();
+    certificates.forEach((cert) => {
+      if (cert.degreeTitle) {
+        titles.add(cert.degreeTitle);
+      }
+    });
+    return Array.from(titles);
   }, [certificates]);
 
   const filteredCertificates = useMemo(() => {
@@ -1085,18 +1399,31 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <Eye className="w-4 h-4" />
                       </button>
 
-                      <button
-                        className="p-2 rounded-lg transition-all cursor-not-allowed opacity-50"
-                        style={{
-                          background: '#F9FAFB',
-                          color: '#6B7280'
-                        }}
-                        title="Opciones deshabilitadas temporalmente"
-                        disabled
-                        aria-disabled="true"
-                      >
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            className="p-2 rounded-lg transition-all"
+                            style={{
+                              background: '#F9FAFB',
+                              color: '#6B7280'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = '#F3F4F6';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = '#F9FAFB';
+                            }}
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleOpenEditCertificate(cert)}>
+                            <Edit className="w-4 h-4 mr-2" />
+                            Editar certificado
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </div>
@@ -1151,6 +1478,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 <div>
                                   <p className="text-xs text-gray-600">Programa</p>
                                   <p className="font-semibold text-gray-900">{cert.graduate.program}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-2">
+                                <MapPin className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                <div>
+                                  <p className="text-xs text-gray-600">Sede</p>
+                                  <p className="font-semibold text-gray-900">
+                                    {cert.graduate.campus || 'Sin asignar'}
+                                  </p>
                                 </div>
                               </div>
                               <div className="flex items-start gap-2">
@@ -1437,7 +1773,241 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         </motion.div>
       )}
 
-      {/* Modal: Revocar Certificado */}
+            {/* Modal: Editar Certificado */}
+      <Dialog open={isEditGraduateModalOpen} onOpenChange={setIsEditGraduateModalOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="w-5 h-5" style={{ color: '#003DA5' }} />
+              Editar Certificado
+            </DialogTitle>
+            <DialogDescription>
+              Actualiza los datos de verificacion del certificado y del graduado asociado.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            {isExistingGraduate && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Este graduado ya existe. Solo puedes editar todos los campos excepto documento, fecha de graduacion y numeros de acta/diploma.
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-full-name">Nombre completo</Label>
+                <Input
+                  id="edit-full-name"
+                  value={editCertificateForm.fullName}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, fullName: e.target.value })
+                  }
+                  placeholder="Nombre completo"
+                  disabled={isLoadingGraduate}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-id-number">Documento</Label>
+                <Input
+                  id="edit-id-number"
+                  value={editCertificateForm.idNumber}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, idNumber: e.target.value })
+                  }
+                  placeholder="Numero de documento"
+                  disabled={isLoadingGraduate || isExistingGraduate}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={editCertificateForm.email}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, email: e.target.value })
+                  }
+                  placeholder="correo@ejemplo.com"
+                  disabled={isLoadingGraduate}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Telefono</Label>
+                <Input
+                  id="edit-phone"
+                  value={editCertificateForm.phone}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, phone: e.target.value })
+                  }
+                  placeholder="+57 300 1234567"
+                  disabled={isLoadingGraduate}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-program">Programa</Label>
+                <select
+                  id="edit-program"
+                  value={editCertificateForm.programName}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, programName: e.target.value })
+                  }
+                  className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+                  style={{ borderColor: '#D1D5DB' }}
+                  disabled={isLoadingGraduate}
+                >
+                  <option value="">Seleccionar programa</option>
+                  {programNameOptions.map((program) => (
+                    <option key={program} value={program}>{program}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-program-type">Tipo de programa</Label>
+                <select
+                  id="edit-program-type"
+                  value={editCertificateForm.programType}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, programType: e.target.value })
+                  }
+                  className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+                  style={{ borderColor: '#D1D5DB' }}
+                  disabled={isLoadingGraduate}
+                >
+                  <option value="">Seleccionar tipo</option>
+                  {programTypeOptions.map((programType) => (
+                    <option key={programType} value={programType}>{programType}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-degree-title">Titulo</Label>
+                <select
+                  id="edit-degree-title"
+                  value={editCertificateForm.degreeTitle}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, degreeTitle: e.target.value })
+                  }
+                  className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+                  style={{ borderColor: '#D1D5DB' }}
+                  disabled={isLoadingGraduate}
+                >
+                  <option value="">Seleccionar titulo</option>
+                  {degreeTitleOptions.map((title) => (
+                    <option key={title} value={title}>{title}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-graduation-date">Fecha de graduacion</Label>
+                <Input
+                  id="edit-graduation-date"
+                  type="date"
+                  value={editCertificateForm.graduationDate}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, graduationDate: e.target.value })
+                  }
+                  disabled={isLoadingGraduate || isExistingGraduate}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-diploma">Numero de diploma</Label>
+                <Input
+                  id="edit-diploma"
+                  value={editCertificateForm.diplomaNumber}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, diplomaNumber: e.target.value })
+                  }
+                  placeholder="Numero de diploma"
+                  disabled
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-acta">Numero de acta</Label>
+                <Input
+                  id="edit-acta"
+                  value={editCertificateForm.actaNumber}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, actaNumber: e.target.value })
+                  }
+                  placeholder="Numero de acta"
+                  disabled
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-campus">Sede</Label>
+                <select
+                  id="edit-campus"
+                  value={editCertificateForm.campus}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, campus: e.target.value })
+                  }
+                  className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+                  style={{ borderColor: '#D1D5DB' }}
+                  disabled={isLoadingGraduate}
+                >
+                  <option value="">Seleccionar sede</option>
+                  {sedesOptions.map((sede) => (
+                    <option key={sede} value={sede}>{sede}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-seccional">Seccional</Label>
+                <select
+                  id="edit-seccional"
+                  value={editCertificateForm.seccionalName}
+                  onChange={(e) =>
+                    setEditCertificateForm({ ...editCertificateForm, seccionalName: e.target.value })
+                  }
+                  className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+                  style={{ borderColor: '#D1D5DB' }}
+                  disabled={isLoadingGraduate}
+                >
+                  <option value="">Seleccionar seccional</option>
+                  {seccionalesOptions.map((seccional) => (
+                    <option key={seccional} value={seccional}>{seccional}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {isLoadingGraduate && (
+              <p className="text-xs text-gray-500 mt-3">Cargando datos del graduado...</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <button
+              onClick={() => setIsEditGraduateModalOpen(false)}
+              className="px-4 py-2 text-sm font-medium rounded-lg border-2"
+              style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+              disabled={isSavingGraduate}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSaveCertificate}
+              className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+              disabled={isSavingGraduate || isLoadingGraduate}
+            >
+              {isSavingGraduate ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+{/* Modal: Revocar Certificado */}
       <Dialog open={isRevokeModalOpen} onOpenChange={setIsRevokeModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
