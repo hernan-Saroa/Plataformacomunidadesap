@@ -82,6 +82,18 @@ export class LegalService {
         return legalApiClient.upload<any>(`/api/legal/juzgamiento/${radicado}/documentos`, formData);
     }
 
+    async getJuzgamientoDecisiones(radicado: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/juzgamiento/${radicado}/decisiones`);
+    }
+
+    async createJuzgamientoDecision(radicado: string, data: any): Promise<any> {
+        return legalApiClient.post<any>(`/api/legal/juzgamiento/${radicado}/decisiones`, data);
+    }
+
+    async updateJuzgamientoProceso(radicado: string, data: any): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/juzgamiento/${radicado}`, data);
+    }
+
     // Renaming getExpedienteById to getExpediente as per instruction, and adapting the signature
     async getExpediente(id: string): Promise<Expediente> {
         return legalApiClient.get<Expediente>(`/api/legal/expedientes/${id}`);

@@ -12,8 +12,8 @@ import {
   Eye, Download, Upload, Plus, Edit, Trash2, Send, Bell, Share2,
   FileDown, ExternalLink
 } from 'lucide-react';
-import type { ProcesoDisciplinario } from '../core/types';
-import { useState, useMemo } from 'react'; // Added useMemo
+import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
+import { useState, useMemo, useEffect } from 'react'; // Added useMemo
 import { legalService } from '../../../../services/api/legal.service'; // Import Service
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
@@ -21,26 +21,12 @@ import { Badge } from '../../../ui/badge';
 import { Card } from '../../../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { FormularioRegistrarDecision } from './FormularioRegistrarDecision';
 
-// Tipo para Proceso Disciplinario
-interface ProcesoDisciplinario {
-  id: string;
-  tipoFalta: string;
-  etapa: string;
-  abogadoAsignado: string;
-  disciplinado: string;
-  cargo?: string;
-  dependencia?: string;
-  diasRestantes: number;
-  diasTotales: number;
-  ultimaActuacion?: string;
-  fechaActualizacion: Date;
-  descripcionHechos?: string;
-}
+
 
 interface ModalProcesoDisciplinarioProps {
   isOpen: boolean;
@@ -60,16 +46,34 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   // Filtramos por tipo. Asumimos que existen tipos 'PRUEBA' y 'DOCUMENTO'.
   const [nuevasActuaciones, setNuevasActuaciones] = useState<any[]>([]);
 
-  const [mostrarModalNotificar, setMostrarModalNotificar] = useState(false);
-  const [mostrarModalCompartir, setMostrarModalCompartir] = useState(false);
-  const [mostrarModalPortales, setMostrarModalPortales] = useState(false);
-  const [enlaceCompartir, setEnlaceCompartir] = useState('');
   const [mostrarFormularioDecision, setMostrarFormularioDecision] = useState(false);
-  const [decisiones, setDecisiones] = useState<any[]>([]);
+  const [decisiones, setDecisiones] = useState<DecisionDisciplinaria[]>([]);
+
+  const handleGuardarNuevaDecision = async (decision: any) => {
+    const toastId = toast.loading('Guardando decisión...');
+    try {
+      await legalService.createJuzgamientoDecision(proceso.id, decision);
+      toast.success('Decisión guardada exitosamente', { id: toastId });
+      setHasChanges(true); // Trigger refetch via useEffect dependency or just set flag
+      setMostrarFormularioDecision(false);
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al guardar decisión', { id: toastId });
+    }
+  };
   const actuacionesTotales = useMemo(() => {
     const fromProps = proceso.actuaciones || [];
     return [...nuevasActuaciones, ...fromProps].sort((a, b) => new Date(b.fechaActuacion).getTime() - new Date(a.fechaActuacion).getTime());
   }, [proceso.actuaciones, nuevasActuaciones]);
+
+  // Fetch Decisions
+  useEffect(() => {
+    if (proceso?.id && isOpen) { // proceso.id is RADICADO in this context
+      legalService.getJuzgamientoDecisiones(proceso.id)
+        .then(setDecisiones)
+        .catch(err => console.error('Error fetching decisiones:', err));
+    }
+  }, [proceso?.id, isOpen, hasChanges]); // Refetch on changes
 
   const pruebas = actuacionesTotales.filter(a => a.tipoActuacion === 'EVIDENCIA' || a.tipoActuacion === 'PRUEBA');
   const documentos = actuacionesTotales.filter(a => a.tipoActuacion === 'DOCUMENTO');
@@ -158,123 +162,6 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
   // ... (Notification handlers remain similar but mocked for now as per instructions)
   // const handleNotificar = () => toast.info('Notificación enviada (Simulación)');
-  // const handleCompartir = () => toast.info('Enlace compartido (Simulación)');
-  // const handleDescargarPDF = () => toast.info('PDF descargado (Simulación)');
-  // const handleAbrirEnPortales = () => toast.info('Abriendo portal (Simulación)');
-
-  // ==================== FUNCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ====================
-  
-  const handleNotificar = () => {
-    setMostrarModalNotificar(true);
-  };
-
-  const confirmarNotificacion = () => {
-    const destinatarios = [
-      { nombre: proceso.disciplinado, correo: 'juan.perez@esap.gov.co', rol: 'Disciplinado' },
-      { nombre: proceso.abogadoAsignado, correo: 'carlos.mendoza@esap.gov.co', rol: 'Investigador' },
-      { nombre: 'Oficina Jurídica ESAP', correo: 'juridica@esap.gov.co', rol: 'Oficina Jurídica' }
-    ];
-
-    toast.loading('📧 Enviando notificaciones por correo electrónico...', {
-      id: 'notificar-actuacion',
-      duration: 2000
-    });
-    
-    setTimeout(() => {
-      toast.success(`✅ Notificaciones enviadas exitosamente a ${destinatarios.length} destinatarios`, {
-        id: 'notificar-actuacion',
-        description: `${destinatarios.map(d => d.correo).join(', ')}`,
-        duration: 5000
-      });
-      setHasChanges(true);
-      setMostrarModalNotificar(false);
-    }, 2000);
-  };
-
-  const handleCompartir = () => {
-    toast.loading('🔗 Generando enlace seguro de compartir...', {
-      id: 'compartir-actuacion',
-      duration: 1500
-    });
-    
-    setTimeout(() => {
-      const enlace = `https://esap.gov.co/procesos/${proceso.id}/actuacion-ultima`;
-      setEnlaceCompartir(enlace);
-      
-      // Copiar al portapapeles
-      navigator.clipboard.writeText(enlace).then(() => {
-        // Mostrar modal con el enlace
-        setMostrarModalCompartir(true);
-        
-        toast.success('✅ Enlace generado y copiado al portapapeles', {
-          id: 'compartir-actuacion',
-          description: 'Puedes pegar el enlace donde desees compartirlo',
-          duration: 4000
-        });
-      }).catch(() => {
-        setMostrarModalCompartir(true);
-        toast.info('🔗 Enlace generado', {
-          id: 'compartir-actuacion',
-          description: 'Copia el enlace desde el modal',
-          duration: 3000
-        });
-      });
-    }, 1500);
-  };
-
-  const handleDescargarPDF = () => {
-    const nombreArchivo = `Actuacion_${proceso.id}_${new Date().toLocaleDateString('es-CO').replace(/\//g, '-')}.pdf`;
-    
-    toast.loading('📄 Generando documento PDF...', {
-      id: 'descargar-pdf-actuacion',
-      duration: 2000
-    });
-    
-    setTimeout(() => {
-      toast.success('✅ Documento PDF generado y descargado', {
-        id: 'descargar-pdf-actuacion',
-        description: `${nombreArchivo} (245 KB)`,
-        duration: 4000,
-        action: {
-          label: 'Ver carpeta',
-          onClick: () => toast.info('Abriendo carpeta de descargas...')
-        }
-      });
-      
-      // En producción esto descargará el archivo real:
-      // window.open(`/api/procesos/${proceso.id}/actuacion/pdf`, '_blank');
-      // O usar: downloadFile(`/api/procesos/${proceso.id}/actuacion/pdf`, nombreArchivo);
-      
-      console.log(`📥 Descargando: ${nombreArchivo}`);
-    }, 2000);
-  };
-
-  const handleAbrirEnPortales = () => {
-    setMostrarModalPortales(true);
-  };
-
-  const confirmarAbrirPortales = () => {
-    const urlPortal = 'https://consultaprocesos.ramajudicial.gov.co/';
-    
-    toast.loading('🌐 Abriendo Portal de Notificaciones Judiciales...', {
-      id: 'abrir-portales',
-      duration: 1500
-    });
-    
-    setTimeout(() => {
-      // Abrir en nueva ventana
-      window.open(urlPortal, '_blank', 'noopener,noreferrer');
-      
-      toast.success('✅ Portal abierto en nueva ventana', {
-        id: 'abrir-portales',
-        description: 'Sistema de Portales de la Rama Judicial',
-        duration: 3000
-      });
-      
-      setMostrarModalPortales(false);
-    }, 1500);
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={handleCerrar}>
       <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
@@ -321,7 +208,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             </Button>
           </div>
         </div>
-        
+
         {/* ==================== HEADER LIMPIO ESAP 2025 ==================== */}
         <ModalHeaderClean
           icono={Gavel}
@@ -388,16 +275,16 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 </div>
               </Card>
 
-              {/* Información del Disciplinado */}
+              {/* Información del Investigado */}
               <Card className="p-4 border-2 border-gray-200">
                 <h3 className="font-black text-lg mb-4 flex items-center gap-2 text-gray-800">
                   <User className="w-5 h-5" />
-                  Disciplinado
+                  Investigado
                 </h3>
                 <div className="space-y-3">
                   <div>
                     <p className="text-sm text-gray-600">Nombre Completo</p>
-                    <p className="font-bold text-lg">{proceso.disciplinado || proceso.investigado}</p>
+                    <p className="font-bold text-lg">{proceso.investigado}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Cargo</p>
@@ -461,45 +348,6 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   <span>⏰ {proceso.fechaActualizacion.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Button 
-                  onClick={handleNotificar}
-                  size="sm"
-                  className="font-semibold"
-                  style={{ background: '#F57C00', color: '#FFFFFF' }}
-                >
-                  <Bell className="w-4 h-4 mr-1.5" />
-                  Notificar
-                </Button>
-                <Button 
-                  onClick={handleCompartir}
-                  size="sm"
-                  className="font-semibold"
-                  style={{ background: '#F57C00', color: '#FFFFFF' }}
-                >
-                  <Share2 className="w-4 h-4 mr-1.5" />
-                  Compartir
-                </Button>
-                <Button 
-                  onClick={handleDescargarPDF}
-                  size="sm"
-                  className="font-semibold"
-                  style={{ background: '#F57C00', color: '#FFFFFF' }}
-                >
-                  <FileText className="w-4 h-4 mr-1.5" />
-                  PDF
-                </Button>
-                <Button 
-                  onClick={handleAbrirEnPortales}
-                  size="sm"
-                  className="font-semibold"
-                  style={{ background: '#1e5da8', color: '#FFFFFF' }}
-                >
-                  <ExternalLink className="w-4 h-4 mr-1.5" />
-                  Abrir en Portales
-                </Button>
-              </div>
             </Card>
           </TabsContent>
 
@@ -511,7 +359,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 Descripción de los Hechos
               </h3>
               <p className="text-gray-700 leading-relaxed mb-4">
-                {proceso.descripcionHechos || proceso.hechos || 'No se han registrado hechos.'}
+                {proceso.hechos || 'No se han registrado hechos.'}
               </p>
             </Card>
           </TabsContent>
@@ -583,7 +431,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 <p className="text-gray-500 mb-4">
                   El proceso aún se encuentra en etapa de investigación
                 </p>
-                <Button 
+                <Button
                   onClick={() => {
                     setMostrarFormularioDecision(true);
                     setHasChanges(true);
@@ -600,7 +448,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>
                     Decisiones Registradas ({decisiones.length})
                   </h3>
-                  <Button 
+                  <Button
                     onClick={() => {
                       setMostrarFormularioDecision(true);
                       setHasChanges(true);
@@ -620,9 +468,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                           <h4 className="font-black text-xl" style={{ color: '#003DA5' }}>
                             {decision.tipoDecision}
                           </h4>
-                          <Badge 
+                          <Badge
                             className="font-bold"
-                            style={{ 
+                            style={{
                               background: decision.tipoFallo === 'Absolutoria' ? '#10B981' : '#EF4444',
                               color: '#FFFFFF'
                             }}
@@ -741,19 +589,19 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             )}
           </div>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={handleCerrar}
               className="font-semibold"
             >
               Cerrar
             </Button>
-            <Button 
+            <Button
               onClick={handleGuardarCambios}
               disabled={!hasChanges}
               className="font-semibold"
-              style={{ 
-                background: hasChanges ? '#003DA5' : '#9CA3AF', 
+              style={{
+                background: hasChanges ? '#003DA5' : '#9CA3AF',
                 color: '#FFFFFF',
                 cursor: hasChanges ? 'pointer' : 'not-allowed'
               }}
@@ -765,188 +613,12 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         </div>
       </DialogContent>
 
-      {/* ==================== MODAL: ENLACE COMPARTIR ==================== */}
-      {mostrarModalCompartir && (
-        <Dialog open={mostrarModalCompartir} onOpenChange={setMostrarModalCompartir}>
-          <DialogContent className="max-w-2xl">
-            <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
-              <Share2 className="w-6 h-6" />
-              Enlace de Compartir Generado
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              Enlace seguro para compartir la última actuación procesal
-            </DialogDescription>
 
-            <div className="space-y-4 mt-4">
-              <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                <p className="text-sm font-bold text-blue-900 mb-2">🔗 Enlace Seguro</p>
-                <p className="text-sm text-gray-700 break-all font-mono bg-white p-3 rounded border">
-                  {enlaceCompartir}
-                </p>
-              </div>
-
-              <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-                <p className="text-sm font-bold text-green-900 mb-2">✅ Enlace Copiado al Portapapeles</p>
-                <p className="text-sm text-green-700">
-                  El enlace ha sido copiado automáticamente. Puedes pegarlo en un correo, mensaje o documento.
-                </p>
-              </div>
-
-              <div className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
-                <p className="text-sm font-bold text-orange-900 mb-2">⚠️ Información Importante</p>
-                <ul className="text-sm text-orange-700 space-y-1 list-disc list-inside">
-                  <li>Este enlace permite consultar la última actuación procesal</li>
-                  <li>Es válido por 30 días desde su generación</li>
-                  <li>Requiere autenticación para acceder al contenido</li>
-                </ul>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    navigator.clipboard.writeText(enlaceCompartir);
-                    toast.success('✅ Enlace copiado nuevamente');
-                  }}
-                  className="font-semibold"
-                >
-                  <Share2 className="w-4 h-4 mr-2" />
-                  Copiar Nuevamente
-                </Button>
-                <Button
-                  onClick={() => setMostrarModalCompartir(false)}
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                  className="font-semibold"
-                >
-                  Cerrar
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* ==================== MODAL: NOTIFICAR ==================== */}
-      {mostrarModalNotificar && (
-        <Dialog open={mostrarModalNotificar} onOpenChange={setMostrarModalNotificar}>
-          <DialogContent className="max-w-2xl">
-            <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
-              <Bell className="w-6 h-6" />
-              Notificar Última Actuación Procesal
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              Confirmación para enviar notificaciones por correo electrónico a los destinatarios del proceso disciplinario
-            </DialogDescription>
-
-            <div className="space-y-4 mt-4">
-              <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                <p className="text-sm font-bold text-blue-900 mb-2">🔗 Destinatarios</p>
-                <ul className="text-sm text-gray-700 space-y-1 list-disc list-inside">
-                  <li>{proceso.disciplinado} (Disciplinado)</li>
-                  <li>{proceso.abogadoAsignado} (Investigador)</li>
-                  <li>Oficina Jurídica ESAP</li>
-                </ul>
-              </div>
-
-              <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-                <p className="text-sm font-bold text-green-900 mb-2">✅ Notificación Exitosa</p>
-                <p className="text-sm text-green-700">
-                  Las notificaciones se enviarán por correo electrónico a los destinatarios indicados.
-                </p>
-              </div>
-
-              <div className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
-                <p className="text-sm font-bold text-orange-900 mb-2">⚠️ Información Importante</p>
-                <ul className="text-sm text-orange-700 space-y-1 list-disc list-inside">
-                  <li>Las notificaciones incluyen la última actuación procesal</li>
-                  <li>Requiere autenticación para acceder al contenido</li>
-                </ul>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  onClick={confirmarNotificacion}
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                  className="font-semibold"
-                >
-                  Notificar
-                </Button>
-                <Button
-                  onClick={() => setMostrarModalNotificar(false)}
-                  style={{ background: '#9CA3AF', color: '#FFFFFF' }}
-                  className="font-semibold"
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* ==================== MODAL: PORTALES ==================== */}
-      {mostrarModalPortales && (
-        <Dialog open={mostrarModalPortales} onOpenChange={setMostrarModalPortales}>
-          <DialogContent className="max-w-2xl">
-            <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
-              <ExternalLink className="w-6 h-6" />
-              Abrir en Portales
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              Confirmación para abrir el Portal de Notificaciones Judiciales en una nueva ventana
-            </DialogDescription>
-
-            <div className="space-y-4 mt-4">
-              <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                <p className="text-sm font-bold text-blue-900 mb-2">🔗 Portal de Notificaciones Judiciales</p>
-                <p className="text-sm text-gray-700 break-all font-mono bg-white p-3 rounded border">
-                  https://consultaprocesos.ramajudicial.gov.co/
-                </p>
-              </div>
-
-              <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-                <p className="text-sm font-bold text-green-900 mb-2">✅ Portal Abierto Exitosamente</p>
-                <p className="text-sm text-green-700">
-                  El Portal de Notificaciones Judiciales se abrirá en una nueva ventana.
-                </p>
-              </div>
-
-              <div className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
-                <p className="text-sm font-bold text-orange-900 mb-2">⚠️ Información Importante</p>
-                <ul className="text-sm text-orange-700 space-y-1 list-disc list-inside">
-                  <li>Requiere autenticación para acceder al contenido</li>
-                </ul>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  onClick={confirmarAbrirPortales}
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                  className="font-semibold"
-                >
-                  Abrir Portal
-                </Button>
-                <Button
-                  onClick={() => setMostrarModalPortales(false)}
-                  style={{ background: '#9CA3AF', color: '#FFFFFF' }}
-                  className="font-semibold"
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* ==================== MODAL: REGISTRAR DECISIÓN ==================== */}
+      {/* ==================== FORMULARIO REGISTRAR DECISIÓN ==================== */}
       <FormularioRegistrarDecision
         isOpen={mostrarFormularioDecision}
         onClose={() => setMostrarFormularioDecision(false)}
-        onGuardar={(nuevaDecision) => {
-          setDecisiones([...decisiones, nuevaDecision]);
-          setMostrarFormularioDecision(false);
-        }}
+        onGuardar={handleGuardarNuevaDecision}
         procesoId={proceso.id}
       />
     </Dialog>

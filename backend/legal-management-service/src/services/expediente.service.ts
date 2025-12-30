@@ -4,6 +4,7 @@ import { Repository, Like } from 'typeorm';
 import { Expediente } from '../entities/expediente.entity';
 import { Actuacion } from '../entities/actuacion.entity';
 import { Documento } from '../entities/documento.entity';
+import { DecisionDisciplinaria } from '../entities/decision-disciplinaria.entity';
 
 @Injectable()
 export class ExpedienteService {
@@ -11,7 +12,10 @@ export class ExpedienteService {
         @InjectRepository(Expediente)
         private expedienteRepository: Repository<Expediente>,
         @InjectRepository(Actuacion)
+        @InjectRepository(Actuacion)
         private actuacionRepository: Repository<Actuacion>,
+        @InjectRepository(DecisionDisciplinaria)
+        private decisionRepository: Repository<DecisionDisciplinaria>
     ) { }
 
     // ... (existing methods like crearExpediente)
@@ -27,6 +31,7 @@ export class ExpedienteService {
             }
         });
     }
+
 
     async agregarActuacion(expedienteId: string, data: Partial<Actuacion>): Promise<Actuacion> {
         const expediente = await this.findOne(expedienteId);
@@ -47,6 +52,32 @@ export class ExpedienteService {
 
         return saved;
     }
+
+    async createDecision(expedienteId: string, data: Partial<DecisionDisciplinaria>): Promise<DecisionDisciplinaria> {
+        const expediente = await this.findOne(expedienteId);
+        if (!expediente) throw new NotFoundException('Expediente no encontrado');
+
+        const nuevaDecision = this.decisionRepository.create({
+            ...data,
+            expedienteId: expediente.id,
+            fecha: new Date().toISOString()
+        });
+
+        const saved = await this.decisionRepository.save(nuevaDecision);
+
+        // Optional: Update expediente state/stage based on decision
+        // if (data.tipoDecision === 'Fallo') ...
+
+        return saved;
+    }
+
+    async getDecisions(expedienteId: string): Promise<DecisionDisciplinaria[]> {
+        return this.decisionRepository.find({
+            where: { expedienteId },
+            order: { fecha: 'DESC' }
+        });
+    }
+
 
     // ... (rest of methods)
 

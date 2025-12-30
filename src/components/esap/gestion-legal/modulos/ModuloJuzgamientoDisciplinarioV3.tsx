@@ -33,7 +33,7 @@ import { ModalAutos } from './ModalAutos';
 import { ModalEvidencias } from './ModalEvidencias';
 import { ModalOficios } from './ModalOficios';
 import { ModalActas } from './ModalActas';
-import { ModalNuevoProcesoDisciplinario } from './ModalNuevoProcesoDisciplinario';
+
 import { VistaListaJuzgamiento } from './VistaListaJuzgamiento';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -54,7 +54,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
-  const [modalNuevoProcesoOpen, setModalNuevoProcesoOpen] = useState(false);
+
 
   // Estado local para manejar drag and drop
   const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
@@ -96,7 +96,8 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     fetchProcesos();
   }, []);
   // Manejar movimiento de proceso entre etapas
-  const handleMoverProceso = (procesoId: string, nuevaEtapa: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS') => {
+  const handleMoverProceso = async (procesoId: string, nuevaEtapa: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS') => {
+    // 1. Actualización Optimista
     setProcesos((prevProcesos) =>
       prevProcesos.map((p) =>
         p.id === procesoId
@@ -105,9 +106,21 @@ export function ModuloJuzgamientoDisciplinarioV3() {
       )
     );
 
-    toast.success('Proceso movido exitosamente', {
-      description: `Cambiado a etapa: ${nuevaEtapa}`
-    });
+    try {
+      // 2. Persistencia Backend
+      // El procesoId corresponde al radicado (ej: PD-2025-001)
+      await legalService.updateJuzgamientoProceso(procesoId, { etapa: nuevaEtapa });
+
+      toast.success('Proceso movido exitosamente', {
+        description: `Guardado en backend: ${nuevaEtapa}`
+      });
+    } catch (error) {
+      console.error('Error al mover proceso:', error);
+      toast.error('Error al guardar cambio', {
+        description: 'No se pudo sincronizar con el servidor'
+      });
+      // Opcional: Revertir cambio local si falla
+    }
   };
 
   // Agrupar procesos por etapa
@@ -172,15 +185,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
             { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
           ]
         }}
-        buttons={[
-          {
-            label: 'Nuevo Proceso',
-            labelMobile: 'Nuevo',
-            icon: <Plus className="w-4 h-4" />,
-            onClick: () => setModalNuevoProcesoOpen(true),
-            variant: 'primary'
-          }
-        ]}
+        buttons={[]}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Juzgamiento Disciplinario"
@@ -330,17 +335,13 @@ export function ModuloJuzgamientoDisciplinarioV3() {
       {/* Vista Lista */}
       {tipoVista === 'lista' && (
         <VistaListaJuzgamiento
-          procesos={procesosDisciplinariosMock}
+          procesos={procesos}
           isMobile={isMobile}
           isTablet={isTablet}
         />
       )}
 
-      {/* Modal Nuevo Proceso */}
-      <ModalNuevoProcesoDisciplinario
-        isOpen={modalNuevoProcesoOpen}
-        onClose={() => setModalNuevoProcesoOpen(false)}
-      />
+
     </div>
   );
 }

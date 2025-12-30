@@ -1,6 +1,7 @@
 
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { Actuacion } from './actuacion.entity';
+import { DecisionDisciplinaria } from './decision-disciplinaria.entity';
 
 import { Documento } from './documento.entity';
 
@@ -11,6 +12,9 @@ export class Expediente {
 
     @OneToMany(() => Actuacion, (actuacion) => actuacion.expediente)
     actuaciones: Actuacion[];
+
+    @OneToMany(() => DecisionDisciplinaria, (decision) => decision.expediente)
+    decisiones: DecisionDisciplinaria[];
 
     @OneToMany(() => Documento, (doc) => doc.expediente)
     documentos: Documento[];

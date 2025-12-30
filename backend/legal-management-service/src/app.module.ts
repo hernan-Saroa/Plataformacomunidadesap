@@ -27,6 +27,7 @@ import { NotaExpediente } from './entities/nota-expediente.entity';
 import { ComentarioOC } from './entities/comentario-oc.entity';
 import { DocumentoOC } from './entities/documento-oc.entity';
 import { Riesgo } from './entities/riesgo.entity';
+import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -102,7 +103,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       ComentarioOC,
       DocumentoOC,
       // Riesgos
-      Riesgo
+      Riesgo,
+      // Decisiones
+      DecisionDisciplinaria
     ]),
     PeiModule,
     PlanesMejoramientoModule
