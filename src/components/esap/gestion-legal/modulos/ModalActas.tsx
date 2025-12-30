@@ -1,6 +1,9 @@
 /**
  * ModalActas - Gestión de Actas de Audiencias y Diligencias
- * Actas = Registro oficial de lo acontecido en audiencias y diligencias procesales
+ * ✅ Diseño corporativo ESAP 2025 - Versión Premium
+ * ✅ Header morado con gradiente (distintivo para actas)
+ * ✅ Footer sticky con botones siempre visibles
+ * ✅ Timeline visual mejorada
  */
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -14,12 +17,15 @@ import { Textarea } from '../../../ui/textarea';
 import {
   FileCheck, Download, Eye, FileText, Calendar,
   Users, Clock, X, Upload, CheckCircle, AlertCircle, Play,
-  Search, Trash2, Edit, Filter, Plus
+  Search, Trash2, Filter, Plus
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
 import { legalService } from '../../../../services/api/legal.service';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
+import { DialogoConfirmacion } from './DialogoConfirmacion';
+import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface ModalActasProps {
   isOpen: boolean;
@@ -45,6 +51,10 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
   const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODAS');
   const [busqueda, setBusqueda] = useState('');
+  const [modalVisorAbierto, setModalVisorAbierto] = useState(false);
+  const [actaSeleccionada, setActaSeleccionada] = useState<any>(null);
+  const [modalConfirmacionAbierto, setModalConfirmacionAbierto] = useState(false);
+  const [actaEliminar, setActaEliminar] = useState<any>(null);
 
   // Form state for creating new acta
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -291,63 +301,87 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
-          <DialogDescription className="sr-only">
-            Gestión de actas de audiencias y diligencias del expediente {expediente.id}
-          </DialogDescription>
-          {/* Header */}
-          <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg" style={{ background: '#F3E5F5' }}>
-                    <FileCheck className="w-5 h-5" style={{ color: '#7B1FA2' }} />
-                  </div>
-                  <div>
-                    <DialogTitle className="text-xl font-black" style={{ color: '#003DA5' }}>
-                      Actas de Audiencias
-                    </DialogTitle>
-                    <p className="text-sm text-gray-600">
-                      Registro de diligencias - {expediente.id}
-                    </p>
-                  </div>
-                </div>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogTitle className="sr-only">
+          Actas de Audiencias - Expediente {expediente.id}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Gestión de actas de audiencias y diligencias del expediente {expediente.id}
+        </DialogDescription>
+        
+        {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+        <ModalHeaderClean
+          titulo="Actas de Audiencias y Diligencias"
+          subtitulo={`Registro oficial de diligencias del expediente ${expediente.id}`}
+          icono={FileCheck}
+          colorIcono="purple"
+          badgePrincipal="CONTESTACIÓN"
+          badges={
+            <>
+              <Badge variant="outline" className="font-semibold text-xs border-gray-300 text-gray-700">
+                {expediente.etapa}
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
+                <FileCheck className="w-3 h-3 mr-1" />
+                {actas.length} actas
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                {actas.filter(a => a.estado === 'Firmada').length} firmadas
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
+                <Clock className="w-3 h-3 mr-1" />
+                {actas.filter(a => a.estado === 'Programada').length} programadas
+              </Badge>
+            </>
+          }
+          onClose={onClose}
+        />
 
-                <div className="flex items-center gap-2">
-                  <Badge style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                    {expediente.etapa}
-                  </Badge>
-                  <Badge className="bg-purple-100 text-purple-700 font-semibold">
-                    <FileCheck className="w-3 h-3 mr-1" />
-                    {actas.length} actas
-                  </Badge>
-                  <Badge className="bg-green-100 text-green-700 font-semibold">
-                    {actas.filter(a => a.estado === 'Firmada').length} firmadas
-                  </Badge>
-                </div>
-              </div>
-
-              <Button onClick={onClose} variant="ghost" size="sm" className="ml-4">
-                <X className="w-4 h-4" />
-              </Button>
+        {/* Barra de filtros */}
+        <div className="px-6 py-4 bg-gradient-to-b from-purple-50 to-white border-b flex-shrink-0">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Buscar acta por número, tipo o contenido..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                className="pl-10 text-sm font-semibold"
+              />
             </div>
+            <Button
+              size="sm"
+              onClick={handleCargarActa}
+              className="font-bold text-white"
+              style={{ background: '#7B1FA2' }}
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Nueva Acta
+            </Button>
+          </div>
 
-            {/* Filtros */}
-            <div className="flex items-center gap-2 mt-4 overflow-x-auto pb-2">
-              {tiposActa.map((tipo) => (
+          {/* Filtros por tipo */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
+            {tiposActa.map((tipo) => {
+              const count = tipo === 'TODAS' ? actas.length : actas.filter(a => a.tipo === tipo).length;
+              return (
                 <Button
                   key={tipo}
                   size="sm"
                   variant={filtroTipo === tipo ? 'default' : 'outline'}
                   onClick={() => setFiltroTipo(tipo)}
-                  className="text-xs whitespace-nowrap"
+                  className="text-xs font-bold whitespace-nowrap"
+                  style={filtroTipo === tipo ? { background: '#7B1FA2', color: '#FFFFFF' } : {}}
                 >
-                  {tipo}
+                  {tipo} ({count})
                 </Button>
-              ))}
-            </div>
+              );
+            })}
           </div>
+        </div>
 
           {/* Contenido */}
           <div className="flex-1 overflow-y-auto px-6 py-4">

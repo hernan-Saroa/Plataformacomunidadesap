@@ -13,7 +13,7 @@
  * - 📦 Archivadas: Todas las archivadas
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Mail, MailOpen, Inbox, Archive, AlertTriangle, CheckCircle,
@@ -32,6 +32,8 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComunicacion';
+import { ModalExpedienteComunicacion } from './ModalExpedienteComunicacion';
 
 // TIPOS UNIFICADOS
 type TipoComunicacion = 'JUDICIAL' | 'CORREO' | 'OFICIO';
@@ -235,15 +237,49 @@ type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'urgentes' | 'arc
 type VistaModulo = 'inbox' | 'lista';
 
 export function ModuloCentroComunicacionesJuridicasV3() {
+  console.log('🔄 ModuloCentroComunicacionesJuridicasV3 renderizado');
+  
   const [tabActiva, setTabActiva] = useState<TabUnificadaType>('judiciales');
   const [busqueda, setBusqueda] = useState('');
   const [comunicacionSeleccionada, setComunicacionSeleccionada] = useState<ComunicacionUnificada | null>(null);
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('inbox');
+  
+  // Estado reactivo para las comunicaciones
+  const [comunicaciones, setComunicaciones] = useState<ComunicacionUnificada[]>(comunicacionesUnificadas);
+  
+  // Estados para modales
+  const [modalNuevaComunicacionOpen, setModalNuevaComunicacionOpen] = useState(false);
+  const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
+  const [comunicacionParaExpediente, setComunicacionParaExpediente] = useState<ComunicacionUnificada | null>(null);
+
+  // Debug: Monitorear cambios en el estado del modal
+  useEffect(() => {
+    console.log('📊 Estado modalExpedienteOpen:', modalExpedienteOpen);
+    console.log('📊 Estado comunicacionParaExpediente:', comunicacionParaExpediente);
+  }, [modalExpedienteOpen, comunicacionParaExpediente]);
+
+  // TEST: Detectar clicks en toda la página
+  useEffect(() => {
+    const handleGlobalClick = (e: MouseEvent) => {
+      console.log('🖱️ CLICK GLOBAL DETECTADO:', {
+        x: e.clientX,
+        y: e.clientY,
+        target: (e.target as HTMLElement).tagName,
+        className: (e.target as HTMLElement).className
+      });
+    };
+    
+    document.addEventListener('click', handleGlobalClick, true);
+    
+    return () => {
+      document.removeEventListener('click', handleGlobalClick, true);
+    };
+  }, []);
 
   const comunicacionesFiltradas = useMemo(() => {
-    let resultado = [...comunicacionesUnificadas];
+    let resultado = [...comunicaciones];
 
     // Filtrar por tab
     switch (tabActiva) {
@@ -279,27 +315,69 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       if (a.leida !== b.leida) return a.leida ? 1 : -1;
       return b.fechaRadicacion.getTime() - a.fechaRadicacion.getTime();
     });
-  }, [tabActiva, busqueda]);
+  }, [comunicaciones, tabActiva, busqueda]);
 
   // Calcular estadísticas
-  const totalNoLeidas = comunicacionesUnificadas.filter(c => !c.leida && c.estado !== 'ARCHIVADA').length;
-  const totalUrgentes = comunicacionesUnificadas.filter(c => c.urgente && c.estado !== 'ARCHIVADA').length;
-  const totalArchivadas = comunicacionesUnificadas.filter(c => c.estado === 'ARCHIVADA').length;
+  const totalNoLeidas = comunicaciones.filter(c => !c.leida && c.estado !== 'ARCHIVADA').length;
+  const totalUrgentes = comunicaciones.filter(c => c.urgente && c.estado !== 'ARCHIVADA').length;
+  const totalArchivadas = comunicaciones.filter(c => c.estado === 'ARCHIVADA').length;
 
   const contadoresTabs = {
-    judiciales: comunicacionesUnificadas.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA').length,
-    correos: comunicacionesUnificadas.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA').length,
-    oficios: comunicacionesUnificadas.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
+    judiciales: comunicaciones.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA').length,
+    correos: comunicaciones.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA').length,
+    oficios: comunicaciones.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
     urgentes: totalUrgentes,
     archivadas: totalArchivadas
   };
 
   const handleMarcarLeida = (id: string) => {
-    toast.success('Comunicación marcada como leída');
+    console.log('🔵 Marcando como leída:', id);
+    setComunicaciones(prevComs => 
+      prevComs.map(com => 
+        com.id === id 
+          ? { ...com, leida: true, estado: 'LEIDA' as EstadoComunicacion }
+          : com
+      )
+    );
+    
+    // Actualizar también la comunicación seleccionada si es la misma
+    if (comunicacionSeleccionada?.id === id) {
+      setComunicacionSeleccionada(prev => 
+        prev ? { ...prev, leida: true, estado: 'LEIDA' as EstadoComunicacion } : null
+      );
+    }
+    
+    toast.success('Comunicación marcada como leída', {
+      icon: <CheckCircle className="w-4 h-4" />
+    });
   };
 
   const handleArchivar = (id: string) => {
-    toast.success('Comunicación archivada');
+    console.log('📦 Archivando comunicación:', id);
+    setComunicaciones(prevComs => 
+      prevComs.map(com => 
+        com.id === id 
+          ? { ...com, estado: 'ARCHIVADA' as EstadoComunicacion }
+          : com
+      )
+    );
+    
+    // Limpiar selección si la comunicación archivada estaba seleccionada
+    if (comunicacionSeleccionada?.id === id) {
+      setComunicacionSeleccionada(null);
+    }
+    
+    toast.success('Comunicación archivada correctamente', {
+      icon: <Archive className="w-4 h-4" />
+    });
+  };
+
+  const handleVerExpediente = (com: ComunicacionUnificada) => {
+    console.log('👁️ handleVerExpediente ejecutado:', com.id);
+    console.log('👁️ Comunicación completa:', com);
+    setComunicacionParaExpediente(com);
+    setModalExpedienteOpen(true);
+    console.log('👁️ Modal debería estar abierto ahora');
   };
 
   const handleSeleccionarTodas = () => {
@@ -311,12 +389,38 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   };
 
   const handleMarcarLeidasSeleccionadas = () => {
-    toast.success(`${seleccionadas.size} comunicaciones marcadas como leídas`);
+    console.log('🔵 Marcando como leídas:', Array.from(seleccionadas));
+    setComunicaciones(prevComs =>
+      prevComs.map(com =>
+        seleccionadas.has(com.id)
+          ? { ...com, leida: true, estado: 'LEIDA' as EstadoComunicacion }
+          : com
+      )
+    );
+    toast.success(`${seleccionadas.size} comunicaciones marcadas como leídas`, {
+      icon: <CheckCircle className="w-4 h-4" />
+    });
     setSeleccionadas(new Set());
   };
 
   const handleArchivarSeleccionadas = () => {
-    toast.success(`${seleccionadas.size} comunicaciones archivadas`);
+    console.log('📦 Archivando:', Array.from(seleccionadas));
+    setComunicaciones(prevComs =>
+      prevComs.map(com =>
+        seleccionadas.has(com.id)
+          ? { ...com, estado: 'ARCHIVADA' as EstadoComunicacion }
+          : com
+      )
+    );
+    
+    // Limpiar selección de comunicación si estaba seleccionada
+    if (comunicacionSeleccionada && seleccionadas.has(comunicacionSeleccionada.id)) {
+      setComunicacionSeleccionada(null);
+    }
+    
+    toast.success(`${seleccionadas.size} comunicaciones archivadas correctamente`, {
+      icon: <Archive className="w-4 h-4" />
+    });
     setSeleccionadas(new Set());
   };
 
@@ -341,7 +445,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
                 label: 'Nueva Comunicación',
                 labelMobile: 'Nueva',
                 icon: <Plus className="w-4 h-4" />,
-                onClick: () => toast.info('Nueva Comunicación'),
+                onClick: () => setModalNuevaComunicacionOpen(true),
                 variant: 'primary'
               }
             ]}
@@ -509,6 +613,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           onSeleccionarTodas={handleSeleccionarTodas}
           onMarcarLeida={handleMarcarLeida}
           onArchivar={handleArchivar}
+          onVerExpediente={handleVerExpediente}
         />
       )}
 
@@ -520,6 +625,28 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           onArchivar={handleArchivar}
         />
       )}
+
+      {/* Modal Nueva Comunicación */}
+      <ModalNuevaComunicacion
+        isOpen={modalNuevaComunicacionOpen}
+        onClose={() => setModalNuevaComunicacionOpen(false)}
+        onSubmit={(data) => {
+          console.log('Nueva comunicación:', data);
+          toast.success('Comunicación registrada exitosamente');
+          setModalNuevaComunicacionOpen(false);
+        }}
+      />
+
+      {/* Modal Expediente Comunicación */}
+      <ModalExpedienteComunicacion
+        isOpen={modalExpedienteOpen && comunicacionParaExpediente !== null}
+        onClose={() => {
+          console.log('🚪 Cerrando modal expediente');
+          setModalExpedienteOpen(false);
+          setComunicacionParaExpediente(null);
+        }}
+        comunicacion={comunicacionParaExpediente || comunicacionesFiltradas[0] || comunicacionesUnificadas[0]}
+      />
     </div>
   );
 }
@@ -572,6 +699,7 @@ interface VistaInboxProps {
   onSeleccionarTodas: () => void;
   onMarcarLeida: (id: string) => void;
   onArchivar: (id: string) => void;
+  onVerExpediente: (com: ComunicacionUnificada) => void;
 }
 
 function VistaInbox({
@@ -582,7 +710,8 @@ function VistaInbox({
   onToggleSeleccion,
   onSeleccionarTodas,
   onMarcarLeida,
-  onArchivar
+  onArchivar,
+  onVerExpediente
 }: VistaInboxProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -627,22 +756,25 @@ function VistaInbox({
 
       {/* Panel Derecho: Vista Previa */}
       <div className="lg:col-span-1">
-        <Card className="sticky top-4 h-[calc(100vh-200px)] overflow-y-auto">
-          {comunicacionSeleccionada ? (
-            <VistaPreviaComunicacion
-              comunicacion={comunicacionSeleccionada}
-              onMarcarLeida={onMarcarLeida}
-              onArchivar={onArchivar}
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-400">
-              <div className="text-center">
-                <Mail className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                <p className="font-semibold">Selecciona una comunicación</p>
-                <p className="text-sm">para ver los detalles</p>
+        <Card className="sticky top-4 h-[calc(100vh-200px)]">
+          <div className="overflow-y-auto h-full">
+            {comunicacionSeleccionada ? (
+              <VistaPreviaComunicacion
+                comunicacion={comunicacionSeleccionada}
+                onMarcarLeida={onMarcarLeida}
+                onArchivar={onArchivar}
+                onVerExpediente={onVerExpediente}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-400">
+                <div className="text-center">
+                  <Mail className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                  <p className="font-semibold">Selecciona una comunicación</p>
+                  <p className="text-sm">para ver los detalles</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </Card>
       </div>
     </div>
@@ -750,12 +882,14 @@ interface VistaPreviaComunicacionProps {
   comunicacion: ComunicacionUnificada;
   onMarcarLeida: (id: string) => void;
   onArchivar: (id: string) => void;
+  onVerExpediente: (com: ComunicacionUnificada) => void;
 }
 
 function VistaPreviaComunicacion({
   comunicacion,
   onMarcarLeida,
-  onArchivar
+  onArchivar,
+  onVerExpediente
 }: VistaPreviaComunicacionProps) {
   const badgeTipo = {
     JUDICIAL: { label: 'Judicial', color: 'bg-blue-100 text-blue-700' },
@@ -851,7 +985,11 @@ function VistaPreviaComunicacion({
 
       {/* Acciones */}
       <div className="space-y-2 pt-4 border-t">
-        <Button className="w-full" style={{ background: '#003DA5' }}>
+        <Button 
+          className="w-full"
+          style={{ background: '#003DA5' }}
+          onClick={() => onVerExpediente(comunicacion)}
+        >
           <Eye className="w-4 h-4 mr-2" />
           Ver Expediente Completo
         </Button>

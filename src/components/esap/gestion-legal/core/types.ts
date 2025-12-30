@@ -345,8 +345,32 @@ export interface TerminoInforme {
 export type EtapaSolicitudInforme =
   | 'RECIBIDA'
   | 'EN_ELABORACIÓN'
+  | 'EN_PROCESO'
   | 'REVISIÓN'
-  | 'ENVIADO';
+  | 'ENVIADO'
+  | 'FINALIZADA'
+  | 'VENCIDA';
+
+// Módulos de origen para términos transversales
+export type ModuloOrigen = 
+  | 'DEFENSA_JUDICIAL'
+  | 'JUZGAMIENTO'
+  | 'ASESORIA'
+  | 'ORGANOS_CONTROL'
+  | 'PROCESOS_COACTIVOS'
+  | 'CENTRO_COMUNICACIONES'
+  | 'PLAN_ACCION'
+  | 'RIESGOS'
+  | 'TERMINOS_INFORMES'; // Solicitudes directas de informes
+
+// Tipo de término según naturaleza jurídica
+export type TipoTermino = 
+  | 'JUDICIAL' // Términos judiciales (perentorios)
+  | 'DISCIPLINARIO' // Términos disciplinarios (improrrogables)
+  | 'ADMINISTRATIVO' // Respuestas PQRS, derechos de petición
+  | 'CONTRACTUAL' // Plazos contractuales
+  | 'ENTE_CONTROL' // Términos de órganos de control
+  | 'SLA_INTERNO'; // Service Level Agreement interno
 
 export interface SolicitudInforme {
   id: string;
@@ -361,9 +385,23 @@ export interface SolicitudInforme {
   fechaVencimiento: Date;
   diasTotales: number;
   diasRestantes: number;
-  datosRequeridos?: string[];
+  datosRequeridos?: string[]
   documentos?: Documento[];
   timeline?: EventoTimeline[];
+  
+  // ========== CAMPOS PARA INTEGRACIÓN TRANSVERSAL ==========
+  moduloOrigen?: ModuloOrigen; // De qué módulo proviene este término
+  expedienteOrigen?: string; // ID del expediente/proceso origen (NUEVO: compatible con sincronización)
+  tipoTermino?: TipoTermino; // Naturaleza jurídica del término
+  expedienteRelacionado?: string; // ID del expediente/proceso origen (DEPRECADO: usar expedienteOrigen)
+  esProrroga?: boolean; // Si es una prórroga de término anterior
+  terminoOriginalId?: string; // ID del término original (si es prórroga)
+  prioridad?: 'NORMAL' | 'URGENTE' | 'CRÍTICA'; // Nivel de prioridad
+  esImprorrogable?: boolean; // Si el término no admite prórroga (DEPRECADO: usar improrrogable)
+  improrrogable?: boolean; // Si el término no admite prórroga (NUEVO: compatible con sincronización)
+  autoGenerado?: boolean; // Si el término fue auto-generado desde otro módulo
+  baseNormativa?: string; // Ley, decreto o norma que establece el término
+  consecuenciaIncumplimiento?: string; // Qué pasa si se vence (ej: "Silencio positivo", "Pérdida de término")
 }
 
 export type TipoInforme =
