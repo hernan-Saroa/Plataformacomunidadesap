@@ -20,6 +20,7 @@ import type { ExpedienteJudicial } from '../core/types';
 import { useState } from 'react';
 import { toast } from 'sonner@2.0.3';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalEvidenciasProps {
   isOpen: boolean;
@@ -117,17 +118,76 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
   const [busqueda, setBusqueda] = useState('');
   const [vistaDetallada, setVistaDetallada] = useState(true);
+  
+  // Estados para modal de visor
+  const [modalVisorAbierto, setModalVisorAbierto] = useState(false);
+  const [evidenciaSeleccionada, setEvidenciaSeleccionada] = useState<typeof evidenciasMock[0] | null>(null);
 
-  const handleDescargarEvidencia = (evidencia: typeof evidenciasMock[0]) => {
-    toast.success('✅ Descarga iniciada', {
-      description: `${evidencia.nombre} (${evidencia.tamaño})`
+  /**
+   * Ver evidencia - Abre el visor de documentos
+   */
+  const handleVerEvidencia = (evidencia: typeof evidenciasMock[0]) => {
+    toast.loading('⏳ Cargando visor de documento...', {
+      id: 'abrir-visor',
+      duration: 800
     });
+
+    setTimeout(() => {
+      setEvidenciaSeleccionada(evidencia);
+      setModalVisorAbierto(true);
+
+      toast.success('✅ Documento cargado', {
+        id: 'abrir-visor',
+        description: `${evidencia.nombre} - ${evidencia.categoria}`,
+        duration: 2000
+      });
+
+      // Log para analytics
+      console.log('📊 Evidencia visualizada:', {
+        expediente: expediente.id,
+        evidenciaId: evidencia.id,
+        nombre: evidencia.nombre,
+        categoria: evidencia.categoria,
+        timestamp: new Date().toISOString()
+      });
+    }, 800);
   };
 
-  const handleVerEvidencia = (evidencia: typeof evidenciasMock[0]) => {
-    toast.info('👁️ Abriendo visor de documento', {
-      description: `${evidencia.nombre} - ${evidencia.categoria}`
+  /**
+   * Descargar evidencia individual
+   */
+  const handleDescargarEvidencia = (evidencia: typeof evidenciasMock[0]) => {
+    toast.loading('⏳ Preparando descarga...', {
+      id: 'descargar-evidencia',
+      duration: 1000
     });
+
+    setTimeout(() => {
+      toast.info('📥 Descargando archivo...', {
+        id: 'descargar-evidencia',
+        description: `${evidencia.nombre} (${evidencia.tamaño})`,
+        duration: 2000
+      });
+
+      // Simular progreso de descarga
+      setTimeout(() => {
+        toast.success('✅ Descarga completada', {
+          id: 'descargar-evidencia',
+          description: `${evidencia.nombre} se ha descargado exitosamente`,
+          duration: 4000
+        });
+
+        // Log para analytics
+        console.log('📊 Evidencia descargada:', {
+          expediente: expediente.id,
+          evidenciaId: evidencia.id,
+          nombre: evidencia.nombre,
+          tamaño: evidencia.tamaño,
+          categoria: evidencia.categoria,
+          timestamp: new Date().toISOString()
+        });
+      }, 2000);
+    }, 1000);
   };
 
   const handleCargarNuevaEvidencia = () => {
@@ -557,6 +617,21 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
           </div>
         </div>
       </DialogContent>
+
+      {/* Modal visor de documentos */}
+      {evidenciaSeleccionada && (
+        <VisorDocumentoModal
+          isOpen={modalVisorAbierto}
+          onClose={() => {
+            setModalVisorAbierto(false);
+            setEvidenciaSeleccionada(null);
+          }}
+          archivo={evidenciaSeleccionada.nombre}
+          numero={`Evidencia #${evidenciaSeleccionada.id}`}
+          asunto={evidenciaSeleccionada.descripcion}
+          expedienteId={expediente.id}
+        />
+      )}
     </Dialog>
   );
 }

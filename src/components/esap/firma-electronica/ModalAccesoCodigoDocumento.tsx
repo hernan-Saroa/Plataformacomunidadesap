@@ -9,6 +9,7 @@ import { Card } from '../../ui/card';
 import { X, Shield, Mail, AlertCircle, CheckCircle } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 interface ModalAccesoCodigoDocumentoProps {
   isOpen: boolean;
@@ -255,12 +256,19 @@ export function ModalAccesoCodigoDocumento({
                               {documento.codigoAcceso || '7483'}
                             </p>
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 const codigoEsperado = documento.codigoAcceso || '7483';
-                                navigator.clipboard.writeText(codigoEsperado);
-                                toast.success('📋 Código copiado', {
-                                  description: 'Pegalo en los campos de arriba'
-                                });
+                                const copiado = await copyToClipboard(codigoEsperado);
+                                
+                                if (copiado) {
+                                  toast.success('📋 Código copiado', {
+                                    description: 'Pegalo en los campos de arriba'
+                                  });
+                                } else {
+                                  toast.info('📋 Código', {
+                                    description: codigoEsperado
+                                  });
+                                }
                               }}
                               className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-colors"
                             >

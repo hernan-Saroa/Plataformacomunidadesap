@@ -15,6 +15,7 @@ import {
   Info
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface ModalCodigoQRProps {
   isOpen: boolean;
@@ -42,12 +43,20 @@ export function ModalCodigoQR({ isOpen, onClose, certificado }: ModalCodigoQRPro
     });
   };
 
-  const handleCopiarEnlace = () => {
-    navigator.clipboard.writeText(urlVerificacion);
-    toast.success('Enlace copiado', {
-      description: 'El enlace de verificación fue copiado al portapapeles',
-      duration: 3000
-    });
+  const handleCopiarEnlace = async () => {
+    const copiado = await copyToClipboard(urlVerificacion);
+    
+    if (copiado) {
+      toast.success('Enlace copiado', {
+        description: 'El enlace de verificación fue copiado al portapapeles',
+        duration: 3000
+      });
+    } else {
+      toast.info('Enlace de verificación', {
+        description: urlVerificacion,
+        duration: 5000
+      });
+    }
   };
 
   const handleCompartir = async () => {

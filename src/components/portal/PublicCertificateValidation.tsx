@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner@2.0.3';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface CertificateValidationData {
   qrCode: string;

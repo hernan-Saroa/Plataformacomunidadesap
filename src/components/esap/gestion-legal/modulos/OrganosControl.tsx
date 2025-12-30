@@ -25,7 +25,7 @@ import { Input } from '../../../ui/input';
 import { Textarea } from '../../../ui/textarea';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { ModalHeaderClean } from '../design-system/ModalHeaderClean';
+import { ModalHeaderClean } from './ModalHeaderClean';
 
 // Tipo para drag and drop
 const ItemTypes = {

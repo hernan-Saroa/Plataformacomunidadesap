@@ -35,7 +35,7 @@ import { OrganosControl } from '../modulos/OrganosControl';
 import { ModuloProcesosCoactivosV3 } from '../modulos/ProcesosCoactivosV3';
 import { ModuloPlanAccionV4 } from '../modulos/PlanAccionV4';
 import { Riesgos } from '../modulos/Riesgos';
-import { PlanesMejoramiento } from '../modulos/PlanesMejoramiento';
+import { ModuloPlanesMejoramientoV4 } from '../modulos/PlanesMejoramientoV4';
 
 // ✅ Tour Guiado Multi-Módulo
 import { GuidedTour, TourButton, useTourCompleted } from '../design-system/GuidedTour';
@@ -211,7 +211,7 @@ export function GestionLegalFull() {
       case 'riesgos':
         return <Riesgos />;
       case 'planes-mejoramiento':
-        return <PlanesMejoramiento />;
+        return <ModuloPlanesMejoramientoV4 />;
       default:
         return <DashboardEjecutivoSIGL onNavigateToModule={(moduleId) => setVistaActual(moduleId as VistaDisponible)} />;
     }

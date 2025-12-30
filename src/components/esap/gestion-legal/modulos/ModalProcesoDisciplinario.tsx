@@ -21,6 +21,8 @@ import { toast } from 'sonner@2.0.3';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { FormularioRegistrarDecision } from './FormularioRegistrarDecision';
+import { copyToClipboard } from '../../../../utils/clipboard';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 // Tipo para Proceso Disciplinario
 interface ProcesoDisciplinario {
@@ -58,6 +60,19 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     { id: 2, nombre: 'Prueba Documental #2', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_002.pdf', tamaño: '1.8 MB' },
     { id: 3, nombre: 'Prueba Documental #3', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_003.pdf', tamaño: '3.1 MB' }
   ]);
+  
+  // Estado para el visor de documentos
+  const [visorAbierto, setVisorAbierto] = useState(false);
+  const [pruebaSeleccionada, setPruebaSeleccionada] = useState<any>(null);
+
+  // Estado para documentos del proceso
+  const [documentos, setDocumentos] = useState([
+    { id: 1, nombre: 'Documento_1.pdf', tamaño: '256 KB', fecha: '26/12/2024', tipo: 'Auto de Apertura' },
+    { id: 2, nombre: 'Documento_2.pdf', tamaño: '412 KB', fecha: '26/12/2024', tipo: 'Pliego de Cargos' },
+    { id: 3, nombre: 'Documento_3.pdf', tamaño: '189 KB', fecha: '26/12/2024', tipo: 'Notificación' },
+    { id: 4, nombre: 'Documento_4.pdf', tamaño: '324 KB', fecha: '26/12/2024', tipo: 'Respuesta a Descargos' }
+  ]);
+  const [documentoSeleccionado, setDocumentoSeleccionado] = useState<any>(null);
 
   const handleAgregarPrueba = () => {
     toast.info('📎 Abriendo cargador de pruebas', {
@@ -103,35 +118,193 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   };
 
   const handleVerPrueba = (prueba: any) => {
-    toast.loading('📄 Abriendo visor de documentos...', {
-      id: 'ver-prueba',
-      duration: 1500
-    });
+    setPruebaSeleccionada(prueba);
+    setVisorAbierto(true);
     
-    setTimeout(() => {
-      toast.success('👁️ Documento abierto', {
-        id: 'ver-prueba',
-        description: `${prueba.nombre} - ${prueba.archivo}`,
-        duration: 2000
-      });
-      // En producción: window.open(`/visor/prueba/${prueba.id}`, '_blank');
-    }, 1500);
+    toast.success('📄 Visor de documentos abierto', {
+      description: `Visualizando: ${prueba.nombre}`,
+      duration: 2000
+    });
   };
 
   const handleDescargarPrueba = (prueba: any) => {
     toast.loading('⏳ Preparando descarga...', {
       id: 'descargar-prueba',
-      duration: 1000
+      duration: 1500
     });
     
     setTimeout(() => {
+      // Crear contenido HTML del documento de prueba
+      const contenidoHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${prueba.nombre} - ${proceso.id}</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              margin: 40px;
+              line-height: 1.6;
+            }
+            .header { 
+              text-align: center; 
+              border-bottom: 3px solid #003DA5; 
+              padding-bottom: 20px; 
+              margin-bottom: 30px; 
+            }
+            .header h1 { 
+              color: #003DA5; 
+              margin: 0 0 10px 0;
+              font-size: 24px;
+            }
+            .header p { 
+              margin: 5px 0; 
+              color: #666;
+            }
+            .metadata { 
+              margin: 30px 0; 
+              padding: 20px; 
+              background: #f5f5f5;
+              border-left: 4px solid #003DA5;
+            }
+            .metadata-item { 
+              margin: 10px 0; 
+            }
+            .metadata-label { 
+              font-weight: bold; 
+              color: #003DA5;
+              display: inline-block;
+              width: 180px;
+            }
+            .content { 
+              margin: 30px 0;
+              text-align: justify;
+            }
+            .footer { 
+              margin-top: 50px; 
+              padding-top: 20px; 
+              border-top: 2px solid #ddd;
+              text-align: center;
+              color: #666;
+              font-size: 12px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</h1>
+            <p>ESAP - República de Colombia</p>
+            <p>Oficina de Control Disciplinario Interno</p>
+          </div>
+          
+          <div class="metadata">
+            <div class="metadata-item">
+              <span class="metadata-label">Proceso No:</span>
+              <span>${proceso.id}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Tipo de Falta:</span>
+              <span>${proceso.tipoFalta}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Etapa Procesal:</span>
+              <span>${proceso.etapa}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Prueba Documental:</span>
+              <span>${prueba.nombre}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Disciplinado:</span>
+              <span>${proceso.disciplinado}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Investigador Asignado:</span>
+              <span>${proceso.abogadoAsignado}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Fecha de Generación:</span>
+              <span>${new Date().toLocaleDateString('es-CO', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Archivo:</span>
+              <span>${prueba.archivo}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Tamaño:</span>
+              <span>${prueba.tamaño}</span>
+            </div>
+          </div>
+          
+          <div class="content">
+            <h2 style="color: #003DA5;">MATERIAL PROBATORIO</h2>
+            
+            <p><strong>Descripción:</strong></p>
+            <p>${prueba.descripcion}</p>
+            
+            <p><strong>Contenido de la Prueba:</strong></p>
+            
+            <p>El presente documento constituye material probatorio allegado al proceso disciplinario 
+            ${proceso.id}, el cual se encuentra en etapa de ${proceso.etapa}.</p>
+            
+            <p>Esta prueba documental ha sido incorporada al expediente disciplinario con el fin de 
+            esclarecer los hechos investigados y garantizar el debido proceso al funcionario investigado.</p>
+            
+            <p>El documento ha sido autenticado y validado por la Oficina de Control Disciplinario Interno, 
+            cumpliendo con todos los requisitos de cadena de custodia y preservación de la prueba establecidos 
+            en el Código General Disciplinario (Ley 1952 de 2019).</p>
+            
+            <p><strong>Relevancia Probatoria:</strong></p>
+            <p>Este documento es pertinente y conducente para la investigación disciplinaria, 
+            aportando elementos de juicio que permiten establecer la ocurrencia de los hechos 
+            investigados y la eventual responsabilidad disciplinaria del servidor público.</p>
+            
+            <p><strong>Garantías Procesales:</strong></p>
+            <p>El presente material probatorio ha sido puesto en conocimiento del investigado y su defensa, 
+            garantizando el derecho de contradicción y defensa consagrado en el artículo 29 de la 
+            Constitución Política de Colombia.</p>
+          </div>
+          
+          <div class="footer">
+            <p><strong>Sistema de Gestión Legal ESAP</strong></p>
+            <p>Este es un documento oficial del proceso disciplinario ${proceso.id}</p>
+            <p>Generado el: ${new Date().toLocaleString('es-CO')}</p>
+            <p>Control Disciplinario Interno - ESAP</p>
+          </div>
+        </body>
+        </html>
+      `;
+      
+      // Crear blob y descargar
+      const blob = new Blob([contenidoHTML], { type: 'text/html' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = prueba.archivo.replace('.pdf', '.html');
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
       toast.success('✅ Descarga completada', {
         id: 'descargar-prueba',
-        description: `${prueba.archivo} (${prueba.tamaño}) descargado exitosamente`,
-        duration: 3000
+        description: `${prueba.archivo} (${prueba.tamaño}) guardado en Descargas`,
+        duration: 4000
       });
-      // En producción: window.open(`/api/pruebas/download/${prueba.id}`, '_blank');
-    }, 1000);
+      
+      // Log para analytics
+      console.log('📊 Documento descargado:', {
+        proceso: proceso.id,
+        prueba: prueba.nombre,
+        archivo: prueba.archivo,
+        timestamp: new Date().toISOString()
+      });
+    }, 1500);
   };
 
   const handleGuardarCambios = () => {
@@ -198,28 +371,29 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       duration: 1500
     });
     
-    setTimeout(() => {
+    setTimeout(async () => {
       const enlace = `https://esap.gov.co/procesos/${proceso.id}/actuacion-ultima`;
       setEnlaceCompartir(enlace);
       
-      // Copiar al portapapeles
-      navigator.clipboard.writeText(enlace).then(() => {
-        // Mostrar modal con el enlace
-        setMostrarModalCompartir(true);
-        
+      // Copiar al portapapeles usando la utilidad
+      const copiado = await copyToClipboard(enlace);
+      
+      // Mostrar modal con el enlace
+      setMostrarModalCompartir(true);
+      
+      if (copiado) {
         toast.success('✅ Enlace generado y copiado al portapapeles', {
           id: 'compartir-actuacion',
           description: 'Puedes pegar el enlace donde desees compartirlo',
           duration: 4000
         });
-      }).catch(() => {
-        setMostrarModalCompartir(true);
+      } else {
         toast.info('🔗 Enlace generado', {
           id: 'compartir-actuacion',
           description: 'Copia el enlace desde el modal',
           duration: 3000
         });
-      });
+      }
     }, 1500);
   };
 
@@ -273,6 +447,266 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       });
       
       setMostrarModalPortales(false);
+    }, 1500);
+  };
+
+  // ==================== FUNCIONES PARA DOCUMENTOS DEL PROCESO ====================
+  
+  const handleSubirDocumento = () => {
+    toast.info('📎 Abriendo selector de archivos', {
+      description: 'Selecciona el documento desde tu equipo',
+      duration: 2000
+    });
+    
+    // Crear input file
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.jpg,.png';
+    
+    input.onchange = (e: any) => {
+      const file = e.target?.files?.[0];
+      if (file) {
+        toast.loading('⏳ Subiendo documento...', {
+          id: 'subir-documento',
+          duration: 2000
+        });
+        
+        setTimeout(() => {
+          const nuevoDocumento = {
+            id: documentos.length + 1,
+            nombre: file.name,
+            tamaño: `${(file.size / 1024).toFixed(0)} KB`,
+            fecha: new Date().toLocaleDateString('es-CO'),
+            tipo: 'Documento General'
+          };
+          
+          setDocumentos([nuevoDocumento, ...documentos]);
+          setHasChanges(true);
+          
+          toast.success('✅ Documento subido exitosamente', {
+            id: 'subir-documento',
+            description: `${file.name} agregado al proceso ${proceso.id}`,
+            duration: 4000
+          });
+          
+          // Log para analytics
+          console.log('📊 Documento subido:', {
+            proceso: proceso.id,
+            documento: file.name,
+            tamaño: nuevoDocumento.tamaño,
+            timestamp: new Date().toISOString()
+          });
+        }, 2000);
+      }
+    };
+    
+    input.click();
+  };
+
+  const handleVerDocumento = (doc: any) => {
+    setDocumentoSeleccionado(doc);
+    setVisorAbierto(true);
+    
+    toast.success('📄 Visor de documentos abierto', {
+      description: `Visualizando: ${doc.nombre}`,
+      duration: 2000
+    });
+  };
+
+  const handleDescargarDocumento = (doc: any) => {
+    toast.loading('⏳ Preparando descarga...', {
+      id: 'descargar-documento',
+      duration: 1500
+    });
+    
+    setTimeout(() => {
+      // Crear contenido HTML del documento
+      const contenidoHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${doc.nombre} - ${proceso.id}</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              margin: 40px;
+              line-height: 1.6;
+            }
+            .header { 
+              text-align: center; 
+              border-bottom: 3px solid #003DA5; 
+              padding-bottom: 20px; 
+              margin-bottom: 30px; 
+            }
+            .header h1 { 
+              color: #003DA5; 
+              margin: 0 0 10px 0;
+              font-size: 24px;
+            }
+            .header p { 
+              margin: 5px 0; 
+              color: #666;
+            }
+            .metadata { 
+              margin: 30px 0; 
+              padding: 20px; 
+              background: #f5f5f5;
+              border-left: 4px solid #003DA5;
+            }
+            .metadata-item { 
+              margin: 10px 0; 
+            }
+            .metadata-label { 
+              font-weight: bold; 
+              color: #003DA5;
+              display: inline-block;
+              width: 180px;
+            }
+            .content { 
+              margin: 30px 0;
+              text-align: justify;
+            }
+            .footer { 
+              margin-top: 50px; 
+              padding-top: 20px; 
+              border-top: 2px solid #ddd;
+              text-align: center;
+              color: #666;
+              font-size: 12px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</h1>
+            <p>ESAP - República de Colombia</p>
+            <p>Oficina de Control Disciplinario Interno</p>
+          </div>
+          
+          <div class="metadata">
+            <div class="metadata-item">
+              <span class="metadata-label">Proceso No:</span>
+              <span>${proceso.id}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Tipo de Falta:</span>
+              <span>${proceso.tipoFalta}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Etapa Procesal:</span>
+              <span>${proceso.etapa}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Tipo de Documento:</span>
+              <span>${doc.tipo}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Nombre del Archivo:</span>
+              <span>${doc.nombre}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Tamaño:</span>
+              <span>${doc.tamaño}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Fecha de Carga:</span>
+              <span>${doc.fecha}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Disciplinado:</span>
+              <span>${proceso.disciplinado}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Investigador Asignado:</span>
+              <span>${proceso.abogadoAsignado}</span>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">Fecha de Generación:</span>
+              <span>${new Date().toLocaleDateString('es-CO', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}</span>
+            </div>
+          </div>
+          
+          <div class="content">
+            <h2 style="color: #003DA5;">${doc.tipo.toUpperCase()}</h2>
+            
+            <p><strong>Documento del Expediente Disciplinario</strong></p>
+            
+            <p>El presente documento hace parte integral del expediente disciplinario ${proceso.id}, 
+            el cual se encuentra actualmente en etapa de <strong>${proceso.etapa}</strong>.</p>
+            
+            <p><strong>Objeto del Documento:</strong></p>
+            <p>Este ${doc.tipo} constituye un elemento fundamental del proceso disciplinario, 
+            siendo parte de la documentación oficial que soporta las actuaciones adelantadas por 
+            la Oficina de Control Disciplinario Interno de la ESAP.</p>
+            
+            <p><strong>Marco Legal:</strong></p>
+            <p>El presente documento se enmarca dentro de las disposiciones establecidas en el 
+            Código General Disciplinario (Ley 1952 de 2019) y demás normas concordantes que 
+            regulan el procedimiento disciplinario en Colombia.</p>
+            
+            <p><strong>Cadena de Custodia:</strong></p>
+            <p>Este documento ha sido incorporado al expediente digital disciplinario cumpliendo 
+            con todos los protocolos de cadena de custodia, autenticidad y preservación de evidencia 
+            establecidos por la normatividad vigente.</p>
+            
+            <p><strong>Acceso y Consulta:</strong></p>
+            <p>El documento ha sido puesto en conocimiento de las partes intervinientes en el proceso, 
+            garantizando el derecho de defensa, contradicción y acceso al expediente consagrado en el 
+            artículo 29 de la Constitución Política de Colombia.</p>
+            
+            <p><strong>Características del Archivo:</strong></p>
+            <ul>
+              <li>Nombre: ${doc.nombre}</li>
+              <li>Tamaño: ${doc.tamaño}</li>
+              <li>Fecha de incorporación: ${doc.fecha}</li>
+              <li>Tipo: ${doc.tipo}</li>
+            </ul>
+            
+            <p><strong>Declaración de Autenticidad:</strong></p>
+            <p>Se certifica que el presente documento es auténtico y hace parte oficial del 
+            expediente disciplinario ${proceso.id}, habiendo sido validado y aprobado por la 
+            Oficina de Control Disciplinario Interno de la ESAP.</p>
+          </div>
+          
+          <div class="footer">
+            <p><strong>Sistema de Gestión Legal ESAP</strong></p>
+            <p>Documento oficial del proceso disciplinario ${proceso.id}</p>
+            <p>Generado el: ${new Date().toLocaleString('es-CO')}</p>
+            <p>Control Disciplinario Interno - ESAP</p>
+          </div>
+        </body>
+        </html>
+      `;
+      
+      // Crear blob y descargar
+      const blob = new Blob([contenidoHTML], { type: 'text/html' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.nombre.replace('.pdf', '.html');
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast.success('✅ Descarga completada', {
+        id: 'descargar-documento',
+        description: `${doc.nombre} (${doc.tamaño}) guardado en Descargas`,
+        duration: 4000
+      });
+      
+      // Log para analytics
+      console.log('📊 Documento descargado:', {
+        proceso: proceso.id,
+        documento: doc.nombre,
+        tipo: doc.tipo,
+        timestamp: new Date().toISOString()
+      });
     }, 1500);
   };
 
@@ -752,10 +1186,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Documentos del Proceso</h3>
               <Button 
-                onClick={() => {
-                  toast.success('Documento subido correctamente');
-                  setHasChanges(true);
-                }}
+                onClick={handleSubirDocumento}
                 style={{ background: '#003DA5', color: '#FFFFFF' }}
               >
                 <Upload className="w-4 h-4 mr-2" />
@@ -764,19 +1195,19 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[1, 2, 3, 4].map((item) => (
-                <Card key={item} className="p-4 hover:shadow-md transition-all">
+              {documentos.map((doc) => (
+                <Card key={doc.id} className="p-4 hover:shadow-md transition-all">
                   <div className="flex items-start gap-3">
                     <FileText className="w-8 h-8 text-blue-600" />
                     <div className="flex-1">
-                      <h4 className="font-bold mb-1">Documento_{item}.pdf</h4>
-                      <p className="text-xs text-gray-500">256 KB • 26/12/2024</p>
+                      <h4 className="font-bold mb-1">{doc.nombre}</h4>
+                      <p className="text-xs text-gray-500">{doc.tamaño} • {doc.fecha}</p>
                       <div className="flex gap-2 mt-2">
                         <Button 
                           size="sm" 
                           variant="outline" 
-                          className="text-xs"
-                          onClick={() => toast.info(`Visualizando documento ${item}`)}
+                          className="text-xs font-semibold border-blue-300 text-blue-600 hover:bg-blue-50 hover:border-blue-400"
+                          onClick={() => handleVerDocumento(doc)}
                         >
                           <Eye className="w-3 h-3 mr-1" />
                           Ver
@@ -784,8 +1215,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                         <Button 
                           size="sm" 
                           variant="outline" 
-                          className="text-xs"
-                          onClick={() => toast.success(`Descargando documento ${item}...`)}
+                          className="text-xs font-semibold border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400"
+                          onClick={() => handleDescargarDocumento(doc)}
                         >
                           <Download className="w-3 h-3 mr-1" />
                           Descargar
@@ -875,9 +1306,15 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               <div className="flex justify-end gap-2 pt-2">
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    navigator.clipboard.writeText(enlaceCompartir);
-                    toast.success('✅ Enlace copiado nuevamente');
+                  onClick={async () => {
+                    const copiado = await copyToClipboard(enlaceCompartir);
+                    if (copiado) {
+                      toast.success('✅ Enlace copiado nuevamente');
+                    } else {
+                      toast.info('📋 No se pudo copiar', {
+                        description: enlaceCompartir
+                      });
+                    }
                   }}
                   className="font-semibold"
                 >
@@ -1020,6 +1457,28 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         }}
         procesoId={proceso.id}
       />
+
+      {/* ==================== MODAL: VISOR DE DOCUMENTOS ==================== */}
+      {pruebaSeleccionada && (
+        <VisorDocumentoModal
+          isOpen={visorAbierto}
+          onClose={() => setVisorAbierto(false)}
+          archivo={pruebaSeleccionada.archivo}
+          numero={pruebaSeleccionada.nombre}
+          asunto={pruebaSeleccionada.descripcion}
+        />
+      )}
+
+      {/* ==================== MODAL: VISOR DE DOCUMENTOS DEL PROCESO ==================== */}
+      {documentoSeleccionado && (
+        <VisorDocumentoModal
+          isOpen={visorAbierto}
+          onClose={() => setVisorAbierto(false)}
+          archivo={documentoSeleccionado.nombre}
+          numero={documentoSeleccionado.tipo}
+          asunto={`Documento del proceso ${proceso.id}`}
+        />
+      )}
     </Dialog>
   );
 }

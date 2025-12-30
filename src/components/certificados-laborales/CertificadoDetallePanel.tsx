@@ -23,6 +23,7 @@ import { Badge } from '../ui/badge';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { ModalCodigoQR } from './ModalCodigoQR';
 import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface CertificadoDetallePanelProps {
   certificado: {
@@ -239,12 +240,20 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     setShowQRModal(true);
   };
 
-  const handleCopiarEnlace = () => {
+  const handleCopiarEnlace = async () => {
     const enlace = `https://esap.edu.co/verificar/${certificado.consecutivo}`;
-    navigator.clipboard.writeText(enlace);
-    toast.success('Enlace copiado', {
-      description: 'El enlace de verificación fue copiado al portapapeles'
-    });
+    const copiado = await copyToClipboard(enlace);
+    
+    if (copiado) {
+      toast.success('Enlace copiado', {
+        description: 'El enlace de verificación fue copiado al portapapeles'
+      });
+    } else {
+      toast.info('Enlace de verificación', {
+        description: enlace,
+        duration: 5000
+      });
+    }
   };
 
   const handleVerPDF = () => {

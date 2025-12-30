@@ -21,6 +21,7 @@ import { toast } from 'sonner@2.0.3';
 import { VisorPDFModal } from './VisorPDFModal';
 import { ModalNuevoAuto } from './ModalNuevoAuto';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { DialogoConfirmacion } from './DialogoConfirmacion';
 
 interface ModalAutosProps {
   isOpen: boolean;
@@ -95,6 +96,8 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
   const [visorPDFAbierto, setVisorPDFAbierto] = useState(false);
   const [documentoActual, setDocumentoActual] = useState<typeof autosMock[0] | null>(null);
   const [modalNuevoAutoAbierto, setModalNuevoAutoAbierto] = useState(false);
+  const [modalEliminarAbierto, setModalEliminarAbierto] = useState(false);
+  const [autoAEliminar, setAutoAEliminar] = useState<typeof autosMock[0] | null>(null);
 
   /**
    * ✅ FUNCIONALIDAD REAL: DESCARGAR ARCHIVO PDF
@@ -596,9 +599,8 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              if (confirm(`¿Estás seguro de eliminar el auto ${auto.numero}?`)) {
-                                handleEliminarAuto(auto.id, auto.numero);
-                              }
+                              setAutoAEliminar(auto);
+                              setModalEliminarAbierto(true);
                             }}
                             title="Eliminar auto"
                             className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
@@ -678,6 +680,27 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
           setAutos([nuevoAuto, ...autos]);
           setFiltroTipo('TODOS');
           setBusqueda('');
+        }}
+      />
+
+      {/* Modal de confirmación para eliminar auto */}
+      <DialogoConfirmacion
+        isOpen={modalEliminarAbierto}
+        onClose={() => {
+          setModalEliminarAbierto(false);
+          setAutoAEliminar(null);
+        }}
+        titulo="Confirmar Eliminación"
+        mensaje={`¿Estás seguro de eliminar el auto ${autoAEliminar?.numero}? Esta acción no se puede deshacer y el documento será removido permanentemente del expediente.`}
+        tipo="peligro"
+        textoConfirmar="Sí, eliminar"
+        textoCancelar="Cancelar"
+        onConfirm={() => {
+          if (autoAEliminar) {
+            handleEliminarAuto(autoAEliminar.id, autoAEliminar.numero);
+          }
+          setModalEliminarAbierto(false);
+          setAutoAEliminar(null);
         }}
       />
     </Dialog>

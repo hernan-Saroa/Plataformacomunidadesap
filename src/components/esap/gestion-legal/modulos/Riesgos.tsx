@@ -32,6 +32,8 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { ModalNuevoRiesgo } from './ModalNuevoRiesgo';
+import { ModalDetalleRiesgo } from './ModalDetalleRiesgo';
 
 type VistaModulo = 'matriz' | 'tabla';
 
@@ -55,6 +57,22 @@ export function Riesgos() {
   const [filtroZona, setFiltroZona] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [modalNuevoRiesgo, setModalNuevoRiesgo] = useState(false);
+  const [modalDetalleRiesgo, setModalDetalleRiesgo] = useState<Riesgo | null>(null);
+
+  // Handlers
+  const handleNuevoRiesgo = () => {
+    setModalNuevoRiesgo(true);
+  };
+
+  const handleGuardarRiesgo = (data: any) => {
+    console.log('Nuevo riesgo:', data);
+    // Aquí se integraría con el backend
+  };
+
+  const handleVerDetalleRiesgo = (riesgo: Riesgo) => {
+    setModalDetalleRiesgo(riesgo);
+  };
 
   const riesgosFiltrados = useMemo(() => {
     let resultado = [...riesgos].filter(r => r.estado === 'ACTIVO');
@@ -103,7 +121,7 @@ export function Riesgos() {
             label: 'Nuevo Riesgo',
             labelMobile: 'Nuevo',
             icon: <Plus className="w-4 h-4" />,
-            onClick: () => toast.info('Nuevo Riesgo'),
+            onClick: handleNuevoRiesgo,
             variant: 'primary'
           }
         ]}
@@ -223,19 +241,34 @@ export function Riesgos() {
 
       {/* Contenido principal */}
       {vistaActual === 'matriz' ? (
-        <MatrizRiesgos riesgos={riesgosFiltrados} />
+        <MatrizRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalleRiesgo} />
       ) : (
-        <TablaRiesgos riesgos={riesgosFiltrados} />
+        <TablaRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalleRiesgo} />
       )}
+
+      {/* Modal Nuevo Riesgo */}
+      <ModalNuevoRiesgo
+        isOpen={modalNuevoRiesgo}
+        onClose={() => setModalNuevoRiesgo(false)}
+        onGuardar={handleGuardarRiesgo}
+      />
+
+      {/* Modal Detalle Riesgo */}
+      <ModalDetalleRiesgo
+        isOpen={modalDetalleRiesgo !== null}
+        onClose={() => setModalDetalleRiesgo(null)}
+        riesgo={modalDetalleRiesgo}
+      />
     </div>
   );
 }
 
 interface MatrizRiesgosProps {
   riesgos: Riesgo[];
+  onVerDetalle: (riesgo: Riesgo) => void;
 }
 
-function MatrizRiesgos({ riesgos }: MatrizRiesgosProps) {
+function MatrizRiesgos({ riesgos, onVerDetalle }: MatrizRiesgosProps) {
   // Matriz 5x5 (Probabilidad x Impacto)
   const probabilidades = ['Raro', 'Improbable', 'Posible', 'Probable', 'Casi Seguro'];
   const impactos = ['Insignificante', 'Menor', 'Moderado', 'Mayor', 'Catastrófico'];
@@ -354,7 +387,7 @@ function MatrizRiesgos({ riesgos }: MatrizRiesgosProps) {
         <h4 className="font-bold text-sm text-gray-900 mb-3">Detalle de Riesgos</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {riesgos.slice(0, 6).map(riesgo => (
-            <TarjetaRiesgoCompacta key={riesgo.id} riesgo={riesgo} />
+            <TarjetaRiesgoCompacta key={riesgo.id} riesgo={riesgo} onVerDetalle={onVerDetalle} />
           ))}
         </div>
       </div>
@@ -364,9 +397,10 @@ function MatrizRiesgos({ riesgos }: MatrizRiesgosProps) {
 
 interface TablaRiesgosProps {
   riesgos: Riesgo[];
+  onVerDetalle: (riesgo: Riesgo) => void;
 }
 
-function TablaRiesgos({ riesgos }: TablaRiesgosProps) {
+function TablaRiesgos({ riesgos, onVerDetalle }: TablaRiesgosProps) {
   return (
     <Card className="bg-white border border-gray-200">
       <div className="overflow-x-auto">
@@ -409,7 +443,7 @@ function TablaRiesgos({ riesgos }: TablaRiesgosProps) {
                   <td className="px-4 py-3 text-sm text-gray-600">{riesgo.etapa}</td>
                   <td className="px-4 py-3">
                     <Button
-                      onClick={() => toast.success('Detalle Riesgo', { description: riesgo.id })}
+                      onClick={() => onVerDetalle(riesgo)}
                       size="sm"
                       style={{ background: '#003DA5', color: '#FFFFFF' }}
                     >
@@ -429,9 +463,10 @@ function TablaRiesgos({ riesgos }: TablaRiesgosProps) {
 
 interface TarjetaRiesgoCompactaProps {
   riesgo: Riesgo;
+  onVerDetalle: (riesgo: Riesgo) => void;
 }
 
-function TarjetaRiesgoCompacta({ riesgo }: TarjetaRiesgoCompactaProps) {
+function TarjetaRiesgoCompacta({ riesgo, onVerDetalle }: TarjetaRiesgoCompactaProps) {
   const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual];
 
   return (
@@ -470,7 +505,7 @@ function TarjetaRiesgoCompacta({ riesgo }: TarjetaRiesgoCompactaProps) {
 
       <div className="mt-2 pt-2 border-t border-gray-200">
         <Button
-          onClick={() => toast.success('Detalle Riesgo', { description: riesgo.id })}
+          onClick={() => onVerDetalle(riesgo)}
           size="sm"
           className="w-full"
           style={{ background: '#003DA5', color: '#FFFFFF' }}

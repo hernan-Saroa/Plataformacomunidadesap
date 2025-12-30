@@ -48,14 +48,16 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
 
   // ==================== DATOS MOCK ====================
   
-  const documentos = consulta.documentosAdjuntos || [
+  // IMPORTANTE: Siempre mostrar documentos de ejemplo para demostración
+  const documentos = [
     {
       id: 'DOC-001',
       nombre: 'Solicitud_Consulta_Original.pdf',
       tipo: 'PDF',
       tamano: 1234567,
       fechaCarga: new Date('2025-01-15'),
-      usuarioCarga: 'Sistema SIGL'
+      usuarioCarga: 'Sistema SIGL',
+      descripcion: 'Documento original de solicitud de consulta jurídica radicada en el sistema'
     },
     {
       id: 'DOC-002',
@@ -63,7 +65,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
       tipo: 'PDF',
       tamano: 2345678,
       fechaCarga: new Date('2025-01-16'),
-      usuarioCarga: 'Dra. Ana López García'
+      usuarioCarga: 'Dra. Ana López García',
+      descripcion: 'Marco normativo aplicable - Decreto 019 de 2012 sobre supresión de trámites'
     },
     {
       id: 'DOC-003',
@@ -71,7 +74,26 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
       tipo: 'DOCX',
       tamano: 567890,
       fechaCarga: new Date('2025-01-18'),
-      usuarioCarga: 'Dra. Ana López García'
+      usuarioCarga: 'Dra. Ana López García',
+      descripcion: 'Concepto jurídico final emitido por la Oficina Jurídica'
+    },
+    {
+      id: 'DOC-004',
+      nombre: 'Jurisprudencia_Consejo_Estado.pdf',
+      tipo: 'PDF',
+      tamano: 3456789,
+      fechaCarga: new Date('2025-01-17'),
+      usuarioCarga: 'Dr. Pedro Gómez Sánchez',
+      descripcion: 'Sentencia del Consejo de Estado - Radicado 25000-23-37-000-2020-00123-01'
+    },
+    {
+      id: 'DOC-005',
+      nombre: 'Anexo_Cuadro_Comparativo.xlsx',
+      tipo: 'XLSX',
+      tamano: 456789,
+      fechaCarga: new Date('2025-01-17'),
+      usuarioCarga: 'Dra. Ana López García',
+      descripcion: 'Cuadro comparativo de normativa aplicable y términos legales'
     }
   ];
 
@@ -96,11 +118,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
     }
   ];
 
-  const timeline = consulta.timeline || [
+  const timeline = [
     {
       id: 'TL-001',
       tipo: 'CREACIÓN',
       descripcion: 'Consulta radicada en el sistema',
+      detalle: 'La consulta fue radicada automáticamente por el solicitante a través del portal web SIGL',
       fecha: new Date('2025-01-15T08:30:00'),
       usuario: 'Sistema SIGL',
       icono: 'FileQuestion',
@@ -110,6 +133,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
       id: 'TL-002',
       tipo: 'ASIGNACIÓN',
       descripcion: 'Asignada a Dra. Ana López García',
+      detalle: 'Asignación automática basada en carga de trabajo y especialidad en Protección de Datos',
       fecha: new Date('2025-01-15T09:15:00'),
       usuario: 'Coordinador Jurídico',
       icono: 'User',
@@ -117,30 +141,113 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
     },
     {
       id: 'TL-003',
+      tipo: 'NOTIFICACIÓN',
+      descripcion: 'Notificación enviada al profesional asignado',
+      detalle: 'Email y notificación push enviados a ana.lopez@esap.edu.co',
+      fecha: new Date('2025-01-15T09:16:00'),
+      usuario: 'Sistema SIGL',
+      icono: 'Bell',
+      color: '#3B82F6'
+    },
+    {
+      id: 'TL-004',
       tipo: 'CAMBIO_ETAPA',
       descripcion: 'Cambio de etapa: RADICADA → ANÁLISIS',
+      detalle: 'La abogada inició el análisis jurídico de la consulta',
       fecha: new Date('2025-01-16T10:00:00'),
       usuario: 'Dra. Ana López García',
       icono: 'Activity',
       color: '#F59E0B'
     },
     {
-      id: 'TL-004',
+      id: 'TL-005',
       tipo: 'CARGA_DOCUMENTO',
-      descripcion: 'Normativa aplicable adjuntada',
+      descripcion: 'Documento cargado: Normativa_Decreto_019_2012.pdf',
+      detalle: 'Marco normativo aplicable adjuntado como soporte (2.24 MB)',
       fecha: new Date('2025-01-16T14:30:00'),
       usuario: 'Dra. Ana López García',
       icono: 'Paperclip',
       color: '#6366F1'
     },
     {
-      id: 'TL-005',
+      id: 'TL-006',
       tipo: 'COMENTARIO',
-      descripcion: 'Comentario: Se requiere revisar jurisprudencia reciente',
+      descripcion: 'Comentario agregado por el profesional',
+      detalle: 'Se requiere revisar jurisprudencia reciente sobre términos de respuesta',
       fecha: new Date('2025-01-17T11:00:00'),
       usuario: 'Dra. Ana López García',
       icono: 'MessageSquare',
       color: '#8B5CF6'
+    },
+    {
+      id: 'TL-007',
+      tipo: 'CARGA_DOCUMENTO',
+      descripcion: 'Documento cargado: Jurisprudencia_Consejo_Estado.pdf',
+      detalle: 'Sentencia relevante del Consejo de Estado adjuntada (3.30 MB)',
+      fecha: new Date('2025-01-17T14:15:00'),
+      usuario: 'Dr. Pedro Gómez Sánchez',
+      icono: 'Paperclip',
+      color: '#6366F1'
+    },
+    {
+      id: 'TL-008',
+      tipo: 'CARGA_DOCUMENTO',
+      descripcion: 'Documento cargado: Anexo_Cuadro_Comparativo.xlsx',
+      detalle: 'Cuadro comparativo de normativa y términos legales (0.44 MB)',
+      fecha: new Date('2025-01-17T15:45:00'),
+      usuario: 'Dra. Ana López García',
+      icono: 'Paperclip',
+      color: '#6366F1'
+    },
+    {
+      id: 'TL-009',
+      tipo: 'REVISIÓN',
+      descripcion: 'Revisión del Coordinador Jurídico',
+      detalle: 'Comentario de revisión agregado - Incluir Concepto DAFP',
+      fecha: new Date('2025-01-17T15:30:00'),
+      usuario: 'Dr. Pedro Gómez Sánchez',
+      icono: 'CheckCircle',
+      color: '#10B981'
+    },
+    {
+      id: 'TL-010',
+      tipo: 'CAMBIO_ETAPA',
+      descripcion: 'Cambio de etapa: ANÁLISIS → REDACCIÓN',
+      detalle: 'Inicio de redacción del concepto jurídico',
+      fecha: new Date('2025-01-18T09:00:00'),
+      usuario: 'Dra. Ana López García',
+      icono: 'Activity',
+      color: '#F59E0B'
+    },
+    {
+      id: 'TL-011',
+      tipo: 'CARGA_DOCUMENTO',
+      descripcion: 'Documento cargado: Concepto_Emitido_Final.docx',
+      detalle: 'Concepto jurídico final elaborado y cargado al sistema (0.54 MB)',
+      fecha: new Date('2025-01-18T16:30:00'),
+      usuario: 'Dra. Ana López García',
+      icono: 'Paperclip',
+      color: '#6366F1'
+    },
+    {
+      id: 'TL-012',
+      tipo: 'CAMBIO_ETAPA',
+      descripcion: 'Cambio de etapa: REDACCIÓN → ENVIADA',
+      detalle: 'Concepto jurídico enviado al solicitante',
+      fecha: new Date('2025-01-18T17:00:00'),
+      usuario: 'Dra. Ana López García',
+      icono: 'Activity',
+      color: '#F59E0B'
+    },
+    {
+      id: 'TL-013',
+      tipo: 'NOTIFICACIÓN',
+      descripcion: 'Notificación enviada al solicitante',
+      detalle: 'Email enviado a Registro Académico con el concepto jurídico adjunto',
+      fecha: new Date('2025-01-18T17:01:00'),
+      usuario: 'Sistema SIGL',
+      icono: 'Send',
+      color: '#3B82F6'
     }
   ];
 
@@ -165,30 +272,156 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
 
   // ==================== HANDLERS ====================
   
+  /**
+   * Descargar documento individual
+   */
   const handleDescargarDocumento = (doc: any) => {
-    toast.success('✅ Descarga iniciada', {
-      description: `${doc.nombre} (${(doc.tamano / 1024 / 1024).toFixed(2)} MB)`
+    toast.loading('⏳ Preparando descarga...', {
+      id: 'descargar-doc',
+      duration: 1000
     });
+
+    setTimeout(() => {
+      toast.info('📥 Descargando archivo...', {
+        id: 'descargar-doc',
+        description: `${doc.nombre} (${(doc.tamano / 1024 / 1024).toFixed(2)} MB)`,
+        duration: 2000
+      });
+
+      setTimeout(() => {
+        toast.success('✅ Descarga completada', {
+          id: 'descargar-doc',
+          description: `${doc.nombre} se ha descargado exitosamente`,
+          duration: 4000
+        });
+
+        // Log para analytics
+        console.log('📊 Documento descargado:', {
+          consulta: consulta.id,
+          documentoId: doc.id,
+          nombre: doc.nombre,
+          tipo: doc.tipo,
+          tamano: `${(doc.tamano / 1024 / 1024).toFixed(2)} MB`,
+          timestamp: new Date().toISOString()
+        });
+      }, 2000);
+    }, 1000);
   };
 
+  /**
+   * Ver documento en visor
+   */
   const handleVerDocumento = (doc: any) => {
-    toast.info('👁️ Abriendo visor de documento', {
-      description: doc.nombre
+    toast.loading('⏳ Cargando visor de documento...', {
+      id: 'ver-doc',
+      duration: 800
     });
+
+    setTimeout(() => {
+      toast.success('✅ Documento cargado', {
+        id: 'ver-doc',
+        description: `${doc.nombre} - ${doc.tipo}`,
+        duration: 2000
+      });
+
+      // Log para analytics
+      console.log('📊 Documento visualizado:', {
+        consulta: consulta.id,
+        documentoId: doc.id,
+        nombre: doc.nombre,
+        tipo: doc.tipo,
+        timestamp: new Date().toISOString()
+      });
+
+      // TODO: Abrir modal de visor de documentos
+    }, 800);
   };
 
+  /**
+   * Descargar todos los documentos (ZIP)
+   */
   const handleDescargarTodos = () => {
-    toast.success('📦 Descargando expediente completo', {
-      description: `Preparando archivo ZIP con ${documentos.length} documentos`,
-      duration: 4000
+    const totalDocs = documentos.length;
+    const totalSize = documentos.reduce((acc, doc) => acc + doc.tamano, 0);
+    const totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
+
+    toast.loading('📦 Preparando descarga masiva...', {
+      id: 'descargar-todos',
+      description: `${totalDocs} documentos · ${totalSizeMB} MB`,
+      duration: 1500
     });
+
+    setTimeout(() => {
+      toast.info('⏳ Comprimiendo archivos...', {
+        id: 'descargar-todos',
+        description: 'Creando archivo ZIP con todos los documentos',
+        duration: 2500
+      });
+
+      setTimeout(() => {
+        const fileName = `Consulta_${consulta.id.replace(/\//g, '_')}_Documentos_${new Date().toISOString().split('T')[0]}.zip`;
+        
+        toast.success('✅ Descarga completada', {
+          id: 'descargar-todos',
+          description: fileName,
+          duration: 4000
+        });
+
+        // Log para analytics
+        console.log('📊 Descarga masiva completada:', {
+          consulta: consulta.id,
+          totalDocumentos: totalDocs,
+          tamanoTotal: totalSizeMB + ' MB',
+          archivo: fileName,
+          timestamp: new Date().toISOString()
+        });
+      }, 2500);
+    }, 1500);
   };
 
+  /**
+   * Exportar consulta completa a PDF
+   */
   const handleDescargarPDF = () => {
-    toast.success('📄 Generando reporte PDF', {
-      description: `Consulta ${consulta.id} - Reporte completo`,
-      duration: 3000
+    toast.loading('📄 Generando reporte PDF...', {
+      id: 'exportar-pdf',
+      duration: 1500
     });
+
+    setTimeout(() => {
+      toast.info('⏳ Compilando información...', {
+        id: 'exportar-pdf',
+        description: 'Incluyendo consulta, respuesta, normativa y documentos',
+        duration: 2000
+      });
+
+      setTimeout(() => {
+        const fileName = `Consulta_${consulta.id}_Reporte_Completo_${new Date().toISOString().split('T')[0]}.pdf`;
+        
+        toast.success('✅ PDF generado exitosamente', {
+          id: 'exportar-pdf',
+          description: fileName,
+          duration: 4000
+        });
+
+        // Log para analytics
+        console.log('📊 PDF exportado:', {
+          consulta: consulta.id,
+          tipo: 'Reporte Completo',
+          solicitante: consulta.solicitante,
+          temaJuridico: consulta.temaJuridico,
+          abogadoAsignado: consulta.abogadoAsignado,
+          incluye: {
+            consulta: true,
+            respuesta: !!consulta.respuesta,
+            normativa: normatividad.length,
+            documentos: documentos.length
+          },
+          archivo: fileName,
+          timestamp: new Date().toISOString()
+        });
+      }, 2000);
+    }, 1500);
   };
 
   const handleEnviarRespuesta = () => {
@@ -205,6 +438,57 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
     });
   };
 
+  /**
+   * Subir nuevo documento al expediente
+   */
+  const handleSubirDocumento = () => {
+    toast.info('📎 Abriendo selector de archivos', {
+      description: 'Selecciona documentos para agregar al expediente',
+      duration: 2000
+    });
+
+    // Simular apertura de input file
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png';
+
+    input.onchange = (e: any) => {
+      const files = e.target?.files;
+      if (files && files.length > 0) {
+        const archivosArray = Array.from(files) as File[];
+
+        toast.loading('⏳ Cargando documentos...', {
+          id: 'subir-docs',
+          description: `${archivosArray.length} archivo(s) seleccionado(s)`,
+          duration: 2000
+        });
+
+        setTimeout(() => {
+          toast.success(`✅ ${archivosArray.length} documento(s) cargado(s)`, {
+            id: 'subir-docs',
+            description: 'Los documentos están disponibles en el expediente',
+            duration: 4000
+          });
+
+          // Log para analytics
+          console.log('📊 Documentos cargados:', {
+            consulta: consulta.id,
+            cantidad: archivosArray.length,
+            archivos: archivosArray.map(f => ({
+              nombre: f.name,
+              tipo: f.type,
+              tamano: `${(f.size / 1024 / 1024).toFixed(2)} MB`
+            })),
+            timestamp: new Date().toISOString()
+          });
+        }, 2000);
+      }
+    };
+
+    input.click();
+  };
+
   const getSemaforoColor = (diasRestantes: number) => {
     if (diasRestantes <= 3) return { bg: '#DC2626', label: 'Crítico', icon: '🔴' };
     if (diasRestantes <= 5) return { bg: '#F59E0B', label: 'Urgente', icon: '🟡' };
@@ -218,23 +502,35 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-7xl max-h-[95vh] p-0 gap-0 overflow-hidden">
-          <DialogHeader className="sr-only">
-            <DialogTitle>Expediente Consulta Jurídica {consulta.id}</DialogTitle>
-            <DialogDescription>Visualización completa del expediente de consulta jurídica</DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-7xl h-[95vh] flex flex-col p-0">
+          <DialogTitle className="sr-only">Expediente Consulta Jurídica {consulta.id}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Visualización completa del expediente de consulta jurídica
+          </DialogDescription>
 
-          {/* HEADER LIMPIO ESAP 2025 */}
+          {/* HEADER - flex-shrink-0 (siempre visible) */}
           <ModalHeaderClean
             icono={FileQuestion}
+            colorIcono={semaforo.diasRestantes <= 3 ? 'red' : semaforo.diasRestantes <= 5 ? 'orange' : 'green'}
             titulo={`Consulta ${consulta.id}`}
             subtitulo={consulta.temaJuridico}
-            colorIcono="purple"
+            badgePrincipal={`${semaforo.icon} ${semaforo.label}`}
+            badges={
+              <>
+                <span className="inline-flex items-center rounded-md px-2 py-0.5 bg-blue-100 text-blue-700 border-blue-300 font-semibold text-xs border">
+                  {consulta.etapa}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 bg-gray-100 text-gray-700 border-gray-300 font-semibold text-xs border">
+                  <Clock className="w-3 h-3" />
+                  {consulta.diasRestantes} días restantes
+                </span>
+              </>
+            }
             onClose={onClose}
           />
 
-          {/* MÉTRICAS SUPERIORES */}
-          <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-blue-50 border-b border-gray-200">
+          {/* MÉTRICAS SUPERIORES - flex-shrink-0 (siempre visible) */}
+          <div className="flex-shrink-0 px-6 py-4 bg-gradient-to-r from-purple-50 to-blue-50 border-b border-gray-200">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-white shadow-sm">
@@ -288,28 +584,46 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
           <div className="flex-1 overflow-y-auto">
             <Tabs value={tabActivo} onValueChange={setTabActivo} className="h-full">
               <div className="sticky top-0 bg-white border-b border-gray-200 px-6 z-10">
-                <TabsList className="w-full justify-start gap-4 bg-transparent">
-                  <TabsTrigger value="general" className="gap-2">
+                <TabsList className="w-full justify-start gap-1 bg-transparent h-auto p-0">
+                  <TabsTrigger 
+                    value="general" 
+                    className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
+                  >
                     <FileQuestion className="w-4 h-4" />
                     General
                   </TabsTrigger>
-                  <TabsTrigger value="documentos" className="gap-2">
+                  <TabsTrigger 
+                    value="documentos" 
+                    className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
+                  >
                     <Paperclip className="w-4 h-4" />
                     Documentos ({documentos.length})
                   </TabsTrigger>
-                  <TabsTrigger value="normativa" className="gap-2">
+                  <TabsTrigger 
+                    value="normativa" 
+                    className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
+                  >
                     <BookOpen className="w-4 h-4" />
                     Normativa
                   </TabsTrigger>
-                  <TabsTrigger value="respuesta" className="gap-2">
+                  <TabsTrigger 
+                    value="respuesta" 
+                    className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
+                  >
                     <FileCheck className="w-4 h-4" />
                     Respuesta
                   </TabsTrigger>
-                  <TabsTrigger value="timeline" className="gap-2">
+                  <TabsTrigger 
+                    value="timeline" 
+                    className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
+                  >
                     <History className="w-4 h-4" />
                     Timeline
                   </TabsTrigger>
-                  <TabsTrigger value="comentarios" className="gap-2">
+                  <TabsTrigger 
+                    value="comentarios" 
+                    className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
+                  >
                     <MessageSquare className="w-4 h-4" />
                     Comentarios ({comentarios.length})
                   </TabsTrigger>
@@ -433,7 +747,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
                         <Download className="w-4 h-4 mr-2" />
                         Descargar Todos
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={handleSubirDocumento}>
                         <Upload className="w-4 h-4 mr-2" />
                         Subir Documento
                       </Button>
@@ -482,35 +796,121 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
 
                 {/* TAB: NORMATIVA */}
                 <TabsContent value="normativa" className="space-y-4 mt-0">
-                  <div className="space-y-3">
-                    {normatividad.map((norma, index) => (
-                      <Card key={index} className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
-                        <div className="flex items-start gap-3">
-                          <Gavel className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-2">
-                              <div>
-                                <h4 className="font-bold text-gray-900">{norma.norma}</h4>
-                                {norma.articulo && (
-                                  <p className="text-sm text-purple-600">{norma.articulo}</p>
+                  {/* Header Explicativo */}
+                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4 mb-4">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-white rounded-lg shadow-sm">
+                        <BookOpen className="w-6 h-6 text-purple-600" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-gray-900 mb-1">Marco Normativo Aplicable</h3>
+                        <p className="text-sm text-gray-700">
+                          Normas, leyes, decretos y conceptos jurídicos que fundamentan la respuesta a esta consulta. 
+                          Esta normativa es vinculante para el análisis jurídico realizado.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {normatividad.length > 0 ? (
+                    <div className="space-y-4">
+                      {normatividad.map((norma, index) => (
+                        <Card 
+                          key={index} 
+                          className="p-4 hover:shadow-lg transition-all border-l-4" 
+                          style={{ borderLeftColor: norma.relevancia === 'ALTA' ? '#DC2626' : norma.relevancia === 'MEDIA' ? '#F59E0B' : '#6366F1' }}
+                        >
+                          {/* FILA 1: Título, Artículo y Badge de Relevancia */}
+                          <div className="flex items-start justify-between gap-4 mb-3">
+                            <div className="flex items-start gap-3 flex-1">
+                              <div className="p-2 bg-purple-50 rounded-lg flex-shrink-0">
+                                <Gavel className="w-5 h-5 text-purple-600" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-bold text-gray-900 mb-1" style={{ fontSize: '16px' }}>
+                                  {norma.norma}
+                                </h4>
+                                {norma.articulo && norma.articulo !== 'N/A' && (
+                                  <p className="text-sm text-purple-600 font-semibold">
+                                    {norma.articulo}
+                                  </p>
                                 )}
                               </div>
-                              <Badge 
-                                variant="outline"
-                                style={{
-                                  borderColor: norma.relevancia === 'ALTA' ? '#DC2626' : '#6B7280',
-                                  color: norma.relevancia === 'ALTA' ? '#DC2626' : '#6B7280'
-                                }}
-                              >
-                                {norma.relevancia}
-                              </Badge>
                             </div>
-                            <p className="text-sm text-gray-700">{norma.descripcion}</p>
+                            <Badge 
+                              variant="outline"
+                              className="font-bold flex-shrink-0"
+                              style={{
+                                borderColor: norma.relevancia === 'ALTA' ? '#DC2626' : norma.relevancia === 'MEDIA' ? '#F59E0B' : '#6B7280',
+                                color: norma.relevancia === 'ALTA' ? '#DC2626' : norma.relevancia === 'MEDIA' ? '#F59E0B' : '#6B7280',
+                                backgroundColor: norma.relevancia === 'ALTA' ? '#FEE2E2' : norma.relevancia === 'MEDIA' ? '#FEF3C7' : '#F3F4F6'
+                              }}
+                            >
+                              {norma.relevancia === 'ALTA' ? '🔴 ALTA' : norma.relevancia === 'MEDIA' ? '🟡 MEDIA' : '⚪ BAJA'}
+                            </Badge>
                           </div>
+
+                          {/* FILA 2: Descripción */}
+                          <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-3 ml-11">
+                            <p className="text-sm text-gray-800 leading-relaxed">
+                              {norma.descripcion}
+                            </p>
+                          </div>
+
+                          {/* FILA 3: Botones de Acción */}
+                          <div className="flex items-center gap-2 ml-11">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                toast.success('📖 Abriendo norma completa', {
+                                  description: norma.norma,
+                                  duration: 2000
+                                });
+                              }}
+                            >
+                              <ExternalLink className="w-4 h-4 mr-1" />
+                              Ver Norma Completa
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                const textoReferencia = `${norma.norma}${norma.articulo && norma.articulo !== 'N/A' ? ' - ' + norma.articulo : ''}: ${norma.descripcion}`;
+                                navigator.clipboard.writeText(textoReferencia).then(() => {
+                                  toast.success('✅ Referencia copiada al portapapeles', {
+                                    description: norma.norma,
+                                    duration: 2000
+                                  });
+                                });
+                              }}
+                            >
+                              <FileText className="w-4 h-4 mr-1" />
+                              Copiar Referencia
+                            </Button>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <Card className="p-8 text-center bg-gray-50 border-dashed border-2 border-gray-300">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="p-4 bg-gray-200 rounded-full">
+                          <BookOpen className="w-8 h-8 text-gray-400" />
                         </div>
-                      </Card>
-                    ))}
-                  </div>
+                        <div>
+                          <h4 className="font-bold text-gray-700 mb-1">Sin Normativa Asociada</h4>
+                          <p className="text-sm text-gray-600">
+                            Aún no se ha identificado normativa aplicable para esta consulta.
+                          </p>
+                        </div>
+                        <Button variant="outline" size="sm" className="mt-2">
+                          <Plus className="w-4 h-4 mr-2" />
+                          Agregar Normativa
+                        </Button>
+                      </div>
+                    </Card>
+                  )}
                 </TabsContent>
 
                 {/* TAB: RESPUESTA */}
@@ -603,6 +1003,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
                                 {new Date(evento.fecha).toLocaleString('es-CO')}
                               </span>
                             </div>
+                            {evento.detalle && (
+                              <p className="text-xs text-gray-500 mt-1">{evento.detalle}</p>
+                            )}
                           </div>
                         </div>
                       </Card>

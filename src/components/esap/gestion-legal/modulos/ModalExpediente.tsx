@@ -32,6 +32,7 @@ import { ModalCompartir } from './ModalCompartir';
 import { ModalCrearTarea } from './ModalCrearTarea';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { copyToClipboard } from '../../../../utils/clipboard';
 
 interface ModalExpedienteProps {
   isOpen: boolean;
@@ -49,6 +50,42 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
   const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
   const [modalCrearTareaAbierto, setModalCrearTareaAbierto] = useState(false);
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
+  const [modalEditarTareaAbierto, setModalEditarTareaAbierto] = useState(false);
+  const [tareaEnEdicion, setTareaEnEdicion] = useState<any>(null);
+
+  // Estado para tareas - ahora reactivo
+  const [tareas, setTareas] = useState([
+    {
+      id: 1,
+      titulo: 'Presentar alegatos de conclusión',
+      descripcion: 'Redactar alegatos finales antes del vencimiento del término',
+      vencimiento: '05/01/2025',
+      diasRestantes: 10,
+      prioridad: 'Alta',
+      responsable: expediente.abogadoAsignado,
+      estado: 'Pendiente'
+    },
+    {
+      id: 2,
+      titulo: 'Solicitar práctica de testimonios',
+      descripcion: 'Radicar memorial solicitando citación de testigos',
+      vencimiento: '30/12/2024',
+      diasRestantes: 4,
+      prioridad: 'Alta',
+      responsable: expediente.abogadoAsignado,
+      estado: 'En proceso'
+    },
+    {
+      id: 3,
+      titulo: 'Revisar actuaciones del juzgado',
+      descripcion: 'Consultar el expediente digital para nuevas providencias',
+      vencimiento: '28/12/2024',
+      diasRestantes: 2,
+      prioridad: 'Media',
+      responsable: 'Auxiliar Jurídico',
+      estado: 'Pendiente'
+    }
+  ]);
 
   // ==================== HANDLERS DE ACCIONES ====================
   
@@ -108,13 +145,14 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
   const handleCompartir = async () => {
     const expedienteUrl = `${window.location.origin}/gestion-legal/defensa-judicial?expediente=${encodeURIComponent(expediente.id)}`;
     
-    try {
-      await navigator.clipboard.writeText(expedienteUrl);
+    const copiado = await copyToClipboard(expedienteUrl);
+    
+    if (copiado) {
       toast.success('🔗 Enlace copiado al portapapeles', {
         description: 'El enlace del expediente está listo para compartir',
         duration: 4000
       });
-    } catch (error) {
+    } else {
       toast.info('📋 Enlace del expediente', {
         description: expedienteUrl,
         duration: 6000
@@ -252,38 +290,81 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
     }
   ];
 
-  const tareas = [
-    {
-      id: 1,
-      titulo: 'Presentar alegatos de conclusión',
-      descripcion: 'Redactar alegatos finales antes del vencimiento del término',
-      vencimiento: '05/01/2025',
-      diasRestantes: 10,
-      prioridad: 'Alta',
-      responsable: expediente.abogadoAsignado,
-      estado: 'Pendiente'
-    },
-    {
-      id: 2,
-      titulo: 'Solicitar práctica de testimonios',
-      descripcion: 'Radicar memorial solicitando citación de testigos',
-      vencimiento: '30/12/2024',
-      diasRestantes: 4,
-      prioridad: 'Alta',
-      responsable: expediente.abogadoAsignado,
-      estado: 'En proceso'
-    },
-    {
-      id: 3,
-      titulo: 'Revisar actuaciones del juzgado',
-      descripcion: 'Consultar el expediente digital para nuevas providencias',
-      vencimiento: '28/12/2024',
-      diasRestantes: 2,
-      prioridad: 'Media',
-      responsable: 'Auxiliar Jurídico',
-      estado: 'Pendiente'
-    }
-  ];
+  // ==================== HANDLERS DE TAREAS ====================
+  
+  const handleMarcarCompletada = (tareaId: number) => {
+    const tarea = tareas.find(t => t.id === tareaId);
+    if (!tarea) return;
+
+    toast.loading('⏳ Actualizando estado de la tarea...', {
+      id: 'marcar-completada',
+      duration: 1500
+    });
+
+    setTimeout(() => {
+      setTareas(tareas.map(t => 
+        t.id === tareaId 
+          ? { ...t, estado: 'Completado' }
+          : t
+      ));
+
+      toast.success('✅ Tarea marcada como completada', {
+        id: 'marcar-completada',
+        description: `"${tarea.titulo}" ha sido completada exitosamente`,
+        duration: 4000
+      });
+
+      // Log para analytics
+      console.log('📊 Tarea completada:', {
+        expediente: expediente.id,
+        tareaId: tareaId,
+        titulo: tarea.titulo,
+        timestamp: new Date().toISOString()
+      });
+    }, 1500);
+  };
+
+  const handleEditarTarea = (tarea: any) => {
+    setTareaEnEdicion(tarea);
+    setModalEditarTareaAbierto(true);
+    
+    toast.info('✏️ Abriendo editor de tarea', {
+      description: `Editando: "${tarea.titulo}"`,
+      duration: 2000
+    });
+  };
+
+  const handleGuardarEdicionTarea = (tareaEditada: any) => {
+    toast.loading('⏳ Guardando cambios...', {
+      id: 'guardar-tarea',
+      duration: 1500
+    });
+
+    setTimeout(() => {
+      setTareas(tareas.map(t => 
+        t.id === tareaEditada.id 
+          ? tareaEditada
+          : t
+      ));
+
+      setModalEditarTareaAbierto(false);
+      setTareaEnEdicion(null);
+
+      toast.success('✅ Tarea actualizada correctamente', {
+        id: 'guardar-tarea',
+        description: `"${tareaEditada.titulo}" ha sido modificada`,
+        duration: 4000
+      });
+
+      // Log para analytics
+      console.log('📊 Tarea editada:', {
+        expediente: expediente.id,
+        tareaId: tareaEditada.id,
+        titulo: tareaEditada.titulo,
+        timestamp: new Date().toISOString()
+      });
+    }, 1500);
+  };
 
   const partes = [
     {
@@ -1137,11 +1218,26 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <Button size="sm" variant="outline" className="text-xs flex-1 font-bold">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="text-xs flex-1 font-bold"
+                          onClick={() => handleMarcarCompletada(tarea.id)}
+                          disabled={tarea.estado === 'Completado'}
+                          style={{
+                            opacity: tarea.estado === 'Completado' ? 0.5 : 1,
+                            cursor: tarea.estado === 'Completado' ? 'not-allowed' : 'pointer'
+                          }}
+                        >
                           <CheckCircle className="w-3 h-3 mr-1" />
-                          Marcar Completada
+                          {tarea.estado === 'Completado' ? 'Completada' : 'Marcar Completada'}
                         </Button>
-                        <Button size="sm" variant="outline" className="text-xs font-bold">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="text-xs font-bold"
+                          onClick={() => handleEditarTarea(tarea)}
+                        >
                           <Edit className="w-3 h-3" />
                         </Button>
                       </div>
@@ -1283,6 +1379,19 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
       onClose={() => setModalCrearTareaAbierto(false)} 
       expediente={expediente} 
     />
+    {tareaEnEdicion && (
+      <ModalCrearTarea 
+        isOpen={modalEditarTareaAbierto} 
+        onClose={() => {
+          setModalEditarTareaAbierto(false);
+          setTareaEnEdicion(null);
+        }}
+        expediente={expediente}
+        tareaInicial={tareaEnEdicion}
+        onGuardar={handleGuardarEdicionTarea}
+        modoEdicion={true}
+      />
+    )}
     <ModalAgregarNota 
       isOpen={modalAgregarNotaAbierto} 
       onClose={() => setModalAgregarNotaAbierto(false)} 
