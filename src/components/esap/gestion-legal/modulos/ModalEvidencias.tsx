@@ -126,36 +126,137 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
   const evidenciasAdmitidas = evidencias.filter(e => e.estado === 'Admitida').length;
   const evidenciasPendientes = evidencias.filter(e => e.estado !== 'Admitida').length;
 
-  const handleDescargarTodas = () => toast.info('Descargando evidencias (demo)');
-  const handleVerEvidencia = (ev: any) => toast.info(`Ver evidencia ${ev.nombre}`);
-  const handleDescargarEvidencia = (ev: any) => toast.info(`Descargar ${ev.nombre}`);
-  const handleMarcarAdmitida = (id: string) => toast.success('Evidencia admitida');
-  const handleEliminarEvidencia = (id: string, nombre: string) => {
-    toast.success(`Evidencia "${nombre}" eliminada`);
-    setEvidencias(prev => prev.filter(e => e.id !== id));
+  const handleDescargarTodas = async () => {
+    if (evidencias.length === 0) {
+      toast.info('No hay evidencias para descargar');
+      return;
+    }
+
+    toast.loading('📦 Preparando descarga ZIP...', { id: 'download-evidencias' });
+
+    try {
+      const expedienteId = expediente.uuid || expediente.id;
+      const baseUrl = 'http://localhost:3008';
+      const url = `${baseUrl}/api/legal/evidencias/expediente/${expedienteId}/download-zip`;
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error('Error al descargar las evidencias');
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `evidencias_${expediente.id.replace(/[^a-zA-Z0-9]/g, '_')}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      toast.success('✅ Evidencias descargadas', {
+        id: 'download-evidencias',
+        description: `${evidencias.length} archivos en ZIP`
+      });
+    } catch (error) {
+      console.error('Error descargando ZIP:', error);
+      toast.error('Error al descargar evidencias', { id: 'download-evidencias' });
+    }
+  };
+
+  const handleVerEvidencia = (ev: any) => {
+    if (ev.url) {
+      const baseUrl = 'http://localhost:3008';
+      const url = ev.url.startsWith('http') ? ev.url : `${baseUrl}${ev.url}`;
+      window.open(url, '_blank');
+    } else {
+      toast.error('No hay archivo asociado a esta evidencia');
+    }
+  };
+
+  const handleDescargarEvidencia = async (ev: any) => {
+    if (!ev.url) {
+      toast.error('No hay archivo para descargar');
+      return;
+    }
+
+    try {
+      const baseUrl = 'http://localhost:3008';
+      const url = ev.url.startsWith('http') ? ev.url : `${baseUrl}${ev.url}`;
+
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = ev.nombre || 'evidencia';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      toast.success(`✅ ${ev.nombre} descargado`);
+    } catch (error) {
+      console.error('Error descargando:', error);
+      toast.error('Error al descargar el archivo');
+    }
+  };
+
+  const handleMarcarAdmitida = async (id: string) => {
+    try {
+      await legalService.updateEvidenciaEstado(id, 'Admitida');
+      toast.success('✅ Evidencia admitida');
+      loadEvidencias(); // Recargar lista
+    } catch (error) {
+      console.error('Error admitiendo evidencia:', error);
+      toast.error('Error al admitir la evidencia');
+    }
+  };
+
+  const handleEliminarEvidencia = async (id: string, nombre: string) => {
+    try {
+      await legalService.deleteEvidencia(id);
+      toast.success(`Evidencia "${nombre}" eliminada`);
+      setEvidencias(prev => prev.filter(e => e.id !== id));
+    } catch (error) {
+      console.error('Error eliminando:', error);
+      toast.error('Error al eliminar la evidencia');
+    }
   };
   const handleCargarNuevaEvidencia = () => setIsCreateOpen(true);
 
-  const handleCreateEvidencia = () => {
+  const handleCreateEvidencia = async () => {
     if (!selectedFile) return;
-    const nueva = {
-      id: crypto.randomUUID(),
-      nombre: newEvidenciaData.nombre || selectedFile.name,
-      descripcion: newEvidenciaData.descripcion || 'Sin descripción',
-      categoria: newEvidenciaData.tipo,
-      tipo: newEvidenciaData.tipo,
-      folios: 0,
-      relevancia: newEvidenciaData.relevancia,
-      estado: 'Pendiente',
-      estadoColor: 'orange',
-      fecha: new Date().toLocaleDateString('es-CO'),
-      aportadoPor: 'ESAP',
-      url: ''
-    };
-    setEvidencias(prev => [nueva, ...prev]);
-    toast.success('Evidencia creada');
-    setIsCreateOpen(false);
-    setSelectedFile(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('nombre', newEvidenciaData.nombre || selectedFile.name);
+      formData.append('descripcion', newEvidenciaData.descripcion || 'Sin descripción');
+      formData.append('tipo', newEvidenciaData.tipo);
+      formData.append('relevancia', newEvidenciaData.relevancia);
+      formData.append('categoria', newEvidenciaData.tipo);
+      formData.append('aportadoPor', 'ESAP');
+
+      const expedienteId = expediente.uuid || expediente.id;
+      await legalService.createEvidencia(expedienteId, formData);
+
+      toast.success('Evidencia guardada correctamente');
+      setIsCreateOpen(false);
+      setSelectedFile(null);
+      setNewEvidenciaData({
+        nombre: '',
+        descripcion: '',
+        tipo: 'Documentales',
+        relevancia: 'Media'
+      });
+      // Recargar lista de evidencias
+      loadEvidencias();
+    } catch (error) {
+      console.error('Error creando evidencia:', error);
+      toast.error('Error al guardar la evidencia');
+    }
   };
 
   return (
@@ -252,9 +353,6 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                               <Badge variant="outline" className="text-xs">
                                 {ev.categoria}
                               </Badge>
-                              <Badge variant="outline" className="text-xs">
-                                Folios {ev.folios}
-                              </Badge>
                             </div>
                           </div>
                         </div>
@@ -263,7 +361,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                           {ev.descripcion}
                         </p>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
                           <div>
                             <p className="text-xs text-gray-500 mb-0.5">📅 Fecha</p>
                             <p className="text-xs font-bold text-gray-900">{ev.fecha}</p>
@@ -275,10 +373,6 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                           <div>
                             <p className="text-xs text-gray-500 mb-0.5">⚖️ Relevancia</p>
                             <p className="text-xs font-bold text-gray-900">{ev.relevancia}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500 mb-0.5">📄 Folios</p>
-                            <p className="text-xs font-bold text-gray-900">{ev.folios}</p>
                           </div>
                         </div>
 

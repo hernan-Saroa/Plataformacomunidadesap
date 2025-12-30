@@ -112,13 +112,17 @@ export function ModuloDefensaJudicialV3() {
         ),
         hechos: '',
         pretensiones: exp.pretensionDemandante || '',
-        documentos: [],
+        documentos: new Array(Number(exp.documentosCount || 0) + (exp.documentosInicialesUrls?.length || 0)).fill({}),
         actuaciones: [],
         timeline: [],
         fechaCreacion: new Date(exp.createdAt),
         fechaActualizacion: new Date(exp.updatedAt),
         estado: exp.estado || 'ACTIVO',
         ultimaActuacion: exp.ultimaActuacion || `Expediente en etapa de ${exp.etapaProcesal || 'NOTIFICADA'}`,
+        // Campos de contacto del demandado
+        demandadoDireccion: exp.demandadoDireccion,
+        demandadoTelefono: exp.demandadoTelefono,
+        demandadoEmail: exp.demandadoEmail,
       }));
       setExpedientes(mapped);
     } catch (error) {
@@ -129,18 +133,46 @@ export function ModuloDefensaJudicialV3() {
     }
   };
 
-  const handleMoverExpediente = (expedienteId: string, nuevaEtapa: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS') => {
-    setExpedientes((prevExpedientes) => 
-      prevExpedientes.map((exp) => 
-        exp.id === expedienteId 
+  const handleMoverExpediente = async (expedienteId: string, nuevaEtapa: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS') => {
+    if (!nuevaEtapa) {
+      console.error('❌ Intento de mover expediente a etapa indefinida');
+      return;
+    }
+
+    // Encuentra el expediente real usando el ID (puede ser el visible o el UUID)
+    const expediente = expedientes.find(e => e.id === expedienteId);
+    if (!expediente) return;
+
+    // Si la etapa es la misma, no hacer nada
+    if (expediente.etapa === nuevaEtapa) return;
+
+    // Optimistic Update
+    const previousExpedientes = [...expedientes];
+    setExpedientes((prevExpedientes) =>
+      prevExpedientes.map((exp) =>
+        exp.id === expedienteId
           ? { ...exp, etapa: nuevaEtapa }
           : exp
       )
     );
-    
-    toast.success('Expediente movido exitosamente', {
-      description: `Cambiado a etapa: ${nuevaEtapa}`
-    });
+
+    try {
+      // Usar uuid si existe, sino id
+      const idToUpdate = expediente.uuid || expediente.id;
+      await legalService.updateExpediente(idToUpdate, {
+        etapaProcesal: nuevaEtapa
+      });
+
+      toast.success('Expediente movido exitosamente', {
+        description: `Cambiado a etapa: ${nuevaEtapa}`
+      });
+    } catch (error) {
+      console.error('Error al actualizar etapa:', error);
+      toast.error('Error al mover expediente', {
+        description: 'Se han revertido los cambios'
+      });
+      setExpedientes(previousExpedientes);
+    }
   };
 
   // Calcular días totales entre dos fechas
@@ -177,6 +209,7 @@ export function ModuloDefensaJudicialV3() {
   const etapas = [
     {
       nombre: 'Notificada',
+      valor: 'NOTIFICADA' as const,
       color: '#6B7280',
       icono: <FileCheck className="w-4 h-4 text-gray-600" />,
       diasEstimados: 10,
@@ -184,6 +217,7 @@ export function ModuloDefensaJudicialV3() {
     },
     {
       nombre: 'Contestación',
+      valor: 'CONTESTACIÓN' as const,
       color: '#F59E0B',
       icono: <Edit className="w-4 h-4 text-amber-600" />,
       diasEstimados: 30,
@@ -191,6 +225,7 @@ export function ModuloDefensaJudicialV3() {
     },
     {
       nombre: 'Probatoria',
+      valor: 'PROBATORIA' as const,
       color: '#3B82F6',
       icono: <Search className="w-4 h-4 text-blue-600" />,
       diasEstimados: 60,
@@ -198,6 +233,7 @@ export function ModuloDefensaJudicialV3() {
     },
     {
       nombre: 'Alegatos',
+      valor: 'ALEGATOS' as const,
       color: '#003DA5',
       icono: <Scale className="w-4 h-4" style={{ color: '#003DA5' }} />,
       diasEstimados: 20,
@@ -214,20 +250,32 @@ export function ModuloDefensaJudicialV3() {
         tipoProceso: demandaData.medioControl,
         jurisdiccion: 'Contencioso Administrativo',
         demandante: demandaData.demandante,
-        demandado: 'ESAP',
+        demandado: demandaData.demandado || 'ESAP',
         estado: 'ACTIVO',
         fechaRadicacion: new Date().toISOString(),
         cuantia: parseFloat(demandaData.cuantia.replace(/[^0-9]/g, '')) || 0,
         abogadoSustanciador: demandaData.abogadoAsignado,
         medioControl: demandaData.medioControl,
         juzgadoConocimiento: `${demandaData.juzgado} - ${demandaData.ciudad}, ${demandaData.departamento}`,
+        ubicacionFisica: demandaData.ciudad,
         pretensionDemandante: demandaData.pretensiones,
         fechaNotificacion: demandaData.fechaNotificacion,
         fechaVencimientoTermino: demandaData.fechaVencimiento,
         etapaProcesal: demandaData.etapa,
         ultimaActuacion: demandaData.observaciones || 'Demanda registrada',
+        // Datos del Demandante
         tipoIdDemandante: demandaData.tipoPersona === 'natural' ? 'CC' : 'NIT',
         numeroIdDemandante: demandaData.identificacionDemandante,
+        demandanteDireccion: demandaData.demandanteDireccion,
+        demandanteTelefono: demandaData.demandanteTelefono,
+        demandanteEmail: demandaData.demandanteEmail,
+        demandanteApoderado: demandaData.demandanteApoderado,
+        // Datos del Demandado
+        tipoIdDemandado: demandaData.tipoIdDemandado,
+        numeroIdDemandado: demandaData.numeroIdDemandado,
+        demandadoDireccion: demandaData.demandadoDireccion,
+        demandadoTelefono: demandaData.demandadoTelefono,
+        demandadoEmail: demandaData.demandadoEmail,
       };
 
       await legalService.crearExpediente(expedienteData);
@@ -471,10 +519,10 @@ function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente, onRefresh
         </div>
 
         {/* Lista de Expedientes */}
-        <div 
+        <div
           ref={drop}
-          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`} 
-          style={{ 
+          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`}
+          style={{
             minHeight: isMobile ? '400px' : '500px',
             maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)',
             backgroundColor: backgroundColor,
@@ -526,15 +574,9 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
   const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
   const [modalActasOpen, setModalActasOpen] = useState(false);
 
-  // Handler para abrir modal de expediente con logging
+  // Handler para abrir modal de expediente
   const handleAbrirExpediente = () => {
-    console.log('🔍 Abriendo modal de expediente:', expediente.id);
-    try {
-      setModalExpedienteOpen(true);
-      console.log('✅ Modal de expediente abierto');
-    } catch (error) {
-      console.error('❌ Error al abrir modal de expediente:', error);
-    }
+    setModalExpedienteOpen(true);
   };
 
   // Determinar semáforo

@@ -192,7 +192,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     }
 
     onSave(formData);
-    
+
     toast.success('✅ Demanda registrada exitosamente', {
       description: `Radicado: ${formData.numeroRadicado}`,
       duration: 4000
@@ -218,7 +218,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       observaciones: ''
     });
     setErrors({});
-    
+
     onClose();
   };
 
@@ -233,9 +233,9 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       height="full"
       headerColor="blue"
       badges={[
-        { 
-          label: 'Formulario de Registro', 
-          bg: 'rgba(255, 255, 255, 0.2)', 
+        {
+          label: 'Formulario de Registro',
+          bg: 'rgba(255, 255, 255, 0.2)',
           color: '#FFFFFF',
           className: 'border border-white/30'
         }
@@ -269,15 +269,15 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       ariaDescription="Formulario de registro de nueva demanda judicial contra ESAP"
     >
       <form onSubmit={handleSubmit} className="px-6 py-4 space-y-6">
-        
+
         {/* Sección 1: Datos del Proceso */}
         <div className="bg-gradient-to-br from-blue-50 to-white p-4 rounded-lg border-l-4 border-l-blue-600">
           <h3 className="text-sm font-black text-blue-900 mb-4 flex items-center gap-2">
             <FileText className="w-5 h-5 text-blue-600" />
             DATOS DEL PROCESO JUDICIAL
           </h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Número de Radicado */}
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1.5">
@@ -287,11 +287,10 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 type="text"
                 value={formData.numeroRadicado}
                 onChange={(e) => handleInputChange('numeroRadicado', e.target.value)}
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
-                  errors.numeroRadicado 
-                    ? 'border-red-500 focus:ring-red-500 bg-red-50' 
-                    : 'border-gray-300 focus:ring-blue-500'
-                }`}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.numeroRadicado
+                  ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                  : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 placeholder="Ej: 25000-23-33-001-2024-00001-00"
               />
               {errors.numeroRadicado && (
@@ -310,11 +309,10 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               <select
                 value={formData.medioControl}
                 onChange={(e) => handleInputChange('medioControl', e.target.value)}
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 font-semibold ${
-                  errors.medioControl 
-                    ? 'border-red-500 focus:ring-red-500 bg-red-50' 
-                    : 'border-gray-300 focus:ring-blue-500'
-                }`}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 font-semibold ${errors.medioControl
+                  ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                  : 'border-gray-300 focus:ring-blue-500'
+                  }`}
               >
                 <option value="">Seleccione...</option>
                 {MEDIOS_CONTROL.map(medio => (
@@ -371,8 +369,8 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
             <User className="w-5 h-5 text-orange-600" />
             DATOS DEL DEMANDANTE
           </h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Tipo de Persona */}
             <div className="md:col-span-2">
               <label className="block text-xs font-bold text-gray-700 mb-2">
@@ -420,232 +418,188 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                   </p>
                 )}
               </div>
-
-              {/* Nombre Completo */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Nombre Completo / Razón Social <span className="text-red-600">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.demandante}
-                  onChange={(e) => handleInputChange('demandante', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.demandante
-                    ? 'border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:ring-blue-500'
-                    }`}
-                  placeholder="Nombre completo del demandante"
-                />
-                {errors.demandante && (
-                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    {errors.demandante}
-                  </p>
-                )}
-              </div>
-
-              {/* Dirección */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Dirección de Notificación
-                </label>
-                <input
-                  type="text"
-                  value={formData.demandanteDireccion || ''}
-                  onChange={(e) => handleInputChange('demandanteDireccion', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: Calle 100 #15-20, Bogotá D.C."
-                />
-              </div>
-
-              {/* Teléfono */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Teléfono
-                </label>
-                <input
-                  type="text"
-                  value={formData.demandanteTelefono || ''}
-                  onChange={(e) => handleInputChange('demandanteTelefono', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: +57 310 123 4567"
-                />
-              </div>
-
-              {/* Email */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Correo Electrónico
-                </label>
-                <input
-                  type="email"
-                  value={formData.demandanteEmail || ''}
-                  onChange={(e) => handleInputChange('demandanteEmail', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: demandante@email.com"
-                />
-              </div>
-
-              {/* Apoderado del demandante */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Apoderado del Demandante
-                </label>
-                <input
-                  type="text"
-                  value={formData.demandanteApoderado || ''}
-                  onChange={(e) => handleInputChange('demandanteApoderado', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Nombre del abogado representante del demandante"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Sección 3: Datos del Demandado */}
-          <div>
-            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-              <User className="w-5 h-5" style={{ color: '#B8860B' }} />
-              Datos del Demandado
-              <Badge className="text-xs bg-gray-100 text-gray-600">Pre-llenado con datos ESAP</Badge>
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Nombre del demandado */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Nombre / Razón Social
-                </label>
-                <input
-                  type="text"
-                  value={formData.demandado || ''}
-                  onChange={(e) => handleInputChange('demandado', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="ESAP - Escuela Superior de Administración Pública"
-                />
-              </div>
-
-              {/* Tipo ID */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Tipo de Identificación
-                </label>
-                <select
-                  value={formData.tipoIdDemandado || 'NIT'}
-                  onChange={(e) => handleInputChange('tipoIdDemandado', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="NIT">NIT</option>
-                  <option value="CC">Cédula de Ciudadanía</option>
-                  <option value="CE">Cédula Extranjería</option>
-                </select>
-              </div>
-
-              {/* Número ID */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Número de Identificación
-                </label>
-                <input
-                  type="text"
-                  value={formData.numeroIdDemandado || ''}
-                  onChange={(e) => handleInputChange('numeroIdDemandado', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="899.999.061-4"
-                />
-              </div>
-
-              {/* Dirección */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Dirección
-                </label>
-                <input
-                  type="text"
-                  value={formData.demandadoDireccion || ''}
-                  onChange={(e) => handleInputChange('demandadoDireccion', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Calle 44 #53-37, Bogotá D.C."
-                />
-              </div>
-
-              {/* Teléfono */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Teléfono
-                </label>
-                <input
-                  type="text"
-                  value={formData.demandadoTelefono || ''}
-                  onChange={(e) => handleInputChange('demandadoTelefono', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="+57 601 220 2790"
-                />
-              </div>
-
-              {/* Email */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Correo Electrónico
-                </label>
-                <input
-                  type="email"
-                  value={formData.demandadoEmail || ''}
-                  onChange={(e) => handleInputChange('demandadoEmail', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="juridica@esap.edu.co"
-                />
-              </div>
-            </div>
-
-            {/* Identificación */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                {formData.tipoPersona === 'natural' ? 'Cédula' : 'NIT'} <span className="text-red-600">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.identificacionDemandante}
-                onChange={(e) => handleInputChange('identificacionDemandante', e.target.value)}
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
-                  errors.identificacionDemandante 
-                    ? 'border-red-500 focus:ring-red-500 bg-red-50' 
-                    : 'border-gray-300 focus:ring-blue-500'
-                }`}
-                placeholder={formData.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
-              />
-              {errors.identificacionDemandante && (
-                <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">
-                  <AlertCircle className="w-3 h-3" />
-                  {errors.identificacionDemandante}
-                </p>
-              )}
             </div>
 
             {/* Nombre Completo */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
                 Nombre Completo / Razón Social <span className="text-red-600">*</span>
               </label>
               <input
                 type="text"
                 value={formData.demandante}
                 onChange={(e) => handleInputChange('demandante', e.target.value)}
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
-                  errors.demandante 
-                    ? 'border-red-500 focus:ring-red-500 bg-red-50' 
-                    : 'border-gray-300 focus:ring-blue-500'
-                }`}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.demandante
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 placeholder="Nombre completo del demandante"
               />
               {errors.demandante && (
-                <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
                   {errors.demandante}
                 </p>
               )}
             </div>
+
+            {/* Dirección */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Dirección de Notificación
+              </label>
+              <input
+                type="text"
+                value={formData.demandanteDireccion || ''}
+                onChange={(e) => handleInputChange('demandanteDireccion', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Ej: Calle 100 #15-20, Bogotá D.C."
+              />
+            </div>
+
+            {/* Teléfono */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Teléfono
+              </label>
+              <input
+                type="text"
+                value={formData.demandanteTelefono || ''}
+                onChange={(e) => handleInputChange('demandanteTelefono', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Ej: +57 310 123 4567"
+              />
+            </div>
+
+            {/* Email */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Correo Electrónico
+              </label>
+              <input
+                type="email"
+                value={formData.demandanteEmail || ''}
+                onChange={(e) => handleInputChange('demandanteEmail', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Ej: demandante@email.com"
+              />
+            </div>
+
+            {/* Apoderado del demandante */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Apoderado del Demandante
+              </label>
+              <input
+                type="text"
+                value={formData.demandanteApoderado || ''}
+                onChange={(e) => handleInputChange('demandanteApoderado', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Nombre del abogado representante del demandante"
+              />
+            </div>
           </div>
+        </div>
+
+        {/* Sección 3: Datos del Demandado */}
+        <div className="bg-gradient-to-br from-yellow-50 to-white p-4 rounded-lg border-l-4 border-l-yellow-600">
+          <h3 className="text-sm font-black text-yellow-900 mb-4 flex items-center gap-2">
+            <User className="w-5 h-5 text-yellow-600" />
+            DATOS DEL DEMANDADO
+            <Badge className="ml-2 text-xs bg-yellow-100 text-yellow-800 border-yellow-200">Pre-llenado</Badge>
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Nombre del demandado */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Nombre / Razón Social
+              </label>
+              <input
+                type="text"
+                value={formData.demandado || 'ESAP - Escuela Superior de Administración Pública'}
+                onChange={(e) => handleInputChange('demandado', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="ESAP - Escuela Superior de Administración Pública"
+              />
+            </div>
+
+            {/* Tipo ID */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Tipo de Identificación
+              </label>
+              <select
+                value={formData.tipoIdDemandado || 'NIT'}
+                onChange={(e) => handleInputChange('tipoIdDemandado', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="NIT">NIT</option>
+                <option value="CC">Cédula de Ciudadanía</option>
+                <option value="CE">Cédula Extranjería</option>
+              </select>
+            </div>
+
+            {/* Número ID */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Número de Identificación
+              </label>
+              <input
+                type="text"
+                value={formData.numeroIdDemandado || '899.999.061-4'}
+                onChange={(e) => handleInputChange('numeroIdDemandado', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="899.999.061-4"
+              />
+            </div>
+
+            {/* Dirección */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Dirección
+              </label>
+              <input
+                type="text"
+                value={formData.demandadoDireccion || 'Calle 44 #53-37, Bogotá D.C.'}
+                onChange={(e) => handleInputChange('demandadoDireccion', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Calle 44 #53-37, Bogotá D.C."
+              />
+            </div>
+
+            {/* Teléfono */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Teléfono
+              </label>
+              <input
+                type="text"
+                value={formData.demandadoTelefono || '+57 601 220 2790'}
+                onChange={(e) => handleInputChange('demandadoTelefono', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="+57 601 220 2790"
+              />
+            </div>
+
+            {/* Email */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Correo Electrónico
+              </label>
+              <input
+                type="email"
+                value={formData.demandadoEmail || 'juridica@esap.edu.co'}
+                onChange={(e) => handleInputChange('demandadoEmail', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="juridica@esap.edu.co"
+              />
+            </div>
+          </div>
+
+
+
+
         </div>
 
         {/* Sección 3: Juzgado y Ubicación */}
@@ -654,8 +608,8 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
             <Building2 className="w-5 h-5 text-purple-600" />
             JUZGADO Y UBICACIÓN
           </h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Juzgado */}
             <div className="md:col-span-2">
               <label className="block text-xs font-bold text-gray-700 mb-1.5">
@@ -667,11 +621,10 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                   type="text"
                   value={formData.juzgado}
                   onChange={(e) => handleInputChange('juzgado', e.target.value)}
-                  className={`w-full pl-10 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
-                    errors.juzgado 
-                      ? 'border-red-500 focus:ring-red-500 bg-red-50' 
-                      : 'border-gray-300 focus:ring-blue-500'
-                  }`}
+                  className={`w-full pl-10 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.juzgado
+                    ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                    : 'border-gray-300 focus:ring-blue-500'
+                    }`}
                   placeholder="Ej: Juzgado 10 Administrativo del Circuito de Bogotá"
                 />
               </div>
@@ -711,11 +664,10 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                   type="text"
                   value={formData.ciudad}
                   onChange={(e) => handleInputChange('ciudad', e.target.value)}
-                  className={`w-full pl-10 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
-                    errors.ciudad 
-                      ? 'border-red-500 focus:ring-red-500 bg-red-50' 
-                      : 'border-gray-300 focus:ring-blue-500'
-                  }`}
+                  className={`w-full pl-10 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.ciudad
+                    ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                    : 'border-gray-300 focus:ring-blue-500'
+                    }`}
                   placeholder="Ej: Bogotá D.C."
                 />
               </div>
@@ -736,7 +688,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
             Fechas y Asignación
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">
                 Fecha de Notificación <span className="text-red-600">*</span>
@@ -745,9 +697,8 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 type="date"
                 value={formData.fechaNotificacion}
                 onChange={(e) => handleInputChange('fechaNotificacion', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                  errors.fechaNotificacion ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                }`}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.fechaNotificacion ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+                  }`}
               />
               {errors.fechaNotificacion && (
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
@@ -774,9 +725,8 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               <select
                 value={formData.abogadoAsignado}
                 onChange={(e) => handleInputChange('abogadoAsignado', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                  errors.abogadoAsignado ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                }`}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.abogadoAsignado ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 disabled={loadingAbogados}
               >
                 <option value="">{loadingAbogados ? 'Cargando abogados...' : 'Seleccione un abogado...'}</option>
@@ -812,9 +762,8 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 value={formData.pretensiones}
                 onChange={(e) => handleInputChange('pretensiones', e.target.value)}
                 rows={3}
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
-                  errors.pretensiones ? 'border-red-500 focus:ring-red-500 bg-red-50' : 'border-gray-300 focus:ring-blue-500'
-                }`}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.pretensiones ? 'border-red-500 focus:ring-red-500 bg-red-50' : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 placeholder="Describa las pretensiones de la demanda..."
               />
               {errors.pretensiones && (

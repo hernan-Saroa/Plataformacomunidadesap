@@ -15,6 +15,8 @@ export class Expediente {
     @OneToMany(() => Documento, (doc) => doc.expediente)
     documentos: Documento[];
 
+    documentosCount: number = 0;
+
     @Column({ unique: true, length: 50 })
     radicado: string;
 

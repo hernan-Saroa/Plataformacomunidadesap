@@ -77,6 +77,10 @@ export interface ExpedienteJudicial {
   demandanteTelefono?: string;
   demandanteEmail?: string;
   demandanteApoderado?: string;
+  // Contacto del demandado
+  demandadoDireccion?: string;
+  demandadoTelefono?: string;
+  demandadoEmail?: string;
 
   // Financiero
   cuantia: number;
@@ -352,7 +356,7 @@ export type EtapaSolicitudInforme =
   | 'VENCIDA';
 
 // Módulos de origen para términos transversales
-export type ModuloOrigen = 
+export type ModuloOrigen =
   | 'DEFENSA_JUDICIAL'
   | 'JUZGAMIENTO'
   | 'ASESORIA'
@@ -364,7 +368,7 @@ export type ModuloOrigen =
   | 'TERMINOS_INFORMES'; // Solicitudes directas de informes
 
 // Tipo de término según naturaleza jurídica
-export type TipoTermino = 
+export type TipoTermino =
   | 'JUDICIAL' // Términos judiciales (perentorios)
   | 'DISCIPLINARIO' // Términos disciplinarios (improrrogables)
   | 'ADMINISTRATIVO' // Respuestas PQRS, derechos de petición
@@ -388,7 +392,7 @@ export interface SolicitudInforme {
   datosRequeridos?: string[]
   documentos?: Documento[];
   timeline?: EventoTimeline[];
-  
+
   // ========== CAMPOS PARA INTEGRACIÓN TRANSVERSAL ==========
   moduloOrigen?: ModuloOrigen; // De qué módulo proviene este término
   expedienteOrigen?: string; // ID del expediente/proceso origen (NUEVO: compatible con sincronización)

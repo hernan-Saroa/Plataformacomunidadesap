@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { Expediente } from '../entities/expediente.entity';
 import { Actuacion } from '../entities/actuacion.entity';
+import { Documento } from '../entities/documento.entity';
 
 @Injectable()
 export class ExpedienteService {
@@ -89,7 +90,16 @@ export class ExpedienteService {
 
     async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
         const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
-        queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Eager load for lists too if needed
+        queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones');
+
+        // Subquery EXPLÍCITA para contar documentos reales
+        // Usamos el nombre de la tabla y schema si es necesario, pero usando Entity class es mejor
+        queryBuilder.addSelect((subQuery) => {
+            return subQuery
+                .select("COUNT(doc.id)", "count")
+                .from(Documento, "doc")
+                .where("doc.expedienteId = expediente.id");
+        }, "conteo_docs");
 
         if (filtros.estado) {
             queryBuilder.andWhere('expediente.estado = :estado', { estado: filtros.estado });
@@ -103,7 +113,28 @@ export class ExpedienteService {
             queryBuilder.andWhere('(expediente.radicado ILIKE :search OR expediente.demandante ILIKE :search OR expediente.demandado ILIKE :search)', { search: `%${filtros.search}%` });
         }
 
-        return queryBuilder.orderBy('expediente.createdAt', 'DESC').getMany();
+        // Al usar addSelect con propiedades raw, getMany las ignora y solo devuelve entity.
+        // Tenemos que usar getRawAndEntities o mapear manualmente si forzamos la propiedad.
+        // Pero getMany() NO puebla propiedades que no son columnas.
+        // El truco de loadRelationCountAndMap era ese.
+        // Si uso addSelect, debo usar getRawAndEntities().
+
+        const { entities, raw } = await queryBuilder.orderBy('expediente.createdAt', 'DESC').getRawAndEntities();
+
+        // Mapear el conteo desde raw a la entidad
+        return entities.map((entity) => {
+            // Buscar en raw usando el ID del expediente.
+            // TypeORM suele devolver 'expediente_id' para 'expediente.id' en raw results.
+            const rawRow = raw.find(r => r.expediente_id === entity.id);
+
+            // Si no lo encuentra por expediente_id, intentamos buscar una propiedad que contenga el conteo y coincidencia
+            // Pero conteo_docs vendrá en todas las filas del group
+
+            const count = rawRow ? Number(rawRow.conteo_docs) : 0;
+
+            entity.documentosCount = count;
+            return entity;
+        });
     }
 
     async updateExpediente(id: string, data: Partial<Expediente>): Promise<Expediente> {

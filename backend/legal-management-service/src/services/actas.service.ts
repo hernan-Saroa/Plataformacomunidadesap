@@ -19,13 +19,15 @@ export class ActasService {
         });
     }
 
-    async create(expedienteId: string, data: Partial<Acta>, file: Express.Multer.File): Promise<Acta> {
+    async create(expedienteId: string, data: Partial<Acta>, file?: Express.Multer.File): Promise<Acta> {
         const nuevaActa = this.actaRepository.create({
             ...data,
             expedienteId: expedienteId,
-            archivoNombre: file.originalname,
-            archivoUrl: `http://localhost:3008/api/legal/files/${file.filename}`,
-            archivoTamano: file.size,
+            ...(file && {
+                archivoNombre: file.originalname,
+                archivoUrl: `http://localhost:3008/api/legal/files/${file.filename}`,
+                archivoTamano: file.size,
+            })
         });
 
         return this.actaRepository.save(nuevaActa);
@@ -44,5 +46,17 @@ export class ActasService {
         if (!acta) throw new NotFoundException('Acta no encontrada');
 
         await this.actaRepository.remove(acta);
+    }
+
+    async uploadArchivo(id: string, file: Express.Multer.File): Promise<Acta> {
+        const acta = await this.actaRepository.findOneBy({ id });
+        if (!acta) throw new NotFoundException('Acta no encontrada');
+
+        acta.archivoNombre = file.originalname;
+        acta.archivoUrl = `http://localhost:3008/api/legal/files/${file.filename}`;
+        acta.archivoTamano = file.size;
+        acta.estado = 'Firmada';
+
+        return this.actaRepository.save(acta);
     }
 }

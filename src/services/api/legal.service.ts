@@ -39,6 +39,15 @@ export interface Expediente {
     tipoIdDemandado?: string;
     numeroIdDemandado?: string;
     documentosInicialesUrls?: string[];
+    // Campos de contacto del demandante
+    demandanteDireccion?: string;
+    demandanteTelefono?: string;
+    demandanteEmail?: string;
+    demandanteApoderado?: string;
+    // Campos de contacto del demandado
+    demandadoDireccion?: string;
+    demandadoTelefono?: string;
+    demandadoEmail?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -210,6 +219,10 @@ export class LegalService {
 
     async deleteActa(id: string): Promise<void> {
         return legalApiClient.delete(`/api/legal/actas/${id}`);
+    }
+
+    async uploadActaFirmada(id: string, formData: FormData): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/actas/${id}/archivo`, formData);
     }
 
     // ===== CONSULTAS JURÍDICAS (Asesoría Jurídica) =====
