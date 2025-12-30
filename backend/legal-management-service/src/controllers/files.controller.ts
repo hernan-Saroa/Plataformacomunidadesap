@@ -14,7 +14,7 @@ export class FilesController {
             throw new NotFoundException('Archivo no encontrado');
         }
 
-        const file = createReadStream(path);
-        file.pipe(res);
+        // Use sendFile to handle mime types and content-disposition automatically
+        res.sendFile(path);
     }
 }

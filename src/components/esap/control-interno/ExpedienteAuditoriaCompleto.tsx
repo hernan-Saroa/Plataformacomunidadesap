@@ -62,7 +62,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 22 Diciembre 2025
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, FileText, Calendar, Users, Target, Clock, CheckCircle,
@@ -71,9 +71,11 @@ import {
   Building2, User, Award, ClipboardCheck, MessageSquare,
   Sparkles, Info, ChevronRight, ChevronDown, Edit2, Trash2,
   Upload, Archive, ExternalLink, Filter, Search, Tag,
-  BarChart3, PieChart, LineChart
+  BarChart3, PieChart, LineChart, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { controlInternoService } from '../../../services/api/controlInternoService';
+import { auditoriasApi } from './services/api';
 
 // Design System
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
@@ -178,6 +180,7 @@ interface Auditoria {
     ultimaModificacion: Date;
     modificadoPor: string;
     version: number;
+    checklistCompletados?: Record<string, boolean>;
   };
 }
 
@@ -417,16 +420,19 @@ export function ExpedienteAuditoriaCompleto({
   tabInicial = 'general',
 }: ExpedienteAuditoriaCompletoProps) {
   // Estado
-  const [auditoria] = useState<Auditoria>(AUDITORIA_EJEMPLO);
-  const [documentos] = useState<DocumentoExpediente[]>(DOCUMENTOS_EJEMPLO);
-  const [historial] = useState<EventoHistorial[]>(HISTORIAL_EJEMPLO);
+  const [auditoria, setAuditoria] = useState<Auditoria>(AUDITORIA_EJEMPLO);
+  const [documentos, setDocumentos] = useState<DocumentoExpediente[]>([]);
+  const [historial, setHistorial] = useState<EventoHistorial[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingDocumentos, setLoadingDocumentos] = useState(false);
+  const [checklistCompletados, setChecklistCompletados] = useState<Record<string, boolean>>({});
   
   // ✅ AUTO-DETECCIÓN: Si no se especifica tab, detectar según el estado de la auditoría
-  const getTabAutomatico = () => {
+  const getTabAutomatico = (estadoActual: EstadoAuditoria) => {
     if (tabInicial !== 'general') return tabInicial;
     
     // Si el estado es Planeación, Ejecución o Comunicación, abrir directamente ese tab
-    const estadoLowerCase = auditoria.estado.toLowerCase();
+    const estadoLowerCase = estadoActual.toLowerCase();
     if (estadoLowerCase === 'planeación' || estadoLowerCase === 'planeacion') return 'planeacion';
     if (estadoLowerCase === 'ejecución' || estadoLowerCase === 'ejecucion') return 'ejecucion';
     if (estadoLowerCase === 'comunicación' || estadoLowerCase === 'comunicacion') return 'comunicacion';
@@ -434,9 +440,231 @@ export function ExpedienteAuditoriaCompleto({
     return 'general';
   };
   
-  const [activeTab, setActiveTab] = useState(getTabAutomatico());
+  const [activeTab, setActiveTab] = useState('general');
+  
+  // Actualizar tab cuando cambie el estado de la auditoría
+  useEffect(() => {
+    if (auditoria.id && auditoria.id !== AUDITORIA_EJEMPLO.id) {
+      setActiveTab(getTabAutomatico(auditoria.estado));
+    }
+  }, [auditoria.estado, auditoria.id]);
   const [mostrarDetalles, setMostrarDetalles] = useState(true);
   const [filtroDocumentos, setFiltroDocumentos] = useState<string>('todos');
+  const [modalCargarDocumento, setModalCargarDocumento] = useState(false);
+
+  // Cargar datos de la auditoría desde la BD
+  useEffect(() => {
+    if (!isOpen || !auditoriaId) return;
+
+    const cargarDatos = async () => {
+      setLoading(true);
+      try {
+        // Cargar auditoría
+        const response = await auditoriasApi.getById(auditoriaId);
+        if (response.success && response.data) {
+          const aud = response.data;
+          
+          // Mapear datos de BD al formato del componente
+          const auditoriaMapeada: Auditoria = {
+            id: aud.id,
+            codigo: aud.codigo || '',
+            nombre: aud.nombre || '',
+            tipo: (aud.tipo || 'Sede') as TipoAuditoria,
+            estado: (aud.estadoKanban?.toLowerCase() || aud.fase?.toLowerCase() || 'planeacion') as EstadoAuditoria,
+            areaAuditable: aud.territorial || aud.areaAuditable || '',
+            procesoNombre: aud.procesoAuditado || aud.procesoNombre || '',
+            nivelRiesgo: (aud.riesgoKanban || aud.nivelRiesgo || 'Medio') as NivelRiesgo,
+            responsableArea: {
+              id: aud.responsableAreaId || '',
+              nombre: aud.responsableAreaNombre || '',
+              cargo: aud.responsableAreaCargo || '',
+              email: aud.responsableAreaEmail || '',
+              telefono: aud.responsableAreaTelefono,
+            },
+            auditorLider: {
+              id: aud.auditorLiderId || '',
+              nombre: aud.auditorLiderNombre || '',
+              email: aud.auditorLiderEmail || '',
+              foto: aud.auditorLiderFoto,
+            },
+            equipoAuditores: aud.equipoAuditores?.map((eq: any) => ({
+              id: eq.id || '',
+              nombre: eq.nombre || '',
+              rol: eq.rol || '',
+              email: eq.email || '',
+              foto: eq.foto,
+            })) || [],
+            cronograma: {
+              fechaCreacion: aud.fechaCreacion ? new Date(aud.fechaCreacion) : new Date(),
+              fechaInicio: aud.fechaInicio ? new Date(aud.fechaInicio) : new Date(),
+              fechaFin: aud.fechaFin ? new Date(aud.fechaFin) : new Date(),
+              fechaFinReal: aud.fechaFinReal ? new Date(aud.fechaFinReal) : undefined,
+              duracionDias: aud.duracionDias || 30,
+              diasTranscurridos: aud.diasTranscurridos || 0,
+            },
+            progreso: {
+              general: aud.progreso || 0,
+              planeacion: aud.progresoPlaneacion || 0,
+              ejecucion: aud.progresoEjecucion || 0,
+              comunicacion: aud.progresoComunicacion || 0,
+            },
+            estadisticas: {
+              totalHallazgos: aud.hallazgos || 0,
+              hallazgosCriticos: aud.hallazgosCriticos || 0,
+              hallazgosMayores: aud.hallazgosMayores || 0,
+              hallazgosMenores: aud.hallazgosMenores || 0,
+              documentosCargados: 0, // Se actualizará al cargar documentos
+              notificacionesEnviadas: aud.notificacionesEnviadas || 0,
+            },
+            fechasClave: {
+              planeacionInicio: aud.fechaPlaneacionInicio ? new Date(aud.fechaPlaneacionInicio) : undefined,
+              planeacionFin: aud.fechaPlaneacionFin ? new Date(aud.fechaPlaneacionFin) : undefined,
+              ejecucionInicio: aud.fechaEjecucionInicio ? new Date(aud.fechaEjecucionInicio) : undefined,
+              ejecucionFin: aud.fechaEjecucionFin ? new Date(aud.fechaEjecucionFin) : undefined,
+              comunicacionInicio: aud.fechaComunicacionInicio ? new Date(aud.fechaComunicacionInicio) : undefined,
+              comunicacionFin: aud.fechaComunicacionFin ? new Date(aud.fechaComunicacionFin) : undefined,
+              informePreliminar: aud.fechaInformePreliminar ? new Date(aud.fechaInformePreliminar) : undefined,
+              informeFinal: aud.fechaInformeFinal ? new Date(aud.fechaInformeFinal) : undefined,
+            },
+            metadata: {
+              creadoPor: aud.creadoPor || '',
+              fechaCreacion: aud.fechaCreacion ? new Date(aud.fechaCreacion) : new Date(),
+              ultimaModificacion: aud.updatedAt ? new Date(aud.updatedAt) : new Date(),
+              modificadoPor: aud.actualizadoPor || '',
+              version: aud.version || 1,
+              checklistCompletados: aud.checklistCompletados || {},
+            },
+          };
+          
+          setAuditoria(auditoriaMapeada);
+          
+          // Cargar estado de checkboxes si existe (actualizar el estado que usan los tabs)
+          console.log('[Expediente] ChecklistCompletados desde BD:', aud.checklistCompletados);
+          if (aud.checklistCompletados && typeof aud.checklistCompletados === 'object') {
+            setChecklistCompletados(aud.checklistCompletados);
+          } else {
+            // Si no hay datos guardados, inicializar con objeto vacío
+            setChecklistCompletados({});
+          }
+        } else {
+          toast.error('Error al cargar la auditoría', {
+            description: response.error || 'No se pudo obtener la información de la auditoría',
+          });
+        }
+      } catch (error) {
+        console.error('Error al cargar auditoría:', error);
+        toast.error('Error al cargar la auditoría', {
+          description: error instanceof Error ? error.message : 'Error desconocido',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarDatos();
+  }, [isOpen, auditoriaId]);
+
+  // Cargar documentos de la auditoría
+  useEffect(() => {
+    if (!isOpen || !auditoriaId) return;
+
+    const cargarDocumentos = async () => {
+      setLoadingDocumentos(true);
+      try {
+        const docs = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
+        
+        // Mapear documentos de BD al formato del componente
+        const documentosMapeados: DocumentoExpediente[] = docs.map((doc: any) => ({
+          id: doc.id,
+          nombre: doc.nombre || doc.nombreArchivo,
+          tipo: doc.tipoDocumento || 'otro',
+          fase: (doc.etapa || 'planeacion') as 'planeacion' | 'ejecucion' | 'comunicacion',
+          fechaCarga: doc.createdAt ? new Date(doc.createdAt) : new Date(),
+          cargadoPor: doc.subidoPor || '',
+          size: doc.tamanioBytes ? `${(doc.tamanioBytes / 1024).toFixed(0)} KB` : '0 KB',
+          version: doc.version || 1,
+        }));
+        
+        setDocumentos(documentosMapeados);
+        
+        // Actualizar estadísticas de documentos
+        setAuditoria(prev => ({
+          ...prev,
+          estadisticas: {
+            ...prev.estadisticas,
+            documentosCargados: documentosMapeados.length,
+          },
+        }));
+      } catch (error) {
+        console.error('Error al cargar documentos:', error);
+        toast.error('Error al cargar documentos', {
+          description: error instanceof Error ? error.message : 'Error desconocido',
+        });
+      } finally {
+        setLoadingDocumentos(false);
+      }
+    };
+
+    cargarDocumentos();
+  }, [isOpen, auditoriaId]);
+
+  // Generar historial desde cambios en la auditoría y documentos
+  useEffect(() => {
+    if (!auditoria.id) return;
+
+    const generarHistorial = () => {
+      const eventos: EventoHistorial[] = [];
+
+      // Evento de creación
+      if (auditoria.metadata.fechaCreacion) {
+        eventos.push({
+          id: 'evt-creacion',
+          tipo: 'accion',
+          titulo: 'Auditoría creada',
+          descripcion: `Se creó la auditoría ${auditoria.codigo}`,
+          usuario: auditoria.metadata.creadoPor,
+          fecha: auditoria.metadata.fechaCreacion,
+          icono: <Sparkles className="w-4 h-4" />,
+          color: '#10B981',
+        });
+      }
+
+      // Eventos de documentos
+      documentos.forEach((doc, index) => {
+        eventos.push({
+          id: `evt-doc-${doc.id}`,
+          tipo: 'documento',
+          titulo: 'Documento cargado',
+          descripcion: `${doc.nombre} (${doc.tipo})`,
+          usuario: doc.cargadoPor,
+          fecha: doc.fechaCarga,
+          icono: <Upload className="w-4 h-4" />,
+          color: '#F59E0B',
+        });
+      });
+
+      // Evento de última modificación
+      if (auditoria.metadata.ultimaModificacion) {
+        eventos.push({
+          id: 'evt-modificacion',
+          tipo: 'accion',
+          titulo: 'Auditoría actualizada',
+          descripcion: `Última modificación realizada`,
+          usuario: auditoria.metadata.modificadoPor,
+          fecha: auditoria.metadata.ultimaModificacion,
+          icono: <Edit2 className="w-4 h-4" />,
+          color: '#3B82F6',
+        });
+      }
+
+      // Ordenar por fecha descendente
+      eventos.sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
+      
+      setHistorial(eventos);
+    };
+
+    generarHistorial();
+  }, [auditoria, documentos]);
 
   // Cálculos
   const diasRestantes = useMemo(() => {
@@ -456,6 +684,87 @@ export function ExpedienteAuditoriaCompleto({
     if (filtroDocumentos === 'todos') return documentos;
     return documentos.filter((doc) => doc.fase === filtroDocumentos);
   }, [documentos, filtroDocumentos]);
+
+  // Funciones de guardado
+  const handleGuardarDocumento = async (documento: any) => {
+    if (!auditoriaId) return;
+
+    try {
+      // Aquí se implementaría la lógica para subir el documento
+      // Por ahora solo mostramos el toast y recargamos documentos
+      toast.success('Documento cargado exitosamente', {
+        description: `${documento.nombre} agregado al expediente`,
+      });
+      
+      // Recargar documentos
+      const docs = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
+      const documentosMapeados: DocumentoExpediente[] = docs.map((doc: any) => ({
+        id: doc.id,
+        nombre: doc.nombre || doc.nombreArchivo,
+        tipo: doc.tipoDocumento || 'otro',
+        fase: (doc.etapa || 'planeacion') as 'planeacion' | 'ejecucion' | 'comunicacion',
+        fechaCarga: doc.createdAt ? new Date(doc.createdAt) : new Date(),
+        cargadoPor: doc.subidoPor || '',
+        size: doc.tamanioBytes ? `${(doc.tamanioBytes / 1024).toFixed(0)} KB` : '0 KB',
+        version: doc.version || 1,
+      }));
+      setDocumentos(documentosMapeados);
+      
+      setModalCargarDocumento(false);
+    } catch (error) {
+      console.error('Error al guardar documento:', error);
+      toast.error('Error al guardar documento', {
+        description: error instanceof Error ? error.message : 'Error desconocido',
+      });
+    }
+  };
+
+  const handleActualizarPlaneacion = async (datos: {
+    fechaReunionApertura?: Date;
+    alcance?: string;
+    observaciones?: string;
+  }) => {
+    if (!auditoriaId) return;
+
+    try {
+      const updateData: any = {};
+      if (datos.fechaReunionApertura) {
+        updateData.fechaReunionApertura = datos.fechaReunionApertura.toISOString();
+      }
+      if (datos.alcance) {
+        updateData.alcance = datos.alcance;
+      }
+      if (datos.observaciones) {
+        updateData.observacionesAdicionales = datos.observaciones;
+      }
+
+      const response = await auditoriasApi.update(auditoriaId, updateData);
+      if (response.success) {
+        toast.success('Datos de planeación actualizados', {
+          description: 'Los cambios se guardaron correctamente en la base de datos',
+        });
+        // Recargar auditoría
+        const audResponse = await auditoriasApi.getById(auditoriaId);
+        if (audResponse.success && audResponse.data) {
+          // Actualizar estado local (simplificado, se puede mejorar)
+          setAuditoria(prev => ({
+            ...prev,
+            fechasClave: {
+              ...prev.fechasClave,
+              planeacionInicio: datos.fechaReunionApertura || prev.fechasClave.planeacionInicio,
+            },
+          }));
+        }
+      } else {
+        throw new Error(response.error || 'Error al actualizar');
+      }
+    } catch (error) {
+      console.error('Error al actualizar planeación:', error);
+      toast.error('Error al guardar datos', {
+        description: error instanceof Error ? error.message : 'Error desconocido',
+      });
+    }
+  };
 
   // Funciones
   const exportarExpediente = () => {
@@ -492,6 +801,15 @@ export function ExpedienteAuditoriaCompleto({
           exit={{ opacity: 0, scale: 0.95 }}
           className="bg-white rounded-xl shadow-2xl w-full max-w-7xl max-h-[calc(100vh-6rem)] overflow-hidden flex flex-col my-4 pointer-events-auto"
         >
+          {/* Indicador de carga */}
+          {loading && (
+            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                <p className="text-sm text-gray-600">Cargando expediente...</p>
+              </div>
+            </div>
+          )}
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-start justify-between">
             <div className="flex-1">
@@ -656,17 +974,33 @@ export function ExpedienteAuditoriaCompleto({
 
                 {/* TAB 2: PLANEACIÓN */}
                 <TabsContent value="planeacion" className="mt-0">
-                  <TabPlaneacion auditoria={auditoria} />
+                  <TabPlaneacion 
+                    auditoria={auditoria} 
+                    onGuardar={handleActualizarPlaneacion}
+                    auditoriaId={auditoriaId}
+                    checklistCompletados={checklistCompletados}
+                    onChecklistChange={(checklist) => setChecklistCompletados(checklist)}
+                  />
                 </TabsContent>
 
                 {/* TAB 3: EJECUCIÓN */}
                 <TabsContent value="ejecucion" className="mt-0">
-                  <TabEjecucion auditoria={auditoria} />
+                  <TabEjecucion 
+                    auditoria={auditoria}
+                    auditoriaId={auditoriaId}
+                    checklistCompletados={checklistCompletados}
+                    onChecklistChange={(checklist) => setChecklistCompletados(checklist)}
+                  />
                 </TabsContent>
 
                 {/* TAB 4: COMUNICACIÓN */}
                 <TabsContent value="comunicacion" className="mt-0">
-                  <TabComunicacion auditoria={auditoria} />
+                  <TabComunicacion 
+                    auditoria={auditoria}
+                    auditoriaId={auditoriaId}
+                    checklistCompletados={checklistCompletados}
+                    onChecklistChange={(checklist) => setChecklistCompletados(checklist)}
+                  />
                 </TabsContent>
 
                 {/* TAB 5: DOCUMENTACIÓN */}
@@ -675,6 +1009,9 @@ export function ExpedienteAuditoriaCompleto({
                     documentos={documentosFiltrados}
                     filtro={filtroDocumentos}
                     onFiltroChange={setFiltroDocumentos}
+                    onGuardar={handleGuardarDocumento}
+                    loading={loadingDocumentos}
+                    auditoriaId={auditoriaId}
                   />
                 </TabsContent>
 
@@ -996,7 +1333,19 @@ function TabGeneral({ auditoria }: { auditoria: Auditoria }) {
 }
 
 // TAB 2: PLANEACIÓN
-function TabPlaneacion({ auditoria }: { auditoria: Auditoria }) {
+function TabPlaneacion({ 
+  auditoria, 
+  onGuardar,
+  auditoriaId,
+  checklistCompletados,
+  onChecklistChange,
+}: { 
+  auditoria: Auditoria;
+  onGuardar?: (datos: { fechaReunionApertura?: Date; alcance?: string; observaciones?: string }) => void;
+  auditoriaId?: string;
+  checklistCompletados?: Record<string, boolean>;
+  onChecklistChange?: (checklist: Record<string, boolean>) => void;
+}) {
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -1019,13 +1368,26 @@ function TabPlaneacion({ auditoria }: { auditoria: Auditoria }) {
         faseColor="#9333ea"
         estadoRequerido="Planeación"
         estadoActual={auditoria.estado}
+        auditoriaId={auditoriaId}
+        checklistInicial={checklistCompletados}
+        onChecklistChange={onChecklistChange}
       />
     </div>
   );
 }
 
 // TAB 3: EJECUCIÓN
-function TabEjecucion({ auditoria }: { auditoria: Auditoria }) {
+function TabEjecucion({ 
+  auditoria,
+  auditoriaId,
+  checklistCompletados,
+  onChecklistChange,
+}: { 
+  auditoria: Auditoria;
+  auditoriaId?: string;
+  checklistCompletados?: Record<string, boolean>;
+  onChecklistChange?: (checklist: Record<string, boolean>) => void;
+}) {
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
@@ -1048,13 +1410,26 @@ function TabEjecucion({ auditoria }: { auditoria: Auditoria }) {
         faseColor="#f59e0b"
         estadoRequerido="Ejecución"
         estadoActual={auditoria.estado}
+        auditoriaId={auditoriaId}
+        checklistInicial={checklistCompletados}
+        onChecklistChange={onChecklistChange}
       />
     </div>
   );
 }
 
 // TAB 4: COMUNICACIÓN
-function TabComunicacion({ auditoria }: { auditoria: Auditoria }) {
+function TabComunicacion({ 
+  auditoria,
+  auditoriaId,
+  checklistCompletados,
+  onChecklistChange,
+}: { 
+  auditoria: Auditoria;
+  auditoriaId?: string;
+  checklistCompletados?: Record<string, boolean>;
+  onChecklistChange?: (checklist: Record<string, boolean>) => void;
+}) {
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-green-50 border border-green-200 rounded-lg p-4">
@@ -1077,6 +1452,9 @@ function TabComunicacion({ auditoria }: { auditoria: Auditoria }) {
         faseColor="#10b981"
         estadoRequerido="Comunicación"
         estadoActual={auditoria.estado}
+        auditoriaId={auditoriaId}
+        checklistInicial={checklistCompletados}
+        onChecklistChange={onChecklistChange}
       />
     </div>
   );
@@ -1087,10 +1465,16 @@ function TabDocumentacion({
   documentos,
   filtro,
   onFiltroChange,
+  onGuardar,
+  loading,
+  auditoriaId,
 }: {
   documentos: DocumentoExpediente[];
   filtro: string;
   onFiltroChange: (filtro: string) => void;
+  onGuardar?: (documento: any) => void;
+  loading?: boolean;
+  auditoriaId?: string;
 }) {
   const [modalCargarDocumento, setModalCargarDocumento] = useState(false);
 
@@ -1182,14 +1566,14 @@ function TabDocumentacion({
       </div>
 
       {/* MODAL CARGAR DOCUMENTO */}
-      {modalCargarDocumento && (
+      {modalCargarDocumento && auditoriaId && (
         <ModalCargarDocumento
+          auditoriaId={auditoriaId}
           onClose={() => setModalCargarDocumento(false)}
           onGuardar={(documento) => {
-            // TODO: Agregar el documento a la lista
-            toast.success('Documento cargado exitosamente', {
-              description: `${documento.nombre} agregado al expediente`,
-            });
+            if (onGuardar) {
+              onGuardar(documento);
+            }
             setModalCargarDocumento(false);
           }}
         />

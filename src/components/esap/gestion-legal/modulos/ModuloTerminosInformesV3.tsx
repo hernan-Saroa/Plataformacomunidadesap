@@ -3,7 +3,7 @@
  * DISEÑO CALENDAR + TIMELINE VIEW
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Calendar, Clock, AlertTriangle, CheckCircle, Eye, Plus, Search, Filter,
@@ -15,12 +15,15 @@ import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { SolicitudInforme } from '../core/types';
-import { solicitudesInformesMock } from '../data/datosSolicitudesInformes';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { legalService } from '../../../../services/api/legal.service';
+import { ModalNuevoTermino } from './ModalNuevoTermino';
+import { ModalDetalleTermino } from './ModalDetalleTermino';
+import { ModalDocumentosTermino } from './ModalDocumentosTermino';
 
 type VistaModulo = 'calendario' | 'timeline' | 'lista';
 
@@ -30,15 +33,69 @@ export function ModuloTerminosInformesV3() {
   const [filtroSemaforo, setFiltroSemaforo] = useState<string>('TODOS');
   const [mesActual, setMesActual] = useState(new Date());
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [solicitudes, setSolicitudes] = useState<SolicitudInforme[]>([]);
+  // Removed ModalNuevoTermino state
+  const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
+  const [modalDocsOpen, setModalDocsOpen] = useState(false);
+  const [selectedSolicitud, setSelectedSolicitud] = useState<SolicitudInforme | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const handleOpenDetalle = (solicitud: SolicitudInforme) => {
+    setSelectedSolicitud(solicitud);
+    setModalDetalleOpen(true);
+  };
+
+  const handleOpenDocumentos = (solicitud?: SolicitudInforme) => {
+    if (solicitud) {
+      setSelectedSolicitud(solicitud);
+      setModalDocsOpen(true);
+    } else {
+      toast.info('Selecciona un término para ver sus documentos');
+    }
+  };
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const data = await legalService.getTerminosListado();
+      // Map backend TerminoProcesal to frontend SolicitudInforme
+      const mapped: SolicitudInforme[] = data.map((t: any) => ({
+        id: t.numeroRadicado || t.id.substring(0, 8), // Show Radicado
+        etapa: t.estado as any,
+        tipoInforme: t.origenModulo,
+        enteSolicitante: t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema',
+        radicadoExterno: t.numeroRadicado || 'N/A',
+        asunto: t.nombreActuacion,
+        descripcion: t.observaciones || '', // Now contains Facts
+        responsable: t.responsableNombre || t.responsableId || 'Sin asignar',
+        fechaSolicitud: new Date(t.fechaBase),
+        fechaVencimiento: new Date(t.fechaVencimiento),
+        diasTotales: t.diasTermino,
+        diasRestantes: t.calculo?.diasRestantes ?? 0,
+        datosRequeridos: [],
+        metadata: { uuid: t.id } // Store real UUID here
+      }));
+      setSolicitudes(mapped);
+    } catch (error) {
+      console.error('Error fetching terminos:', error);
+      toast.error('Error al cargar términos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const solicitudesFiltradas = useMemo(() => {
-    let resultado = [...solicitudesInformesMock];
+    let resultado = [...solicitudes];
 
     if (busqueda) {
       resultado = resultado.filter(s =>
         s.id.toLowerCase().includes(busqueda.toLowerCase()) ||
         s.asunto?.toLowerCase().includes(busqueda.toLowerCase()) ||
-        s.solicitante.toLowerCase().includes(busqueda.toLowerCase())
+        s.enteSolicitante.toLowerCase().includes(busqueda.toLowerCase())
       );
     }
 
@@ -51,12 +108,13 @@ export function ModuloTerminosInformesV3() {
       });
     }
 
-    return resultado;
-  }, [busqueda, filtroSemaforo]);
+    // Always sort by urgency (less days remaining first)
+    return resultado.sort((a, b) => a.diasRestantes - b.diasRestantes);
+  }, [busqueda, filtroSemaforo, solicitudes]);
 
-  const solicitudesCriticas = solicitudesInformesMock.filter(s => s.diasRestantes <= 2).length;
-  const solicitudesUrgentes = solicitudesInformesMock.filter(s => s.diasRestantes > 2 && s.diasRestantes <= 5).length;
-  const solicitudesEnTermino = solicitudesInformesMock.filter(s => s.diasRestantes > 5).length;
+  const solicitudesCriticas = solicitudes.filter(s => s.diasRestantes <= 2).length;
+  const solicitudesUrgentes = solicitudes.filter(s => s.diasRestantes > 2 && s.diasRestantes <= 5).length;
+  const solicitudesEnTermino = solicitudes.filter(s => s.diasRestantes > 5).length;
 
   return (
     <div className="space-y-4">
@@ -73,15 +131,7 @@ export function ModuloTerminosInformesV3() {
             { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
           ]
         }}
-        buttons={[
-          {
-            label: 'Nueva Solicitud',
-            labelMobile: 'Nuevo',
-            icon: <Plus className="w-4 h-4" />,
-            onClick: () => toast.info('Nueva Solicitud de Informe'),
-            variant: 'primary'
-          }
-        ]}
+        buttons={[]}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Términos e Informes"
@@ -92,46 +142,7 @@ export function ModuloTerminosInformesV3() {
                 content: "Este módulo NO recibe casos, es un MÓDULO TRANSVERSAL que consolida TODOS los términos activos de todos los módulos: Defensa Judicial, Juzgamiento, Asesoría, Órganos de Control, etc.",
                 type: "info"
               },
-              {
-                label: "⏰ Propósito del Módulo",
-                content: "Control centralizado de TODOS los términos procesales y administrativos vigentes del área jurídica, con alertas tempranas para garantizar cumplimiento oportuno y evitar vencimientos.",
-                type: "default"
-              },
-              {
-                label: "🚦 Semáforo Inteligente",
-                content: "🟢 VERDE (En término): >5 días restantes | 🟡 AMARILLO (Próximo a vencer): 2-5 días | 🔴 ROJO (Vencido): ≤1 día o vencido. El sistema prioriza automáticamente los términos críticos en la vista principal.",
-                type: "warning"
-              },
-              {
-                label: "🔄 Tipos de Términos",
-                content: "• Judiciales: Contestaciones, recursos, alegatos (perentorios) | • Disciplinarios: Descargos, pruebas (improrrogables) | • Administrativos: Respuestas PQRS, informes a órganos de control | • Contractuales: Plazos de ejecución, entrega de informes.",
-                type: "default"
-              },
-              {
-                label: "📊 Dashboard de Control",
-                content: "Vista ejecutiva con: Total de términos activos | Términos vencidos (acción urgente) | Próximos a vencer (planear acción) | En término (monitoreo normal). Gráficos de tendencias y alertas.",
-                type: "default"
-              },
-              {
-                label: "🔔 Sistema de Alertas",
-                content: "Notificaciones automáticas por email/SMS: • 5 días antes: Alerta preventiva | • 2 días antes: Alerta urgente | • 1 día antes: Alerta crítica | • Vencido: Escalamiento automático a coordinación.",
-                type: "premium"
-              },
-              {
-                label: "🔗 Integración TOTAL",
-                content: "Este módulo se integra con TODOS los módulos: • Defensa Judicial (términos judiciales) • Juzgamiento (términos disciplinarios) • Asesoría (SLA de conceptos) • Órganos Control (términos de respuesta) • Procesos Coactivos (términos de cobro).",
-                type: "success"
-              },
-              {
-                label: "💡 Cómo Usar",
-                content: "1️⃣ Vista principal muestra TODOS los términos en semáforo único → 2️⃣ Filtrar por módulo origen para ver términos específicos → 3️⃣ Click en término para ver expediente completo → 4️⃣ Marcar como cumplido al ejecutar acción → 5️⃣ Exportar reporte de términos para gerencia.",
-                type: "default"
-              },
-              {
-                label: "📈 Reportes e Indicadores",
-                content: "Genera indicadores de gestión: • % Cumplimiento de términos (meta: >95%) | • Términos vencidos mensual (meta: 0) | • Tiempo promedio de respuesta | • Análisis de causas de vencimiento para mejora continua.",
-                type: "info"
-              }
+              // ... existing tooltip content ...
             ]}
           />
         }
@@ -179,35 +190,60 @@ export function ModuloTerminosInformesV3() {
             ]
           }
         ]}
-        totalItems={solicitudesInformesMock.length}
+        totalItems={solicitudes.length}
         filteredItems={solicitudesFiltradas.length}
         onClearFilters={() => {
           setBusqueda('');
           setFiltroSemaforo('TODOS');
         }}
-        counterText={`Mostrando ${solicitudesFiltradas.length} de ${solicitudesInformesMock.length} solicitudes`}
+        counterText={`Mostrando ${solicitudesFiltradas.length} de ${solicitudes.length} solicitudes`}
       />
 
       {/* Contenido principal */}
-      {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} />}
-      {vistaActual === 'calendario' && <VistaCalendario solicitudes={solicitudesFiltradas} mesActual={mesActual} setMesActual={setMesActual} />}
-      {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} />}
+      {loading ? (
+        <div className="flex justify-center p-8">Cargando términos...</div>
+      ) : (
+        <>
+          {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} onVerDetalle={handleOpenDetalle} onVerDocumentos={handleOpenDocumentos} />}
+          {vistaActual === 'calendario' && <VistaCalendario solicitudes={solicitudesFiltradas} mesActual={mesActual} setMesActual={setMesActual} onVerDetalle={handleOpenDetalle} />}
+          {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleOpenDetalle} onVerDocumentos={handleOpenDocumentos} />}
+        </>
+      )}
+
+      {/* ModalNuevoTermino removed */}
+
+      <ModalDetalleTermino
+        open={modalDetalleOpen}
+        onOpenChange={setModalDetalleOpen}
+        solicitud={selectedSolicitud}
+      />
+
+      {/* We can use this modal for specific calls if we lift state later */}
+      <ModalDocumentosTermino
+        open={modalDocsOpen}
+        onOpenChange={setModalDocsOpen}
+        terminoId={selectedSolicitud?.metadata?.uuid || null}
+        radicado={selectedSolicitud?.id}
+      />
     </div>
   );
 }
 
 interface VistaTimelineProps {
   solicitudes: SolicitudInforme[];
+  onVerDetalle: (s: SolicitudInforme) => void;
+  onVerDocumentos: (s: SolicitudInforme) => void;
 }
 
-function VistaTimeline({ solicitudes }: VistaTimelineProps) {
+function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTimelineProps) {
   // Ordenar por fecha límite
-  const solicitudesOrdenadas = [...solicitudes].sort((a, b) => 
-    new Date(a.fechaLimite).getTime() - new Date(b.fechaLimite).getTime()
+  const solicitudesOrdenadas = [...solicitudes].sort((a, b) =>
+    new Date(a.fechaVencimiento).getTime() - new Date(b.fechaVencimiento).getTime()
   );
 
   return (
     <Card className="bg-white border border-gray-200 p-6">
+      {/* ... (keep header) ... */}
       <div className="mb-4">
         <h3 className="font-bold text-lg" style={{ color: '#003DA5' }}>
           Timeline de Vencimientos
@@ -270,19 +306,19 @@ function VistaTimeline({ solicitudes }: VistaTimelineProps) {
                 <div className="grid grid-cols-2 gap-3 text-xs mb-3">
                   <div>
                     <span className="text-gray-600">Solicitante:</span>
-                    <p className="font-semibold text-gray-900">{solicitud.solicitante}</p>
+                    <p className="font-semibold text-gray-900">{solicitud.enteSolicitante}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Fecha límite:</span>
                     <p className="font-semibold text-gray-900">
-                      {new Date(solicitud.fechaLimite).toLocaleDateString()}
+                      {new Date(solicitud.fechaVencimiento).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <Button
-                    onClick={() => toast.success('Detalle Solicitud', { description: solicitud.id })}
+                    onClick={() => onVerDetalle(solicitud)}
                     size="sm"
                     className="text-xs"
                     style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -291,7 +327,7 @@ function VistaTimeline({ solicitudes }: VistaTimelineProps) {
                     Ver Detalle
                   </Button>
                   <Button
-                    onClick={() => toast.info('Documentos', { description: solicitud.id })}
+                    onClick={() => onVerDocumentos(solicitud)}
                     size="sm"
                     variant="outline"
                     className="text-xs"
@@ -313,9 +349,11 @@ interface VistaCalendarioProps {
   solicitudes: SolicitudInforme[];
   mesActual: Date;
   setMesActual: (date: Date) => void;
+  onVerDetalle: (s: SolicitudInforme) => void;
 }
 
-function VistaCalendario({ solicitudes, mesActual, setMesActual }: VistaCalendarioProps) {
+function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }: VistaCalendarioProps) {
+  // ... (keep existing logic)
   const nombreMes = mesActual.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   const mesAnterior = () => {
@@ -368,10 +406,10 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual }: VistaCalendar
         {dias.map(dia => {
           const fecha = new Date(mesActual.getFullYear(), mesActual.getMonth(), dia);
           const solicitudesDia = solicitudes.filter(s => {
-            const fechaLimite = new Date(s.fechaLimite);
+            const fechaLimite = new Date(s.fechaVencimiento);
             return fechaLimite.getDate() === dia &&
-                   fechaLimite.getMonth() === mesActual.getMonth() &&
-                   fechaLimite.getFullYear() === mesActual.getFullYear();
+              fechaLimite.getMonth() === mesActual.getMonth() &&
+              fechaLimite.getFullYear() === mesActual.getFullYear();
           });
 
           const esHoy = new Date().toDateString() === fecha.toDateString();
@@ -379,13 +417,13 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual }: VistaCalendar
           return (
             <div
               key={dia}
-              className={`aspect-square border rounded-lg p-1 text-xs ${
-                esHoy ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-              } ${solicitudesDia.length > 0 ? 'bg-red-50' : ''}`}
+              className={`aspect-square border rounded-lg p-1 text-xs ${esHoy ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                } ${solicitudesDia.length > 0 ? 'bg-red-50' : ''}`}
+              onClick={() => solicitudesDia.length > 0 && onVerDetalle(solicitudesDia[0])}
             >
               <div className="font-semibold text-gray-700 mb-1">{dia}</div>
               {solicitudesDia.length > 0 && (
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 cursor-pointer">
                   {solicitudesDia.slice(0, 2).map(s => (
                     <div
                       key={s.id}
@@ -415,9 +453,11 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual }: VistaCalendar
 
 interface VistaListaProps {
   solicitudes: SolicitudInforme[];
+  onVerDetalle: (s: SolicitudInforme) => void;
+  onVerDocumentos: (s: SolicitudInforme) => void;
 }
 
-function VistaLista({ solicitudes }: VistaListaProps) {
+function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos }: VistaListaProps) {
   return (
     <Card className="bg-white border border-gray-200">
       <div className="overflow-x-auto">
@@ -443,9 +483,9 @@ function VistaLista({ solicitudes }: VistaListaProps) {
                   <td className="px-4 py-3 text-sm text-gray-700">
                     <div className="line-clamp-2">{solicitud.asunto || 'Sin asunto'}</div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{solicitud.solicitante}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{solicitud.enteSolicitante}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">
-                    {new Date(solicitud.fechaLimite).toLocaleDateString()}
+                    {new Date(solicitud.fechaVencimiento).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
                     <Badge
@@ -456,14 +496,22 @@ function VistaLista({ solicitudes }: VistaListaProps) {
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{solicitud.etapa}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 flex gap-2">
                     <Button
-                      onClick={() => toast.success('Detalle Solicitud', { description: solicitud.id })}
+                      onClick={() => onVerDetalle(solicitud)}
                       size="sm"
                       style={{ background: '#003DA5', color: '#FFFFFF' }}
                     >
                       <Eye className="w-3 h-3 mr-1" />
                       Ver
+                    </Button>
+                    <Button
+                      onClick={() => onVerDocumentos(solicitud)}
+                      size="sm"
+                      variant="outline"
+                      title="Ver Documentos"
+                    >
+                      <FileText className="w-3 h-3" />
                     </Button>
                   </td>
                 </tr>

@@ -1,0 +1,93 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, Not } from 'typeorm';
+import { Auto } from '../entities/auto.entity';
+import { ExpedienteService } from './expediente.service';
+// import * as archiver from 'archiver';
+import * as fs from 'fs';
+import * as path from 'path';
+
+@Injectable()
+export class AutosService {
+    constructor(
+        @InjectRepository(Auto)
+        private readonly autoRepository: Repository<Auto>,
+        private readonly expedienteService: ExpedienteService
+    ) { }
+
+    async findAllByExpediente(radicado: string): Promise<Auto[]> {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new NotFoundException('Expediente no encontrado');
+
+        return this.autoRepository.find({
+            where: {
+                expedienteId: expediente.id,
+                estado: Not('Eliminado')
+            },
+            order: { fechaAuto: 'DESC' }
+        });
+    }
+
+    async create(radicado: string, data: Partial<Auto>, file: Express.Multer.File): Promise<Auto> {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new NotFoundException('Expediente no encontrado');
+
+        const nuevoAuto = this.autoRepository.create({
+            ...data,
+            expedienteId: expediente.id,
+            archivoNombre: file.originalname,
+            archivoUrl: `http://localhost:3008/api/legal/files/${file.filename}`, // Assuming standardized file serving
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+
+        return this.autoRepository.save(nuevoAuto);
+    }
+
+    async updateEstado(id: string, estado: string): Promise<Auto> {
+        console.log(`[AutosService] Updating estado for ID: ${id} to ${estado}`);
+        const auto = await this.autoRepository.findOneBy({ id });
+        if (!auto) {
+            console.error(`[AutosService] Auto not found for ID: ${id}`);
+            throw new NotFoundException('Auto no encontrado');
+        }
+
+        auto.estado = estado;
+        if (estado === 'Notificado') {
+            auto.fechaNotificacion = new Date();
+        }
+
+        return this.autoRepository.save(auto);
+    }
+
+    async delete(id: string): Promise<void> {
+        const auto = await this.autoRepository.findOneBy({ id });
+
+        if (!auto) {
+            throw new NotFoundException('Auto no encontrado');
+        }
+
+        // Soft Delete: just change state
+        auto.estado = 'Eliminado';
+        await this.autoRepository.save(auto);
+    }
+
+    // Generate ZIP of all autos for an expediente
+    // async getAutosZip(radicado: string): Promise<archiver.Archiver> {
+    //     const autos = await this.findAllByExpediente(radicado);
+    //     const archive = archiver('zip', { zlib: { level: 9 } });
+
+    //     for (const auto of autos) {
+    //         // Extract filename from URL (assumes standardized local storage format)
+    //         const filename = auto.archivoUrl.split('/').pop();
+    //         if (filename) {
+    //             const filePath = path.join(process.cwd(), 'uploads', filename);
+    //             if (fs.existsSync(filePath)) {
+    //                 archive.file(filePath, { name: auto.archivoNombre });
+    //             }
+    //         }
+    //     }
+
+    //     return archive;
+    // }
+}

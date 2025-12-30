@@ -1,10 +1,4 @@
-/**
- * ModuloPlanAccionV3 - MOD-09: Plan de Acción
- * DISEÑO 100% ESTANDARIZADO CON PATRÓN WORLD CLASS
- * Timeline/Gantt con estructura idéntica a Defensa Judicial
- */
-
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -12,283 +6,115 @@ import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Progress } from '../../../ui/progress';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { 
+import {
   Target, BarChart3, Activity, TrendingUp, Award, CheckCircle, AlertCircle,
   Calendar, Eye, Plus, Search, Filter, List, Clock, User, FolderOpen, Download
 } from 'lucide-react';
-import type { IndicadorPlanAccion } from '../core/types';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 
-// DATOS MOCK INLINE (temporales para demo)
-const indicadoresPlanAccion: any[] = [
-  // EJE 1: GESTIÓN INSTITUCIONAL (2 indicadores)
-  {
-    id: 'IND-2025-001',
-    codigo: 'GI-001',
-    nombre: 'Reducción de términos en procesos judiciales',
-    objetivo: 'Reducir en 20% los términos vencidos en defensa judicial',
-    objetivoPEI: 'Fortalecer gestión jurídica institucional',
-    ejeEstrategico: 'GESTION_INSTITUCIONAL',
-    responsable: 'Dr. Carlos Mendoza Torres',
-    avance: 75,
-    cumplimiento: 75,
-    meta: 80,
-    resultadoActual: 75,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'ACTIVO',
-    etapa: 'EN CURSO',
-    prioridad: 'ALTA',
-    periodicidad: 'Mensual',
-    tipoIndicador: 'Eficiencia',
-    unidadMedida: '%',
-    valorBase: 100,
-    valorActual: 75,
-    metaAnual: 80,
-    descripcion: 'Implementar sistema de alertas tempranas y seguimiento automatizado de términos procesales'
-  },
-  {
-    id: 'IND-2025-002',
-    codigo: 'GI-002',
-    nombre: 'Optimización de gestión documental jurídica',
-    objetivo: 'Digitalizar el 90% de los expedientes judiciales activos',
-    objetivoPEI: 'Modernizar gestión documental',
-    ejeEstrategico: 'GESTION_INSTITUCIONAL',
-    responsable: 'Dra. Patricia Ruiz Gómez',
-    avance: 62,
-    cumplimiento: 62,
-    meta: 90,
-    resultadoActual: 62,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'ACTIVO',
-    etapa: 'EN CURSO',
-    prioridad: 'ALTA',
-    periodicidad: 'Trimestral',
-    tipoIndicador: 'Gestión',
-    unidadMedida: '%',
-    valorBase: 100,
-    valorActual: 62,
-    metaAnual: 90,
-    descripcion: 'Migración de expedientes físicos a plataforma digital con sistema de búsqueda avanzada'
-  },
+// Import New Modals
+import { ModalCrearIndicador } from './pei/ModalCrearIndicador';
+import { ModalActualizarAvance } from './pei/ModalActualizarAvance';
+import { ModalDetalleIndicador } from './pei/ModalDetalleIndicador';
+import axios from 'axios';
 
-  // EJE 2: TALENTO HUMANO (2 indicadores)
-  {
-    id: 'IND-2025-003',
-    codigo: 'TH-001',
-    nombre: 'Capacitación en normativa jurídica actualizada',
-    objetivo: 'Capacitar al 100% del equipo jurídico en nuevas leyes 2025',
-    objetivoPEI: 'Fortalecer competencias del talento humano',
-    ejeEstrategico: 'TALENTO_HUMANO',
-    responsable: 'Dra. Ana María López',
-    avance: 45,
-    cumplimiento: 45,
-    meta: 100,
-    resultadoActual: 45,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-06-30'),
-    estado: 'ACTIVO',
-    etapa: 'EN CURSO',
-    prioridad: 'MEDIA',
-    periodicidad: 'Semestral',
-    tipoIndicador: 'Capacitación',
-    unidadMedida: '%',
-    valorBase: 100,
-    valorActual: 45,
-    metaAnual: 100,
-    descripcion: 'Programa de capacitación continua en reformas legales y jurisprudencia aplicable'
-  },
-  {
-    id: 'IND-2025-004',
-    codigo: 'TH-002',
-    nombre: 'Fortalecimiento de competencias en litigio estratégico',
-    objetivo: 'Incrementar en 30% la tasa de éxito en procesos judiciales',
-    objetivoPEI: 'Mejorar efectividad en litigio',
-    ejeEstrategico: 'TALENTO_HUMANO',
-    responsable: 'Dr. Luis Fernando Mora',
-    avance: 58,
-    cumplimiento: 58,
-    meta: 130,
-    resultadoActual: 58,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'ACTIVO',
-    etapa: 'EN CURSO',
-    prioridad: 'ALTA',
-    periodicidad: 'Trimestral',
-    tipoIndicador: 'Eficacia',
-    unidadMedida: '%',
-    valorBase: 100,
-    valorActual: 58,
-    metaAnual: 130,
-    descripcion: 'Talleres prácticos de litigio estratégico y análisis de casos exitosos'
-  },
-
-  // EJE 3: TRANSPARENCIA (2 indicadores)
-  {
-    id: 'IND-2025-005',
-    codigo: 'TR-001',
-    nombre: 'Publicación de información jurídica en portal web',
-    objetivo: 'Publicar el 100% de las actuaciones judiciales en portal de transparencia',
-    objetivoPEI: 'Garantizar transparencia institucional',
-    ejeEstrategico: 'TRANSPARENCIA',
-    responsable: 'Dra. Sandra Milena Cruz',
-    avance: 88,
-    cumplimiento: 88,
-    meta: 100,
-    resultadoActual: 88,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'ACTIVO',
-    etapa: 'EN CURSO',
-    prioridad: 'CRÍTICA',
-    periodicidad: 'Mensual',
-    tipoIndicador: 'Transparencia',
-    unidadMedida: '%',
-    valorBase: 100,
-    valorActual: 88,
-    metaAnual: 100,
-    descripcion: 'Actualización mensual del portal con sentencias, autos y estados procesales anonimizados'
-  },
-  {
-    id: 'IND-2025-006',
-    codigo: 'TR-002',
-    nombre: 'Atención de derechos de petición jurídicos',
-    objetivo: 'Responder el 100% de derechos de petición dentro del término legal',
-    objetivoPEI: 'Atención oportuna ciudadana',
-    ejeEstrategico: 'TRANSPARENCIA',
-    responsable: 'Dr. Roberto Castro Vega',
-    avance: 92,
-    cumplimiento: 92,
-    meta: 100,
-    resultadoActual: 92,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'ACTIVO',
-    etapa: 'EN CURSO',
-    prioridad: 'CRÍTICA',
-    periodicidad: 'Mensual',
-    tipoIndicador: 'Oportunidad',
-    unidadMedida: '%',
-    valorBase: 100,
-    valorActual: 92,
-    metaAnual: 100,
-    descripcion: 'Sistema de seguimiento automatizado para garantizar respuesta oportuna'
-  },
-
-  // EJE 4: TECNOLOGÍA (2 indicadores)
-  {
-    id: 'IND-2025-007',
-    codigo: 'TEC-001',
-    nombre: 'Implementación de sistema SIGL (Sistema Integral de Gestión Legal)',
-    objetivo: 'Alcanzar 85% de adopción del sistema SIGL por parte de usuarios',
-    objetivoPEI: 'Transformación digital institucional',
-    ejeEstrategico: 'TECNOLOGIA',
-    responsable: 'Dr. Carlos Mendoza Torres',
-    avance: 70,
-    cumplimiento: 70,
-    meta: 85,
-    resultadoActual: 70,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-09-30'),
-    estado: 'ACTIVO',
-    etapa: 'EN CURSO',
-    prioridad: 'CRÍTICA',
-    periodicidad: 'Mensual',
-    tipoIndicador: 'Adopción',
-    unidadMedida: '%',
-    valorBase: 100,
-    valorActual: 70,
-    metaAnual: 85,
-    descripcion: 'Despliegue completo del sistema SIGL con 11 módulos integrados y capacitación de usuarios'
-  },
-  {
-    id: 'IND-2025-008',
-    codigo: 'TEC-002',
-    nombre: 'Automatización de alertas de términos procesales',
-    objetivo: 'Implementar sistema de alertas automáticas para el 100% de procesos',
-    objetivoPEI: 'Automatización de procesos jurídicos',
-    ejeEstrategico: 'TECNOLOGIA',
-    responsable: 'Dra. Patricia Ruiz Gómez',
-    avance: 55,
-    cumplimiento: 55,
-    meta: 100,
-    resultadoActual: 55,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-08-31'),
-    estado: 'ACTIVO',
-    etapa: 'EN CURSO',
-    prioridad: 'ALTA',
-    periodicidad: 'Mensual',
-    tipoIndicador: 'Automatización',
-    unidadMedida: '%',
-    valorBase: 100,
-    valorActual: 55,
-    metaAnual: 100,
-    descripcion: 'Sistema de notificaciones automáticas vía email y SMS para términos próximos a vencer'
-  }
-];
-
-type VistaModulo = 'timeline' | 'lista';
-
-// Helper para determinar eje estratégico basado en el nombre del indicador
-const getEjeEstrategico = (indicador: IndicadorPlanAccion): string => {
-  const nombre = indicador.nombre.toLowerCase();
-  if (nombre.includes('jurídic') || nombre.includes('legal') || nombre.includes('término')) {
-    return 'GESTION_INSTITUCIONAL';
-  } else if (nombre.includes('talento') || nombre.includes('funcionario') || nombre.includes('capacitación')) {
-    return 'TALENTO_HUMANO';
-  } else if (nombre.includes('transparencia') || nombre.includes('información') || nombre.includes('datos')) {
-    return 'TRANSPARENCIA';
-  } else if (nombre.includes('tecnología') || nombre.includes('sistema') || nombre.includes('digital')) {
-    return 'TECNOLOGIA';
-  }
-  return 'GESTION_INSTITUCIONAL'; // Por defecto
-};
+const API_URL = 'http://localhost:3008/api/legal/pei';
 
 export function ModuloPlanAccionV3() {
-  const [tipoVista, setTipoVista] = useState<VistaModulo>('timeline');
+  const [tipoVista, setTipoVista] = useState<'timeline' | 'lista'>('timeline');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEje, setFiltroEje] = useState<string>('TODOS');
+  const [ocultarCompletados, setOcultarCompletados] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
+  // States for Data
+  const [indicadores, setIndicadores] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>({ indicadores_activos: 0, avance_global: 0, vencidos: 0 });
+  const [loading, setLoading] = useState(true);
+
+  // States for Modals
+  const [showCrear, setShowCrear] = useState(false);
+  const [showDetalle, setShowDetalle] = useState(false);
+  const [showAvance, setShowAvance] = useState(false);
+  const [selectedInd, setSelectedInd] = useState<any>(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API_URL}/dashboard`);
+      setIndicadores(Array.isArray(res.data.indicadores) ? res.data.indicadores : []);
+      setStats(res.data.stats || { indicadores_activos: 0, avance_global: 0, vencidos: 0 });
+    } catch (error) {
+      console.error("Error fetching PEI dashboard", error);
+      toast.error("Error cargando tablero PEI");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
   const indicadoresFiltrados = useMemo(() => {
-    let resultado = [...indicadoresPlanAccion].filter(i => i.estado === 'ACTIVO');
+    if (!Array.isArray(indicadores)) return [];
+    let resultado = [...indicadores];
 
     if (busqueda) {
       resultado = resultado.filter(i =>
-        i.id.toLowerCase().includes(busqueda.toLowerCase()) ||
         i.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-        i.objetivoPEI?.toLowerCase().includes(busqueda.toLowerCase())
+        (i.responsableNombre && i.responsableNombre.toLowerCase().includes(busqueda.toLowerCase()))
       );
     }
 
     if (filtroEje !== 'TODOS') {
-      resultado = resultado.filter(i => getEjeEstrategico(i) === filtroEje);
+      resultado = resultado.filter(i => i.ejeEstrategico === filtroEje);
+    }
+
+    if (ocultarCompletados) {
+      resultado = resultado.filter(i => {
+        const cleanValue = (val: any) => {
+          if (!val) return 0;
+          // Clean %, commas, ensure string
+          const strVal = String(val).replace(/%/g, '').replace(',', '.').trim();
+          return parseFloat(strVal) || 0;
+        };
+
+        const avance = cleanValue(i.avanceActual);
+        const meta = cleanValue(i.metaObjetivo);
+
+        // Ocultar si completó el 99% o más (to handle rounding)
+        if (avance >= 99) return false;
+
+        // Ocultar si alcanzó la meta (si la meta es válida)
+        if (meta > 0 && avance >= meta) return false;
+
+        return true;
+      });
     }
 
     return resultado;
-  }, [busqueda, filtroEje]);
+  }, [busqueda, filtroEje, indicadores, ocultarCompletados]);
 
-  const handleVerIndicador = (ind: IndicadorPlanAccion) => {
-    console.log('Ver indicador:', ind.id);
-    toast.success('Indicador', { description: `Abriendo ${ind.id}` });
+  const handleVerIndicador = (ind: any) => {
+    setSelectedInd(ind);
+    setShowDetalle(true);
   };
 
-  // Calcular estadísticas (SOLO 3 MÉTRICAS)
-  const totalIndicadores = indicadoresPlanAccion.filter(i => i.estado === 'ACTIVO').length;
-  const cumplimientoPromedio = Math.round(
-    indicadoresPlanAccion.reduce((sum, i) => sum + i.cumplimiento, 0) / indicadoresPlanAccion.length
-  );
-  const indicadoresVencidos = indicadoresPlanAccion.filter(i => {
-    const fechaVencimiento = new Date(i.fechaFin);
-    return fechaVencimiento < new Date() && i.cumplimiento < 100;
-  }).length;
+  const handleActualizar = (ind: any) => {
+    setSelectedInd(ind);
+    setShowAvance(true);
+  };
+
+  // Helper for Eje Mapping (Backend stores short codes like GESTION, Frontend uses keys)
+  // We need to align keys. Backend: GESTION, TALENTO, TRANSPARENCIA, TECNOLOGIA
+  // Frontend Timeline expects these exact keys? 
+  // Let's check `ColumnaEje` keys map.
+  // The backend returns `ejeEstrategico` strings.
 
   return (
     <div className="space-y-4">
@@ -298,7 +124,7 @@ export function ModuloPlanAccionV3() {
         subtitle="Seguimiento a indicadores y objetivos estratégicos"
         toggleView={{
           current: tipoVista,
-          onChange: (view) => setTipoVista(view as VistaModulo),
+          onChange: (view) => setTipoVista(view as any),
           options: [
             { label: 'Timeline', icon: <TrendingUp className="w-4 h-4" />, value: 'timeline' },
             { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
@@ -309,83 +135,31 @@ export function ModuloPlanAccionV3() {
             label: 'Nuevo Indicador',
             labelMobile: 'Nuevo',
             icon: <Plus className="w-4 h-4" />,
-            onClick: () => toast.info('Nuevo Indicador PEI'),
+            onClick: () => setShowCrear(true),
             variant: 'primary'
           }
         ]}
-        infoTooltip={
-          <ModuleInfoTooltip
-            title="Guía de Plan de Acción"
-            variant="icon"
-            sections={[
-              {
-                label: "🎯 Propósito del Módulo",
-                content: "Seguimiento y control de indicadores del Plan Estratégico Institucional (PEI) 2024-2027. Permite monitorear el cumplimiento de objetivos estratégicos, metas institucionales y compromisos de gestión de la Oficina Jurídica de ESAP.",
-                type: "default"
-              },
-              {
-                label: "📋 Plan Estratégico Institucional (PEI)",
-                content: "El PEI es el instrumento rector de la planeación institucional que define la visión, misión, objetivos estratégicos y metas de ESAP para el cuatrienio. Este módulo gestiona específicamente los indicadores jurídicos que aportan al cumplimiento del PEI.",
-                type: "info"
-              },
-              {
-                label: "🗂️ Ejes Estratégicos (4 Columnas)",
-                content: "1️⃣ GESTIÓN INSTITUCIONAL: Eficiencia en procesos jurídicos | 2️⃣ TALENTO HUMANO: Capacitación y competencias del equipo | 3️⃣ TRANSPARENCIA: Publicación y rendición de cuentas | 4️⃣ TECNOLOGÍA: Transformación digital y automatización.",
-                type: "premium"
-              },
-              {
-                label: "📊 Tipos de Indicadores",
-                content: "• Eficiencia: Optimización de procesos y recursos | • Eficacia: Logro de objetivos y metas | • Gestión: Ejecución de actividades | • Transparencia: Publicación de información | • Capacitación: Formación del equipo | • Automatización: Adopción tecnológica.",
-                type: "default"
-              },
-              {
-                label: "🚦 Semáforo de Cumplimiento",
-                content: "🟢 Verde (≥90%): Meta cumplida o en vía de cumplimiento | 🟡 Amarillo (50-89%): Cumplimiento parcial - requiere atención | 🔴 Rojo (<50%): Cumplimiento bajo - acción correctiva urgente.",
-                type: "warning"
-              },
-              {
-                label: "📈 Seguimiento y Periodicidad",
-                content: "Los indicadores se actualizan según su periodicidad: Mensual, Trimestral, Semestral o Anual. El sistema genera alertas automáticas cuando se acerca la fecha de medición para garantizar actualización oportuna.",
-                type: "default"
-              },
-              {
-                label: "🔗 Integración con Otros Módulos",
-                content: "Este módulo se alimenta de datos de: • Defensa Judicial (términos, procesos ganados) • Juzgamiento (procesos disciplinarios) • Términos e Informes (cumplimiento de plazos) • Centro Comunicaciones (tiempos de respuesta) - TODOS los módulos aportan al cumplimiento del PEI.",
-                type: "success"
-              },
-              {
-                label: "💡 Cómo Usar",
-                content: "1️⃣ Revisa el Dashboard Timeline por eje estratégico → 2️⃣ Identifica indicadores en rojo o amarillo (requieren acción) → 3️⃣ Click 'Ver Detalle' para análisis completo → 4️⃣ Click 'Actualizar' para registrar avances → 5️⃣ Exporta reportes para reuniones de seguimiento.",
-                type: "default"
-              },
-              {
-                label: "⏭️ Siguiente Paso",
-                content: "Los resultados del Plan de Acción se consolidan en reportes trimestrales para Alta Dirección, Consejo Directivo y Órganos de Control. Los indicadores críticos se escalan al módulo 'Planes de Mejoramiento' para acciones correctivas.",
-                type: "info"
-              }
-            ]}
-          />
-        }
+        infoTooltip={<ModuleInfoTooltip title="Guía PEI" variant="icon" sections={[]} />}
       />
 
-      {/* Métricas Compactas - ESTILO DEFENSA JUDICIAL (3 COLUMNAS EXACTAS) */}
+      {/* Métricas Compactas */}
       <ModuleMetrics
         metrics={[
           {
             label: 'Indicadores Activos',
-            value: totalIndicadores,
+            value: stats.indicadores_activos,
             icon: <Target className="w-5 h-5 text-blue-600" />,
             color: '#003DA5'
           },
           {
             label: 'Avance Global',
-            value: `${cumplimientoPromedio}%`,
+            value: `${stats.avance_global}%`,
             icon: <TrendingUp className="w-5 h-5 text-green-600" />,
             color: '#10B981'
           },
           {
             label: 'Vencidos',
-            value: indicadoresVencidos,
+            value: stats.vencidos,
             icon: <AlertCircle className="w-5 h-5 text-red-600" />,
             color: '#DC2626'
           }
@@ -394,49 +168,130 @@ export function ModuloPlanAccionV3() {
 
       {/* Filtros */}
       <ModuleFilters
+        searchValue={busqueda}
         onSearchChange={(value) => setBusqueda(value)}
-        onEjeChange={(value) => setFiltroEje(value)}
-        onExport={() => toast.info('Exportando')}
+        filters={[
+          {
+            type: 'select',
+            value: filtroEje,
+            onChange: (val) => setFiltroEje(val),
+            options: [
+              { value: 'TODOS', label: 'Todos los ejes' },
+              { value: 'GESTION', label: 'Gestión Institucional' },
+              { value: 'TALENTO', label: 'Talento Humano' },
+              { value: 'TRANSPARENCIA', label: 'Transparencia' },
+              { value: 'TECNOLOGIA', label: 'Tecnología' }
+            ],
+            colSpan: 1
+          },
+          {
+            type: 'custom',
+            value: '',
+            onChange: () => { },
+            colSpan: 1,
+            customContent: (
+              <div className="flex items-center pt-2">
+                <label className="inline-flex items-center cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={ocultarCompletados}
+                    onChange={(e) => setOcultarCompletados(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="
+                    relative w-11 h-6 bg-gray-200 
+                    peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 
+                    rounded-full peer 
+                    peer-checked:after:translate-x-full peer-checked:after:border-white 
+                    after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
+                    after:bg-white after:border-gray-300 after:border after:rounded-full 
+                    after:h-5 after:w-5 after:transition-all after:shadow-sm
+                    peer-checked:bg-[#003DA5] transition-colors duration-300 ease-in-out
+                  "></div>
+                  <span className="ml-3 text-sm font-medium text-gray-700 group-hover:text-gray-900 transition-colors">
+                    Ocultar completados
+                  </span>
+                </label>
+              </div>
+            )
+          }
+        ]}
       />
 
-      {/* Vista Timeline */}
-      {tipoVista === 'timeline' && (
-        <VistaTimeline indicadores={indicadoresFiltrados} onVerIndicador={handleVerIndicador} />
+      {loading ? (
+        <div className="p-8 text-center text-gray-500">Cargando indicadores...</div>
+      ) : (
+        <>
+          {/* Vista Timeline */}
+          {tipoVista === 'timeline' && (
+            <VistaTimeline
+              indicadores={indicadoresFiltrados}
+              onVerIndicador={handleVerIndicador}
+              onActualizar={handleActualizar}
+            />
+          )}
+
+          {/* Vista Lista */}
+          {tipoVista === 'lista' && (
+            <VistaLista
+              indicadores={indicadoresFiltrados}
+              onVerIndicador={handleVerIndicador}
+              onActualizar={handleActualizar}
+            />
+          )}
+        </>
       )}
 
-      {/* Vista Lista */}
-      {tipoVista === 'lista' && (
-        <VistaLista indicadores={indicadoresFiltrados} onVerIndicador={handleVerIndicador} />
-      )}
+      {/* Modals */}
+      <ModalCrearIndicador
+        open={showCrear}
+        onClose={() => setShowCrear(false)}
+        onSuccess={fetchData}
+      />
+
+      <ModalDetalleIndicador
+        open={showDetalle}
+        onClose={() => setShowDetalle(false)}
+        indicador={selectedInd}
+      />
+
+      <ModalActualizarAvance
+        open={showAvance}
+        onClose={() => setShowAvance(false)}
+        onSuccess={fetchData}
+        indicador={selectedInd}
+      />
+
     </div>
   );
 }
 
 // ==================== VISTA TIMELINE ====================
 interface VistaTimelineProps {
-  indicadores: IndicadorPlanAccion[];
-  onVerIndicador: (ind: IndicadorPlanAccion) => void;
+  indicadores: any[];
+  onVerIndicador: (ind: any) => void;
+  onActualizar: (ind: any) => void;
 }
 
-function VistaTimeline({ indicadores, onVerIndicador }: VistaTimelineProps) {
-  // Agrupar por eje estratégico
+function VistaTimeline({ indicadores, onVerIndicador, onActualizar }: VistaTimelineProps) {
+  // Agrupar por eje estratégico usando los valores exactos del backend
   const indicadoresPorEje = {
-    'GESTION_INSTITUCIONAL': indicadores.filter(i => i.ejeEstrategico === 'GESTION_INSTITUCIONAL'),
-    'TALENTO_HUMANO': indicadores.filter(i => i.ejeEstrategico === 'TALENTO_HUMANO'),
+    'GESTION': indicadores.filter(i => i.ejeEstrategico === 'GESTION'),
+    'TALENTO': indicadores.filter(i => i.ejeEstrategico === 'TALENTO'),
     'TRANSPARENCIA': indicadores.filter(i => i.ejeEstrategico === 'TRANSPARENCIA'),
     'TECNOLOGIA': indicadores.filter(i => i.ejeEstrategico === 'TECNOLOGIA'),
   };
 
   const ejes = [
-    { key: 'GESTION_INSTITUCIONAL', nombre: 'Gestión Institucional', color: '#003DA5', icono: <Target className="w-4 h-4" /> },
-    { key: 'TALENTO_HUMANO', nombre: 'Talento Humano', color: '#6B7280', icono: <User className="w-4 h-4" /> },
+    { key: 'GESTION', nombre: 'Gestión Institucional', color: '#003DA5', icono: <Target className="w-4 h-4" /> },
+    { key: 'TALENTO', nombre: 'Talento Humano', color: '#6B7280', icono: <User className="w-4 h-4" /> },
     { key: 'TRANSPARENCIA', nombre: 'Transparencia', color: '#6B7280', icono: <CheckCircle className="w-4 h-4" /> },
     { key: 'TECNOLOGIA', nombre: 'Tecnología', color: '#6B7280', icono: <Activity className="w-4 h-4" /> },
   ];
 
   return (
     <div className="relative">
-      <div 
+      <div
         className="flex gap-4 overflow-x-auto pb-4 scroll-smooth"
         style={{
           scrollbarWidth: 'thin',
@@ -446,7 +301,7 @@ function VistaTimeline({ indicadores, onVerIndicador }: VistaTimelineProps) {
       >
         {ejes.map((eje) => {
           const items = indicadoresPorEje[eje.key as keyof typeof indicadoresPorEje];
-          
+
           return (
             <ColumnaEje
               key={eje.key}
@@ -455,6 +310,7 @@ function VistaTimeline({ indicadores, onVerIndicador }: VistaTimelineProps) {
               color={eje.color}
               icono={eje.icono}
               onVerIndicador={onVerIndicador}
+              onActualizar={onActualizar}
             />
           );
         })}
@@ -466,13 +322,14 @@ function VistaTimeline({ indicadores, onVerIndicador }: VistaTimelineProps) {
 // ==================== COLUMNA EJE ESTRATÉGICO ====================
 interface ColumnaEjeProps {
   eje: string;
-  items: IndicadorPlanAccion[];
+  items: any[];
   color: string;
   icono: React.ReactNode;
-  onVerIndicador: (ind: IndicadorPlanAccion) => void;
+  onVerIndicador: (ind: any) => void;
+  onActualizar: (ind: any) => void;
 }
 
-function ColumnaEje({ eje, items, color, icono, onVerIndicador }: ColumnaEjeProps) {
+function ColumnaEje({ eje, items, color, icono, onVerIndicador, onActualizar }: ColumnaEjeProps) {
   return (
     <motion.div
       className="flex-shrink-0"
@@ -501,8 +358,8 @@ function ColumnaEje({ eje, items, color, icono, onVerIndicador }: ColumnaEjeProp
         </div>
 
         {/* Lista de Items */}
-        <div 
-          className="p-3 space-y-3 overflow-y-auto" 
+        <div
+          className="p-3 space-y-3 overflow-y-auto"
           style={{ maxHeight: 'calc(100vh - 280px)' }}
         >
           {items.map((indicador) => (
@@ -510,6 +367,7 @@ function ColumnaEje({ eje, items, color, icono, onVerIndicador }: ColumnaEjeProp
               key={indicador.id}
               indicador={indicador}
               onVerIndicador={onVerIndicador}
+              onActualizar={onActualizar}
             />
           ))}
 
@@ -530,11 +388,12 @@ function ColumnaEje({ eje, items, color, icono, onVerIndicador }: ColumnaEjeProp
 
 // ==================== TARJETA INDICADOR ====================
 interface TarjetaIndicadorProps {
-  indicador: IndicadorPlanAccion;
-  onVerIndicador: (ind: IndicadorPlanAccion) => void;
+  indicador: any;
+  onVerIndicador: (ind: any) => void;
+  onActualizar: (ind: any) => void;
 }
 
-function TarjetaIndicador({ indicador, onVerIndicador }: TarjetaIndicadorProps) {
+function TarjetaIndicador({ indicador, onVerIndicador, onActualizar }: TarjetaIndicadorProps) {
   // Determinar semáforo de cumplimiento
   const semaforoIndicator = {
     verde: { color: '#10B981', label: 'Cumplido' },
@@ -542,10 +401,12 @@ function TarjetaIndicador({ indicador, onVerIndicador }: TarjetaIndicadorProps) 
     rojo: { color: '#DC2626', label: 'Atrasado' }
   };
 
+  const cumplimiento = indicador.avanceActual || 0; // Use avanceActual from API
+
   let semaforoKey: 'verde' | 'amarillo' | 'rojo' = 'verde';
-  if (indicador.cumplimiento < 50) {
+  if (cumplimiento < 50) {
     semaforoKey = 'rojo';
-  } else if (indicador.cumplimiento < 90) {
+  } else if (cumplimiento < 90) {
     semaforoKey = 'amarillo';
   }
 
@@ -557,16 +418,16 @@ function TarjetaIndicador({ indicador, onVerIndicador }: TarjetaIndicadorProps) 
       animate={{ opacity: 1, scale: 1 }}
       className="cursor-pointer w-full"
     >
-      <Card 
+      <Card
         className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full"
-        style={{ 
+        style={{
           height: '560px',
           minHeight: '560px',
           maxHeight: '560px'
         }}
       >
         {/* Barra superior azul ESAP */}
-        <div 
+        <div
           className="h-1 flex-shrink-0"
           style={{ background: '#003DA5' }}
         />
@@ -575,7 +436,7 @@ function TarjetaIndicador({ indicador, onVerIndicador }: TarjetaIndicadorProps) 
           {/* Header */}
           <div className="flex items-start justify-between mb-1.5">
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <div 
+              <div
                 className="p-1.5 rounded-lg flex-shrink-0"
                 style={{ background: '#E0EDFF' }}
               >
@@ -614,17 +475,17 @@ function TarjetaIndicador({ indicador, onVerIndicador }: TarjetaIndicadorProps) 
           <div className="mb-1.5 pb-1.5 border-b border-gray-200">
             <div className="flex items-center gap-2">
               <Avatar className="w-6 h-6 flex-shrink-0">
-                <AvatarFallback 
+                <AvatarFallback
                   className="text-xs"
                   style={{ background: '#E0EDFF', color: '#003DA5' }}
                 >
-                  {indicador.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                  {(indicador.responsableNombre || 'NA').split(' ').map((n: any) => n[0]).join('').substring(0, 2)}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500">👨‍💼 Responsable:</p>
                 <p className="font-bold text-sm text-gray-900 line-clamp-1">
-                  {indicador.responsable}
+                  {indicador.responsableNombre || 'Sin Asignar'}
                 </p>
               </div>
             </div>
@@ -636,13 +497,13 @@ function TarjetaIndicador({ indicador, onVerIndicador }: TarjetaIndicadorProps) 
               <div>
                 <p className="text-xs text-gray-500 mb-0.5">🎯 Meta:</p>
                 <p className="font-bold text-sm text-gray-900">
-                  {indicador.meta} {indicador.unidadMedida}
+                  {indicador.metaObjetivo} {indicador.unidadMedida}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 mb-0.5">📈 Resultado:</p>
+                <p className="text-xs text-gray-500 mb-0.5">📈 Avance:</p>
                 <p className="font-bold text-sm text-green-700">
-                  {indicador.resultadoActual} {indicador.unidadMedida}
+                  {indicador.avanceActual || 0}%
                 </p>
               </div>
             </div>
@@ -650,15 +511,15 @@ function TarjetaIndicador({ indicador, onVerIndicador }: TarjetaIndicadorProps) 
 
           {/* Semáforo de cumplimiento */}
           <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-            <Badge 
+            <Badge
               className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200"
               style={{ color: semaforo.color }}
             >
-              <div 
+              <div
                 className="w-2 h-2 rounded-full"
                 style={{ background: semaforo.color }}
               />
-              {indicador.cumplimiento}%
+              {indicador.avanceActual || 0}%
             </Badge>
           </div>
 
@@ -677,7 +538,7 @@ function TarjetaIndicador({ indicador, onVerIndicador }: TarjetaIndicadorProps) 
               <p className="text-xs text-gray-500">Fin</p>
             </div>
             <div className="text-center p-1.5 rounded-lg bg-gray-50 border border-gray-100">
-              <p className="text-xs font-bold text-gray-700 uppercase">{indicador.etapa}</p>
+              <p className="text-xs font-bold text-gray-700 uppercase">{indicador.estado}</p>
               <p className="text-xs text-gray-500">Estado</p>
             </div>
           </div>
@@ -686,13 +547,15 @@ function TarjetaIndicador({ indicador, onVerIndicador }: TarjetaIndicadorProps) 
           <div className="mb-1.5">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] text-gray-500">Avance</span>
-              <span className="text-[10px] font-bold text-gray-700">{indicador.cumplimiento}%</span>
+              <span className="text-[10px] font-bold text-gray-700">
+                {indicador.avanceActual || 0}%
+              </span>
             </div>
             <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <div 
+              <div
                 className="h-full rounded-full transition-all"
-                style={{ 
-                  width: `${indicador.cumplimiento}%`,
+                style={{
+                  width: `${Math.min(indicador.avanceActual || 0, 100)}%`,
                   background: semaforo.color
                 }}
               />
@@ -714,6 +577,10 @@ function TarjetaIndicador({ indicador, onVerIndicador }: TarjetaIndicadorProps) 
               variant="ghost"
               size="sm"
               className="text-xs h-8 justify-start gap-1.5 hover:bg-gray-50"
+              onClick={(e: React.MouseEvent) => {
+                e.stopPropagation();
+                onActualizar(indicador);
+              }}
             >
               <CheckCircle className="w-3.5 h-3.5" />
               Actualizar
@@ -727,11 +594,12 @@ function TarjetaIndicador({ indicador, onVerIndicador }: TarjetaIndicadorProps) 
 
 // ==================== VISTA LISTA ====================
 interface VistaListaProps {
-  indicadores: IndicadorPlanAccion[];
-  onVerIndicador: (ind: IndicadorPlanAccion) => void;
+  indicadores: any[]; // Changed to any to match API response
+  onVerIndicador: (ind: any) => void;
+  onActualizar: (ind: any) => void;
 }
 
-function VistaLista({ indicadores, onVerIndicador }: VistaListaProps) {
+function VistaLista({ indicadores, onVerIndicador, onActualizar }: VistaListaProps) {
   const getSemaforoColor = (cumplimiento: number) => {
     if (cumplimiento >= 90) return '#10B981';
     if (cumplimiento >= 50) return '#F59E0B';
@@ -759,9 +627,10 @@ function VistaLista({ indicadores, onVerIndicador }: VistaListaProps) {
           </thead>
           <tbody>
             {indicadores.map((ind) => (
-              <tr 
+              <tr
                 key={ind.id}
-                className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                className="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={() => onVerIndicador(ind)}
               >
                 <td className="px-4 py-3 text-sm font-bold" style={{ color: '#003DA5' }}>
                   {ind.id}
@@ -776,22 +645,22 @@ function VistaLista({ indicadores, onVerIndicador }: VistaListaProps) {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <Badge 
+                    <Badge
                       className="text-xs flex items-center gap-1"
-                      style={{ color: getSemaforoColor(ind.cumplimiento) }}
+                      style={{ color: getSemaforoColor(ind.avanceActual || 0) }}
                     >
-                      <div 
+                      <div
                         className="w-2 h-2 rounded-full"
-                        style={{ background: getSemaforoColor(ind.cumplimiento) }}
+                        style={{ background: getSemaforoColor(ind.avanceActual || 0) }}
                       />
-                      {ind.cumplimiento}%
+                      {ind.avanceActual || 0}%
                     </Badge>
                     <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className="h-full rounded-full"
-                        style={{ 
-                          width: `${ind.cumplimiento}%`,
-                          background: getSemaforoColor(ind.cumplimiento)
+                        style={{
+                          width: `${Math.min(ind.avanceActual || 0, 100)}%`,
+                          background: getSemaforoColor(ind.avanceActual || 0)
                         }}
                       />
                     </div>
@@ -800,18 +669,18 @@ function VistaLista({ indicadores, onVerIndicador }: VistaListaProps) {
                 <td className="px-4 py-3 text-sm text-gray-700">
                   <div className="flex items-center gap-2">
                     <Avatar className="w-6 h-6">
-                      <AvatarFallback 
+                      <AvatarFallback
                         className="text-xs"
                         style={{ background: '#E0EDFF', color: '#003DA5' }}
                       >
-                        {getInitials(ind.responsable)}
+                        {getInitials(ind.responsableNombre || 'NA')}
                       </AvatarFallback>
                     </Avatar>
-                    {ind.responsable}
+                    <span className="truncate max-w-[150px]">{ind.responsableNombre || 'Sin Asignar'}</span>
                   </div>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-700">
-                  {ind.meta} {ind.unidadMedida}
+                  {ind.metaObjetivo} {ind.unidadMedida}
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
@@ -819,7 +688,10 @@ function VistaLista({ indicadores, onVerIndicador }: VistaListaProps) {
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0"
-                      onClick={() => onVerIndicador(ind)}
+                      onClick={(e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        onVerIndicador(ind);
+                      }}
                     >
                       <Eye className="w-4 h-4" />
                     </Button>
@@ -827,8 +699,12 @@ function VistaLista({ indicadores, onVerIndicador }: VistaListaProps) {
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0"
+                      onClick={(e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        onActualizar(ind);
+                      }}
                     >
-                      <CheckCircle className="w-4 h-4" />
+                      <CheckCircle className="w-4 h-4 text-green-600" />
                     </Button>
                   </div>
                 </td>

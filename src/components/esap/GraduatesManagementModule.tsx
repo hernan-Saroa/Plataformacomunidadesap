@@ -49,11 +49,19 @@ import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import React from 'react';
 import graduadosService, { GraduadoData } from '../../services/api/graduados.service';
+import estructuraService from '../../services/estructuraService';
+import type { Seccional, Sede } from '../../services/api/types';
 
 type GraduateRow = {
   id: string;
@@ -78,6 +86,7 @@ type GraduateRow = {
   documentsCount: number;
   createdBy?: string;
   asignacionesSedes?: Array<{ nombreSede: string }>;
+  territorial?: string;
   certificatesCount: number;
 };
 
@@ -92,6 +101,9 @@ export function GraduatesManagementModule() {
   const itemsPerPage = 10;
   const [graduates, setGraduates] = useState<GraduateRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [sedesCatalog, setSedesCatalog] = useState<Sede[]>([]);
+  const [seccionalesCatalog, setSeccionalesCatalog] = useState<Seccional[]>([]);
 
   // Estados para modales
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -114,7 +126,8 @@ export function GraduatesManagementModule() {
     phone: '',
     document: '',
     program: '',
-    location: ''
+    location: '',
+    territorial: '',
   });
 
   const [emailForm, setEmailForm] = useState({
@@ -174,16 +187,39 @@ export function GraduatesManagementModule() {
     return 'inactive';
   };
 
+  const normalizeKey = (value?: string) => (value || '').trim().toLowerCase();
+
   useEffect(() => {
     let isMounted = true;
 
     const loadGraduates = async () => {
       setIsLoading(true);
       try {
-        const [graduatesResponse, certificatesResponse] = await Promise.all([
+        const [estructuraResponse, graduatesResponse, certificatesResponse] = await Promise.all([
+          estructuraService.obtenerEstructura().catch(() => null),
           graduadosService.graduados.listarRegistroAcademico(),
           graduadosService.certificados.listar().catch(() => []),
         ]);
+
+        const estructuraSedes = estructuraResponse?.data?.sedes ?? [];
+        const estructuraSeccionales = estructuraResponse?.data?.seccionales ?? [];
+
+        if (isMounted) {
+          setSedesCatalog(estructuraSedes);
+          setSeccionalesCatalog(estructuraSeccionales);
+        }
+
+        const seccionalById = new Map<number, Seccional>();
+        estructuraSeccionales.forEach((seccional) => {
+          seccionalById.set(seccional.idSeccional, seccional);
+        });
+
+        const sedeByName = new Map<string, Sede>();
+        estructuraSedes.forEach((sede) => {
+          if (sede?.nomSede) {
+            sedeByName.set(normalizeKey(sede.nomSede), sede);
+          }
+        });
 
         const certificateCounts = new Map<string, number>();
         const certificatePrograms = new Map<string, Set<string>>();
@@ -206,6 +242,12 @@ export function GraduatesManagementModule() {
         const mappedGraduates = (graduatesResponse || []).map((graduate) => {
           const { firstName, lastName } = splitFullName(graduate.fullName);
           const campus = graduate.campus || 'Sin sede';
+          const sedeMatch = sedeByName.get(normalizeKey(campus));
+          const sedeName = sedeMatch?.nomSede || campus;
+          const territorialName =
+            graduate.seccionalName ||
+            sedeMatch?.seccional?.nomSeccional ||
+            (sedeMatch?.idSeccional ? seccionalById.get(sedeMatch.idSeccional)?.nomSeccional : undefined);
           return {
             id: graduate.id,
             personId: graduate.personId,
@@ -221,7 +263,8 @@ export function GraduatesManagementModule() {
                 since: graduate.graduationDate,
               },
             ],
-            location: campus,
+            location: sedeName,
+            territorial: territorialName,
             program: graduate.programName || 'No especificado',
             document: graduate.idNumber,
             enrollmentMethod: 'manual',
@@ -230,7 +273,7 @@ export function GraduatesManagementModule() {
             lastActivity: graduate.graduationDate,
             documentsCount: 0,
             createdBy: 'Registro Academico',
-            asignacionesSedes: campus ? [{ nombreSede: campus }] : undefined,
+            asignacionesSedes: sedeName ? [{ nombreSede: sedeName }] : undefined,
             certificatesCount:
               certificateCounts.get(graduate.idNumber) ??
               (graduate.graduationDate ? 1 : 0),
@@ -280,10 +323,21 @@ export function GraduatesManagementModule() {
     [graduatesOnly]
   );
 
-  const uniqueLocations = useMemo(
-    () => Array.from(new Set(graduatesOnly.map(u => u.location).filter(Boolean))),
-    [graduatesOnly]
-  );
+  const territorialOptions = useMemo(() => {
+    if (seccionalesCatalog.length > 0) {
+      return Array.from(
+        new Set(
+          seccionalesCatalog
+            .map((seccional) => seccional?.nomSeccional)
+            .filter(Boolean)
+        )
+      );
+    }
+
+    return Array.from(
+      new Set(graduatesOnly.map((user) => user.territorial).filter(Boolean))
+    );
+  }, [seccionalesCatalog, graduatesOnly]);
 
   const uniqueSedes = useMemo(() => {
     const sedes = new Set<string>();
@@ -297,6 +351,38 @@ export function GraduatesManagementModule() {
     return Array.from(sedes);
   }, [graduatesOnly]);
 
+  const sedesOptions = useMemo(() => {
+    if (sedesCatalog.length > 0) {
+      return Array.from(
+        new Set(sedesCatalog.map((sede) => sede?.nomSede).filter(Boolean))
+      );
+    }
+
+    return Array.from(new Set(uniqueSedes));
+  }, [sedesCatalog, uniqueSedes]);
+
+  const seccionalById = useMemo(() => {
+    const map = new Map<number, Seccional>();
+    seccionalesCatalog.forEach((seccional) => {
+      map.set(seccional.idSeccional, seccional);
+    });
+    return map;
+  }, [seccionalesCatalog]);
+
+  const territorialBySede = useMemo(() => {
+    const map = new Map<string, string>();
+    sedesCatalog.forEach((sede) => {
+      if (!sede?.nomSede) return;
+      const seccionalName =
+        sede.seccional?.nomSeccional ||
+        (sede.idSeccional ? seccionalById.get(sede.idSeccional)?.nomSeccional : undefined);
+      if (seccionalName) {
+        map.set(normalizeKey(sede.nomSede), seccionalName);
+      }
+    });
+    return map;
+  }, [sedesCatalog, seccionalById, normalizeKey]);
+
   const filteredUsers = useMemo(() => {
     return graduatesOnly.filter(user => {
       const matchesSearch = searchQuery === '' ||
@@ -306,7 +392,8 @@ export function GraduatesManagementModule() {
       
       const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
       const matchesProgram = programFilter === 'all' || user.program === programFilter;
-      const matchesLocation = locationFilter === 'all' || user.location === locationFilter;
+      const effectiveTerritorial = user.territorial;
+      const matchesLocation = locationFilter === 'all' || effectiveTerritorial === locationFilter;
       const matchesSede = sedeFilter === 'all' || 
         (user.asignacionesSedes && user.asignacionesSedes.some(asig => asig.nombreSede === sedeFilter));
       
@@ -432,7 +519,11 @@ export function GraduatesManagementModule() {
       phone: user.phone,
       document: user.document,
       program: user.program || '',
-      location: user.location
+      location: user.location,
+      territorial:
+        user.territorial ||
+        territorialBySede.get(normalizeKey(user.location)) ||
+        '',
     });
     setIsEditModalOpen(true);
   };
@@ -477,11 +568,59 @@ export function GraduatesManagementModule() {
   };
 
   // Handlers para confirmar acciones en modales
-  const confirmEdit = () => {
-    toast.success('Graduado Actualizado', {
-      description: `Los datos de ${editForm.firstName} ${editForm.lastName} han sido actualizados exitosamente.`
-    });
-    setIsEditModalOpen(false);
+  const confirmEdit = async () => {
+    if (!selectedUser) return;
+    setIsSaving(true);
+    try {
+      const fullName = `${editForm.firstName} ${editForm.lastName}`.trim();
+      const payload: Partial<GraduadoData> = {
+        fullName,
+        email: editForm.email,
+        phone: editForm.phone,
+        idNumber: editForm.document,
+        programName: editForm.program || selectedUser.program || '',
+        campus: editForm.location || undefined,
+        seccionalName: editForm.territorial || undefined,
+      };
+
+      await graduadosService.graduados.actualizar(selectedUser.id, payload);
+
+      const updatedTerritorial =
+        editForm.territorial ||
+        (editForm.location
+          ? territorialBySede.get(normalizeKey(editForm.location))
+          : selectedUser.territorial);
+
+      setGraduates((prev) =>
+        prev.map((graduate) =>
+          graduate.id === selectedUser.id
+            ? {
+                ...graduate,
+                firstName: editForm.firstName,
+                lastName: editForm.lastName,
+                email: editForm.email,
+                phone: editForm.phone,
+                document: editForm.document,
+                program: editForm.program || graduate.program,
+                location: editForm.location || graduate.location,
+                territorial: updatedTerritorial || graduate.territorial,
+              }
+            : graduate
+        )
+      );
+
+      toast.success('Graduado Actualizado', {
+        description: `Los datos de ${editForm.firstName} ${editForm.lastName} han sido actualizados exitosamente.`,
+      });
+      setIsEditModalOpen(false);
+    } catch (error: any) {
+      console.error('Error actualizando graduado:', error);
+      toast.error('No se pudo actualizar el graduado', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const confirmDelete = () => {
@@ -613,6 +752,9 @@ export function GraduatesManagementModule() {
   };
 
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || programFilter !== 'all' || locationFilter !== 'all' || sedeFilter !== 'all';
+  const selectedTerritorial = editForm.location
+    ? territorialBySede.get(normalizeKey(editForm.location))
+    : undefined;
 
   return (
     <div className="space-y-6">
@@ -848,12 +990,12 @@ export function GraduatesManagementModule() {
               }}
             >
               <option value="all">Todas las sedes</option>
-              {uniqueSedes.map((sede) => (
+              {sedesOptions.map((sede) => (
                 <option key={sede} value={sede}>{sede}</option>
               ))}
             </select>
 
-            {/* Filtro Ubicación */}
+            {/* Filtro Territorial */}
             <select
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
@@ -873,9 +1015,9 @@ export function GraduatesManagementModule() {
                 e.target.style.boxShadow = 'none';
               }}
             >
-              <option value="all">Todas las ubicaciones</option>
-              {uniqueLocations.map(loc => (
-                <option key={loc} value={loc}>{loc}</option>
+              <option value="all">Todas las seccionales</option>
+              {territorialOptions.map((territorial) => (
+                <option key={territorial} value={territorial}>{territorial}</option>
               ))}
             </select>
 
@@ -1072,18 +1214,31 @@ export function GraduatesManagementModule() {
                         <Eye className="w-4 h-4" />
                       </button>
 
-                      <button
-                        className="p-2 rounded-lg transition-all cursor-not-allowed opacity-50"
-                        style={{
-                          background: '#F9FAFB',
-                          color: '#6B7280'
-                        }}
-                        title="Opciones deshabilitadas temporalmente"
-                        disabled
-                        aria-disabled="true"
-                      >
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            className="p-2 rounded-lg transition-all"
+                            style={{
+                              background: '#F9FAFB',
+                              color: '#6B7280'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = '#F3F4F6';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = '#F9FAFB';
+                            }}
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEdit(user)}>
+                            <Edit className="w-4 h-4 mr-2" />
+                            Editar graduado
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </div>
@@ -1126,12 +1281,24 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            Ubicación
+                            Sede
                           </p>
                           <div className="flex items-center gap-1.5">
                             <MapPin className="w-4 h-4" style={{ color: '#6B7280' }} />
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
                               {user.location}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            Territorial
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                              {user.territorial || 'Sin territorial'}
                             </p>
                           </div>
                         </div>
@@ -1378,7 +1545,7 @@ export function GraduatesManagementModule() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-location">Ubicación</Label>
+              <Label htmlFor="edit-location">Sede</Label>
               <select
                 id="edit-location"
                 value={editForm.location}
@@ -1386,9 +1553,25 @@ export function GraduatesManagementModule() {
                 className="w-full border-2 rounded-lg px-3 py-2 text-sm"
                 style={{ borderColor: '#D1D5DB' }}
               >
-                <option value="">Seleccionar ubicación</option>
-                {uniqueLocations.map(loc => (
-                  <option key={loc} value={loc}>{loc}</option>
+                <option value="">Seleccionar sede</option>
+                {sedesOptions.map((sede) => (
+                  <option key={sede} value={sede}>{sede}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-territorial">Territorial</Label>
+              <select
+                id="edit-territorial"
+                value={editForm.territorial || selectedTerritorial || ''}
+                onChange={(e) => setEditForm({ ...editForm, territorial: e.target.value })}
+                className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+                style={{ borderColor: '#D1D5DB' }}
+              >
+                <option value="">Seleccionar seccional</option>
+                {territorialOptions.map((territorial) => (
+                  <option key={territorial} value={territorial}>{territorial}</option>
                 ))}
               </select>
             </div>
@@ -1406,8 +1589,9 @@ export function GraduatesManagementModule() {
               onClick={confirmEdit}
               className="px-4 py-2 text-sm font-medium rounded-lg"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
+              disabled={isSaving}
             >
-              Guardar Cambios
+              {isSaving ? 'Guardando...' : 'Guardar Cambios'}
             </button>
           </DialogFooter>
         </DialogContent>

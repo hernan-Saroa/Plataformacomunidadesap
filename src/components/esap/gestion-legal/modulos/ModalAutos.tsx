@@ -3,19 +3,23 @@
  * Autos = Decisiones judiciales emitidas por el juzgado durante el proceso
  */
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Input } from '../../../ui/input';
-import { 
-  Scale, Download, Eye, FileText, Calendar, 
+import { Label } from '../../../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
+import { Textarea } from '../../../ui/textarea';
+import {
+  Scale, Download, Eye, FileText, Calendar,
   AlertCircle, CheckCircle, Clock, X, Upload, Plus,
-  Trash2, Edit, Search, Filter
+  Trash2, Filter, Search
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
+import { legalService } from '../../../../services/api/legal.service';
 
 interface ModalAutosProps {
   isOpen: boolean;
@@ -35,199 +39,150 @@ const tiposAuto = [
   'Auto de Sustanciación'
 ];
 
-// Datos mock de autos
-const autosMock = [
-  {
-    id: 1,
-    tipo: 'Auto Admisorio',
-    numero: 'AUTO-001-2024',
-    fecha: '10/12/2024',
-    juzgado: 'Juzgado 1° Administrativo',
-    resumen: 'Se admite demanda presentada por el actor contra ESAP. Se ordena notificar al demandado y dar traslado para contestación en término de 30 días.',
-    estado: 'Notificado',
-    estadoColor: 'green',
-    archivo: 'auto_admisorio_001.pdf',
-    tamaño: '1.2 MB',
-    cumplimiento: 'Completado',
-    fechaNotificacion: '12/12/2024'
-  },
-  {
-    id: 2,
-    tipo: 'Auto de Traslado',
-    numero: 'AUTO-002-2024',
-    fecha: '15/12/2024',
-    juzgado: 'Juzgado 1° Administrativo',
-    resumen: 'Se concede traslado de la demanda por el término de ley (30 días calendario) para que la parte demandada presente su contestación y excepciones.',
-    estado: 'En Término',
-    estadoColor: 'blue',
-    archivo: 'auto_traslado_002.pdf',
-    tamaño: '890 KB',
-    cumplimiento: 'En Curso',
-    fechaNotificacion: '16/12/2024',
-    diasRestantes: 22
-  },
-  {
-    id: 3,
-    tipo: 'Auto de Pruebas',
-    numero: 'AUTO-003-2024',
-    fecha: '20/12/2024',
-    juzgado: 'Juzgado 1° Administrativo',
-    resumen: 'Se admiten las pruebas solicitadas por ambas partes. Se ordena practicar inspección judicial y tomar declaración de testigos.',
-    estado: 'Pendiente',
-    estadoColor: 'orange',
-    archivo: 'auto_pruebas_003.pdf',
-    tamaño: '1.5 MB',
-    cumplimiento: 'Pendiente',
-    fechaNotificacion: null
-  }
-];
+interface Auto {
+  id: string;
+  tipo: string;
+  numero: string;
+  fechaAuto: string;
+  juzgado: string;
+  resumen: string;
+  estado: string;
+  fechaNotificacion?: string;
+  archivoNombre: string;
+  archivoUrl: string;
+  diasRestantes?: number; // Calculated on frontend or backend
+}
 
 export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
-  const [autos, setAutos] = useState(autosMock);
+  const [autos, setAutos] = useState<Auto[]>([]);
+  const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [busqueda, setBusqueda] = useState('');
-  const [editandoId, setEditandoId] = useState<number | null>(null);
 
-  const handleDescargarAuto = (auto: typeof autosMock[0]) => {
-    // Simular descarga del archivo
-    toast.loading('⏳ Preparando descarga...', { 
-      duration: 1000,
-      id: 'descarga-auto' 
-    });
-    
-    setTimeout(() => {
-      toast.success('✅ Descarga completada', {
-        id: 'descarga-auto',
-        description: `${auto.archivo} (${auto.tamaño}) descargado exitosamente`,
-        duration: 3000
-      });
-      
-      // En producción, aquí iría la descarga real del archivo
-      // window.open(`/api/autos/download/${auto.id}`, '_blank');
-    }, 1000);
+  // Create Modal State
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newAutoData, setNewAutoData] = useState({
+    tipo: '',
+    numero: `AUTO-${new Date().getFullYear()}-001`,
+    fechaAuto: new Date().toISOString().split('T')[0],
+    juzgado: 'Juzgado 1° Administrativo',
+    resumen: ''
+  });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  // Fetch Autos
+  const fecthAutos = async () => {
+    setLoading(true);
+    try {
+      const data = await legalService.getAutos(expediente.id);
+      setAutos(data);
+    } catch (error) {
+      console.error('Error fetching autos:', error);
+      toast.error('Error al cargar autos procesales');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleVerAuto = (auto: typeof autosMock[0]) => {
-    toast.loading('📄 Cargando visor de documentos...', { 
-      duration: 1500,
-      id: 'ver-auto' 
-    });
-    
-    setTimeout(() => {
-      toast.success('👁️ Documento abierto', {
-        id: 'ver-auto',
-        description: `${auto.numero} - ${auto.tipo}`,
-        duration: 2000
-      });
-      
-      // En producción, aquí se abriría el visor de PDF
-      // window.open(`/visor/auto/${auto.id}`, '_blank');
-      // O se abriría un modal con el visor integrado
-    }, 1500);
+  useEffect(() => {
+    if (isOpen) {
+      fecthAutos();
+    }
+  }, [isOpen, expediente.id]);
+
+  const handleDescargarAuto = async (auto: Auto) => {
+    try {
+      const response = await fetch(auto.archivoUrl);
+      if (!response.ok) throw new Error('Error al descargar el archivo');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = auto.archivoNombre || `auto-${auto.numero}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Error al descargar el archivo');
+    }
   };
 
-  const handleCargarNuevoAuto = () => {
-    toast.info('📄 Abriendo carga de auto procesal', {
-      description: 'Selecciona el archivo del auto judicial',
-      duration: 2000
-    });
-    
-    // Simular apertura de input file
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.pdf,.doc,.docx';
-    
-    input.onchange = (e: any) => {
-      const file = e.target?.files?.[0];
-      if (file) {
-        // Mostrar toast de procesamiento
-        toast.info('⏳ Procesando auto procesal...', {
-          description: `${file.name} - ${(file.size / (1024 * 1024)).toFixed(2)} MB`,
-          duration: 2000
-        });
-        
-        // Simular carga después de 2 segundos
-        setTimeout(() => {
-          const nuevoAuto = {
-            id: autos.length + 1,
-            tipo: 'Auto de Sustanciación',
-            numero: `AUTO-00${autos.length + 1}-2024`,
-            fecha: new Date().toLocaleDateString('es-CO'),
-            juzgado: 'Juzgado 1° Administrativo',
-            resumen: `Nuevo auto cargado al expediente: ${file.name.replace(/\.[^/.]+$/, '')}. Pendiente de revisión, clasificación y notificación a las partes.`,
-            estado: 'Pendiente',
-            estadoColor: 'orange',
-            archivo: file.name,
-            tamaño: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
-            cumplimiento: 'Pendiente',
-            fechaNotificacion: null
-          };
-          
-          setAutos([nuevoAuto, ...autos]);
-          
-          // Reset filtros para mostrar el nuevo auto inmediatamente
-          setFiltroTipo('TODOS');
-          setBusqueda('');
-          
-          toast.success('✅ Auto procesal cargado exitosamente', {
-            description: `${nuevoAuto.numero} agregado al expediente - Pendiente de notificación`,
-            duration: 5000
-          });
-        }, 2000);
-      }
-    };
-    
-    input.click();
+  const handleVerAuto = (auto: Auto) => {
+    // Same logic for now, opens in new tab
+    window.open(auto.archivoUrl, '_blank');
   };
 
-  const handleEliminarAuto = (id: number, numero: string) => {
-    setAutos(autos.filter(a => a.id !== id));
-    toast.success('🗑️ Auto eliminado', {
-      description: `${numero} fue removido del expediente`
-    });
+  const handleCreateAuto = async () => {
+    if (!selectedFile) {
+      toast.error('Debes adjuntar el archivo del auto');
+      return;
+    }
+    if (!newAutoData.tipo || !newAutoData.numero || !newAutoData.resumen) {
+      toast.error('Por favor completa todos los campos requeridos');
+      return;
+    }
+
+    const toastId = toast.loading('Creando auto procesal...');
+    try {
+      // Use current radicado as ID (or expediente.id if they match, checking types)
+      await legalService.createAuto(expediente.id, newAutoData, selectedFile);
+      toast.success('Auto creado exitosamente', { id: toastId });
+      setIsCreateOpen(false);
+      setSelectedFile(null);
+      // Reset form basic fields maybe?
+      fecthAutos();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al crear el auto', { id: toastId });
+    }
   };
 
-  const handleMarcarNotificado = (id: number) => {
-    setAutos(autos.map(auto => 
-      auto.id === id 
-        ? { 
-            ...auto, 
-            estado: 'Notificado', 
-            estadoColor: 'green', 
-            fechaNotificacion: new Date().toLocaleDateString('es-CO'),
-            cumplimiento: 'Completado'
-          }
-        : auto
-    ));
-    toast.success('✅ Estado actualizado', {
-      description: 'Auto marcado como notificado'
-    });
+  const handleEliminarAuto = async (id: string, numero: string) => {
+    if (!confirm(`¿Estás seguro de eliminar el auto ${numero}?`)) return;
+
+    const toastId = toast.loading('Eliminando auto...');
+    try {
+      await legalService.deleteAuto(id);
+      toast.success('Auto eliminado', { id: toastId });
+      setAutos(prev => prev.filter(a => a.id !== id));
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al eliminar el auto', { id: toastId });
+    }
+  };
+
+  const handleNotificar = async (id: string) => {
+    const toastId = toast.loading('Actualizando estado...');
+    try {
+      await legalService.updateAutoEstado(id, 'Notificado');
+      toast.success('Auto marcado como notificado', { id: toastId });
+      fecthAutos(); // Refresh to show new state and date
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al actualizar estado', { id: toastId });
+    }
   };
 
   const handleDescargarTodos = () => {
-    toast.success('📦 Descargando todos los autos', {
-      description: `Preparando archivo ZIP con ${autos.length} documentos`
-    });
+    const url = legalService.getAutosDownloadUrl(expediente.id);
+    window.open(url, '_blank');
   };
 
-  const getEstadoBadge = (estado: string, color: string) => {
-    const colors: Record<string, string> = {
-      green: 'bg-green-100 text-green-700 border-green-300',
-      blue: 'bg-blue-100 text-blue-700 border-blue-300',
-      orange: 'bg-orange-100 text-orange-700 border-orange-300',
-      red: 'bg-red-100 text-red-700 border-red-300'
-    };
+  const getEstadoBadge = (estado: string) => {
+    const colorClass = estado === 'Notificado' ? 'bg-green-100 text-green-700 border-green-300'
+      : estado === 'Archivado' ? 'bg-blue-100 text-blue-700 border-blue-300'
+        : 'bg-orange-100 text-orange-700 border-orange-300';
 
-    const icons: Record<string, JSX.Element> = {
-      green: <CheckCircle className="w-3 h-3" />,
-      blue: <Clock className="w-3 h-3" />,
-      orange: <AlertCircle className="w-3 h-3" />,
-      red: <AlertCircle className="w-3 h-3" />
-    };
+    const icon = estado === 'Notificado' ? <CheckCircle className="w-3 h-3" />
+      : estado === 'Archivado' ? <Clock className="w-3 h-3" />
+        : <AlertCircle className="w-3 h-3" />;
 
     return (
-      <Badge className={`${colors[color]} font-semibold flex items-center gap-1`}>
-        {icons[color]}
+      <Badge className={`${colorClass} font-semibold flex items-center gap-1`}>
+        {icon}
         {estado}
       </Badge>
     );
@@ -236,11 +191,11 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
   // Aplicar filtros y búsqueda
   const autosFiltrados = autos
     .filter(a => filtroTipo === 'TODOS' || a.tipo === filtroTipo)
-    .filter(a => 
-      busqueda === '' || 
+    .filter(a =>
+      busqueda === '' ||
       a.numero.toLowerCase().includes(busqueda.toLowerCase()) ||
       a.tipo.toLowerCase().includes(busqueda.toLowerCase()) ||
-      a.resumen.toLowerCase().includes(busqueda.toLowerCase())
+      (a.resumen && a.resumen.toLowerCase().includes(busqueda.toLowerCase()))
     );
 
   return (
@@ -266,7 +221,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                   </p>
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-2">
                 <Badge style={{ background: '#003DA5', color: '#FFFFFF' }}>
                   {expediente.etapa}
@@ -297,7 +252,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
             <Button
               size="sm"
               variant="outline"
-              onClick={handleCargarNuevoAuto}
+              onClick={() => setIsCreateOpen(true)}
               className="font-bold"
             >
               <Plus className="w-3.5 h-3.5 mr-1" />
@@ -342,16 +297,16 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
               ¿Qué son los Autos Procesales?
             </h4>
             <p className="text-xs text-orange-800 leading-relaxed">
-              Los <strong>autos</strong> son decisiones judiciales emitidas por el juzgado durante el proceso. 
-              A diferencia de las sentencias (que resuelven el fondo), los autos resuelven asuntos de trámite 
-              como admisión de demandas, traslados, decreto de pruebas, nulidades, etc. Es fundamental dar 
-              cumplimiento oportuno a cada auto para evitar sanciones procesales.
+              Los <strong>autos</strong> son decisiones judiciales emitidas por el juzgado durante el proceso.
+              Es fundamental dar cumplimiento oportuno a cada auto para evitar sanciones procesales.
             </p>
           </Card>
 
           {/* Lista de autos */}
           <div className="space-y-3">
-            {autosFiltrados.length === 0 ? (
+            {loading ? (
+              <div className="text-center py-10 text-gray-500">Cargando autos...</div>
+            ) : autosFiltrados.length === 0 ? (
               <Card className="p-8 text-center">
                 <Scale className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                 <p className="text-sm font-bold text-gray-600 mb-1">
@@ -377,7 +332,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <h4 className="font-black text-gray-900">{auto.numero}</h4>
-                            {getEstadoBadge(auto.estado, auto.estadoColor)}
+                            {getEstadoBadge(auto.estado)}
                           </div>
                           <Badge variant="outline" className="text-xs mb-2">
                             {auto.tipo}
@@ -394,42 +349,33 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                         <div>
                           <p className="text-xs text-gray-500 mb-0.5">📅 Fecha Auto</p>
-                          <p className="text-xs font-bold text-gray-900">{auto.fecha}</p>
+                          <p className="text-xs font-bold text-gray-900">{new Date(auto.fechaAuto).toLocaleDateString()}</p>
                         </div>
                         <div>
                           <p className="text-xs text-gray-500 mb-0.5">⚖️ Juzgado</p>
-                          <p className="text-xs font-bold text-gray-900">Juzgado 1°</p>
+                          <p className="text-xs font-bold text-gray-900">{auto.juzgado}</p>
                         </div>
                         <div>
                           <p className="text-xs text-gray-500 mb-0.5">🔔 Notificación</p>
                           <p className="text-xs font-bold text-gray-900">
-                            {auto.fechaNotificacion || 'Pendiente'}
+                            {auto.fechaNotificacion ? new Date(auto.fechaNotificacion).toLocaleDateString() : 'Pendiente'}
                           </p>
                         </div>
                         <div>
                           <p className="text-xs text-gray-500 mb-0.5">✅ Cumplimiento</p>
-                          <p className="text-xs font-bold text-gray-900">{auto.cumplimiento}</p>
-                        </div>
-                      </div>
-
-                      {/* Alerta de días restantes */}
-                      {auto.diasRestantes && (
-                        <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 mb-3">
-                          <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                            <Clock className="w-3 h-3" />
-                            Quedan {auto.diasRestantes} días para dar cumplimiento
+                          <p className="text-xs font-bold text-gray-900">
+                            {auto.estado === 'Notificado' ? 'Completado' : 'Pendiente'}
                           </p>
                         </div>
-                      )}
+                      </div>
 
                       {/* Archivo y acciones */}
                       <div className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200">
                         <FileText className="w-4 h-4 text-red-600" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-gray-900 truncate">
-                            {auto.archivo}
+                            {auto.archivoNombre}
                           </p>
-                          <p className="text-xs text-gray-500">{auto.tamaño}</p>
                         </div>
                         <div className="flex items-center gap-1">
                           {/* Botón Ver - Naranja corporativo */}
@@ -443,7 +389,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                             <Eye className="w-3.5 h-3.5 mr-1" />
                             Ver
                           </Button>
-                          
+
                           {/* Botón Descargar - Naranja corporativo */}
                           <Button
                             size="sm"
@@ -455,28 +401,24 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                             <Download className="w-3.5 h-3.5 mr-1" />
                             Descargar
                           </Button>
-                          
+
                           {/* Botón Eliminar - Rojo peligro */}
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => {
-                              if (confirm(`¿Estás seguro de eliminar el auto ${auto.numero}?`)) {
-                                handleEliminarAuto(auto.id, auto.numero);
-                              }
-                            }}
+                            onClick={() => handleEliminarAuto(auto.id, auto.numero)}
                             title="Eliminar auto del expediente"
                             className="font-semibold text-xs px-2 py-1.5 border-red-300 text-red-600 hover:bg-red-50"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
-                          
+
                           {/* Botón Notificado (condicional) */}
                           {auto.estado !== 'Notificado' && (
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleMarcarNotificado(auto.id)}
+                              onClick={() => handleNotificar(auto.id)}
                               title="Marcar como notificado"
                               className="font-semibold text-xs px-2 py-1.5 border-green-300 text-green-600 hover:bg-green-50"
                             >
@@ -515,7 +457,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 Descargar Todos (ZIP)
               </Button>
               <Button
-                onClick={handleCargarNuevoAuto}
+                onClick={() => setIsCreateOpen(true)}
                 className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
               >
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
@@ -524,6 +466,56 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
             </div>
           </div>
         </div>
+
+        {/* Modal Crear Auto */}
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <DialogContent>
+            <DialogTitle>Crear Nuevo Auto</DialogTitle>
+            <DialogDescription>Registra un nuevo auto procesal en el expediente.</DialogDescription>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Tipo de Auto</Label>
+                <Select onValueChange={(val) => setNewAutoData({ ...newAutoData, tipo: val })} value={newAutoData.tipo}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona el tipo" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[9999]">
+                    {tiposAuto.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Número</Label>
+                  <Input value={newAutoData.numero} onChange={e => setNewAutoData({ ...newAutoData, numero: e.target.value })} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Fecha</Label>
+                  <Input type="date" value={newAutoData.fechaAuto} onChange={e => setNewAutoData({ ...newAutoData, fechaAuto: e.target.value })} />
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Juzgado</Label>
+                <Input value={newAutoData.juzgado} onChange={e => setNewAutoData({ ...newAutoData, juzgado: e.target.value })} />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Resumen / Contenido</Label>
+                <Textarea value={newAutoData.resumen} onChange={e => setNewAutoData({ ...newAutoData, resumen: e.target.value })} />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Archivo del Auto (PDF)</Label>
+                <Input type="file" accept=".pdf,.doc,.docx" onChange={e => setSelectedFile(e.target.files?.[0] || null)} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+              <Button onClick={handleCreateAuto} disabled={!selectedFile}>Crear Auto</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   );

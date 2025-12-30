@@ -34,189 +34,9 @@ import { ModalEvidencias } from './ModalEvidencias';
 import { ModalOficios } from './ModalOficios';
 import { ModalActas } from './ModalActas';
 
-// DATOS MOCK INLINE (temporales para demo)
-const procesosDisciplinariosMock: any[] = [
-  {
-    id: 'PD-2025-001',
-    etapa: 'E1_AVOCAMIENTO',
-    investigado: 'Juan Carlos Pérez López',
-    cargo: 'Coordinador Académico',
-    dependencia: 'Dirección Académica',
-    falta: 'Grave',
-    descripcionHechos: 'Irregularidad en selección de docentes',
-    investigador: 'Dr. Carlos Mendoza',
-    diasRestantes: 65,
-    diasTotales: 90,
-    documentosAdjuntos: 3,
-    ultimaActuacion: 'Solicitud de informes a RRHH',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dr. Carlos Mendoza',
-    tipoFalta: 'Grave',
-    disciplinado: 'Juan Carlos Pérez',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2025-002',
-    etapa: 'E1_AVOCAMIENTO',
-    investigado: 'María Fernanda González',
-    cargo: 'Secretaria Ejecutiva',
-    dependencia: 'Rectoría Nacional',
-    falta: 'Leve',
-    descripcionHechos: 'Ausencia injustificada',
-    investigador: 'Dra. Patricia Ruiz',
-    diasRestantes: 72,
-    diasTotales: 90,
-    documentosAdjuntos: 2,
-    ultimaActuacion: 'Citación para versión libre',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dra. Patricia Ruiz',
-    tipoFalta: 'Leve',
-    disciplinado: 'María Fernanda González',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2025-003',
-    etapa: 'E1_AVOCAMIENTO',
-    investigado: 'Pedro Antonio Martínez',
-    cargo: 'Director Financiero',
-    dependencia: 'Dirección Financiera',
-    falta: 'Gravísima',
-    descripcionHechos: 'Uso indebido de recursos',
-    investigador: 'Dr. Roberto Castro',
-    diasRestantes: 55,
-    diasTotales: 90,
-    documentosAdjuntos: 8,
-    ultimaActuacion: 'URGENTE: Análisis contable',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dr. Roberto Castro',
-    tipoFalta: 'Gravísima',
-    disciplinado: 'Pedro Antonio Martínez',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2024-046',
-    etapa: 'E2_DESCARGOS',
-    investigado: 'Carmen Elena Torres',
-    cargo: 'Jefa de Contratación',
-    dependencia: 'Dirección Administrativa',
-    falta: 'Gravísima',
-    descripcionHechos: 'Violación transparencia',
-    investigador: 'Dr. Carlos Mendoza',
-    diasRestantes: 60,
-    diasTotales: 180,
-    documentosAdjuntos: 12,
-    ultimaActuacion: 'Descargos en evaluación',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dr. Carlos Mendoza',
-    tipoFalta: 'Gravísima',
-    disciplinado: 'Carmen Elena Torres',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2024-047',
-    etapa: 'E2_DESCARGOS',
-    investigado: 'Roberto Carlos Díaz',
-    cargo: 'Coordinador de Sistemas',
-    dependencia: 'Dirección TI',
-    falta: 'Grave',
-    descripcionHechos: 'Acceso no autorizado a BD',
-    investigador: 'Dra. Sandra Cruz',
-    diasRestantes: 70,
-    diasTotales: 180,
-    documentosAdjuntos: 6,
-    ultimaActuacion: 'Análisis de descargos',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dra. Sandra Cruz',
-    tipoFalta: 'Grave',
-    disciplinado: 'Roberto Carlos Díaz',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2024-025',
-    etapa: 'E3_PRUEBAS',
-    investigado: 'Luis Alberto Castro',
-    cargo: 'Conductor',
-    dependencia: 'Servicios Generales',
-    falta: 'Grave',
-    descripcionHechos: 'Uso indebido vehículo oficial',
-    investigador: 'Dr. Roberto Castro',
-    diasRestantes: 70,
-    diasTotales: 270,
-    documentosAdjuntos: 4,
-    ultimaActuacion: 'Pruebas testimoniales',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dr. Roberto Castro',
-    tipoFalta: 'Grave',
-    disciplinado: 'Luis Alberto Castro',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2024-026',
-    etapa: 'E3_PRUEBAS',
-    investigado: 'Sandra Milena Ruiz',
-    cargo: 'Profesional de Planeación',
-    dependencia: 'Oficina de Planeación',
-    falta: 'Grave',
-    descripcionHechos: 'Filtración de información',
-    investigador: 'Dra. Ana López',
-    diasRestantes: 95,
-    diasTotales: 270,
-    documentosAdjuntos: 7,
-    ultimaActuacion: 'Rastreo forense',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dra. Ana López',
-    tipoFalta: 'Grave',
-    disciplinado: 'Sandra Milena Ruiz',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2024-012',
-    etapa: 'E4_ALEGATOS',
-    investigado: 'Diana Carolina Vega',
-    cargo: 'Secretaria Académica',
-    dependencia: 'Facultad de Posgrados',
-    falta: 'Grave',
-    descripcionHechos: 'Alteración de actas',
-    investigador: 'Dra. Sandra Cruz',
-    diasRestantes: 95,
-    diasTotales: 360,
-    documentosAdjuntos: 9,
-    ultimaActuacion: 'Alegatos presentados',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dra. Sandra Cruz',
-    tipoFalta: 'Grave',
-    disciplinado: 'Diana Carolina Vega',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2023-089',
-    etapa: 'E4_ALEGATOS',
-    investigado: 'Carlos Andrés Herrera',
-    cargo: 'Director Territorial',
-    dependencia: 'Sede Cali',
-    falta: 'Gravísima',
-    descripcionHechos: 'Conflicto de intereses',
-    investigador: 'Dr. Carlos Mendoza',
-    diasRestantes: 140,
-    diasTotales: 450,
-    documentosAdjuntos: 18,
-    ultimaActuacion: 'Fase de alegatos',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dr. Carlos Mendoza',
-    tipoFalta: 'Gravísima',
-    disciplinado: 'Carlos Andrés Herrera',
-    documentos: [],
-    fechaActualizacion: new Date()
-  }
-];
+import { legalService } from '../../../../services/api/legal.service';
+
+// ... (previous imports)
 
 export function ModuloJuzgamientoDisciplinarioV3() {
   const [isMobile, setIsMobile] = useState(false);
@@ -225,6 +45,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
+  const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
 
   // Detectar tamaño de pantalla
   useEffect(() => {
@@ -239,45 +60,69 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
+  // Fetch Data from API
+  useEffect(() => {
+    const fetchProcesos = async () => {
+      try {
+        const data = await legalService.getJuzgamientoProcesos();
+        const mappedData = data.map((p: any) => ({
+          ...p,
+          fechaHechos: new Date(), // Mock/Default
+          fechaUltimaActuacion: new Date(),
+          fechaActualizacion: new Date(),
+          diasTotales: 90, // Default constant
+          disciplinado: p.investigado, // Map backend 'investigado' to frontend 'disciplinado'
+          ultimaActuacion: p.actuaciones && p.actuaciones.length > 0 ? p.actuaciones[0].descripcion : 'Inicio del proceso',
+          documentosAdjuntos: p.documentos ? p.documentos.length : 0,
+        }));
+        setProcesos(mappedData);
+      } catch (error) {
+        console.error('Error fetching procesos:', error);
+        toast.error('Error al cargar expedientes disciplinarios');
+      }
+    };
+    fetchProcesos();
+  }, []);
+
   // Agrupar procesos por etapa
   const procesosPorEtapa = {
-    E1_AVOCAMIENTO: procesosDisciplinariosMock.filter(p => p.etapa === 'E1_AVOCAMIENTO'),
-    E2_DESCARGOS: procesosDisciplinariosMock.filter(p => p.etapa === 'E2_DESCARGOS'),
-    E3_PRUEBAS: procesosDisciplinariosMock.filter(p => p.etapa === 'E3_PRUEBAS'),
-    E4_ALEGATOS: procesosDisciplinariosMock.filter(p => p.etapa === 'E4_ALEGATOS'),
+    E1_AVOCAMIENTO: procesos.filter(p => p.etapa === 'E1_AVOCAMIENTO'),
+    E2_DESCARGOS: procesos.filter(p => p.etapa === 'E2_DESCARGOS'),
+    E3_PRUEBAS: procesos.filter(p => p.etapa === 'E3_PRUEBAS'),
+    E4_ALEGATOS: procesos.filter(p => p.etapa === 'E4_ALEGATOS'),
   };
 
   // Calcular estadísticas
-  const totalProcesos = procesosDisciplinariosMock.length;
-  const procesosCriticos = procesosDisciplinariosMock.filter(p => p.diasRestantes <= 3).length;
-  const procesosEnTermino = procesosDisciplinariosMock.filter(p => p.diasRestantes > 5).length;
+  const totalProcesos = procesos.length;
+  const procesosCriticos = procesos.filter(p => p.diasRestantes <= 3).length;
+  const procesosEnTermino = procesos.filter(p => p.diasRestantes > 5).length;
 
   const etapas = [
-    { 
-      nombre: 'Avocamiento', 
-      color: '#6B7280', 
-      icono: <FileCheck className="w-4 h-4 text-gray-600" />, 
+    {
+      nombre: 'Avocamiento',
+      color: '#6B7280',
+      icono: <FileCheck className="w-4 h-4 text-gray-600" />,
       diasEstimados: 5,
       procesos: procesosPorEtapa.E1_AVOCAMIENTO
     },
-    { 
-      nombre: 'Descargos', 
-      color: '#F59E0B', 
-      icono: <Edit className="w-4 h-4 text-amber-600" />, 
+    {
+      nombre: 'Descargos',
+      color: '#F59E0B',
+      icono: <Edit className="w-4 h-4 text-amber-600" />,
       diasEstimados: 10,
       procesos: procesosPorEtapa.E2_DESCARGOS
     },
-    { 
-      nombre: 'Pruebas', 
-      color: '#3B82F6', 
-      icono: <Search className="w-4 h-4 text-blue-600" />, 
+    {
+      nombre: 'Pruebas',
+      color: '#3B82F6',
+      icono: <Search className="w-4 h-4 text-blue-600" />,
       diasEstimados: 30,
       procesos: procesosPorEtapa.E3_PRUEBAS
     },
-    { 
-      nombre: 'Alegatos', 
-      color: '#003DA5', 
-      icono: <Gavel className="w-4 h-4" style={{ color: '#003DA5' }} />, 
+    {
+      nombre: 'Alegatos',
+      color: '#003DA5',
+      icono: <Gavel className="w-4 h-4" style={{ color: '#003DA5' }} />,
       diasEstimados: 10,
       procesos: procesosPorEtapa.E4_ALEGATOS
     },
@@ -427,8 +272,8 @@ export function ModuloJuzgamientoDisciplinarioV3() {
               </p>
             </div>
           )}
-          
-          <div 
+
+          <div
             className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
             style={{
               scrollbarWidth: 'thin',
@@ -497,8 +342,8 @@ function ColumnaKanban({ etapa, isMobile, isTablet }: ColumnaKanbanProps) {
         </div>
 
         {/* Lista de Procesos */}
-        <div 
-          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`} 
+        <div
+          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`}
           style={{ maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)' }}
         >
           {etapa.procesos.map((proceso) => (
@@ -567,7 +412,7 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
         {/* Header */}
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div 
+            <div
               className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`}
               style={{ background: '#E0EDFF' }}
             >
@@ -596,7 +441,7 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
         <div className="mb-2 pb-2 border-b border-gray-200">
           <div className="flex items-center gap-2">
             <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
-              <AvatarFallback 
+              <AvatarFallback
                 className="text-xs"
                 style={{ background: '#E0EDFF', color: '#003DA5' }}
               >
@@ -614,11 +459,11 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
 
         {/* Semáforo */}
         <div className="flex items-center gap-1.5 mb-2">
-          <Badge 
+          <Badge
             className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200"
             style={{ color: semaforo.color }}
           >
-            <div 
+            <div
               className="w-2 h-2 rounded-full"
               style={{ background: semaforo.color }}
             />
@@ -679,7 +524,7 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
               <Gavel className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
               Autos
             </Button>
-            
+
             <Button
               onClick={() => setModalEvidenciasOpen(true)}
               size="sm"
@@ -701,7 +546,7 @@ function TarjetaProceso({ proceso, isMobile }: TarjetaProcesoProps) {
               <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
               Oficios
             </Button>
-            
+
             <Button
               onClick={() => setModalActasOpen(true)}
               size="sm"

@@ -177,6 +177,7 @@ db/prod/
 # Uploads
 backend/internal-disciplinary-control-service/uploads/
 backend/legal-management-service/uploads/
+backend/internal-institutional-control-service/uploads/control-interno/
 .env.dev
 .env.qa
 .env.pre

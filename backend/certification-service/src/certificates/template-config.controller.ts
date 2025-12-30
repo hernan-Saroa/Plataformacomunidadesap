@@ -163,12 +163,62 @@ export class TemplateConfigController {
   }
 
   /**
+   * POST /certificates/template-config/reset-signer
+   * Restablece el nombre del firmante
+   */
+  @Post('reset-signer')
+  @HttpCode(HttpStatus.OK)
+  async resetSigner(@Body('updatedBy') updatedBy?: string, @Query('tipo') tipo?: string) {
+    return await this.templateConfigService.resetSignerName(
+      updatedBy || 'Usuario',
+      tipo || 'docente',
+    );
+  }
+
+  /**
+   * POST /certificates/template-config/reset-cargo-title
+   * Restablece el titulo del cargo al predeterminado
+   */
+  @Post('reset-cargo-title')
+  @HttpCode(HttpStatus.OK)
+  async resetCargoTitle(@Body('updatedBy') updatedBy?: string, @Query('tipo') tipo?: string) {
+    return await this.templateConfigService.resetCargoTitle(
+      updatedBy || 'Usuario',
+      tipo || 'docente',
+    );
+  }
+
+  /**
+   * POST /certificates/template-config/reset-content
+   * Restablece el contenido del certificado al predeterminado
+   */
+  @Post('reset-content')
+  @HttpCode(HttpStatus.OK)
+  async resetContent(@Body('updatedBy') updatedBy?: string, @Query('tipo') tipo?: string) {
+    return await this.templateConfigService.resetCertificateContent(
+      updatedBy || 'Usuario',
+      tipo || 'docente',
+    );
+  }
+  /**
    * GET /certificates/template-config/change-history
-   * Obtiene el historial de cambios de la configuración
+   * Obtiene el historial de cambios de la configuracion
    */
   @Get('change-history')
-  async getChangeHistory(@Query('tipo') tipo?: string) {
-    return await this.templateConfigService.getChangeHistory(tipo || 'docente');
+  async getChangeHistory(
+    @Query('tipo') tipo?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
+    const parsedOffset = offset ? Number.parseInt(offset, 10) : undefined;
+    const limitValue = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
+    const offsetValue = Number.isFinite(parsedOffset) ? parsedOffset : undefined;
+    return await this.templateConfigService.getChangeHistory(
+      tipo || 'docente',
+      limitValue,
+      offsetValue,
+    );
   }
 
   /**
@@ -198,3 +248,6 @@ export class TemplateConfigController {
     );
   }
 }
+
+
+
