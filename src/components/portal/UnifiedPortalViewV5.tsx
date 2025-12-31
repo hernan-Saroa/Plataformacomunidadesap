@@ -33,7 +33,7 @@ import {
   Filter, Calendar as CalendarIcon, PieChart, BarChart, LineChart, X,
   Plus, Edit, Trash2, Send, Paperclip, Image as ImageIcon, Menu, Grid3x3,
   List, RefreshCw, Share2, Printer, Copy, Heart, MessageCircle, Repeat2,
-  Bookmark, ThumbsUp, UserCircle2, Rss, Network, TrendingUpIcon
+  Bookmark, ThumbsUp, UserCircle2, Rss, Network, TrendingUpIcon, PenTool
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -64,6 +64,7 @@ import { JobBoardPortal } from './JobBoardPortal';
 import { NotificacionesArquitectura } from './NotificacionesArquitectura';
 import { PerfilUsuarioEditable } from './PerfilUsuarioEditable';
 import { FooterWorldClass } from '../FooterWorldClass';
+import { PortalTransaccionalFirmaCompleto } from '../esap/firma-electronica/PortalTransaccionalFirmaCompleto';
 
 interface UnifiedPortalViewV5Props {
   userName: string;
@@ -281,6 +282,20 @@ export function UnifiedPortalViewV5({
             icon: <Calendar className="w-5 h-5" />,
             action: () => setServicioAbierto('horarios-docente'),
             status: 'available'
+          },
+          {
+            id: 'documentos-firmar',
+            category: 'Documentos',
+            title: 'Mis Documentos por Firmar',
+            description: 'Documentos asignados a mí que requieren mi firma electrónica',
+            icon: <PenTool className="w-5 h-5" />,
+            action: () => setServicioAbierto('documentos-firmar'),
+            status: 'available',
+            badge: 'Digital',
+            quickStats: [
+              { label: 'Asignados a mí', value: roleData?.docs_pendientes || '2' },
+              { label: 'Firmados este mes', value: roleData?.docs_firmados || '8' }
+            ]
           }
         ];
 
@@ -333,13 +348,18 @@ export function UnifiedPortalViewV5({
             status: 'available'
           },
           {
-            id: 'nomina',
-            category: 'Financiero',
-            title: 'Consulta de Nómina',
-            description: 'Desprendibles de pago y certificados tributarios',
-            icon: <FileSpreadsheet className="w-5 h-5" />,
-            action: () => setServicioAbierto('nomina'),
-            status: 'available'
+            id: 'documentos-firmar',
+            category: 'Documentos',
+            title: 'Mis Documentos por Firmar',
+            description: 'Documentos asignados a mí que requieren mi firma electrónica',
+            icon: <PenTool className="w-5 h-5" />,
+            action: () => setServicioAbierto('documentos-firmar'),
+            status: 'available',
+            badge: 'Digital',
+            quickStats: [
+              { label: 'Asignados a mí', value: roleData?.docs_pendientes || '3' },
+              { label: 'Firmados este mes', value: roleData?.docs_firmados || '12' }
+            ]
           },
           {
             id: 'vacaciones',
@@ -708,6 +728,11 @@ export function UnifiedPortalViewV5({
   const renderServicioContent = () => {
     const servicio = servicesData.find(s => s.id === servicioAbierto);
     if (!servicio) return null;
+
+    // Renderizar componentes específicos según el servicio
+    if (servicioAbierto === 'documentos-firmar') {
+      return <PortalTransaccionalFirmaCompleto />;
+    }
 
     // Contenido genérico por defecto
     return (

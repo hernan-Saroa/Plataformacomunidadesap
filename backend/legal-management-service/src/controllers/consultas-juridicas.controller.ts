@@ -97,6 +97,15 @@ export class ConsultasJuridicasController {
         return this.consultasService.responder(id, respuestaData);
     }
 
+    @Patch(':id/gestionar-respuesta')
+    async gestionarRespuesta(
+        @Param('id') id: string,
+        @Body() body: { respuesta: string, enviar: boolean | string }
+    ) {
+        const enviar = body.enviar === true || body.enviar === 'true';
+        return this.consultasService.updateRespuesta(id, body.respuesta, enviar);
+    }
+
     @Delete(':id')
     async delete(@Param('id') id: string) {
         await this.consultasService.delete(id);

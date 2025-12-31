@@ -6,10 +6,7 @@ import { TerminosService } from '../services/terminos.service';
 export class TerminosController {
     constructor(private readonly terminosService: TerminosService) { }
 
-    @Post('manual')
-    async createManual(@Body() data: any) {
-        return this.terminosService.createManual(data);
-    }
+
 
     @Post('sincronizar')
     async sincronizar() {

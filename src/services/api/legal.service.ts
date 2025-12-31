@@ -39,6 +39,15 @@ export interface Expediente {
     tipoIdDemandado?: string;
     numeroIdDemandado?: string;
     documentosInicialesUrls?: string[];
+    // Campos de contacto del demandante
+    demandanteDireccion?: string;
+    demandanteTelefono?: string;
+    demandanteEmail?: string;
+    demandanteApoderado?: string;
+    // Campos de contacto del demandado
+    demandadoDireccion?: string;
+    demandadoTelefono?: string;
+    demandadoEmail?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -71,6 +80,18 @@ export class LegalService {
         if (descripcion) formData.append('descripcion', descripcion);
 
         return legalApiClient.upload<any>(`/api/legal/juzgamiento/${radicado}/documentos`, formData);
+    }
+
+    async getJuzgamientoDecisiones(radicado: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/juzgamiento/${radicado}/decisiones`);
+    }
+
+    async createJuzgamientoDecision(radicado: string, data: any): Promise<any> {
+        return legalApiClient.post<any>(`/api/legal/juzgamiento/${radicado}/decisiones`, data);
+    }
+
+    async updateJuzgamientoProceso(radicado: string, data: any): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/juzgamiento/${radicado}`, data);
     }
 
     // Renaming getExpedienteById to getExpediente as per instruction, and adapting the signature
@@ -151,7 +172,7 @@ export class LegalService {
 
     getAutosDownloadUrl(radicado: string): string {
         const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
-        return `${baseUrl}/api/legal/autos/download-all/${radicado}`;
+        return `${baseUrl}/api/legal/autos/expediente/${radicado}/download-zip`;
     }
 
     // Documentos
@@ -212,6 +233,10 @@ export class LegalService {
         return legalApiClient.delete(`/api/legal/actas/${id}`);
     }
 
+    async uploadActaFirmada(id: string, formData: FormData): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/actas/${id}/archivo`, formData);
+    }
+
     // ===== CONSULTAS JURÍDICAS (Asesoría Jurídica) =====
     async getConsultasJuridicas(): Promise<any[]> {
         return legalApiClient.get<any[]>('/api/legal/consultas-juridicas');
@@ -237,8 +262,38 @@ export class LegalService {
         return legalApiClient.patch<any>(`/api/legal/consultas-juridicas/${id}/respuesta`, respuestaData);
     }
 
+    async guardarRespuestaConsulta(id: string, respuesta: string, enviar: boolean): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/consultas-juridicas/${id}/gestionar-respuesta`, { respuesta, enviar });
+    }
+
+    async getComentariosConsulta(consultaId: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/consultas-juridicas/${consultaId}/comentarios`);
+    }
+
+    async crearComentarioConsulta(consultaId: string, data: any): Promise<any> {
+        return legalApiClient.post<any>(`/api/legal/consultas-juridicas/${consultaId}/comentarios`, data);
+    }
+
     async deleteConsultaJuridica(id: string): Promise<void> {
         return legalApiClient.delete(`/api/legal/consultas-juridicas/${id}`);
+    }
+
+    // ===== DOCUMENTOS DE CONSULTAS JURÍDICAS =====
+    async getDocumentosConsulta(consultaId: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/consultas-juridicas/${consultaId}/documentos`);
+    }
+
+    async uploadDocumentoConsulta(consultaId: string, formData: FormData): Promise<any> {
+        return legalApiClient.upload<any>(`/api/legal/consultas-juridicas/${consultaId}/documentos`, formData);
+    }
+
+    async deleteDocumentoConsulta(documentoId: string): Promise<void> {
+        return legalApiClient.delete(`/api/legal/consultas-juridicas/documentos/${documentoId}`);
+    }
+
+    getDocumentosConsultaDownloadUrl(consultaId: string): string {
+        const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
+        return `${baseUrl}/api/legal/consultas-juridicas/${consultaId}/documentos/download-zip`;
     }
 
     // --- CONTROL DE TÉRMINOS E INFORMES ---

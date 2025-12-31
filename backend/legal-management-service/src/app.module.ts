@@ -27,6 +27,8 @@ import { NotaExpediente } from './entities/nota-expediente.entity';
 import { ComentarioOC } from './entities/comentario-oc.entity';
 import { DocumentoOC } from './entities/documento-oc.entity';
 import { Riesgo } from './entities/riesgo.entity';
+import { DocumentoConsulta } from './entities/documento-consulta.entity';
+import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -49,6 +51,7 @@ import { ComentariosDocumentosOCController } from './controllers/comentarios-doc
 import { RiesgosController } from './controllers/riesgos.controller';
 import { PlanesMejoramientoController } from './controllers/planes-mejoramiento.controller';
 import { DashboardController } from './controllers/dashboard.controller';
+import { DocumentosConsultaController } from './controllers/documentos-consulta.controller';
 
 // Services
 import { ExpedienteService } from './services/expediente.service';
@@ -68,6 +71,10 @@ import { TareasNotasService } from './services/tareas-notas.service';
 import { ComentariosDocumentosOCService } from './services/comentarios-documentos-oc.service';
 import { RiesgosService } from './services/riesgos.service';
 import { DashboardService } from './services/dashboard.service';
+import { DocumentosConsultaService } from './services/documentos-consulta.service';
+import { ComentariosConsultaService } from './services/comentarios-consulta.service';
+import { ComentarioConsulta } from './entities/comentario-consulta.entity';
+import { ComentariosConsultaController } from './controllers/comentarios-consulta.controller';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -102,7 +109,12 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       ComentarioOC,
       DocumentoOC,
       // Riesgos
-      Riesgo
+      Riesgo,
+      // Documentos Consultas
+      DocumentoConsulta,
+      ComentarioConsulta,
+      // Decisiones
+      DecisionDisciplinaria
     ]),
     PeiModule,
     PlanesMejoramientoModule
@@ -128,7 +140,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     RequerimientosOCController,
     TareasNotasController,
     ComentariosDocumentosOCController,
-    RiesgosController
+    RiesgosController,
+    DocumentosConsultaController,
+    ComentariosConsultaController
     // PlanesMejoramientoController is usually inside PlanesMejoramientoModule, 
     // but if it was here in HEAD, I should check. 
     // HEAD didn't have it in controllers array explicitly (it had PlanesMejoramientoModule in imports).
@@ -152,7 +166,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     RequerimientosOCService,
     TareasNotasService,
     ComentariosDocumentosOCService,
-    RiesgosService
+    RiesgosService,
+    DocumentosConsultaService,
+    ComentariosConsultaService
   ],
 })
 export class AppModule { }
