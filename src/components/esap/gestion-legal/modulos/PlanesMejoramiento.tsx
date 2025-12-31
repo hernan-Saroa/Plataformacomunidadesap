@@ -36,8 +36,10 @@ import { ModalDetallePlan } from './planes/ModalDetallePlan';
 import { ModalEvidencias } from './planes/ModalEvidencias';
 import { ModalSeguimiento } from './planes/ModalSeguimiento';
 import { ModalComentarios } from './planes/ModalComentarios';
+import { buildApiUrl } from '../../../../config/environment';
 
-const API_URL = '/legal/api/v1/planes-mejoramiento';
+// const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
+const API_URL = buildApiUrl('legal', '/planes-mejoramiento');
 
 export function PlanesMejoramiento() {
   const [isMobile, setIsMobile] = useState(false);
