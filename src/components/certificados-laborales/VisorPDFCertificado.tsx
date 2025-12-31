@@ -20,6 +20,7 @@ interface VisorPDFCertificadoProps {
   onClose: () => void;
   autoAction?: 'download' | 'print';
   hiddenMode?: boolean;
+  onAutoActionComplete?: (action: 'download' | 'print', success: boolean) => void;
   certificado: {
     consecutivo: string;
     certificateHash?: string;
@@ -57,11 +58,19 @@ interface VisorPDFCertificadoProps {
   };
 }
 
-export function VisorPDFCertificado({ isOpen, onClose, certificado, autoAction, hiddenMode = false }: VisorPDFCertificadoProps) {
+export function VisorPDFCertificado({
+  isOpen,
+  onClose,
+  certificado,
+  autoAction,
+  hiddenMode = false,
+  onAutoActionComplete,
+}: VisorPDFCertificadoProps) {
   const certificadoRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [plantillaConfig, setPlantillaConfig] = useState<any>(null);
   const [templateType, setTemplateType] = useState<'docente' | 'administrador'>('docente');
+  const [autoActionHandled, setAutoActionHandled] = useState(false);
 
   const resolverTipoPlantilla = (): 'docente' | 'administrador' => {
     const fromCert = (certificado as any)?.templateType;
@@ -378,6 +387,9 @@ export function VisorPDFCertificado({ isOpen, onClose, certificado, autoAction, 
         description: `Certificado de ${certificado.empleado.nombre}`,
         duration: 3000
       });
+      if (autoAction) {
+        onAutoActionComplete?.('download', true);
+      }
     } catch (error) {
       console.error('Error al descargar certificado:', error);
       toast.error('Error al generar el PDF', {
@@ -385,6 +397,9 @@ export function VisorPDFCertificado({ isOpen, onClose, certificado, autoAction, 
         description: error instanceof Error ? error.message : 'Por favor, intente nuevamente',
         duration: 5000
       });
+      if (autoAction) {
+        onAutoActionComplete?.('download', false);
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -458,6 +473,9 @@ export function VisorPDFCertificado({ isOpen, onClose, certificado, autoAction, 
           printWindow.focus();
           printWindow.print();
           setTimeout(() => printWindow.close(), 150);
+          if (autoAction) {
+            onAutoActionComplete?.('print', true);
+          }
         }, 200);
         return;
       }
@@ -470,6 +488,12 @@ export function VisorPDFCertificado({ isOpen, onClose, certificado, autoAction, 
     esperarAssets();
     toast.info('Preparando documento para impresión...');
   };
+
+  React.useEffect(() => {
+    if (!isOpen || !autoAction) {
+      setAutoActionHandled(false);
+    }
+  }, [isOpen, autoAction]);
 
   const formatearFecha = (fechaStr: string) => {
     try {
@@ -490,16 +514,23 @@ export function VisorPDFCertificado({ isOpen, onClose, certificado, autoAction, 
     }
   };
 
-  // Disparar acciones automáticas cuando se usa en modo oculto
+    // Disparar acciones autom?ticas cuando se usa en modo oculto
   React.useEffect(() => {
     if (!isOpen || !autoAction) return;
+    if (!plantillaConfig) return;
+    if (autoActionHandled) return;
+    if (!certificadoRef.current) return;
+
     if (autoAction === 'download') {
-      handleDescargar();
+      void handleDescargar();
+      setAutoActionHandled(true);
     } else if (autoAction === 'print') {
       handleImprimir();
+      setAutoActionHandled(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, autoAction]);
+  }, [isOpen, autoAction, plantillaConfig, autoActionHandled]);
+
 
   if (!isOpen) return null;
 
@@ -523,7 +554,7 @@ export function VisorPDFCertificado({ isOpen, onClose, certificado, autoAction, 
 
   return (
     <AnimatePresence>
-      <div className={hiddenMode ? 'fixed inset-0 z-[9999] opacity-0 pointer-events-none h-0 w-0 overflow-hidden' : 'fixed inset-0 z-[9999] overflow-hidden'}>
+      <div className={hiddenMode ? 'fixed inset-0 z-[9999] opacity-0 pointer-events-none' : 'fixed inset-0 z-[9999] overflow-hidden'}>
         {!hiddenMode && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -536,7 +567,7 @@ export function VisorPDFCertificado({ isOpen, onClose, certificado, autoAction, 
         )}
 
         {/* Modal */}
-        <div className={hiddenMode ? 'fixed inset-0 p-0 m-0 opacity-0 pointer-events-none h-0 w-0 overflow-hidden' : 'fixed inset-0 flex items-center justify-center p-2 sm:p-4 pt-16 sm:pt-4'}>
+        <div className={hiddenMode ? 'fixed inset-0 p-0 m-0 opacity-0 pointer-events-none' : 'fixed inset-0 flex items-center justify-center p-2 sm:p-4 pt-16 sm:pt-4'}>
           <motion.div
             initial={hiddenMode ? { opacity: 0, scale: 1, y: 0 } : { opacity: 0, scale: 0.95, y: 20 }}
             animate={hiddenMode ? { opacity: 0, scale: 1, y: 0 } : { opacity: 1, scale: 1, y: 0 }}

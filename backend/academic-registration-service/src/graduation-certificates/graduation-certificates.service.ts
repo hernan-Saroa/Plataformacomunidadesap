@@ -14,9 +14,13 @@ import { CertificateDownload } from './certificate-download.entity';
 import { Signer } from './signer.entity';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { LandingCertificateRequestDto } from './dto/landing-certificate-request.dto';
+import { ApproveRequestDto } from './dto/approve-request.dto';
+import { UpdateGraduateDto } from './dto/update-graduate.dto';
+import { UpdateCertificateDto } from './dto/update-certificate.dto';
 import * as nodemailer from 'nodemailer';
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class GraduationCertificatesService {
@@ -487,6 +491,22 @@ export class GraduationCertificatesService {
     return `CERT-GR-${year}-${sequence}`;
   }
 
+  private async generateDiplomaNumber(): Promise<string> {
+    const year = new Date().getFullYear();
+    const count = await this.graduateRepository.count();
+    const sequence = (count + 1).toString().padStart(6, '0');
+    return `DIPL-${year}-${sequence}`;
+  }
+
+  private async generateActaNumber(): Promise<string> {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const count = await this.graduateRepository.count();
+    const sequence = (count + 1).toString().padStart(3, '0');
+    return `ACTA-${year}-${month}-${sequence}`;
+  }
+
   private async generateVerificationCode(): Promise<string> {
     const year = new Date().getFullYear();
     const count = await this.certificateRepository.count();
@@ -694,6 +714,176 @@ export class GraduationCertificatesService {
   }
 
   /**
+   * ADMIN: Obtener un graduado por ID
+   */
+  async obtenerGraduado(id: string) {
+    const graduate = await this.graduateRepository.findOne({ where: { id } });
+    if (!graduate) {
+      throw new NotFoundException('Graduado no encontrado');
+    }
+    return graduate;
+  }
+
+  /**
+   * ADMIN: Buscar graduado por cédula
+   */
+  async buscarGraduadoPorCedula(idNumber: string) {
+    const graduate = await this.graduateRepository.findOne({
+      where: { idNumber: idNumber.trim() },
+    });
+    if (!graduate) {
+      throw new NotFoundException('Graduado no encontrado');
+    }
+    return graduate;
+  }
+
+  /**
+   * ADMIN: Actualizar graduado
+   */
+  async actualizarGraduado(id: string, payload: UpdateGraduateDto) {
+    const graduate = await this.graduateRepository.findOne({ where: { id } });
+    if (!graduate) {
+      throw new NotFoundException('Graduado no encontrado');
+    }
+
+    const update: Partial<Graduate> = {};
+    if (payload.fullName !== undefined) {
+      update.fullName = payload.fullName.trim();
+    }
+    if (payload.idNumber !== undefined) {
+      update.idNumber = payload.idNumber.trim();
+    }
+    if (payload.email !== undefined) {
+      update.email = payload.email;
+    }
+    if (payload.phone !== undefined) {
+      update.phone = payload.phone;
+    }
+    if (payload.programId !== undefined) {
+      update.programId = payload.programId;
+    }
+    if (payload.programName !== undefined) {
+      update.programName = payload.programName;
+    }
+    if (payload.programType !== undefined) {
+      update.programType = payload.programType;
+    }
+    if (payload.degreeTitle !== undefined) {
+      update.degreeTitle = payload.degreeTitle;
+    }
+    if (payload.diplomaNumber !== undefined) {
+      update.diplomaNumber = payload.diplomaNumber;
+    }
+    if (payload.actaNumber !== undefined) {
+      update.actaNumber = payload.actaNumber;
+    }
+    if (payload.resolutionNumber !== undefined) {
+      update.resolutionNumber = payload.resolutionNumber;
+    }
+    if (payload.status !== undefined) {
+      update.status = payload.status;
+    }
+    if (payload.isVerified !== undefined) {
+      update.isVerified = payload.isVerified;
+    }
+    if (payload.campus !== undefined) {
+      update.campus = payload.campus;
+    }
+    if (payload.idIssueDate !== undefined) {
+      update.idIssueDate = this.parseDate(payload.idIssueDate) ?? graduate.idIssueDate;
+    }
+    if (payload.enrollmentDate !== undefined) {
+      update.enrollmentDate = this.parseDate(payload.enrollmentDate) ?? graduate.enrollmentDate;
+    }
+    if (payload.graduationDate !== undefined) {
+      update.graduationDate = this.parseDate(payload.graduationDate) ?? graduate.graduationDate;
+    }
+    if (payload.ceremonyDate !== undefined) {
+      update.ceremonyDate = this.parseDate(payload.ceremonyDate) ?? graduate.ceremonyDate;
+    }
+    if (payload.seccionalName !== undefined) {
+      update.seccionalName = payload.seccionalName.trim();
+    }
+
+    Object.assign(graduate, update);
+    return await this.graduateRepository.save(graduate);
+  }
+
+  /**
+   * ADMIN: Actualizar certificado
+   */
+  async actualizarCertificado(id: string, payload: UpdateCertificateDto) {
+    const certificate = await this.certificateRepository.findOne({
+      where: { id },
+    });
+    if (!certificate) {
+      throw new NotFoundException('Certificado no encontrado');
+    }
+
+    const update: Partial<GraduationCertificate> = {};
+    if (payload.fullName !== undefined) {
+      update.fullName = payload.fullName.trim();
+    }
+    if (payload.idNumber !== undefined) {
+      update.idNumber = payload.idNumber.trim();
+    }
+    if (payload.programName !== undefined) {
+      update.programName = payload.programName;
+    }
+    if (payload.programType !== undefined) {
+      update.programType = payload.programType;
+    }
+    if (payload.degreeTitle !== undefined) {
+      update.degreeTitle = payload.degreeTitle;
+    }
+    if (payload.diplomaNumber !== undefined) {
+      update.diplomaNumber = payload.diplomaNumber;
+    }
+    if (payload.actaNumber !== undefined) {
+      update.actaNumber = payload.actaNumber;
+    }
+    if (payload.campus !== undefined) {
+      update.campus = payload.campus;
+    }
+    if (payload.status !== undefined) {
+      update.status = payload.status;
+    }
+    if (payload.graduationDate !== undefined) {
+      update.graduationDate =
+        this.parseDate(payload.graduationDate) ?? certificate.graduationDate;
+    }
+    if (payload.issueDate !== undefined) {
+      update.issueDate =
+        this.parseDate(payload.issueDate) ?? certificate.issueDate;
+    }
+    if (payload.expiryDate !== undefined) {
+      update.expiryDate =
+        this.parseDate(payload.expiryDate) ?? certificate.expiryDate;
+    }
+
+    Object.assign(certificate, update);
+    const saved = await this.certificateRepository.save(certificate);
+
+    if (certificate.requestId) {
+      const request = await this.requestRepository.findOne({
+        where: { id: certificate.requestId },
+      });
+      if (request) {
+        if (payload.fullName !== undefined) request.fullName = payload.fullName.trim();
+        if (payload.idNumber !== undefined) request.idNumber = payload.idNumber.trim();
+        if (payload.programName !== undefined) request.programName = payload.programName;
+        if (payload.graduationDate !== undefined) {
+          request.graduationDate =
+            this.parseDate(payload.graduationDate) ?? request.graduationDate;
+        }
+        await this.requestRepository.save(request);
+      }
+    }
+
+    return saved;
+  }
+
+  /**
    * ADMIN: Listar todas las solicitudes
    */
   async listarSolicitudes() {
@@ -757,12 +947,7 @@ export class GraduationCertificatesService {
   /**
    * ADMIN: Aprobar solicitud y generar certificado
    */
-  async aprobarSolicitud(
-    id: string,
-    reviewNotes: string,
-    reviewerName?: string,
-    reviewerId?: string,
-  ) {
+  async aprobarSolicitud(id: string, payload: ApproveRequestDto) {
     const request = await this.requestRepository.findOne({
       where: { id },
       relations: ['graduate'],
@@ -772,28 +957,69 @@ export class GraduationCertificatesService {
       throw new NotFoundException('Solicitud no encontrada');
     }
 
-    const graduate =
+    const reviewNotes = (payload?.reviewNotes || 'Aprobado por revision manual').trim();
+
+    if (payload?.fullName) {
+      request.fullName = payload.fullName.trim();
+    }
+    if (payload?.idNumber) {
+      request.idNumber = payload.idNumber.trim();
+    }
+    if (payload?.programName) {
+      request.programName = payload.programName;
+    }
+    if (payload?.graduationDate !== undefined) {
+      request.graduationDate =
+        this.parseDate(payload.graduationDate) ?? request.graduationDate;
+    }
+
+    let graduate =
       request.graduate ||
       (await this.graduateRepository.findOne({
         where: { idNumber: request.idNumber, status: 'ACTIVE' },
       }));
 
     if (!graduate) {
-      this.logger.warn(
-        `No se encontró graduado activo para solicitud ${request.requestNumber}. Se generará certificado con datos de la solicitud.`,
-      );
-    } else {
+      const diplomaNumber = await this.generateDiplomaNumber();
+      const actaNumber = await this.generateActaNumber();
+
+      graduate = this.graduateRepository.create({
+        personId: randomUUID(),
+        fullName: request.fullName,
+        idNumber: request.idNumber,
+        idIssueDate: request.idIssueDate,
+        email: payload?.email || request.requesterEmail,
+        phone: payload?.phone || request.requesterPhone,
+        programId: randomUUID(),
+        programName: request.programName,
+        programType: payload?.programType || 'Pregrado',
+        graduationDate: request.graduationDate,
+        degreeTitle: payload?.degreeTitle || request.programName,
+        diplomaNumber,
+        actaNumber,
+        campus: payload?.campus,
+        seccionalName: payload?.seccionalName,
+        status: 'ACTIVE',
+        isVerified: true,
+        createdBy: 'SYSTEM',
+      });
+
+      graduate = await this.graduateRepository.save(graduate);
+    }
+
+    if (graduate) {
       request.graduate = graduate;
       request.graduateId = graduate.id;
     }
+
     request.isValidated = true;
     request.validationDate = new Date();
     request.status = 'COMPLETED';
     request.reviewedAt = new Date();
     request.reviewNotes = reviewNotes;
     request.reviewResolution = 'graduate_found';
-    request.reviewerName = reviewerName || request.reviewerName;
-    request.reviewedBy = reviewerId || request.reviewedBy;
+    request.reviewerName = payload?.reviewerName || request.reviewerName;
+    request.reviewedBy = payload?.reviewerId || request.reviewedBy;
     request.completionDate = new Date();
 
     await this.requestRepository.save(request);

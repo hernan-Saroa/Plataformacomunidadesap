@@ -4,7 +4,7 @@
  * - Formato de TABLA con columnas igual a Casos Pendientes
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -37,6 +37,21 @@ import { Card } from '../ui/card';
 import { toast } from 'sonner';
 import type { ReviewRequest, ReviewRequestStats } from '../../types';
 import graduadosService, { SolicitudCertificadoGraduado } from '../../services/api/graduados.service';
+import estructuraService from '../../services/estructuraService';
+import { PROGRAMAS_ESAP } from '../../data/oferta-academica-esap';
+
+type ApprovalForm = {
+  fullName: string;
+  idNumber: string;
+  email: string;
+  phone: string;
+  programName: string;
+  programType: string;
+  degreeTitle: string;
+  graduationDate: string;
+  campus: string;
+  seccionalName: string;
+};
 
 export function ReviewRequestsModule() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -51,6 +66,22 @@ export function ReviewRequestsModule() {
   const [reviewNotes, setReviewNotes] = useState('');
   const [reviewAction, setReviewAction] = useState<'approve' | 'reject'>('approve');
   const [requests, setRequests] = useState<ReviewRequest[]>([]);
+  const [isLoadingApprovalData, setIsLoadingApprovalData] = useState(false);
+  const [approvalForm, setApprovalForm] = useState<ApprovalForm>({
+    fullName: '',
+    idNumber: '',
+    email: '',
+    phone: '',
+    programName: '',
+    programType: '',
+    degreeTitle: '',
+    graduationDate: '',
+    campus: '',
+    seccionalName: '',
+  });
+  const [sedesOptions, setSedesOptions] = useState<string[]>([]);
+  const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
+  const [degreeTitleOptions, setDegreeTitleOptions] = useState<string[]>([]);
   const [stats, setStats] = useState<ReviewRequestStats>({
     total: 0,
     pending: 0,
@@ -67,6 +98,7 @@ export function ReviewRequestsModule() {
     type: 'start_review' | 'approve' | 'reject';
     request: ReviewRequest;
     notes?: string;
+    approvalDetails?: ApprovalForm;
   } | null>(null);
 
   // Funciones auxiliares
@@ -273,6 +305,100 @@ export function ReviewRequestsModule() {
     loadRequests();
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCatalogs = async () => {
+      try {
+        const [estructuraResponse, graduatesResponse] = await Promise.all([
+          estructuraService.obtenerEstructura().catch(() => null),
+          graduadosService.graduados.listarRegistroAcademico().catch(() => []),
+        ]);
+
+        if (!isMounted) return;
+
+        const sedes = estructuraResponse?.data?.sedes ?? [];
+        const seccionales = estructuraResponse?.data?.seccionales ?? [];
+
+        const sedesList = sedes
+          .map((sede: any) => sede?.nomSede)
+          .filter((value: string | undefined) => Boolean(value));
+        const seccionalesList = seccionales
+          .map((seccional: any) => seccional?.nomSeccional)
+          .filter((value: string | undefined) => Boolean(value));
+
+        setSedesOptions(Array.from(new Set(sedesList)).sort());
+        setSeccionalesOptions(Array.from(new Set(seccionalesList)).sort());
+
+        const degreeTitles = new Set<string>();
+        (graduatesResponse || []).forEach((graduate) => {
+          if (graduate?.degreeTitle) {
+            degreeTitles.add(graduate.degreeTitle);
+          }
+        });
+        setDegreeTitleOptions(Array.from(degreeTitles).sort());
+      } catch (error) {
+        console.error('Error cargando catalogos de aprobacion:', error);
+      }
+    };
+
+    loadCatalogs();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const programNameOptions = useMemo(() => {
+    const names = new Set<string>();
+    PROGRAMAS_ESAP.forEach((programa) => {
+      if (programa?.nombre) {
+        names.add(programa.nombre);
+      }
+    });
+    if (approvalForm.programName) {
+      names.add(approvalForm.programName);
+    }
+    return Array.from(names);
+  }, [approvalForm.programName]);
+
+  const programTypeOptions = useMemo(() => {
+    const types = new Set<string>();
+    PROGRAMAS_ESAP.forEach((programa) => {
+      if (programa?.nivel) {
+        types.add(programa.nivel);
+      }
+    });
+    if (approvalForm.programType) {
+      types.add(approvalForm.programType);
+    }
+    return Array.from(types);
+  }, [approvalForm.programType]);
+
+  const degreeTitleSelectOptions = useMemo(() => {
+    const titles = new Set<string>(degreeTitleOptions);
+    if (approvalForm.degreeTitle) {
+      titles.add(approvalForm.degreeTitle);
+    }
+    return Array.from(titles);
+  }, [approvalForm.degreeTitle, degreeTitleOptions]);
+
+  const campusOptions = useMemo(() => {
+    const options = new Set<string>(sedesOptions);
+    if (approvalForm.campus) {
+      options.add(approvalForm.campus);
+    }
+    return Array.from(options);
+  }, [approvalForm.campus, sedesOptions]);
+
+  const seccionalSelectOptions = useMemo(() => {
+    const options = new Set<string>(seccionalesOptions);
+    if (approvalForm.seccionalName) {
+      options.add(approvalForm.seccionalName);
+    }
+    return Array.from(options);
+  }, [approvalForm.seccionalName, seccionalesOptions]);
+
   // Filtros
   const filteredRequests = requests.filter(request => {
     const matchesSearch = 
@@ -303,17 +429,105 @@ export function ReviewRequestsModule() {
     setShowConfirmModal(true);
   };
 
-  const handleOpenReviewModal = (request: ReviewRequest, action: 'approve' | 'reject') => {
+  const handleOpenReviewModal = async (
+    request: ReviewRequest,
+    action: 'approve' | 'reject'
+  ) => {
     setSelectedRequest(request);
     setReviewAction(action);
     setReviewNotes('');
     setShowReviewModal(true);
+
+    if (action !== 'approve') {
+      return;
+    }
+
+    setIsLoadingApprovalData(true);
+    try {
+      const detail = await graduadosService.solicitudes.obtenerPorId(request.id);
+      const graduationDate = detail.graduationDate
+        ? detail.graduationDate.toString().slice(0, 10)
+        : '';
+
+      let nextForm: ApprovalForm = {
+        fullName: detail.fullName || '',
+        idNumber: detail.idNumber || request.graduateDocumentNumber,
+        email: detail.requesterEmail || request.requester.email || '',
+        phone: detail.requesterPhone || '',
+        programName: detail.programName || '',
+        programType: '',
+        degreeTitle: '',
+        graduationDate,
+        campus: '',
+        seccionalName: '',
+      };
+
+      if (detail.graduateId) {
+        try {
+          const graduate = await graduadosService.graduados.obtenerPorId(detail.graduateId);
+          nextForm = {
+            ...nextForm,
+            fullName: graduate.fullName || nextForm.fullName,
+            idNumber: graduate.idNumber || nextForm.idNumber,
+            email: graduate.email || nextForm.email,
+            phone: graduate.phone || nextForm.phone,
+            programName: graduate.programName || nextForm.programName,
+            programType: graduate.programType || nextForm.programType,
+            degreeTitle: graduate.degreeTitle || nextForm.degreeTitle,
+            graduationDate: graduate.graduationDate
+              ? graduate.graduationDate.toString().slice(0, 10)
+              : nextForm.graduationDate,
+            campus: graduate.campus || nextForm.campus,
+            seccionalName: graduate.seccionalName || nextForm.seccionalName,
+          };
+        } catch (error) {
+          console.error('Error cargando graduado asociado:', error);
+        }
+      }
+
+      setApprovalForm(nextForm);
+    } catch (error) {
+      console.error('Error cargando solicitud:', error);
+      toast.error('No se pudo cargar la solicitud para aprobar');
+    } finally {
+      setIsLoadingApprovalData(false);
+    }
   };
 
   const handleSubmitReview = () => {
     if (!reviewNotes.trim()) {
-      toast.error('Por favor ingresa notas de revisión');
+      toast.error('Por favor ingresa notas de revision');
       return;
+    }
+    if (reviewAction === 'approve') {
+      if (!approvalForm.fullName.trim()) {
+        toast.error('El nombre del graduado es obligatorio');
+        return;
+      }
+      if (!approvalForm.programName) {
+        toast.error('Selecciona el programa');
+        return;
+      }
+      if (!approvalForm.programType) {
+        toast.error('Selecciona el tipo de programa');
+        return;
+      }
+      if (!approvalForm.degreeTitle) {
+        toast.error('Selecciona el titulo');
+        return;
+      }
+      if (!approvalForm.graduationDate) {
+        toast.error('Selecciona la fecha de graduacion');
+        return;
+      }
+      if (!approvalForm.campus) {
+        toast.error('Selecciona la sede');
+        return;
+      }
+      if (!approvalForm.seccionalName) {
+        toast.error('Selecciona la seccional');
+        return;
+      }
     }
 
     setShowReviewModal(false);
@@ -322,6 +536,7 @@ export function ReviewRequestsModule() {
         type: reviewAction,
         request: selectedRequest,
         notes: reviewNotes.trim(),
+        approvalDetails: reviewAction === 'approve' ? approvalForm : undefined,
       });
       setShowConfirmModal(true);
     }
@@ -339,9 +554,13 @@ export function ReviewRequestsModule() {
         await graduadosService.solicitudes.marcarEnRevision(confirmAction.request.id);
         toast.success('Solicitud marcada como en revisión');
       } else if (confirmAction.type === 'approve') {
+        const approvalPayload = {
+          reviewNotes: confirmAction.notes || 'Aprobado por revision manual',
+          ...(confirmAction.approvalDetails || {}),
+        };
         await graduadosService.solicitudes.aprobar(
           confirmAction.request.id,
-          confirmAction.notes || 'Aprobado por revisión manual'
+          approvalPayload
         );
         toast.success('Solicitud aprobada y certificado generado');
       } else if (confirmAction.type === 'reject') {
@@ -704,7 +923,7 @@ export function ReviewRequestsModule() {
               <div className="grid grid-cols-12 gap-4 p-4 text-xs font-semibold" style={{ color: '#6B7280' }}>
                 <div className="col-span-3">SOLICITUD / SOLICITANTE</div>
                 <div className="col-span-2">GRADUADO BUSCADO</div>
-                <div className="col-span-2">FECHA EXPEDICIÓN</div>
+                <div className="col-span-2">FECHA SOLICITUD</div>
                 <div className="col-span-2">ESTADO</div>
                 <div className="col-span-2">TIEMPO</div>
                 <div className="col-span-1 text-right">ACCIONES</div>
@@ -765,7 +984,7 @@ export function ReviewRequestsModule() {
                       </div>
                     </div>
 
-                    {/* Columna 3: Fecha Expedición (2 cols) */}
+                    {/* Columna 3: Fecha Solicitud (2 cols) */}
                     <div className="col-span-2">
                       <div className="flex items-center gap-2">
                         <div
@@ -776,10 +995,12 @@ export function ReviewRequestsModule() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold truncate" style={{ color: '#1F2937' }}>
-                            {new Date(request.graduateDocumentIssueDate).toLocaleDateString('es-CO')}
+                            {request.createdAt
+                              ? new Date(request.createdAt).toLocaleDateString('es-CO')
+                              : '-'}
                           </p>
                           <p className="text-xs truncate" style={{ color: '#6B7280' }}>
-                            Expedición
+                            Solicitud
                           </p>
                         </div>
                       </div>
@@ -920,7 +1141,7 @@ export function ReviewRequestsModule() {
                               <div className="flex items-start gap-2">
                                 <Calendar className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
-                                  <p className="text-xs text-gray-600">Fecha de Expedición</p>
+                                  <p className="text-xs text-gray-600">Fecha de Solicitud</p>
                                   <p className="font-semibold text-gray-900">
                                     {new Date(request.graduateDocumentIssueDate).toLocaleDateString('es-CO', {
                                       year: 'numeric',
@@ -1053,8 +1274,8 @@ export function ReviewRequestsModule() {
 
       {/* Modal: Revisar Solicitud */}
       <Dialog open={showReviewModal} onOpenChange={setShowReviewModal}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl w-[92vw] my-8 max-h-[90vh] overflow-y-auto p-0">
+          <DialogHeader className="px-6 pt-6">
             <DialogTitle className="flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-600" />
               {reviewActionLabel} Solicitud
@@ -1064,7 +1285,7 @@ export function ReviewRequestsModule() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-4 space-y-4">
+          <div className="px-6 py-4 space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <FileText className="w-5 h-5 mt-0.5 text-blue-600" />
@@ -1095,6 +1316,149 @@ export function ReviewRequestsModule() {
               />
             </div>
 
+            {reviewAction === 'approve' && (
+              <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-900">Datos del graduado</p>
+                  <span className="text-xs text-gray-500">Acta y diploma se generan automaticamente</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Nombre completo *</label>
+                    <input
+                      value={approvalForm.fullName}
+                      onChange={(e) => setApprovalForm({ ...approvalForm, fullName: e.target.value })}
+                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Nombre completo"
+                      disabled={isLoadingApprovalData}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Documento *</label>
+                    <input
+                      value={approvalForm.idNumber || selectedRequest?.graduateDocumentNumber || ''}
+                      onChange={(e) => setApprovalForm({ ...approvalForm, idNumber: e.target.value })}
+                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      disabled
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Email</label>
+                    <input
+                      type="email"
+                      value={approvalForm.email}
+                      onChange={(e) => setApprovalForm({ ...approvalForm, email: e.target.value })}
+                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      placeholder="correo@ejemplo.com"
+                      disabled={isLoadingApprovalData}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Telefono</label>
+                    <input
+                      value={approvalForm.phone}
+                      onChange={(e) => setApprovalForm({ ...approvalForm, phone: e.target.value })}
+                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      placeholder="3001234567"
+                      disabled={isLoadingApprovalData}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Programa *</label>
+                    <select
+                      value={approvalForm.programName}
+                      onChange={(e) => setApprovalForm({ ...approvalForm, programName: e.target.value })}
+                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      disabled={isLoadingApprovalData}
+                    >
+                      <option value="">Seleccionar programa</option>
+                      {programNameOptions.map((programa) => (
+                        <option key={programa} value={programa}>
+                          {programa}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Tipo de programa *</label>
+                    <select
+                      value={approvalForm.programType}
+                      onChange={(e) => setApprovalForm({ ...approvalForm, programType: e.target.value })}
+                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      disabled={isLoadingApprovalData}
+                    >
+                      <option value="">Seleccionar tipo</option>
+                      {programTypeOptions.map((tipo) => (
+                        <option key={tipo} value={tipo}>
+                          {tipo}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Titulo *</label>
+                    <select
+                      value={approvalForm.degreeTitle}
+                      onChange={(e) => setApprovalForm({ ...approvalForm, degreeTitle: e.target.value })}
+                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      disabled={isLoadingApprovalData}
+                    >
+                      <option value="">Seleccionar titulo</option>
+                      {degreeTitleSelectOptions.map((titulo) => (
+                        <option key={titulo} value={titulo}>
+                          {titulo}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Fecha de graduacion *</label>
+                    <input
+                      type="date"
+                      value={approvalForm.graduationDate}
+                      onChange={(e) => setApprovalForm({ ...approvalForm, graduationDate: e.target.value })}
+                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      disabled={isLoadingApprovalData}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Sede *</label>
+                    <select
+                      value={approvalForm.campus}
+                      onChange={(e) => setApprovalForm({ ...approvalForm, campus: e.target.value })}
+                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      disabled={isLoadingApprovalData}
+                    >
+                      <option value="">Seleccionar sede</option>
+                      {campusOptions.map((sede) => (
+                        <option key={sede} value={sede}>
+                          {sede}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Seccional *</label>
+                    <select
+                      value={approvalForm.seccionalName}
+                      onChange={(e) =>
+                        setApprovalForm({ ...approvalForm, seccionalName: e.target.value })
+                      }
+                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      disabled={isLoadingApprovalData}
+                    >
+                      <option value="">Seleccionar seccional</option>
+                      {seccionalSelectOptions.map((seccional) => (
+                        <option key={seccional} value={seccional}>
+                          {seccional}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 mt-0.5 text-amber-600" />
@@ -1110,7 +1474,7 @@ export function ReviewRequestsModule() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="px-6 pb-6 pt-4">
             <button
               onClick={() => setShowReviewModal(false)}
               className="px-4 py-2 text-sm font-medium rounded-lg border-2"
@@ -1122,6 +1486,7 @@ export function ReviewRequestsModule() {
               onClick={handleSubmitReview}
               className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
+              disabled={isLoadingApprovalData}
             >
               <CheckCircle className="w-4 h-4" />
               Continuar

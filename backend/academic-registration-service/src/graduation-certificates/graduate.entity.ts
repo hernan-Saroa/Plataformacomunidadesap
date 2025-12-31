@@ -77,6 +77,9 @@ export class Graduate {
   @Column({ length: 100, nullable: true })
   campus: string;
 
+  @Column({ name: 'seccional_name', length: 255, nullable: true })
+  seccionalName: string;
+
   // Auditoría
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

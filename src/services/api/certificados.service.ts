@@ -161,6 +161,16 @@ export const certificadosService = {
     },
 
     /**
+     * Obtener historial de validaciones de un certificado laboral
+     */
+    async historialValidaciones(codigoVerificacion: string): Promise<any> {
+      const codigo = (codigoVerificacion || '').toUpperCase();
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/certificados/${codigo}/validations`, {
+        requiresAuth: false,
+      });
+    },
+
+    /**
      * Obtener estadísticas públicas
      */
     async estadisticas(): Promise<{

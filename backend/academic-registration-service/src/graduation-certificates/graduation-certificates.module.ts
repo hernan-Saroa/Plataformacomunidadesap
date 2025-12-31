@@ -9,6 +9,7 @@ import { Signer } from './signer.entity';
 import { TemplateConfig } from './template-config.entity';
 import { TemplateConfigChange } from './template-config-change.entity';
 import { GraduationCertificatesController } from './graduation-certificates.controller';
+import { GraduatesController } from './graduates.controller';
 import { GraduationCertificatesService } from './graduation-certificates.service';
 import { PdfGeneratorService } from './pdf-generator.service';
 
@@ -25,7 +26,7 @@ import { PdfGeneratorService } from './pdf-generator.service';
       TemplateConfigChange,
     ]),
   ],
-  controllers: [GraduationCertificatesController],
+  controllers: [GraduationCertificatesController, GraduatesController],
   providers: [GraduationCertificatesService, PdfGeneratorService],
   exports: [GraduationCertificatesService],
 })

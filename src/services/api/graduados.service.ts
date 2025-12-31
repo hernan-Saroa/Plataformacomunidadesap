@@ -3,12 +3,10 @@
  * Maneja todas las peticiones HTTP al microservicio academic-registration-service
  */
 
-import apiClient from './apiClient';
-import { MICROSERVICE_URLS } from '../../config/environment';
+import { apiClient } from './client';
 
-// URL directa al microservicio de registro académico
-const BASE_URL = MICROSERVICE_URLS['registro-academico']; // http://localhost:3002
-const SERVICE_PREFIX = '/academic-registration/api/v1';
+// Prefijo del servicio en el API Gateway (rutea al servicio registro-academico)
+const SERVICE_PREFIX = '/registro-academico/api/v1';
 
 /**
  * Interface: Datos de un graduado
@@ -33,6 +31,7 @@ export interface GraduadoData {
   status: 'ACTIVE' | 'REVOKED' | 'SUSPENDED';
   isVerified: boolean;
   campus: string;
+  seccionalName?: string;
 }
 
 /**
@@ -98,6 +97,22 @@ export interface CertificadoGraduado {
   expiryDate?: string;
   revocationDate?: string;
   revocationReason?: string;
+}
+
+export interface AprobarSolicitudPayload {
+  reviewNotes: string;
+  reviewerName?: string;
+  reviewerId?: string;
+  fullName?: string;
+  idNumber?: string;
+  email?: string;
+  phone?: string;
+  programName?: string;
+  programType?: string;
+  degreeTitle?: string;
+  graduationDate?: string;
+  campus?: string;
+  seccionalName?: string;
 }
 
 /**
@@ -185,7 +200,7 @@ const graduadosService = {
       idIssueDate: string
     ): Promise<VerificacionDocumentoResponse> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/autoservicio/verificar-graduado`,
+        `${SERVICE_PREFIX}/certificates/autoservicio/verificar-graduado`,
         {
           idNumber,
           idIssueDate,
@@ -204,7 +219,7 @@ const graduadosService = {
       idIssueDate: string
     ): Promise<GenerarCodigoResponse> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/autoservicio/generar-codigo`,
+        `${SERVICE_PREFIX}/certificates/autoservicio/generar-codigo`,
         {
           idNumber,
           idIssueDate,
@@ -225,7 +240,7 @@ const graduadosService = {
       codigo: string
     ): Promise<ValidarCodigoResponse> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/autoservicio/validar-codigo`,
+        `${SERVICE_PREFIX}/certificates/autoservicio/validar-codigo`,
         {
           idNumber,
           idIssueDate,
@@ -250,7 +265,7 @@ const graduadosService = {
       graduationDate?: string;
     }): Promise<SolicitarCertificadoLandingResponse> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/autoservicio/solicitar-certificado`,
+        `${SERVICE_PREFIX}/certificates/autoservicio/solicitar-certificado`,
         payload
       );
       return response;
@@ -269,7 +284,7 @@ const graduadosService = {
       verificationCode: string
     ): Promise<ValidacionPublicaResponse> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/validacion/qr`,
+        `${SERVICE_PREFIX}/certificates/validacion/qr`,
         {
           verificationCode,
         }
@@ -285,7 +300,7 @@ const graduadosService = {
       certificateNumber: string
     ): Promise<ValidacionPublicaResponse> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/validacion/numero`,
+        `${SERVICE_PREFIX}/certificates/validacion/numero`,
         {
           certificateNumber,
         }
@@ -298,7 +313,7 @@ const graduadosService = {
      */
     estadisticas: async (): Promise<any> => {
       const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/validacion/estadisticas`
+        `${SERVICE_PREFIX}/certificates/validacion/estadisticas`
       );
       return response;
     },
@@ -310,7 +325,7 @@ const graduadosService = {
   validaciones: {
     listar: async (certificateId?: string): Promise<ValidacionCertificado[]> => {
       const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/validaciones`,
+        `${SERVICE_PREFIX}/certificates/validaciones`,
         certificateId ? { certificateId } : undefined
       );
       return response;
@@ -320,14 +335,14 @@ const graduadosService = {
   descargas: {
     listar: async (certificateId?: string): Promise<DescargaCertificado[]> => {
       const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/descargas`,
+        `${SERVICE_PREFIX}/certificates/descargas`,
         certificateId ? { certificateId } : undefined
       );
       return response;
     },
     registrar: async (certificateId: string): Promise<{ mensaje: string }> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/descargas`,
+        `${SERVICE_PREFIX}/certificates/descargas`,
         { certificateId }
       );
       return response;
@@ -343,7 +358,7 @@ const graduadosService = {
      */
     listar: async (): Promise<SolicitudCertificadoGraduado[]> => {
       const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes`
+        `${SERVICE_PREFIX}/certificates/solicitudes`
       );
       return response;
     },
@@ -352,7 +367,7 @@ const graduadosService = {
      */
     listarRevision: async (): Promise<SolicitudCertificadoGraduado[]> => {
       const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes/revision`
+        `${SERVICE_PREFIX}/certificates/solicitudes/revision`
       );
       return response;
     },
@@ -362,7 +377,7 @@ const graduadosService = {
      */
     obtenerPorId: async (id: string): Promise<SolicitudCertificadoGraduado> => {
       const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes/${id}`
+        `${SERVICE_PREFIX}/certificates/solicitudes/${id}`
       );
       return response;
     },
@@ -376,7 +391,7 @@ const graduadosService = {
       reviewerId?: string
     ): Promise<SolicitudCertificadoGraduado> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes/${id}/en-revision`,
+        `${SERVICE_PREFIX}/certificates/solicitudes/${id}/en-revision`,
         { reviewerName, reviewerId }
       );
       return response;
@@ -387,13 +402,11 @@ const graduadosService = {
      */
     aprobar: async (
       id: string,
-      reviewNotes: string,
-      reviewerName?: string,
-      reviewerId?: string
+      payload: AprobarSolicitudPayload
     ): Promise<{ request: SolicitudCertificadoGraduado; certificate: CertificadoGraduado }> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes/${id}/aprobar`,
-        { reviewNotes, reviewerName, reviewerId }
+        `${SERVICE_PREFIX}/certificates/solicitudes/${id}/aprobar`,
+        payload
       );
       return response;
     },
@@ -408,7 +421,7 @@ const graduadosService = {
       reviewerId?: string
     ): Promise<SolicitudCertificadoGraduado> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/solicitudes/${id}/rechazar`,
+        `${SERVICE_PREFIX}/certificates/solicitudes/${id}/rechazar`,
         { reason: razon, reviewerName, reviewerId }
       );
       return response;
@@ -423,9 +436,7 @@ const graduadosService = {
      * Listar todos los certificados
      */
     listar: async (): Promise<CertificadoGraduado[]> => {
-      const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates`
-      );
+      const response = await apiClient.get(`${SERVICE_PREFIX}/certificates`);
       return response;
     },
 
@@ -433,8 +444,20 @@ const graduadosService = {
      * Obtener certificado por ID
      */
     obtenerPorId: async (id: string): Promise<CertificadoGraduado> => {
-      const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/${id}`
+      const response = await apiClient.get(`${SERVICE_PREFIX}/certificates/${id}`);
+      return response;
+    },
+
+    /**
+     * Actualizar certificado
+     */
+    actualizar: async (
+      id: string,
+      payload: Partial<CertificadoGraduado>
+    ): Promise<CertificadoGraduado> => {
+      const response = await apiClient.put(
+        `${SERVICE_PREFIX}/certificates/${id}`,
+        payload
       );
       return response;
     },
@@ -447,7 +470,7 @@ const graduadosService = {
       razon: string
     ): Promise<CertificadoGraduado> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/${id}/revocar`,
+        `${SERVICE_PREFIX}/certificates/${id}/revocar`,
         { razon }
       );
       return response;
@@ -458,7 +481,7 @@ const graduadosService = {
      */
     descargarPDF: async (id: string): Promise<Blob> => {
       const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/${id}/pdf`,
+        `${SERVICE_PREFIX}/certificates/${id}/pdf`,
         {
           responseType: 'blob',
         }
@@ -476,7 +499,7 @@ const graduadosService = {
      */
     listarRegistroAcademico: async (): Promise<GraduadoData[]> => {
       const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/certificates/graduados`
+        `${SERVICE_PREFIX}/certificates/graduados`
       );
       return response;
     },
@@ -485,7 +508,17 @@ const graduadosService = {
      * Listar todos los graduados
      */
     listar: async (): Promise<GraduadoData[]> => {
-      const response = await apiClient.get(`${BASE_URL}${SERVICE_PREFIX}/graduates`);
+      const response = await apiClient.get(`${SERVICE_PREFIX}/graduates`);
+      return response;
+    },
+
+    /**
+     * Obtener graduado por ID
+     */
+    obtenerPorId: async (id: string): Promise<GraduadoData> => {
+      const response = await apiClient.get(
+        `${SERVICE_PREFIX}/graduates/${id}`
+      );
       return response;
     },
 
@@ -494,7 +527,7 @@ const graduadosService = {
      */
     crear: async (graduado: Partial<GraduadoData>): Promise<GraduadoData> => {
       const response = await apiClient.post(
-        `${BASE_URL}${SERVICE_PREFIX}/graduates`,
+        `${SERVICE_PREFIX}/graduates`,
         graduado
       );
       return response;
@@ -508,7 +541,7 @@ const graduadosService = {
       graduado: Partial<GraduadoData>
     ): Promise<GraduadoData> => {
       const response = await apiClient.put(
-        `${BASE_URL}${SERVICE_PREFIX}/graduates/${id}`,
+        `${SERVICE_PREFIX}/graduates/${id}`,
         graduado
       );
       return response;
@@ -519,7 +552,7 @@ const graduadosService = {
      */
     buscarPorCedula: async (idNumber: string): Promise<GraduadoData> => {
       const response = await apiClient.get(
-        `${BASE_URL}${SERVICE_PREFIX}/graduates/cedula/${idNumber}`
+        `${SERVICE_PREFIX}/graduates/cedula/${idNumber}`
       );
       return response;
     },
@@ -527,4 +560,3 @@ const graduadosService = {
 };
 
 export default graduadosService;
-
