@@ -35,6 +35,9 @@ export class DisciplinaryProfessional {
     @Column({ name: 'capacidad_maxima', default: 10 })
     capacidadMaxima: number;
 
+    @Column({ name: 'firma_url', nullable: true })
+    firmaUrl: string;
+
     @Column({ default: 'ACTIVO' })
     estado: string;
 
