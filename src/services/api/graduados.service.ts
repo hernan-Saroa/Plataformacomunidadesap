@@ -6,8 +6,7 @@
 import { apiClient } from './client';
 
 // Prefijo del servicio en el API Gateway (rutea al servicio registro-academico)
-// Nueva estructura: /{service}/api/v{version}/{path}
-const SERVICE_PREFIX = '/registro-academico/academic-registration/api/v1';
+const SERVICE_PREFIX = '/registro-academico/api/v1';
 
 /**
  * Interface: Datos de un graduado
