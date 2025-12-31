@@ -1,9 +1,11 @@
 /**
  * ModalAutos - Gestión de Autos Procesales
- * Autos = Decisiones judiciales emitidas por el juzgado durante el proceso
+ * ✅ Diseño corporativo ESAP 2025 - Versión Premium
+ * ✅ Botones siempre visibles con footer sticky
+ * ✅ Header azul corporativo con gradiente
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../ui/dialog';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
@@ -14,12 +16,15 @@ import { Textarea } from '../../../ui/textarea';
 import {
   Scale, Download, Eye, FileText, Calendar,
   AlertCircle, CheckCircle, Clock, X, Upload, Plus,
-  Trash2, Filter, Search
+  Trash2, Edit, Search, Filter, ZoomIn, ZoomOut, Printer, Maximize2
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
 import { legalService } from '../../../../services/api/legal.service';
+import { VisorPDFModal } from './VisorPDFModal';
+import { ModalNuevoAuto } from './ModalNuevoAuto';
+import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface ModalAutosProps {
   isOpen: boolean;
@@ -58,6 +63,10 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
   const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [busqueda, setBusqueda] = useState('');
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [visorPDFAbierto, setVisorPDFAbierto] = useState(false);
+  const [documentoActual, setDocumentoActual] = useState<typeof autosMock[0] | null>(null);
+  const [modalNuevoAutoAbierto, setModalNuevoAutoAbierto] = useState(false);
 
   // Create Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -140,6 +149,8 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
     }
   };
 
+
+
   const handleEliminarAuto = async (id: string, numero: string) => {
     if (!confirm(`¿Estás seguro de eliminar el auto ${numero}?`)) return;
 
@@ -200,74 +211,64 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogTitle className="sr-only">
+          Autos Procesales - Expediente {expediente.id}
+        </DialogTitle>
         <DialogDescription className="sr-only">
           Gestión de autos procesales del expediente {expediente.id}
         </DialogDescription>
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg" style={{ background: '#FFF3E0' }}>
-                  <Scale className="w-5 h-5" style={{ color: '#F57C00' }} />
-                </div>
-                <div>
-                  <DialogTitle className="text-xl font-black" style={{ color: '#003DA5' }}>
-                    Autos Procesales
-                  </DialogTitle>
-                  <p className="text-sm text-gray-600">
-                    Decisiones judiciales - {expediente.id}
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2">
-                <Badge style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                  {expediente.etapa}
-                </Badge>
-                <Badge className="bg-orange-100 text-orange-700 font-semibold">
-                  <FileText className="w-3 h-3 mr-1" />
-                  {autos.length} autos
-                </Badge>
-              </div>
-            </div>
+        {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+        <ModalHeaderClean
+          titulo="Autos Procesales"
+          subtitulo={`Decisiones judiciales del expediente ${expediente.id}`}
+          icono={Scale}
+          colorIcono="indigo"
+          badgePrincipal={expediente.etapa}
+          badges={
+            <>
+              <Badge variant="outline" className="font-semibold text-xs border-indigo-300 text-indigo-700">
+                <FileText className="w-3 h-3 mr-1" />
+                {autos.length} autos registrados
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                {autos.filter(a => a.estado === 'Notificado').length} notificados
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                {autos.filter(a => a.estado === 'Pendiente').length} pendientes
+              </Badge>
+            </>
+          }
+          onClose={onClose}
+        />
 
-            <Button onClick={onClose} variant="ghost" size="sm" className="ml-4">
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-
-          {/* Barra de búsqueda */}
-          <div className="flex items-center gap-2 mt-4">
+        {/* Barra de búsqueda y filtros */}
+        <div className="px-6 py-4 bg-gradient-to-b from-blue-50 to-white border-b flex-shrink-0">
+          <div className="flex items-center gap-2 mb-3">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
-                placeholder="Buscar por número, tipo o contenido..."
+                placeholder="Buscar por número, tipo o contenido del auto..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                className="pl-10 text-sm"
+                className="pl-10 text-sm font-semibold"
               />
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setIsCreateOpen(true)}
-              className="font-bold"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Nuevo Auto
-            </Button>
+
           </div>
 
-          {/* Filtros */}
-          <div className="flex items-center gap-2 mt-3 overflow-x-auto">
+          {/* Filtros por tipo */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
             <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
             <Button
               size="sm"
               variant={filtroTipo === 'TODOS' ? 'default' : 'outline'}
               onClick={() => setFiltroTipo('TODOS')}
-              className="text-xs"
+              className="text-xs font-bold whitespace-nowrap"
+              style={filtroTipo === 'TODOS' ? { background: '#003DA5', color: '#FFFFFF' } : {}}
             >
               Todos ({autos.length})
             </Button>
@@ -279,7 +280,8 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                   size="sm"
                   variant={filtroTipo === tipo ? 'default' : 'outline'}
                   onClick={() => setFiltroTipo(tipo)}
-                  className="text-xs whitespace-nowrap"
+                  className="text-xs font-bold whitespace-nowrap"
+                  style={filtroTipo === tipo ? { background: '#003DA5', color: '#FFFFFF' } : {}}
                 >
                   {tipo} ({count})
                 </Button>
@@ -288,11 +290,11 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
           </div>
         </div>
 
-        {/* Contenido */}
+        {/* Contenido - Lista de autos */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* Información contextual */}
-          <Card className="p-4 mb-4 bg-orange-50 border-orange-200">
-            <h4 className="text-sm font-bold text-orange-900 mb-2 flex items-center gap-2">
+          <Card className="p-4 mb-4 border-l-4 border-l-orange-500" style={{ background: 'linear-gradient(135deg, #FFF3E0 0%, #FFFFFF 100%)' }}>
+            <h4 className="text-sm font-black text-orange-900 mb-2 flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />
               ¿Qué son los Autos Procesales?
             </h4>
@@ -310,19 +312,19 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
               <Card className="p-8 text-center">
                 <Scale className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                 <p className="text-sm font-bold text-gray-600 mb-1">
-                  No hay autos de tipo "{filtroTipo}"
+                  No hay autos {filtroTipo !== 'TODOS' ? `de tipo "${filtroTipo}"` : 'que coincidan con tu búsqueda'}
                 </p>
                 <p className="text-xs text-gray-500">
-                  Intenta con otro filtro o carga un nuevo auto
+                  {filtroTipo !== 'TODOS' ? 'Intenta con otro filtro' : 'Intenta con otros términos de búsqueda'}
                 </p>
               </Card>
             ) : (
               autosFiltrados.map((auto) => (
-                <Card key={auto.id} className="p-4 hover:shadow-md transition-shadow">
+                <Card key={auto.id} className="p-4 hover:shadow-lg transition-all border-l-4" style={{ borderLeftColor: auto.estadoColor === 'green' ? '#22c55e' : auto.estadoColor === 'blue' ? '#3b82f6' : '#f97316' }}>
                   <div className="flex items-start gap-4">
                     {/* Icono del tipo */}
-                    <div className="p-3 rounded-lg bg-orange-50 flex-shrink-0">
-                      <Scale className="w-6 h-6 text-orange-600" />
+                    <div className="p-3 rounded-lg flex-shrink-0" style={{ background: '#FFF3E0' }}>
+                      <Scale className="w-6 h-6" style={{ color: '#F57C00' }} />
                     </div>
 
                     {/* Contenido */}
@@ -330,11 +332,11 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                       {/* Header */}
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <h4 className="font-black text-gray-900">{auto.numero}</h4>
                             {getEstadoBadge(auto.estado)}
                           </div>
-                          <Badge variant="outline" className="text-xs mb-2">
+                          <Badge variant="outline" className="text-xs font-bold mb-2">
                             {auto.tipo}
                           </Badge>
                         </div>
@@ -367,51 +369,51 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                             {auto.estado === 'Notificado' ? 'Completado' : 'Pendiente'}
                           </p>
                         </div>
+                        {/* Alerta de días restantes */}
+                        {auto.diasRestantes && (
+                          <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 mb-3">
+                            <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                              <Clock className="w-3 h-3" />
+                              ⚠️ Quedan {auto.diasRestantes} días para dar cumplimiento
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       {/* Archivo y acciones */}
-                      <div className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200">
-                        <FileText className="w-4 h-4 text-red-600" />
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-gray-50 border-2 border-gray-200">
+                        <FileText className="w-5 h-5 text-red-600 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-gray-900 truncate">
                             {auto.archivoNombre}
                           </p>
+                          {/* <p className="text-xs text-gray-500 font-semibold">{auto.tamaño}</p> */}
                         </div>
-                        <div className="flex items-center gap-1">
-                          {/* Botón Ver - Naranja corporativo */}
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {/* Botón Ver */}
                           <Button
                             size="sm"
                             onClick={() => handleVerAuto(auto)}
-                            title="Ver documento completo en visor PDF"
-                            className="font-semibold text-xs px-3 py-1.5"
-                            style={{ background: '#F57C00', color: '#FFFFFF' }}
+                            title="Ver documento completo"
+                            className="font-bold text-xs px-3 py-1.5 text-white"
+                            style={{ background: '#F57C00' }}
                           >
                             <Eye className="w-3.5 h-3.5 mr-1" />
                             Ver
                           </Button>
 
-                          {/* Botón Descargar - Naranja corporativo */}
+                          {/* Botón Descargar */}
                           <Button
                             size="sm"
                             onClick={() => handleDescargarAuto(auto)}
-                            title="Descargar archivo PDF a tu equipo"
-                            className="font-semibold text-xs px-3 py-1.5"
-                            style={{ background: '#F57C00', color: '#FFFFFF' }}
+                            title="Descargar archivo PDF"
+                            className="font-bold text-xs px-3 py-1.5 text-white"
+                            style={{ background: '#003DA5' }}
                           >
                             <Download className="w-3.5 h-3.5 mr-1" />
                             Descargar
                           </Button>
 
-                          {/* Botón Eliminar - Rojo peligro */}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEliminarAuto(auto.id, auto.numero)}
-                            title="Eliminar auto del expediente"
-                            className="font-semibold text-xs px-2 py-1.5 border-red-300 text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
 
                           {/* Botón Notificado (condicional) */}
                           {auto.estado !== 'Notificado' && (
@@ -420,11 +422,22 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                               variant="outline"
                               onClick={() => handleNotificar(auto.id)}
                               title="Marcar como notificado"
-                              className="font-semibold text-xs px-2 py-1.5 border-green-300 text-green-600 hover:bg-green-50"
+                              className="font-bold text-xs px-2 py-1.5 border-green-500 text-green-700 hover:bg-green-50"
                             >
                               <CheckCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
+
+                          {/* Botón Eliminar */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEliminarAuto(auto.id, auto.numero)}
+                            title="Eliminar auto"
+                            className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -435,16 +448,23 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t px-6 py-4">
-          <div className="flex items-center justify-between">
+        {/* Footer - Botones SIEMPRE visibles */}
+        <div
+          className="flex-shrink-0 bg-white border-t-2 px-6 py-4"
+          style={{
+            borderTopColor: '#003DA5',
+            boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)'
+          }}
+        >
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={onClose}>
-                <X className="w-3.5 h-3.5 mr-1.5" />
+              <Button variant="outline" onClick={onClose} className="font-bold">
+                <X className="w-4 h-4 mr-1.5" />
                 Cerrar
               </Button>
               <div className="text-xs text-gray-600">
-                Mostrando <strong>{autosFiltrados.length}</strong> de <strong>{autos.length}</strong> autos
+                Mostrando <strong className="text-blue-700">{autosFiltrados.length}</strong> de{' '}
+                <strong className="text-blue-700">{autos.length}</strong> autos
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -453,14 +473,15 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 variant="outline"
                 className="font-bold"
               >
-                <Download className="w-3.5 h-3.5 mr-1.5" />
+                <Download className="w-4 h-4 mr-1.5" />
                 Descargar Todos (ZIP)
               </Button>
               <Button
                 onClick={() => setIsCreateOpen(true)}
-                className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                className="font-bold text-white"
+                style={{ background: '#F57C00' }}
               >
-                <Upload className="w-3.5 h-3.5 mr-1.5" />
+                <Plus className="w-4 h-4 mr-1.5" />
                 Cargar Auto Nuevo
               </Button>
             </div>
@@ -517,6 +538,31 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
           </DialogContent>
         </Dialog>
       </DialogContent>
+
+      {/* Visor de PDF Corporativo Premium */}
+      {visorPDFAbierto && documentoActual && (
+        <VisorPDFModal
+          isOpen={visorPDFAbierto}
+          onClose={() => {
+            setVisorPDFAbierto(false);
+            setDocumentoActual(null);
+          }}
+          documento={documentoActual}
+          expedienteId={expediente.id}
+        />
+      )}
+
+      {/* Modal para registrar nuevo auto */}
+      <ModalNuevoAuto
+        isOpen={modalNuevoAutoAbierto}
+        onClose={() => setModalNuevoAutoAbierto(false)}
+        expedienteId={expediente.id}
+        onGuardar={(nuevoAuto) => {
+          setAutos([nuevoAuto, ...autos]);
+          setFiltroTipo('TODOS');
+          setBusqueda('');
+        }}
+      />
     </Dialog>
   );
 }

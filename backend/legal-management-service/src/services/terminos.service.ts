@@ -26,24 +26,7 @@ export class TerminosService {
         return this.terminoRepository.save(termino);
     }
 
-    async createManual(data: any): Promise<TerminoProcesal> {
-        const fechaBase = new Date();
-        const dias = 10;
 
-        return this.createAutomatico(
-            'MANUAL',
-            'MANUAL-' + Date.now(),
-            data.numeroRadicado || 'S/N',
-            data.nombreActuacion,
-            fechaBase,
-            dias,
-            data.responsableId,
-            undefined, // responsableNombre
-            'HABILES',
-            undefined,
-            data.observaciones
-        );
-    }
 
     async createAutomatico(
         origen: 'DEFENSA' | 'JUZGAMIENTO' | 'ASESORIA' | 'MANUAL' | 'ORGANOS_CONTROL',

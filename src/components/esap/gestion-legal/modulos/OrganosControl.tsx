@@ -1,10 +1,12 @@
 /**
  * MOD-06: Órganos de Control
+ * DISEÑO 100% COHERENTE CON DEFENSA JUDICIAL
  * Gestión de requerimientos de entidades de control
- * INTEGRADO CON BACKEND - SIN MOCKS
  */
 
 import { useState, useEffect, useMemo } from 'react';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import { motion } from 'motion/react';
 import {
   Plus, FileText, FolderOpen, Clock, ChevronDown, Scale,
@@ -459,6 +461,37 @@ export function OrganosControl() {
     return map[prioridad] || { label: prioridad, color: '#6B7280', bg: '#F3F4F6' };
   };
 
+  // Handler para drag and drop
+  const handleDrop = async (item: RequerimientoOC, nuevoEstado: string) => {
+    if (!nuevoEstado) {
+      console.error('❌ Intento de mover requerimiento a estado indefinido');
+      return;
+    }
+
+    // Guard to prevent unnecessary updates
+    if (item.estado === nuevoEstado) return;
+
+    // Optimistic Update
+    const previousRequerimientos = [...requerimientos];
+    setRequerimientos(prevReqs =>
+      prevReqs.map(req =>
+        req.id === item.id ? { ...req, estado: nuevoEstado } : req
+      )
+    );
+
+    try {
+      // Call Backend to update
+      await legalService.updateRequerimientoOC(item.id, {
+        estado: nuevoEstado
+      });
+      toast.success(`Requerimiento ${item.radicadoInterno} movido a ${nuevoEstado.replace('_', ' ')}`);
+    } catch (error) {
+      console.error('Error updating estado:', error);
+      toast.error('Error al actualizar estado');
+      setRequerimientos(previousRequerimientos);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -556,34 +589,162 @@ export function OrganosControl() {
 
       {/* Tablero Kanban */}
       {tipoVista === 'kanban' && (
-        <div className="relative">
-          {(isMobile || isTablet) && (
-            <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
-              <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
-                <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
-                Desliza
-              </p>
+        <DndProvider backend={HTML5Backend}>
+          <div className="relative">
+            {(isMobile || isTablet) && (
+              <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
+                <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
+                  <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
+                  Desliza
+                </p>
+              </div>
+            )}
+
+            <div
+              className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
+              style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}
+            >
+              {etapas.map((etapa) => (
+                <ColumnaKanban
+                  key={etapa.nombre}
+                  etapa={etapa}
+                  isMobile={isMobile}
+                  isTablet={isTablet}
+                  onOpenExpediente={handleOpenExpediente}
+                  onOpenComentarios={handleOpenComentarios}
+                  onOpenDocumentos={handleOpenDocumentos}
+                  getOrganoIcon={getOrganoIcon}
+                  getSemaforoColor={getSemaforoColor}
+                  onDrop={handleDrop}
+                />
+              ))}
+            </div>
+          </div>
+        </DndProvider>
+      )}
+
+      {/* Vista Lista */}
+      {tipoVista === 'lista' && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Radicado</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Organismo</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Asunto</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Estado</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Tiempo</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Responsable</th>
+                  <th className="px-4 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {requerimientosFiltrados.map((req) => {
+                  const semaforo = getSemaforoColor(req.diasRestantes, req.unidadTiempo);
+                  return (
+                    <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1 h-8 rounded-full" style={{ background: '#7C3AED' }} />
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">{req.radicadoInterno}</p>
+                            <p className="text-xs text-gray-500">{req.radicadoExterno}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline" className="text-xs">
+                          {req.organismo?.sigla || 'N/A'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm text-gray-900 line-clamp-2 max-w-md">{req.asunto}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge
+                          className="text-xs font-semibold"
+                          style={{
+                            background: req.estado === 'RECIBIDO' ? '#F3F4F6' :
+                              req.estado === 'EN_ANALISIS' ? '#FEF3C7' :
+                                req.estado === 'EN_RESPUESTA' ? '#DBEAFE' : '#D1FAE5',
+                            color: req.estado === 'RECIBIDO' ? '#374151' :
+                              req.estado === 'EN_ANALISIS' ? '#92400E' :
+                                req.estado === 'EN_RESPUESTA' ? '#1E40AF' : '#065F46',
+                            border: 'none'
+                          }}
+                        >
+                          {req.estado.replace('_', ' ')}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            className="text-xs font-semibold flex items-center gap-1"
+                            style={{ background: semaforo.bg, color: semaforo.color, border: 'none' }}
+                          >
+                            <div className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
+                            {Math.abs(req.diasRestantes ?? 0)} {req.unidadTiempo === 'HORAS' ? 'hrs' : 'días'}
+                          </Badge>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {req.funcionarioResponsable && (
+                            <>
+                              <Avatar className="w-6 h-6">
+                                <AvatarFallback className="text-xs" style={{ background: '#EDE9FE', color: '#7C3AED' }}>
+                                  {req.funcionarioResponsable.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-sm text-gray-700">{req.funcionarioResponsable}</span>
+                            </>
+                          )}
+                          {!req.funcionarioResponsable && <span className="text-xs text-gray-400">Sin asignar</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleOpenExpediente(req)}
+                            className="h-8 px-2 text-purple-600 hover:bg-purple-50"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleOpenDocumentos(req)}
+                            className="h-8 px-2 text-blue-600 hover:bg-blue-50"
+                          >
+                            <FileCheck className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleOpenComentarios(req)}
+                            className="h-8 px-2 text-amber-600 hover:bg-amber-50"
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {requerimientosFiltrados.length === 0 && (
+            <div className="text-center py-12 text-gray-400">
+              <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-semibold">No hay requerimientos para mostrar</p>
+              <p className="text-xs text-gray-400">Ajusta los filtros o crea un nuevo requerimiento</p>
             </div>
           )}
-
-          <div
-            className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
-            style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}
-          >
-            {etapas.map((etapa) => (
-              <ColumnaKanban
-                key={etapa.nombre}
-                etapa={etapa}
-                isMobile={isMobile}
-                isTablet={isTablet}
-                onOpenExpediente={handleOpenExpediente}
-                onOpenComentarios={handleOpenComentarios}
-                onOpenDocumentos={handleOpenDocumentos}
-                getOrganoIcon={getOrganoIcon}
-                getSemaforoColor={getSemaforoColor}
-              />
-            ))}
-          </div>
         </div>
       )}
 
@@ -1154,11 +1315,20 @@ interface ColumnaKanbanProps {
   onOpenDocumentos: (req: RequerimientoOC) => void;
   getOrganoIcon: (sigla?: string) => string;
   getSemaforoColor: (dias?: number, unidad?: string) => { color: string; label: string; bg: string };
+  onDrop: (item: RequerimientoOC, nuevoEstado: string) => void;
 }
 
-function ColumnaKanban({ etapa, isMobile, isTablet, onOpenExpediente, onOpenComentarios, onOpenDocumentos, getOrganoIcon, getSemaforoColor }: ColumnaKanbanProps) {
+function ColumnaKanban({ etapa, isMobile, isTablet, onOpenExpediente, onOpenComentarios, onOpenDocumentos, getOrganoIcon, getSemaforoColor, onDrop }: ColumnaKanbanProps) {
+  const [{ isOver }, drop] = useDrop({
+    accept: 'REQUERIMIENTO',
+    drop: (item: RequerimientoOC) => onDrop(item, etapa.estado),
+    collect: (monitor) => ({
+      isOver: monitor.isOver()
+    })
+  });
+
   return (
-    <motion.div className="flex-shrink-0" initial={{ width: 320 }} animate={{ width: 320 }}>
+    <motion.div ref={drop} className={`flex-shrink-0 transition-all ${isOver ? 'opacity-70' : 'opacity-100'}`} initial={{ width: 320 }} animate={{ width: 320 }}>
       <Card className="h-full border border-gray-200 bg-white">
         <div className={`${isMobile ? 'p-3' : 'p-4'} border-b bg-gray-50`}>
           <div className="flex items-center justify-between mb-2">
@@ -1225,6 +1395,13 @@ interface TarjetaRequerimientoProps {
 }
 
 function TarjetaRequerimiento({ requerimiento, isMobile, onOpenExpediente, onOpenComentarios, onOpenDocumentos, getOrganoIcon, getSemaforoColor }: TarjetaRequerimientoProps) {
+  const [{ isDragging }, drag] = useDrag({
+    type: 'REQUERIMIENTO',
+    item: requerimiento,
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging()
+    })
+  });
   const semaforo = getSemaforoColor(requerimiento.diasRestantes, requerimiento.unidadTiempo);
 
   // Calcular porcentaje de tiempo transcurrido
@@ -1232,137 +1409,144 @@ function TarjetaRequerimiento({ requerimiento, isMobile, onOpenExpediente, onOpe
   const porcentajeTiempo = Math.min(100, Math.round((diasTranscurridos / requerimiento.plazoOtorgado) * 100));
 
   return (
-    <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
-      <div className="h-1" style={{ background: '#7C3AED' }} />
+    <motion.div
+      ref={drag}
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
+      className="cursor-move"
+    >
+      <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
+        <div className="h-1" style={{ background: '#7C3AED' }} />
 
-      <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
-        {/* Header con radicado y organismo */}
-        <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`} style={{ background: '#EDE9FE' }}>
-              <Building2 className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#7C3AED' }} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h4 className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} truncate`} style={{ color: '#7C3AED' }}>
-                {requerimiento.radicadoInterno}
-              </h4>
-              <p className="text-xs text-gray-600 truncate">
-                {requerimiento.organismo?.sigla || 'N/A'}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Asunto */}
-        <div className="mb-2 pb-2 border-b border-gray-200">
-          <p className="text-xs text-gray-500 mb-0.5">Asunto:</p>
-          <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-2`}>
-            {requerimiento.asunto}
-          </p>
-        </div>
-
-        {/* Responsable con avatar */}
-        {requerimiento.funcionarioResponsable && (
-          <div className="mb-2 pb-2 border-b border-gray-200">
-            <div className="flex items-center gap-2">
-              <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
-                <AvatarFallback className="text-xs" style={{ background: '#EDE9FE', color: '#7C3AED' }}>
-                  {requerimiento.funcionarioResponsable.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500">Responsable:</p>
-                <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-                  {requerimiento.funcionarioResponsable}
+        <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
+          {/* Header con radicado y organismo */}
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`} style={{ background: '#EDE9FE' }}>
+                <Building2 className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#7C3AED' }} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} truncate`} style={{ color: '#7C3AED' }}>
+                  {requerimiento.radicadoInterno}
+                </h4>
+                <p className="text-xs text-gray-600 truncate">
+                  {requerimiento.organismo?.sigla || 'N/A'}
                 </p>
               </div>
             </div>
           </div>
-        )}
 
-        {/* Semáforo de tiempo */}
-        <div className="flex items-center gap-1.5 mb-2">
-          <Badge className="text-xs flex items-center gap-1 font-semibold" style={{ background: semaforo.bg, color: semaforo.color, border: 'none' }}>
-            <div className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
-            {Math.abs(requerimiento.diasRestantes ?? 0)} {requerimiento.unidadTiempo === 'HORAS' ? 'hrs' : 'días'} {(requerimiento.diasRestantes ?? 0) < 0 ? 'vencido' : 'restantes'}
-          </Badge>
-        </div>
-
-        {/* Grid con métricas: Docs / Transcurrido / % Tiempo */}
-        <div className="grid grid-cols-3 gap-1.5 mb-2">
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{requerimiento.documentosCount || 0}</p>
-            <p className="text-xs text-gray-500">Docs</p>
+          {/* Asunto */}
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            <p className="text-xs text-gray-500 mb-0.5">Asunto:</p>
+            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-2`}>
+              {requerimiento.asunto}
+            </p>
           </div>
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{diasTranscurridos > 0 ? diasTranscurridos : 0}</p>
-            <p className="text-xs text-gray-500">{requerimiento.unidadTiempo === 'HORAS' ? 'Hrs' : 'Días'}</p>
+
+          {/* Responsable con avatar */}
+          {requerimiento.funcionarioResponsable && (
+            <div className="mb-2 pb-2 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
+                  <AvatarFallback className="text-xs" style={{ background: '#EDE9FE', color: '#7C3AED' }}>
+                    {requerimiento.funcionarioResponsable.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-gray-500">Responsable:</p>
+                  <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+                    {requerimiento.funcionarioResponsable}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Semáforo de tiempo */}
+          <div className="flex items-center gap-1.5 mb-2">
+            <Badge className="text-xs flex items-center gap-1 font-semibold" style={{ background: semaforo.bg, color: semaforo.color, border: 'none' }}>
+              <div className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
+              {Math.abs(requerimiento.diasRestantes ?? 0)} {requerimiento.unidadTiempo === 'HORAS' ? 'hrs' : 'días'} {(requerimiento.diasRestantes ?? 0) < 0 ? 'vencido' : 'restantes'}
+            </Badge>
           </div>
-          <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-            <p className="text-xs font-bold text-gray-700">{porcentajeTiempo > 0 ? porcentajeTiempo : 0}%</p>
-            <p className="text-xs text-gray-500">Tiempo</p>
+
+          {/* Grid con métricas: Docs / Transcurrido / % Tiempo */}
+          <div className="grid grid-cols-3 gap-1.5 mb-2">
+            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
+              <p className="text-xs font-bold text-gray-700">{requerimiento.documentosCount || 0}</p>
+              <p className="text-xs text-gray-500">Docs</p>
+            </div>
+            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
+              <p className="text-xs font-bold text-gray-700">{diasTranscurridos > 0 ? diasTranscurridos : 0}</p>
+              <p className="text-xs text-gray-500">{requerimiento.unidadTiempo === 'HORAS' ? 'Hrs' : 'Días'}</p>
+            </div>
+            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
+              <p className="text-xs font-bold text-gray-700">{porcentajeTiempo > 0 ? porcentajeTiempo : 0}%</p>
+              <p className="text-xs text-gray-500">Tiempo</p>
+            </div>
           </div>
-        </div>
 
-        {/* Última actuación */}
-        <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
-          <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#7C3AED' }}>
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#7C3AED' }}></span>
-            ÚLTIMA ACTUACIÓN
-          </p>
-          <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-700 line-clamp-2 mb-1`}>
-            {requerimiento.observaciones || 'Sin actuaciones registradas'}
-          </p>
-          <p className="text-xs text-gray-500">
-            {new Date(requerimiento.fechaRecepcion).toLocaleDateString('es-CO')}
-          </p>
-        </div>
+          {/* Última actuación */}
+          <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
+            <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#7C3AED' }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#7C3AED' }}></span>
+              ÚLTIMA ACTUACIÓN
+            </p>
+            <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-700 line-clamp-2 mb-1`}>
+              {requerimiento.observaciones || 'Sin actuaciones registradas'}
+            </p>
+            <p className="text-xs text-gray-500">
+              {new Date(requerimiento.fechaRecepcion).toLocaleDateString('es-CO')}
+            </p>
+          </div>
 
-        {/* Botones de acción */}
-        <div className="space-y-1 pt-2 border-t border-gray-200">
-          <Button
-            onClick={(e: React.MouseEvent) => { e.stopPropagation(); onOpenExpediente(requerimiento); }}
-            size="sm"
-            className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-            style={{ background: '#7C3AED', color: '#FFFFFF' }}
-          >
-            <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-            Ver Requerimiento
-          </Button>
-
-          <div className="grid grid-cols-2 gap-1">
+          {/* Botones de acción */}
+          <div className="space-y-1 pt-2 border-t border-gray-200">
             <Button
-              onClick={(e: React.MouseEvent) => { e.stopPropagation(); onOpenDocumentos(requerimiento); }}
+              onClick={(e: React.MouseEvent) => { e.stopPropagation(); onOpenExpediente(requerimiento); }}
               size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
+              style={{ background: '#7C3AED', color: '#FFFFFF' }}
             >
-              <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Docs
+              <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
+              Ver Requerimiento
             </Button>
 
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                onClick={(e: React.MouseEvent) => { e.stopPropagation(); onOpenDocumentos(requerimiento); }}
+                size="sm"
+                variant="outline"
+                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              >
+                <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
+                Docs
+              </Button>
+
+              <Button
+                onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Preparar respuesta'); }}
+                size="sm"
+                variant="outline"
+                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              >
+                <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
+                Respuesta
+              </Button>
+            </div>
+
             <Button
-              onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Preparar respuesta'); }}
+              onClick={(e: React.MouseEvent) => { e.stopPropagation(); onOpenComentarios(requerimiento); }}
               size="sm"
-              variant="outline"
-              className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
+              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
+              style={{ background: '#7C3AED', color: '#FFFFFF' }}
             >
-              <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-              Respuesta
+              <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
+              Comentarios
             </Button>
           </div>
-
-          <Button
-            onClick={(e: React.MouseEvent) => { e.stopPropagation(); onOpenComentarios(requerimiento); }}
-            size="sm"
-            className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-            style={{ background: '#7C3AED', color: '#FFFFFF' }}
-          >
-            <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-            Comentarios
-          </Button>
         </div>
-      </div>
-    </Card>
+      </Card>
+    </motion.div>
   );
 }

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Like } from 'typeorm';
 import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
 import { TerminosService } from './terminos.service';
 
@@ -40,10 +40,23 @@ export class ConsultasJuridicasService {
     }
 
     async create(data: Partial<ConsultaJuridica>): Promise<ConsultaJuridica> {
-        // Generate radicado number
+        // Generate radicado number - Find last radicado for current year
         const year = new Date().getFullYear();
-        const count = await this.consultaRepository.count();
-        const numeroRadicado = `CJ-${year}-${String(count + 1).padStart(4, '0')}`;
+        const prefix = `CJ-${year}-`;
+
+        const lastRecord = await this.consultaRepository.findOne({
+            where: { numeroRadicado: Like(`${prefix}%`) },
+            order: { numeroRadicado: 'DESC' }
+        });
+
+        let nextNumber = 1;
+        if (lastRecord) {
+            const parts = lastRecord.numeroRadicado.split('-');
+            const lastNumber = parseInt(parts[parts.length - 1], 10);
+            nextNumber = lastNumber + 1;
+        }
+
+        const numeroRadicado = `${prefix}${String(nextNumber).padStart(4, '0')}`;
 
         // Calculate fecha maxima respuesta (30 business days from now)
         const fechaMaxima = new Date();
@@ -110,6 +123,20 @@ export class ConsultasJuridicasService {
         consulta.observaciones = respuestaData.observaciones ?? consulta.observaciones;
         consulta.fechaRespuesta = new Date();
         consulta.estado = 'respondido';
+
+        return this.consultaRepository.save(consulta);
+    }
+
+    async updateRespuesta(id: string, respuesta: string, enviar: boolean): Promise<ConsultaJuridica> {
+        const consulta = await this.findOne(id);
+
+        consulta.respuesta = respuesta;
+
+        if (enviar) {
+            consulta.fechaRespuesta = new Date();
+            consulta.estado = 'respondido';
+            consulta.tipoRespuesta = consulta.tipoRespuesta || 'favorable'; // Default si no se especifica
+        }
 
         return this.consultaRepository.save(consulta);
     }

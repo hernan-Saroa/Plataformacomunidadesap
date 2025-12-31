@@ -1,6 +1,9 @@
 /**
  * ModalOficios - Gestión de Oficios y Comunicaciones Oficiales
- * Oficios = Comunicaciones formales enviadas/recibidas durante el proceso
+ * ✅ Diseño corporativo ESAP 2025 - Versión Premium
+ * ✅ Header azul con gradiente corporativo
+ * ✅ Tabs modernos para Enviados/Recibidos
+ * ✅ Footer sticky con botones siempre visibles
  */
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -17,6 +20,10 @@ import {
 import type { ExpedienteJudicial } from '../core/types';
 import { useState } from 'react';
 import { toast } from 'sonner@2.0.3';
+import { ModalRedactarOficio } from './ModalRedactarOficio';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
+import { ModalHeaderClean } from './ModalHeaderClean';
+import { DialogoConfirmacion } from './DialogoConfirmacion';
 
 interface ModalOficiosProps {
   isOpen: boolean;
@@ -121,17 +128,123 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
   const [oficiosRecibidos, setOficiosRecibidos] = useState(oficiosRecibidosMock);
   const [busquedaEnviados, setBusquedaEnviados] = useState('');
   const [busquedaRecibidos, setBusquedaRecibidos] = useState('');
+  const [modalRedactarAbierto, setModalRedactarAbierto] = useState(false);
+  const [modalVisorPDFAbierto, setModalVisorPDFAbierto] = useState(false);
+  const [oficioSeleccionado, setOficioSeleccionado] = useState<any>(null);
+  
+  // Estados para diálogo de confirmación de eliminación
+  const [dialogoEliminarAbierto, setDialogoEliminarAbierto] = useState(false);
+  const [oficioAEliminar, setOficioAEliminar] = useState<{id: number, numero: string} | null>(null);
 
   const handleDescargarOficio = (oficio: any) => {
-    toast.success('✅ Descarga iniciada', {
-      description: `${oficio.numero} - ${oficio.archivo}`
+    toast.loading('⏳ Generando documento PDF...', { 
+      id: 'descarga',
+      duration: 1500
     });
+    
+    setTimeout(() => {
+      // Generar contenido HTML del documento
+      const contenidoHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${oficio.numero}</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              margin: 40px;
+              line-height: 1.6;
+            }
+            .header { 
+              text-align: center; 
+              border-bottom: 3px solid #1976D2; 
+              padding-bottom: 20px; 
+              margin-bottom: 30px; 
+            }
+            .header h1 { 
+              color: #1976D2; 
+              margin: 0 0 10px 0;
+              font-size: 24px;
+            }
+            .metadata { 
+              margin: 30px 0; 
+              padding: 20px; 
+              background: #f5f5f5;
+              border-left: 4px solid #1976D2;
+            }
+            .content { 
+              margin: 30px 0;
+              text-align: justify;
+            }
+            .footer { 
+              margin-top: 50px; 
+              padding-top: 20px; 
+              border-top: 2px solid #ddd;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</h1>
+            <p>ESAP - República de Colombia</p>
+            <p>Oficina Jurídica</p>
+          </div>
+          
+          <div class="metadata">
+            <p><strong>OFICIO No:</strong> ${oficio.numero}</p>
+            <p><strong>ASUNTO:</strong> ${oficio.asunto}</p>
+            <p><strong>FECHA:</strong> ${oficio.fecha}</p>
+            <p><strong>DESTINATARIO:</strong> ${oficio.destinatario || oficio.remitente}</p>
+          </div>
+          
+          <div class="content">
+            <p><strong>Respetado(a) Doctor(a),</strong></p>
+            <p>${oficio.contenido}</p>
+            <p><strong>Cordialmente,</strong></p>
+          </div>
+          
+          <div class="footer">
+            <p><strong>Oficina Jurídica ESAP</strong></p>
+            <p>Escuela Superior de Administración Pública</p>
+          </div>
+        </body>
+        </html>
+      `;
+      
+      // Crear blob y descargar
+      const blob = new Blob([contenidoHTML], { type: 'text/html' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = oficio.archivo.replace('.pdf', '.html');
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast.success('✅ Descarga completada', {
+        id: 'descarga',
+        description: `${oficio.archivo} descargado exitosamente`,
+        duration: 4000,
+        action: {
+          label: 'Ver carpeta',
+          onClick: () => toast.info('📂 Revisa tu carpeta de Descargas')
+        }
+      });
+      
+      // Log para analytics
+      console.log('📊 Oficio descargado:', {
+        numero: oficio.numero,
+        archivo: oficio.archivo,
+        timestamp: new Date().toISOString()
+      });
+    }, 1500);
   };
 
   const handleVerOficio = (oficio: any) => {
-    toast.info('👁️ Abriendo visor de documento', {
-      description: `${oficio.numero} - ${oficio.asunto}`
-    });
+    setOficioSeleccionado(oficio);
+    setModalVisorPDFAbierto(true);
   };
 
   const handleNuevoOficio = () => {
@@ -299,66 +412,68 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogTitle className="sr-only">
+          Oficios y Comunicaciones - Expediente {expediente.id}
+        </DialogTitle>
         <DialogDescription className="sr-only">
           Gestión de oficios y comunicaciones oficiales del expediente {expediente.id}
         </DialogDescription>
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg" style={{ background: '#E3F2FD' }}>
-                  <Send className="w-5 h-5" style={{ color: '#1976D2' }} />
-                </div>
-                <div>
-                  <DialogTitle className="text-xl font-black" style={{ color: '#003DA5' }}>
-                    Oficios y Comunicaciones
-                  </DialogTitle>
-                  <p className="text-sm text-gray-600">
-                    Correspondencia oficial - {expediente.id}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <Badge style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                  {expediente.etapa}
-                </Badge>
-                <Badge className="bg-blue-100 text-blue-700 font-semibold">
-                  <ArrowRight className="w-3 h-3 mr-1" />
-                  {oficiosEnviados.length} enviados
-                </Badge>
-                <Badge className="bg-green-100 text-green-700 font-semibold">
-                  <ArrowLeft className="w-3 h-3 mr-1" />
-                  {oficiosRecibidos.length} recibidos
-                </Badge>
-              </div>
-            </div>
-
-            <Button onClick={onClose} variant="ghost" size="sm" className="ml-4">
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
+        
+        {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+        <ModalHeaderClean
+          titulo="Oficios y Comunicaciones"
+          subtitulo={`Correspondencia oficial del expediente ${expediente.id}`}
+          icono={Send}
+          colorIcono="blue"
+          badgePrincipal={expediente.etapa}
+          badges={
+            <>
+              <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
+                <ArrowRight className="w-3 h-3 mr-1" />
+                {oficiosEnviados.length} enviados
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                <ArrowLeft className="w-3 h-3 mr-1" />
+                {oficiosRecibidos.length} recibidos
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                {oficiosRecibidos.filter(o => o.estado === 'Pendiente').length} pendientes
+              </Badge>
+            </>
+          }
+          onClose={onClose}
+        />
 
         {/* Contenido con Tabs */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <Tabs defaultValue="enviados" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-4">
-              <TabsTrigger value="enviados">
-                📤 Oficios Enviados ({oficiosEnviados.length})
+            <TabsList 
+              className="grid w-full grid-cols-2 mb-4 p-1"
+              style={{ background: '#F5F5F5' }}
+            >
+              <TabsTrigger 
+                value="enviados"
+                className="font-bold data-[state=active]:bg-white data-[state=active]:text-blue-700"
+              >
+                <ArrowRight className="w-4 h-4 mr-2" />
+                Oficios Enviados ({oficiosEnviados.length})
               </TabsTrigger>
-              <TabsTrigger value="recibidos">
-                📥 Oficios Recibidos ({oficiosRecibidos.length})
+              <TabsTrigger 
+                value="recibidos"
+                className="font-bold data-[state=active]:bg-white data-[state=active]:text-green-700"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Oficios Recibidos ({oficiosRecibidos.length})
               </TabsTrigger>
             </TabsList>
 
             {/* TAB: OFICIOS ENVIADOS */}
             <TabsContent value="enviados" className="space-y-3">
               {/* Info contextual */}
-              <Card className="p-4 mb-4 bg-blue-50 border-blue-200">
-                <h4 className="text-sm font-bold text-blue-900 mb-2 flex items-center gap-2">
+              <Card className="p-4 mb-4 border-l-4 border-l-blue-500" style={{ background: 'linear-gradient(135deg, #E3F2FD 0%, #FFFFFF 100%)' }}>
+                <h4 className="text-sm font-black text-blue-900 mb-2 flex items-center gap-2">
                   <Mail className="w-4 h-4" />
                   Oficios Enviados
                 </h4>
@@ -369,31 +484,34 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                 </p>
               </Card>
 
-              <Input
-                placeholder="Buscar oficio enviado..."
-                value={busquedaEnviados}
-                onChange={(e) => setBusquedaEnviados(e.target.value)}
-                className="mb-4"
-              />
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Buscar oficio enviado por número, asunto o contenido..."
+                  value={busquedaEnviados}
+                  onChange={(e) => setBusquedaEnviados(e.target.value)}
+                  className="pl-10 font-semibold"
+                />
+              </div>
 
               {oficiosEnviados
                 .filter(oficio => oficio.numero.includes(busquedaEnviados) || oficio.asunto.includes(busquedaEnviados))
                 .map((oficio) => (
-                  <Card key={oficio.id} className="p-4 hover:shadow-md transition-shadow">
+                  <Card key={oficio.id} className="p-4 hover:shadow-lg transition-all border-l-4 border-l-blue-500">
                     <div className="flex items-start gap-4">
-                      <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 flex-shrink-0">
+                      <div className="p-3 rounded-lg flex-shrink-0" style={{ background: '#E3F2FD' }}>
                         <Send className="w-6 h-6 text-blue-600" />
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <h4 className="font-black text-gray-900">{oficio.numero}</h4>
                               {getEstadoBadge(oficio.estado, oficio.estadoColor)}
                             </div>
                             <p className="font-bold text-sm text-gray-700 mb-1">{oficio.asunto}</p>
-                            <Badge variant="outline" className="text-xs mb-2">
+                            <Badge variant="outline" className="text-xs font-bold mb-2">
                               📍 {oficio.destinatario}
                             </Badge>
                           </div>
@@ -405,31 +523,53 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
 
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
                           <div>
-                            <p className="text-xs text-gray-500 mb-0.5">📅 Fecha Envío</p>
-                            <p className="text-xs font-bold text-gray-900">{oficio.fecha}</p>
+                            <p className="text-xs text-gray-500 mb-0.5 font-semibold">📅 Fecha Envío</p>
+                            <p className="text-xs font-black text-gray-900">{oficio.fecha}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 mb-0.5">📋 Respuesta</p>
-                            <p className="text-xs font-bold text-gray-900">{oficio.respuesta}</p>
+                            <p className="text-xs text-gray-500 mb-0.5 font-semibold">📋 Respuesta</p>
+                            <p className="text-xs font-black text-gray-900">{oficio.respuesta}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 mb-0.5">📦 Tamaño</p>
-                            <p className="text-xs font-bold text-gray-900">{oficio.tamaño}</p>
+                            <p className="text-xs text-gray-500 mb-0.5 font-semibold">📦 Tamaño</p>
+                            <p className="text-xs font-black text-gray-900">{oficio.tamaño}</p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200">
-                          <FileText className="w-4 h-4 text-red-600" />
-                          <p className="text-xs font-bold text-gray-900 flex-1">{oficio.archivo}</p>
-                          <Button size="sm" variant="ghost" onClick={() => handleVerOficio(oficio)}>
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleDescargarOficio(oficio)}>
-                            <Download className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleEliminarOficioEnviado(oficio.id, oficio.numero)}>
-                            <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                          </Button>
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-gray-50 border-2 border-gray-200">
+                          <FileText className="w-5 h-5 text-red-600 flex-shrink-0" />
+                          <p className="text-xs font-black text-gray-900 flex-1 truncate">{oficio.archivo}</p>
+                          <div className="flex items-center gap-1">
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleVerOficio(oficio)}
+                              className="font-bold text-xs px-3 py-1.5 text-white"
+                              style={{ background: '#1976D2' }}
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1" />
+                              Ver
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleDescargarOficio(oficio)}
+                              className="font-bold text-xs px-3 py-1.5 text-white"
+                              style={{ background: '#003DA5' }}
+                            >
+                              <Download className="w-3.5 h-3.5 mr-1" />
+                              Descargar
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => {
+                                setOficioAEliminar({id: oficio.id, numero: oficio.numero});
+                                setDialogoEliminarAbierto(true);
+                              }}
+                              className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -440,8 +580,8 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
             {/* TAB: OFICIOS RECIBIDOS */}
             <TabsContent value="recibidos" className="space-y-3">
               {/* Info contextual */}
-              <Card className="p-4 mb-4 bg-green-50 border-green-200">
-                <h4 className="text-sm font-bold text-green-900 mb-2 flex items-center gap-2">
+              <Card className="p-4 mb-4 border-l-4 border-l-green-500" style={{ background: 'linear-gradient(135deg, #E8F5E9 0%, #FFFFFF 100%)' }}>
+                <h4 className="text-sm font-black text-green-900 mb-2 flex items-center gap-2">
                   <Mail className="w-4 h-4" />
                   Oficios Recibidos
                 </h4>
@@ -452,19 +592,22 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                 </p>
               </Card>
 
-              <Input
-                placeholder="Buscar oficio recibido..."
-                value={busquedaRecibidos}
-                onChange={(e) => setBusquedaRecibidos(e.target.value)}
-                className="mb-4"
-              />
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Buscar oficio recibido por número, asunto o contenido..."
+                  value={busquedaRecibidos}
+                  onChange={(e) => setBusquedaRecibidos(e.target.value)}
+                  className="pl-10 font-semibold"
+                />
+              </div>
 
               {oficiosRecibidos
                 .filter(oficio => oficio.numero.includes(busquedaRecibidos) || oficio.asunto.includes(busquedaRecibidos))
                 .map((oficio) => (
-                  <Card key={oficio.id} className="p-4 hover:shadow-md transition-shadow">
+                  <Card key={oficio.id} className="p-4 hover:shadow-lg transition-all border-l-4 border-l-green-500">
                     <div className="flex items-start gap-4">
-                      <div className="p-3 rounded-lg bg-green-50 border border-green-200 flex-shrink-0">
+                      <div className="p-3 rounded-lg flex-shrink-0" style={{ background: '#E8F5E9' }}>
                         <ArrowLeft className="w-6 h-6 text-green-600" />
                       </div>
 
@@ -477,7 +620,7 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                               {getPrioridadBadge(oficio.prioridad)}
                             </div>
                             <p className="font-bold text-sm text-gray-700 mb-1">{oficio.asunto}</p>
-                            <Badge variant="outline" className="text-xs mb-2">
+                            <Badge variant="outline" className="text-xs font-bold mb-2">
                               📨 {oficio.remitente}
                             </Badge>
                           </div>
@@ -488,45 +631,64 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                         </p>
 
                         {oficio.requiereRespuesta && (
-                          <div className={`p-2 rounded-lg mb-3 ${oficio.fechaRespuesta ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}`}>
+                          <div className={`p-2 rounded-lg mb-3 ${oficio.fechaRespuesta ? 'bg-green-50 border border-green-300' : 'bg-orange-50 border border-orange-300'}`}>
                             <p className={`text-xs font-bold flex items-center gap-1.5 ${oficio.fechaRespuesta ? 'text-green-900' : 'text-orange-900'}`}>
                               {oficio.fechaRespuesta ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
                               {oficio.fechaRespuesta 
-                                ? `Respuesta enviada el ${oficio.fechaRespuesta}`
-                                : 'Requiere respuesta - PENDIENTE'}
+                                ? `✅ Respuesta enviada el ${oficio.fechaRespuesta}`
+                                : '⚠️ Requiere respuesta - PENDIENTE'}
                             </p>
                           </div>
                         )}
 
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
                           <div>
-                            <p className="text-xs text-gray-500 mb-0.5">📅 Fecha Recepción</p>
-                            <p className="text-xs font-bold text-gray-900">{oficio.fecha}</p>
+                            <p className="text-xs text-gray-500 mb-0.5 font-semibold">📅 Fecha Recepción</p>
+                            <p className="text-xs font-black text-gray-900">{oficio.fecha}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 mb-0.5">⚠️ Prioridad</p>
-                            <p className="text-xs font-bold text-gray-900">{oficio.prioridad}</p>
+                            <p className="text-xs text-gray-500 mb-0.5 font-semibold">⚠️ Prioridad</p>
+                            <p className="text-xs font-black text-gray-900">{oficio.prioridad}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 mb-0.5">📦 Tamaño</p>
-                            <p className="text-xs font-bold text-gray-900">{oficio.tamaño}</p>
+                            <p className="text-xs text-gray-500 mb-0.5 font-semibold">📦 Tamaño</p>
+                            <p className="text-xs font-black text-gray-900">{oficio.tamaño}</p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200">
-                          <FileText className="w-4 h-4 text-red-600" />
-                          <p className="text-xs font-bold text-gray-900 flex-1">{oficio.archivo}</p>
-                          <Button size="sm" variant="ghost" onClick={() => handleVerOficio(oficio)}>
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleDescargarOficio(oficio)}>
-                            <Download className="w-3.5 h-3.5" />
-                          </Button>
-                          {oficio.requiereRespuesta && oficio.estado !== 'Atendido' && (
-                            <Button size="sm" variant="ghost" onClick={() => handleMarcarOficioRecibidoAtendido(oficio.id)}>
-                              <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-gray-50 border-2 border-gray-200">
+                          <FileText className="w-5 h-5 text-red-600 flex-shrink-0" />
+                          <p className="text-xs font-black text-gray-900 flex-1 truncate">{oficio.archivo}</p>
+                          <div className="flex items-center gap-1">
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleVerOficio(oficio)}
+                              className="font-bold text-xs px-3 py-1.5 text-white"
+                              style={{ background: '#4CAF50' }}
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1" />
+                              Ver
                             </Button>
-                          )}
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleDescargarOficio(oficio)}
+                              className="font-bold text-xs px-3 py-1.5 text-white"
+                              style={{ background: '#003DA5' }}
+                            >
+                              <Download className="w-3.5 h-3.5 mr-1" />
+                              Descargar
+                            </Button>
+                            {oficio.requiereRespuesta && oficio.estado !== 'Atendido' && (
+                              <Button 
+                                size="sm" 
+                                onClick={() => handleMarcarOficioRecibidoAtendido(oficio.id)}
+                                className="font-bold text-xs px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                                Atender
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -536,12 +698,18 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
           </Tabs>
         </div>
 
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t px-6 py-4">
-          <div className="flex items-center justify-between">
+        {/* Footer - Botones SIEMPRE visibles */}
+        <div 
+          className="flex-shrink-0 bg-white border-t-2 px-6 py-4"
+          style={{ 
+            borderTopColor: '#1976D2',
+            boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)'
+          }}
+        >
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={onClose}>
-                <X className="w-3.5 h-3.5 mr-1.5" />
+              <Button variant="outline" onClick={onClose} className="font-bold">
+                <X className="w-4 h-4 mr-1.5" />
                 Cerrar
               </Button>
               <div className="text-xs text-gray-600">
@@ -556,20 +724,57 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                 variant="outline"
                 className="font-bold"
               >
-                <Download className="w-3.5 h-3.5 mr-1.5" />
+                <Download className="w-4 h-4 mr-1.5" />
                 Descargar Todos (ZIP)
               </Button>
               <Button
-                onClick={handleNuevoOficio}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                onClick={() => setModalRedactarAbierto(true)}
+                className="font-bold text-white"
+                style={{ background: '#1976D2' }}
               >
-                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                <Plus className="w-4 h-4 mr-1.5" />
                 Redactar Oficio
               </Button>
             </div>
           </div>
         </div>
       </DialogContent>
+
+      {/* Modal para redactar nuevo oficio */}
+      <ModalRedactarOficio
+        isOpen={modalRedactarAbierto}
+        onClose={() => setModalRedactarAbierto(false)}
+        expedienteId={expediente.id}
+        onGuardar={(nuevoOficio) => {
+          setOficiosEnviados([nuevoOficio, ...oficiosEnviados]);
+        }}
+      />
+
+      {/* Modal para ver PDF */}
+      <VisorDocumentoModal
+        isOpen={modalVisorPDFAbierto}
+        onClose={() => setModalVisorPDFAbierto(false)}
+        archivo={oficioSeleccionado?.archivo}
+        numero={oficioSeleccionado?.numero}
+        asunto={oficioSeleccionado?.asunto}
+      />
+
+      {/* Diálogo de confirmación para eliminar oficio */}
+      <DialogoConfirmacion
+        isOpen={dialogoEliminarAbierto}
+        onClose={() => setDialogoEliminarAbierto(false)}
+        onConfirm={() => {
+          if (oficioAEliminar) {
+            handleEliminarOficioEnviado(oficioAEliminar.id, oficioAEliminar.numero);
+          }
+          setDialogoEliminarAbierto(false);
+        }}
+        titulo="Eliminar Oficio"
+        mensaje={`¿Estás seguro de que deseas eliminar el oficio ${oficioAEliminar?.numero}? Esta acción no se puede deshacer.`}
+        tipo="peligro"
+        textoConfirmar="Eliminar"
+        textoCancelar="Cancelar"
+      />
     </Dialog>
   );
 }
