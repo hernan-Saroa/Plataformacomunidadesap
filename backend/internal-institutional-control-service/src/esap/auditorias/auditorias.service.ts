@@ -370,7 +370,7 @@ export class AuditoriasService {
       } else {
         // Si se desarchiva, reactivar
         auditoria.activa = true;
-        auditoria.fechaArchivo = null;
+        auditoria.fechaArchivo = undefined;
       }
     }
     if (updateDto.fechaArchivo !== undefined && updateDto.fechaArchivo) {
