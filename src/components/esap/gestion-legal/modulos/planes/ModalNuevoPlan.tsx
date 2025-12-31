@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from '../../../../ui/textarea';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { buildApiUrl } from '../../../../../config/environment';
 import { CalendarIcon } from 'lucide-react';
 
 interface ModalNuevoPlanProps {
@@ -15,7 +16,8 @@ interface ModalNuevoPlanProps {
     onSuccess: () => void;
 }
 
-const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
+const API_URL_PLAN = buildApiUrl('legal', '/planes-mejoramiento');
+const API_URL_LEGAL = buildApiUrl('legal', '/legal');
 
 export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps) {
     const [loading, setLoading] = useState(false);
@@ -43,7 +45,7 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
 
     const fetchAbogados = async () => {
         try {
-            const res = await axios.get('http://localhost:3008/api/legal/abogados');
+            const res = await axios.get(`${API_URL_LEGAL}/abogados`);
             setAbogados(res.data);
         } catch (error) {
             console.error('Error fetching abogados', error);
@@ -52,7 +54,7 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
 
     const fetchRiesgos = async () => {
         try {
-            const res = await axios.get(`${API_URL}/riesgos-disponibles`);
+            const res = await axios.get(`${API_URL_PLAN}/riesgos-disponibles`);
             setRiesgos(res.data);
         } catch (error) {
             console.error('Error fetching risks', error);
@@ -64,7 +66,7 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
         e.preventDefault();
         setLoading(true);
         try {
-            await axios.post(API_URL, {
+            await axios.post(API_URL_PLAN, {
                 ...formData,
                 origen,
                 presupuesto: Number(formData.presupuesto)

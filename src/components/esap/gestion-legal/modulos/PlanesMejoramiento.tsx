@@ -36,8 +36,10 @@ import { ModalDetallePlan } from './planes/ModalDetallePlan';
 import { ModalEvidencias } from './planes/ModalEvidencias';
 import { ModalSeguimiento } from './planes/ModalSeguimiento';
 import { ModalComentarios } from './planes/ModalComentarios';
+import { buildApiUrl } from '../../../../config/environment';
 
-const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
+// const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
+const API_URL = buildApiUrl('legal', '/planes-mejoramiento');
 
 export function PlanesMejoramiento() {
   const [isMobile, setIsMobile] = useState(false);
@@ -62,7 +64,7 @@ export function PlanesMejoramiento() {
   // Fetch Data
   const fetchAbogados = async () => {
     try {
-      const res = await axios.get('http://localhost:3008/api/legal/abogados');
+      const res = await axios.get('/legal/api/v1/abogados');
       setAbogados(res.data);
     } catch (error) {
       console.error('Error fetching abogados', error);

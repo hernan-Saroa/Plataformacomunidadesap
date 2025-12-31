@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from '../../../../ui/textarea';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { buildApiUrl } from '../../../../../config/environment';
 
 interface ModalCrearIndicadorProps {
     open: boolean;
@@ -14,7 +15,8 @@ interface ModalCrearIndicadorProps {
     onSuccess: () => void;
 }
 
-const API_URL = 'http://localhost:3008/api/legal/pei';
+// const API_URL = 'http://localhost:3008/api/legal/pei';
+const API_URL = buildApiUrl('legal', '/pei');
 
 export function ModalCrearIndicador({ open, onClose, onSuccess }: ModalCrearIndicadorProps) {
     const [loading, setLoading] = useState(false);

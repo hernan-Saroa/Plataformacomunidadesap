@@ -13,6 +13,7 @@ import { GuidedTour, TourButton, useTourCompleted } from '../design-system/Guide
 import { useTour } from '../design-system/TourContext'; // ✅ Importar contexto de tour
 import { siglDashboardTourSteps } from '../design-system/tourSteps';
 import axios from 'axios';
+import { buildApiUrl } from '../../../../config/environment';
 
 // Interfaces for response
 interface DashboardStats {
@@ -39,7 +40,8 @@ interface DashboardStats {
   }[];
 }
 
-const API_URL = 'http://localhost:3008/api/dashboard/ejecutivo';
+// const API_URL = 'http://localhost:3008/api/dashboard/ejecutivo';
+const API_URL = buildApiUrl('legal', '/planes-mejoramiento');
 
 export function DashboardEjecutivoSIGL({ onNavigateToModule }: DashboardEjecutivoSIGLProps) {
   // Estados del tour guiado

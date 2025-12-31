@@ -1,26 +1,32 @@
 /**
  * ModalProcesoDisciplinario - Modal del Expediente Disciplinario
- * ✅ Diseño corporativo ESAP premium
+ * ✅ Diseño corporativo ESAP 2025 - Versión Premium
  * ✅ 6 tabs funcionales con lógica de negocio profesional
  * ✅ Similar a ModalExpediente pero adaptado para procesos disciplinarios
+ * ✅ Header limpio profesional ESAP 2025
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import {
   Gavel, FileText, Users, Clock, AlertTriangle, CheckCircle, X,
   Calendar, User, Building, Phone, Mail, MapPin, Briefcase,
   Eye, Download, Upload, Plus, Edit, Trash2, Send, Bell, Share2,
   FileDown, ExternalLink
 } from 'lucide-react';
-import type { ProcesoDisciplinario } from '../core/types';
-import { useState, useMemo } from 'react'; // Added useMemo
-import { toast } from 'sonner@2.0.3';
+import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
+import { useState, useMemo, useEffect } from 'react'; // Added useMemo
 import { legalService } from '../../../../services/api/legal.service'; // Import Service
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Button } from '../../../ui/button';
+import { Badge } from '../../../ui/badge';
+import { Card } from '../../../ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
+import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { toast } from 'sonner';
+import type { ExpedienteJudicial } from '../core/types';
+import { ModalHeaderClean } from './ModalHeaderClean';
+import { FormularioRegistrarDecision } from './FormularioRegistrarDecision';
+
+
 
 interface ModalProcesoDisciplinarioProps {
   isOpen: boolean;
@@ -40,10 +46,34 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   // Filtramos por tipo. Asumimos que existen tipos 'PRUEBA' y 'DOCUMENTO'.
   const [nuevasActuaciones, setNuevasActuaciones] = useState<any[]>([]);
 
+  const [mostrarFormularioDecision, setMostrarFormularioDecision] = useState(false);
+  const [decisiones, setDecisiones] = useState<DecisionDisciplinaria[]>([]);
+
+  const handleGuardarNuevaDecision = async (decision: any) => {
+    const toastId = toast.loading('Guardando decisión...');
+    try {
+      await legalService.createJuzgamientoDecision(proceso.id, decision);
+      toast.success('Decisión guardada exitosamente', { id: toastId });
+      setHasChanges(true); // Trigger refetch via useEffect dependency or just set flag
+      setMostrarFormularioDecision(false);
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al guardar decisión', { id: toastId });
+    }
+  };
   const actuacionesTotales = useMemo(() => {
     const fromProps = proceso.actuaciones || [];
     return [...nuevasActuaciones, ...fromProps].sort((a, b) => new Date(b.fechaActuacion).getTime() - new Date(a.fechaActuacion).getTime());
   }, [proceso.actuaciones, nuevasActuaciones]);
+
+  // Fetch Decisions
+  useEffect(() => {
+    if (proceso?.id && isOpen) { // proceso.id is RADICADO in this context
+      legalService.getJuzgamientoDecisiones(proceso.id)
+        .then(setDecisiones)
+        .catch(err => console.error('Error fetching decisiones:', err));
+    }
+  }, [proceso?.id, isOpen, hasChanges]); // Refetch on changes
 
   const pruebas = actuacionesTotales.filter(a => a.tipoActuacion === 'EVIDENCIA' || a.tipoActuacion === 'PRUEBA');
   const documentos = actuacionesTotales.filter(a => a.tipoActuacion === 'DOCUMENTO');
@@ -131,15 +161,13 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   };
 
   // ... (Notification handlers remain similar but mocked for now as per instructions)
-  const handleNotificar = () => toast.info('Notificación enviada (Simulación)');
-  const handleCompartir = () => toast.info('Enlace compartido (Simulación)');
-  const handleDescargarPDF = () => toast.info('PDF descargado (Simulación)');
-  const handleAbrirEnPortales = () => toast.info('Abriendo portal (Simulación)');
-
-
+  // const handleNotificar = () => toast.info('Notificación enviada (Simulación)');
   return (
     <Dialog open={isOpen} onOpenChange={handleCerrar}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
+        <DialogTitle className="sr-only">
+          Proceso Disciplinario {proceso.id}
+        </DialogTitle>
         <DialogDescription className="sr-only">
           Vista completa del proceso disciplinario {proceso.id}
         </DialogDescription>
@@ -180,6 +208,18 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             </Button>
           </div>
         </div>
+
+        {/* ==================== HEADER LIMPIO ESAP 2025 ==================== */}
+        <ModalHeaderClean
+          icono={Gavel}
+          titulo={proceso.id}
+          subtitulo={proceso.tipoFalta}
+          badges={[
+            { texto: proceso.etapa, color: 'azul' },
+            { texto: `${proceso.diasRestantes} días restantes`, color: 'naranja' }
+          ]}
+          onClose={onClose}
+        />
 
         {/* ==================== TABS NAVIGATION ==================== */}
         <Tabs value={tabActivo} onValueChange={setTabActivo} className="flex-1 flex flex-col overflow-hidden">
@@ -235,16 +275,16 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 </div>
               </Card>
 
-              {/* Información del Disciplinado */}
+              {/* Información del Investigado */}
               <Card className="p-4 border-2 border-gray-200">
                 <h3 className="font-black text-lg mb-4 flex items-center gap-2 text-gray-800">
                   <User className="w-5 h-5" />
-                  Disciplinado
+                  Investigado
                 </h3>
                 <div className="space-y-3">
                   <div>
                     <p className="text-sm text-gray-600">Nombre Completo</p>
-                    <p className="font-bold text-lg">{proceso.disciplinado || proceso.investigado}</p>
+                    <p className="font-bold text-lg">{proceso.investigado}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Cargo</p>
@@ -280,11 +320,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               </div>
             </Card>
 
-            {/* ÚLTIMA ACTUACIÓN */}
-            <Card className="p-5 border-2 border-blue-200">
+            {/* ==================== ÚLTIMA ACTUACIÓN PROCESAL ==================== */}
+            <Card className="p-6 border-2 border-blue-200 shadow-md">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-black text-lg flex items-center gap-2" style={{ color: '#003DA5' }}>
-                  <AlertTriangle className="w-5 h-5" />
+                <h3 className="font-black text-xl flex items-center gap-2" style={{ color: '#003DA5' }}>
+                  <AlertTriangle className="w-6 h-6" />
                   ÚLTIMA ACTUACIÓN PROCESAL
                 </h3>
               </div>
@@ -295,6 +335,17 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 </p>
                 <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                   <span>📅 {actuacionesTotales[0]?.fechaActuacion ? new Date(actuacionesTotales[0].fechaActuacion).toLocaleDateString('es-CO') : new Date().toLocaleDateString('es-CO')}</span>
+                </div>
+              </div>
+
+              <div className="p-5 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl mb-5 border border-blue-200">
+                <p className="text-sm font-semibold text-gray-600 mb-2">Actuación:</p>
+                <p className="font-black text-lg text-gray-900">
+                  {proceso.ultimaActuacion || 'Solicitud de informes a RRHH'}
+                </p>
+                <div className="flex items-center gap-4 mt-3 text-xs font-semibold text-gray-500">
+                  <span>📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</span>
+                  <span>⏰ {proceso.fechaActualizacion.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>
             </Card>
@@ -308,7 +359,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 Descripción de los Hechos
               </h3>
               <p className="text-gray-700 leading-relaxed mb-4">
-                {proceso.descripcionHechos || proceso.hechos || 'No se han registrado hechos.'}
+                {proceso.hechos || 'No se han registrado hechos.'}
               </p>
             </Card>
           </TabsContent>
@@ -373,9 +424,120 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
           {/* ==================== TAB: DECISIONES ==================== */}
           <TabsContent value="decisiones" className="flex-1 overflow-y-auto p-6">
-            <div className="text-center p-10 text-gray-500">
-              <p>Funcionalidad de decisiones próximamente.</p>
-            </div>
+            {decisiones.length === 0 ? (
+              <Card className="p-6 text-center">
+                <CheckCircle className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <h3 className="font-black text-xl mb-2 text-gray-600">Sin Decisiones Registradas</h3>
+                <p className="text-gray-500 mb-4">
+                  El proceso aún se encuentra en etapa de investigación
+                </p>
+                <Button
+                  onClick={() => {
+                    setMostrarFormularioDecision(true);
+                    setHasChanges(true);
+                  }}
+                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Registrar Decisión
+                </Button>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>
+                    Decisiones Registradas ({decisiones.length})
+                  </h3>
+                  <Button
+                    onClick={() => {
+                      setMostrarFormularioDecision(true);
+                      setHasChanges(true);
+                    }}
+                    style={{ background: '#003DA5', color: '#FFFFFF' }}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Nueva Decisión
+                  </Button>
+                </div>
+
+                {decisiones.map((decision, index) => (
+                  <Card key={index} className="p-6 border-2 border-blue-200">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="font-black text-xl" style={{ color: '#003DA5' }}>
+                            {decision.tipoDecision}
+                          </h4>
+                          <Badge
+                            className="font-bold"
+                            style={{
+                              background: decision.tipoFallo === 'Absolutoria' ? '#10B981' : '#EF4444',
+                              color: '#FFFFFF'
+                            }}
+                          >
+                            {decision.tipoFallo}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          Decisión #{index + 1} • {decision.fecha}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {decision.sancion && (
+                        <div className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
+                          <p className="text-sm font-bold text-orange-900 mb-1">⚖️ Sanción Impuesta</p>
+                          <p className="font-bold text-orange-800">{decision.sancion}</p>
+                        </div>
+                      )}
+
+                      <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                        <p className="text-sm font-bold text-blue-900 mb-2">📋 Consideraciones</p>
+                        <p className="text-sm text-gray-700 leading-relaxed">
+                          {decision.consideraciones}
+                        </p>
+                      </div>
+
+                      {decision.fundamentosJuridicos && (
+                        <div className="p-4 bg-gray-50 border-2 border-gray-200 rounded-lg">
+                          <p className="text-sm font-bold text-gray-900 mb-2">⚖️ Fundamentos Jurídicos</p>
+                          <p className="text-sm text-gray-700 leading-relaxed">
+                            {decision.fundamentosJuridicos}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                          <p className="text-xs text-gray-600 mb-1">Responsable</p>
+                          <p className="font-bold text-sm">{decision.responsable}</p>
+                        </div>
+                        <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                          <p className="text-xs text-gray-600 mb-1">Cargo</p>
+                          <p className="font-bold text-sm">{decision.cargoResponsable}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <Button size="sm" variant="outline" className="font-semibold">
+                          <Eye className="w-3.5 h-3.5 mr-1.5" />
+                          Ver Detalle
+                        </Button>
+                        <Button size="sm" variant="outline" className="font-semibold">
+                          <Download className="w-3.5 h-3.5 mr-1.5" />
+                          Descargar
+                        </Button>
+                        <Button size="sm" variant="outline" className="font-semibold text-orange-600 border-orange-300 hover:bg-orange-50">
+                          <Bell className="w-3.5 h-3.5 mr-1.5" />
+                          Notificar
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
 
           {/* ==================== TAB: DOCUMENTOS ==================== */}
@@ -415,13 +577,50 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         </Tabs>
 
         {/* ==================== FOOTER STICKY ==================== */}
-        <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex justify-between items-center">
-          <p className="text-sm text-gray-600">
-            <span className="font-semibold">Última actualización:</span> {new Date().toLocaleDateString('es-CO')}
-          </p>
-          <Button onClick={onClose} variant="outline">Cerrar</Button>
+        <div className="flex-shrink-0 bg-gray-50 border-t px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-gray-600">
+              <span className="font-semibold">Última actualización:</span> {proceso.fechaActualizacion.toLocaleDateString('es-CO')}
+            </p>
+            {hasChanges && (
+              <Badge className="bg-orange-100 text-orange-700 font-semibold text-xs">
+                Cambios sin guardar
+              </Badge>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleCerrar}
+              className="font-semibold"
+            >
+              Cerrar
+            </Button>
+            <Button
+              onClick={handleGuardarCambios}
+              disabled={!hasChanges}
+              className="font-semibold"
+              style={{
+                background: hasChanges ? '#003DA5' : '#9CA3AF',
+                color: '#FFFFFF',
+                cursor: hasChanges ? 'pointer' : 'not-allowed'
+              }}
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Guardar Cambios
+            </Button>
+          </div>
         </div>
       </DialogContent>
+
+
+      {/* ==================== FORMULARIO REGISTRAR DECISIÓN ==================== */}
+      <FormularioRegistrarDecision
+        isOpen={mostrarFormularioDecision}
+        onClose={() => setMostrarFormularioDecision(false)}
+        onGuardar={handleGuardarNuevaDecision}
+        procesoId={proceso.id}
+      />
     </Dialog>
   );
 }

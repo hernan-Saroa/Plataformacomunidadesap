@@ -4,7 +4,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ConsultasJuridicasService } from '../services/consultas-juridicas.service';
 
-@Controller('api/legal/consultas-juridicas')
+@Controller('legal/consultas-juridicas')
 export class ConsultasJuridicasController {
     constructor(private readonly consultasService: ConsultasJuridicasService) { }
 
@@ -90,11 +90,20 @@ export class ConsultasJuridicasController {
         const respuestaData = {
             numeroOficioRespuesta: body.numeroOficioRespuesta,
             tipoRespuesta: body.tipoRespuesta,
-            documentoRespuestaUrl: file ? `http://localhost:3008/api/legal/files/${file.filename}` : null,
+            documentoRespuestaUrl: file ? `http://localhost:3008/legal/files/${file.filename}` : null,
             observaciones: body.observaciones
         };
 
         return this.consultasService.responder(id, respuestaData);
+    }
+
+    @Patch(':id/gestionar-respuesta')
+    async gestionarRespuesta(
+        @Param('id') id: string,
+        @Body() body: { respuesta: string, enviar: boolean | string }
+    ) {
+        const enviar = body.enviar === true || body.enviar === 'true';
+        return this.consultasService.updateRespuesta(id, body.respuesta, enviar);
     }
 
     @Delete(':id')

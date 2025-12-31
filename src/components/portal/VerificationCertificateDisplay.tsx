@@ -1,21 +1,24 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
-import {
-  ArrowUp,
+import React, { useRef, useState, useEffect } from 'react';
+import { 
+  Download, 
+  Share2, 
+  CheckCircle, 
+  Calendar, 
+  User, 
+  FileText, 
   Award,
-  Building2,
-  Calendar,
-  CheckCircle,
-  Download,
-  FileCheck,
-  FileText,
-  Hash,
-  Loader2,
-  Lock,
-  Share2,
-  Shield,
-  ShieldCheck,
+  Copy,
+  Mail,
+  MessageSquare,
   X,
+  Shield,
+  Hash,
+  Building2,
+  ShieldCheck,
+  Lock,
+  FileCheck,
+  Loader2,
+  ArrowUp
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { VerificationCertificate } from '../../types';

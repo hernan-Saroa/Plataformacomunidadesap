@@ -33,9 +33,14 @@ import { DocumentoOC } from './entities/documento-oc.entity';
 
 // Módulo de Riesgos
 import { Riesgo } from './entities/riesgo.entity';
+import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 
 // Planes de Mejoramiento
 import { PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario } from './entities/planes-mejoramiento.entity';
+
+// Documentos de Consultas Jurídicas
+import { DocumentoConsulta } from './entities/documento-consulta.entity';
+import { ComentarioConsulta } from './entities/comentario-consulta.entity';
 
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
@@ -61,8 +66,12 @@ export const databaseConfig: TypeOrmModuleOptions = {
         ComentarioOC, DocumentoOC,
         // Riesgos
         Riesgo,
+        // Decisiones
+        DecisionDisciplinaria,
         // Planes de Mejoramiento
-        PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario
+        PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario,
+        // Documentos de Consultas Jurídicas
+        DocumentoConsulta, ComentarioConsulta
     ],
     synchronize: false, // ⚠️ Cambiado a false para usar migraciones en producción
     logging: ['error'], // Solo mostrar errores, no queries

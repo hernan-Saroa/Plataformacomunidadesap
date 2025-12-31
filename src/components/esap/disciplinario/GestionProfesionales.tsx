@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, Plus, Filter, Download, Eye, Edit, Trash2, MoreVertical,
   X, Save, Users, Mail, Phone, Award, Target, TrendingUp, Clock,
-  AlertTriangle, CheckCircle, FolderOpen, User, Briefcase, MapPin
+  AlertTriangle, CheckCircle, FolderOpen, User, Briefcase, MapPin, Upload, FileText, Shield
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -36,6 +36,7 @@ interface Profesional {
   estado: 'activo' | 'inactivo' | 'vacaciones';
   tipoContrato: 'Planta' | 'Contratista';
   territorial: string;
+  firmaUrl?: string;
 }
 
 const PROFESIONALES_DATA: Profesional[] = [
@@ -142,6 +143,31 @@ function ModalDetalleProfesional({
   const tasaEfectividad = profesional.procesosAsignados > 0
     ? ((profesional.procesosAlDia / profesional.procesosAsignados) * 100).toFixed(1)
     : '100';
+
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Solo se permiten archivos PDF');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      const result = await disciplinaryService.uploadSignature(profesional.id, file);
+      toast.success('Firma cargada exitosamente');
+      // Update local state if needed via callback or reload
+      if (onEditar) onEditar({ ...profesional, firmaUrl: result.url });
+    } catch (error) {
+      console.error('Error uploading signature:', error);
+      toast.error('Error al cargar la firma');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleEditarProfesional = () => {
     if (onEditar) {
@@ -304,109 +330,111 @@ function ModalDetalleProfesional({
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Estadísticas de Carga */}
-          <div>
-            <h3 className="text-lg font-extrabold mb-4" style={{ color: '#1F2937' }}>
-              Carga de Trabajo
-            </h3>
 
-            {/* Barra de capacidad */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-semibold" style={{ color: '#4B5563' }}>
-                  Capacidad Utilizada
-                </p>
-                <p className="text-sm font-bold" style={{ color: '#003DA5' }}>
-                  {profesional.procesosAsignados} / {profesional.capacidadMaxima}
-                </p>
-              </div>
-              <div className="w-full h-4 bg-gray-200 rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${porcentajeCarga}%` }}
-                  transition={{ duration: 1 }}
-                  className="h-full rounded-full"
-                  style={{
-                    background: porcentajeCarga >= 90
-                      ? 'linear-gradient(90deg, #DC2626 0%, #EF4444 100%)'
-                      : porcentajeCarga >= 70
-                        ? 'linear-gradient(90deg, #F59E0B 0%, #FFC107 100%)'
-                        : 'linear-gradient(90deg, #10B981 0%, #34D399 100%)'
-                  }}
-                />
-              </div>
-              <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
-                {porcentajeCarga.toFixed(1)}% de capacidad
+
+        {/* Estadísticas de Carga */}
+        <div>
+          <h3 className="text-lg font-extrabold mb-4" style={{ color: '#1F2937' }}>
+            Carga de Trabajo
+          </h3>
+
+          {/* Barra de capacidad */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold" style={{ color: '#4B5563' }}>
+                Capacidad Utilizada
+              </p>
+              <p className="text-sm font-bold" style={{ color: '#003DA5' }}>
+                {profesional.procesosAsignados} / {profesional.capacidadMaxima}
               </p>
             </div>
-
-            {/* Distribución de procesos */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="p-4 rounded-xl text-center border-2" style={{ borderColor: '#D1FAE5', background: '#F0FDF4' }}>
-                <CheckCircle className="w-8 h-8 mx-auto mb-2" style={{ color: '#10B981' }} />
-                <p className="text-2xl font-extrabold mb-1" style={{ color: '#10B981' }}>
-                  {profesional.procesosAlDia}
-                </p>
-                <p className="text-xs font-semibold" style={{ color: '#059669' }}>
-                  Al día
-                </p>
-              </div>
-              <div className="p-4 rounded-xl text-center border-2" style={{ borderColor: '#FEF3C7', background: '#FFFBEB' }}>
-                <Clock className="w-8 h-8 mx-auto mb-2" style={{ color: '#F59E0B' }} />
-                <p className="text-2xl font-extrabold mb-1" style={{ color: '#F59E0B' }}>
-                  {profesional.procesosEnRiesgo}
-                </p>
-                <p className="text-xs font-semibold" style={{ color: '#D97706' }}>
-                  En riesgo
-                </p>
-              </div>
-              <div className="p-4 rounded-xl text-center border-2" style={{ borderColor: '#FEE2E2', background: '#FEF2F2' }}>
-                <AlertTriangle className="w-8 h-8 mx-auto mb-2" style={{ color: '#DC2626' }} />
-                <p className="text-2xl font-extrabold mb-1" style={{ color: '#DC2626' }}>
-                  {profesional.procesosVencidos}
-                </p>
-                <p className="text-xs font-semibold" style={{ color: '#DC2626' }}>
-                  Vencidos
-                </p>
-              </div>
+            <div className="w-full h-4 bg-gray-200 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${porcentajeCarga}%` }}
+                transition={{ duration: 1 }}
+                className="h-full rounded-full"
+                style={{
+                  background: porcentajeCarga >= 90
+                    ? 'linear-gradient(90deg, #DC2626 0%, #EF4444 100%)'
+                    : porcentajeCarga >= 70
+                      ? 'linear-gradient(90deg, #F59E0B 0%, #FFC107 100%)'
+                      : 'linear-gradient(90deg, #10B981 0%, #34D399 100%)'
+                }}
+              />
             </div>
+            <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
+              {porcentajeCarga.toFixed(1)}% de capacidad
+            </p>
           </div>
 
-          {/* Indicadores de Desempeño */}
-          <div>
-            <h3 className="text-lg font-extrabold mb-4" style={{ color: '#1F2937' }}>
-              Indicadores de Desempeño
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB' }}>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-                    Tasa de Efectividad
-                  </p>
-                  <TrendingUp className="w-5 h-5" style={{ color: '#10B981' }} />
-                </div>
-                <p className="text-3xl font-extrabold" style={{ color: '#003DA5' }}>
-                  {tasaEfectividad}%
+          {/* Distribución de procesos */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="p-4 rounded-xl text-center border-2" style={{ borderColor: '#D1FAE5', background: '#F0FDF4' }}>
+              <CheckCircle className="w-8 h-8 mx-auto mb-2" style={{ color: '#10B981' }} />
+              <p className="text-2xl font-extrabold mb-1" style={{ color: '#10B981' }}>
+                {profesional.procesosAlDia}
+              </p>
+              <p className="text-xs font-semibold" style={{ color: '#059669' }}>
+                Al día
+              </p>
+            </div>
+            <div className="p-4 rounded-xl text-center border-2" style={{ borderColor: '#FEF3C7', background: '#FFFBEB' }}>
+              <Clock className="w-8 h-8 mx-auto mb-2" style={{ color: '#F59E0B' }} />
+              <p className="text-2xl font-extrabold mb-1" style={{ color: '#F59E0B' }}>
+                {profesional.procesosEnRiesgo}
+              </p>
+              <p className="text-xs font-semibold" style={{ color: '#D97706' }}>
+                En riesgo
+              </p>
+            </div>
+            <div className="p-4 rounded-xl text-center border-2" style={{ borderColor: '#FEE2E2', background: '#FEF2F2' }}>
+              <AlertTriangle className="w-8 h-8 mx-auto mb-2" style={{ color: '#DC2626' }} />
+              <p className="text-2xl font-extrabold mb-1" style={{ color: '#DC2626' }}>
+                {profesional.procesosVencidos}
+              </p>
+              <p className="text-xs font-semibold" style={{ color: '#DC2626' }}>
+                Vencidos
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Indicadores de Desempeño */}
+        <div>
+          <h3 className="text-lg font-extrabold mb-4" style={{ color: '#1F2937' }}>
+            Indicadores de Desempeño
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB' }}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
+                  Tasa de Efectividad
                 </p>
-                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                  Procesos al día vs total
-                </p>
+                <TrendingUp className="w-5 h-5" style={{ color: '#10B981' }} />
               </div>
-              <div className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB' }}>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-                    Capacidad Disponible
-                  </p>
-                  <Target className="w-5 h-5" style={{ color: '#003DA5' }} />
-                </div>
-                <p className="text-3xl font-extrabold" style={{ color: '#003DA5' }}>
-                  {profesional.capacidadMaxima - profesional.procesosAsignados}
+              <p className="text-3xl font-extrabold" style={{ color: '#003DA5' }}>
+                {tasaEfectividad}%
+              </p>
+              <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                Procesos al día vs total
+              </p>
+            </div>
+            <div className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB' }}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
+                  Capacidad Disponible
                 </p>
-                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                  Procesos adicionales posibles
-                </p>
+                <Target className="w-5 h-5" style={{ color: '#003DA5' }} />
               </div>
+              <p className="text-3xl font-extrabold" style={{ color: '#003DA5' }}>
+                {profesional.capacidadMaxima - profesional.procesosAsignados}
+              </p>
+              <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                Procesos adicionales posibles
+              </p>
             </div>
           </div>
         </div>
@@ -424,6 +452,7 @@ function ModalDetalleProfesional({
         </div>
       </motion.div>
     </motion.div>
+
   );
 }
 

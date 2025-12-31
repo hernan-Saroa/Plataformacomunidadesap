@@ -897,6 +897,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           toast.success('Certificado generado exitosamente');
           setIsGenerarOpen(false);
         }}
+        certificados={certificados}
       />
     </div>
   );

@@ -66,6 +66,12 @@ export class PeiService {
         return this.indicadorRepo.save(nuevo);
     }
 
+    async updateIndicador(id: number, data: Partial<PeiIndicador>) {
+        const indicador = await this.findOne(id);
+        const updated = Object.assign(indicador, data);
+        return this.indicadorRepo.save(updated);
+    }
+
     async findOne(id: number) {
         const ind = await this.indicadorRepo.findOne({
             where: { id },
@@ -92,9 +98,7 @@ export class PeiService {
         const registro = this.registroRepo.create({
             indicadorId: id,
             valorReportado,
-            porcentajeAvance: porcentaje > 100 ? 100 : porcentaje, // Cap at 100? Or allow >100? Requirement implies typical progress. Let's not strict cap unless asked, but usually for "Avance Global" math, >100 might skew. Let's cap visual but store real?
-            // Re-reading visual rules: Green >= 90. 
-            // We will store exact calculation. Logic in dashboard handles display.
+            porcentajeAvance: porcentaje > 100 ? 100 : porcentaje,
             observaciones,
             usuarioRegistraId: usuarioId
         });
@@ -103,5 +107,98 @@ export class PeiService {
         registro.porcentajeAvance = (valorReportado / meta) * 100;
 
         return this.registroRepo.save(registro);
+    }
+
+    async exportIndicatorsToZip(): Promise<any> {
+        // Dynamic imports to avoid issues if deps are strictly CJS/ESM
+        const archiver = require('archiver');
+        const PDFDocument = require('pdfkit');
+
+        // 1. Get all indicators with history
+        const indicadores = await this.indicadorRepo.find({
+            relations: ['registros'],
+            order: { id: 'ASC' }
+        });
+
+        const archive = archiver('zip', {
+            zlib: { level: 9 } // Sets the compression level.
+        });
+
+        // 2. Generate PDF for each indicator
+        for (const ind of indicadores) {
+            const doc = new PDFDocument();
+
+            // Allow the doc to be read by the archive
+            archive.append(doc, { name: `indicador_${ind.id}.pdf` });
+
+            // Header
+            doc.fontSize(20).text(`Plan de Acción Institucional`, { align: 'center' });
+            doc.moveDown();
+            doc.fontSize(16).text(`Detalle de Indicador: ${ind.id}`, { align: 'center' });
+            doc.moveDown();
+
+            // Basic Info
+            doc.fontSize(12).font('Helvetica-Bold').text('Nombre:', { continued: true }).font('Helvetica').text(` ${ind.nombre}`);
+            doc.font('Helvetica-Bold').text('Responsable:', { continued: true }).font('Helvetica').text(` ${ind.responsableNombre}`);
+            doc.font('Helvetica-Bold').text('Eje Estratégico:', { continued: true }).font('Helvetica').text(` ${ind.ejeEstrategico}`);
+            doc.font('Helvetica-Bold').text('Prioridad:', { continued: true }).font('Helvetica').text(` ${ind.prioridad || 'MEDIA'}`);
+            doc.font('Helvetica-Bold').text('Tipo:', { continued: true }).font('Helvetica').text(` ${ind.tipoIndicador || 'GESTION'}`);
+            doc.moveDown();
+
+            doc.font('Helvetica-Bold').text('Descripción:', { continued: true }).font('Helvetica').text(` ${ind.descripcion || 'Sin descripción'}`);
+            doc.moveDown();
+
+            // Metrics
+            const latest = ind.registros.sort((a, b) => b.fechaRegistro.getTime() - a.fechaRegistro.getTime())[0];
+            const avance = latest ? Number(latest.porcentajeAvance).toFixed(2) : '0';
+            const actual = latest ? Number(latest.valorReportado) : '0';
+
+            doc.text(`Meta Objetivo: ${ind.metaObjetivo} ${ind.unidadMedida}`);
+            doc.text(`Valor Actual: ${actual} ${ind.unidadMedida}`);
+            doc.text(`Avance Porcentual: ${avance}%`);
+            doc.moveDown();
+
+            // Status Calculation (Simplified)
+            const now = new Date();
+            const fin = new Date(ind.fechaFin);
+            const inicio = new Date(ind.fechaInicio);
+            let estado = 'EN TIPO';
+            if (Number(avance) >= 100) estado = 'COMPLETADO';
+            else if (now > fin) estado = 'VENCIDO';
+            else if (Number(avance) >= 90) estado = 'EN TIEMPO';
+            else if (Number(avance) >= 50) estado = 'EN RIESGO';
+
+            doc.text(`Estado Calculado: ${estado}`);
+            doc.text(`Fecha Inicio: ${inicio.toLocaleDateString()}`);
+            doc.text(`Fecha Fin: ${fin.toLocaleDateString()}`);
+
+            doc.moveDown();
+            doc.fontSize(14).text('Historial de Avances', { underline: true });
+            doc.moveDown(0.5);
+
+            if (ind.registros.length > 0) {
+                ind.registros.forEach((reg, idx) => {
+                    doc.fontSize(10).font('Helvetica').text(
+                        `${new Date(reg.fechaRegistro).toLocaleDateString()} - Avance: ${Number(reg.porcentajeAvance).toFixed(2)}% (Valor: ${reg.valorReportado})`
+                    );
+                    if (reg.observaciones) {
+                        doc.fontSize(8).text(`   Obs: ${reg.observaciones}`, { oblique: true });
+                    }
+                    doc.moveDown(0.5);
+                });
+            } else {
+                doc.fontSize(10).text('No hay registros de avance.');
+            }
+
+            // Finalize PDF
+            doc.end();
+        }
+
+        // Finalize the archive (but we don't await finalize here, we verify connection in controller)
+        // Actually, we return the archive object, controller pipes it.
+        // We must call finalize() to start the stream ending process.
+        archive.finalize();
+
+        return archive;
     }
 }

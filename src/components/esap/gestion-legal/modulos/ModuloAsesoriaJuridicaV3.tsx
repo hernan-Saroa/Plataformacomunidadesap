@@ -20,12 +20,14 @@ import { Textarea } from '../../../ui/textarea';
 import { Label } from '../../../ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { legalService } from '../../../../services/api/legal.service';
+import { ModalNuevaConsulta, NuevaConsultaData } from './ModalNuevaConsulta';
+import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
 
 type VistaModulo = 'tabla' | 'tarjetas';
 type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema';
@@ -38,6 +40,11 @@ export function ModuloAsesoriaJuridicaV3() {
   const [orden, setOrden] = useState<OrdenColumna>('dias');
   const [direccionOrden, setDireccionOrden] = useState<'asc' | 'desc'>('asc');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  // Estados para modales
+  const [modalNuevaConsultaOpen, setModalNuevaConsultaOpen] = useState(false);
+  const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
+  const [consultaSeleccionada, setConsultaSeleccionada] = useState<ConsultaJuridica | null>(null);
 
   // Data from API
   const [consultas, setConsultas] = useState<any[]>([]);
@@ -90,6 +97,7 @@ export function ModuloAsesoriaJuridicaV3() {
         temaJuridico: c.materiaJuridica || 'Administrativo',
         solicitante: c.dependenciaSolicitante || 'Sin dependencia',
         funcionarioSolicitante: c.nombreSolicitante || 'Sin asignar',
+        emailSolicitante: c.emailSolicitante || '',
         consulta: c.descripcion || '',
         fechaRadicacion: new Date(c.fechaRecepcion),
         diasTotales: c.terminoLegalDias || 30,
@@ -176,11 +184,6 @@ export function ModuloAsesoriaJuridicaV3() {
     }
   };
 
-  const handleOpenExpediente = (consulta: any) => {
-    setSelectedConsulta(consulta);
-    setIsExpedienteOpen(true);
-  };
-
   const handleDeleteConsulta = async (uuid: string) => {
     if (!confirm('¿Estás seguro de eliminar esta consulta? Esta acción no se puede deshacer.')) return;
     const toastId = toast.loading('Eliminando consulta...');
@@ -256,6 +259,36 @@ export function ModuloAsesoriaJuridicaV3() {
     }
   };
 
+  const handleNuevaConsulta = async (data: NuevaConsultaData) => {
+    try {
+      const response = await legalService.createConsultaJuridica({
+        materiaJuridica: data.temaJuridico.toLowerCase(),
+        dependenciaSolicitante: data.solicitante,
+        nombreSolicitante: data.funcionarioSolicitante,
+        emailSolicitante: data.emailSolicitante,
+        cargoSolicitante: data.cargo,
+        descripcion: data.consulta,
+        prioridad: data.prioridad.toLowerCase(),
+        terminoLegalDias: 30
+      });
+
+      // Recargar listado de consultas
+      await loadConsultas();
+
+      toast.success('✅ Consulta creada exitosamente', {
+        description: `${response.numeroRadicado} - ${data.temaJuridico}`
+      });
+    } catch (error) {
+      console.error('Error al crear consulta:', error);
+      toast.error('Error al crear la consulta');
+    }
+  };
+
+  const handleAbrirExpediente = (consulta: ConsultaJuridica) => {
+    setConsultaSeleccionada(consulta);
+    setModalExpedienteOpen(true);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header con ModuleHeader - SIN toggleView */}
@@ -268,6 +301,7 @@ export function ModuloAsesoriaJuridicaV3() {
             labelMobile: 'Nueva',
             icon: <Plus className="w-4 h-4" />,
             onClick: () => setIsCreateOpen(true),
+            // onClick: () => setModalNuevaConsultaOpen(true),
             variant: 'primary'
           }
         ]}
@@ -394,10 +428,33 @@ export function ModuloAsesoriaJuridicaV3() {
           orden={orden}
           direccionOrden={direccionOrden}
           onOrdenar={handleOrdenar}
-          onOpenExpediente={handleOpenExpediente}
+          onAbrirExpediente={handleAbrirExpediente}
         />
       ) : (
-        <TarjetasConsultas consultas={consultasFiltradas} onOpenExpediente={handleOpenExpediente} />
+        <TarjetasConsultas
+          consultas={consultasFiltradas}
+          onAbrirExpediente={handleAbrirExpediente}
+        />
+      )}
+
+      {/* MODALES */}
+      {modalNuevaConsultaOpen && (
+        <ModalNuevaConsulta
+          isOpen={modalNuevaConsultaOpen}
+          onClose={() => setModalNuevaConsultaOpen(false)}
+          onSubmit={handleNuevaConsulta}
+        />
+      )}
+
+      {modalExpedienteOpen && consultaSeleccionada && (
+        <ModalExpedienteConsulta
+          isOpen={modalExpedienteOpen}
+          onClose={() => {
+            setModalExpedienteOpen(false);
+            setConsultaSeleccionada(null);
+          }}
+          consulta={consultaSeleccionada}
+        />
       )}
 
       {/* Modal Expediente */}
@@ -729,10 +786,10 @@ interface TablaConsultasProps {
   orden: OrdenColumna;
   direccionOrden: 'asc' | 'desc';
   onOrdenar: (columna: OrdenColumna) => void;
-  onOpenExpediente: (consulta: any) => void;
+  onAbrirExpediente: (consulta: ConsultaJuridica) => void;
 }
 
-function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onOpenExpediente }: TablaConsultasProps) {
+function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirExpediente }: TablaConsultasProps) {
   return (
     <Card className="bg-white border border-gray-200">
       <table className="w-full">
@@ -818,7 +875,11 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onOpenExp
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.abogadoAsignado}</td>
               <td className="px-4 py-3 text-sm text-gray-500">
                 <Button
-                  onClick={(e) => { e.stopPropagation(); onOpenExpediente(consulta); }}
+                  onClick={(e) => { e.stopPropagation(); onAbrirExpediente(consulta); }}
+                  // onClick={(e) => { 
+                  //   e.stopPropagation(); 
+                  //   onAbrirExpediente(consulta);
+                  // }}
                   size="sm"
                   className="w-full text-xs font-bold truncate"
                   style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -836,10 +897,10 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onOpenExp
 
 interface TarjetasConsultasProps {
   consultas: ConsultaJuridica[];
-  onOpenExpediente: (consulta: any) => void;
+  onAbrirExpediente: (consulta: ConsultaJuridica) => void;
 }
 
-function TarjetasConsultas({ consultas, onOpenExpediente }: TarjetasConsultasProps) {
+function TarjetasConsultas({ consultas, onAbrirExpediente }: TarjetasConsultasProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {consultas.map((consulta) => (
@@ -921,7 +982,11 @@ function TarjetasConsultas({ consultas, onOpenExpediente }: TarjetasConsultasPro
 
             <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
               <Button
-                onClick={(e) => { e.stopPropagation(); onOpenExpediente(consulta); }}
+                onClick={(e) => { e.stopPropagation(); onAbrirExpediente(consulta); }}
+                // onClick={(e) => { 
+                //   e.stopPropagation(); 
+                //   onAbrirExpediente(consulta);
+                // }}
                 size="sm"
                 className="w-full text-xs font-bold truncate"
                 style={{ background: '#003DA5', color: '#FFFFFF' }}

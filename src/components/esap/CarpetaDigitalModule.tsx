@@ -61,11 +61,14 @@ const generateUserFolders = (): UserFolder[] => {
   };
 
   return MOCK_USERS_WITH_SEDES.map((user, index) => {
-    const seed = parseInt(user.id.replace('user-', ''));
+    // ✅ FIX: Generar seed de manera más robusta
+    const seedStr = user.id.replace(/\D/g, ''); // Extraer solo números
+    const seed = seedStr ? parseInt(seedStr) : index + 1000; // Usar index como fallback
+    
     const total = seededRandom(seed, 8, 25);
     const completos = seededRandom(seed + 100, Math.floor(total * 0.5), Math.floor(total * 0.8));
     const formatos = seededRandom(seed + 200, 1, Math.min(4, total - completos));
-    const rechazados = total - completos - formatos;
+    const rechazados = Math.max(0, total - completos - formatos); // ✅ Asegurar que no sea negativo
 
     return {
       userId: user.id,
@@ -83,7 +86,10 @@ const generateUserFolders = (): UserFolder[] => {
 
 // Generar documentos de un usuario
 const generateUserDocuments = (userId: string): Document[] => {
-  const seed = parseInt(userId.replace('user-', ''));
+  // ✅ FIX: Generar seed de manera más robusta
+  const seedStr = userId.replace(/\D/g, ''); // Extraer solo números
+  const seed = seedStr ? parseInt(seedStr) : Math.floor(Math.random() * 10000); // Usar random como fallback
+  
   const seededRandom = (s: number, min: number, max: number) => {
     const x = Math.sin(s++) * 10000;
     return Math.floor((x - Math.floor(x)) * (max - min + 1)) + min;
@@ -102,15 +108,22 @@ const generateUserDocuments = (userId: string): Document[] => {
   const categories: DocumentCategory[] = ['personal', 'academico', 'certificador', 'laboral', 'otros'];
   const statuses: DocumentStatus[] = ['validado', 'vencido', 'pendiente'];
 
-  return Array.from({ length: count }, (_, i) => ({
-    id: `doc-${userId}-${i}`,
-    name: `${names[Math.floor(Math.random() * names.length)]}.${types[Math.floor(Math.random() * types.length)]}`,
-    type: types[Math.floor(Math.random() * types.length)],
-    category: categories[Math.floor(Math.random() * categories.length)],
-    size: Math.floor(Math.random() * 5000000) + 100000,
-    status: statuses[Math.floor(Math.random() * statuses.length)],
-    modifiedAt: `Hace ${Math.floor(Math.random() * 12) + 1} meses`
-  }));
+  return Array.from({ length: count }, (_, i) => {
+    const nameIndex = seededRandom(seed + i, 0, names.length - 1);
+    const typeIndex = seededRandom(seed + i + 100, 0, types.length - 1);
+    const categoryIndex = seededRandom(seed + i + 200, 0, categories.length - 1);
+    const statusIndex = seededRandom(seed + i + 300, 0, statuses.length - 1);
+    
+    return {
+      id: `doc-${userId}-${i}`,
+      name: `${names[nameIndex]}.${types[typeIndex]}`,
+      type: types[typeIndex],
+      category: categories[categoryIndex],
+      size: seededRandom(seed + i + 400, 100000, 5000000),
+      status: statuses[statusIndex],
+      modifiedAt: `Hace ${seededRandom(seed + i + 500, 1, 12)} meses`
+    };
+  });
 };
 
 const formatSize = (bytes: number): string => {

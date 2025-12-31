@@ -3,7 +3,7 @@ import { RiesgosService } from '../services/riesgos.service';
 import { Riesgo } from '../entities/riesgo.entity';
 import type { EtapaRiesgo, ZonaRiesgo } from '../entities/riesgo.entity';
 
-@Controller('api/legal/riesgos')
+@Controller('legal/riesgos')
 export class RiesgosController {
     constructor(private readonly riesgosService: RiesgosService) { }
 
