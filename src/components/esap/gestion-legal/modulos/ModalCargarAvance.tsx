@@ -12,6 +12,7 @@ import { Textarea } from '../../../ui/textarea';
 import { Progress } from '../../../ui/progress';
 import { toast } from 'sonner@2.0.3';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import confetti from 'canvas-confetti';
 
 interface Indicador {
   id: string;
@@ -89,6 +90,34 @@ export function ModalCargarAvance({ isOpen, onClose, indicador, onGuardar }: Mod
 
     if (onGuardar) {
       onGuardar(actualizacion);
+    }
+
+    // Check for Celebration 🎉
+    if (avanceCalculado >= 100) {
+      const duration = 3000;
+      const end = Date.now() + duration;
+
+      const frame = () => {
+        confetti({
+          particleCount: 2,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0 },
+          colors: ['#003DA5', '#ffffff', '#10B981'] // ESAP colors
+        });
+        confetti({
+          particleCount: 2,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1 },
+          colors: ['#003DA5', '#ffffff', '#10B981']
+        });
+
+        if (Date.now() < end) {
+          requestAnimationFrame(frame);
+        }
+      };
+      frame();
     }
 
     toast.success('Avance actualizado exitosamente', {
@@ -246,26 +275,26 @@ export function ModalCargarAvance({ isOpen, onClose, indicador, onGuardar }: Mod
                           backgroundColor: estadoCalculado === 'COMPLETADO'
                             ? '#D1FAE5'
                             : estadoCalculado === 'EN_TIEMPO'
-                            ? '#D1FAE5'
-                            : estadoCalculado === 'EN_RIESGO'
-                            ? '#FEF3C7'
-                            : '#FEE2E2',
+                              ? '#D1FAE5'
+                              : estadoCalculado === 'EN_RIESGO'
+                                ? '#FEF3C7'
+                                : '#FEE2E2',
                           color: estadoCalculado === 'COMPLETADO'
                             ? '#059669'
                             : estadoCalculado === 'EN_TIEMPO'
-                            ? '#10B981'
-                            : estadoCalculado === 'EN_RIESGO'
-                            ? '#F59E0B'
-                            : '#DC2626'
+                              ? '#10B981'
+                              : estadoCalculado === 'EN_RIESGO'
+                                ? '#F59E0B'
+                                : '#DC2626'
                         }}
                       >
                         {estadoCalculado === 'COMPLETADO'
                           ? '✅ Completado'
                           : estadoCalculado === 'EN_TIEMPO'
-                          ? '🟢 En Tiempo'
-                          : estadoCalculado === 'EN_RIESGO'
-                          ? '🟡 En Riesgo'
-                          : '🔴 Vencido'}
+                            ? '🟢 En Tiempo'
+                            : estadoCalculado === 'EN_RIESGO'
+                              ? '🟡 En Riesgo'
+                              : '🔴 Vencido'}
                       </span>
                     </div>
                   </div>

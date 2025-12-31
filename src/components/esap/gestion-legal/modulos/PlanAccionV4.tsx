@@ -3,9 +3,10 @@
  * REDISEÑO COMPLETO - Estructura profesional tipo SAP Fiori / Microsoft Planner
  * 4 VISTAS: Dashboard, Lista (por defecto), Timeline, Matriz
  * ✅ ESAP 2025 - Con modales profesionales integrados
+ * ✅ INTEGRACIÓN API REAL - Backend Node.js
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -13,7 +14,7 @@ import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Progress } from '../../../ui/progress';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { 
+import {
   Target, BarChart3, Activity, TrendingUp, Award, CheckCircle, AlertCircle,
   Calendar, Eye, Plus, Search, Filter, List, Clock, User, Download,
   MoreVertical, Edit, Trash2, TrendingDown, AlertTriangle, Grid3x3,
@@ -31,11 +32,15 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator
 } from '../../../ui/dropdown-menu';
+import axios from 'axios';
+
 // Importar modales ESAP 2025
 import { ModalNuevoIndicador } from './ModalNuevoIndicador';
 import { ModalEditarIndicador } from './ModalEditarIndicador';
 import { ModalCargarAvance } from './ModalCargarAvance';
 import { ModalDetalleIndicador } from './ModalDetalleIndicador';
+
+const API_URL = 'http://localhost:3008/api/legal/pei';
 
 // ==================== TIPOS ====================
 interface Indicador {
@@ -60,172 +65,46 @@ interface Indicador {
 
 type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'matriz';
 
-// ==================== DATOS MOCK ====================
-const indicadoresMock: Indicador[] = [
-  // GESTIÓN INSTITUCIONAL
-  {
-    id: 'IND-2025-001',
-    codigo: 'GI-001',
-    nombre: 'Reducción de términos vencidos en procesos judiciales',
-    descripcion: 'Reducir en 20% los términos vencidos en defensa judicial',
-    ejeEstrategico: 'GESTION_INSTITUCIONAL',
-    responsable: 'Dr. Carlos Mendoza Torres',
-    meta: 80,
-    valorActual: 75,
-    avance: 94, // (75/80) * 100
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_TIEMPO',
-    prioridad: 'ALTA',
-    periodicidad: 'MENSUAL',
-    tipoIndicador: 'EFICIENCIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-28')
-  },
-  {
-    id: 'IND-2025-002',
-    codigo: 'GI-002',
-    nombre: 'Digitalización de expedientes judiciales activos',
-    descripcion: 'Digitalizar el 90% de los expedientes judiciales activos',
-    ejeEstrategico: 'GESTION_INSTITUCIONAL',
-    responsable: 'Dra. Patricia Ruiz Gómez',
-    meta: 90,
-    valorActual: 62,
-    avance: 69, // (62/90) * 100
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_RIESGO',
-    prioridad: 'ALTA',
-    periodicidad: 'TRIMESTRAL',
-    tipoIndicador: 'GESTION',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-15')
-  },
-
-  // TALENTO HUMANO
-  {
-    id: 'IND-2025-003',
-    codigo: 'TH-001',
-    nombre: 'Capacitación en normativa jurídica actualizada',
-    descripcion: 'Capacitar al 100% del equipo jurídico en nuevas leyes 2025',
-    ejeEstrategico: 'TALENTO_HUMANO',
-    responsable: 'Dra. Ana María López',
-    meta: 100,
-    valorActual: 45,
-    avance: 45,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-06-30'),
-    estado: 'EN_RIESGO',
-    prioridad: 'MEDIA',
-    periodicidad: 'SEMESTRAL',
-    tipoIndicador: 'GESTION',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-20')
-  },
-  {
-    id: 'IND-2025-004',
-    codigo: 'TH-002',
-    nombre: 'Certificación en competencias jurídicas especializadas',
-    descripcion: 'Lograr que el 80% del equipo obtenga certificación profesional',
-    ejeEstrategico: 'TALENTO_HUMANO',
-    responsable: 'Dr. Roberto Silva',
-    meta: 80,
-    valorActual: 28,
-    avance: 35,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-11-30'),
-    estado: 'VENCIDO',
-    prioridad: 'ALTA',
-    periodicidad: 'ANUAL',
-    tipoIndicador: 'EFICACIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-01')
-  },
-
-  // TRANSPARENCIA
-  {
-    id: 'IND-2025-005',
-    codigo: 'TR-001',
-    nombre: 'Publicación de decisiones judiciales relevantes',
-    descripcion: 'Publicar el 100% de decisiones en plataforma institucional',
-    ejeEstrategico: 'TRANSPARENCIA',
-    responsable: 'Dra. Laura Martínez',
-    meta: 100,
-    valorActual: 92,
-    avance: 92,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_TIEMPO',
-    prioridad: 'ALTA',
-    periodicidad: 'MENSUAL',
-    tipoIndicador: 'TRANSPARENCIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-27')
-  },
-  {
-    id: 'IND-2025-006',
-    codigo: 'TR-002',
-    nombre: 'Atención oportuna a derechos de petición',
-    descripcion: 'Responder el 95% de derechos de petición dentro del término legal',
-    ejeEstrategico: 'TRANSPARENCIA',
-    responsable: 'Dr. Miguel Ángel Vargas',
-    meta: 95,
-    valorActual: 88,
-    avance: 93,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_TIEMPO',
-    prioridad: 'ALTA',
-    periodicidad: 'MENSUAL',
-    tipoIndicador: 'EFICIENCIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-26')
-  },
-
-  // TECNOLOGÍA
-  {
-    id: 'IND-2025-007',
-    codigo: 'TEC-001',
-    nombre: 'Automatización de alertas de términos procesales',
-    descripcion: 'Implementar sistema de alertas automáticas en el 100% de procesos',
-    ejeEstrategico: 'TECNOLOGIA',
-    responsable: 'Ing. Andrés Jiménez',
-    meta: 100,
-    valorActual: 78,
-    avance: 78,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-09-30'),
-    estado: 'EN_RIESGO',
-    prioridad: 'ALTA',
-    periodicidad: 'TRIMESTRAL',
-    tipoIndicador: 'GESTION',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-22')
-  },
-  {
-    id: 'IND-2025-008',
-    codigo: 'TEC-002',
-    nombre: 'Adopción de firma electrónica avanzada',
-    descripcion: 'Lograr que el 90% de documentos se firmen electrónicamente',
-    ejeEstrategico: 'TECNOLOGIA',
-    responsable: 'Dra. Carolina Pérez',
-    meta: 90,
-    valorActual: 55,
-    avance: 61,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_RIESGO',
-    prioridad: 'MEDIA',
-    periodicidad: 'TRIMESTRAL',
-    tipoIndicador: 'EFICACIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-18')
+// ==================== HELPERS MAPPING ====================
+const mapEjeFromBackend = (eje: string) => {
+  switch (eje) {
+    case 'GESTION': return 'GESTION_INSTITUCIONAL';
+    case 'TALENTO': return 'TALENTO_HUMANO';
+    case 'TRANSPARENCIA': return 'TRANSPARENCIA';
+    case 'TECNOLOGIA': return 'TECNOLOGIA';
+    default: return 'GESTION_INSTITUCIONAL';
   }
-];
+};
 
-// ==================== HELPERS ====================
+const mapEjeToBackend = (eje: string) => {
+  switch (eje) {
+    case 'GESTION_INSTITUCIONAL': return 'GESTION';
+    case 'TALENTO_HUMANO': return 'TALENTO';
+    case 'TRANSPARENCIA': return 'TRANSPARENCIA';
+    case 'TECNOLOGIA': return 'TECNOLOGIA';
+    default: return 'GESTION';
+  }
+};
+
+const mapEstadoFromBackend = (estado: string, avance: number, fechaFin: Date): any => {
+  if (avance >= 100) return 'COMPLETADO';
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const fin = new Date(fechaFin);
+  fin.setHours(0, 0, 0, 0);
+
+  if (now > fin) return 'VENCIDO';
+
+  if (avance >= 90) return 'EN_TIEMPO';
+  if (avance >= 50) return 'EN_RIESGO';
+
+  return 'EN_TIEMPO';
+};
+
+// ==================== HELPERS UI ====================
 const getEjeConfig = (eje: string) => {
-  const configs = {
+  const configs: Record<string, any> = {
     GESTION_INSTITUCIONAL: {
       nombre: 'Gestión Institucional',
       color: '#2962FF',
@@ -255,7 +134,7 @@ const getEjeConfig = (eje: string) => {
 };
 
 const getEstadoConfig = (estado: string) => {
-  const configs = {
+  const configs: Record<string, any> = {
     EN_TIEMPO: {
       nombre: 'En Tiempo',
       color: '#10B981',
@@ -303,8 +182,13 @@ export function ModuloPlanAccionV4() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEje, setFiltroEje] = useState<string>('TODOS');
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
+  const [ocultarCompletados, setOcultarCompletados] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['GESTION_INSTITUCIONAL', 'TALENTO_HUMANO', 'TRANSPARENCIA', 'TECNOLOGIA']));
+
+  // Data state
+  const [indicadores, setIndicadores] = useState<Indicador[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Estados para modales ESAP 2025
   const [modalNuevoOpen, setModalNuevoOpen] = useState(false);
@@ -312,6 +196,49 @@ export function ModuloPlanAccionV4() {
   const [modalAvanceOpen, setModalAvanceOpen] = useState(false);
   const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
   const [indicadorSeleccionado, setIndicadorSeleccionado] = useState<Indicador | null>(null);
+
+  // Fetch Data
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API_URL}/dashboard`);
+      const backendIndicadores = Array.isArray(res.data.indicadores) ? res.data.indicadores : [];
+
+      const mapped: Indicador[] = backendIndicadores.map((ind: any) => ({
+        id: ind.id.toString(),
+        codigo: ind.id.toString(),
+        nombre: ind.nombre,
+        descripcion: ind.descripcion || '',
+        ejeEstrategico: mapEjeFromBackend(ind.ejeEstrategico),
+        responsable: ind.responsableNombre || 'Sin Asignar',
+        meta: Number(ind.metaObjetivo) || 0,
+        valorActual: Number(ind.valorActual) || 0,
+        avance: Number(ind.avanceActual) || 0,
+        fechaInicio: new Date(ind.fechaInicio),
+        fechaFin: new Date(ind.fechaFin),
+        estado: mapEstadoFromBackend(ind.estado, ind.avanceActual, new Date(ind.fechaFin)),
+        prioridad: ind.prioridad || 'MEDIA',
+        periodicidad: ind.frecuenciaMedicion || 'MENSUAL',
+        tipoIndicador: ind.tipoIndicador || 'GESTION',
+        unidadMedida: ind.unidadMedida || '%',
+        ultimaActualizacion: new Date()
+      }));
+
+      setIndicadores(mapped);
+    } catch (error) {
+      console.error('Error fetching PEI data:', error);
+      toast.error('Error al cargar datos del Plan de Acción');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Handlers para modales
   const handleVerDetalles = (indicador: Indicador) => {
@@ -323,7 +250,7 @@ export function ModuloPlanAccionV4() {
     if (indicador) {
       setIndicadorSeleccionado(indicador);
     }
-    setModalDetalleOpen(false); // Cerrar detalle si está abierto
+    setModalDetalleOpen(false);
     setModalEditarOpen(true);
   };
 
@@ -331,7 +258,7 @@ export function ModuloPlanAccionV4() {
     if (indicador) {
       setIndicadorSeleccionado(indicador);
     }
-    setModalDetalleOpen(false); // Cerrar detalle si está abierto
+    setModalDetalleOpen(false);
     setModalAvanceOpen(true);
   };
 
@@ -339,9 +266,106 @@ export function ModuloPlanAccionV4() {
     setModalNuevoOpen(true);
   };
 
+  // Actions
+  const handleGuardarNuevo = async (data: any) => {
+    try {
+      // Map to Backend Entity
+      const payload = {
+        nombre: data.nombre,
+        descripcion: data.descripcion,
+        ejeEstrategico: mapEjeToBackend(data.ejeEstrategico),
+        metaObjetivo: parseFloat(data.meta),
+        unidadMedida: data.unidadMedida,
+        fechaInicio: data.fechaInicio,
+        fechaFin: data.fechaFin,
+        frecuenciaMedicion: data.periodicidad,
+        prioridad: data.prioridad,
+        tipoIndicador: data.tipoIndicador,
+        responsableNombre: data.responsable,
+        estado: 'ACTIVO'
+      };
+
+      await axios.post(`${API_URL}/indicador`, payload);
+      toast.success('Indicador creado exitosamente');
+      setModalNuevoOpen(false);
+      fetchData();
+    } catch (error) {
+      console.error('Error creating indicator:', error);
+      toast.error('Error al crear el indicador en el servidor');
+    }
+  };
+
+  const handleGuardarEdicion = async (data: any) => {
+    try {
+      if (!indicadorSeleccionado) return;
+      const payload = {
+        nombre: data.nombre,
+        descripcion: data.descripcion,
+        ejeEstrategico: mapEjeToBackend(data.ejeEstrategico),
+        metaObjetivo: parseFloat(data.meta),
+        unidadMedida: data.unidadMedida,
+        fechaInicio: data.fechaInicio,
+        fechaFin: data.fechaFin,
+        frecuenciaMedicion: data.periodicidad,
+        prioridad: data.prioridad,
+        tipoIndicador: data.tipoIndicador,
+        responsableNombre: data.responsable
+      };
+
+      await axios.put(`${API_URL}/indicador/${indicadorSeleccionado.id}`, payload);
+      toast.success('Indicador actualizado');
+      setModalEditarOpen(false);
+      fetchData();
+    } catch (error) {
+      console.error('Error updating indicator:', error);
+      toast.error('Error al actualizar el indicador');
+    }
+  };
+
+  const handleGuardarAvance = async (data: any) => {
+    try {
+      if (!indicadorSeleccionado) return;
+      await axios.post(`${API_URL}/indicador/${indicadorSeleccionado.id}/avance`, {
+        valor: data.valorActual,
+        observaciones: data.observacionesAvance
+      });
+      // Success toast is handled in the modal already? 
+      // Actually v4 ModalCargarAvance calls onGuardar but also has toast.
+      setModalAvanceOpen(false);
+      fetchData();
+    } catch (error) {
+      console.error('Error recording progress:', error);
+      toast.error('Error al guardar el avance');
+    }
+  };
+
+  const handleExportarZip = async () => {
+    const toastId = toast.loading('Generando reporte ZIP...');
+    try {
+      const response = await axios.get(`${API_URL}/export/zip`, {
+        responseType: 'blob',
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'indicadores_pei.zip');
+      document.body.appendChild(link);
+      link.click();
+
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Reporte descargado exitosamente', { id: toastId });
+    } catch (error) {
+      console.error('Error downloading zip:', error);
+      toast.error('Error al descargar el reporte', { id: toastId });
+    }
+  };
+
   // Filtrar indicadores
   const indicadoresFiltrados = useMemo(() => {
-    let resultado = [...indicadoresMock];
+    let resultado = [...indicadores];
 
     if (busqueda) {
       resultado = resultado.filter(i =>
@@ -359,12 +383,16 @@ export function ModuloPlanAccionV4() {
       resultado = resultado.filter(i => i.estado === filtroEstado);
     }
 
+    if (ocultarCompletados) {
+      resultado = resultado.filter(i => i.avance < 100);
+    }
+
     return resultado;
-  }, [busqueda, filtroEje, filtroEstado]);
+  }, [busqueda, filtroEje, filtroEstado, ocultarCompletados, indicadores]);
 
   // Agrupar por eje estratégico
   const indicadoresAgrupados = useMemo(() => {
-    const grupos = {
+    const grupos: Record<string, Indicador[]> = {
       GESTION_INSTITUCIONAL: [],
       TALENTO_HUMANO: [],
       TRANSPARENCIA: [],
@@ -372,7 +400,9 @@ export function ModuloPlanAccionV4() {
     };
 
     indicadoresFiltrados.forEach(ind => {
-      grupos[ind.ejeEstrategico].push(ind);
+      if (grupos[ind.ejeEstrategico]) {
+        grupos[ind.ejeEstrategico].push(ind);
+      }
     });
 
     return grupos;
@@ -380,16 +410,18 @@ export function ModuloPlanAccionV4() {
 
   // Calcular métricas
   const metricas = useMemo(() => {
-    const total = indicadoresMock.length;
+    const total = indicadores.length;
+    if (total === 0) return { total: 0, avancePromedio: 0, enTiempo: 0, enRiesgo: 0, vencidos: 0 };
+
     const avancePromedio = Math.round(
-      indicadoresMock.reduce((sum, i) => sum + i.avance, 0) / total
+      indicadores.reduce((sum, i) => sum + i.avance, 0) / total
     );
-    const enTiempo = indicadoresMock.filter(i => i.estado === 'EN_TIEMPO').length;
-    const enRiesgo = indicadoresMock.filter(i => i.estado === 'EN_RIESGO').length;
-    const vencidos = indicadoresMock.filter(i => i.estado === 'VENCIDO').length;
+    const enTiempo = indicadores.filter(i => i.estado === 'EN_TIEMPO' || i.estado === 'COMPLETADO').length;
+    const enRiesgo = indicadores.filter(i => i.estado === 'EN_RIESGO').length;
+    const vencidos = indicadores.filter(i => i.estado === 'VENCIDO').length;
 
     return { total, avancePromedio, enTiempo, enRiesgo, vencidos };
-  }, []);
+  }, [indicadores]);
 
   const toggleGroup = (eje: string) => {
     const newExpanded = new Set(expandedGroups);
@@ -429,7 +461,7 @@ export function ModuloPlanAccionV4() {
             label: 'Exportar',
             labelMobile: 'Exportar',
             icon: <Download className="w-4 h-4" />,
-            onClick: () => toast.info('Exportar Plan de Acción'),
+            onClick: handleExportarZip,
             variant: 'outline'
           }
         ]}
@@ -527,7 +559,16 @@ export function ModuloPlanAccionV4() {
               <option value="COMPLETADO">🎉 Completado</option>
             </select>
 
-            {(busqueda || filtroEje !== 'TODOS' || filtroEstado !== 'TODOS') && (
+            <Button
+              variant={ocultarCompletados ? 'default' : 'outline'}
+              onClick={() => setOcultarCompletados(!ocultarCompletados)}
+              className={`flex items-center gap-2 border-2 ${ocultarCompletados ? 'bg-green-600 border-green-700 text-white' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+            >
+              <CheckCircle className={`w-4 h-4 ${ocultarCompletados ? 'text-white' : 'text-green-600'}`} />
+              {ocultarCompletados ? 'Completados Ocultos' : 'Ocultar Completados'}
+            </Button>
+
+            {(busqueda || filtroEje !== 'TODOS' || filtroEstado !== 'TODOS' || ocultarCompletados) && (
               <Button
                 size="sm"
                 variant="outline"
@@ -535,6 +576,7 @@ export function ModuloPlanAccionV4() {
                   setBusqueda('');
                   setFiltroEje('TODOS');
                   setFiltroEstado('TODOS');
+                  setOcultarCompletados(false);
                 }}
               >
                 Limpiar Filtros
@@ -545,35 +587,43 @@ export function ModuloPlanAccionV4() {
           {/* Contador de resultados */}
           <div className="flex items-center justify-between pt-2 border-t">
             <p className="text-sm text-gray-600">
-              Mostrando <span className="font-bold text-blue-600">{indicadoresFiltrados.length}</span> de {indicadoresMock.length} indicadores
+              Mostrando <span className="font-bold text-blue-600">{indicadoresFiltrados.length}</span> de {indicadores.length} indicadores
             </p>
           </div>
         </div>
       </Card>
 
       {/* RENDERIZAR VISTAS */}
-      {tipoVista === 'dashboard' && <VistaDashboard indicadores={indicadoresMock} />}
-      {tipoVista === 'lista' && (
-        <VistaLista
-          indicadoresAgrupados={indicadoresAgrupados}
-          expandedGroups={expandedGroups}
-          toggleGroup={toggleGroup}
-          onVerDetalles={handleVerDetalles}
-          onEditarIndicador={handleEditarIndicador}
-          onCargarAvance={handleCargarAvance}
-        />
+      {loading ? (
+        <div className="p-12 text-center text-gray-500 bg-white border-2 border-dashed border-gray-200 rounded-xl">
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <p className="font-semibold">Cargando Plan de Acción...</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {tipoVista === 'dashboard' && <VistaDashboard indicadores={indicadores} />}
+          {tipoVista === 'lista' && (
+            <VistaLista
+              indicadoresAgrupados={indicadoresAgrupados}
+              expandedGroups={expandedGroups}
+              toggleGroup={toggleGroup}
+              onVerDetalles={handleVerDetalles}
+              onEditarIndicador={handleEditarIndicador}
+              onCargarAvance={handleCargarAvance}
+            />
+          )}
+          {tipoVista === 'timeline' && <VistaTimeline indicadores={indicadoresFiltrados} />}
+          {tipoVista === 'matriz' && <VistaMatriz indicadores={indicadores} />}
+        </>
       )}
-      {tipoVista === 'timeline' && <VistaTimeline indicadores={indicadoresFiltrados} />}
-      {tipoVista === 'matriz' && <VistaMatriz indicadores={indicadoresMock} />}
 
       {/* MODALES ESAP 2025 */}
       <ModalNuevoIndicador
         isOpen={modalNuevoOpen}
         onClose={() => setModalNuevoOpen(false)}
-        onGuardar={(data) => {
-          console.log('Nuevo indicador:', data);
-          // Aquí iría la lógica para guardar en el backend
-        }}
+        onGuardar={handleGuardarNuevo}
       />
 
       <ModalEditarIndicador
@@ -583,10 +633,7 @@ export function ModuloPlanAccionV4() {
           setIndicadorSeleccionado(null);
         }}
         indicador={indicadorSeleccionado}
-        onGuardar={(data) => {
-          console.log('Indicador actualizado:', data);
-          // Aquí iría la lógica para actualizar en el backend
-        }}
+        onGuardar={handleGuardarEdicion}
       />
 
       <ModalCargarAvance
@@ -596,10 +643,7 @@ export function ModuloPlanAccionV4() {
           setIndicadorSeleccionado(null);
         }}
         indicador={indicadorSeleccionado}
-        onGuardar={(data) => {
-          console.log('Avance actualizado:', data);
-          // Aquí iría la lógica para guardar el avance
-        }}
+        onGuardar={handleGuardarAvance}
       />
 
       <ModalDetalleIndicador
@@ -626,9 +670,9 @@ interface VistaListaProps {
   onCargarAvance: (indicador: Indicador) => void;
 }
 
-function VistaLista({ 
-  indicadoresAgrupados, 
-  expandedGroups, 
+function VistaLista({
+  indicadoresAgrupados,
+  expandedGroups,
   toggleGroup,
   onVerDetalles,
   onEditarIndicador,
@@ -645,7 +689,6 @@ function VistaLista({
 
         return (
           <Card key={eje} className="border-2 border-gray-200 bg-white overflow-hidden">
-            {/* Header del grupo */}
             <div
               className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
               style={{ borderLeft: `4px solid ${ejeConfig.color}` }}
@@ -666,7 +709,6 @@ function VistaLista({
                 </div>
 
                 <div className="flex items-center gap-4">
-                  {/* Barra de progreso del eje */}
                   <div className="hidden md:flex items-center gap-2">
                     <div className="w-32">
                       <Progress value={avanceEje} className="h-2" />
@@ -692,101 +734,58 @@ function VistaLista({
               </div>
             </div>
 
-            {/* Tabla de indicadores */}
             {isExpanded && indicadores.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-100 border-y-2 border-gray-300">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">
-                        Código
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">
-                        Indicador
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">
-                        Responsable
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">
-                        Meta
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">
-                        Actual
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">
-                        % Cumplimiento
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">
-                        Estado
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">
-                        Fecha Límite
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">
-                        Acciones
-                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Código</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Indicador</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Responsable</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">Meta</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">Actual</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">% Cumplimiento</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">Estado</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">Fecha Límite</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {indicadores.map((ind: Indicador) => {
                       const estadoConfig = getEstadoConfig(ind.estado);
                       return (
-                        <tr
-                          key={ind.id}
-                          className="hover:bg-blue-50 transition-colors"
-                        >
+                        <tr key={ind.id} className="hover:bg-blue-50 transition-colors">
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="text-sm font-bold" style={{ color: ejeConfig.color }}>
-                              {ind.codigo}
-                            </span>
+                            <span className="text-sm font-bold" style={{ color: ejeConfig.color }}>{ind.codigo}</span>
                           </td>
                           <td className="px-4 py-3">
                             <div className="max-w-xs">
-                              <p className="text-sm font-semibold text-gray-900 line-clamp-1">
-                                {ind.nombre}
-                              </p>
-                              <p className="text-xs text-gray-600 line-clamp-1">
-                                {ind.descripcion}
-                              </p>
+                              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{ind.nombre}</p>
+                              <p className="text-xs text-gray-600 line-clamp-1">{ind.descripcion}</p>
                             </div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <Avatar className="w-6 h-6">
-                                <AvatarFallback
-                                  className="text-xs"
-                                  style={{
-                                    backgroundColor: ejeConfig.bgColor,
-                                    color: ejeConfig.color
-                                  }}
-                                >
+                                <AvatarFallback className="text-xs" style={{ backgroundColor: ejeConfig.bgColor, color: ejeConfig.color }}>
                                   {ind.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
                                 </AvatarFallback>
                               </Avatar>
-                              <span className="text-sm text-gray-700 max-w-[150px] truncate">
-                                {ind.responsable}
-                              </span>
+                              <span className="text-sm text-gray-700 max-w-[150px] truncate">{ind.responsable}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3 text-center whitespace-nowrap">
-                            <span className="text-sm font-bold text-gray-900">
-                              {ind.meta}{ind.unidadMedida}
-                            </span>
+                            <span className="text-sm font-bold text-gray-900">{ind.meta}{ind.unidadMedida}</span>
                           </td>
                           <td className="px-4 py-3 text-center whitespace-nowrap">
-                            <span className="text-sm font-semibold text-blue-600">
-                              {ind.valorActual}{ind.unidadMedida}
-                            </span>
+                            <span className="text-sm font-semibold text-blue-600">{ind.valorActual}{ind.unidadMedida}</span>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <div className="flex-1 min-w-[100px]">
                                 <Progress value={ind.avance} className="h-2" />
                               </div>
-                              <span
-                                className="text-sm font-bold min-w-[3rem] text-right"
-                                style={{ color: getSemaforoColor(ind.avance) }}
-                              >
+                              <span className="text-sm font-bold min-w-[3rem] text-right" style={{ color: getSemaforoColor(ind.avance) }}>
                                 {ind.avance}%
                               </span>
                             </div>
@@ -794,11 +793,7 @@ function VistaLista({
                           <td className="px-4 py-3 text-center">
                             <Badge
                               className="text-xs font-semibold flex items-center gap-1 w-fit mx-auto"
-                              style={{
-                                backgroundColor: estadoConfig.bgColor,
-                                color: estadoConfig.color,
-                                border: `1px solid ${estadoConfig.color}`
-                              }}
+                              style={{ backgroundColor: estadoConfig.bgColor, color: estadoConfig.color, border: `1px solid ${estadoConfig.color}` }}
                             >
                               {getEstadoIcon(estadoConfig.iconType)}
                               {estadoConfig.nombre}
@@ -820,29 +815,14 @@ function VistaLista({
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-48">
                                   <DropdownMenuItem onClick={() => onVerDetalles(ind)}>
-                                    <Eye className="w-4 h-4 mr-2" />
-                                    Ver Detalles
+                                    <Eye className="w-4 h-4 mr-2" /> Ver Detalles
                                   </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => onCargarAvance(ind)}>
-                                    <Activity className="w-4 h-4 mr-2" />
-                                    Actualizar Avance
+                                    <Activity className="w-4 h-4 mr-2" /> Actualizar Avance
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem onClick={() => onEditarIndicador(ind)}>
-                                    <Edit className="w-4 h-4 mr-2" />
-                                    Editar
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => toast.info('Descargar reporte')}>
-                                    <Download className="w-4 h-4 mr-2" />
-                                    Descargar Reporte
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() => toast.error('Eliminar indicador')}
-                                    className="text-red-600"
-                                  >
-                                    <Trash2 className="w-4 h-4 mr-2" />
-                                    Eliminar
+                                    <Edit className="w-4 h-4 mr-2" /> Editar
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -855,12 +835,6 @@ function VistaLista({
                 </table>
               </div>
             )}
-
-            {isExpanded && indicadores.length === 0 && (
-              <div className="p-8 text-center text-gray-500">
-                No hay indicadores en este eje estratégico
-              </div>
-            )}
           </Card>
         );
       })}
@@ -870,7 +844,6 @@ function VistaLista({
 
 // ==================== VISTA DASHBOARD ====================
 function VistaDashboard({ indicadores }: { indicadores: Indicador[] }) {
-  // Calcular estadísticas por eje
   const estadisticasPorEje = useMemo(() => {
     const ejes = ['GESTION_INSTITUCIONAL', 'TALENTO_HUMANO', 'TRANSPARENCIA', 'TECNOLOGIA'];
     return ejes.map(eje => {
@@ -878,18 +851,12 @@ function VistaDashboard({ indicadores }: { indicadores: Indicador[] }) {
       const avancePromedio = indsEje.length > 0
         ? Math.round(indsEje.reduce((sum, i) => sum + i.avance, 0) / indsEje.length)
         : 0;
-      return {
-        eje,
-        total: indsEje.length,
-        avancePromedio,
-        config: getEjeConfig(eje)
-      };
+      return { eje, total: indsEje.length, avancePromedio, config: getEjeConfig(eje) };
     });
   }, [indicadores]);
 
   return (
     <div className="space-y-4">
-      {/* Cards por eje estratégico */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {estadisticasPorEje.map(({ eje, total, avancePromedio, config }) => (
           <Card key={eje} className="border-2 border-gray-200 bg-white p-4">
@@ -906,19 +873,13 @@ function VistaDashboard({ indicadores }: { indicadores: Indicador[] }) {
               <Progress value={avancePromedio} className="h-3" />
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-600">Cumplimiento</span>
-                <span
-                  className="text-lg font-bold"
-                  style={{ color: getSemaforoColor(avancePromedio) }}
-                >
-                  {avancePromedio}%
-                </span>
+                <span className="text-lg font-bold" style={{ color: getSemaforoColor(avancePromedio) }}>{avancePromedio}%</span>
               </div>
             </div>
           </Card>
         ))}
       </div>
 
-      {/* Top indicadores en riesgo */}
       <Card className="border-2 border-gray-200 bg-white p-4">
         <div className="flex items-center gap-2 mb-4">
           <AlertTriangle className="w-5 h-5 text-orange-600" />
@@ -932,44 +893,19 @@ function VistaDashboard({ indicadores }: { indicadores: Indicador[] }) {
               const ejeConfig = getEjeConfig(ind.ejeEstrategico);
               const estadoConfig = getEstadoConfig(ind.estado);
               return (
-                <div
-                  key={ind.id}
-                  className="p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
+                <div key={ind.id} className="p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <Badge
-                          className="text-xs"
-                          style={{
-                            backgroundColor: ejeConfig.bgColor,
-                            color: ejeConfig.color
-                          }}
-                        >
-                          {ind.codigo}
-                        </Badge>
-                        <Badge
-                          className="text-xs"
-                          style={{
-                            backgroundColor: estadoConfig.bgColor,
-                            color: estadoConfig.color
-                          }}
-                        >
-                          {estadoConfig.nombre}
-                        </Badge>
+                        <Badge className="text-xs" style={{ backgroundColor: ejeConfig.bgColor, color: ejeConfig.color }}>{ind.codigo}</Badge>
+                        <Badge className="text-xs" style={{ backgroundColor: estadoConfig.bgColor, color: estadoConfig.color }}>{estadoConfig.nombre}</Badge>
                       </div>
                       <p className="text-sm font-semibold text-gray-900">{ind.nombre}</p>
-                      <p className="text-xs text-gray-600 mt-1">
-                        👤 {ind.responsable} • 📅 Vence: {ind.fechaFin.toLocaleDateString('es-CO')}
-                      </p>
+                      <p className="text-xs text-gray-600 mt-1">👤 {ind.responsable} • 📅 Vence: {ind.fechaFin.toLocaleDateString('es-CO')}</p>
                     </div>
                     <div className="ml-4 text-right">
-                      <div className="text-2xl font-bold" style={{ color: getSemaforoColor(ind.avance) }}>
-                        {ind.avance}%
-                      </div>
-                      <div className="text-xs text-gray-600">
-                        {ind.valorActual}/{ind.meta} {ind.unidadMedida}
-                      </div>
+                      <div className="text-2xl font-bold" style={{ color: getSemaforoColor(ind.avance) }}>{ind.avance}%</div>
+                      <div className="text-xs text-gray-600">{ind.valorActual}/{ind.meta} {ind.unidadMedida}</div>
                     </div>
                   </div>
                 </div>
@@ -983,102 +919,45 @@ function VistaDashboard({ indicadores }: { indicadores: Indicador[] }) {
 
 // ==================== VISTA TIMELINE ====================
 function VistaTimeline({ indicadores }: { indicadores: Indicador[] }) {
-  const indicadoresOrdenados = [...indicadores].sort(
-    (a, b) => a.fechaFin.getTime() - b.fechaFin.getTime()
-  );
-
+  const indicadoresOrdenados = [...indicadores].sort((a, b) => a.fechaFin.getTime() - b.fechaFin.getTime());
   return (
     <Card className="border-2 border-gray-200 bg-white p-6">
       <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
-        <Calendar className="w-5 h-5 text-blue-600" />
-        Línea de Tiempo de Cumplimiento
+        <Calendar className="w-5 h-5 text-blue-600" /> Línea de Tiempo de Cumplimiento
       </h3>
       <div className="space-y-4">
         {indicadoresOrdenados.map((ind, index) => {
           const ejeConfig = getEjeConfig(ind.ejeEstrategico);
           const estadoConfig = getEstadoConfig(ind.estado);
-          const diasRestantes = Math.ceil(
-            (ind.fechaFin.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-          );
+          const diasRestantes = Math.ceil((ind.fechaFin.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
 
           return (
             <div key={ind.id} className="flex gap-4">
-              {/* Timeline visual */}
               <div className="flex flex-col items-center">
-                <div
-                  className="w-4 h-4 rounded-full border-2"
-                  style={{
-                    backgroundColor: ejeConfig.color,
-                    borderColor: ejeConfig.color
-                  }}
-                />
-                {index < indicadoresOrdenados.length - 1 && (
-                  <div
-                    className="w-0.5 flex-1 min-h-[60px]"
-                    style={{ backgroundColor: '#E5E7EB' }}
-                  />
-                )}
+                <div className="w-4 h-4 rounded-full border-2" style={{ backgroundColor: ejeConfig.color, borderColor: ejeConfig.color }} />
+                {index < indicadoresOrdenados.length - 1 && <div className="w-0.5 flex-1 min-h-[60px]" style={{ backgroundColor: '#E5E7EB' }} />}
               </div>
-
-              {/* Contenido */}
               <div className="flex-1 pb-6">
                 <div className="p-4 border-2 border-gray-200 rounded-lg hover:shadow-md transition-all">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <Badge
-                          className="text-xs font-bold"
-                          style={{
-                            backgroundColor: ejeConfig.bgColor,
-                            color: ejeConfig.color
-                          }}
-                        >
-                          {ind.codigo}
-                        </Badge>
+                        <Badge className="text-xs font-bold" style={{ backgroundColor: ejeConfig.bgColor, color: ejeConfig.color }}>{ind.codigo}</Badge>
                         <span className="text-xs text-gray-600">{ejeConfig.nombre}</span>
                       </div>
                       <h4 className="text-sm font-bold text-gray-900">{ind.nombre}</h4>
                       <p className="text-xs text-gray-600 mt-1">👤 {ind.responsable}</p>
                     </div>
-                    <Badge
-                      className="text-xs"
-                      style={{
-                        backgroundColor: estadoConfig.bgColor,
-                        color: estadoConfig.color
-                      }}
-                    >
-                      {estadoConfig.nombre}
-                    </Badge>
+                    <Badge className="text-xs" style={{ backgroundColor: estadoConfig.bgColor, color: estadoConfig.color }}>{estadoConfig.nombre}</Badge>
                   </div>
-
                   <div className="flex items-center gap-4 mt-3">
-                    <div className="flex-1">
-                      <Progress value={ind.avance} className="h-2" />
-                    </div>
-                    <span
-                      className="text-sm font-bold"
-                      style={{ color: getSemaforoColor(ind.avance) }}
-                    >
-                      {ind.avance}%
-                    </span>
+                    <div className="flex-1"><Progress value={ind.avance} className="h-2" /></div>
+                    <span className="text-sm font-bold" style={{ color: getSemaforoColor(ind.avance) }}>{ind.avance}%</span>
                   </div>
-
                   <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                    <div className="text-xs text-gray-600">
-                      📅 Vence: {ind.fechaFin.toLocaleDateString('es-CO')}
-                    </div>
-                    <div
-                      className={`text-xs font-bold ${
-                        diasRestantes < 0
-                          ? 'text-red-600'
-                          : diasRestantes < 30
-                          ? 'text-orange-600'
-                          : 'text-green-600'
-                      }`}
-                    >
-                      {diasRestantes < 0
-                        ? `Vencido hace ${Math.abs(diasRestantes)} días`
-                        : `${diasRestantes} días restantes`}
+                    <div className="text-xs text-gray-600">📅 Vence: {ind.fechaFin.toLocaleDateString('es-CO')}</div>
+                    <div className={`text-xs font-bold ${diasRestantes < 0 ? 'text-red-600' : diasRestantes < 30 ? 'text-orange-600' : 'text-green-600'}`}>
+                      {diasRestantes < 0 ? `Vencido hace ${Math.abs(diasRestantes)} días` : `${diasRestantes} días restantes`}
                     </div>
                   </div>
                 </div>
@@ -1093,21 +972,15 @@ function VistaTimeline({ indicadores }: { indicadores: Indicador[] }) {
 
 // ==================== VISTA MATRIZ ====================
 function VistaMatriz({ indicadores }: { indicadores: Indicador[] }) {
-  // Agrupar por eje y estado
   const matriz = useMemo(() => {
     const ejes = ['GESTION_INSTITUCIONAL', 'TALENTO_HUMANO', 'TRANSPARENCIA', 'TECNOLOGIA'];
     const estados = ['EN_TIEMPO', 'EN_RIESGO', 'VENCIDO'];
-
     return ejes.map(eje => {
       const ejeConfig = getEjeConfig(eje);
       return {
-        eje,
-        config: ejeConfig,
+        eje, config: ejeConfig,
         estados: estados.map(estado => ({
-          estado,
-          indicadores: indicadores.filter(
-            i => i.ejeEstrategico === eje && i.estado === estado
-          )
+          estado, indicadores: indicadores.filter(i => i.ejeEstrategico === eje && i.estado === estado)
         }))
       };
     });
@@ -1116,30 +989,16 @@ function VistaMatriz({ indicadores }: { indicadores: Indicador[] }) {
   return (
     <div className="space-y-4">
       <Card className="border-2 border-gray-200 bg-white p-4">
-        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-          <Grid3x3 className="w-5 h-5 text-blue-600" />
-          Cuadro de Mando Integral - Matriz por Estado
-        </h3>
-
+        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Grid3x3 className="w-5 h-5 text-blue-600" /> Cuadro de Mando Integral - Matriz por Estado</h3>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-gray-100">
-                <th className="border-2 border-gray-300 px-4 py-3 text-left font-bold text-gray-900">
-                  Eje Estratégico
-                </th>
-                <th className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-green-600">
-                  ✅ En Tiempo
-                </th>
-                <th className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-orange-600">
-                  ⚠️ En Riesgo
-                </th>
-                <th className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-red-600">
-                  🔴 Vencido
-                </th>
-                <th className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-gray-900">
-                  Total
-                </th>
+                <th className="border-2 border-gray-300 px-4 py-3 text-left font-bold text-gray-900">Eje Estratégico</th>
+                <th className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-green-600">✅ En Tiempo</th>
+                <th className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-orange-600">⚠️ En Riesgo</th>
+                <th className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-red-600">🔴 Vencido</th>
+                <th className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-gray-900">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -1147,101 +1006,47 @@ function VistaMatriz({ indicadores }: { indicadores: Indicador[] }) {
                 const total = estados.reduce((sum, e) => sum + e.indicadores.length, 0);
                 return (
                   <tr key={eje} className="hover:bg-gray-50">
-                    <td
-                      className="border-2 border-gray-300 px-4 py-3 font-bold"
-                      style={{ color: config.color }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">{config.icon}</span>
-                        {config.nombre}
-                      </div>
+                    <td className="border-2 border-gray-300 px-4 py-3 font-bold" style={{ color: config.color }}>
+                      <div className="flex items-center gap-2"><span className="text-xl">{config.icon}</span>{config.nombre}</div>
                     </td>
                     {estados.map(({ estado, indicadores }) => (
-                      <td
-                        key={estado}
-                        className="border-2 border-gray-300 px-4 py-3 text-center"
-                      >
+                      <td key={estado} className="border-2 border-gray-300 px-4 py-3 text-center">
                         <div className="flex flex-col items-center gap-1">
-                          <span className="text-2xl font-bold text-gray-900">
-                            {indicadores.length}
-                          </span>
+                          <span className="text-2xl font-bold text-gray-900">{indicadores.length}</span>
                           {indicadores.length > 0 && (
                             <div className="flex flex-wrap gap-1 justify-center">
                               {indicadores.slice(0, 3).map(ind => (
-                                <span
-                                  key={ind.id}
-                                  className="text-xs px-2 py-0.5 rounded"
-                                  style={{
-                                    backgroundColor: config.bgColor,
-                                    color: config.color
-                                  }}
-                                  title={ind.nombre}
-                                >
-                                  {ind.codigo}
-                                </span>
+                                <span key={ind.id} className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: config.bgColor, color: config.color }}>{ind.codigo}</span>
                               ))}
-                              {indicadores.length > 3 && (
-                                <span className="text-xs text-gray-600">
-                                  +{indicadores.length - 3}
-                                </span>
-                              )}
+                              {indicadores.length > 3 && <span className="text-xs text-gray-600">+{indicadores.length - 3}</span>}
                             </div>
                           )}
                         </div>
                       </td>
                     ))}
-                    <td className="border-2 border-gray-300 px-4 py-3 text-center">
-                      <span className="text-xl font-bold text-gray-900">{total}</span>
-                    </td>
+                    <td className="border-2 border-gray-300 px-4 py-3 text-center"><span className="text-xl font-bold text-gray-900">{total}</span></td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot className="bg-gray-100">
               <tr>
-                <td className="border-2 border-gray-300 px-4 py-3 font-bold text-gray-900">
-                  TOTALES
-                </td>
-                <td className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-green-600">
-                  {indicadores.filter(i => i.estado === 'EN_TIEMPO').length}
-                </td>
-                <td className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-orange-600">
-                  {indicadores.filter(i => i.estado === 'EN_RIESGO').length}
-                </td>
-                <td className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-red-600">
-                  {indicadores.filter(i => i.estado === 'VENCIDO').length}
-                </td>
-                <td className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-gray-900">
-                  {indicadores.length}
-                </td>
+                <td className="border-2 border-gray-300 px-4 py-3 font-bold text-gray-900">TOTALES</td>
+                <td className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-green-600">{indicadores.filter(i => i.estado === 'EN_TIEMPO').length}</td>
+                <td className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-orange-600">{indicadores.filter(i => i.estado === 'EN_RIESGO').length}</td>
+                <td className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-red-600">{indicadores.filter(i => i.estado === 'VENCIDO').length}</td>
+                <td className="border-2 border-gray-300 px-4 py-3 text-center font-bold text-gray-900">{indicadores.length}</td>
               </tr>
             </tfoot>
           </table>
         </div>
       </Card>
-
-      {/* Leyenda */}
       <Card className="border-2 border-gray-200 bg-white p-4">
         <h4 className="font-bold text-gray-900 mb-3">📋 Leyenda de Estados</h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-green-500" />
-            <span className="text-sm text-gray-700">
-              <strong>En Tiempo:</strong> Cumplimiento ≥90% o avance según cronograma
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-orange-500" />
-            <span className="text-sm text-gray-700">
-              <strong>En Riesgo:</strong> Cumplimiento 50-89% o retraso moderado
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-500" />
-            <span className="text-sm text-gray-700">
-              <strong>Vencido:</strong> Cumplimiento &lt;50% o plazo vencido
-            </span>
-          </div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500" /><span className="text-sm text-gray-700"><strong>En Tiempo:</strong> Cumplimiento ≥90%</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-500" /><span className="text-sm text-gray-700"><strong>En Riesgo:</strong> Cumplimiento 50-89%</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" /><span className="text-sm text-gray-700"><strong>Vencido:</strong> Cumplimiento &lt;50%</span></div>
         </div>
       </Card>
     </div>

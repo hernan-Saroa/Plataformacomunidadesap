@@ -28,6 +28,7 @@ import { ComentarioOC } from './entities/comentario-oc.entity';
 import { DocumentoOC } from './entities/documento-oc.entity';
 import { Riesgo } from './entities/riesgo.entity';
 import { DocumentoConsulta } from './entities/documento-consulta.entity';
+import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -110,9 +111,10 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Riesgos
       Riesgo,
       // Documentos Consultas
-      // Documentos Consultas
       DocumentoConsulta,
-      ComentarioConsulta
+      ComentarioConsulta,
+      // Decisiones
+      DecisionDisciplinaria
     ]),
     PeiModule,
     PlanesMejoramientoModule

@@ -166,6 +166,18 @@ export interface ProcesoDisciplinario {
   tipoFalta?: string;  // Added for compatibility with Frontend
 }
 
+export interface DecisionDisciplinaria {
+  id?: string;
+  tipoDecision: string;
+  tipoFallo: string;
+  sancion?: string;
+  consideraciones: string;
+  fundamentosJuridicos?: string;
+  responsable: string;
+  cargoResponsable?: string;
+  fecha: string;
+}
+
 // ============================================================================
 // MOD-03: ASESORÍA JURÍDICA
 // ============================================================================
