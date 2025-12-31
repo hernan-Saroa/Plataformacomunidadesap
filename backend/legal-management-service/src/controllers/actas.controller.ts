@@ -5,7 +5,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ActasService } from '../services/actas.service';
 
-@Controller('api/legal/actas')
+@Controller('legal/actas')
 export class ActasController {
     constructor(private readonly actasService: ActasService) { }
 
@@ -49,8 +49,8 @@ export class ActasController {
             for (const acta of actasConArchivo) {
                 if (acta.archivoUrl) {
                     let filePath: string;
-                    if (acta.archivoUrl.includes('/api/legal/files/')) {
-                        const filename = acta.archivoUrl.split('/api/legal/files/').pop();
+                    if (acta.archivoUrl.includes('/legal/files/')) {
+                        const filename = acta.archivoUrl.split('/legal/files/').pop();
                         filePath = path.join(process.cwd(), 'uploads', filename);
                     } else {
                         filePath = path.join(process.cwd(), 'uploads', acta.archivoUrl);

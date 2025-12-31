@@ -7,6 +7,7 @@ import { Textarea } from '../../../../ui/textarea';
 import { toast } from 'sonner';
 import axios from 'axios';
 import confetti from 'canvas-confetti';
+import { buildApiUrl } from '../../../../../config/environment';
 
 interface ModalActualizarAvanceProps {
     open: boolean;
@@ -15,7 +16,8 @@ interface ModalActualizarAvanceProps {
     indicador: any;
 }
 
-const API_URL = 'http://localhost:3008/api/legal/pei';
+// const API_URL = 'http://localhost:3008/api/legal/pei';
+const API_URL = buildApiUrl('legal', '/pei');
 
 export function ModalActualizarAvance({ open, onClose, onSuccess, indicador }: ModalActualizarAvanceProps) {
     const [loading, setLoading] = useState(false);

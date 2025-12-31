@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
 import { TareasNotasService } from '../services/tareas-notas.service';
 
-@Controller('api/legal/expedientes')
+@Controller('legal/expedientes')
 export class TareasNotasController {
     constructor(private readonly tareasNotasService: TareasNotasService) { }
 

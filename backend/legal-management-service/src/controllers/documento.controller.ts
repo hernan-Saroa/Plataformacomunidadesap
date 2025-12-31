@@ -5,7 +5,7 @@ import * as multer from 'multer';
 import { extname } from 'path';
 import { DocumentoService, CreateDocumentoDto, UpdateDocumentoDto } from '../services/documento.service';
 
-@Controller('api/legal/documentos')
+@Controller('legal/documentos')
 export class DocumentoController {
     constructor(private readonly documentoService: DocumentoService) { }
 
@@ -65,8 +65,8 @@ export class DocumentoController {
                     let filePath: string;
                     if (doc.archivoUrl.startsWith('files/')) {
                         filePath = path.join(process.cwd(), 'uploads', doc.archivoUrl.replace('files/', ''));
-                    } else if (doc.archivoUrl.startsWith('/api/legal/files/')) {
-                        filePath = path.join(process.cwd(), 'uploads', doc.archivoUrl.replace('/api/legal/files/', ''));
+                    } else if (doc.archivoUrl.startsWith('/legal/files/')) {
+                        filePath = path.join(process.cwd(), 'uploads', doc.archivoUrl.replace('/legal/files/', ''));
                     } else {
                         filePath = path.join(process.cwd(), 'uploads', doc.archivoUrl);
                     }

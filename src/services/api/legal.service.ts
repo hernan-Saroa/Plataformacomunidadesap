@@ -1,13 +1,10 @@
-import { ApiClient } from './apiClient';
+// import { ApiClient } from './apiClient';
+import { apiClient } from './client';
 import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
 
-// Dedicated client for Legal Management Service to ensure direct connection if needed
-// or we can reuse the logic if we align endpoints. 
-// Given the backend is at /api/legal/expedientes and strictly on port 3008:
-const BASE_URL = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
-const LEGAL_SERVICE_PREFIX = '/api';
-
-export const legalApiClient = new ApiClient(BASE_URL);
+// Prefijo del servicio legal a través del gateway
+// Nueva estructura: /legal/api/v1/{path}
+const SERVICE_PREFIX = '/legal/api/v1/legal';
 
 export interface Expediente {
     id: string;
@@ -64,13 +61,13 @@ export interface Actuacion {
 
 export class LegalService {
     async getExpedientes(filtros?: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
-        // The original getExpedientes method is kept as it correctly uses legalApiClient and has a defined return type.
+        // The original getExpedientes method is kept as it correctly uses apiClient and has a defined return type.
         // The provided snippet's getExpedientes was problematic (redefinition, `apiClient`, `this.path`).
-        return legalApiClient.get<Expediente[]>('/api/legal/expedientes', filtros);
+        return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, filtros);
     }
 
     async getJuzgamientoProcesos(): Promise<any[]> {
-        return legalApiClient.get<any[]>('/api/legal/juzgamiento');
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento`);
     }
 
     async uploadJuzgamientoDocumento(radicado: string, file: File, tipo: string = 'DOCUMENTO', descripcion?: string): Promise<any> {
@@ -79,75 +76,75 @@ export class LegalService {
         formData.append('tipo', tipo);
         if (descripcion) formData.append('descripcion', descripcion);
 
-        return legalApiClient.upload<any>(`/api/legal/juzgamiento/${radicado}/documentos`, formData);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/documentos`, formData);
     }
 
     async getJuzgamientoDecisiones(radicado: string): Promise<any[]> {
-        return legalApiClient.get<any[]>(`/api/legal/juzgamiento/${radicado}/decisiones`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`);
     }
 
     async createJuzgamientoDecision(radicado: string, data: any): Promise<any> {
-        return legalApiClient.post<any>(`/api/legal/juzgamiento/${radicado}/decisiones`, data);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`, data);
     }
 
     async updateJuzgamientoProceso(radicado: string, data: any): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/juzgamiento/${radicado}`, data);
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}`, data);
     }
 
     // Renaming getExpedienteById to getExpediente as per instruction, and adapting the signature
     async getExpediente(id: string): Promise<Expediente> {
-        return legalApiClient.get<Expediente>(`/api/legal/expedientes/${id}`);
+        return apiClient.get<Expediente>(`${SERVICE_PREFIX}/expedientes/${id}`);
     }
 
     async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
-        return legalApiClient.post<Expediente>('/api/legal/expedientes', data);
+        return apiClient.post<Expediente>(`${SERVICE_PREFIX}/expedientes`, data);
     }
 
     async updateExpediente(id: string, data: Partial<Expediente>): Promise<Expediente> {
-        return legalApiClient.put<Expediente>(`/api/legal/expedientes/${id}`, data);
+        return apiClient.put<Expediente>(`${SERVICE_PREFIX}/expedientes/${id}`, data);
     }
 
     // Actuaciones
     async getActuaciones(expedienteId: string): Promise<Actuacion[]> {
-        return legalApiClient.get<Actuacion[]>(`/api/legal/expedientes/${expedienteId}/actuaciones`);
+        return apiClient.get<Actuacion[]>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones`);
     }
 
     async registrarActuacion(expedienteId: string, data: any): Promise<Actuacion> {
         if (data instanceof FormData) {
-            return legalApiClient.upload<Actuacion>(`/api/legal/expedientes/${expedienteId}/actuaciones`, data);
+            return apiClient.upload<Actuacion>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones`, data);
         }
-        return legalApiClient.post<Actuacion>(`/api/legal/expedientes/${expedienteId}/actuaciones`, data);
+        return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones`, data);
     }
 
     // Abogados
     async getAbogadosDashboard(): Promise<any[]> {
-        return legalApiClient.get<any[]>('/api/legal/abogados');
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
     }
 
     async getStatsGeneral(): Promise<any> {
-        return legalApiClient.get<any>('/api/legal/stats/general');
+        return apiClient.get<any>(`${SERVICE_PREFIX}/stats/general`);
     }
 
     async createAbogado(data: any): Promise<any> {
-        return legalApiClient.post<any>('/api/legal/abogados', data);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/abogados`, data);
     }
 
     // Audiencias
     async getAudiencias(filtros?: { start?: string; end?: string }): Promise<any[]> {
-        return legalApiClient.get<any[]>('/api/legal/audiencias', filtros);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/audiencias`, filtros);
     }
 
     async getAudienciasDashboard(): Promise<any> {
-        return legalApiClient.get<any>('/api/legal/audiencias/dashboard');
+        return apiClient.get<any>(`${SERVICE_PREFIX}/audiencias/dashboard`);
     }
 
     async createAudiencia(data: any): Promise<any> {
-        return legalApiClient.post<any>('/api/legal/audiencias', data);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/audiencias`, data);
     }
 
     // Autos
     async getAutos(radicado: string): Promise<any[]> {
-        return legalApiClient.get<any[]>(`/api/legal/autos/expediente/${radicado}`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/autos/expediente/${radicado}`);
     }
 
     async createAuto(radicado: string, data: any, file: File): Promise<any> {
@@ -159,141 +156,141 @@ export class LegalService {
         formData.append('juzgado', data.juzgado);
         formData.append('resumen', data.resumen);
 
-        return legalApiClient.upload<any>(`/api/legal/autos/${radicado}`, formData);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/autos/${radicado}`, formData);
     }
 
     async updateAutoEstado(id: string, estado: string): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/autos/${id}/estado`, { estado });
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/autos/${id}/estado`, { estado });
     }
 
     async deleteAuto(id: string): Promise<any> {
-        return legalApiClient.delete<any>(`/api/legal/autos/${id}`);
+        return apiClient.delete<any>(`${SERVICE_PREFIX}/autos/${id}`);
     }
 
     getAutosDownloadUrl(radicado: string): string {
         const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
-        return `${baseUrl}/api/legal/autos/expediente/${radicado}/download-zip`;
+        return `${baseUrl}${SERVICE_PREFIX}${`/autos/expediente/${radicado}/download-zip`}`;
     }
 
     // Documentos
     async getDocumentos(expedienteId: string): Promise<Documento[]> {
-        return legalApiClient.get<Documento[]>(`/api/legal/documentos/expediente/${expedienteId}`);
+        return apiClient.get<Documento[]>(`${SERVICE_PREFIX}/documentos/expediente/${expedienteId}`);
     }
 
     async getDocumento(id: string): Promise<Documento> {
-        return legalApiClient.get<Documento>(`/api/legal/documentos/${id}`);
+        return apiClient.get<Documento>(`${SERVICE_PREFIX}/documentos/${id}`);
     }
 
     async crearDocumento(data: CreateDocumentoData | FormData): Promise<Documento> {
         if (data instanceof FormData) {
-            return legalApiClient.upload<Documento>('/api/legal/documentos', data);
+            return apiClient.upload<Documento>(`${SERVICE_PREFIX}/documentos`, data);
         }
-        return legalApiClient.post<Documento>('/api/legal/documentos', data);
+        return apiClient.post<Documento>(`${SERVICE_PREFIX}/documentos`, data);
     }
 
     async actualizarDocumento(id: string, data: Partial<Documento>): Promise<Documento> {
-        return legalApiClient.put<Documento>(`/api/legal/documentos/${id}`, data);
+        return apiClient.put<Documento>(`${SERVICE_PREFIX}/documentos/${id}`, data);
     }
 
     async eliminarDocumento(id: string): Promise<void> {
-        return legalApiClient.delete(`/api/legal/documentos/${id}`);
+        return apiClient.delete(`${SERVICE_PREFIX}/documentos/${id}`);
     }
 
     // ==================== EVIDENCIAS ====================
     async getEvidencias(expedienteId: string): Promise<any[]> {
-        return legalApiClient.get<any[]>(`/api/legal/evidencias/expediente/${expedienteId}`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/evidencias/expediente/${expedienteId}`);
     }
 
     async createEvidencia(expedienteId: string, formData: FormData): Promise<any> {
-        return legalApiClient.upload<any>(`/api/legal/evidencias/${expedienteId}`, formData);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/evidencias/${expedienteId}`, formData);
     }
 
     async updateEvidenciaEstado(id: string, estado: string): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/evidencias/${id}/estado`, { estado });
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/evidencias/${id}/estado`, { estado });
     }
 
     async deleteEvidencia(id: string): Promise<void> {
-        return legalApiClient.delete(`/api/legal/evidencias/${id}`);
+        return apiClient.delete(`${SERVICE_PREFIX}/evidencias/${id}`);
     }
 
     // ==================== ACTAS ====================
     async getActas(expedienteId: string): Promise<any[]> {
-        return legalApiClient.get<any[]>(`/api/legal/actas/expediente/${expedienteId}`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/actas/expediente/${expedienteId}`);
     }
 
     async createActa(expedienteId: string, formData: FormData): Promise<any> {
-        return legalApiClient.upload<any>(`/api/legal/actas/${expedienteId}`, formData);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/actas/${expedienteId}`, formData);
     }
 
     async updateActaEstado(id: string, estado: string): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/actas/${id}/estado`, { estado });
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/actas/${id}/estado`, { estado });
     }
 
     async deleteActa(id: string): Promise<void> {
-        return legalApiClient.delete(`/api/legal/actas/${id}`);
+        return apiClient.delete(`${SERVICE_PREFIX}/actas/${id}`);
     }
 
     async uploadActaFirmada(id: string, formData: FormData): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/actas/${id}/archivo`, formData);
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/actas/${id}/archivo`, formData);
     }
 
     // ===== CONSULTAS JURÍDICAS (Asesoría Jurídica) =====
     async getConsultasJuridicas(): Promise<any[]> {
-        return legalApiClient.get<any[]>('/api/legal/consultas-juridicas');
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas`);
     }
 
     async getConsultaJuridica(id: string): Promise<any> {
-        return legalApiClient.get<any>(`/api/legal/consultas-juridicas/${id}`);
+        return apiClient.get<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`);
     }
 
     async createConsultaJuridica(data: any): Promise<any> {
-        return legalApiClient.post<any>('/api/legal/consultas-juridicas', data);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/consultas-juridicas`, data);
     }
 
     async updateConsultaJuridica(id: string, data: any): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/consultas-juridicas/${id}`, data);
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`, data);
     }
 
     async updateConsultaEstado(id: string, estado: string): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/consultas-juridicas/${id}/estado`, { estado });
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/estado`, { estado });
     }
 
     async responderConsulta(id: string, respuestaData: any): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/consultas-juridicas/${id}/respuesta`, respuestaData);
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/respuesta`, respuestaData);
     }
 
     async guardarRespuestaConsulta(id: string, respuesta: string, enviar: boolean): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/consultas-juridicas/${id}/gestionar-respuesta`, { respuesta, enviar });
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/gestionar-respuesta`, { respuesta, enviar });
     }
 
     async getComentariosConsulta(consultaId: string): Promise<any[]> {
-        return legalApiClient.get<any[]>(`/api/legal/consultas-juridicas/${consultaId}/comentarios`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas/${consultaId}/comentarios`);
     }
 
     async crearComentarioConsulta(consultaId: string, data: any): Promise<any> {
-        return legalApiClient.post<any>(`/api/legal/consultas-juridicas/${consultaId}/comentarios`, data);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/consultas-juridicas/${consultaId}/comentarios`, data);
     }
 
     async deleteConsultaJuridica(id: string): Promise<void> {
-        return legalApiClient.delete(`/api/legal/consultas-juridicas/${id}`);
+        return apiClient.delete(`${SERVICE_PREFIX}/consultas-juridicas/${id}`);
     }
 
     // ===== DOCUMENTOS DE CONSULTAS JURÍDICAS =====
     async getDocumentosConsulta(consultaId: string): Promise<any[]> {
-        return legalApiClient.get<any[]>(`/api/legal/consultas-juridicas/${consultaId}/documentos`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas/${consultaId}/documentos`);
     }
 
     async uploadDocumentoConsulta(consultaId: string, formData: FormData): Promise<any> {
-        return legalApiClient.upload<any>(`/api/legal/consultas-juridicas/${consultaId}/documentos`, formData);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/consultas-juridicas/${consultaId}/documentos`, formData);
     }
 
     async deleteDocumentoConsulta(documentoId: string): Promise<void> {
-        return legalApiClient.delete(`/api/legal/consultas-juridicas/documentos/${documentoId}`);
+        return apiClient.delete(`${SERVICE_PREFIX}/consultas-juridicas/documentos/${documentoId}`);
     }
 
     getDocumentosConsultaDownloadUrl(consultaId: string): string {
         const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
-        return `${baseUrl}/api/legal/consultas-juridicas/${consultaId}/documentos/download-zip`;
+        return `${baseUrl}${`${SERVICE_PREFIX}/consultas-juridicas/${consultaId}/documentos/download-zip`}`;
     }
 
     // --- CONTROL DE TÉRMINOS E INFORMES ---
@@ -303,26 +300,26 @@ export class LegalService {
         if (responsableId) params.append('responsableId', responsableId);
 
         // Endpoint: /legal-management/api/v1/legal/terminos/listado
-        return legalApiClient.get(`${LEGAL_SERVICE_PREFIX}/legal/terminos/listado?${params.toString()}`);
+        return apiClient.get(`${SERVICE_PREFIX}/terminos/listado?${params.toString()}`);
     }
 
     async getTerminosCalendario(start: string, end: string, responsableId?: string): Promise<any[]> {
         const params = new URLSearchParams({ start, end });
         if (responsableId) params.append('responsableId', responsableId);
 
-        return legalApiClient.get(`${LEGAL_SERVICE_PREFIX}/legal/terminos/calendario?${params.toString()}`);
+        return apiClient.get(`${SERVICE_PREFIX}/terminos/calendario?${params.toString()}`);
     }
 
     async createTerminoManual(data: any): Promise<any> {
-        return legalApiClient.post(`${LEGAL_SERVICE_PREFIX}/legal/terminos/manual`, data);
+        return apiClient.post(`${SERVICE_PREFIX}/terminos/manual`, data);
     }
 
     async sincronizarTerminos(): Promise<any> {
-        return legalApiClient.post(`${LEGAL_SERVICE_PREFIX}/legal/terminos/sincronizar`, {});
+        return apiClient.post(`${SERVICE_PREFIX}/terminos/sincronizar`, {});
     }
 
     async getTerminoDetalle(id: string): Promise<any> {
-        return legalApiClient.get(`${LEGAL_SERVICE_PREFIX}/legal/terminos/${id}`);
+        return apiClient.get(`${SERVICE_PREFIX}/terminos/${id}`);
     }
 
     // ============================================
@@ -331,81 +328,81 @@ export class LegalService {
 
     // Catálogo de organismos
     async getOrganismosControl(): Promise<any[]> {
-        return legalApiClient.get<any[]>('/api/legal/requerimientos-oc/organismos');
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
     }
 
     // Requerimientos OC
     async getRequerimientosOC(): Promise<any[]> {
-        return legalApiClient.get<any[]>('/api/legal/requerimientos-oc');
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc`);
     }
 
     async getRequerimientoOC(id: string): Promise<any> {
-        return legalApiClient.get<any>(`/api/legal/requerimientos-oc/${id}`);
+        return apiClient.get<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
     }
 
     async createRequerimientoOC(data: any): Promise<any> {
-        return legalApiClient.post<any>('/api/legal/requerimientos-oc', data);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc`, data);
     }
 
     async updateRequerimientoOC(id: string, data: any): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/requerimientos-oc/${id}`, data);
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}`, data);
     }
 
     async cambiarEstadoRequerimientoOC(id: string, estado: string): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/requerimientos-oc/${id}/estado`, { estado });
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/estado`, { estado });
     }
 
     async deleteRequerimientoOC(id: string): Promise<void> {
-        return legalApiClient.delete(`/api/legal/requerimientos-oc/${id}`);
+        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
     }
 
     // Solicitudes de Insumos (Delegación)
     async getSolicitudesInsumo(requerimientoId: string): Promise<any[]> {
-        return legalApiClient.get<any[]>(`/api/legal/requerimientos-oc/${requerimientoId}/insumos`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/insumos`);
     }
 
     async createSolicitudInsumo(requerimientoId: string, data: any): Promise<any> {
-        return legalApiClient.post<any>(`/api/legal/requerimientos-oc/${requerimientoId}/insumos`, data);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/insumos`, data);
     }
 
     async responderSolicitudInsumo(insumoId: string, data: any): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/requerimientos-oc/insumos/${insumoId}/responder`, data);
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/insumos/${insumoId}/responder`, data);
     }
 
     // --- TAREAS DE EXPEDIENTE ---
 
     async getTareasByExpediente(expedienteId: string): Promise<any[]> {
-        return legalApiClient.get<any[]>(`/api/legal/expedientes/${expedienteId}/tareas`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/tareas`);
     }
 
     async createTarea(expedienteId: string, data: any): Promise<any> {
-        return legalApiClient.post<any>(`/api/legal/expedientes/${expedienteId}/tareas`, data);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/tareas`, data);
     }
 
     async updateTarea(tareaId: string, data: any): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/expedientes/tareas/${tareaId}`, data);
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/expedientes/tareas/${tareaId}`, data);
     }
 
     async deleteTarea(tareaId: string): Promise<void> {
-        return legalApiClient.delete(`/api/legal/expedientes/tareas/${tareaId}`);
+        return apiClient.delete(`${SERVICE_PREFIX}/expedientes/tareas/${tareaId}`);
     }
 
     // --- NOTAS DE EXPEDIENTE ---
 
     async getNotasByExpediente(expedienteId: string): Promise<any[]> {
-        return legalApiClient.get<any[]>(`/api/legal/expedientes/${expedienteId}/notas`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/notas`);
     }
 
     async createNota(expedienteId: string, data: any): Promise<any> {
-        return legalApiClient.post<any>(`/api/legal/expedientes/${expedienteId}/notas`, data);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/notas`, data);
     }
 
     async updateNota(notaId: string, data: any): Promise<any> {
-        return legalApiClient.patch<any>(`/api/legal/expedientes/notas/${notaId}`, data);
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/expedientes/notas/${notaId}`, data);
     }
 
     async deleteNota(notaId: string): Promise<void> {
-        return legalApiClient.delete(`/api/legal/expedientes/notas/${notaId}`);
+        return apiClient.delete(`${SERVICE_PREFIX}/expedientes/notas/${notaId}`);
     }
 }
 
@@ -468,20 +465,20 @@ export interface DocumentoOC {
 class OCService {
     // Comentarios
     async getComentariosByRequerimiento(requerimientoId: string): Promise<ComentarioOC[]> {
-        return legalApiClient.get<ComentarioOC[]>(`/api/legal/requerimientos-oc/${requerimientoId}/comentarios`);
+        return apiClient.get<ComentarioOC[]>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/comentarios`);
     }
 
     async createComentario(requerimientoId: string, data: { contenido: string; tipo?: string; autorNombre?: string }): Promise<ComentarioOC> {
-        return legalApiClient.post<ComentarioOC>(`/api/legal/requerimientos-oc/${requerimientoId}/comentarios`, data);
+        return apiClient.post<ComentarioOC>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/comentarios`, data);
     }
 
     async deleteComentario(comentarioId: string): Promise<void> {
-        await legalApiClient.delete(`/api/legal/requerimientos-oc/comentarios/${comentarioId}`);
+        await apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/comentarios/${comentarioId}`);
     }
 
     // Documentos
     async getDocumentosByRequerimiento(requerimientoId: string): Promise<DocumentoOC[]> {
-        return legalApiClient.get<DocumentoOC[]>(`/api/legal/requerimientos-oc/${requerimientoId}/documentos`);
+        return apiClient.get<DocumentoOC[]>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/documentos`);
     }
 
     async createDocumento(requerimientoId: string, data: { nombre: string; tipoDocumento?: string; descripcion?: string; archivo?: File; subidoPor?: string }): Promise<DocumentoOC> {
@@ -492,11 +489,11 @@ class OCService {
         if (data.subidoPor) formData.append('subidoPor', data.subidoPor);
         if (data.archivo) formData.append('archivo', data.archivo);
 
-        return legalApiClient.upload<DocumentoOC>(`/api/legal/requerimientos-oc/${requerimientoId}/documentos`, formData);
+        return apiClient.upload<DocumentoOC>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/documentos`, formData);
     }
 
     async deleteDocumento(documentoId: string): Promise<void> {
-        await legalApiClient.delete(`/api/legal/requerimientos-oc/documentos/${documentoId}`);
+        await apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/documentos/${documentoId}`);
     }
 }
 
@@ -540,31 +537,31 @@ export interface CreateRiesgoData {
 
 class RiesgosService {
     async getAll(): Promise<RiesgoAPI[]> {
-        return legalApiClient.get<RiesgoAPI[]>('/api/legal/riesgos');
+        return apiClient.get<RiesgoAPI[]>(`${SERVICE_PREFIX}/riesgos`);
     }
 
     async getById(id: string): Promise<RiesgoAPI> {
-        return legalApiClient.get<RiesgoAPI>(`/api/legal/riesgos/${id}`);
+        return apiClient.get<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}`);
     }
 
     async create(data: CreateRiesgoData): Promise<RiesgoAPI> {
-        return legalApiClient.post<RiesgoAPI>('/api/legal/riesgos', data);
+        return apiClient.post<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos`, data);
     }
 
     async update(id: string, data: Partial<CreateRiesgoData>): Promise<RiesgoAPI> {
-        return legalApiClient.patch<RiesgoAPI>(`/api/legal/riesgos/${id}`, data);
+        return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}`, data);
     }
 
     async delete(id: string): Promise<void> {
-        await legalApiClient.delete(`/api/legal/riesgos/${id}`);
+        await apiClient.delete(`${SERVICE_PREFIX}/riesgos/${id}`);
     }
 
     async cambiarEtapa(id: string, etapa: string): Promise<RiesgoAPI> {
-        return legalApiClient.patch<RiesgoAPI>(`/api/legal/riesgos/${id}/etapa`, { etapa });
+        return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}/etapa`, { etapa });
     }
 
     async archivar(id: string): Promise<RiesgoAPI> {
-        return legalApiClient.patch<RiesgoAPI>(`/api/legal/riesgos/${id}/archivar`, {});
+        return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}/archivar`, {});
     }
 
     async getEstadisticas(): Promise<{
@@ -573,12 +570,10 @@ class RiesgosService {
         porTipo: Record<string, number>;
         porEtapa: Record<string, number>;
     }> {
-        return legalApiClient.get('/api/legal/riesgos/estadisticas');
+        return apiClient.get(`${SERVICE_PREFIX}/riesgos/estadisticas`);
     }
 }
 
 export const legalService = new LegalService();
 export const ocService = new OCService();
 export const riesgosService = new RiesgosService();
-
-

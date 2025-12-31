@@ -39,8 +39,10 @@ import { ModalNuevoIndicador } from './ModalNuevoIndicador';
 import { ModalEditarIndicador } from './ModalEditarIndicador';
 import { ModalCargarAvance } from './ModalCargarAvance';
 import { ModalDetalleIndicador } from './ModalDetalleIndicador';
+import { buildApiUrl } from '../../../../config/environment';
 
-const API_URL = 'http://localhost:3008/api/legal/pei';
+// const API_URL = 'http://localhost:3008/api/legal/pei';
+const API_URL = buildApiUrl('legal', '/pei');
 
 // ==================== TIPOS ====================
 interface Indicador {

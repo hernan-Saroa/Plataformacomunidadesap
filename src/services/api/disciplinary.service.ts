@@ -454,6 +454,12 @@ class DisciplinaryService {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/professionals/${id}`, data);
     }
 
+    async uploadSignature(professionalId: string, file: File): Promise<{ url: string }> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.upload<{ url: string }>(`${SERVICE_PREFIX}/professionals/${professionalId}/signature`, formData);
+    }
+
     async getCandidates(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/professionals/candidates`);
     }
@@ -488,6 +494,44 @@ class DisciplinaryService {
 
     async getAvailableRoles(): Promise<string[]> {
         return apiClient.get<string[]>(`${SERVICE_PREFIX}/configuration/available-roles`);
+    }
+
+    /**
+     * Descargar ZIP con todos los expedientes (exportación masiva)
+     */
+    async downloadAllExpedientesZip(): Promise<void> {
+        // Usar buildApiUrl para respetar el modo de conexión
+        const endpoint = `/api/v1/configuration/export/zip`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+
+        // Obtener token
+        const token = localStorage.getItem('esap_access_token');
+        const headers: HeadersInit = {
+            'Accept': 'application/zip',
+        };
+
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers,
+        });
+
+        if (!response.ok) {
+            throw new Error(`Error ${response.status}: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `Expedientes_Disciplinarios_${new Date().toISOString().split('T')[0]}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
     }
 
     // ==================== ESTADÍSTICAS DEL PROCESO ====================
