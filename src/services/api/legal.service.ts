@@ -250,8 +250,38 @@ export class LegalService {
         return legalApiClient.patch<any>(`/api/legal/consultas-juridicas/${id}/respuesta`, respuestaData);
     }
 
+    async guardarRespuestaConsulta(id: string, respuesta: string, enviar: boolean): Promise<any> {
+        return legalApiClient.patch<any>(`/api/legal/consultas-juridicas/${id}/gestionar-respuesta`, { respuesta, enviar });
+    }
+
+    async getComentariosConsulta(consultaId: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/consultas-juridicas/${consultaId}/comentarios`);
+    }
+
+    async crearComentarioConsulta(consultaId: string, data: any): Promise<any> {
+        return legalApiClient.post<any>(`/api/legal/consultas-juridicas/${consultaId}/comentarios`, data);
+    }
+
     async deleteConsultaJuridica(id: string): Promise<void> {
         return legalApiClient.delete(`/api/legal/consultas-juridicas/${id}`);
+    }
+
+    // ===== DOCUMENTOS DE CONSULTAS JURÍDICAS =====
+    async getDocumentosConsulta(consultaId: string): Promise<any[]> {
+        return legalApiClient.get<any[]>(`/api/legal/consultas-juridicas/${consultaId}/documentos`);
+    }
+
+    async uploadDocumentoConsulta(consultaId: string, formData: FormData): Promise<any> {
+        return legalApiClient.upload<any>(`/api/legal/consultas-juridicas/${consultaId}/documentos`, formData);
+    }
+
+    async deleteDocumentoConsulta(documentoId: string): Promise<void> {
+        return legalApiClient.delete(`/api/legal/consultas-juridicas/documentos/${documentoId}`);
+    }
+
+    getDocumentosConsultaDownloadUrl(consultaId: string): string {
+        const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
+        return `${baseUrl}/api/legal/consultas-juridicas/${consultaId}/documentos/download-zip`;
     }
 
     // --- CONTROL DE TÉRMINOS E INFORMES ---

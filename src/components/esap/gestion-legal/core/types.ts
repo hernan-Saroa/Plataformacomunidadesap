@@ -184,6 +184,7 @@ export type PrioridadConsulta = 'URGENTE' | 'ALTA' | 'MEDIA' | 'BAJA';
 
 export interface ConsultaJuridica {
   id: string; // "CJ-2025-001"
+  uuid?: string; // ID real de la base de datos
   etapa: EtapaAsesoriaJuridica;
 
   // Tema
@@ -193,6 +194,7 @@ export interface ConsultaJuridica {
   // Solicitante
   solicitante: string;
   funcionarioSolicitante: string;
+  emailSolicitante?: string;
 
   // Consulta
   consulta: string; // Pregunta o solicitud
@@ -215,12 +217,13 @@ export interface ConsultaJuridica {
 
   // Documentos
   documentosAdjuntos: Documento[];
+  documentoRespuestaUrl?: string; // URL del documento de respuesta
 
   // Auditoría
   timeline: EventoTimeline[];
   fechaCreacion?: Date;
   fechaActualizacion?: Date;
-  estado?: EstadoGeneral;
+  estado?: EstadoGeneral | string; // Permitir otros estados como 'respondido'
 }
 
 export interface SolicitudAsesoria {

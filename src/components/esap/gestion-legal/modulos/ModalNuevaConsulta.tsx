@@ -6,8 +6,8 @@
  */
 
 import { useState } from 'react';
-import { toast } from 'sonner@2.0.3';
-import { 
+import { toast } from 'sonner';
+import {
   FileQuestion, Building2, User, Calendar, Clock, AlertTriangle,
   CheckCircle, Send, X, Plus, FileText, Scale
 } from 'lucide-react';
@@ -34,6 +34,7 @@ export interface NuevaConsultaData {
   temaJuridico: TemaJuridico;
   solicitante: string;
   funcionarioSolicitante: string;
+  emailSolicitante: string;
   cargo: string;
   consulta: string;
   prioridad: PrioridadConsulta;
@@ -49,7 +50,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validaciones
     if (!formData.solicitante?.trim()) {
       toast.error('⚠️ Error de validación', { description: 'Debe ingresar la dependencia solicitante' });
@@ -65,15 +66,16 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
     }
 
     setEnviando(true);
-    
+
     try {
       // Simulación de envío
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
+
       const nuevaConsulta: NuevaConsultaData = {
         temaJuridico: formData.temaJuridico || 'Contractual',
         solicitante: formData.solicitante!,
         funcionarioSolicitante: formData.funcionarioSolicitante!,
+        emailSolicitante: formData.emailSolicitante!,
         cargo: formData.cargo || '',
         consulta: formData.consulta!,
         prioridad: formData.prioridad || 'MEDIA'
@@ -84,7 +86,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
       }
 
       const consecutivo = `CJ-2025-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}`;
-      
+
       toast.success('✅ Consulta Jurídica Registrada', {
         description: `${consecutivo} - ${formData.temaJuridico}`,
         duration: 4000
@@ -95,7 +97,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
         temaJuridico: 'Contractual',
         prioridad: 'MEDIA'
       });
-      
+
       onClose();
     } catch (error) {
       toast.error('❌ Error al registrar consulta', {
@@ -248,16 +250,30 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="cargo" className="text-sm font-bold text-gray-700">
-                      Cargo
+                    <Label htmlFor="email" className="text-sm font-bold text-gray-700">
+                      Correo Electrónico <span className="text-red-500">*</span>
                     </Label>
                     <Input
-                      id="cargo"
-                      placeholder="Ej: Coordinador, Profesional Especializado..."
-                      value={formData.cargo || ''}
-                      onChange={(e) => setFormData({ ...formData, cargo: e.target.value })}
+                      id="email"
+                      type="email"
+                      placeholder="correo@esap.edu.co"
+                      value={formData.emailSolicitante || ''}
+                      onChange={(e) => setFormData({ ...formData, emailSolicitante: e.target.value })}
+                      required
                     />
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cargo" className="text-sm font-bold text-gray-700">
+                    Cargo
+                  </Label>
+                  <Input
+                    id="cargo"
+                    placeholder="Ej: Coordinador, Profesional Especializado..."
+                    value={formData.cargo || ''}
+                    onChange={(e) => setFormData({ ...formData, cargo: e.target.value })}
+                  />
                 </div>
               </div>
             </Card>

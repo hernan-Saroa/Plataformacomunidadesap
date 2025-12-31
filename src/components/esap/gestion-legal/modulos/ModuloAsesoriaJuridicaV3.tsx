@@ -20,7 +20,7 @@ import { Textarea } from '../../../ui/textarea';
 import { Label } from '../../../ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
@@ -97,6 +97,7 @@ export function ModuloAsesoriaJuridicaV3() {
         temaJuridico: c.materiaJuridica || 'Administrativo',
         solicitante: c.dependenciaSolicitante || 'Sin dependencia',
         funcionarioSolicitante: c.nombreSolicitante || 'Sin asignar',
+        emailSolicitante: c.emailSolicitante || '',
         consulta: c.descripcion || '',
         fechaRadicacion: new Date(c.fechaRecepcion),
         diasTotales: c.terminoLegalDias || 30,
@@ -258,9 +259,29 @@ export function ModuloAsesoriaJuridicaV3() {
     }
   };
 
-  const handleNuevaConsulta = (data: NuevaConsultaData) => {
-    console.log('Nueva consulta registrada:', data);
-    // Aquí se integraría con el backend
+  const handleNuevaConsulta = async (data: NuevaConsultaData) => {
+    try {
+      const response = await legalService.createConsultaJuridica({
+        materiaJuridica: data.temaJuridico.toLowerCase(),
+        dependenciaSolicitante: data.solicitante,
+        nombreSolicitante: data.funcionarioSolicitante,
+        emailSolicitante: data.emailSolicitante,
+        cargoSolicitante: data.cargo,
+        descripcion: data.consulta,
+        prioridad: data.prioridad.toLowerCase(),
+        terminoLegalDias: 30
+      });
+
+      // Recargar listado de consultas
+      await loadConsultas();
+
+      toast.success('✅ Consulta creada exitosamente', {
+        description: `${response.numeroRadicado} - ${data.temaJuridico}`
+      });
+    } catch (error) {
+      console.error('Error al crear consulta:', error);
+      toast.error('Error al crear la consulta');
+    }
   };
 
   const handleAbrirExpediente = (consulta: ConsultaJuridica) => {
@@ -402,18 +423,18 @@ export function ModuloAsesoriaJuridicaV3() {
 
       {/* Tabla o Tarjetas */}
       {tipoVista === 'tabla' ? (
-          <TablaConsultas
-            consultas={consultasFiltradas}
-            orden={orden}
-            direccionOrden={direccionOrden}
-            onOrdenar={handleOrdenar}
-            onAbrirExpediente={handleAbrirExpediente}
-          />
+        <TablaConsultas
+          consultas={consultasFiltradas}
+          orden={orden}
+          direccionOrden={direccionOrden}
+          onOrdenar={handleOrdenar}
+          onAbrirExpediente={handleAbrirExpediente}
+        />
       ) : (
-          <TarjetasConsultas
-            consultas={consultasFiltradas}
-            onAbrirExpediente={handleAbrirExpediente}
-          />
+        <TarjetasConsultas
+          consultas={consultasFiltradas}
+          onAbrirExpediente={handleAbrirExpediente}
+        />
       )}
 
       {/* MODALES */}
