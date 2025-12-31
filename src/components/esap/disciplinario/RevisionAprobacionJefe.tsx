@@ -11,7 +11,7 @@ import {
   MessageSquare, Clock, Send, Download, Upload, FileSignature,
   User, AlertCircle, History, X, Check,
   RotateCcw, Mail, Calendar,
-  Shield, Key, Users, Trash2, ChevronDown,
+  Shield, Key, Users, Trash2, ChevronDown, AlertTriangle,
   Filter, Paperclip, ListFilter, List, LayoutDashboard,
   HelpCircle
 } from 'lucide-react';
@@ -387,8 +387,51 @@ function ModalAprobar({
   onClose: () => void;
   onConfirm: (comentarios: string) => void;
 }) {
-  const [tipoFirma, setTipoFirma] = useState<TipoFirma>('electronica');
-  const [comentariosAprobacion, setComentariosAprobacion] = useState(comentariosJefe);
+  const [comentariosAprobacion, setComentariosAprobacion] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [hasSignature, setHasSignature] = useState<boolean | null>(null);
+  const [checkingSignature, setCheckingSignature] = useState(true);
+
+  // Simulación de usuario actual (temporal)
+  const currentUser = { id: '770e8400-e29b-41d4-a716-446655440002', nombre: 'Admin Sistema' };
+
+  useEffect(() => {
+    checkSignature();
+  }, []);
+
+  const checkSignature = async () => {
+    try {
+      setCheckingSignature(true);
+      const professionals = await disciplinaryService.getProfesionales();
+
+      // Intentar encontrar al usuario por ID o correo (lógica de mock para desarrollo)
+      const me = professionals.find((p: any) => p.id === currentUser.id) ||
+        professionals.find((p: any) => p.email === 'juan.perez@esap.edu.co') ||
+        professionals[0]; // Fallback al primero si no encuentra los anteriores
+
+      setHasSignature(!!(me && me.firmaUrl));
+    } catch (error) {
+      console.error('Error checking signature:', error);
+      setHasSignature(false);
+    } finally {
+      setCheckingSignature(false);
+    }
+  };
+
+  const handleFirmar = () => {
+    if (!hasSignature) {
+      toast.error('No tiene una firma configurada', {
+        description: 'Debe cargar su firma digital en el Módulo de Configuración antes de firmar.'
+      });
+      return;
+    }
+
+    setLoading(true);
+    setTimeout(() => {
+      onConfirm(comentariosAprobacion);
+      setLoading(false);
+    }, 1500);
+  };
 
   return (
     <motion.div
@@ -420,125 +463,85 @@ function ModalAprobar({
 
         {/* Contenido */}
         <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto">
+
+          <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: '#E0EDFF' }}>
+            <AlertTriangle className="w-5 h-5 text-blue-800 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-blue-800">
+              Al firmar este documento, usted certifica su validez jurídica y procedimental.
+              La firma se aplicará digitalmente usando su configuración personal.
+            </p>
+          </div>
+
+          {!checkingSignature && !hasSignature && (
+            <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: '#FEE2E2', border: '1px solid #FECACA' }}>
+              <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-red-800">Firma no configurada</p>
+                <p className="text-sm text-red-700">
+                  No se ha detectado una firma digital asociada a su usuario. Por favor configure su firma en el <strong>Módulo de Configuración</strong>.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Tipo de Firma */}
           <div>
             <label className="block font-bold text-gray-900 mb-3 text-sm sm:text-base">
-              Seleccione el Tipo de Firma <span className="text-red-600">*</span>
+              Método de Firma
             </label>
             <div className="space-y-3">
-              {/* Firma Electrónica */}
               <Card
-                className={`p-3 sm:p-4 cursor-pointer border-2 transition-all ${tipoFirma === 'electronica' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                className={`p-3 sm:p-4 border-2 transition-all flex items-center gap-3 ${hasSignature ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-gray-50 opacity-60'
                   }`}
-                onClick={() => setTipoFirma('electronica')}
               >
-                <div className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${tipoFirma === 'electronica' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
-                    }`}>
-                    {tipoFirma === 'electronica' && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
-                      <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Electrónica Simple</h4>
-                    </div>
-                    <p className="text-xs sm:text-sm text-gray-600">
-                      Firma automática del sistema. Proceso inmediato.
-                    </p>
-                  </div>
+                <div className={`p-2 rounded-full ${hasSignature ? 'bg-blue-100' : 'bg-gray-200'}`}>
+                  <FileText className={`w-5 h-5 ${hasSignature ? 'text-blue-600' : 'text-gray-500'}`} />
                 </div>
-              </Card>
-
-              {/* Firma Digital */}
-              <Card
-                className={`p-3 sm:p-4 cursor-pointer border-2 transition-all ${tipoFirma === 'digital' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
-                  }`}
-                onClick={() => setTipoFirma('digital')}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${tipoFirma === 'digital' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
-                    }`}>
-                    {tipoFirma === 'digital' && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <Key className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
-                      <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Digital Certificada</h4>
-                      <Badge className="bg-blue-600 text-white text-xs border-0">Recomendado</Badge>
-                    </div>
-                    <p className="text-xs sm:text-sm text-gray-600">
-                      Validez jurídica mediante proveedor certificado.
-                    </p>
-                  </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Digital Configurada</h4>
+                  <p className="text-xs text-gray-500">Usa su firma PDF cargada previamente</p>
                 </div>
-              </Card>
-
-              {/* Firma Local */}
-              <Card
-                className={`p-3 sm:p-4 cursor-pointer border-2 transition-all ${tipoFirma === 'local' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
-                  }`}
-                onClick={() => setTipoFirma('local')}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${tipoFirma === 'local' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
-                    }`}>
-                    {tipoFirma === 'local' && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Download className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
-                      <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Local (PDF)</h4>
-                    </div>
-                    <p className="text-xs sm:text-sm text-gray-600">
-                      Descarga PDF para firma manual. Requiere carga posterior.
-                    </p>
-                  </div>
-                </div>
+                {hasSignature && <CheckCircle className="w-5 h-5 text-blue-600" />}
               </Card>
             </div>
           </div>
 
           {/* Comentarios */}
           <div>
-            <label className="block font-semibold text-gray-900 mb-2 text-sm">
+            <label className="block font-bold text-gray-900 mb-2 text-sm sm:text-base">
               Comentarios de la Firma (Opcional)
             </label>
             <textarea
               value={comentariosAprobacion}
               onChange={(e) => setComentariosAprobacion(e.target.value)}
               placeholder="Agregue observaciones finales..."
-              className="w-full h-24 p-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+              className="w-full h-24 p-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             />
           </div>
-
-          {/* Alerta según tipo */}
-          {tipoFirma === 'digital' && (
-            <Card className="p-3 sm:p-4 bg-blue-50 border-blue-200">
-              <div className="flex gap-3">
-                <Key className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm text-blue-900 font-semibold mb-1">Firma Digital Certificada</p>
-                  <p className="text-xs sm:text-sm text-blue-700">
-                    Se enviará a su proveedor configurado.
-                  </p>
-                </div>
-              </div>
-            </Card>
-          )}
         </div>
 
         {/* Footer */}
         <div className="p-4 sm:p-6 border-t bg-gray-50 flex flex-col sm:flex-row gap-2 sm:gap-3">
-          <Button
-            onClick={() => onConfirm(comentariosAprobacion)}
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-            className="hover:opacity-90 w-full sm:flex-1"
-          >
-            <FileSignature className="w-4 h-4 mr-2" />
-            Firmar Digitalmente
-          </Button>
-          <Button onClick={onClose} className="bg-gray-500 hover:bg-gray-600 w-full sm:w-auto">
+          <Button onClick={onClose} className="bg-gray-500 hover:bg-gray-600 w-full sm:w-auto order-2 sm:order-1">
             Cancelar
+          </Button>
+          <Button
+            onClick={handleFirmar}
+            disabled={loading || checkingSignature || !hasSignature}
+            style={{ background: hasSignature ? '#003DA5' : '#9CA3AF', color: '#FFFFFF' }}
+            className={`hover:opacity-90 w-full sm:flex-1 order-1 sm:order-2 ${!hasSignature ? 'cursor-not-allowed' : ''}`}
+          >
+            {loading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                Firmando...
+              </>
+            ) : (
+              <>
+                <FileSignature className="w-4 h-4 mr-2" />
+                Firmar Digitalmente
+              </>
+            )}
           </Button>
         </div>
       </motion.div>

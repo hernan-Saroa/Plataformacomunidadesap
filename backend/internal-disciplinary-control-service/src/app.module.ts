@@ -52,6 +52,9 @@ import { ConfigurationController } from './controllers/configuration.controller'
 
 import { FilesController } from './controllers/files.controller';
 
+import { DisciplinaryExportController } from './controllers/disciplinary-export.controller';
+import { DisciplinaryExportService } from './services/disciplinary-export.service';
+
 @Module({
   imports: [
     HttpModule,
@@ -85,6 +88,7 @@ import { FilesController } from './controllers/files.controller';
     ReglasAlertaController,
     AlertasController,
     JobsController,
+    DisciplinaryExportController,
   ],
   providers: [
     AppService,
@@ -101,6 +105,7 @@ import { FilesController } from './controllers/files.controller';
     AlertasAutomaticasService,
     SchedulerService,
     SeedService,
+    DisciplinaryExportService,
   ],
 })
 export class AppModule { }
