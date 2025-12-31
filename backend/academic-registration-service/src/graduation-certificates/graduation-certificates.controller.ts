@@ -17,7 +17,7 @@ import type { ApproveRequestDto } from './dto/approve-request.dto';
 import type { UpdateCertificateDto } from './dto/update-certificate.dto';
 import type { Request, Response } from 'express';
 
-@Controller('academic-registration/api/v1/certificates')
+@Controller('certificates')
 export class GraduationCertificatesController {
   constructor(private readonly service: GraduationCertificatesService) {}
 
