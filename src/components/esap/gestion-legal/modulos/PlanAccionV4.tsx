@@ -40,7 +40,7 @@ import { ModalEditarIndicador } from './ModalEditarIndicador';
 import { ModalCargarAvance } from './ModalCargarAvance';
 import { ModalDetalleIndicador } from './ModalDetalleIndicador';
 
-const API_URL = 'http://localhost:3008/api/legal/pei';
+const API_URL = '/legal/api/v1/pei';
 
 // ==================== TIPOS ====================
 interface Indicador {

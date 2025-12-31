@@ -22,7 +22,7 @@ import { ModalActualizarAvance } from './pei/ModalActualizarAvance';
 import { ModalDetalleIndicador } from './pei/ModalDetalleIndicador';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:3008/api/legal/pei';
+const API_URL = '/legal/api/v1/pei';
 
 export function ModuloPlanAccionV3() {
   const [tipoVista, setTipoVista] = useState<'timeline' | 'lista'>('timeline');

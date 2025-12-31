@@ -6,7 +6,7 @@ import { DocumentosConsultaService } from '../services/documentos-consulta.servi
 import type { Response } from 'express';
 import * as fs from 'fs';
 
-@Controller('api/legal/consultas-juridicas')
+@Controller('legal/consultas-juridicas')
 export class DocumentosConsultaController {
     constructor(private readonly documentosService: DocumentosConsultaService) { }
 
@@ -46,7 +46,7 @@ export class DocumentosConsultaController {
             nombre: body.nombre || file.originalname,
             tipoDocumento: body.tipoDocumento || 'otro',
             descripcion: body.descripcion,
-            archivoUrl: `/api/legal/files/${file.filename}`,
+            archivoUrl: `/legal/files/${file.filename}`,
             archivoNombreOriginal: file.originalname,
             subidoPor: body.subidoPor,
             tamanoBytes: file.size,
@@ -102,8 +102,8 @@ export class DocumentosConsultaController {
                 if (doc.archivoUrl) {
                     let filePath: string;
 
-                    if (doc.archivoUrl.includes('/api/legal/files/')) {
-                        const filename = doc.archivoUrl.split('/api/legal/files/').pop() || '';
+                    if (doc.archivoUrl.includes('/legal/files/')) {
+                        const filename = doc.archivoUrl.split('/legal/files/').pop() || '';
                         filePath = join(process.cwd(), 'uploads', filename);
                     } else {
                         filePath = join(process.cwd(), 'uploads', basename(doc.archivoUrl));
