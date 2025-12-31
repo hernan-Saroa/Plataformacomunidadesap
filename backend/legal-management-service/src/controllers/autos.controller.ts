@@ -5,7 +5,7 @@ import { extname } from 'path';
 import { AutosService } from '../services/autos.service';
 import type { Response } from 'express';
 
-@Controller('api/legal/autos')
+@Controller('legal/autos')
 export class AutosController {
     constructor(private readonly autosService: AutosService) { }
 
@@ -44,8 +44,8 @@ export class AutosController {
                 if (auto.archivoUrl) {
                     let filePath: string;
                     // Handle different URL formats
-                    if (auto.archivoUrl.includes('/api/legal/files/')) {
-                        const filename = auto.archivoUrl.split('/api/legal/files/').pop();
+                    if (auto.archivoUrl.includes('/legal/files/')) {
+                        const filename = auto.archivoUrl.split('/legal/files/').pop();
                         filePath = path.join(process.cwd(), 'uploads', filename);
                     } else {
                         // Assume it might be a direct filename or relative path

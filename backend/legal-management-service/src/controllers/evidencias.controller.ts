@@ -5,7 +5,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { EvidenciasService } from '../services/evidencias.service';
 
-@Controller('api/legal/evidencias')
+@Controller('legal/evidencias')
 export class EvidenciasController {
     constructor(private readonly evidenciasService: EvidenciasService) { }
 
@@ -46,8 +46,8 @@ export class EvidenciasController {
             for (const ev of evidencias) {
                 if (ev.archivoUrl) {
                     let filePath: string;
-                    if (ev.archivoUrl.includes('/api/legal/files/')) {
-                        const filename = ev.archivoUrl.split('/api/legal/files/').pop();
+                    if (ev.archivoUrl.includes('/legal/files/')) {
+                        const filename = ev.archivoUrl.split('/legal/files/').pop();
                         filePath = path.join(process.cwd(), 'uploads', filename);
                     } else {
                         filePath = path.join(process.cwd(), 'uploads', ev.archivoUrl);

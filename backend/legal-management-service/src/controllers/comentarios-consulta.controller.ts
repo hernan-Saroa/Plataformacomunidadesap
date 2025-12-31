@@ -2,7 +2,7 @@
 import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { ComentariosConsultaService } from '../services/comentarios-consulta.service';
 
-@Controller('api/legal/consultas-juridicas')
+@Controller('legal/consultas-juridicas')
 export class ComentariosConsultaController {
     constructor(private readonly comentariosService: ComentariosConsultaService) { }
 

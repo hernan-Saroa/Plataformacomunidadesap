@@ -5,7 +5,7 @@ import { extname } from 'path';
 import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
 
-@Controller('api/legal/juzgamiento')
+@Controller('legal/juzgamiento')
 export class JuzgamientoController {
     constructor(private readonly expedienteService: ExpedienteService) { }
 
@@ -100,7 +100,7 @@ export class JuzgamientoController {
             descripcion: descripcionCompleta,
             fechaActuacion: new Date(),
             documentoNombre: file.originalname,
-            documentoUrl: `http://localhost:3008/api/legal/files/${file.filename}`, // Ensure absolute URL for frontend
+            documentoUrl: `http://localhost:3008/legal/files/${file.filename}`, // Ensure absolute URL for frontend
             usuarioResponsable: 'Usuario Actual' // Mock user for now
         });
     }
