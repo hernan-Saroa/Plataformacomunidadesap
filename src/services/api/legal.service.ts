@@ -4,7 +4,7 @@ import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
 
 // Prefijo del servicio legal a través del gateway
 // Nueva estructura: /legal/api/v1/{path}
-const SERVICE_PREFIX = '/legal/api/v1/legal';
+const SERVICE_PREFIX = '/legal/api/v1';
 
 export interface Expediente {
     id: string;
