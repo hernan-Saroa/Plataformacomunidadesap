@@ -199,7 +199,24 @@ export class TemplateConfigController {
       updatedBy || 'Usuario',
       tipo || 'docente',
     );
-  }
+  }
+
+  /**
+   * POST /certificates/template-config/revert-change
+   * Revierte un cambio del historial a su valor anterior
+   */
+  @Post('revert-change')
+  @HttpCode(HttpStatus.OK)
+  async revertChange(
+    @Body() data: { changeId: number; updatedBy?: string },
+    @Query('tipo') tipo?: string,
+  ) {
+    return await this.templateConfigService.revertChange(
+      Number(data.changeId),
+      data.updatedBy || 'Usuario',
+      tipo || 'docente',
+    );
+  }
   /**
    * GET /certificates/template-config/change-history
    * Obtiene el historial de cambios de la configuracion

@@ -704,6 +704,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   const [historialTotal, setHistorialTotal] = useState(0);
   const [isLoadingHistorial, setIsLoadingHistorial] = useState(false);
   const [historialPage, setHistorialPage] = useState(1);
+  const [revertingChangeId, setRevertingChangeId] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<string>(canEdit ? 'Modificacion' : 'historial');
 
@@ -2747,6 +2748,33 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       await cargarHistorial(historialPage);
     } catch (error) {
       console.error('Error al recargar historial:', error);
+    }
+  };
+
+  const handleRevertirCambio = async (log: LogCambio) => {
+    if (!ensureEditable()) return;
+    setRevertingChangeId(log.id);
+    try {
+      const response = await certificadosService.plantilla.revertirCambio(
+        Number(log.id),
+        publishingActor,
+        templateType,
+      );
+      const plantillaActualizada = mapConfigToPlantilla(response, true);
+      setPlantilla(plantillaActualizada);
+      setBorrador(plantillaActualizada);
+      setHasChanges(false);
+      await recargarHistorial();
+      toast.success('Cambio revertido', {
+        description: `Se restauro: ${log.accion}`,
+      });
+    } catch (error) {
+      console.error('Error al revertir cambio:', error);
+      toast.error('No se pudo revertir el cambio', {
+        description: error instanceof Error ? error.message : 'Intenta nuevamente',
+      });
+    } finally {
+      setRevertingChangeId(null);
     }
   };
 
@@ -6994,11 +7022,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                            <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-start justify-between gap-3 mb-2">
 
 
 
-                              <div>
+                              <div className="flex-1 min-w-0 pr-3">
 
 
 
@@ -7006,7 +7034,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                                <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
 
 
 
@@ -7090,7 +7118,29 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+
+
+
                               </div>
+
+                              {canEdit && (
+                                <div className="flex-shrink-0 w-28 flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRevertirCambio(log)}
+                                    disabled={revertingChangeId === log.id}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap ${revertingChangeId === log.id
+                                      ? 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'
+                                      : 'border-gray-200 text-gray-600 hover:text-[#003DA5] hover:border-[#003DA5]/40'
+                                    }`}
+                                    title="Revertir cambio"
+                                  >
+                                    <RefreshCw className={`w-3.5 h-3.5 ${revertingChangeId === log.id ? 'animate-spin' : ''}`} />
+                                    {revertingChangeId === log.id ? 'Revirtiendo' : 'Revertir'}
+                                  </button>
+                                </div>
+                              )}
+
 
 
 
