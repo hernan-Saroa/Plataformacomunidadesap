@@ -55,7 +55,13 @@ export class CertificatesController {
     @Param('codigo') codigo: string,
     @Req() req: any,
   ) {
-    const ip = req.ip || req.connection.remoteAddress;
+    const forwarded = req.headers?.['x-forwarded-for'];
+    const forwardedIp = Array.isArray(forwarded)
+      ? forwarded[0]
+      : typeof forwarded === 'string'
+        ? forwarded.split(',')[0]
+        : '';
+    const ip = forwardedIp?.trim() || req.ip || req.connection?.remoteAddress;
     const userAgent = req.get('user-agent');
     return await this.certificatesService.registrarValidacion(codigo, ip, userAgent);
   }
