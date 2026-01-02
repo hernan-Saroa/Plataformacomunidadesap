@@ -119,7 +119,7 @@ IDENTIFICACIÓN DEL RIESGO
 ID del Riesgo:        ${riesgo.id}
 Descripción:          ${riesgo.descripcion}
 Proceso:              ${riesgo.proceso}
-Tipo de Riesgo:       ${TIPO_RIESGO_MAP[riesgo.tipoRiesgo]}
+Tipo de Riesgo:       ${TIPO_RIESGO_MAP[riesgo.tipo]}
 Etapa:                ${etapaConfig.label}
 Estado:               ${riesgo.estado}
 
@@ -210,7 +210,7 @@ Metodología DAFP - MECI
                 {zonaConfig.label}
               </Badge>
               <Badge className="text-xs font-bold bg-purple-100 text-purple-700 border border-purple-300">
-                {TIPO_RIESGO_MAP[riesgo.tipoRiesgo]}
+                {TIPO_RIESGO_MAP[riesgo.tipo]}
               </Badge>
             </>
           }
@@ -332,10 +332,48 @@ Metodología DAFP - MECI
                     <Target className="w-4 h-4 text-blue-600" />
                     Plan de Tratamiento
                   </h3>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm text-gray-700">
-                      {riesgo.planTratamiento || 'Sin plan de tratamiento definido aún'}
-                    </p>
+                  <div className="space-y-3">
+                    {riesgo.planTratamiento && riesgo.planTratamiento.length > 0 ? (
+                      riesgo.planTratamiento.map((plan, idx) => (
+                        <div key={idx} className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <p className="text-sm font-bold text-gray-900">{plan.accion}</p>
+                            <Badge className={`text-xs font-bold flex-shrink-0 ${
+                              plan.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
+                              plan.estado === 'EN_CURSO' ? 'bg-blue-100 text-blue-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {plan.estado === 'COMPLETADA' ? '✅ Completada' :
+                               plan.estado === 'EN_CURSO' ? '⚙️ En Curso' :
+                               '⏳ Pendiente'}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-xs text-gray-700 mb-2">
+                            <div>
+                              <span className="font-semibold">Responsable:</span> {plan.responsable}
+                            </div>
+                            <div>
+                              <span className="font-semibold">Fecha límite:</span> {plan.fechaLimite.toLocaleDateString('es-CO')}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-gray-200 rounded-full">
+                                <div
+                                  className="h-2 bg-blue-600 rounded-full transition-all"
+                                  style={{ width: `${plan.avance}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-bold text-gray-700">{plan.avance}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p className="text-sm text-gray-700">Sin plan de tratamiento definido aún</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </TabsContent>
@@ -455,13 +493,24 @@ Metodología DAFP - MECI
                     <Shield className="w-4 h-4 text-blue-600" />
                     Controles Existentes
                   </h3>
-                  {riesgo.controles && riesgo.controles.length > 0 ? (
+                  {riesgo.controlesExistentes && riesgo.controlesExistentes.length > 0 ? (
                     <div className="space-y-2">
-                      {riesgo.controles.map((control, idx) => (
-                        <div key={idx} className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      {riesgo.controlesExistentes.map((control, idx) => (
+                        <div key={control.id} className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                           <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                           <div className="flex-1">
-                            <p className="text-sm font-semibold text-gray-900">{control}</p>
+                            <p className="text-sm font-semibold text-gray-900">{control.descripcion}</p>
+                            <div className="mt-2">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-gray-200 rounded-full">
+                                  <div
+                                    className="h-2 bg-green-600 rounded-full transition-all"
+                                    style={{ width: `${control.efectividad}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-bold text-gray-700">{control.efectividad}% efectivo</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       ))}
