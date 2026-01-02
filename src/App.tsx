@@ -873,7 +873,7 @@ export default function App() {
       <style>{`
         [data-sonner-toaster] { 
           position: fixed !important; 
-          bottom: 20px !important; 
+          top: 20px !important; 
           right: 20px !important; 
           z-index: 9999 !important; 
         }
@@ -966,7 +966,7 @@ export default function App() {
         </div>
       )}
       
-      <Toaster position="bottom-right" richColors expand={true} />
+      <Toaster position="top-right" richColors expand={true} />
     </ErrorBoundary>
   );
 

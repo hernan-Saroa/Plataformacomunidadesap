@@ -262,6 +262,9 @@ export class CertificatesService {
         ? 'fallida'
         : 'exitosa';
 
+    const ciudad = validation.city || validation.location || 'Desconocido';
+    const pais = validation.country || 'Desconocido';
+
     return {
       id: validation.id,
       timestamp: validation.validation_date,
@@ -274,11 +277,90 @@ export class CertificatesService {
       },
       ubicacion: {
         ip: validation.ip_address || '0.0.0.0',
-        pais: 'Desconocido',
-        ciudad: validation.location || 'Desconocido',
+        pais,
+        ciudad,
+        latitud: validation.latitude ?? undefined,
+        longitud: validation.longitude ?? undefined,
+        proveedor: validation.isp || undefined,
       },
       detalles: validation.result,
     };
+  }
+
+  private normalizeIp(ip?: string): string | null {
+    if (!ip) return null;
+    const trimmed = ip.split(',')[0]?.trim();
+    if (!trimmed) return null;
+    let normalized = trimmed;
+
+    if (normalized.startsWith('[') && normalized.includes(']')) {
+      normalized = normalized.slice(1, normalized.indexOf(']'));
+    }
+
+    normalized = normalized.replace(/^::ffff:/i, '');
+
+    if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(normalized)) {
+      normalized = normalized.split(':')[0];
+    }
+
+    return normalized || null;
+  }
+
+  private isPrivateIp(ip: string): boolean {
+    if (!ip) return true;
+    const lower = ip.toLowerCase();
+    if (lower === '::1' || lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('fe80')) {
+      return true;
+    }
+
+    const parts = ip.split('.').map((part) => Number(part));
+    if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
+      return false;
+    }
+
+    const [a, b] = parts;
+    if (a === 10 || a === 127) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+
+    return false;
+  }
+
+  private async resolveGeoFromIp(ip?: string): Promise<{
+    city?: string;
+    region?: string;
+    country?: string;
+    latitude?: number;
+    longitude?: number;
+    isp?: string;
+  } | null> {
+    const normalizedIp = this.normalizeIp(ip || '');
+    if (!normalizedIp || this.isPrivateIp(normalizedIp)) return null;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
+      const response = await fetch(`https://ipwho.is/${encodeURIComponent(normalizedIp)}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) return null;
+      const data = await response.json();
+      if (!data || data.success === false) return null;
+
+      return {
+        city: data.city || undefined,
+        region: data.region || undefined,
+        country: data.country || undefined,
+        latitude: typeof data.latitude === 'number' ? data.latitude : undefined,
+        longitude: typeof data.longitude === 'number' ? data.longitude : undefined,
+        isp: data.connection?.isp || undefined,
+      };
+    } catch (error) {
+      this.logger.warn(`No se pudo resolver geolocalizacion para IP ${ip}: ${error?.message || error}`);
+      return null;
+    }
   }
 
   private async obtenerHistorialValidacionesPorCertificado(certificateId: string) {
@@ -301,11 +383,24 @@ export class CertificatesService {
       result = 'EXPIRED';
     }
 
+    const geo = await this.resolveGeoFromIp(ip);
+    const location =
+      geo?.city && geo?.country
+        ? `${geo.city}, ${geo.country}`
+        : geo?.city || geo?.country || undefined;
+
     const validation = this.validationRepo.create({
       certificate_id: certificate.id,
       validation_date: new Date(),
-      ip_address: ip,
+      ip_address: this.normalizeIp(ip || '') || ip,
       user_agent: userAgent,
+      location,
+      country: geo?.country,
+      region: geo?.region,
+      city: geo?.city,
+      latitude: geo?.latitude,
+      longitude: geo?.longitude,
+      isp: geo?.isp,
       result: result,
     });
 
