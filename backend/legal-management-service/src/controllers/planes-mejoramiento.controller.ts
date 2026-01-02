@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Param, NotFoundException } from '@nestjs/common';
 import { PlanesMejoramientoService } from '../services/planes-mejoramiento.service';
 
-@Controller('api/planes-mejoramiento')
+@Controller('legal/planes-mejoramiento')
 export class PlanesMejoramientoController {
     constructor(private readonly planesService: PlanesMejoramientoService) { }
 

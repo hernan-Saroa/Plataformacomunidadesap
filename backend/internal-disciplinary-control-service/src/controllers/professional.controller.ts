@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, HttpException, HttpStatus, Delete, Param, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Body, HttpException, HttpStatus, Delete, Param, Patch, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DisciplinaryProfessional } from '../entities/disciplinary-professional.entity';
@@ -6,6 +6,8 @@ import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { StorageService } from '../services/storage.service';
 
 import { SystemConfiguration } from '../entities/system-configuration.entity';
 
@@ -20,6 +22,7 @@ export class ProfessionalController {
         @InjectRepository(SystemConfiguration)
         private readonly systemConfigRepository: Repository<SystemConfiguration>,
         private readonly httpService: HttpService,
+        private readonly storageService: StorageService,
     ) { }
 
     @Get('workload')
@@ -149,6 +152,47 @@ export class ProfessionalController {
 
         Object.assign(professional, updateDto);
         return await this.professionalRepository.save(professional);
+    }
+
+    @Post(':id/signature')
+    @UseInterceptors(FileInterceptor('file'))
+    @ApiOperation({ summary: 'Subir firma digital (PDF) del profesional' })
+    @ApiResponse({ status: 200, description: 'Firma subida exitosamente' })
+    async uploadSignature(
+        @Param('id') id: string,
+        @UploadedFile() file: Express.Multer.File
+    ): Promise<{ url: string }> {
+        if (!file) {
+            throw new HttpException('No se ha proporcionado ningún archivo', HttpStatus.BAD_REQUEST);
+        }
+
+        const professional = await this.professionalRepository.findOne({ where: { id } });
+        if (!professional) {
+            throw new HttpException('Profesional no encontrado', HttpStatus.NOT_FOUND);
+        }
+
+        try {
+            // Guardar archivo usando StorageService
+            // Usamos una carpeta especial 'signatures' y el ID del profesional
+            const ruta = await this.storageService.saveFile(
+                'signatures', // directorio base
+                {
+                    buffer: file.buffer,
+                    originalname: `firma_${id}_${file.originalname}`
+                },
+                'FIRMA'
+            );
+
+            // Actualizar URL en la base de datos
+            // La ruta retornada es relativa, ej: signatures/20231231_FIRMA.pdf
+            professional.firmaUrl = ruta;
+            await this.professionalRepository.save(professional);
+
+            return { url: ruta };
+        } catch (error) {
+            console.error('Error uploading signature:', error);
+            throw new HttpException('Error al subir la firma', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     private async validateAndGetCapacity(cargo: string, requestedCapacity?: number): Promise<number> {

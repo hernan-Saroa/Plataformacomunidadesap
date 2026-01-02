@@ -9,13 +9,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { BackofficeApp } from './components/esap/BackofficeApp';
-import { PortalTransaccional } from './components/portal/PortalTransaccional';
 import { LandingPage } from './components/portal/LandingPage';
 import { PortalDashboard } from './components/portal/PortalDashboard';
 import { AuthenticatedPortalNavbar } from './components/portal/AuthenticatedPortalNavbar';
 import { LoginPage } from './components/esap/LoginPage';
 import { SystemSelector } from './components/esap/SystemSelector';
-import { Toaster } from 'sonner';
+import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStrength';
+import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
+import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { authService } from './services/api/authService';
@@ -49,6 +50,11 @@ import { VisualizadorPTAAjustes } from './components/gestion-profesoral/Visualiz
  * 3. Portal Transaccional (usuarios externos)
  * 4. Backoffice Administrativo (usuarios internos)
  * 
+ * DEMO ESPECIAL:
+ * - Vista 'pta-demo': Visualizador de PTA con Ajustes Solicitados
+ * - Vista 'password-demo': Demo de Validación de Contraseñas
+ * - Vista 'procesos-coactivos-demo': Demo de Procesos Coactivos
+ * 
  * Features:
  * - Persistencia de sesión en localStorage
  * - Auto-logout por inactividad (15 minutos)
@@ -70,7 +76,7 @@ type AppView =
 
 type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | null;
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'solicitar-certificados-laborales' | 'pta-demo';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales'| 'password-demo' | 'procesos-coactivos-demo';
 
 interface Usuario {
   id: string;
@@ -824,6 +830,12 @@ export default function App() {
             onLogout={handleLogout}
           />
         );
+      
+      case 'password-demo':
+        return <DemoPasswordStrength />;
+      
+      case 'procesos-coactivos-demo':
+        return <DemoProcesosCoactivos />;
       
       default:
         return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;

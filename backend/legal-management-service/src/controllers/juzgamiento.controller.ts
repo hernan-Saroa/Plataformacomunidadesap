@@ -1,11 +1,11 @@
-import { Controller, Get, Post, Body, Param, Put, Query, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Patch, Query, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
 
-@Controller('api/legal/juzgamiento')
+@Controller('legal/juzgamiento')
 export class JuzgamientoController {
     constructor(private readonly expedienteService: ExpedienteService) { }
 
@@ -52,6 +52,14 @@ export class JuzgamientoController {
         });
     }
 
+    @Patch(':radicado')
+    async update(@Param('radicado') radicado: string, @Body() data: Partial<Expediente>) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+
+        return this.expedienteService.updateExpediente(expediente.id, data);
+    }
+
     private calculateDiasRestantes(fechaLimite?: Date): number {
         if (!fechaLimite) return 0;
         const diffTime = new Date(fechaLimite).getTime() - new Date().getTime();
@@ -92,8 +100,22 @@ export class JuzgamientoController {
             descripcion: descripcionCompleta,
             fechaActuacion: new Date(),
             documentoNombre: file.originalname,
-            documentoUrl: `http://localhost:3008/api/legal/files/${file.filename}`, // Ensure absolute URL for frontend
+            documentoUrl: `http://localhost:3008/legal/files/${file.filename}`, // Ensure absolute URL for frontend
             usuarioResponsable: 'Usuario Actual' // Mock user for now
         });
+    }
+
+    @Get(':radicado/decisiones')
+    async getDecisiones(@Param('radicado') radicado: string) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.expedienteService.getDecisions(expediente.id);
+    }
+
+    @Post(':radicado/decisiones')
+    async createDecision(@Param('radicado') radicado: string, @Body() data: any) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.expedienteService.createDecision(expediente.id, data);
     }
 }

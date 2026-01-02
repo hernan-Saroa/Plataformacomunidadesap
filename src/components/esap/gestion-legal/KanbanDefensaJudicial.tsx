@@ -803,6 +803,14 @@ export function KanbanDefensaJudicial() {
 
 
   const handleDrop = async (item: Expediente, nuevaEtapa: Etapa) => {
+    if (!nuevaEtapa) {
+      console.error('❌ Intento de mover expediente a etapa indefinida (undefined/null)');
+      return;
+    }
+
+    // Guard to prevent unnecessary updates
+    if (item.etapa === nuevaEtapa) return;
+
     // Optimistic Update
     const previousExpedientes = [...expedientes];
     setExpedientes(prevExpedientes =>

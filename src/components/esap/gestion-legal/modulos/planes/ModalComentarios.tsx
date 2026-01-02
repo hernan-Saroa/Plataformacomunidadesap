@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { Send, User } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../../../../ui/avatar';
+import { buildApiUrl } from '../../../../../config/environment';
 
 interface ModalComentariosProps {
     open: boolean;
@@ -14,7 +15,8 @@ interface ModalComentariosProps {
     onSuccess: () => void;
 }
 
-const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
+// const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
+const API_URL = buildApiUrl('legal', '/planes-mejoramiento');
 
 export function ModalComentarios({ open, onClose, plan, onSuccess }: ModalComentariosProps) {
     const [mensaje, setMensaje] = useState('');

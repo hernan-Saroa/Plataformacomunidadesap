@@ -12,7 +12,7 @@ import { useState, useEffect } from 'react';
 import { GuidedTour, TourButton, useTourCompleted } from '../design-system/GuidedTour';
 import { useTour } from '../design-system/TourContext'; // ✅ Importar contexto de tour
 import { siglDashboardTourSteps } from '../design-system/tourSteps';
-import axios from 'axios';
+import { legalService } from '../../../../services/api/legal.service';
 
 // Interfaces for response
 interface DashboardStats {
@@ -39,12 +39,15 @@ interface DashboardStats {
   }[];
 }
 
-const API_URL = 'http://localhost:3008/api/dashboard/ejecutivo';
+interface DashboardEjecutivoSIGLProps {
+  onNavigateToModule: (moduleId: string) => void;
+}
 
 export function DashboardEjecutivoSIGL({ onNavigateToModule }: DashboardEjecutivoSIGLProps) {
   // Estados del tour guiado
   const [isTourOpen, setIsTourOpen] = useState(false);
-  const { completed: tourCompleted, resetTour } = useTourCompleted('sigl-dashboard-main');
+  const { startTour } = useTour();
+  const { completed: hasSeenTour } = useTourCompleted('sigl-dashboard');
 
   // Backend Data State
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -53,8 +56,8 @@ export function DashboardEjecutivoSIGL({ onNavigateToModule }: DashboardEjecutiv
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await axios.get(API_URL);
-        setStats(res.data);
+        const res = await legalService.getDashboardEjecutivo();
+        setStats(res);
       } catch (error) {
         console.error('Error fetching dashboard stats', error);
       } finally {

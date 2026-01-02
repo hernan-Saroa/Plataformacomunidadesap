@@ -2,14 +2,11 @@
 import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { TerminosService } from '../services/terminos.service';
 
-@Controller('api/legal/terminos')
+@Controller('legal/terminos')
 export class TerminosController {
     constructor(private readonly terminosService: TerminosService) { }
 
-    @Post('manual')
-    async createManual(@Body() data: any) {
-        return this.terminosService.createManual(data);
-    }
+
 
     @Post('sincronizar')
     async sincronizar() {

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { FileText, Download, Upload } from 'lucide-react';
 import { Card } from '../../../../ui/card';
+import { buildApiUrl } from '../../../../../config/environment';
 
 interface ModalEvidenciasProps {
     open: boolean;
@@ -15,7 +16,8 @@ interface ModalEvidenciasProps {
     onSuccess: () => void;
 }
 
-const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
+// const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
+const API_URL = buildApiUrl('legal', '/planes-mejoramiento');
 
 export function ModalEvidencias({ open, onClose, plan, onSuccess }: ModalEvidenciasProps) {
     const [loading, setLoading] = useState(false);

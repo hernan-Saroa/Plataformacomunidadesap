@@ -83,6 +83,9 @@ export class ConsultaJuridica {
     documentoRespuestaUrl: string;
 
     @Column({ type: 'text', nullable: true })
+    respuesta: string;
+
+    @Column({ type: 'text', nullable: true })
     observaciones: string;
 
     @CreateDateColumn({ name: 'created_at' })

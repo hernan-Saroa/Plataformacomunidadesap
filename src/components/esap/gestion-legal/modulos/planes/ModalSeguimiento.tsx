@@ -6,6 +6,7 @@ import { Label } from '../../../../ui/label';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Slider } from '../../../../ui/slider'; // Assuming exists or use input range
+import { buildApiUrl } from '../../../../../config/environment';
 
 interface ModalSeguimientoProps {
     open: boolean;
@@ -14,7 +15,8 @@ interface ModalSeguimientoProps {
     onSuccess: () => void;
 }
 
-const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
+// const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
+const API_URL = buildApiUrl('legal', '/planes-mejoramiento');
 
 export function ModalSeguimiento({ open, onClose, plan, onSuccess }: ModalSeguimientoProps) {
     const [loading, setLoading] = useState(false);

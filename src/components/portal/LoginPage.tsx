@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 
 interface Usuario {
   id: string;
@@ -25,6 +26,7 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
+  const [showRecuperarModal, setShowRecuperarModal] = useState(false);
 
   // IMPORTANTE: Forzar tema claro en el login SIEMPRE
   useEffect(() => {
@@ -391,7 +393,7 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
                 </label>
                 <button
                   type="button"
-                  onClick={() => toast.info('Recuperación de contraseña próximamente')}
+                  onClick={() => setShowRecuperarModal(true)}
                   className="text-sm text-[#003DA5] hover:text-[#1a4d8a] transition-colors font-semibold"
                 >
                   ¿Olvidaste tu contraseña?
@@ -612,6 +614,12 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
           </div>
         </motion.div>
       </div>
+      
+      {/* Modal de Recuperar Contraseña */}
+      <ModalRecuperarContrasena 
+        isOpen={showRecuperarModal} 
+        onClose={() => setShowRecuperarModal(false)} 
+      />
     </div>
   );
 }

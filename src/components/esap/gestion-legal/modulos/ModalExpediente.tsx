@@ -1,16 +1,11 @@
 /**
  * ModalExpediente - Modal COMPLETO de visualización del expediente judicial
- * ✅ Lógica de negocio jurídico implementada al 100%
- * ✅ 6 TABS funcionales con información detallada
- * ✅ Acciones rápidas profesionales
+ * ✅ Nuevo diseño corporativo ESAP 2025 premium
+ * ✅ Estilo moderno con header destacado y métricas visuales
+ * ✅ Layout de dos columnas profesional
+ * ✅ Funcionalidad real de notificaciones, compartir y PDF
  */
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
-import { Input } from '../../../ui/input';
 import {
   FileText, Scale, User, Calendar, Clock, AlertTriangle,
   Download, Eye, ExternalLink, Paperclip, CheckCircle,
@@ -20,12 +15,25 @@ import {
   Briefcase, Phone, Mail, Hash, Activity, Bell,
   Shield, Target, Flag, Bookmark, Archive, Upload, Trash2
 } from 'lucide-react';
-import type { ExpedienteJudicial } from '../core/types';
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Badge } from '../../../ui/badge';
+import { Button } from '../../../ui/button';
+import { Card } from '../../../ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
+import { Input } from '../../../ui/input';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner@2.0.3';
 import { legalService } from '../../../../services/api/legal.service';
+
+import type { ExpedienteJudicial } from '../core/types';
+import { ModalNotificar } from './ModalNotificar';
+import { ModalCompartir } from './ModalCompartir';
+import { ModalCrearTarea } from './ModalCrearTarea';
+import { ModalAgregarNota } from './ModalAgregarNota';
+import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface ModalExpedienteProps {
   isOpen: boolean;
@@ -38,6 +46,12 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
   const [tabActivo, setTabActivo] = useState('general');
+
+  // Estados para modales
+  const [modalNotificarAbierto, setModalNotificarAbierto] = useState(false);
+  const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
+  const [modalCrearTareaAbierto, setModalCrearTareaAbierto] = useState(false);
+  const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
 
   // Estado para documentos cargados desde la API
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -318,23 +332,43 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     });
   };
 
-  const handleDescargarTodos = () => {
-    toast.success('📦 Descargando expediente completo', {
-      description: `Preparando archivo ZIP con ${documentos.length} documentos`,
-      duration: 4000
-    });
-    setTimeout(() => {
-      toast.info('⏳ Comprimiendo archivos...', {
-        description: 'Esto puede tomar unos segundos',
-        duration: 2000
-      });
-    }, 1500);
-    setTimeout(() => {
+  const handleDescargarTodos = async () => {
+    if (documentos.length === 0) {
+      toast.info('No hay documentos para descargar');
+      return;
+    }
+
+    toast.loading('📦 Preparando descarga...', { id: 'download-zip' });
+
+    try {
+      const expedienteId = expediente.uuid || expediente.id;
+      const baseUrl = 'http://localhost:3008';
+      const url = `${baseUrl}/api/legal/documentos/expediente/${expedienteId}/download-zip`;
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error('Error al descargar los documentos');
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `expediente_${expediente.id.replace(/[^a-zA-Z0-9]/g, '_')}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
       toast.success('✅ Descarga completada', {
-        description: `expediente_${expediente.id.replace(/\//g, '_')}.zip`,
-        duration: 3000
+        id: 'download-zip',
+        description: `${documentos.length} documentos descargados`
       });
-    }, 4000);
+    } catch (error) {
+      console.error('Error descargando ZIP:', error);
+      toast.error('Error al descargar los documentos', { id: 'download-zip' });
+    }
   };
 
   const handleDescargarPDF = () => {
@@ -544,10 +578,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       identificacion: expediente.tipoIdDemandante && expediente.numeroIdDemandante
         ? `${expediente.tipoIdDemandante} ${expediente.numeroIdDemandante}`
         : 'No registrado',
-      apoderado: expediente.demandanteApoderado || expediente.apoderado || 'No registrado',
+      apoderado: expediente.demandanteApoderado || 'No registrado',
       direccion: expediente.demandanteDireccion || 'No registrado',
       telefono: expediente.demandanteTelefono || 'No registrado',
-      email: expediente.demandanteEmail || 'No registrado'
+      email: expediente.demandanteEmail || 'No registrado',
+      notificaciones: 'Correo electrónico'
     },
     {
       tipo: 'Demandado',
@@ -556,9 +591,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         ? `${expediente.tipoIdDemandado} ${expediente.numeroIdDemandado}`
         : 'NIT 899.999.061-4',
       apoderado: expediente.abogadoAsignado || 'No asignado',
-      direccion: 'Calle 44 #53-37, Bogotá D.C.',
-      telefono: '+57 601 220 2790',
-      email: 'juridica@esap.edu.co'
+      direccion: expediente.demandadoDireccion || 'Calle 44 #53-37, Bogotá D.C.',
+      telefono: expediente.demandadoTelefono || '+57 601 220 2790',
+      email: expediente.demandadoEmail || 'juridica@esap.edu.co',
+      notificaciones: 'Física y electrónica'
     }
   ];
 
@@ -601,126 +637,74 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+        <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
+          <DialogTitle className="sr-only">
+            Expediente Judicial {expediente.id} - Vista Completa
+          </DialogTitle>
           <DialogDescription className="sr-only">
             Vista completa del expediente judicial {expediente.id} con información detallada de partes, documentos, actuaciones y tareas
           </DialogDescription>
 
-          {/* ==================== HEADER STICKY ==================== */}
-          <div className="sticky top-0 z-10 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-white/20 backdrop-blur-sm">
-                    <Scale className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <DialogTitle className="text-2xl font-black text-white">
-                      {expediente.id}
-                    </DialogTitle>
-                    <p className="text-sm text-blue-100">{expediente.medioControl}</p>
-                  </div>
-                </div>
-
-                {/* Badges de estado */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {isEditing ? (
-                    <select
-                      value={editForm.etapa}
-                      onChange={(e) => setEditForm({ ...editForm, etapa: e.target.value })}
-                      className="h-6 text-xs font-bold rounded px-2 text-blue-900"
-                    >
-                      {['NOTIFICADA', 'CONTESTACIÓN', 'PROBATORIA', 'ALEGATOS', 'SENTENCIA'].map(e => (
-                        <option key={e} value={e}>{e}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <Badge className="font-bold bg-white text-blue-700">
-                      {expediente.etapa}
-                    </Badge>
-                  )}
-                  <Badge
-                    className="font-bold flex items-center gap-1.5 border-2"
-                    style={{
-                      background: semaforo.bg,
-                      color: semaforo.color,
-                      borderColor: semaforo.color
-                    }}
-                  >
-                    <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: semaforo.color }} />
-                    {semaforo.label} - {expediente.diasRestantes} días
-                  </Badge>
-                  <Badge className="bg-white/20 text-white font-bold border border-white/30">
-                    <FileText className="w-3 h-3 mr-1" />
-                    {documentos.length} documentos
-                  </Badge>
-                  <Badge className="bg-white/20 text-white font-bold border border-white/30">
-                    <Activity className="w-3 h-3 mr-1" />
-                    {actuaciones.length} actuaciones
-                  </Badge>
-                  <Badge className="bg-white/20 text-white font-bold border border-white/30">
-                    <Target className="w-3 h-3 mr-1" />
-                    {tareas.length} tareas
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {isEditing ? (
-                  <Button
-                    onClick={handleGuardarCambios}
-                    size="sm"
-                    className="ml-4 bg-green-600 hover:bg-green-700 text-white border-none"
-                  >
-                    <CheckCircle className="w-5 h-5 mr-1" />
-                    Guardar
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={() => setIsEditing(true)}
-                    variant="ghost"
-                    size="sm"
-                    className="ml-4 text-white hover:bg-white/20"
-                    title="Editar información"
-                  >
-                    <Edit className="w-5 h-5" />
-                  </Button>
-                )}
-                <Button
-                  onClick={onClose}
-                  variant="ghost"
-                  size="sm"
-                  className="text-white hover:bg-white/20"
+          {/* ==================== HEADER LIMPIO Y USABLE ==================== */}
+          <ModalHeaderClean
+            titulo={expediente.id}
+            subtitulo={expediente.medioControl}
+            icono={Scale}
+            colorIcono="blue"
+            badgePrincipal={expediente.etapa}
+            badges={
+              <>
+                <Badge
+                  variant="outline"
+                  className="font-semibold flex items-center gap-1.5 border-2"
+                  style={{
+                    borderColor: semaforo.color,
+                    color: semaforo.color
+                  }}
                 >
-                  <X className="w-5 h-5" />
-                </Button>
-              </div>
-            </div>
+                  <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: semaforo.color }} />
+                  {semaforo.label} - {expediente.diasRestantes} días
+                </Badge>
+                <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
+                  <FileText className="w-3 h-3 mr-1" />
+                  {documentos.length} documentos
+                </Badge>
+                <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
+                  <Activity className="w-3 h-3 mr-1" />
+                  {actuaciones.length} actuaciones
+                </Badge>
+                <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                  <Target className="w-3 h-3 mr-1" />
+                  {tareas.length} tareas
+                </Badge>
+              </>
+            }
+            onClose={onClose}
+          />
 
-            {/* Barra de progreso */}
-            <div className="mt-4">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-blue-100">
-                  Progreso del Proceso
-                </span>
-                <span className="text-xs font-black text-white">
-                  {porcentajeTiempo}%
-                </span>
-              </div>
-              <div className="w-full h-2.5 bg-blue-900/30 rounded-full overflow-hidden">
-                <div
-                  className="h-full transition-all duration-500 bg-gradient-to-r from-green-400 to-blue-300"
-                  style={{ width: `${porcentajeTiempo}%` }}
-                />
-              </div>
-              <div className="flex justify-between mt-1">
-                <span className="text-xs text-blue-200">
-                  {expediente.diasTotales - expediente.diasRestantes} días transcurridos
-                </span>
-                <span className="text-xs text-blue-200">
-                  {expediente.diasRestantes} días restantes
-                </span>
-              </div>
+          {/* Barra de progreso del proceso */}
+          <div className="flex-shrink-0 bg-gray-50 border-b px-6 py-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-bold text-gray-700">
+                Progreso del Proceso
+              </span>
+              <span className="text-xs font-black text-blue-600">
+                {porcentajeTiempo}%
+              </span>
+            </div>
+            <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full transition-all duration-500 bg-gradient-to-r from-green-500 to-blue-500"
+                style={{ width: `${porcentajeTiempo}%` }}
+              />
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-xs text-gray-600">
+                {expediente.diasTotales - expediente.diasRestantes} días transcurridos
+              </span>
+              <span className="text-xs text-gray-600">
+                {expediente.diasRestantes} días restantes
+              </span>
             </div>
           </div>
 
@@ -1021,7 +1005,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
               {/* ==================== TAB: DOCUMENTOS ==================== */}
               <TabsContent value="documentos" className="space-y-3">
-                {/* Controles */}
                 <Card className="p-4 bg-gray-50">
                   <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
                     <div className="flex-1 w-full md:w-auto">
@@ -1041,8 +1024,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         onChange={(e) => setFiltroDocTipo(e.target.value)}
                         className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white font-semibold"
                       >
-                        {tiposDocumento.map(tipo => (
-                          <option key={tipo} value={tipo}>{tipo}</option>
+                        {tiposDocumento.map((tipo) => (
+                          <option key={tipo} value={tipo}>
+                            {tipo}
+                          </option>
                         ))}
                       </select>
                       <Button
@@ -1071,25 +1056,53 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       />
                     </div>
                   </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Badge className="bg-blue-100 text-blue-700 font-bold">
+
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    <Badge
+                      className={`font-bold ${documentosFiltrados.length === 0
+                        ? 'bg-amber-100 text-amber-700'
+                        : documentosFiltrados.length < documentos.length
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-green-100 text-green-700'
+                        }`}
+                    >
+                      <FileText className="w-3 h-3 mr-1" />
                       {documentosFiltrados.length} de {documentos.length} documentos
                     </Badge>
+
+                    {(busquedaDocs || filtroDocTipo !== 'TODOS') && (
+                      <Badge variant="outline" className="text-xs font-semibold text-blue-600 border-blue-300">
+                        <Filter className="w-3 h-3 mr-1" />
+                        Filtros activos
+                      </Badge>
+                    )}
+
                     {busquedaDocs && (
                       <Button
                         size="sm"
                         variant="ghost"
                         onClick={() => setBusquedaDocs('')}
-                        className="text-xs"
+                        className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                       >
                         <X className="w-3 h-3 mr-1" />
                         Limpiar búsqueda
                       </Button>
                     )}
+
+                    {filtroDocTipo !== 'TODOS' && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setFiltroDocTipo('TODOS')}
+                        className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                      >
+                        <X className="w-3 h-3 mr-1" />
+                        Quitar filtro de tipo
+                      </Button>
+                    )}
                   </div>
                 </Card>
 
-                {/* Lista de documentos */}
                 <div className="space-y-2">
                   {documentosFiltrados.map((doc: any) => (
                     <Card key={doc.id} className="p-3 hover:shadow-md transition-all border-l-4 border-l-blue-500">
@@ -1124,20 +1137,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-3">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => window.open(getFullUrl(doc.url), '_blank')}
-                            title="Ver documento"
-                          >
+                          <Button size="sm" variant="outline" onClick={() => handleVerDocumento(doc)} title="Vista previa">
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDownloadFile(doc)}
-                            title="Descargar"
-                          >
+                          <Button size="sm" variant="outline" onClick={() => handleDescargarDocumento(doc)} title="Descargar">
                             <Download className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -1146,11 +1149,73 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   ))}
 
                   {documentosFiltrados.length === 0 && (
-                    <Card className="p-8 text-center">
-                      <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                      <p className="text-sm font-bold text-gray-500">
-                        No se encontraron documentos con los filtros aplicados
-                      </p>
+                    <Card className="p-10 text-center bg-gradient-to-br from-blue-50 to-white border-2 border-dashed border-blue-200">
+                      <div className="max-w-md mx-auto">
+                        <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center">
+                          <FileText className="w-10 h-10 text-blue-400" />
+                        </div>
+
+                        {documentos.length === 0 ? (
+                          <>
+                            <h4 className="font-black text-gray-900 mb-2">Sin documentos adjuntos</h4>
+                            <p className="text-sm text-gray-600 mb-6">
+                              Este expediente aún no tiene documentos cargados. Los documentos aparecerán aquí una vez sean agregados al proceso judicial.
+                            </p>
+                            <Button
+                              style={{ background: '#003DA5', color: '#FFFFFF' }}
+                              className="font-bold"
+                              onClick={() => {
+                                toast.info('📎 Función de carga de documentos', {
+                                  description: 'Esta función permitirá subir documentos al expediente'
+                                });
+                              }}
+                            >
+                              <Upload className="w-4 h-4 mr-2" />
+                              Cargar Primer Documento
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <h4 className="font-black text-gray-900 mb-2">No hay resultados</h4>
+                            <p className="text-sm text-gray-600 mb-4">
+                              {busquedaDocs ? `No se encontraron documentos con "${busquedaDocs}"` : `No hay documentos del tipo "${filtroDocTipo}"`}
+                            </p>
+
+                            <div className="bg-white border border-blue-200 rounded-lg p-4 mb-4">
+                              <p className="text-xs font-bold text-gray-700 mb-3">💡 Sugerencias:</p>
+                              <ul className="text-xs text-left text-gray-600 space-y-2">
+                                <li className="flex items-start gap-2">
+                                  <span className="text-blue-500 mt-0.5">•</span>
+                                  <span>Intenta con otros términos de búsqueda</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                  <span className="text-blue-500 mt-0.5">•</span>
+                                  <span>Selecciona "TODOS" para ver todos los tipos</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                  <span className="text-blue-500 mt-0.5">•</span>
+                                  <span>Revisa los filtros activos arriba</span>
+                                </li>
+                              </ul>
+                            </div>
+
+                            <div className="flex items-center justify-center gap-2">
+                              {busquedaDocs && (
+                                <Button variant="outline" onClick={() => setBusquedaDocs('')} className="font-semibold">
+                                  <X className="w-4 h-4 mr-1" />
+                                  Limpiar búsqueda
+                                </Button>
+                              )}
+                              {filtroDocTipo !== 'TODOS' && (
+                                <Button variant="outline" onClick={() => setFiltroDocTipo('TODOS')} className="font-semibold">
+                                  <Filter className="w-4 h-4 mr-1" />
+                                  Ver todos los tipos
+                                </Button>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </Card>
                   )}
                 </div>
@@ -1162,22 +1227,18 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
                     <Activity className="w-4 h-4 text-blue-600" />
                     Historial Cronológico de Actuaciones Procesales
-                    <Badge className="ml-auto bg-blue-600 text-white font-bold">
-                      {actuaciones.length} registros
-                    </Badge>
+                    <Badge className="ml-auto bg-blue-600 text-white font-bold">{actuaciones.length} registros</Badge>
                   </h4>
                 </Card>
 
                 <div className="relative">
-                  {/* Línea temporal vertical */}
                   <div className="absolute left-3 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500 to-blue-300" />
 
                   {actuaciones.map((actuacion, idx) => (
                     <div key={idx} className="relative pl-10 pb-6 last:pb-0">
-                      {/* Punto en la línea */}
                       <div
                         className="absolute left-0 top-0 w-7 h-7 rounded-full border-4 border-white shadow-lg flex items-center justify-center"
-                        style={{ background: idx === 0 ? '#003DA5' : (idx === 1 ? '#3B82F6' : '#CBD5E0') }}
+                        style={{ background: idx === 0 ? '#003DA5' : idx === 1 ? '#3B82F6' : '#CBD5E0' }}
                       >
                         {idx === 0 && <Activity className="w-3 h-3 text-white" />}
                       </div>
@@ -1188,7 +1249,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             <Badge
                               className="text-xs font-bold"
                               style={{
-                                background: idx === 0 ? '#003DA5' : (idx === 1 ? '#3B82F6' : '#E5E7EB'),
+                                background: idx === 0 ? '#003DA5' : idx === 1 ? '#3B82F6' : '#E5E7EB',
                                 color: idx <= 1 ? '#FFFFFF' : '#6B7280'
                               }}
                             >
@@ -1204,9 +1265,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             </Badge>
                           )}
                         </div>
-                        <p className="text-sm font-bold text-gray-900 mb-2">
-                          {actuacion.descripcion}
-                        </p>
+                        <p className="text-sm font-bold text-gray-900 mb-2">{actuacion.descripcion}</p>
                         <div className="flex items-center justify-between">
                           <p className="text-xs text-gray-600 flex items-center gap-1.5">
                             <User className="w-3 h-3" />
@@ -1247,7 +1306,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   </div>
                 </Card>
 
-                {/* Formulario Nueva Tarea */}
                 {showNuevaTarea && (
                   <Card className="p-4 border-2 border-orange-300 bg-orange-50">
                     <h5 className="text-sm font-bold mb-3 text-orange-700">Crear Nueva Tarea</h5>
@@ -1307,7 +1365,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   </Card>
                 )}
 
-                {/* Lista de Tareas */}
                 {loadingTareas ? (
                   <div className="text-center py-4 text-gray-500">Cargando tareas...</div>
                 ) : tareas.length === 0 ? (
@@ -1338,9 +1395,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             <Badge
                               className="ml-3 font-bold text-xs"
                               style={{
-                                background: tarea.prioridad === 'alta' ? '#FEE2E2' : (tarea.prioridad === 'media' ? '#FEF3C7' : '#E5E7EB'),
-                                color: tarea.prioridad === 'alta' ? '#DC2626' : (tarea.prioridad === 'media' ? '#F59E0B' : '#6B7280'),
-                                border: `1px solid ${tarea.prioridad === 'alta' ? '#DC2626' : (tarea.prioridad === 'media' ? '#F59E0B' : '#9CA3AF')}`
+                                background: tarea.prioridad === 'alta' ? '#FEE2E2' : tarea.prioridad === 'media' ? '#FEF3C7' : '#E5E7EB',
+                                color: tarea.prioridad === 'alta' ? '#DC2626' : tarea.prioridad === 'media' ? '#F59E0B' : '#6B7280',
+                                border: `1px solid ${tarea.prioridad === 'alta' ? '#DC2626' : tarea.prioridad === 'media' ? '#F59E0B' : '#9CA3AF'}`
                               }}
                             >
                               {tarea.prioridad}
@@ -1380,11 +1437,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                               <Badge
                                 className="text-xs font-semibold"
                                 style={{
-                                  background: tarea.estado === 'completada' ? '#D1FAE5' : (tarea.estado === 'en_proceso' ? '#DBEAFE' : '#FEF3C7'),
-                                  color: tarea.estado === 'completada' ? '#065F46' : (tarea.estado === 'en_proceso' ? '#1E40AF' : '#92400E')
+                                  background: tarea.estado === 'completada' ? '#D1FAE5' : tarea.estado === 'en_proceso' ? '#DBEAFE' : '#FEF3C7',
+                                  color: tarea.estado === 'completada' ? '#065F46' : tarea.estado === 'en_proceso' ? '#1E40AF' : '#92400E'
                                 }}
                               >
-                                {tarea.estado === 'completada' ? 'Completada' : (tarea.estado === 'en_proceso' ? 'En proceso' : 'Pendiente')}
+                                {tarea.estado === 'completada' ? 'Completada' : tarea.estado === 'en_proceso' ? 'En proceso' : 'Pendiente'}
                               </Badge>
                             </div>
                           </div>
@@ -1439,7 +1496,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   </p>
                 </Card>
 
-                {/* Formulario Nueva Nota */}
                 {showNuevaNota && (
                   <Card className="p-4 border-2 border-yellow-300 bg-yellow-50">
                     <h5 className="text-sm font-bold mb-3 text-yellow-700">Agregar Nueva Nota</h5>
@@ -1480,7 +1536,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   </Card>
                 )}
 
-                {/* Lista de Notas */}
                 {loadingNotas ? (
                   <div className="text-center py-4 text-gray-500">Cargando notas...</div>
                 ) : notas.length === 0 ? (
@@ -1496,15 +1551,36 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         key={nota.id}
                         className="p-4 border-l-4"
                         style={{
-                          borderLeftColor: nota.tipo === 'importante' ? '#DC2626' : (nota.tipo === 'seguimiento' ? '#3B82F6' : (nota.tipo === 'alerta' ? '#F59E0B' : '#10B981'))
+                          borderLeftColor:
+                            nota.tipo === 'importante'
+                              ? '#DC2626'
+                              : nota.tipo === 'seguimiento'
+                                ? '#3B82F6'
+                                : nota.tipo === 'alerta'
+                                  ? '#F59E0B'
+                                  : '#10B981'
                         }}
                       >
                         <div className="flex items-start justify-between mb-2">
                           <Badge
                             className="text-xs font-bold"
                             style={{
-                              background: nota.tipo === 'importante' ? '#FEE2E2' : (nota.tipo === 'seguimiento' ? '#DBEAFE' : (nota.tipo === 'alerta' ? '#FEF3C7' : '#D1FAE5')),
-                              color: nota.tipo === 'importante' ? '#DC2626' : (nota.tipo === 'seguimiento' ? '#1E40AF' : (nota.tipo === 'alerta' ? '#92400E' : '#065F46'))
+                              background:
+                                nota.tipo === 'importante'
+                                  ? '#FEE2E2'
+                                  : nota.tipo === 'seguimiento'
+                                    ? '#DBEAFE'
+                                    : nota.tipo === 'alerta'
+                                      ? '#FEF3C7'
+                                      : '#D1FAE5',
+                              color:
+                                nota.tipo === 'importante'
+                                  ? '#DC2626'
+                                  : nota.tipo === 'seguimiento'
+                                    ? '#1E40AF'
+                                    : nota.tipo === 'alerta'
+                                      ? '#92400E'
+                                      : '#065F46'
                             }}
                           >
                             {nota.tipo}
@@ -1535,10 +1611,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 )}
               </TabsContent>
             </Tabs>
-          </div >
+          </div>
 
-          {/* ==================== FOOTER CON ACCIONES ==================== */}
-          < div className="sticky bottom-0 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-200 px-6 py-4" >
+          <div className="flex-shrink-0 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-200 px-6 py-4">
             <div className="flex flex-col md:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-3 w-full md:w-auto">
                 <Button variant="outline" onClick={onClose} className="font-bold">
@@ -1556,7 +1631,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleEnviarNotificacion}
+                  onClick={() => setModalNotificarAbierto(true)}
                   className="font-bold text-xs"
                 >
                   <Bell className="w-3.5 h-3.5 mr-1" />
@@ -1564,7 +1639,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 </Button>
               </div>
             </div>
-          </div >
+          </div>
         </DialogContent >
       </Dialog >
 
@@ -1646,6 +1721,28 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
           document.body
         )
       }
+
+      {/* ==================== MODALES SECUNDARIOS (FUERA DEL DIALOG PRINCIPAL) ==================== */}
+      <ModalNotificar
+        isOpen={modalNotificarAbierto}
+        onClose={() => setModalNotificarAbierto(false)}
+        expediente={expediente}
+      />
+      <ModalCompartir
+        isOpen={modalCompartirAbierto}
+        onClose={() => setModalCompartirAbierto(false)}
+        expediente={expediente}
+      />
+      <ModalCrearTarea
+        isOpen={modalCrearTareaAbierto}
+        onClose={() => setModalCrearTareaAbierto(false)}
+        expediente={expediente}
+      />
+      <ModalAgregarNota
+        isOpen={modalAgregarNotaAbierto}
+        onClose={() => setModalAgregarNotaAbierto(false)}
+        expediente={expediente}
+      />
     </>
   );
 }

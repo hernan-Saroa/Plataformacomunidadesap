@@ -39,6 +39,12 @@ export class PeiIndicador {
     @Column({ length: 20, default: 'ACTIVO' })
     estado: string;
 
+    @Column({ length: 20, default: 'MEDIA' })
+    prioridad: string;
+
+    @Column({ name: 'tipo_indicador', length: 50, default: 'GESTION' })
+    tipoIndicador: string;
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 

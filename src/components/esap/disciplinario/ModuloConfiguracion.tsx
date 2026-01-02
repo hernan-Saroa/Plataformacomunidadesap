@@ -8,11 +8,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Save, Settings, Clock, Users, Bell, FileText, Shield,
   AlertTriangle, CheckCircle, Mail, Calendar, Target, Zap,
-  Plus, Trash2, Edit2, GripVertical, X
+  Plus, Trash2, Edit2, GripVertical, X, Upload, FileSignature
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
@@ -864,6 +864,10 @@ export function ModuloConfiguracion() {
                       borderColor: '#E5E7EB',
                       accentColor: '#003DA5'
                     }}
+                    style={{
+                      borderColor: '#E5E7EB',
+                      accentColor: '#003DA5'
+                    }}
                   />
                   <span className="text-sm font-medium" style={{ color: '#1F2937' }}>
                     {item.label}
@@ -875,8 +879,10 @@ export function ModuloConfiguracion() {
         </div>
       </Card>
 
+      <ConfiguracionFirmaPersonal />
+
       {/* Parámetros de Alertas */}
-      <Card className="p-6 border-2" style={{ borderColor: '#E5E7EB' }}>
+      < Card className="p-6 border-2" style={{ borderColor: '#E5E7EB' }}>
         <div className="flex items-center gap-3 mb-6">
           <div className="p-3 rounded-xl" style={{ background: '#FEE2E2' }}>
             <AlertTriangle className="w-6 h-6" style={{ color: '#DC2626' }} />
@@ -1121,5 +1127,153 @@ export function ModuloConfiguracion() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Subcomponente para Firma Personal (Integrado en ModuloConfiguracion)
+function ConfiguracionFirmaPersonal() {
+  const [firmaUrl, setFirmaUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [currentProfessionalId, setCurrentProfessionalId] = useState<string | null>(null);
+
+  // Mock fallback logic
+  const mockUser = { id: '770e8400-e29b-41d4-a716-446655440002', nombre: 'Admin Sistema' };
+
+  useEffect(() => {
+    loadFirma();
+  }, []);
+
+  const loadFirma = async () => {
+    try {
+      setLoading(true);
+      const professionals = await disciplinaryService.getProfesionales();
+
+      // Intentar encontrar al usuario por ID o correo (lógica de mock para desarrollo)
+      const me = professionals.find((p: any) => p.id === mockUser.id) ||
+        professionals.find((p: any) => p.email === 'juan.perez@esap.edu.co') ||
+        professionals[0]; // Fallback al primero si no encuentra los anteriores
+
+      if (me) {
+        setCurrentProfessionalId(me.id);
+        if (me.firmaUrl) {
+          setFirmaUrl(me.firmaUrl);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading signature:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!currentProfessionalId) {
+      toast.error('No se ha identificado un perfil profesional válido para asociar la firma.');
+      return;
+    }
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Solo se permiten archivos PDF');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      const result = await disciplinaryService.uploadSignature(currentProfessionalId, file);
+      setFirmaUrl(result.url);
+      toast.success('Firma cargada exitosamente');
+    } catch (error) {
+      console.error('Error uploading signature:', error);
+      toast.error('Error al cargar la firma');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Card className="p-6 border-2" style={{ borderColor: '#E5E7EB' }}>
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-3 rounded-xl" style={{ background: '#EFF6FF' }}>
+          <FileSignature className="w-6 h-6" style={{ color: '#2563EB' }} />
+        </div>
+        <div>
+          <h2 className="text-xl font-extrabold" style={{ color: '#1F2937' }}>
+            Configuración de Firma Digital
+          </h2>
+          <p className="text-sm" style={{ color: '#6B7280' }}>
+            Gestione su firma digital para la aprobación de autos y documentos
+          </p>
+        </div>
+      </div>
+
+      <div className="p-5 rounded-xl border-2 border-blue-100 bg-blue-50/50">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-1">
+              Estado Actual
+            </p>
+            <div className="flex items-center gap-2">
+              {loading ? (
+                <span className="text-xs text-gray-500">Verificando...</span>
+              ) : firmaUrl ? (
+                <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-0 pointer-events-none">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  Firma Configurada (PDF)
+                </Badge>
+              ) : (
+                <Badge className="bg-red-100 text-red-700 hover:bg-red-200 border-0 pointer-events-none">
+                  <AlertTriangle className="w-3 h-3 mr-1" />
+                  No Configurada
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end gap-2">
+            <input
+              type="file"
+              accept=".pdf"
+              id="firma-personal-upload"
+              className="hidden"
+              onChange={handleFileUpload}
+              disabled={uploading}
+            />
+            <label
+              htmlFor="firma-personal-upload"
+              className={`
+                    px-4 py-2 rounded-lg font-semibold text-sm cursor-pointer flex items-center gap-2 transition-colors
+                    ${uploading ? 'bg-gray-300 text-gray-600 cursor-wait' : 'bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 shadow-sm'}
+                  `}
+            >
+              {uploading ? (
+                <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4" />
+              )}
+              {firmaUrl ? 'Actualizar Archivo de Firma' : 'Cargar Firma (PDF)'}
+            </label>
+            <p className="text-xs text-gray-500">
+              Formato admitido: .PDF (Max 5MB)
+            </p>
+          </div>
+        </div>
+
+        {firmaUrl && (
+          <div className="mt-4 p-3 bg-white/60 rounded-lg border border-blue-100">
+            <p className="text-xs text-blue-800 flex items-start gap-2">
+              <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>
+                <strong>Seguridad:</strong> Esta firma está vinculada a su usuario profesional.
+                Se aplicará automáticamente en todos los documentos que apruebe dentro del módulo disciplinario.
+              </span>
+            </p>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }

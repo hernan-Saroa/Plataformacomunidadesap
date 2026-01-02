@@ -290,11 +290,11 @@ const AUDITORIA_MOCK: ActividadAuditoria[] = [
 ];
 
 // Modal de Visor de Documentos
-function ModalVisorDocumento({ 
-  documento, 
+function ModalVisorDocumento({
+  documento,
   onClose,
   processId,
-}: { 
+}: {
   documento: Documento;
   onClose: () => void;
   processId?: string;
@@ -306,7 +306,7 @@ function ModalVisorDocumento({
   const [cargandoPDF, setCargandoPDF] = useState(false);
   const [errorPDF, setErrorPDF] = useState<string | null>(null);
   const [tipoArchivo, setTipoArchivo] = useState<'pdf' | 'word' | 'ppt' | 'xls' | 'otro'>('pdf');
-  
+
   // Plugin de react-pdf-viewer con layout completo (zoom, navegación, etc.)
   const defaultLayoutPluginInstance = defaultLayoutPlugin();
 
@@ -342,20 +342,20 @@ function ModalVisorDocumento({
         // Usar buildApiUrl para construir la URL correctamente según el modo (gateway/direct)
         // En modo directo: /disciplinary-processes/...
         // En modo gateway: /api/v1/disciplinary-processes/...
-        const endpoint = API_MODE === 'direct' 
+        const endpoint = API_MODE === 'direct'
           ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
           : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
         const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
         const token = localStorage.getItem('esap_access_token');
-        
+
         const headers: HeadersInit = {
           'Accept': 'application/octet-stream',
         };
-        
+
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
-        
+
         const response = await fetch(downloadUrl, {
           method: 'GET',
           headers,
@@ -366,22 +366,22 @@ function ModalVisorDocumento({
         }
 
         const blob = await response.blob();
-        
+
         if (cancelled) {
           return;
         }
-        
+
         // Detectar tipo de archivo basado en el nombre del documento
         const nombreArchivo = documento.nombre.toLowerCase();
         let tipoDetectado: 'pdf' | 'word' | 'ppt' | 'xls' | 'otro' = 'otro';
-        
+
         if (nombreArchivo.endsWith('.pdf')) {
           tipoDetectado = 'pdf';
           // Verificar que el blob sea realmente un PDF
           const arrayBuffer = await blob.slice(0, 4).arrayBuffer();
           const bytes = new Uint8Array(arrayBuffer);
           const pdfHeader = String.fromCharCode(...bytes);
-          
+
           if (pdfHeader !== '%PDF') {
             const text = await blob.text();
             if (text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('<!doctype')) {
@@ -396,13 +396,13 @@ function ModalVisorDocumento({
         } else if (nombreArchivo.endsWith('.xls') || nombreArchivo.endsWith('.xlsx')) {
           tipoDetectado = 'xls';
         }
-        
+
         setTipoArchivo(tipoDetectado);
 
         // Crear blob URL para todos los tipos de archivo
         const url = window.URL.createObjectURL(blob);
         currentBlobUrl = url;
-        
+
         if (!cancelled) {
           setPdfBlobUrl(url);
         } else {
@@ -456,20 +456,20 @@ function ModalVisorDocumento({
       // Descargar el archivo original primero usando buildApiUrl
       // En modo directo: /disciplinary-processes/...
       // En modo gateway: /api/v1/disciplinary-processes/...
-      const endpoint = API_MODE === 'direct' 
+      const endpoint = API_MODE === 'direct'
         ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
         : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
       const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
       const token = localStorage.getItem('esap_access_token');
-      
+
       const headers: HeadersInit = {
         'Accept': 'application/octet-stream',
       };
-      
+
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
-      
+
       const response = await fetch(downloadUrl, {
         method: 'GET',
         headers,
@@ -480,7 +480,7 @@ function ModalVisorDocumento({
       }
 
       const blob = await response.blob();
-      
+
       // Verificar si ya es PDF
       const fileType = blob.type || '';
       const isPDF = fileType === 'application/pdf' || documento.nombre.toLowerCase().endsWith('.pdf');
@@ -522,24 +522,24 @@ function ModalVisorDocumento({
             pdf.setFontSize(14);
             pdf.setFont('helvetica', 'bold');
             pdf.text('Información del Documento', margin, yPos);
-            
+
             yPos += 15;
             pdf.setFontSize(10);
             pdf.setFont('helvetica', 'normal');
             pdf.text(`Nombre: ${documento.nombre}`, margin, yPos);
-            
+
             yPos += 10;
             pdf.text(`Tipo: ${documento.tipo.toUpperCase()}`, margin, yPos);
-            
+
             yPos += 10;
             pdf.text(`Etapa: ${documento.etapa}`, margin, yPos);
-            
+
             yPos += 10;
             pdf.text(`Tamaño: ${documento.tamaño}`, margin, yPos);
-            
+
             yPos += 10;
             pdf.text(`Fecha de Carga: ${new Date(documento.fechaCarga).toLocaleDateString('es-ES')}`, margin, yPos);
-            
+
             yPos += 10;
             pdf.text(`Cargado por: ${documento.usuarioCarga}`, margin, yPos);
 
@@ -600,7 +600,7 @@ function ModalVisorDocumento({
 
             // Descargar el PDF generado
             pdf.save(`${documento.nombre}_v${versionSeleccionada}.pdf`);
-            
+
             toast.success('PDF generado exitosamente', {
               id: 'download',
               description: `${documento.nombre} (Versión ${versionSeleccionada})`
@@ -616,7 +616,7 @@ function ModalVisorDocumento({
             link.click();
             document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
-            
+
             toast.success('Descarga completada', {
               id: 'download',
               description: `${documento.nombre} (Versión ${versionSeleccionada})`
@@ -665,7 +665,7 @@ function ModalVisorDocumento({
     if (!processId || !documento.id) return '';
     // En modo directo: /disciplinary-processes/...
     // En modo gateway: /api/v1/disciplinary-processes/...
-    const endpoint = API_MODE === 'direct' 
+    const endpoint = API_MODE === 'direct'
       ? `/disciplinary-processes/${processId}/documents/${documento.id}/download${forViewer ? '?view=true' : ''}`
       : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download${forViewer ? '?view=true' : ''}`;
     return buildApiUrl('control-disciplinario', endpoint);
@@ -741,8 +741,8 @@ function ModalVisorDocumento({
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       size="sm"
                       onClick={() => {
                         if (documento.urlExterna) {
@@ -760,8 +760,8 @@ function ModalVisorDocumento({
                       <ExternalLink className="w-3 h-3" />
                       Nueva pestaña
                     </Button>
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       size="sm"
                       onClick={handleCerrarVisor}
                       className="h-7 px-3 gap-1 text-white hover:bg-white/10"
@@ -800,31 +800,31 @@ function ModalVisorDocumento({
                         <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
                         <p className="text-red-600 font-semibold mb-2">Error al cargar el documento</p>
                         <p className="text-sm text-gray-600 mb-4">{errorPDF}</p>
-                        <Button 
+                        <Button
                           onClick={async () => {
                             try {
                               setErrorPDF(null);
                               setCargandoPDF(true);
-                              
-                              const endpoint = API_MODE === 'direct' 
+
+                              const endpoint = API_MODE === 'direct'
                                 ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
                                 : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
                               const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
                               const token = localStorage.getItem('esap_access_token');
-                              
+
                               const headers: HeadersInit = {
                                 'Accept': 'application/octet-stream',
                               };
-                              
+
                               if (token) {
                                 headers['Authorization'] = `Bearer ${token}`;
                               }
-                              
+
                               const res = await fetch(downloadUrl, {
                                 method: 'GET',
                                 headers,
                               });
-                              
+
                               if (!res.ok) {
                                 const errorText = await res.text();
                                 let errorMessage = `Error ${res.status}: ${res.statusText}`;
@@ -836,19 +836,19 @@ function ModalVisorDocumento({
                                 }
                                 throw new Error(errorMessage);
                               }
-                              
+
                               const blob = await res.blob();
-                              
+
                               // Detectar tipo de archivo
                               const nombreArchivo = documento.nombre.toLowerCase();
                               let tipoDetectado: 'pdf' | 'word' | 'ppt' | 'xls' | 'otro' = 'otro';
-                              
+
                               if (nombreArchivo.endsWith('.pdf')) {
                                 tipoDetectado = 'pdf';
                                 const arrayBuffer = await blob.slice(0, 4).arrayBuffer();
                                 const bytes = new Uint8Array(arrayBuffer);
                                 const pdfHeader = String.fromCharCode(...bytes);
-                                
+
                                 if (pdfHeader !== '%PDF') {
                                   const text = await blob.text();
                                   if (text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('<!doctype')) {
@@ -863,9 +863,9 @@ function ModalVisorDocumento({
                               } else if (nombreArchivo.endsWith('.xls') || nombreArchivo.endsWith('.xlsx')) {
                                 tipoDetectado = 'xls';
                               }
-                              
+
                               setTipoArchivo(tipoDetectado);
-                              
+
                               const url = window.URL.createObjectURL(blob);
                               if (pdfBlobUrl) window.URL.revokeObjectURL(pdfBlobUrl);
                               setPdfBlobUrl(url);
@@ -886,8 +886,8 @@ function ModalVisorDocumento({
                   )}
                   {pdfBlobUrl && !cargandoPDF && !errorPDF && tipoArchivo === 'pdf' && (
                     <Worker workerUrl="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js">
-                      <Viewer 
-                        fileUrl={pdfBlobUrl} 
+                      <Viewer
+                        fileUrl={pdfBlobUrl}
                         plugins={[defaultLayoutPluginInstance]}
                       />
                     </Worker>
@@ -898,13 +898,13 @@ function ModalVisorDocumento({
                       <object
                         data={pdfBlobUrl}
                         type={
-                          tipoArchivo === 'word' 
+                          tipoArchivo === 'word'
                             ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                             : tipoArchivo === 'ppt'
-                            ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-                            : tipoArchivo === 'xls'
-                            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                            : 'application/octet-stream'
+                              ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+                              : tipoArchivo === 'xls'
+                                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                : 'application/octet-stream'
                         }
                         className="w-full h-full"
                         style={{ minHeight: '100%', width: '100%' }}
@@ -1004,11 +1004,10 @@ function ModalVisorDocumento({
                 {documento.versiones.map((version) => (
                   <Card
                     key={version.numero}
-                    className={`p-4 cursor-pointer border-l-4 transition-all ${
-                      versionSeleccionada === version.numero
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-300 hover:border-blue-300'
-                    }`}
+                    className={`p-4 cursor-pointer border-l-4 transition-all ${versionSeleccionada === version.numero
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-300 hover:border-blue-300'
+                      }`}
                     onClick={() => setVersionSeleccionada(version.numero)}
                   >
                     <div className="flex items-start gap-3">
@@ -1037,7 +1036,7 @@ function ModalVisorDocumento({
 
         {/* Footer */}
         <div className="p-6 border-t bg-gray-50 flex gap-3">
-          <Button 
+          <Button
             onClick={handleDescargarVersion}
             style={{ background: '#003DA5', color: '#FFFFFF' }}
           >
@@ -1045,7 +1044,7 @@ function ModalVisorDocumento({
             Descargar Versión {versionSeleccionada}
           </Button>
           {(documento.urlExterna || (processId && documento.id)) && (
-            <Button 
+            <Button
               onClick={() => setViendoPDF(!viendoPDF)}
               className={viendoPDF ? "bg-gray-600" : "bg-purple-600"}
             >
@@ -1063,11 +1062,11 @@ function ModalVisorDocumento({
 }
 
 // Modal de Subir Documento
-function ModalSubirDocumento({ 
-  procesoId, 
-  onClose, 
-  onConfirm 
-}: { 
+function ModalSubirDocumento({
+  procesoId,
+  onClose,
+  onConfirm
+}: {
   procesoId: string;
   onClose: () => void;
   onConfirm: (doc: any) => void;
@@ -1097,15 +1096,15 @@ function ModalSubirDocumento({
   const validarTipoArchivo = (file: File): boolean => {
     const extension = '.' + file.name.split('.').pop()?.toLowerCase();
     const tipoMime = file.type;
-    
+
     // Verificar por extensión
-    const extensionValida = extensionesPermitidas.some(ext => 
+    const extensionValida = extensionesPermitidas.some(ext =>
       file.name.toLowerCase().endsWith(ext.toLowerCase())
     );
-    
+
     // Verificar por tipo MIME (puede estar vacío en algunos navegadores)
     const tipoMimeValido = !tipoMime || tiposPermitidos.includes(tipoMime);
-    
+
     return extensionValida && tipoMimeValido;
   };
 
@@ -1123,8 +1122,8 @@ function ModalSubirDocumento({
       return;
     }
     if (!usarEnlaceExterno && archivo && !validarTipoArchivo(archivo)) {
-      toast.error('Tipo de archivo no permitido', { 
-        description: 'Solo se permiten archivos PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx) y Excel (.xls, .xlsx)' 
+      toast.error('Tipo de archivo no permitido', {
+        description: 'Solo se permiten archivos PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx) y Excel (.xls, .xlsx)'
       });
       return;
     }
@@ -1262,9 +1261,8 @@ function ModalSubirDocumento({
           {/* Archivo Local */}
           {!usarEnlaceExterno && (
             <div
-              className={`relative w-full h-32 border-2 border-gray-300 rounded-lg flex items-center justify-center cursor-pointer ${
-                dragActive ? 'bg-gray-100' : ''
-              }`}
+              className={`relative w-full h-32 border-2 border-gray-300 rounded-lg flex items-center justify-center cursor-pointer ${dragActive ? 'bg-gray-100' : ''
+                }`}
               onDragEnter={() => setDragActive(true)}
               onDragLeave={() => setDragActive(false)}
               onDragOver={(e) => e.preventDefault()}
@@ -1277,8 +1275,8 @@ function ModalSubirDocumento({
                   if (validarTipoArchivo(file)) {
                     setArchivo(file);
                   } else {
-                    toast.error('Tipo de archivo no permitido', { 
-                      description: 'Solo se permiten archivos PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx) y Excel (.xls, .xlsx)' 
+                    toast.error('Tipo de archivo no permitido', {
+                      description: 'Solo se permiten archivos PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx) y Excel (.xls, .xlsx)'
                     });
                   }
                 }
@@ -1304,8 +1302,8 @@ function ModalSubirDocumento({
                     if (validarTipoArchivo(file)) {
                       setArchivo(file);
                     } else {
-                      toast.error('Tipo de archivo no permitido', { 
-                        description: 'Solo se permiten archivos PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx) y Excel (.xls, .xlsx)' 
+                      toast.error('Tipo de archivo no permitido', {
+                        description: 'Solo se permiten archivos PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx) y Excel (.xls, .xlsx)'
                       });
                       e.target.value = ''; // Limpiar el input
                     }
@@ -1352,7 +1350,7 @@ export function ExpedienteElectronico() {
   const [cargandoDocumentos, setCargandoDocumentos] = useState(false);
   const [procesos, setProcesos] = useState<Proceso[]>([]);
   const [cargandoProcesos, setCargandoProcesos] = useState(false);
-  
+
   // Estados para el buscador de procesos
   const [procesoSearchQuery, setProcesoSearchQuery] = useState('');
   const [showProcesoDropdown, setShowProcesoDropdown] = useState(false);
@@ -1365,7 +1363,7 @@ export function ExpedienteElectronico() {
       try {
         setCargandoProcesos(true);
         const procesosApi = await disciplinaryService.getAllProcesos();
-        
+
         // Convertir procesos de la API al formato del componente
         const procesosConvertidos: Proceso[] = procesosApi.map(p => {
           // Manejar disciplinable que puede ser un objeto o un array
@@ -1379,7 +1377,7 @@ export function ExpedienteElectronico() {
               denunciadoNombre = p.news.disciplinable;
             }
           }
-          
+
           return {
             id: p.id,
             numero: p.radicadoProceso,
@@ -1389,13 +1387,13 @@ export function ExpedienteElectronico() {
             estado: p.estado || 'ACTIVO',
           };
         });
-        
+
         setProcesos(procesosConvertidos);
-        
+
         // Extraer solo los radicados para el autocomplete
         const radicados = procesosConvertidos.map(p => p.numero);
         setRadicadosDisponibles(radicados);
-        
+
         // Seleccionar el primer proceso si hay alguno
         if (procesosConvertidos.length > 0 && !procesoSeleccionado) {
           setProcesoSeleccionado(procesosConvertidos[0]);
@@ -1413,7 +1411,7 @@ export function ExpedienteElectronico() {
         setCargandoProcesos(false);
       }
     };
-    
+
     cargarProcesos();
   }, []);
 
@@ -1438,7 +1436,7 @@ export function ExpedienteElectronico() {
       try {
         setCargandoDocumentos(true);
         const respuesta = await disciplinaryService.getDocumentosExpediente(procesoSeleccionado.id);
-        
+
         if (respuesta && respuesta.documentos) {
           console.log('Documentos cargados desde BD:', respuesta.documentos.length);
           // El backend ya devuelve el formato correcto, hacer cast explícito
@@ -1471,7 +1469,7 @@ export function ExpedienteElectronico() {
   const handleVerDocumento = (doc: Documento) => {
     setDocumentoSeleccionado(doc);
     setShowModalVisor(true);
-    
+
     // Registrar visualización en auditoría
     toast.success('Documento Visualizado', {
       description: 'Actividad registrada en auditoría'
@@ -1536,11 +1534,11 @@ export function ExpedienteElectronico() {
 
       // Convertir tipoDocumento al formato esperado por el backend
       const tipoBackend = docData.tipo === 'auto' ? 'AUTO' :
-                         docData.tipo === 'evidencia' ? 'EVIDENCIA' :
-                         docData.tipo === 'oficio' ? 'OFICIO' :
-                         docData.tipo === 'notificacion' ? 'NOTIFICACION' :
-                         docData.tipo === 'acta' ? 'ACTA' :
-                         'DOCUMENTO';
+        docData.tipo === 'evidencia' ? 'EVIDENCIA' :
+          docData.tipo === 'oficio' ? 'OFICIO' :
+            docData.tipo === 'notificacion' ? 'NOTIFICACION' :
+              docData.tipo === 'acta' ? 'ACTA' :
+                'DOCUMENTO';
 
       // Guardar solo la descripción simple (el backend recibe los campos por separado)
       const descripcionFinal = docData.descripcion || '';
@@ -1549,7 +1547,7 @@ export function ExpedienteElectronico() {
       const usuarioActual = localStorage.getItem('esap_user_name') || 'Usuario del Sistema';
 
       let resultado;
-      
+
       // Si es un enlace externo, crear un documento con URL externa
       if (docData.urlExterna) {
         // Crear un FormData con la URL externa en lugar de un archivo
@@ -1562,12 +1560,12 @@ export function ExpedienteElectronico() {
         if (usuarioActual) formData.append('usuarioCarga', usuarioActual);
 
         // Usar el mismo endpoint pero con URL externa
-        const endpoint = API_MODE === 'direct' 
+        const endpoint = API_MODE === 'direct'
           ? `/disciplinary-processes/${procesoSeleccionado.id}/documents`
           : `/api/v1/disciplinary-processes/${procesoSeleccionado.id}/documents`;
         const url = buildApiUrl('control-disciplinario', endpoint);
         const token = localStorage.getItem('esap_access_token');
-        
+
         const headers: HeadersInit = {};
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
@@ -1617,9 +1615,9 @@ export function ExpedienteElectronico() {
         try {
           // Esperar un momento para que el backend procese el documento
           await new Promise(resolve => setTimeout(resolve, 500));
-          
+
           const respuesta = await disciplinaryService.getDocumentosExpediente(procesoSeleccionado.id);
-          
+
           if (respuesta && respuesta.documentos) {
             setDocumentos(respuesta.documentos as Documento[]);
             console.log('Documentos recargados:', respuesta.documentos.length);
@@ -1644,7 +1642,7 @@ export function ExpedienteElectronico() {
           });
         }
       }
-      
+
     } catch (error: any) {
       toast.error('Error al cargar documento', {
         id: toastId,
@@ -1653,195 +1651,29 @@ export function ExpedienteElectronico() {
     }
   };
 
-  const handleExportarExpediente = () => {
-    if (!procesoSeleccionado) {
-      toast.error('Proceso no seleccionado', {
-        description: 'Debe seleccionar un proceso para exportar el expediente'
-      });
-      return;
-    }
+  const handleExportarExpediente = async () => {
+    // YA NO ES NECESARIO SELECCIONAR UN PROCESO - EXPORTACIÓN MASIVA
+    // if (!procesoSeleccionado) { ... }
 
-    if (documentos.length === 0) {
-      toast.warning('Expediente vacío', {
-        description: 'No hay documentos en este expediente para exportar'
-      });
-      return;
-    }
-
-    const toastId = toast.loading('Generando Expediente PDF...', {
-      description: '📋 Recopilando información del proceso\n📄 Generando índice electrónico\n⏳ Por favor espere...'
+    const toastId = toast.loading('Generando Archivo ZIP...', {
+      description: '📋 Recopilando TODOS los expedientes disciplinarios\n📄 Generando PDFs individuales\n⏳ Esto puede tomar unos momentos...'
     });
 
     try {
-      const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-
-    // PORTADA DEL EXPEDIENTE
-    doc.setFillColor(0, 61, 165);
-    doc.rect(0, 0, pageWidth, 80, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.setFont('helvetica', 'bold');
-    doc.text('EXPEDIENTE ELECTRÓNICO', pageWidth / 2, 30, { align: 'center' });
-    
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Oficina de Control Interno Disciplinario - OCID', pageWidth / 2, 45, { align: 'center' });
-    doc.text('ESAP - Escuela Superior de Administración Pública', pageWidth / 2, 55, { align: 'center' });
-
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('INFORMACIÓN DEL PROCESO', 14, 95);
-    
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.text(`Número de Proceso: ${procesoSeleccionado?.numero || 'N/A'}`, 14, 105);
-    doc.text(`Etapa Actual: ${procesoSeleccionado?.etapaActual || 'N/A'}`, 14, 113);
-    doc.text(`Estado: ${procesoSeleccionado?.estado || 'En Gestión'}`, 14, 121);
-    doc.text(`Fecha de Inicio: ${procesoSeleccionado?.fechaInicio || 'N/A'}`, 14, 129);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('DENUNCIADO', 14, 142);
-    doc.setFont('helvetica', 'normal');
-    const denunciadoStr = typeof procesoSeleccionado?.denunciado === 'string' 
-      ? procesoSeleccionado.denunciado 
-      : procesoSeleccionado?.denunciado?.nombre || 'N/A';
-    doc.text(`Nombre: ${denunciadoStr}`, 14, 150);
-    const denunciadoId = typeof procesoSeleccionado?.denunciado === 'object' 
-      ? `${procesoSeleccionado.denunciado.tipoIdentificacion || 'CC'}: ${procesoSeleccionado.denunciado.numeroIdentificacion || 'N/A'}` 
-      : 'N/A';
-    doc.text(denunciadoId, 14, 158);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('ESTADÍSTICAS DEL EXPEDIENTE', 14, 229);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Total de Documentos: ${metrics.totalDocumentos}`, 14, 239);
-    doc.text(`Autos: ${metrics.autos} | Evidencias: ${metrics.evidencias} | Oficios: ${metrics.oficios}`, 14, 247);
-    doc.text(`Actas: ${metrics.actas} | Notificaciones: ${metrics.notificaciones}`, 14, 255);
-    doc.text(`Firmados: ${metrics.firmados} | Notificados: ${metrics.notificados}`, 14, 263);
-
-    doc.setFontSize(8);
-    doc.setTextColor(128, 128, 128);
-    doc.text(`Generado el: ${new Date().toLocaleString('es-CO')}`, 14, 280);
-
-    // PÁGINA 2: ÍNDICE
-    doc.addPage();
-    doc.setFillColor(0, 61, 165);
-    doc.rect(0, 0, pageWidth, 15, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`EXPEDIENTE ${procesoSeleccionado?.numero || ''}`, 14, 10);
-
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.text('ÍNDICE ELECTRÓNICO', 14, 25);
-
-    autoTable(doc, {
-      startY: 35,
-      head: [['Folio', 'Documento', 'Tipo', 'Etapa', 'Fecha', 'Usuario']],
-      body: documentos.map((d, index) => [
-        String(index + 1).padStart(3, '0'),
-        d.nombre,
-        d.tipo.toUpperCase(),
-        d.etapa,
-        new Date(d.fechaCarga).toLocaleDateString('es-CO'),
-        d.usuarioCarga
-      ]),
-      theme: 'grid',
-      headStyles: { fillColor: [0, 61, 165], textColor: [255, 255, 255], fontSize: 9 },
-      bodyStyles: { fontSize: 8 },
-      alternateRowStyles: { fillColor: [240, 240, 240] },
-      margin: { left: 14, right: 14 }
-    });
-
-    // PÁGINA 3: DETALLES
-    doc.addPage();
-    doc.setFillColor(0, 61, 165);
-    doc.rect(0, 0, pageWidth, 15, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.text(`EXPEDIENTE ${procesoSeleccionado?.numero || ''}`, 14, 10);
-
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('DETALLE DE DOCUMENTOS', 14, 25);
-
-    let yPos = 35;
-    documentos.forEach((d, i) => {
-      if (yPos > 240) {
-        doc.addPage();
-        doc.setFillColor(0, 61, 165);
-        doc.rect(0, 0, pageWidth, 15, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(10);
-        doc.text(`EXPEDIENTE ${procesoSeleccionado?.numero || ''}`, 14, 10);
-        yPos = 25;
-      }
-
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(0, 61, 165);
-      doc.text(`${String(i + 1).padStart(3, '0')} - ${d.nombre}`, 14, yPos);
-      yPos += 7;
-      
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Tipo: ${d.tipo.toUpperCase()} | Etapa: ${d.etapa} | V${d.version}`, 14, yPos);
-      yPos += 5;
-      doc.text(`Usuario: ${d.usuarioCarga} | ${new Date(d.fechaCarga).toLocaleString('es-CO')}`, 14, yPos);
-      yPos += 5;
-      
-      let estado = [];
-      if (d.metadatos.firmado) estado.push('✓ FIRMADO');
-      if (d.metadatos.notificado) estado.push('✓ NOTIFICADO');
-      if (estado.length > 0) {
-        doc.setTextColor(0, 128, 0);
-        doc.text(estado.join(' | '), 14, yPos);
-        yPos += 5;
-      }
-      
-      if (d.descripcion) {
-        doc.setTextColor(60, 60, 60);
-        const lines = doc.splitTextToSize(`Descripción: ${d.descripcion}`, pageWidth - 28);
-        doc.text(lines, 14, yPos);
-        yPos += (lines.length * 5);
-      }
-      
-      doc.setDrawColor(200, 200, 200);
-      doc.line(14, yPos + 2, pageWidth - 14, yPos + 2);
-      yPos += 8;
-    });
-
-    const totalPages = doc.getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(128, 128, 128);
-      doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, 14, 285);
-      doc.text(`Pág. ${i} de ${totalPages}`, pageWidth - 20, 285, { align: 'right' });
-    }
-
-      const nombreArchivo = `Expediente_${procesoSeleccionado?.numero || 'Completo'}_${new Date().toISOString().split('T')[0]}.pdf`;
-      doc.save(nombreArchivo);
+      await disciplinaryService.downloadAllExpedientesZip();
 
       setTimeout(() => {
         toast.dismiss(toastId);
-        toast.success('¡Expediente Exportado Exitosamente!', {
-          description: `${nombreArchivo}\n📄 ${documentos.length} documentos incluidos\n📑 ${totalPages} páginas generadas\n✅ Incluye índice electrónico y detalles completos`,
+        toast.success('¡Exportación Masiva Completada!', {
+          description: `Se ha descargado el archivo ZIP con todos los expedientes del sistema.`,
           duration: 5000
         });
       }, 500);
     } catch (error: any) {
-      console.error('Error al exportar expediente:', error);
-      toast.error('Error al exportar expediente', {
+      console.error('Error al exportar expedientes:', error);
+      toast.error('Error al exportar expedientes', {
         id: toastId,
-        description: error.message || 'No se pudo generar el PDF del expediente'
+        description: error.message || 'No se pudo generar el ZIP de expedientes'
       });
     }
   };
@@ -1871,15 +1703,15 @@ export function ExpedienteElectronico() {
 
     doc.setFillColor(0, 61, 165);
     doc.rect(0, 0, pageWidth, 90, 'F');
-    
+
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(26);
     doc.setFont('helvetica', 'bold');
     doc.text('ÍNDICE ELECTRÓNICO', pageWidth / 2, 35, { align: 'center' });
-    
+
     doc.setFontSize(16);
     doc.text('DEL EXPEDIENTE', pageWidth / 2, 48, { align: 'center' });
-    
+
     doc.setFontSize(12);
     doc.setFont('helvetica', 'normal');
     doc.text('OCID - ESAP', pageWidth / 2, 63, { align: 'center' });
@@ -1888,7 +1720,7 @@ export function ExpedienteElectronico() {
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
     doc.text('PROCESO DISCIPLINARIO', 14, 105);
-    
+
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.text(`Número: ${procesoSeleccionado?.numero || 'N/A'}`, 14, 115);
@@ -1950,10 +1782,10 @@ export function ExpedienteElectronico() {
     // Convertir el PDF a blob y abrirlo en nueva ventana para imprimir
     const pdfBlob = doc.output('blob');
     const pdfUrl = URL.createObjectURL(pdfBlob);
-    
+
     // Abrir en nueva ventana
     const printWindow = window.open(pdfUrl, '_blank');
-    
+
     if (printWindow) {
       // Esperar a que se cargue el PDF y luego abrir el diálogo de impresión
       printWindow.onload = () => {
@@ -1973,12 +1805,12 @@ export function ExpedienteElectronico() {
       });
     }
   };
-  
+
   const handleSeleccionarProceso = async (radicado: string) => {
     try {
       // Buscar el proceso completo por radicado
       const procesoCompleto = await disciplinaryService.getProcesoByRadicado(radicado);
-      
+
       // Convertir al formato del componente
       let denunciadoNombre = 'Sin nombre';
       if (procesoCompleto.news?.disciplinable) {
@@ -1990,7 +1822,7 @@ export function ExpedienteElectronico() {
           denunciadoNombre = procesoCompleto.news.disciplinable;
         }
       }
-      
+
       const procesoConvertido: Proceso = {
         id: procesoCompleto.id,
         numero: procesoCompleto.radicadoProceso,
@@ -1999,16 +1831,16 @@ export function ExpedienteElectronico() {
         fechaInicio: procesoCompleto.createdAt || new Date().toISOString(),
         estado: procesoCompleto.estado || 'ACTIVO',
       };
-      
+
       setProcesoSeleccionado(procesoConvertido);
       setProcesoSearchQuery(radicado);
       setShowProcesoDropdown(false);
-      
+
       // Agregar a recientes si no está
       if (!procesosRecientes.find(p => p.numero === radicado)) {
         setProcesosRecientes([procesoConvertido, ...procesosRecientes.slice(0, 4)]);
       }
-      
+
       toast.success('Proceso Seleccionado', {
         description: `Proceso: ${radicado}`
       });
@@ -2027,10 +1859,10 @@ export function ExpedienteElectronico() {
   });
 
   const filteredDocumentos = documentos.filter(d => {
-    const matchesSearch = 
+    const matchesSearch =
       d.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
       d.descripcion.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesTipo = filterTipo === 'all' || d.tipo === filterTipo;
 
     return matchesSearch && matchesTipo;
@@ -2074,10 +1906,10 @@ export function ExpedienteElectronico() {
             onClick={handleExportarExpediente}
             className="px-5 py-2.5 rounded-lg text-white font-semibold hover:shadow-lg transition-all duration-200 flex items-center gap-2 hover:scale-105"
             style={{ background: '#DC2626' }}
-            title="Exportar expediente completo con índice electrónico"
+            title="Descargar archivo ZIP con todos los expedientes del sistema"
           >
             <Package className="w-5 h-5" />
-            Exportar Expediente PDF
+            Exportar Todos (ZIP)
           </button>
         </div>
 
@@ -2163,33 +1995,30 @@ export function ExpedienteElectronico() {
           <div className="flex gap-1 p-2">
             <button
               onClick={() => setVistaActual('documentos')}
-              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-                vistaActual === 'documentos'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${vistaActual === 'documentos'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-100'
+                }`}
             >
               <FileText className="w-4 h-4" />
               Documentos ({filteredDocumentos.length})
             </button>
             <button
               onClick={() => setVistaActual('indice')}
-              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-                vistaActual === 'indice'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${vistaActual === 'indice'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-100'
+                }`}
             >
               <Archive className="w-4 h-4" />
               Índice Electrónico
             </button>
             <button
               onClick={() => setVistaActual('auditoria')}
-              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-                vistaActual === 'auditoria'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${vistaActual === 'auditoria'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-100'
+                }`}
             >
               <Shield className="w-4 h-4" />
               Auditoría ({AUDITORIA_MOCK.length})
@@ -2252,106 +2081,106 @@ export function ExpedienteElectronico() {
             </div>
           )}
           {!cargandoDocumentos && documentos.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Documento
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Tipo
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Etapa
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Usuario
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Fecha
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Estado
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredDocumentos.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{ background: doc.urlExterna ? '#FEF3C7' : '#DBEAFE' }}
-                        >
-                          {doc.urlExterna ? (
-                            <LinkIcon className="w-5 h-5" style={{ color: '#F59E0B' }} />
-                          ) : (
-                            <FileText className="w-5 h-5" style={{ color: '#3B82F6' }} />
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Documento
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Tipo
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Etapa
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Usuario
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Fecha
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Estado
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Acciones
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredDocumentos.map((doc) => (
+                    <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ background: doc.urlExterna ? '#FEF3C7' : '#DBEAFE' }}
+                          >
+                            {doc.urlExterna ? (
+                              <LinkIcon className="w-5 h-5" style={{ color: '#F59E0B' }} />
+                            ) : (
+                              <FileText className="w-5 h-5" style={{ color: '#3B82F6' }} />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 truncate">{doc.nombre}</p>
+                            <p className="text-xs text-gray-500">{doc.tamaño}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge className="text-xs">{doc.tipo}</Badge>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm text-gray-900">{doc.etapa}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm text-gray-600">{doc.usuarioCarga}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm text-gray-600">
+                          {new Date(doc.fechaCarga).toLocaleDateString('es-CO')}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-1.5">
+                          {doc.metadatos.firmado && (
+                            <Badge className="bg-green-100 text-green-700 border-green-300 text-xs">
+                              ✓ Firmado
+                            </Badge>
+                          )}
+                          {doc.metadatos.notificado && (
+                            <Badge className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
+                              ✓ Notificado
+                            </Badge>
                           )}
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-900 truncate">{doc.nombre}</p>
-                          <p className="text-xs text-gray-500">{doc.tamaño}</p>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleVerDocumento(doc)}
+                            className="px-3 py-1.5 text-xs font-medium rounded-lg hover:opacity-80 transition-opacity text-white"
+                            style={{ background: '#003DA5' }}
+                          >
+                            <Eye className="w-3.5 h-3.5 inline mr-1" />
+                            Ver
+                          </button>
+                          <button
+                            onClick={() => handleDescargarDocumento(doc)}
+                            className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:opacity-80 transition-opacity"
+                          >
+                            <Download className="w-3.5 h-3.5 inline mr-1" />
+                            Descargar
+                          </button>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <Badge className="text-xs">{doc.tipo}</Badge>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-gray-900">{doc.etapa}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-gray-600">{doc.usuarioCarga}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-gray-600">
-                        {new Date(doc.fechaCarga).toLocaleDateString('es-CO')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex gap-1.5">
-                        {doc.metadatos.firmado && (
-                          <Badge className="bg-green-100 text-green-700 border-green-300 text-xs">
-                            ✓ Firmado
-                          </Badge>
-                        )}
-                        {doc.metadatos.notificado && (
-                          <Badge className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
-                            ✓ Notificado
-                          </Badge>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleVerDocumento(doc)}
-                          className="px-3 py-1.5 text-xs font-medium rounded-lg hover:opacity-80 transition-opacity text-white"
-                          style={{ background: '#003DA5' }}
-                        >
-                          <Eye className="w-3.5 h-3.5 inline mr-1" />
-                          Ver
-                        </button>
-                        <button
-                          onClick={() => handleDescargarDocumento(doc)}
-                          className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:opacity-80 transition-opacity"
-                        >
-                          <Download className="w-3.5 h-3.5 inline mr-1" />
-                          Descargar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
@@ -2438,47 +2267,47 @@ export function ExpedienteElectronico() {
           ) : (
             <div className="space-y-4">
               {AUDITORIA_MOCK.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()).map((actividad) => (
-              <div key={actividad.id} className="p-4 border-l-4 border-blue-500 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                <div className="flex items-start gap-4">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ background: '#E0EDFF' }}
-                  >
-                    {actividad.tipo === 'carga' && <Upload className="w-5 h-5" style={{ color: '#003DA5' }} />}
-                    {actividad.tipo === 'descarga' && <Download className="w-5 h-5" style={{ color: '#003DA5' }} />}
-                    {actividad.tipo === 'visualizacion' && <Eye className="w-5 h-5" style={{ color: '#003DA5' }} />}
-                    {actividad.tipo === 'modificacion' && <Edit2 className="w-5 h-5" style={{ color: '#003DA5' }} />}
-                    {actividad.tipo === 'enlace_externo' && <LinkIcon className="w-5 h-5" style={{ color: '#003DA5' }} />}
-                    {actividad.tipo === 'exportacion' && <Package className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                <div key={actividad.id} className="p-4 border-l-4 border-blue-500 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                  <div className="flex items-start gap-4">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ background: '#E0EDFF' }}
+                    >
+                      {actividad.tipo === 'carga' && <Upload className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                      {actividad.tipo === 'descarga' && <Download className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                      {actividad.tipo === 'visualizacion' && <Eye className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                      {actividad.tipo === 'modificacion' && <Edit2 className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                      {actividad.tipo === 'enlace_externo' && <LinkIcon className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                      {actividad.tipo === 'exportacion' && <Package className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900">{actividad.documento}</p>
+                      <p className="text-sm text-gray-700 mt-1">{actividad.detalles}</p>
+                      <p className="text-xs text-gray-600 mt-2">
+                        {actividad.usuario} • {new Date(actividad.fecha).toLocaleString('es-CO')}
+                      </p>
+                    </div>
+                    <Badge
+                      className={
+                        actividad.tipo === 'carga' ? 'bg-green-100 text-green-700 border-green-200' :
+                          actividad.tipo === 'descarga' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                            actividad.tipo === 'visualizacion' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                              actividad.tipo === 'exportacion' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                actividad.tipo === 'enlace_externo' ? 'bg-cyan-100 text-cyan-700 border-cyan-200' :
+                                  'bg-gray-100 text-gray-700 border-gray-200'
+                      }
+                    >
+                      {actividad.tipo === 'carga' ? 'Carga' :
+                        actividad.tipo === 'descarga' ? 'Descarga' :
+                          actividad.tipo === 'visualizacion' ? 'Visualización' :
+                            actividad.tipo === 'exportacion' ? 'Exportación' :
+                              actividad.tipo === 'enlace_externo' ? 'Enlace Externo' :
+                                actividad.tipo === 'modificacion' ? 'Modificación' :
+                                  actividad.tipo}
+                    </Badge>
                   </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-900">{actividad.documento}</p>
-                    <p className="text-sm text-gray-700 mt-1">{actividad.detalles}</p>
-                    <p className="text-xs text-gray-600 mt-2">
-                      {actividad.usuario} • {new Date(actividad.fecha).toLocaleString('es-CO')}
-                    </p>
-                  </div>
-                  <Badge 
-                    className={
-                      actividad.tipo === 'carga' ? 'bg-green-100 text-green-700 border-green-200' :
-                      actividad.tipo === 'descarga' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                      actividad.tipo === 'visualizacion' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                      actividad.tipo === 'exportacion' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                      actividad.tipo === 'enlace_externo' ? 'bg-cyan-100 text-cyan-700 border-cyan-200' :
-                      'bg-gray-100 text-gray-700 border-gray-200'
-                    }
-                  >
-                    {actividad.tipo === 'carga' ? 'Carga' :
-                     actividad.tipo === 'descarga' ? 'Descarga' :
-                     actividad.tipo === 'visualizacion' ? 'Visualización' :
-                     actividad.tipo === 'exportacion' ? 'Exportación' :
-                     actividad.tipo === 'enlace_externo' ? 'Enlace Externo' :
-                     actividad.tipo === 'modificacion' ? 'Modificación' :
-                     actividad.tipo}
-                  </Badge>
                 </div>
-              </div>
-            ))}
+              ))}
             </div>
           )}
         </div>
@@ -2504,7 +2333,7 @@ export function ExpedienteElectronico() {
             onConfirm={handleSubirDocumento}
           />
         )}
-        
+
         {showModalFlujo && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -2538,7 +2367,7 @@ export function ExpedienteElectronico() {
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       {/* Botón Flotante de Ayuda */}
       <button
         onClick={() => setShowModalFlujo(true)}
