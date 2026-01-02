@@ -21,6 +21,24 @@ export class CertificateValidation {
   @Column({ length: 255, nullable: true })
   location: string;
 
+  @Column({ length: 100, nullable: true })
+  country: string;
+
+  @Column({ length: 120, nullable: true })
+  region: string;
+
+  @Column({ length: 120, nullable: true })
+  city: string;
+
+  @Column({ type: 'double precision', nullable: true })
+  latitude: number;
+
+  @Column({ type: 'double precision', nullable: true })
+  longitude: number;
+
+  @Column({ length: 255, nullable: true })
+  isp: string;
+
   @Column({ length: 50 })
   result: string;
 

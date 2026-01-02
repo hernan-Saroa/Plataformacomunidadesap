@@ -6,18 +6,13 @@ import { Label } from '../../../../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../../ui/select';
 import { Textarea } from '../../../../ui/textarea';
 import { toast } from 'sonner';
-import axios from 'axios';
-import { buildApiUrl } from '../../../../../config/environment';
-import { CalendarIcon } from 'lucide-react';
+import { legalService } from '../../../../../services/api/legal.service';
 
 interface ModalNuevoPlanProps {
     open: boolean;
     onClose: () => void;
     onSuccess: () => void;
 }
-
-const API_URL_PLAN = buildApiUrl('legal', '/planes-mejoramiento');
-const API_URL_LEGAL = buildApiUrl('legal', '/legal');
 
 export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps) {
     const [loading, setLoading] = useState(false);
@@ -37,28 +32,32 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
     });
 
     useEffect(() => {
-        fetchAbogados();
+        const loadInitialData = async () => {
+            try {
+                const data = await legalService.getAbogadosDashboard();
+                setAbogados(data);
+            } catch (error) {
+                console.error('Error fetching abogados', error);
+                toast.error('Error cargando lista de abogados');
+            }
+        };
+
+        if (open) {
+            loadInitialData();
+        }
+
         if (open && origen === 'RIESGO') {
             fetchRiesgos();
         }
     }, [open, origen]);
 
-    const fetchAbogados = async () => {
-        try {
-            const res = await axios.get(`${API_URL_LEGAL}/abogados`);
-            setAbogados(res.data);
-        } catch (error) {
-            console.error('Error fetching abogados', error);
-        }
-    };
-
     const fetchRiesgos = async () => {
         try {
-            const res = await axios.get(`${API_URL_PLAN}/riesgos-disponibles`);
-            setRiesgos(res.data);
+            const data = await legalService.getRiesgosDisponibles();
+            setRiesgos(data);
         } catch (error) {
             console.error('Error fetching risks', error);
-            toast.error('Error cargando riesgos');
+            toast.error('Error cargando riesgos disponibles');
         }
     };
 
@@ -66,7 +65,7 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
         e.preventDefault();
         setLoading(true);
         try {
-            await axios.post(API_URL_PLAN, {
+            await legalService.createPlanMejoramiento({
                 ...formData,
                 origen,
                 presupuesto: Number(formData.presupuesto)

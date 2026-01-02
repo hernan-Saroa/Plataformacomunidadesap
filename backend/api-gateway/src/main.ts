@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // app.set('trust proxy', true);
 
   // Configurar CORS dinámicamente por ambiente
   const allowedOrigins = [
