@@ -100,12 +100,19 @@ class APIClient {
         const serviceUrl = serviceUrlMap[serviceName];
 
         if (serviceUrl) {
-          // Construir URL directa al microservicio (sin el prefijo del servicio)
-          fullUrl = `${serviceUrl}${restPath || '/'}`;
+          // Eliminar el prefijo /api/v1 si existe, ya que los microservicios en modo directo
+          // pueden no esperarlo si sus controladores no lo definen (como en legal-management ahora)
+          const cleanPath = (restPath || '/').replace(/^\/api\/v\d+/, '');
+
+          // Construir URL directa al microservicio (sin el prefijo del servicio ni versión)
+          fullUrl = `${serviceUrl}${cleanPath}`;
+
           console.log('🔗 API Client [DIRECT MODE]:', {
             endpoint,
             serviceName,
             serviceUrl,
+            originalPath: restPath,
+            cleanPath,
             finalURL: fullUrl,
           });
         } else {
@@ -164,7 +171,7 @@ class APIClient {
    */
   private async refreshAccessToken(): Promise<string> {
     const refreshToken = this.getRefreshToken();
-    
+
     if (!refreshToken) {
       throw new Error('No refresh token available');
     }
@@ -234,7 +241,7 @@ class APIClient {
     } = options;
 
     const url = this.buildURL(endpoint, params);
-    
+
     const requestHeaders = {
       ...API_CONFIG.headers,
       ...headers,
@@ -251,12 +258,12 @@ class APIClient {
       if (response.status === 401 && requiresAuth) {
         if (!this.isRefreshing) {
           this.isRefreshing = true;
-          
+
           try {
             const newToken = await this.refreshAccessToken();
             this.isRefreshing = false;
             this.onTokenRefreshed(newToken);
-            
+
             // Reintentar request original con nuevo token
             return this.request<T>(endpoint, options);
           } catch (error) {
@@ -341,7 +348,7 @@ class APIClient {
   /**
    * Métodos HTTP
    */
-  
+
   async get<T = any>(endpoint: string, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<T> {
     return this.request<T>(endpoint, { ...options, method: 'GET' });
   }
@@ -375,11 +382,39 @@ class APIClient {
   }
 
   /**
+   * Obtener archivo binario (Blob)
+   */
+  async getBlob(endpoint: string, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<Blob> {
+    const { params, requiresAuth = true, headers = {}, ...fetchOptions } = options;
+    const url = this.buildURL(endpoint, params);
+    const requestHeaders = {
+      ...API_CONFIG.headers,
+      ...headers,
+      ...(requiresAuth ? this.addAuthHeader() : {}),
+    };
+
+    // Remove Content-Type (unnecessary for GET, may conflict)
+    delete (requestHeaders as any)['Content-Type'];
+
+    const response = await fetch(url, {
+      ...fetchOptions,
+      method: 'GET',
+      headers: requestHeaders,
+    });
+
+    if (!response.ok) {
+      throw new APIClientError(response.status, 'DOWNLOAD_ERROR', 'Error descargando archivo');
+    }
+
+    return response.blob();
+  }
+
+  /**
    * Upload de archivos (FormData)
    */
   async upload<T = any>(endpoint: string, formData: FormData, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<T> {
     const { headers = {}, ...restOptions } = options;
-    
+
     // No incluir Content-Type para FormData (el browser lo setea automáticamente)
     const uploadHeaders = { ...headers };
     delete (uploadHeaders as any)['Content-Type'];
@@ -395,7 +430,7 @@ class APIClient {
   /**
    * Métodos de autenticación
    */
-  
+
   login(accessToken: string, refreshToken: string, userData: any): void {
     this.setTokens(accessToken, refreshToken);
     localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));

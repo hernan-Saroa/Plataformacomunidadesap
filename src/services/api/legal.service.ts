@@ -3,8 +3,9 @@ import { apiClient } from './client';
 import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
 
 // Prefijo del servicio legal a través del gateway
-// Nueva estructura: /legal/api/v1/{path}
-const SERVICE_PREFIX = '/legal/api/v1';
+// Nueva estructura: /legal/api/v1/legal/{path}
+// Esto es necesario porque el backend espera prefijo 'legal/' y el gateway consume 'api/v1'
+const SERVICE_PREFIX = '/legal/api/v1/legal';
 
 export interface Expediente {
     id: string;
@@ -61,9 +62,7 @@ export interface Actuacion {
 
 export class LegalService {
     async getExpedientes(filtros?: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
-        // The original getExpedientes method is kept as it correctly uses apiClient and has a defined return type.
-        // The provided snippet's getExpedientes was problematic (redefinition, `apiClient`, `this.path`).
-        return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, filtros);
+        return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, { params: filtros });
     }
 
     async getJuzgamientoProcesos(): Promise<any[]> {
@@ -131,7 +130,7 @@ export class LegalService {
 
     // Audiencias
     async getAudiencias(filtros?: { start?: string; end?: string }): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/audiencias`, filtros);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/audiencias`, { params: filtros });
     }
 
     async getAudienciasDashboard(): Promise<any> {
@@ -322,52 +321,6 @@ export class LegalService {
         return apiClient.get(`${SERVICE_PREFIX}/terminos/${id}`);
     }
 
-    // ============================================
-    // ÓRGANOS DE CONTROL
-    // ============================================
-
-    // Catálogo de organismos
-    async getOrganismosControl(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
-    }
-
-    // Requerimientos OC
-    async getRequerimientosOC(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc`);
-    }
-
-    async getRequerimientoOC(id: string): Promise<any> {
-        return apiClient.get<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
-    }
-
-    async createRequerimientoOC(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc`, data);
-    }
-
-    async updateRequerimientoOC(id: string, data: any): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}`, data);
-    }
-
-    async cambiarEstadoRequerimientoOC(id: string, estado: string): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/estado`, { estado });
-    }
-
-    async deleteRequerimientoOC(id: string): Promise<void> {
-        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
-    }
-
-    // Solicitudes de Insumos (Delegación)
-    async getSolicitudesInsumo(requerimientoId: string): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/insumos`);
-    }
-
-    async createSolicitudInsumo(requerimientoId: string, data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/insumos`, data);
-    }
-
-    async responderSolicitudInsumo(insumoId: string, data: any): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/insumos/${insumoId}/responder`, data);
-    }
 
     // --- TAREAS DE EXPEDIENTE ---
 
@@ -403,6 +356,75 @@ export class LegalService {
 
     async deleteNota(notaId: string): Promise<void> {
         return apiClient.delete(`${SERVICE_PREFIX}/expedientes/notas/${notaId}`);
+    }
+
+    // ==================== PLANES DE MEJORAMIENTO ====================
+    async getPlanesMejoramiento(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento`);
+    }
+
+    async updatePlanMejoramiento(id: string, data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/update`, data);
+    }
+
+    // Métodos para ModalNuevoPlan
+    async createPlanMejoramiento(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento`, data);
+    }
+
+    async getRiesgosDisponibles(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento/riesgos-disponibles`);
+    }
+
+    // ==================== PEI (PLAN DE ACCIÓN) ====================
+    async getPeiDashboard(): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/pei/dashboard`);
+    }
+
+    async createIndicador(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/pei/indicador`, data);
+    }
+
+    async updateIndicador(id: string, data: any): Promise<any> {
+        return apiClient.put<any>(`${SERVICE_PREFIX}/pei/indicador/${id}`, data);
+    }
+
+    async registrarAvanceIndicador(id: string, data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/pei/indicador/${id}/avance`, data);
+    }
+
+    async exportPeiZip(): Promise<Blob> {
+        return apiClient.getBlob(`${SERVICE_PREFIX}/pei/export/zip`);
+    }
+
+    // ==================== DASHBOARD EJECUTIVO ====================
+    async getDashboardEjecutivo(): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/dashboard/ejecutivo`);
+    }
+
+    // Método Wrapper para Requerimientos OC (por si acaso el componente llama a legalService.getRequerimientosOC)
+    async getRequerimientosOC(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc`);
+    }
+
+    async getOrganismosControl(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
+    }
+
+    async createRequerimientoOC(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc`, data);
+    }
+
+    async updateRequerimientoOC(id: string, data: any): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}`, data);
+    }
+
+    async cambiarEstadoRequerimientoOC(id: string, estado: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/estado`, { estado });
+    }
+
+    async deleteRequerimientoOC(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
     }
 }
 
@@ -449,6 +471,7 @@ export interface ComentarioOC {
     tipo: string;
     autorNombre?: string;
     createdAt: string;
+    updatedAt?: string;
 }
 
 export interface DocumentoOC {
@@ -460,9 +483,54 @@ export interface DocumentoOC {
     archivoUrl?: string;
     subidoPor?: string;
     createdAt: string;
+    updatedAt?: string;
 }
 
 class OCService {
+    // Organismos de Control
+    // Catálogo de organismos
+    async getOrganismosControl(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
+    }
+
+    // Requerimientos OC
+    async getRequerimientosOC(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc`);
+    }
+
+    async getRequerimientoOC(id: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
+    }
+
+    async createRequerimientoOC(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc`, data);
+    }
+
+    async updateRequerimientoOC(id: string, data: any): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}`, data);
+    }
+
+    async cambiarEstadoRequerimientoOC(id: string, estado: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/estado`, { estado });
+    }
+
+    async deleteRequerimientoOC(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
+    }
+
+    // Solicitudes de Insumos (Delegación)
+    async getSolicitudesInsumo(requerimientoId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/insumos`);
+    }
+
+    async createSolicitudInsumo(requerimientoId: string, data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/insumos`, data);
+    }
+
+    async responderSolicitudInsumo(insumoId: string, data: any): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/insumos/${insumoId}/responder`, data);
+    }
+
     // Comentarios
     async getComentariosByRequerimiento(requerimientoId: string): Promise<ComentarioOC[]> {
         return apiClient.get<ComentarioOC[]>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/comentarios`);

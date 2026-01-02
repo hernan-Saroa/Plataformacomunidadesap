@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Param, Put, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { PeiService } from '../services/pei.service';
 
-@Controller('api/v1/pei')
+@Controller('legal/pei')
 export class PeiController {
     constructor(private readonly peiService: PeiService) { }
 

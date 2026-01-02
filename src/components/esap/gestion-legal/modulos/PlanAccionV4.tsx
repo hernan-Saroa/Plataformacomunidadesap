@@ -20,7 +20,7 @@ import {
   MoreVertical, Edit, Trash2, TrendingDown, AlertTriangle, Grid3x3,
   ChevronDown, ChevronRight, FileText, PieChart, LayoutGrid
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
@@ -32,19 +32,16 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator
 } from '../../../ui/dropdown-menu';
-import axios from 'axios';
+import { legalService } from '../../../../services/api/legal.service';
 
 // Importar modales ESAP 2025
 import { ModalNuevoIndicador } from './ModalNuevoIndicador';
 import { ModalEditarIndicador } from './ModalEditarIndicador';
 import { ModalCargarAvance } from './ModalCargarAvance';
 import { ModalDetalleIndicador } from './ModalDetalleIndicador';
-import { buildApiUrl } from '../../../../config/environment';
-
-// const API_URL = 'http://localhost:3008/api/legal/pei';
-const API_URL = buildApiUrl('legal', '/pei');
 
 // ==================== TIPOS ====================
+// ... (interface definitions kept same but no API_URL const) ...
 interface Indicador {
   id: string;
   codigo: string;
@@ -203,8 +200,8 @@ export function ModuloPlanAccionV4() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_URL}/dashboard`);
-      const backendIndicadores = Array.isArray(res.data.indicadores) ? res.data.indicadores : [];
+      const res = await legalService.getPeiDashboard();
+      const backendIndicadores = Array.isArray(res.indicadores) ? res.indicadores : [];
 
       const mapped: Indicador[] = backendIndicadores.map((ind: any) => ({
         id: ind.id.toString(),
@@ -287,7 +284,7 @@ export function ModuloPlanAccionV4() {
         estado: 'ACTIVO'
       };
 
-      await axios.post(`${API_URL}/indicador`, payload);
+      await legalService.createIndicador(payload);
       toast.success('Indicador creado exitosamente');
       setModalNuevoOpen(false);
       fetchData();
@@ -314,7 +311,7 @@ export function ModuloPlanAccionV4() {
         responsableNombre: data.responsable
       };
 
-      await axios.put(`${API_URL}/indicador/${indicadorSeleccionado.id}`, payload);
+      await legalService.updateIndicador(indicadorSeleccionado.id, payload);
       toast.success('Indicador actualizado');
       setModalEditarOpen(false);
       fetchData();
@@ -327,7 +324,7 @@ export function ModuloPlanAccionV4() {
   const handleGuardarAvance = async (data: any) => {
     try {
       if (!indicadorSeleccionado) return;
-      await axios.post(`${API_URL}/indicador/${indicadorSeleccionado.id}/avance`, {
+      await legalService.registrarAvanceIndicador(indicadorSeleccionado.id, {
         valor: data.valorActual,
         observaciones: data.observacionesAvance
       });
@@ -344,11 +341,9 @@ export function ModuloPlanAccionV4() {
   const handleExportarZip = async () => {
     const toastId = toast.loading('Generando reporte ZIP...');
     try {
-      const response = await axios.get(`${API_URL}/export/zip`, {
-        responseType: 'blob',
-      });
+      const blob = await legalService.exportPeiZip();
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', 'indicadores_pei.zip');

@@ -20,7 +20,7 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
-import axios from 'axios';
+import { legalService } from '../../../../services/api/legal.service';
 
 // Drag and Drop
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
@@ -36,10 +36,6 @@ import { ModalDetallePlan } from './planes/ModalDetallePlan';
 import { ModalEvidencias } from './planes/ModalEvidencias';
 import { ModalSeguimiento } from './planes/ModalSeguimiento';
 import { ModalComentarios } from './planes/ModalComentarios';
-import { buildApiUrl } from '../../../../config/environment';
-
-// const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
-const API_URL = buildApiUrl('legal', '/planes-mejoramiento');
 
 export function PlanesMejoramiento() {
   const [isMobile, setIsMobile] = useState(false);
@@ -64,8 +60,8 @@ export function PlanesMejoramiento() {
   // Fetch Data
   const fetchAbogados = async () => {
     try {
-      const res = await axios.get('/legal/api/v1/abogados');
-      setAbogados(res.data);
+      const res = await legalService.getAbogadosDashboard();
+      setAbogados(res);
     } catch (error) {
       console.error('Error fetching abogados', error);
     }
@@ -74,8 +70,8 @@ export function PlanesMejoramiento() {
   const fetchPlanes = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(API_URL);
-      setPlanes(res.data);
+      const res = await legalService.getPlanesMejoramiento();
+      setPlanes(res);
     } catch (error) {
       console.error('Error fetching plans', error);
       toast.error('Error cargando planes de mejoramiento');
@@ -194,7 +190,7 @@ export function PlanesMejoramiento() {
     setPlanes(prev => prev.map(p => p.id === planId ? { ...p, ...updates } : p));
 
     try {
-      await axios.post(`${API_URL}/${planId}/update`, updates);
+      await legalService.updatePlanMejoramiento(planId, updates);
       toast.success(`Plan movido a ${targetEtapa}`);
     } catch (error) {
       console.error('Error moving plan', error);

@@ -3,7 +3,7 @@ import { AbogadoService } from '../services/abogado.service';
 import { CreateAbogadoDto } from '../dtos/abogado.dto';
 
 // @UseGuards(JwtAuthGuard) // Assuming Auth is handled globally or per user request
-@Controller('api/v1/abogados')
+@Controller('legal/abogados')
 export class AbogadoController {
     constructor(private readonly abogadoService: AbogadoService) { }
 
@@ -18,7 +18,7 @@ export class AbogadoController {
     }
 }
 
-@Controller('api/v1/stats')
+@Controller('legal/stats')
 export class AbogadoStatsController {
     constructor(private readonly abogadoService: AbogadoService) { }
 
