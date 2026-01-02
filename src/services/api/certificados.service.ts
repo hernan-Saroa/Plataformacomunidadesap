@@ -422,6 +422,17 @@ export const certificadosService = {
     },
 
     /**
+     * Revertir un cambio del historial
+     */
+    async revertirCambio(changeId: number, updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
+      return apiClient.post(
+        `${SERVICE_PREFIX}/certificates/template-config/revert-change`,
+        { changeId, updatedBy },
+        { params: { tipo } },
+      );
+    },
+
+    /**
      * Obtener historial de cambios
      */
     async obtenerHistorialCambios(

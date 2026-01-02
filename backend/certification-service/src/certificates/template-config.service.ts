@@ -383,6 +383,191 @@ export class TemplateConfigService {
     await this.changeRepository.save(change);
   }
 
+  private getFilenameFromUrl(url?: string): string | null {
+    if (!url) return null;
+    const parts = url.split('/').filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : null;
+  }
+
+  private isEmptyValue(value?: string): boolean {
+    return !value || value === 'Sin logo' || value === 'Sin firma';
+  }
+
+  /**
+   * Revierte un cambio puntual del historial a su valor anterior.
+   */
+  async revertChange(changeId: number, updatedBy: string, templateType = 'docente'): Promise<any> {
+    const config = await this.getOrCreateConfig(templateType);
+    const change = await this.changeRepository.findOne({
+      where: { id: changeId },
+    });
+
+    if (!change || change.templateConfigId !== config.id) {
+      throw new NotFoundException('Cambio no encontrado para esta plantilla');
+    }
+
+    const oldValue = change.oldValue || '';
+    const fieldName = change.fieldName;
+
+    if (fieldName === 'entity_logo_url') {
+      const defaultLogo = this.getDefaultLogoInfo();
+      const currentLogo = config.entityLogoUrl || defaultLogo.url;
+      const nextLogoUrl = this.isEmptyValue(oldValue) ? defaultLogo.url : oldValue;
+      const nextFilename =
+        change.metadata?.oldFilename ||
+        this.getFilenameFromUrl(nextLogoUrl) ||
+        defaultLogo.filename;
+      const nextSize = this.isEmptyValue(oldValue) ? defaultLogo.size : 'N/D';
+
+      config.entityLogoUrl = nextLogoUrl;
+      config.entityLogoFilename = nextFilename;
+      config.entityLogoSize = nextSize;
+      config.updatedBy = updatedBy;
+      await this.templateConfigRepository.save(config);
+
+      await this.recordChange({
+        templateConfigId: config.id,
+        changeType: 'logo',
+        fieldName: fieldName,
+        oldValue: currentLogo,
+        newValue: nextLogoUrl,
+        changedBy: updatedBy,
+        metadata: {
+          filename: nextFilename,
+          size: nextSize,
+        },
+      });
+
+      return this.getActiveConfig(config.templateType);
+    }
+
+    if (fieldName === 'signature_url') {
+      let firmante = config.firmante;
+      if (!firmante) {
+        const firmantePrincipal = await this.firmanteRepository.findOne({
+          where: { es_principal: true, activo: true },
+        });
+        if (!firmantePrincipal) {
+          throw new NotFoundException('No se encontr\u00F3 firmante principal');
+        }
+        firmante = firmantePrincipal;
+      }
+
+      const currentSignature = config.signatureUrl || firmante.firma_digital_url || 'Sin firma';
+      const nextSignatureUrl = this.isEmptyValue(oldValue) ? '' : oldValue;
+      const nextFilename = this.isEmptyValue(oldValue)
+        ? null
+        : this.getFilenameFromUrl(nextSignatureUrl);
+
+      config.signatureUrl = nextSignatureUrl;
+      config.signatureFilename = nextFilename;
+      config.signatureSize = null;
+      config.updatedBy = updatedBy;
+      await this.templateConfigRepository.save(config);
+
+      await this.recordChange({
+        templateConfigId: config.id,
+        changeType: 'firma',
+        fieldName: fieldName,
+        oldValue: currentSignature,
+        newValue: nextSignatureUrl || 'Sin firma',
+        changedBy: updatedBy,
+      });
+
+      return this.getActiveConfig(config.templateType);
+    }
+
+    if (fieldName === 'signer_name_override') {
+      let firmante = config.firmante;
+      if (!firmante) {
+        const firmantePrincipal = await this.firmanteRepository.findOne({
+          where: { es_principal: true, activo: true },
+        });
+        if (firmantePrincipal) {
+          firmante = firmantePrincipal;
+        }
+      }
+
+      const defaultName = firmante?.nombre_completo || '';
+      const currentName = config.signerNameOverride || defaultName;
+      const nextName = oldValue || defaultName;
+
+      config.signerNameOverride = nextName === defaultName ? null : nextName;
+      config.updatedBy = updatedBy;
+      await this.templateConfigRepository.save(config);
+
+      await this.recordChange({
+        templateConfigId: config.id,
+        changeType: 'nombre',
+        fieldName: fieldName,
+        oldValue: currentName,
+        newValue: nextName,
+        changedBy: updatedBy,
+      });
+
+      return this.getActiveConfig(config.templateType);
+    }
+
+    if (fieldName === 'typography_font') {
+      const currentFont = config.typographyFont || 'Times New Roman';
+      const nextFont = oldValue || 'Times New Roman';
+      config.typographyFont = nextFont;
+      config.updatedBy = updatedBy;
+      await this.templateConfigRepository.save(config);
+
+      await this.recordChange({
+        templateConfigId: config.id,
+        changeType: 'tipografia',
+        fieldName: fieldName,
+        oldValue: currentFont,
+        newValue: nextFont,
+        changedBy: updatedBy,
+      });
+
+      return this.getActiveConfig(config.templateType);
+    }
+
+    if (fieldName === 'cargo_title') {
+      const currentTitle = config.cargoTitle || this.getDefaultCargoTitle(templateType);
+      const nextTitle = oldValue || this.getDefaultCargoTitle(templateType);
+      config.cargoTitle = nextTitle;
+      config.updatedBy = updatedBy;
+      await this.templateConfigRepository.save(config);
+
+      await this.recordChange({
+        templateConfigId: config.id,
+        changeType: 'titulo_cargo',
+        fieldName: fieldName,
+        oldValue: currentTitle,
+        newValue: nextTitle,
+        changedBy: updatedBy,
+      });
+
+      return this.getActiveConfig(config.templateType);
+    }
+
+    if (fieldName === 'certificate_content_html') {
+      const currentContent = config.certificateContentHtml || this.getDefaultContent(templateType);
+      const nextContent = oldValue || this.getDefaultContent(templateType);
+      config.certificateContentHtml = nextContent;
+      config.updatedBy = updatedBy;
+      await this.templateConfigRepository.save(config);
+
+      await this.recordChange({
+        templateConfigId: config.id,
+        changeType: 'contenido',
+        fieldName: fieldName,
+        oldValue: currentContent,
+        newValue: nextContent,
+        changedBy: updatedBy,
+      });
+
+      return this.getActiveConfig(config.templateType);
+    }
+
+    throw new NotFoundException('Tipo de cambio no reversible');
+  }
+
   /**
    * Actualiza el contenido de la plantilla (tipografía, título del cargo, contenido HTML)
    */
