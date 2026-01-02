@@ -56,12 +56,21 @@ export class CertificatesController {
     @Req() req: any,
   ) {
     const forwarded = req.headers?.['x-forwarded-for'];
+    const realIp = req.headers?.['x-real-ip'];
+    const cfConnectingIp = req.headers?.['cf-connecting-ip'];
     const forwardedIp = Array.isArray(forwarded)
       ? forwarded[0]
       : typeof forwarded === 'string'
         ? forwarded.split(',')[0]
         : '';
-    const ip = forwardedIp?.trim() || req.ip || req.connection?.remoteAddress;
+    const realIpValue = Array.isArray(realIp) ? realIp[0] : realIp;
+    const cfIpValue = Array.isArray(cfConnectingIp) ? cfConnectingIp[0] : cfConnectingIp;
+    const ip =
+      forwardedIp?.trim() ||
+      (typeof cfIpValue === 'string' ? cfIpValue.trim() : '') ||
+      (typeof realIpValue === 'string' ? realIpValue.trim() : '') ||
+      req.ip ||
+      req.connection?.remoteAddress;
     const userAgent = req.get('user-agent');
     return await this.certificatesService.registrarValidacion(codigo, ip, userAgent);
   }
