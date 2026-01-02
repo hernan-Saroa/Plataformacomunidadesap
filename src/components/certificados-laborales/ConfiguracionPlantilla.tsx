@@ -2,7 +2,7 @@
 
 
 
- * MÓDULO: Configuración de Plantilla DE CERTIFICADOS LABORALES
+ * MODULO: Configuracion de Plantilla DE CERTIFICADOS LABORALES
 
 
 
@@ -14,7 +14,7 @@
 
 
 
- * - Upload de imágenes al servidor
+ * - Upload de imAgenes al servidor
 
 
 
@@ -139,7 +139,7 @@ import {
 
 
 
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 
 
@@ -304,7 +304,7 @@ interface PlantillaConfig {
 
 
 
-    tamaño: string;
+    tamano: string;
 
 
 
@@ -324,7 +324,7 @@ interface PlantillaConfig {
 
 
 
-    tamaño: string;
+    tamano: string;
 
 
 
@@ -340,7 +340,7 @@ interface PlantillaConfig {
 
 
 
-    tamaño: number;
+    tamano: number;
 
 
 
@@ -356,7 +356,7 @@ interface PlantillaConfig {
 
 
 
-    texto: string; // Ej: "LA DIRECTORA TÉCNICA DE TALENTO HUMANO DE LA\nESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA – ESAP"
+    texto: string; // Ej: "LA DIRECTORA TACNICA DE TALENTO HUMANO DE LA\nESCUELA SUPERIOR DE ADMINISTRACIAN PABLICA a ESAP"
 
 
 
@@ -376,7 +376,7 @@ interface PlantillaConfig {
 
 
 
-      palabrasClave: { texto: string; estilo: { bold?: boolean; italic?: boolean; color?: string } }[];
+      palabrasClave: { texto: string; estilo: { bold: boolean; italic: boolean; color: string } }[];
 
 
 
@@ -392,7 +392,7 @@ interface PlantillaConfig {
 
 
 
-  fechaModificaciónn: string;
+  fechaModificacion: string;
 
 
 
@@ -444,27 +444,27 @@ interface LogCambio {
 
 
 
-  plantillaSnapshot?: PlantillaConfig; // Snapshot completo de la plantilla en ese momento
+  plantillaSnapshot: PlantillaConfig; // Snapshot completo de la plantilla en ese momento
 
 
 
-  // Campos adicionales para Visualizaciónn mejorada
+  // Campos adicionales para Visualizacion mejorada
 
 
 
-  changeType?: string;
+  changeType: string;
 
 
 
-  oldValue?: string;
+  oldValue: string;
 
 
 
-  newValue?: string;
+  newValue: string;
 
 
 
-  fieldName?: string;
+  fieldName: string;
 
 
 
@@ -556,7 +556,7 @@ const coloresDisponibles = [
 
 
 
-  { value: '#A52A2A', label: 'Café' },
+  { value: '#A52eA', label: 'Cafe' },
 
 
 
@@ -580,7 +580,7 @@ const variablesDisponibles = [
 
 
 
-  { codigo: '[DOCUMENTO]', descripcion: 'Número de documento' },
+  { codigo: '[DOCUMENTO]', descripcion: 'NAomero de documento' },
 
 
 
@@ -592,7 +592,7 @@ const variablesDisponibles = [
 
 
 
-  { codigo: '[DATO6]', descripcion: 'Ubicación o dato adicional' },
+  { codigo: '[DATO6]', descripcion: 'Ubicacion o dato adicional' },
 
 
 
@@ -600,11 +600,11 @@ const variablesDisponibles = [
 
 
 
-  { codigo: '[FECHA_FIN]', descripcion: 'Fecha de finalización' },
+  { codigo: '[FECHA_FIN]', descripcion: 'Fecha de finalizacion' },
 
 
 
-  { codigo: '[SALARIO]', descripcion: 'Salario mensual (número)' },
+  { codigo: '[SALARIO]', descripcion: 'Salario mensual (nAomero)' },
 
 
 
@@ -612,7 +612,7 @@ const variablesDisponibles = [
 
 
 
-  { codigo: '[FECHA_EXPEDICION_COMPLETA]', descripcion: 'Fecha completa de expedición (ej: 11 de diciembre de 2025)' },
+  { codigo: '[FECHA_EXPEDICION_COMPLETA]', descripcion: 'Fecha completa de expedicion (ej: 11 de diciembre de 2025)' },
 
 
 
@@ -624,7 +624,7 @@ const variablesDisponibles = [
 
 
 
-const defaultContenidoCertificado = '<p>Que <b>Ana Marelys López Rodríguez</b> identificado(a) con cédula de ciudadanía No. <b>557554210</b>, se desempeña como <b>Técnica</b> en <b>Vicedirección de Capacitación y Formación - Grupo de Posgrados</b> de la Escuela Superior de Administración Pública – ESAP, mediante contrato de prestación de servicios, desde el <b>02 de enero de 2023</b> hasta la actualidad.</p><p>Que <b>Ana Marelys López Rodríguez</b> percibe mensualmente la suma de <b>$5.000.000</b> (Cinco millones de pesos).</p><p>Se expide en la ciudad de <b>Bogotá D.C.</b>, a los <b>[FECHA_EXPEDICION]</b> días del mes de <b>[MES_EXPEDICION]</b> de <b>[AÑO_EXPEDICION]</b>.</p>';
+const defaultContenidoCertificado = '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [CARGO] desde el [FECHA_INICIO], en la categor\u00EDa [DEPENDENCIA] ubicado en [DATO6].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
 
 
 
@@ -636,11 +636,11 @@ interface ConfiguracionPlantillaProps {
 
 
 
-  canEdit?: boolean;
+  canEdit: boolean;
 
 
 
-  currentUserEmail?: string;
+  currentUserEmail: string;
 
 
 
@@ -690,15 +690,23 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   const [isResettingLogo, setIsResettingLogo] = useState(false);
 
-
-
   const [isResettingFirma, setIsResettingFirma] = useState(false);
+
+  const [isResettingFirmante, setIsResettingFirmante] = useState(false);
+
+  const [isResettingTituloCargo, setIsResettingTituloCargo] = useState(false);
+
+  const [isResettingContenido, setIsResettingContenido] = useState(false);
 
 
 
   const [logCambios, setLogCambios] = useState<LogCambio[]>([]);
+  const [historialTotal, setHistorialTotal] = useState(0);
+  const [isLoadingHistorial, setIsLoadingHistorial] = useState(false);
+  const [historialPage, setHistorialPage] = useState(1);
+  const [revertingChangeId, setRevertingChangeId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<string>(canEdit ? 'Modificaciónn' : 'historial');
+  const [activeTab, setActiveTab] = useState<string>(canEdit ? 'Modificacion' : 'historial');
 
   const [editorContent, setEditorContent] = useState<string>('');
 
@@ -709,6 +717,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
   const publishingActor = currentUserEmail || 'cerlaboral@esap.edu.co';
+  const HISTORIAL_POR_PAGINA = 10;
 
 
 
@@ -749,10 +758,10 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   // Actualizar el editor cuando cambia el activeTab o editorContent
   useEffect(() => {
-    // Solo proceder si estamos en la pestaña de Modificación
-    if (activeTab !== 'Modificaciónn') return;
+    // Solo proceder si estamos en la pestana de Modificacion
+    if (activeTab !== 'Modificacion') return;
 
-    // Usar un pequeño delay para asegurar que el DOM esté listo después del cambio de tab
+    // Usar un pequeAo delay para asegurar que el DOM esta listo despuAs del cambio de tab
     const timer = setTimeout(() => {
       if (!editorRef.current) {
         console.log('Editor ref no disponible');
@@ -760,7 +769,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       }
       const editor = editorRef.current;
 
-      // No sobrescribir si el usuario está editando activamente
+      // No sobrescribir si el usuario esta editando activamente
       if (document.activeElement === editor) return;
 
       // Actualizar el contenido del editor, normalizando las variables
@@ -787,7 +796,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-   * Función helper para resaltar variables en el texto
+   * Funcion helper para resaltar variables en el texto
 
 
 
@@ -803,11 +812,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Patrón para encontrar variables como [NOMBRE_EMPLEADO], [DOCUMENTO], [DATO6], etc.
+    // Patron para encontrar variables como [NOMBRE_EMPLEADO], [DOCUMENTO], [DATO6], etc.
 
 
 
-    const patron = /\[([A-Z0-9_ÁÉÍÓÚÑ]+)\]/g;
+    const patron = /\[([A-Z0-9_AAAAAA]+)\]/g;
 
 
 
@@ -841,7 +850,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
     for (let i = 0; i < 15; i++) {
       // Eliminar spans que solo contienen otro span
       resultado = resultado.replace(
-        /<span[^>]*>\s*(<span[^>]*>[\s\S]*?<\/span>)\s*<\/span>/g,
+        /<span[^>]*>\s*(<span[^>]*>[\s\S]*-<\/span>)\s*<\/span>/g,
         '$1'
       );
     }
@@ -854,11 +863,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
     // Paso 3: Envolver variables sueltas que no tienen span
     resultado = resultado.replace(
-      /(?<!<span[^>]*>)\[([A-Z_]+)\](?![^<]*<\/span>)/g,
+      /(-<!<span[^>]*>)\[([A-Z_]+)\](-![^<]*<\/span>)/g,
       '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$1]</span>'
     );
 
-    // Paso 4: Limpiar spans vacíos
+    // Paso 4: Limpiar spans vacAos
     resultado = resultado.replace(/<span[^>]*>\s*<\/span>/g, '');
 
     return resultado;
@@ -874,7 +883,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-   * Calcula diferencias token a token (palabras + espacios/puntuación) usando LCS y resalta solo los modificados.
+   * Calcula diferencias token a token (palabras + espacios/puntuacion) usando LCS y resalta solo los modificados.
 
 
 
@@ -886,11 +895,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-  const generarDiffResaltado = (oldHtml?: string, newHtml?: string) => {
+  const generarDiffResaltado = (oldHtml: string, newHtml: string) => {
 
 
 
-    const clean = (v?: string) => (v || '').replace(/<\/?span[^>]*>/g, '');
+    const clean = (v: string) => (v || '').replace(/<\/-span[^>]*>/g, '');
 
 
 
@@ -1074,7 +1083,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-  const limpiarResaltado = (html?: string) => (html || '').replace(/<\/?span[^>]*>/g, '');
+  const limpiarResaltado = (html: string) => (html || '').replace(/<\/-span[^>]*>/g, '');
 
 
 
@@ -1150,7 +1159,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        tamaÇño: ''
+        tamano: ''
 
 
 
@@ -1170,7 +1179,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        tamaÇño: logoConfig.size || ''
+        tamano: logoConfig.size || ''
 
 
 
@@ -1186,7 +1195,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        tamaÇño: 12,
+        tamano: 12,
 
 
 
@@ -1202,7 +1211,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        texto: config.cargoTitle || 'LA DIRECTORA TÉCNICA DE TALENTO HUMANO DE LA ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA – ESAP'
+        texto: config.cargoTitle || 'LA DIRECTORA T\u00C9CNICA DE TALENTO HUMANO DE LA\nESCUELA SUPERIOR DE ADMINISTRACI\u00D3N P\u00DABLICA - ESAP'
 
 
 
@@ -1238,7 +1247,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      fechaModificaciónn: config.updatedAt || new Date().toISOString(),
+      fechaModificacion: config.updatedAt || new Date().toISOString(),
 
 
 
@@ -1266,7 +1275,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-   * Función para insertar una variable en la posición del cursor
+   * Funcion para insertar una variable en la posicion del cursor
 
 
 
@@ -1350,7 +1359,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Insertar el span y un espacio después
+    // Insertar el span y un espacio despuAs
 
 
 
@@ -1366,7 +1375,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Agregar un espacio después de la variable
+    // Agregar un espacio despuAs de la variable
 
 
 
@@ -1458,7 +1467,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-   * Aplica/quita negrita y la refleja en variables dentro de la selección
+   * Aplica/quita negrita y la refleja en variables dentro de la seleccion
 
 
 
@@ -1562,7 +1571,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-  // Cargar configuración real desde el backend al montar el componente
+  // Cargar configuracion real desde el backend al montar el componente
 
 
 
@@ -1614,15 +1623,15 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        console.error('Error al cargar configuración:', error);
+        console.error('Error al cargar configuracion:', error);
 
 
 
-        toast.error('Error al cargar configuración', {
+        toast.error('Error al cargar configuracion', {
 
 
 
-          description: 'No se pudo cargar la configuración de la plantilla'
+          description: 'No se pudo cargar la configuracion de la plantilla'
 
 
 
@@ -1664,120 +1673,47 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   // Cargar historial de cambios
 
+  const mapearHistorial = (historial: any[]): LogCambio[] =>
+    historial.map((cambio: any) => ({
+      id: cambio.id.toString(),
+      fecha: cambio.changedAt,
+      usuario: cambio.changedBy || 'Usuario',
+      accion: getAccionTexto(cambio.changeType),
+      cambios: [formatearCambio(cambio)],
+      versionAnterior: '1.0.0',
+      versionNueva: '1.0.0',
+      // Agregar datos raw para Visualizacion
+      changeType: cambio.changeType,
+      oldValue: cambio.oldValue,
+      newValue: cambio.newValue,
+      fieldName: cambio.fieldName,
+    }));
 
+  const cargarHistorial = async (page: number) => {
+    try {
+      setIsLoadingHistorial(true);
+      const safePage = Math.max(1, page);
+      const offset = (safePage - 1) * HISTORIAL_POR_PAGINA;
+      const response = await certificadosService.plantilla.obtenerHistorialCambios(
+        templateType,
+        HISTORIAL_POR_PAGINA,
+        offset
+      );
+      const cambios = mapearHistorial(response.items || []);
+      setLogCambios(cambios);
+      setHistorialTotal(response.total || 0);
+      setHistorialPage(safePage);
+    } catch (error) {
+      console.error('Error al cargar historial:', error);
+    } finally {
+      setIsLoadingHistorial(false);
+    }
+  };
 
   useEffect(() => {
-
-
-
-    const cargarHistorial = async () => {
-
-
-
-      try {
-
-
-
-        const historial = await certificadosService.plantilla.obtenerHistorialCambios(templateType);
-
-
-
-
-
-
-
-        // Transformar los datos del backend al formato del componente
-
-
-
-        const cambios: LogCambio[] = historial.map((cambio: any) => ({
-
-
-
-          id: cambio.id.toString(),
-
-
-
-          fecha: cambio.changedAt,
-
-
-
-          usuario: cambio.changedBy || 'Usuario',
-
-
-
-          accion: getAccionTexto(cambio.changeType),
-
-
-
-          cambios: [formatearCambio(cambio)],
-
-
-
-          versionAnterior: '1.0.0',
-
-
-
-          versionNueva: '1.0.0',
-
-
-
-          // Agregar datos raw para Visualizaciónn
-
-
-
-          changeType: cambio.changeType,
-
-
-
-          oldValue: cambio.oldValue,
-
-
-
-          newValue: cambio.newValue,
-
-
-
-          fieldName: cambio.fieldName,
-
-
-
-        }));
-
-
-
-
-
-
-
-        setLogCambios(cambios);
-
-
-
-      } catch (error) {
-
-
-
-        console.error('Error al cargar historial:', error);
-
-
-
-      }
-
-
-
-    };
-
-
-
-
-
-
-
-    cargarHistorial();
-
-
-
+    setHistorialTotal(0);
+    setHistorialPage(1);
+    cargarHistorial(1);
   }, [templateType]);
 
 
@@ -1786,7 +1722,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-  // Función helper para obtener texto de acción
+  // Funcion helper para obtener texto de accion
 
 
 
@@ -1798,11 +1734,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      'logo': 'Actualización de Logo Institucional',
+      'logo': 'Actualizacion de Logo Institucional',
 
 
 
-      'firma': 'Actualización de Firma Digital',
+      'firma': 'Actualizacion de Firma Digital',
 
 
 
@@ -1810,19 +1746,19 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      'tipografia': 'Cambio de Tipografía',
+      'tipografia': 'Cambio de TipografAa',
 
 
 
-      'titulo_cargo': 'Actualización del Título del Cargo',
+      'titulo_cargo': 'Actualizacion del Titulo del Cargo',
 
 
 
-      'contenido': 'Modificaciónn del Contenido del Certificado',
+      'contenido': 'Modificacion del Contenido del Certificado',
 
 
 
-      'multiple': 'Actualización Múltiple',
+      'multiple': 'Actualizacion Multiple',
 
 
 
@@ -1830,7 +1766,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    return acciones[changeType] || 'Modificaciónn de Plantilla';
+    return acciones[changeType] || 'Modificacion de Plantilla';
 
 
 
@@ -1842,7 +1778,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-  // Función helper para formatear cambio
+  // Funcion helper para formatear cambio
 
 
 
@@ -1850,7 +1786,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Traducir nombres de campos técnicos al español
+    // Traducir nombres de campos tAcnicos al espaAol
 
 
 
@@ -1870,11 +1806,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      'typography_font': 'Fuente tipográfica',
+      'typography_font': 'Fuente tipogrAfica',
 
 
 
-      'cargo_title': 'Título del cargo',
+      'cargo_title': 'Titulo del cargo',
 
 
 
@@ -1882,11 +1818,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      'typographyFont': 'Fuente tipográfica',
+      'typographyFont': 'Fuente tipogrAfica',
 
 
 
-      'cargoTitle': 'Título del cargo',
+      'cargoTitle': 'Titulo del cargo',
 
 
 
@@ -1942,7 +1878,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    return `${nombreCampo}: "${valorAnterior}" ? "${valorNuevo}"`;
+    return `${nombreCampo}: "${valorAnterior}" - "${valorNuevo}"`;
 
 
 
@@ -1954,7 +1890,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-  // Evitar errores si plantilla aún no está cargada
+  // Evitar errores si plantilla aun no esta cargada
 
 
 
@@ -1978,7 +1914,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          <p className="text-gray-600">Cargando configuración...</p>
+          <p className="text-gray-600">Cargando configuracion...</p>
 
 
 
@@ -2118,11 +2054,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      toast.error('Archivo inválido', {
+      toast.error('Archivo invAlido', {
 
 
 
-        description: 'Por favor selecciona una imagen válida (PNG, JPG, etc.)'
+        description: 'Por favor selecciona una imagen vAlida (PNG, JPG, etc.)'
 
 
 
@@ -2142,7 +2078,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Validar tamaño (máximo 2MB)
+    // Validar tamaAo (mAximo 2MB)
 
 
 
@@ -2198,7 +2134,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Recargar TODA la configuración desde el servidor para obtener datos frescos
+      // Recargar TODA la configuracion desde el servidor para obtener datos frescos
 
 
 
@@ -2234,7 +2170,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Recargar historial después de subir firma
+      // Recargar historial despuAs de subir firma
 
 
 
@@ -2254,7 +2190,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'La imagen de la firma se subió correctamente'
+        description: 'La imagen de la firma se subio correctamente'
 
 
 
@@ -2322,11 +2258,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      toast.error('Archivo inválido', {
+      toast.error('Archivo invAlido', {
 
 
 
-        description: 'Por favor selecciona una imagen válida (PNG, JPG, etc.)'
+        description: 'Por favor selecciona una imagen vAlida (PNG, JPG, etc.)'
 
 
 
@@ -2346,7 +2282,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Validar tamaño (máximo 2MB)
+    // Validar tamaAo (mAximo 2MB)
 
 
 
@@ -2402,7 +2338,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Recargar TODA la configuración desde el servidor para obtener datos frescos
+      // Recargar TODA la configuracion desde el servidor para obtener datos frescos
 
 
 
@@ -2438,7 +2374,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Recargar historial después de subir logo
+      // Recargar historial despuAs de subir logo
 
 
 
@@ -2458,7 +2394,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'El logo de la entidad se subió correctamente'
+        description: 'El logo de la entidad se subio correctamente'
 
 
 
@@ -2554,7 +2490,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'Se volvió al logo oficial de la ESAP'
+        description: 'Se volvio al logo oficial de la ESAP'
 
 
 
@@ -2658,7 +2594,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'La plantilla quedó sin firma cargada'
+        description: 'La plantilla quedo sin firma cargada'
 
 
 
@@ -2705,99 +2641,175 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   };
 
 
+  const handleResetFirmante = async () => {
+    if (!ensureEditable()) return;
+
+    try {
+      setIsResettingFirmante(true);
+      toast.loading('Restableciendo firmante...', { id: 'reset-firmante' });
+
+      const config = await certificadosService.plantilla.resetNombreFirmante(publishingActor, templateType);
+      const plantillaActualizada = mapConfigToPlantilla(config, true);
+
+      setBorrador(plantillaActualizada);
+      setPlantilla(plantillaActualizada);
+      setEditorContent(plantillaActualizada.contenidoCertificado.texto);
+      setHasChanges(false);
+      await recargarHistorial();
+
+      toast.success('Firmante restablecido', {
+        id: 'reset-firmante',
+        description: 'Se volvio al nombre predeterminado del firmante'
+      });
+    } catch (error) {
+      console.error('Error al restablecer firmante:', error);
+      toast.error('Error al restablecer firmante', {
+        id: 'reset-firmante',
+        description: error instanceof Error ? error.message : 'Intenta nuevamente'
+      });
+    } finally {
+      setIsResettingFirmante(false);
+    }
+  };
+
+  const handleResetTituloCargo = async () => {
+    if (!ensureEditable()) return;
+
+    try {
+      setIsResettingTituloCargo(true);
+      toast.loading('Restableciendo titulo del cargo...', { id: 'reset-titulo' });
+
+      const config = await certificadosService.plantilla.resetTituloCargo(publishingActor, templateType);
+      const plantillaActualizada = mapConfigToPlantilla(config, true);
+
+      setBorrador(plantillaActualizada);
+      setPlantilla(plantillaActualizada);
+      setEditorContent(plantillaActualizada.contenidoCertificado.texto);
+      setHasChanges(false);
+      await recargarHistorial();
+
+      toast.success('Titulo del cargo restablecido', {
+        id: 'reset-titulo',
+        description: 'Se volvio al encabezado predeterminado'
+      });
+    } catch (error) {
+      console.error('Error al restablecer titulo del cargo:', error);
+      toast.error('Error al restablecer titulo del cargo', {
+        id: 'reset-titulo',
+        description: error instanceof Error ? error.message : 'Intenta nuevamente'
+      });
+    } finally {
+      setIsResettingTituloCargo(false);
+    }
+  };
+
+  const handleResetContenido = async () => {
+    if (!ensureEditable()) return;
+
+    try {
+      setIsResettingContenido(true);
+      toast.loading('Restableciendo contenido...', { id: 'reset-contenido' });
+
+      const config = await certificadosService.plantilla.resetContenido(publishingActor, templateType);
+      const plantillaActualizada = mapConfigToPlantilla(config, true);
+
+      setBorrador(plantillaActualizada);
+      setPlantilla(plantillaActualizada);
+      setEditorContent(plantillaActualizada.contenidoCertificado.texto);
+      setHasChanges(false);
+      await recargarHistorial();
+
+      toast.success('Contenido restablecido', {
+        id: 'reset-contenido',
+        description: 'Se volvio al contenido predeterminado'
+      });
+    } catch (error) {
+      console.error('Error al restablecer contenido:', error);
+      toast.error('Error al restablecer contenido', {
+        id: 'reset-contenido',
+        description: error instanceof Error ? error.message : 'Intenta nuevamente'
+      });
+    } finally {
+      setIsResettingContenido(false);
+    }
+  };
 
 
 
 
 
-  // Función helper para recargar historial
+
+  // Funcion helper para recargar historial
 
 
 
   const recargarHistorial = async () => {
-
-
-
     try {
-
-
-
-      const historial = await certificadosService.plantilla.obtenerHistorialCambios(templateType);
-
-
-
-      const cambios: LogCambio[] = historial.map((cambio: any) => ({
-
-
-
-        id: cambio.id.toString(),
-
-
-
-        fecha: cambio.changedAt,
-
-
-
-        usuario: cambio.changedBy || 'Usuario',
-
-
-
-        accion: getAccionTexto(cambio.changeType),
-
-
-
-        cambios: [formatearCambio(cambio)],
-
-
-
-        versionAnterior: '1.0.0',
-
-
-
-        versionNueva: '1.0.0',
-
-
-
-        // Agregar datos raw para Visualizaciónn mejorada
-
-
-
-        changeType: cambio.changeType,
-
-
-
-        oldValue: cambio.oldValue,
-
-
-
-        newValue: cambio.newValue,
-
-
-
-        fieldName: cambio.fieldName,
-
-
-
-      }));
-
-
-
-      setLogCambios(cambios);
-
-
-
+      await cargarHistorial(historialPage);
     } catch (error) {
-
-
-
       console.error('Error al recargar historial:', error);
+    }
+  };
 
+  const handleRevertirCambio = async (log: LogCambio) => {
+    if (!ensureEditable()) return;
+    setRevertingChangeId(log.id);
+    try {
+      const response = await certificadosService.plantilla.revertirCambio(
+        Number(log.id),
+        publishingActor,
+        templateType,
+      );
+      const plantillaActualizada = mapConfigToPlantilla(response, true);
+      setPlantilla(plantillaActualizada);
+      setBorrador(plantillaActualizada);
+      setHasChanges(false);
+      await recargarHistorial();
+      toast.success('Cambio revertido', {
+        description: `Se restauro: ${log.accion}`,
+      });
+    } catch (error) {
+      console.error('Error al revertir cambio:', error);
+      toast.error('No se pudo revertir el cambio', {
+        description: error instanceof Error ? error.message : 'Intenta nuevamente',
+      });
+    } finally {
+      setRevertingChangeId(null);
+    }
+  };
 
+  const totalPages = Math.ceil(historialTotal / HISTORIAL_POR_PAGINA);
 
+  const getVisiblePages = (): Array<number | '...'> => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
     }
 
+    const pages: Array<number | '...'> = [1];
+    const start = Math.max(2, historialPage - 1);
+    const end = Math.min(totalPages - 1, historialPage + 1);
 
+    if (start > 2) {
+      pages.push('...');
+    }
 
+    for (let page = start; page <= end; page += 1) {
+      pages.push(page);
+    }
+
+    if (end < totalPages - 1) {
+      pages.push('...');
+    }
+
+    pages.push(totalPages);
+    return pages;
+  };
+
+  const handlePageChange = (page: number) => {
+    if (isLoadingHistorial) return;
+    if (page === historialPage) return;
+    if (page < 1 || page > totalPages) return;
+    cargarHistorial(page);
   };
 
 
@@ -2870,7 +2882,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Guardar el nombre del firmante si cambió
+      // Guardar el nombre del firmante si cambio
 
 
 
@@ -2898,7 +2910,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Guardar tipografía, título del cargo y contenido HTML si cambiaron
+      // Guardar tipografAa, tAtulo del cargo y contenido HTML si cambiaron
 
 
 
@@ -2922,7 +2934,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        cambiosGuardados.push('tipografía');
+        cambiosGuardados.push('tipografAa');
 
 
 
@@ -2946,7 +2958,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        cambiosGuardados.push('título del cargo');
+        cambiosGuardados.push('tAtulo del cargo');
 
 
 
@@ -3021,7 +3033,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Recargar historial después de guardar
+      // Recargar historial despuAs de guardar
 
 
 
@@ -3109,7 +3121,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'Mostrando cómo se verá el certificado con los cambios'
+        description: 'Mostrando como se vera el certificado con los cambios'
 
 
 
@@ -3149,8 +3161,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       await handleGuardarBorrador();
     }
 
-    // Navegar a la pestaña de Visualización usando el estado
-    setActiveTab('Visualizaciónn');
+    // Navegar a la pestana de Visualizacion usando el estado
+    setActiveTab('Visualizacion');
   };
 
   const handleAutorizarPlantilla = async () => {
@@ -3281,7 +3293,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        fechaModificaciónn: publishedAt,
+        fechaModificacion: publishedAt,
 
 
 
@@ -3325,7 +3337,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'La plantilla se activó para todos los certificados.'
+        description: 'La plantilla se activo para todos los certificados.'
 
 
 
@@ -3401,7 +3413,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      description: 'Se restauró la plantilla publicada'
+      description: 'Se restauro la plantilla publicada'
 
 
 
@@ -3429,7 +3441,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'Esta versión no tiene datos disponibles para restaurar'
+        description: 'Esta version no tiene datos disponibles para restaurar'
 
 
 
@@ -3473,7 +3485,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    toast.loading('Restaurando versión...', { id: 'restaurar' });
+    toast.loading('Restaurando version...', { id: 'restaurar' });
 
 
 
@@ -3485,7 +3497,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Crear un nuevo log de cambio para registrar la restauración
+      // Crear un nuevo log de cambio para registrar la restauracion
 
 
 
@@ -3505,7 +3517,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        accion: `Restauración a versión ${versionARestaurar.versionNueva}`,
+        accion: `Restauracion a version ${versionARestaurar.versionNueva}`,
 
 
 
@@ -3513,11 +3525,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          `Versión restaurada: ${versionARestaurar.versionNueva}`,
+          `Version restaurada: ${versionARestaurar.versionNueva}`,
 
 
 
-          `Fecha de la versión: ${new Date(versionARestaurar.fecha).toLocaleDateString('es-CO')}`,
+          `Fecha de la version: ${new Date(versionARestaurar.fecha).toLocaleDateString('es-CO')}`,
 
 
 
@@ -3525,7 +3537,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          `Tipografía: ${versionARestaurar.plantillaSnapshot.tipografia.fuente} ${versionARestaurar.plantillaSnapshot.tipografia.tamaño}pt`
+          `TipografAa: ${versionARestaurar.plantillaSnapshot.tipografia.fuente} ${versionARestaurar.plantillaSnapshot.tipografia.tamano}pt`
 
 
 
@@ -3553,7 +3565,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          fechaModificaciónn: new Date().toISOString(),
+          fechaModificacion: new Date().toISOString(),
 
 
 
@@ -3573,7 +3585,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Actualizar log de cambios (mantener solo últimas 5)
+      // Actualizar log de cambios (mantener solo Aoltimas 5)
 
 
 
@@ -3601,7 +3613,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        fechaModificaciónn: new Date().toISOString(),
+        fechaModificacion: new Date().toISOString(),
 
 
 
@@ -3641,7 +3653,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      toast.success('¡Versión restaurada!', {
+      toast.success('Version restaurada!', {
 
 
 
@@ -3649,7 +3661,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: `La plantilla ahora usa la configuración de la versión ${versionARestaurar.versionNueva}`
+        description: `La plantilla ahora usa la configuracion de la version ${versionARestaurar.versionNueva}`
 
 
 
@@ -3705,7 +3717,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      en_revision: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: Clock, label: 'En Revisión' },
+      en_revision: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: Clock, label: 'En Revision' },
 
 
 
@@ -3900,7 +3912,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Configuración de Plantilla
+                  Configuracion de Plantilla
 
 
 
@@ -3976,7 +3988,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-              Versión {plantilla.version}
+              Version {plantilla.version}
 
 
 
@@ -4056,7 +4068,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                Has realizado cambios en la plantilla. Recuerda guardarlos y solicitar autorización antes de cerrar.
+                Has realizado cambios en la plantilla. Recuerda guardarlos y solicitar autorizacion antes de cerrar.
 
 
 
@@ -4116,7 +4128,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      {/* Tabs de Navegación */}
+      {/* Tabs de Navegacion */}
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <p className="text-sm text-gray-600">Tipo de plantilla:</p>
         <div className="flex gap-2">
@@ -4142,13 +4154,13 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       <Tabs
         value={activeTab}
         onValueChange={(newTab: string) => {
-          // Guardar el contenido del editor antes de cambiar de pestaña
-          if (activeTab === 'Modificaciónn' && editorRef.current) {
+          // Guardar el contenido del editor antes de cambiar de pestana
+          if (activeTab === 'Modificacion' && editorRef.current) {
             const currentContent = editorRef.current.innerHTML;
-            console.log('Guardando contenido antes de cambiar de pestaña:', currentContent.substring(0, 50) + '...');
+            console.log('Guardando contenido antes de cambiar de pestana:', currentContent.substring(0, 50) + '...');
             setEditorContent(currentContent);
           }
-          // Cambiar la pestaña
+          // Cambiar la pestana
           setActiveTab(newTab);
         }}
         className="mt-6"
@@ -4164,11 +4176,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-            <TabsTrigger value="Modificaciónn" className="flex items-center gap-2">
+            <TabsTrigger value="Modificacion" className="flex items-center gap-2">
 
 
 
-              <Edit3 className="w-4 h-4" /> Modificaciónn
+              <Edit3 className="w-4 h-4" /> Modificacion
 
 
 
@@ -4184,11 +4196,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-            <TabsTrigger value="Visualizaciónn" className="flex items-center gap-2">
+            <TabsTrigger value="Visualizacion" className="flex items-center gap-2">
 
 
 
-              <Eye className="w-4 h-4" /> Visualizaciónn
+              <Eye className="w-4 h-4" /> Visualizacion
 
 
 
@@ -4224,7 +4236,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        {/* TAB 1: Modificaciónn */}
+        {/* TAB 1: Modificacion */}
 
 
 
@@ -4232,7 +4244,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        <TabsContent value="Modificaciónn" className="space-y-6 mt-6">
+        <TabsContent value="Modificacion" className="space-y-6 mt-6">
 
 
 
@@ -4296,7 +4308,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                    placeholder="Ej: Dra. María Elena Bernal Torres"
+                    placeholder="Ej: Dra. MarAa Elena Bernal Torres"
 
 
 
@@ -4321,33 +4333,24 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
               <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-
-
-
                 <p className="text-sm text-blue-800 flex items-start gap-2">
-
-
-
                   <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-
-
-
                   <span>
-
-
-
-                    Este es el nombre que aparecerá en la firma de los certificados. Solo modifica el nombre, sin cambiar el diseño de la plantilla.
-
-
-
+                    Este es el nombre que aparecera en la firma de los certificados. Solo modifica el nombre, sin cambiar el diseno de la plantilla.
                   </span>
-
-
-
                 </p>
+              </div>
 
-
-
+              <div className="mt-4 flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleResetFirmante}
+                  disabled={isResettingFirmante || !canEdit}
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  {isResettingFirmante ? 'Restableciendo...' : 'Restablecer nombre'}
+                </Button>
               </div>
 
 
@@ -4452,7 +4455,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                        {borrador.grafoFirma.tamaño}
+                        {borrador.grafoFirma.tamaAo}
 
 
 
@@ -4476,7 +4479,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                {/* Botón de carga */}
+                {/* Boton de carga */}
 
 
 
@@ -4588,22 +4591,22 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                    <li>• Formato: PNG, JPG o JPEG</li>
+                    <li>a Formato: PNG, JPG o JPEG</li>
 
 
 
-                    <li>• Tamaño máximo: 2 MB</li>
+                    <li>a TamaAo mAximo: 2 MB</li>
 
 
 
-                    <li>• Fondo transparente recomendado</li>
+                    <li>a Fondo transparente recomendado</li>
 
 
 
-                    <li>• Resolución mínima: 300 DPI</li>
+                    <li>a Resolucion mAnima: 300 DPI</li>
 
 
-                    <li>• Tamaño recomendado: 400px de ancho x 120px de alto para que quede nítida al mostrarse a 48px</li>
+                    <li>a TamaAo recomendado: 400px de ancho x 120px de alto para que quede nAtida al mostrarse a 48px</li>
 
 
 
@@ -4647,7 +4650,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  {isResettingFirma ? 'Restableciendo...' : 'Quitar firma (dejar vacía)'}
+                  {isResettingFirma ? 'Restableciendo...' : 'Quitar firma (dejar vacAa)'}
 
 
 
@@ -4771,7 +4774,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                        {borrador.logoEntidad.tamaño}
+                        {borrador.logoEntidad.tamaAo}
 
 
 
@@ -4959,20 +4962,20 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                    <li>• Formato: PNG, JPG o JPEG</li>
+                    <li>a Formato: PNG, JPG o JPEG</li>
 
 
 
-                    <li>• Tamaño máximo: 2 MB</li>
+                    <li>a TamaAo mAximo: 2 MB</li>
 
 
 
-                    <li>• Fondo transparente recomendado</li>
+                    <li>a Fondo transparente recomendado</li>
 
 
 
-                    <li>• Resolución mínima: 300 DPI</li>
-                    <li>? Tama?o recomendado: 500px de ancho x 150px de alto para que se vea n?tido al mostrarse a ~100px de alto</li>
+                    <li>a Resolucion mAnima: 300 DPI</li>
+                    <li>- Tama-o recomendado: 500px de ancho x 150px de alto para que se vea n-tido al mostrarse a ~100px de alto</li>
 
 
 
@@ -5056,11 +5059,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Este logo aparecerá en el encabezado de todos los certificados laborales. 
+                  Este logo aparecerA en el encabezado de todos los certificados laborales. 
 
 
 
-                  Se recomienda usar el logo oficial de la ESAP con fondo transparente para mejor presentación.
+                  Se recomienda usar el logo oficial de la ESAP con fondo transparente para mejor presentacion.
 
 
 
@@ -5084,7 +5087,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          {/* Tipografía y Contenido del Certificado */}
+          {/* TipografAa y Contenido del Certificado */}
 
 
 
@@ -5108,7 +5111,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Tipografía y Contenido del Certificado
+                  TipografAa y Contenido del Certificado
 
 
 
@@ -5120,7 +5123,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Configura la tipografía general y el contenido del certificado con formato enriquecido
+                  Configura la tipografAa general y el contenido del certificado con formato enriquecido
 
 
 
@@ -5136,7 +5139,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-              {/* Tipografía General - Solo Fuente */}
+              {/* TipografAa General - Solo Fuente */}
 
 
 
@@ -5148,7 +5151,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Fuente Tipográfica
+                  Fuente TipogrAfica
 
 
 
@@ -5242,171 +5245,69 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
               </div>
 
-
-
-
-
-
-
-              {/* Editor de Título del Cargo */}
-
-
-
+              {/* Editor de Titulo del Cargo */}
               <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
-
-
-
-                <Label className="text-sm font-medium text-gray-700">
-
-
-
-                  Título del Cargo (encabezado del certificado)
-
-
-
-                </Label>
-
-
-
-                <div className="flex justify-center">
-
-
-
-                  <textarea
-
-
-
-                    value={borrador.tituloCargo.texto}
-
-
-
-                    onChange={(e) => {
-
-
-
-                      setBorrador({
-
-
-
-                        ...borrador,
-
-
-
-                        tituloCargo: {
-
-
-
-                          texto: e.target.value
-
-
-
-                        }
-
-
-
-                      });
-
-
-
-                      setHasChanges(true);
-
-
-
-                    }}
-
-
-
-                    placeholder="Ej: LA DIRECTORA TÉCNICA DE TALENTO HUMANO DE LA&#10;ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA – ESAP"
-
-
-
-                    className="p-3 border border-blue-300 rounded-md font-bold text-center resize-none uppercase whitespace-pre-line"
-
-
-
-                    style={{
-
-
-
-                      fontFamily: borrador.tipografia.fuente,
-
-
-
-                      fontSize: `${borrador.tipografia.tamaño}pt`,
-
-
-
-                      lineHeight: '1.2',
-
-
-
-                      width: '600px',
-
-
-
-                      maxWidth: '100%'
-
-
-
-                    }}
-
-
-
-                    rows={3}
-
-
-
-                  />
-
-
-
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium text-gray-700">
+                    Titulo del Cargo (encabezado del certificado)
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetTituloCargo}
+                    disabled={isResettingTituloCargo || !canEdit}
+                  >
+                    <RefreshCw className="w-3 h-3 mr-2" />
+                    {isResettingTituloCargo ? 'Restableciendo...' : 'Restablecer'}
+                  </Button>
                 </div>
-
-
-
+                <div className="flex justify-center">
+                  <textarea
+                    value={borrador.tituloCargo.texto}
+                    onChange={(e) => {
+                      setBorrador({
+                        ...borrador,
+                        tituloCargo: {
+                          texto: e.target.value
+                        }
+                      });
+                      setHasChanges(true);
+                    }}
+                    placeholder="Ej: LA DIRECTORA TECNICA DE TALENTO HUMANO DE LA&#10;ESCUELA SUPERIOR DE ADMINISTRACION PUBLICA - ESAP"
+                    className="p-3 border border-blue-300 rounded-md font-bold text-center resize-none uppercase whitespace-pre-line"
+                    style={{
+                      fontFamily: borrador.tipografia.fuente,
+                      fontSize: `${borrador.tipografia.tamano}pt`,
+                      lineHeight: '1.2',
+                      width: '600px',
+                      maxWidth: '100%'
+                    }}
+                    rows={3}
+                  />
+                </div>
                 <p className="text-xs text-blue-700">
-
-
-
-                  Este texto aparecerá en la parte superior del certificado, antes de "HACE CONSTAR". Usa Enter para crear saltos de línea.
-
-
-
+                  Este texto aparecera en la parte superior del certificado, antes de "HACE CONSTAR". Usa Enter para crear saltos de linea.
                 </p>
-
-
-
               </div>
 
-
-
-
-
-
-
               {/* Editor de Contenido con Formato Enriquecido */}
-
-
-
               <div className="space-y-3">
-
-
-
-                <Label className="text-sm font-medium text-gray-700">
-
-
-
-                  Contenido del Certificado
-
-
-
-                </Label>
-
-
-
-
-
-
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium text-gray-700">
+                    Contenido del Certificado
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetContenido}
+                    disabled={isResettingContenido || !canEdit}
+                  >
+                    <RefreshCw className="w-3 h-3 mr-2" />
+                    {isResettingContenido ? 'Restableciendo...' : 'Restablecer'}
+                  </Button>
+                </div>
 
                 {/* Barra de herramientas de formato */}
 
@@ -5604,7 +5505,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  {/* Menú desplegable de variables */}
+                  {/* MenAo desplegable de variables */}
 
 
 
@@ -5728,7 +5629,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                    fontSize: `${borrador.tipografia.tamaño}pt`,
+                    fontSize: `${borrador.tipografia.tamano}pt`,
 
 
 
@@ -5817,7 +5718,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      <strong>Variables disponibles:</strong> Usa el menú desplegable "Insertar Variable" para agregar campos dinámicos como
+                      <strong>Variables disponibles:</strong> Usa el menAo desplegable "Insertar Variable" para agregar campos dinAmicos como
 
 
 
@@ -5833,7 +5734,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      Las variables se mostrarán resaltadas en amarillo y serán reemplazadas automáticamente al generar cada certificado.
+                      Las variables se mostrarAn resaltadas en amarillo y serAn reemplazadas automAticamente al generar cada certificado.
 
 
 
@@ -5897,7 +5798,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          {/* Botones de Acción */}
+          {/* Botones de Accion */}
 
 
 
@@ -6073,7 +5974,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        {/* TAB 2: Visualizaciónn */}
+        {/* TAB 2: Visualizacion */}
 
 
 
@@ -6081,7 +5982,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        <TabsContent value="Visualizaciónn" className="space-y-6 mt-6">
+        <TabsContent value="Visualizacion" className="space-y-6 mt-6">
 
 
 
@@ -6109,7 +6010,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                Así se verá el certificado con la configuración actual
+                Asi se vera el certificado con la configuracion actual
 
 
 
@@ -6125,7 +6026,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-            {/* Simulación de certificado - EXACTA A LA PLANTILLA REAL */}
+            {/* Simulacion de certificado - EXACTA A LA PLANTILLA REAL */}
 
 
 
@@ -6233,7 +6134,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-              {/* Número de certificado */}
+              {/* NAomero de certificado */}
 
 
 
@@ -6253,7 +6154,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                    fontSize: `${borrador.tipografia.tamaño}pt`,
+                    fontSize: `${borrador.tipografia.tamano}pt`,
 
 
 
@@ -6285,7 +6186,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-              {/* Título del cargo - editable */}
+              {/* Titulo del cargo - editable */}
 
 
 
@@ -6309,7 +6210,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                    fontSize: `${borrador.tipografia.tamaño}pt`,
+                    fontSize: `${borrador.tipografia.tamano}pt`,
 
 
 
@@ -6385,7 +6286,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                    fontSize: `${borrador.tipografia.tamaño}pt`,
+                    fontSize: `${borrador.tipografia.tamano}pt`,
 
 
 
@@ -6437,7 +6338,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  fontSize: `${borrador.tipografia.tamaño}pt`,
+                  fontSize: `${borrador.tipografia.tamano}pt`,
 
 
 
@@ -6465,7 +6366,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-              {/* Espacio para firma (si hay imagen de firma, se muestra aquí) */}
+              {/* Espacio para firma (si hay imagen de firma, se muestra aquA) */}
 
 
 
@@ -6533,7 +6434,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-              {/* Pie de página */}
+              {/* Pie de pAgina */}
 
 
 
@@ -6553,7 +6454,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                    <p>Calle #12 - 37, CAN, Bogotá D.C.</p>
+                    <p>Calle #12 - 37, CAN, Bogota D.C.</p>
 
 
 
@@ -6561,11 +6462,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                    <p>Línea centralizada PBX: 018000-422713</p>
+                    <p>LAnea centralizada PBX: 018000-422713</p>
 
 
 
-                    <p>Línea nacional gratuita (USA): 018000-422713</p>
+                    <p>LAnea nacional gratuita (USA): 018000-422713</p>
 
 
 
@@ -6601,7 +6502,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-            {/* Información adicional */}
+            {/* Informacion adicional */}
 
 
 
@@ -6621,11 +6522,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Esta es una vista previa de cómo se verá el certificado. Los datos del funcionario
+                  Esta es una vista previa de como se vera el certificado. Los datos del funcionario
 
 
 
-                  se reemplazarán automáticamente al generar cada certificado individual.
+                  se reemplazarAn automAticamente al generar cada certificado individual.
 
 
 
@@ -6693,7 +6594,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                Registro completo de todas las Modificaciónnes realizadas a la plantilla de certificados
+                Registro completo de todas las Modificaciones realizadas a la plantilla de certificados
 
 
 
@@ -6729,7 +6630,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Los cambios que realices aparecerán aquí para su seguimiento
+                  Los cambios que realices aparecerAn aquA para su seguimiento
 
 
 
@@ -6753,7 +6654,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  // Determinar icono y color según el tipo de cambio
+                  // Determinar icono y color segun el tipo de cambio
 
 
 
@@ -6845,7 +6746,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      {/* Barra de color superior según tipo de cambio */}
+                      {/* Barra de color superior segun tipo de cambio */}
 
 
 
@@ -6865,7 +6766,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                          {/* Icono distintivo según el tipo de cambio */}
+                          {/* Icono distintivo segun el tipo de cambio */}
 
 
 
@@ -7121,11 +7022,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                            <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-start justify-between gap-3 mb-2">
 
 
 
-                              <div>
+                              <div className="flex-1 min-w-0 pr-3">
 
 
 
@@ -7133,7 +7034,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                                <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
 
 
 
@@ -7217,7 +7118,29 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+
+
+
                               </div>
+
+                              {canEdit && (
+                                <div className="flex-shrink-0 w-28 flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRevertirCambio(log)}
+                                    disabled={revertingChangeId === log.id}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap ${revertingChangeId === log.id
+                                      ? 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'
+                                      : 'border-gray-200 text-gray-600 hover:text-[#003DA5] hover:border-[#003DA5]/40'
+                                    }`}
+                                    title="Revertir cambio"
+                                  >
+                                    <RefreshCw className={`w-3.5 h-3.5 ${revertingChangeId === log.id ? 'animate-spin' : ''}`} />
+                                    {revertingChangeId === log.id ? 'Revirtiendo' : 'Revertir'}
+                                  </button>
+                                </div>
+                              )}
+
 
 
 
@@ -7229,7 +7152,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                            {/* Detalle de cambios con Visualizaciónnes */}
+                            {/* Detalle de cambios con Visualizaciones */}
 
 
 
@@ -7237,7 +7160,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                              {/* Visualizaciónn según el tipo de cambio */}
+                              {/* Visualizacion segun el tipo de cambio */}
 
 
 
@@ -7777,7 +7700,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                                    {/* Mostrar versión anterior */}
+                                    {/* Mostrar version anterior */}
 
 
 
@@ -8091,7 +8014,45 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
                 })}
 
+                {totalPages > 1 && (
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handlePageChange(historialPage - 1)}
+                      disabled={isLoadingHistorial || historialPage === 1}
+                    >
+                      Anterior
+                    </Button>
 
+                    {getVisiblePages().map((page, index) =>
+                      page === '...' ? (
+                        <span key={`ellipsis-${index}`} className="px-2 text-sm text-gray-500">
+                          ...
+                        </span>
+                      ) : (
+                        <Button
+                          key={`page-${page}`}
+                          type="button"
+                          variant={page === historialPage ? 'default' : 'outline'}
+                          onClick={() => handlePageChange(page)}
+                          disabled={isLoadingHistorial}
+                        >
+                          {page}
+                        </Button>
+                      )
+                    )}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handlePageChange(historialPage + 1)}
+                      disabled={isLoadingHistorial || historialPage === totalPages}
+                    >
+                      Siguiente
+                    </Button>
+                  </div>
+                )}
 
               </div>
 
@@ -8126,6 +8087,27 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

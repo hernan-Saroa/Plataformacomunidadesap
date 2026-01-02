@@ -5,7 +5,7 @@ import { extname } from 'path';
 import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
 
-@Controller('api/legal/expedientes')
+@Controller('legal/expedientes')
 export class ExpedienteController {
     constructor(private readonly expedienteService: ExpedienteService) { }
 
@@ -54,7 +54,7 @@ export class ExpedienteController {
 
         // Mapear archivos subidos
         if (files && files.length > 0) {
-            data.documentosInicialesUrls = files.map(f => `/api/legal/files/${f.filename}`);
+            data.documentosInicialesUrls = files.map(f => `/legal/files/${f.filename}`);
         }
 
         // Asegurar tipos numéricos

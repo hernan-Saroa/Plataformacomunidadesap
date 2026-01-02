@@ -3,37 +3,154 @@
  * DISEÑO CALENDAR + TIMELINE VIEW
  */
 
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
-  Calendar, Clock, AlertTriangle, CheckCircle, Eye, Plus, Search, Filter,
-  XCircle, Send, Download, FileText, TrendingUp, CalendarDays, List,
-  ChevronLeft, ChevronRight, AlertCircle
+  Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
+  List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
+  ChevronLeft, ChevronRight, CalendarDays
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
+import { CardSIGL } from '../design-system/CardSIGL';
+import { ButtonSIGL } from '../design-system/ButtonSIGL';
+import { BadgeSIGL } from '../design-system/BadgeSIGL';
 import { Input } from '../../../ui/input';
-import { SolicitudInforme } from '../core/types';
-import { solicitudesInformesMock } from '../data/datosSolicitudesInformes';
-import { toast } from 'sonner@2.0.3';
+import { Button } from '../../../ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
+import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
+import { solicitudesConsolidadas, estadisticasTerminosInformes } from '../data/datosSolicitudesInformes';
+import { ModalDetalleSolicitudInforme } from './ModalDetalleSolicitudInforme';
 
-type VistaModulo = 'calendario' | 'timeline' | 'lista';
+import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { ModuleHeader } from '../design-system/ModuleHeader';
+import { ModuleMetrics } from '../design-system/ModuleMetrics';
+import { ModuleFilters } from '../design-system/ModuleFilters';
+import { toast } from 'sonner@2.0.3';
+import { legalService } from '../../../../services/api/legal.service';
+import { ModalNuevoTermino } from './ModalNuevoTermino';
+import { ModalDetalleTermino } from './ModalDetalleTermino';
+import { ModalDocumentosTermino } from './ModalDocumentosTermino';
+
+// Tipos necesarios
+type VistaModulo = 'timeline' | 'calendario' | 'lista';
+
+
 
 export function ModuloTerminosInformesV3() {
+  // ========== ESTADO ==========
+  const [solicitudes, setSolicitudes] = useState<SolicitudInforme[]>(solicitudesConsolidadas);
   const [vistaActual, setVistaActual] = useState<VistaModulo>('timeline');
   const [busqueda, setBusqueda] = useState('');
   const [filtroSemaforo, setFiltroSemaforo] = useState<string>('TODOS');
+  const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
+  const [filtroModuloOrigen, setFiltroModuloOrigen] = useState<string>('TODOS');
   const [mesActual, setMesActual] = useState(new Date());
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  // Removed ModalNuevoTermino state
+  const [modalDocsOpen, setModalDocsOpen] = useState(false);
+  const [selectedSolicitud, setSelectedSolicitud] = useState<SolicitudInforme | null>(null);
+
+  // Estados para modales
+  const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
+  const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudInforme | null>(null);
+
+  const [loading, setLoading] = useState(true);
+
+  const handleOpenDetalle = (solicitud: SolicitudInforme) => {
+    setSelectedSolicitud(solicitud);
+    setModalDetalleOpen(true);
+  };
+
+  const handleOpenDocumentos = (solicitud?: SolicitudInforme) => {
+    if (solicitud) {
+      setSelectedSolicitud(solicitud);
+      setModalDocsOpen(true);
+    } else {
+      toast.info('Selecciona un término para ver sus documentos');
+    }
+  };
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const data = await legalService.getTerminosListado();
+      // Map backend TerminoProcesal to frontend SolicitudInforme
+      const mapped: SolicitudInforme[] = data.map((t: any) => ({
+        id: t.numeroRadicado || t.id.substring(0, 8), // Show Radicado
+        etapa: t.estado as any,
+        tipoInforme: t.origenModulo,
+        enteSolicitante: t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema',
+        radicadoExterno: t.numeroRadicado || 'N/A',
+        asunto: t.nombreActuacion,
+        descripcion: t.observaciones || '', // Now contains Facts
+        responsable: t.responsableNombre || t.responsableId || 'Sin asignar',
+        fechaSolicitud: new Date(t.fechaBase),
+        fechaVencimiento: new Date(t.fechaVencimiento),
+        diasTotales: t.diasTermino,
+        diasRestantes: t.calculo?.diasRestantes ?? 0,
+        datosRequeridos: [],
+        metadata: { uuid: t.id } // Store real UUID here
+      }));
+      setSolicitudes(mapped);
+    } catch (error) {
+      console.error('Error fetching terminos:', error);
+      toast.error('Error al cargar términos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+
+
+  // Estados para modales
+
+
+  const handleVerDetalle = (solicitud: SolicitudInforme) => {
+    console.log('👁️ Ver detalle de:', solicitud.id);
+    setSolicitudSeleccionada(solicitud);
+    setModalDetalleOpen(true);
+  };
+
+  const handleCambiarEtapa = (id: string, nuevaEtapa: EtapaSolicitudInforme) => {
+    console.log('🔄 Cambiar etapa:', id, '→', nuevaEtapa);
+    setSolicitudes(prev =>
+      prev.map(sol =>
+        sol.id === id
+          ? { ...sol, etapa: nuevaEtapa }
+          : sol
+      )
+    );
+
+    // Actualizar también la solicitud seleccionada si es la misma
+    if (solicitudSeleccionada?.id === id) {
+      setSolicitudSeleccionada(prev =>
+        prev ? { ...prev, etapa: nuevaEtapa } : null
+      );
+    }
+
+    toast.success('Etapa actualizada', {
+      description: `Solicitud ${id} movida a ${nuevaEtapa}`,
+      icon: <CheckCircle className="w-4 h-4" />
+    });
+  };
+
+  const handleAgregarComentario = (id: string, comentario: string) => {
+    console.log('💬 Comentario agregado a:', id, '→', comentario);
+    // En una app real, esto actualizaría el timeline de la solicitud
+  };
 
   const solicitudesFiltradas = useMemo(() => {
-    let resultado = [...solicitudesInformesMock];
+    let resultado = [...solicitudes];
 
     if (busqueda) {
       resultado = resultado.filter(s =>
         s.id.toLowerCase().includes(busqueda.toLowerCase()) ||
         s.asunto?.toLowerCase().includes(busqueda.toLowerCase()) ||
-        s.solicitante.toLowerCase().includes(busqueda.toLowerCase())
+        s.responsable.toLowerCase().includes(busqueda.toLowerCase()) ||
+        s.enteSolicitante.toLowerCase().includes(busqueda.toLowerCase())
       );
     }
 
@@ -46,184 +163,206 @@ export function ModuloTerminosInformesV3() {
       });
     }
 
-    return resultado;
-  }, [busqueda, filtroSemaforo]);
+    if (filtroEtapa !== 'TODAS') {
+      resultado = resultado.filter(s => s.etapa === filtroEtapa);
+    }
 
-  const solicitudesCriticas = solicitudesInformesMock.filter(s => s.diasRestantes <= 2).length;
-  const solicitudesUrgentes = solicitudesInformesMock.filter(s => s.diasRestantes > 2 && s.diasRestantes <= 5).length;
-  const solicitudesEnTermino = solicitudesInformesMock.filter(s => s.diasRestantes > 5).length;
+    if (filtroModuloOrigen !== 'TODOS') {
+      resultado = resultado.filter(s => s.moduloOrigen === filtroModuloOrigen);
+    }
+
+    // Always sort by urgency (less days remaining first)
+    return resultado.sort((a, b) => a.diasRestantes - b.diasRestantes);
+  }, [solicitudes, busqueda, filtroSemaforo, solicitudes, filtroEtapa, filtroModuloOrigen]);
+
+  const solicitudesCriticas = solicitudesFiltradas.filter(s => s.diasRestantes <= 2).length;
+  const solicitudesUrgentes = solicitudesFiltradas.filter(s => s.diasRestantes > 2 && s.diasRestantes <= 5).length;
+  const solicitudesEnTermino = solicitudesFiltradas.filter(s => s.diasRestantes > 5).length;
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex-1">
-          <h2 className="font-black leading-tight" style={{ color: '#003DA5', fontSize: '1.5rem' }}>
-            Control de Términos e Informes
-          </h2>
-          <p className="text-sm text-gray-600 mt-0.5">
-            Seguimiento a solicitudes y plazos de entrega
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
-            <button
-              onClick={() => setVistaActual('timeline')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                vistaActual === 'timeline' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-              }`}
-              style={{ color: vistaActual === 'timeline' ? '#003DA5' : '#6B7280' }}
-            >
-              <TrendingUp className="w-4 h-4" />Timeline
-            </button>
-            <button
-              onClick={() => setVistaActual('calendario')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                vistaActual === 'calendario' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-              }`}
-              style={{ color: vistaActual === 'calendario' ? '#003DA5' : '#6B7280' }}
-            >
-              <CalendarDays className="w-4 h-4" />Calendario
-            </button>
-            <button
-              onClick={() => setVistaActual('lista')}
-              className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                vistaActual === 'lista' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-              }`}
-              style={{ color: vistaActual === 'lista' ? '#003DA5' : '#6B7280' }}
-            >
-              <List className="w-4 h-4" />Lista
-            </button>
-          </div>
-          <button className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-blue-400 transition-all" style={{ color: '#003DA5' }}>
-            <Plus className="w-4 h-4" />Nueva Solicitud
-          </button>
-        </div>
-      </div>
+      {/* Header con ModuleHeader */}
+      <ModuleHeader
+        title="Control de Términos e Informes"
+        subtitle="Seguimiento a solicitudes y plazos de entrega"
+        toggleView={{
+          current: vistaActual,
+          onChange: (view) => setVistaActual(view as VistaModulo),
+          options: [
+            { label: 'Timeline', icon: <TrendingUp className="w-4 h-4" />, value: 'timeline' },
+            { label: 'Calendario', icon: <CalendarDays className="w-4 h-4" />, value: 'calendario' },
+            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
+          ]
+        }}
+        buttons={[]}
+        infoTooltip={
+          <ModuleInfoTooltip
+            title="Guía de Términos e Informes"
+            variant="icon"
+            sections={[
+              {
+                label: "🔗 Procedencia del Flujo",
+                content: "Este módulo NO recibe casos, es un MÓDULO TRANSVERSAL que consolida TODOS los términos activos de todos los módulos: Defensa Judicial, Juzgamiento, Asesoría, Órganos de Control, etc.",
+                type: "info"
+              },
+              // ... existing tooltip content ...
+            ]}
+          />
+        }
+      />
 
       {/* Métricas */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-red-50 flex-shrink-0">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {solicitudesCriticas}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Críticas (≤2 días)</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-yellow-50 flex-shrink-0">
-              <Clock className="w-5 h-5 text-yellow-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {solicitudesUrgentes}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Urgentes (3-5 días)</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="bg-white border border-gray-200 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3 p-3">
-            <div className="p-2.5 rounded-lg bg-green-50 flex-shrink-0">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 leading-none" style={{ fontSize: '1.75rem' }}>
-                {solicitudesEnTermino}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">En Término (&gt;5 días)</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <ModuleMetrics
+        metrics={[
+          {
+            label: 'Críticas (≤2 días)',
+            value: solicitudesCriticas,
+            icon: <AlertTriangle className="w-5 h-5 text-red-600" />,
+            color: 'red'
+          },
+          {
+            label: 'Urgentes (3-5 días)',
+            value: solicitudesUrgentes,
+            icon: <Clock className="w-5 h-5 text-yellow-600" />,
+            color: 'yellow'
+          },
+          {
+            label: 'En Término (&gt;5 días)',
+            value: solicitudesEnTermino,
+            icon: <CheckCircle className="w-5 h-5 text-green-600" />,
+            color: 'green'
+          }
+        ]}
+      />
 
       {/* Filtros */}
-      <Card className="bg-white border border-gray-200">
-        <div className="p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-500" />
-            <h3 className="font-bold text-sm text-gray-900">Filtros de búsqueda</h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="md:col-span-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Buscar por ID, asunto, solicitante..."
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-
-            <div>
-              <select
-                value={filtroSemaforo}
-                onChange={(e) => setFiltroSemaforo(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="TODOS">Todos los estados</option>
-                <option value="ROJO">🔴 Críticas (≤2 días)</option>
-                <option value="AMARILLO">🟡 Urgentes (3-5 días)</option>
-                <option value="VERDE">🟢 En término (&gt;5 días)</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              Mostrando <span className="font-bold">{solicitudesFiltradas.length}</span> de <span className="font-bold">{solicitudesInformesMock.length}</span> solicitudes
-            </p>
-            {(busqueda || filtroSemaforo !== 'TODOS') && (
-              <Button
-                onClick={() => {
-                  setBusqueda('');
-                  setFiltroSemaforo('TODOS');
-                }}
-                variant="outline"
-                size="sm"
-                className="text-xs"
-              >
-                <XCircle className="w-3 h-3 mr-1" />
-                Limpiar filtros
-              </Button>
-            )}
-          </div>
-        </div>
-      </Card>
+      <ModuleFilters
+        searchValue={busqueda}
+        onSearchChange={setBusqueda}
+        searchPlaceholder="Buscar por ID, asunto, solicitante..."
+        filters={[
+          {
+            type: 'select',
+            value: filtroSemaforo,
+            onChange: setFiltroSemaforo,
+            options: [
+              { value: 'TODOS', label: 'Todos los estados' },
+              { value: 'ROJO', label: '🔴 Críticas (≤2 días)' },
+              { value: 'AMARILLO', label: '🟡 Urgentes (3-5 días)' },
+              { value: 'VERDE', label: '🟢 En término (>5 días)' }
+            ]
+          },
+          {
+            type: 'select',
+            value: filtroEtapa,
+            onChange: setFiltroEtapa,
+            options: [
+              { value: 'TODAS', label: 'Todas las etapas' },
+              { value: 'RECIBIDA', label: 'Recibida' },
+              { value: 'EN_PROCESO', label: 'En proceso' },
+              { value: 'FINALIZADA', label: 'Finalizada' }
+            ]
+          },
+          {
+            type: 'select',
+            value: filtroModuloOrigen,
+            onChange: setFiltroModuloOrigen,
+            options: [
+              { value: 'TODOS', label: 'Todos los módulos' },
+              { value: 'DEFENSA_JUDICIAL', label: 'Defensa Judicial' },
+              { value: 'JUZGAMIENTO', label: 'Juzgamiento' },
+              { value: 'ASESORIA', label: 'Asesoría' },
+              { value: 'ORGANOS_CONTROL', label: 'Órganos de Control' },
+              { value: 'PROCESOS_COACTIVOS', label: 'Procesos Coactivos' }
+            ]
+          }
+        ]}
+        totalItems={solicitudes.length}
+        filteredItems={solicitudesFiltradas.length}
+        onClearFilters={() => {
+          setBusqueda('');
+          setFiltroSemaforo('TODOS');
+          setFiltroEtapa('TODAS');
+          setFiltroModuloOrigen('TODOS');
+        }}
+        counterText={`Mostrando ${solicitudesFiltradas.length} de ${solicitudes.length} solicitudes`}
+      />
 
       {/* Contenido principal */}
-      {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} />}
-      {vistaActual === 'calendario' && <VistaCalendario solicitudes={solicitudesFiltradas} mesActual={mesActual} setMesActual={setMesActual} />}
-      {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} />}
+      {loading ? (
+        <div className="flex justify-center p-8">Cargando términos...</div>
+      ) : (
+        <>
+          {vistaActual === 'timeline' && (
+            <VistaTimeline
+              solicitudes={solicitudesFiltradas}
+              onVerDetalle={handleVerDetalle}
+              onVerDocumentos={handleOpenDocumentos}
+            />
+          )}
+          {vistaActual === 'calendario' && (
+            <VistaCalendario
+              solicitudes={solicitudesFiltradas}
+              mesActual={mesActual}
+              setMesActual={setMesActual}
+              onVerDetalle={handleVerDetalle}
+            />
+          )}
+          {vistaActual === 'lista' && (
+            <VistaLista
+              solicitudes={solicitudesFiltradas}
+              onVerDetalle={handleVerDetalle}
+              onVerDocumentos={handleOpenDocumentos}
+            />
+          )}
+        </>
+      )}
+
+      {/* ModalNuevoTermino removed */}
+
+      <ModalDetalleTermino
+        open={modalDetalleOpen}
+        onOpenChange={setModalDetalleOpen}
+        solicitud={selectedSolicitud}
+      />
+
+      {/* We can use this modal for specific calls if we lift state later */}
+      <ModalDocumentosTermino
+        open={modalDocsOpen}
+        onOpenChange={setModalDocsOpen}
+        terminoId={selectedSolicitud?.metadata?.uuid || null}
+        radicado={selectedSolicitud?.id}
+      />
+
+
+
+      {/* Modal Detalle Solicitud */}
+      <ModalDetalleSolicitudInforme
+        isOpen={modalDetalleOpen}
+        onClose={() => setModalDetalleOpen(false)}
+        solicitud={solicitudSeleccionada}
+        onCambiarEtapa={handleCambiarEtapa}
+        onAgregarComentario={handleAgregarComentario}
+      />
     </div>
   );
 }
 
 interface VistaTimelineProps {
   solicitudes: SolicitudInforme[];
+  onVerDetalle: (s: SolicitudInforme) => void;
+  onVerDocumentos: (s: SolicitudInforme) => void;
 }
 
-function VistaTimeline({ solicitudes }: VistaTimelineProps) {
+function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTimelineProps) {
   // Ordenar por fecha límite
-  const solicitudesOrdenadas = [...solicitudes].sort((a, b) => 
+  const solicitudesOrdenadas = [...solicitudes].sort((a, b) =>
     new Date(a.fechaLimite).getTime() - new Date(b.fechaLimite).getTime()
   );
 
   return (
-    <Card className="bg-white border border-gray-200 p-6">
+    <CardSIGL className="bg-white border border-gray-200 p-6">
+      {/* ... (keep header) ... */}
       <div className="mb-4">
         <h3 className="font-bold text-lg" style={{ color: '#003DA5' }}>
           Timeline de Vencimientos
@@ -275,38 +414,38 @@ function VistaTimeline({ solicitudes }: VistaTimelineProps) {
                       {solicitud.asunto || 'Sin asunto'}
                     </p>
                   </div>
-                  <Badge
+                  <BadgeSIGL
                     className="text-xs font-bold flex-shrink-0"
                     style={{ backgroundColor: semaforoColor, color: '#FFFFFF' }}
                   >
                     {diasRestantes} día{diasRestantes !== 1 ? 's' : ''}
-                  </Badge>
+                  </BadgeSIGL>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs mb-3">
                   <div>
-                    <span className="text-gray-600">Solicitante:</span>
-                    <p className="font-semibold text-gray-900">{solicitud.solicitante}</p>
+                    <span className="text-gray-600">Responsable:</span>
+                    <p className="font-semibold text-gray-900">{solicitud.responsable}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Fecha límite:</span>
                     <p className="font-semibold text-gray-900">
-                      {new Date(solicitud.fechaLimite).toLocaleDateString()}
+                      {new Date(solicitud.fechaVencimiento).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Button
-                    onClick={() => toast.success('Detalle Solicitud', { description: solicitud.id })}
+                  <ButtonSIGL
+                    onClick={() => onVerDetalle(solicitud)}
                     size="sm"
                     className="text-xs"
                     style={{ background: '#003DA5', color: '#FFFFFF' }}
                   >
                     <Eye className="w-3 h-3 mr-1" />
                     Ver Detalle
-                  </Button>
-                  <Button
+                  </ButtonSIGL>
+                  <ButtonSIGL
                     onClick={() => toast.info('Documentos', { description: solicitud.id })}
                     size="sm"
                     variant="outline"
@@ -314,14 +453,14 @@ function VistaTimeline({ solicitudes }: VistaTimelineProps) {
                   >
                     <FileText className="w-3 h-3 mr-1" />
                     Documentos
-                  </Button>
+                  </ButtonSIGL>
                 </div>
               </div>
             </motion.div>
           );
         })}
       </div>
-    </Card>
+    </CardSIGL>
   );
 }
 
@@ -329,9 +468,11 @@ interface VistaCalendarioProps {
   solicitudes: SolicitudInforme[];
   mesActual: Date;
   setMesActual: (date: Date) => void;
+  onVerDetalle: (solicitud: SolicitudInforme) => void;
 }
 
-function VistaCalendario({ solicitudes, mesActual, setMesActual }: VistaCalendarioProps) {
+function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }: VistaCalendarioProps) {
+  // ... (keep existing logic)
   const nombreMes = mesActual.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   const mesAnterior = () => {
@@ -353,18 +494,18 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual }: VistaCalendar
   }
 
   return (
-    <Card className="bg-white border border-gray-200 p-6">
+    <CardSIGL className="bg-white border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold text-lg capitalize" style={{ color: '#003DA5' }}>
           {nombreMes}
         </h3>
         <div className="flex items-center gap-2">
-          <Button onClick={mesAnterior} size="sm" variant="outline">
+          <ButtonSIGL onClick={mesAnterior} size="sm" variant="outline">
             <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <Button onClick={mesSiguiente} size="sm" variant="outline">
+          </ButtonSIGL>
+          <ButtonSIGL onClick={mesSiguiente} size="sm" variant="outline">
             <ChevronRight className="w-4 h-4" />
-          </Button>
+          </ButtonSIGL>
         </div>
       </div>
 
@@ -384,10 +525,10 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual }: VistaCalendar
         {dias.map(dia => {
           const fecha = new Date(mesActual.getFullYear(), mesActual.getMonth(), dia);
           const solicitudesDia = solicitudes.filter(s => {
-            const fechaLimite = new Date(s.fechaLimite);
-            return fechaLimite.getDate() === dia &&
-                   fechaLimite.getMonth() === mesActual.getMonth() &&
-                   fechaLimite.getFullYear() === mesActual.getFullYear();
+            const fechaVencimiento = new Date(s.fechaVencimiento);
+            return fechaVencimiento.getDate() === dia &&
+              fechaVencimiento.getMonth() === mesActual.getMonth() &&
+              fechaVencimiento.getFullYear() === mesActual.getFullYear();
           });
 
           const esHoy = new Date().toDateString() === fecha.toDateString();
@@ -395,13 +536,13 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual }: VistaCalendar
           return (
             <div
               key={dia}
-              className={`aspect-square border rounded-lg p-1 text-xs ${
-                esHoy ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-              } ${solicitudesDia.length > 0 ? 'bg-red-50' : ''}`}
+              className={`aspect-square border rounded-lg p-1 text-xs ${esHoy ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                } ${solicitudesDia.length > 0 ? 'bg-red-50' : ''}`}
+              onClick={() => solicitudesDia.length > 0 && onVerDetalle(solicitudesDia[0])}
             >
               <div className="font-semibold text-gray-700 mb-1">{dia}</div>
               {solicitudesDia.length > 0 && (
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 cursor-pointer">
                   {solicitudesDia.slice(0, 2).map(s => (
                     <div
                       key={s.id}
@@ -410,6 +551,7 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual }: VistaCalendar
                         backgroundColor: s.diasRestantes <= 2 ? '#DC2626' : s.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
                         color: '#FFFFFF'
                       }}
+                      onClick={() => onVerDetalle(s)}
                     >
                       {s.id}
                     </div>
@@ -425,24 +567,26 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual }: VistaCalendar
           );
         })}
       </div>
-    </Card>
+    </CardSIGL>
   );
 }
 
 interface VistaListaProps {
   solicitudes: SolicitudInforme[];
+  onVerDocumentos: (s: SolicitudInforme) => void;
+  onVerDetalle: (solicitud: SolicitudInforme) => void;
 }
 
-function VistaLista({ solicitudes }: VistaListaProps) {
+function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos }: VistaListaProps) {
   return (
-    <Card className="bg-white border border-gray-200">
+    <CardSIGL className="bg-white border border-gray-200">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">ID</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Asunto</th>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Solicitante</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Responsable</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Fecha Límite</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Días Restantes</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Estado</th>
@@ -459,27 +603,35 @@ function VistaLista({ solicitudes }: VistaListaProps) {
                   <td className="px-4 py-3 text-sm text-gray-700">
                     <div className="line-clamp-2">{solicitud.asunto || 'Sin asunto'}</div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{solicitud.solicitante}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{solicitud.responsable}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">
-                    {new Date(solicitud.fechaLimite).toLocaleDateString()}
+                    {new Date(solicitud.fechaVencimiento).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge
+                    <BadgeSIGL
                       className="text-xs font-bold"
                       style={{ backgroundColor: semaforoColor, color: '#FFFFFF' }}
                     >
                       {solicitud.diasRestantes} día{solicitud.diasRestantes !== 1 ? 's' : ''}
-                    </Badge>
+                    </BadgeSIGL>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{solicitud.etapa}</td>
                   <td className="px-4 py-3">
-                    <Button
-                      onClick={() => toast.success('Detalle Solicitud', { description: solicitud.id })}
+                    <ButtonSIGL
+                      onClick={() => onVerDetalle(solicitud)}
                       size="sm"
                       style={{ background: '#003DA5', color: '#FFFFFF' }}
                     >
                       <Eye className="w-3 h-3 mr-1" />
                       Ver
+                    </ButtonSIGL>
+                    <Button
+                      onClick={() => onVerDocumentos(solicitud)}
+                      size="sm"
+                      variant="outline"
+                      title="Ver Documentos"
+                    >
+                      <FileText className="w-3 h-3" />
                     </Button>
                   </td>
                 </tr>
@@ -488,6 +640,6 @@ function VistaLista({ solicitudes }: VistaListaProps) {
           </tbody>
         </table>
       </div>
-    </Card>
+    </CardSIGL>
   );
 }

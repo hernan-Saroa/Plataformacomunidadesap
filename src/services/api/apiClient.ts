@@ -75,15 +75,20 @@ export class ApiClient {
   /**
    * POST request
    */
+  /**
+   * POST request
+   */
   async post<T = any>(
     endpoint: string,
     data?: any,
     customConfig?: RequestConfig
   ): Promise<T> {
     const url = this.buildURL(endpoint);
+    const isFormData = data instanceof FormData;
+
     return this.request<T>(url, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: isFormData ? data : JSON.stringify(data),
       ...customConfig,
     });
   }
@@ -97,9 +102,11 @@ export class ApiClient {
     customConfig?: RequestConfig
   ): Promise<T> {
     const url = this.buildURL(endpoint);
+    const isFormData = data instanceof FormData;
+
     return this.request<T>(url, {
       method: 'PUT',
-      body: JSON.stringify(data),
+      body: isFormData ? data : JSON.stringify(data),
       ...customConfig,
     });
   }
@@ -113,9 +120,11 @@ export class ApiClient {
     customConfig?: RequestConfig
   ): Promise<T> {
     const url = this.buildURL(endpoint);
+    const isFormData = data instanceof FormData;
+
     return this.request<T>(url, {
       method: 'PATCH',
-      body: JSON.stringify(data),
+      body: isFormData ? data : JSON.stringify(data),
       ...customConfig,
     });
   }
@@ -261,9 +270,14 @@ export class ApiClient {
     skipAuth: boolean,
     skipErrorToast: boolean
   ): Promise<T> {
-    const headers = skipAuth 
-      ? { 'Content-Type': 'application/json; charset=utf-8' } 
+    const headers = skipAuth
+      ? { 'Content-Type': 'application/json; charset=utf-8' }
       : getDefaultHeaders(true);
+
+    // Si el body es FormData, quitamos el Content-Type para que el navegador lo ponga con el boundary
+    if (fetchConfig.body instanceof FormData) {
+      delete (headers as any)['Content-Type'];
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -323,9 +337,18 @@ export class ApiClient {
     let data: ApiResponse<T> | ApiError;
 
     try {
-      data = await response.json();
-    } catch (error) {
-      throw new Error('Error al parsear respuesta del servidor');
+      const text = await response.text();
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // If parsing fails, use text as error message or empty object
+        if (!response.ok) {
+          throw new Error(text || 'Error en la petición (sin detalles)');
+        }
+        data = {} as any; // For 200 OK with empty body
+      }
+    } catch (error: any) {
+      throw new Error(error.message || 'Error al leer respuesta del servidor');
     }
 
     // Success

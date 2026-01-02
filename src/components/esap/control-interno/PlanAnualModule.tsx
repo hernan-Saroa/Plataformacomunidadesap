@@ -36,6 +36,8 @@ import { Input } from '../../ui/input';
 import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
+import { planAnual5RolesApi } from './services/api';
+import { useEffect } from 'react';
 
 // ============ TIPOS ============
 
@@ -238,9 +240,114 @@ const PLANES_MOCK: PlanAnual[] = [
 
 export function PlanAnualModule() {
   const [vistaActiva, setVistaActiva] = useState<'lista' | 'crear' | 'detalle' | 'editar'>('lista');
-  const [planes, setPlanes] = useState<PlanAnual[]>(PLANES_MOCK);
+  const [planes, setPlanes] = useState<PlanAnual[]>([]);
+  const [loading, setLoading] = useState(true);
   const [planActual, setPlanActual] = useState<PlanAnual | null>(null);
   const [mostrarModalAprobacion, setMostrarModalAprobacion] = useState(false);
+
+  // Función para mapear PlanAnual5Roles (backend) a PlanAnual (frontend)
+  const mapearPlanAnualDesdeBD = (planBD: any): PlanAnual => {
+    // Mapear estado del backend al frontend
+    const mapearEstadoBD = (estadoBD: string): PlanAnual['estado'] => {
+      if (estadoBD === 'aprobado') return 'Aprobado';
+      if (estadoBD === 'en-ejecucion') return 'Vigente';
+      if (estadoBD === 'completado') return 'Cerrado';
+      return 'Borrador';
+    };
+
+    // Mapear actividades del backend al frontend
+    const mapearActividades = (actividadesBD: any[]): Actividad[] => {
+      return actividadesBD.map(act => ({
+        id: act.id,
+        nombre: act.nombre || '',
+        descripcion: act.descripcion || '',
+        responsableId: act.responsableId || act.responsable || '',
+        responsableNombre: act.responsable || '',
+        fechaInicio: act.fechaInicio || '',
+        fechaFin: act.fechaFin || '',
+        porcentaje: act.porcentajeAvance || 0,
+        estado: mapearEstadoActividadBD(act.estado || 'pendiente')
+      }));
+    };
+
+    // Mapear roles del backend al frontend
+    const rolesMapeados = planBD.roles?.map((rolBD: any, index: number) => {
+      const rolTemplate = ROLES_DECRETO_648[index] || ROLES_DECRETO_648[0];
+      return {
+        ...rolTemplate,
+        id: rolBD.id || rolTemplate.id,
+        actividades: mapearActividades(rolBD.actividades || [])
+      };
+    }) || ROLES_DECRETO_648.map(r => ({ ...r, actividades: [] }));
+
+    return {
+      id: planBD.id,
+      año: planBD.año || planBD.añoFiscal,
+      estado: mapearEstadoBD(planBD.estado || 'borrador'),
+      jefeOCI: {
+        id: planBD.responsableId || '',
+        nombre: planBD.responsable || '',
+        cargo: 'Jefe OCI'
+      },
+      roles: rolesMapeados,
+      fechaCreacion: planBD.fechaCreacion || planBD.fecha_creacion || new Date().toLocaleDateString(),
+      fechaAprobacion: planBD.estado === 'aprobado' ? planBD.fechaActualizacion : undefined,
+      version: 1
+    };
+  };
+
+  const mapearEstadoActividadBD = (estadoBD: string): Actividad['estado'] => {
+    if (estadoBD === 'completada') return 'Completada';
+    if (estadoBD === 'en-progreso') return 'En Ejecución';
+    if (estadoBD === 'retrasada') return 'Retrasada';
+    return 'Pendiente';
+  };
+
+  // Cargar planes desde la BD
+  useEffect(() => {
+    const cargarPlanes = async () => {
+      try {
+        setLoading(true);
+        console.log('[PlanAnual] Cargando planes desde BD...');
+        const añoActual = new Date().getFullYear();
+        
+        // Primero intentar cargar todos los planes
+        const allResponse = await planAnual5RolesApi.findAll();
+        console.log('[PlanAnual] Respuesta findAll:', allResponse);
+        
+        if (allResponse.success && allResponse.data && allResponse.data.length > 0) {
+          console.log('[PlanAnual] Planes encontrados:', allResponse.data.length);
+          const planesMapeados = allResponse.data.map(mapearPlanAnualDesdeBD);
+          setPlanes(planesMapeados);
+        } else {
+          // Si no hay planes, intentar buscar por año actual
+          const response = await planAnual5RolesApi.getByYear(añoActual);
+          console.log('[PlanAnual] Respuesta getByYear:', response);
+          
+          if (response.success && response.data) {
+            const planMapeado = mapearPlanAnualDesdeBD(response.data);
+            setPlanes([planMapeado]);
+          } else {
+            console.log('[PlanAnual] No se encontraron planes en la BD');
+            setPlanes([]);
+            toast.info('No hay planes anuales en la base de datos', {
+              description: 'Puedes crear un nuevo plan desde el botón "Crear Plan Anual"'
+            });
+          }
+        }
+      } catch (error) {
+        console.error('[PlanAnual] Error al cargar planes:', error);
+        toast.error('Error al cargar planes anuales', {
+          description: error instanceof Error ? error.message : 'No se pudieron obtener los datos desde el servidor'
+        });
+        setPlanes([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarPlanes();
+  }, []);
 
   const handleCrearNuevo = () => {
     setVistaActiva('crear');
@@ -262,21 +369,110 @@ export function PlanAnualModule() {
     setPlanActual(null);
   };
 
-  const handleGuardarPlan = (plan: PlanAnual) => {
-    setPlanes(prev => [...prev, plan]);
-    toast.success('Plan Anual creado exitosamente', {
-      description: `Plan ${plan.año} guardado como borrador`
-    });
-    setVistaActiva('lista');
+  const handleGuardarPlan = async (plan: PlanAnual) => {
+    try {
+      // Mapear PlanAnual (frontend) a formato del backend
+      const planData = {
+        año: plan.año,
+        responsable: plan.jefeOCI.nombre,
+        estado: (plan.estado === 'Borrador' ? 'borrador' : plan.estado === 'En Revisión' ? 'borrador' : 'aprobado') as 'borrador' | 'aprobado' | 'en-ejecucion' | 'completado'
+      };
+
+      let response;
+      if (plan.id && plan.id.startsWith('plan-')) {
+        // Es un plan nuevo, crear
+        response = await planAnual5RolesApi.create(planData);
+      } else {
+        // Es un plan existente, actualizar
+        response = await planAnual5RolesApi.update(plan.id, planData);
+      }
+
+      if (response.success && response.data) {
+        // Guardar actividades para cada rol
+        for (let i = 0; i < plan.roles.length; i++) {
+          const rol = plan.roles[i];
+          const rolBD = response.data.roles?.[i];
+          
+          if (rolBD && rol.actividades.length > 0) {
+            for (const actividad of rol.actividades) {
+              if (!actividad.id || actividad.id.startsWith('act-')) {
+                // Nueva actividad
+                await planAnual5RolesApi.addActividad(response.data.id, {
+                  rolId: rolBD.id,
+                  nombre: actividad.nombre,
+                  descripcion: actividad.descripcion,
+                  responsable: actividad.responsableNombre,
+                  fechaInicio: actividad.fechaInicio,
+                  fechaFin: actividad.fechaFin,
+                  estado: actividad.estado === 'Pendiente' ? 'pendiente' : 
+                          actividad.estado === 'En Ejecución' ? 'en-progreso' :
+                          actividad.estado === 'Completada' ? 'completada' : 'retrasada',
+                  porcentajeAvance: actividad.porcentaje
+                } as any);
+              }
+            }
+          }
+        }
+
+        // Recargar planes
+        const reloadResponse = await planAnual5RolesApi.findAll();
+        if (reloadResponse.success && reloadResponse.data) {
+          const planesMapeados = reloadResponse.data.map(mapearPlanAnualDesdeBD);
+          setPlanes(planesMapeados);
+        }
+
+        toast.success('Plan Anual guardado exitosamente', {
+          description: `Plan ${plan.año} guardado correctamente`
+        });
+        setVistaActiva('lista');
+      } else {
+        throw new Error(response.error || 'Error al guardar el plan');
+      }
+    } catch (error: any) {
+      console.error('Error al guardar plan:', error);
+      toast.error('Error al guardar plan', {
+        description: error.message || 'No se pudo guardar el plan en el servidor'
+      });
+    }
   };
 
-  const handleActualizarPlan = (planActualizado: PlanAnual) => {
-    setPlanes(prev => prev.map(p => p.id === planActualizado.id ? planActualizado : p));
-    toast.success('Plan Anual actualizado', {
-      description: `Los cambios se han guardado correctamente`
-    });
-    setVistaActiva('detalle');
-    setPlanActual(planActualizado);
+  const handleActualizarPlan = async (planActualizado: PlanAnual) => {
+    try {
+      const planData = {
+        año: planActualizado.año,
+        responsable: planActualizado.jefeOCI.nombre,
+        estado: (planActualizado.estado === 'Borrador' ? 'borrador' : 
+                planActualizado.estado === 'Aprobado' ? 'aprobado' :
+                planActualizado.estado === 'Vigente' ? 'en-ejecucion' : 'completado') as 'borrador' | 'aprobado' | 'en-ejecucion' | 'completado'
+      };
+
+      const response = await planAnual5RolesApi.update(planActualizado.id, planData);
+
+      if (response.success) {
+        // Recargar planes
+        const reloadResponse = await planAnual5RolesApi.findAll();
+        if (reloadResponse.success && reloadResponse.data) {
+          const planesMapeados = reloadResponse.data.map(mapearPlanAnualDesdeBD);
+          setPlanes(planesMapeados);
+          const planActualizadoBD = planesMapeados.find(p => p.id === planActualizado.id);
+          if (planActualizadoBD) {
+            setPlanActual(planActualizadoBD);
+          }
+        }
+
+        toast.success('Plan Anual actualizado', {
+          description: `Los cambios se han guardado correctamente`
+        });
+        setVistaActiva('detalle');
+      } else {
+        throw new Error(response.error || 'Error al actualizar el plan');
+      }
+    } catch (error: any) {
+      console.error('Error al actualizar plan:', error);
+      toast.error('Error al actualizar plan', {
+        description: error.message || 'No se pudo actualizar el plan en el servidor'
+      });
+    }
   };
 
   const handleAprobar = (plan: PlanAnual) => {
@@ -284,22 +480,39 @@ export function PlanAnualModule() {
     setMostrarModalAprobacion(true);
   };
 
-  const handleConfirmarAprobacion = () => {
+  const handleConfirmarAprobacion = async () => {
     if (!planActual) return;
 
-    const planAprobado: PlanAnual = {
-      ...planActual,
-      estado: 'Aprobado',
-      fechaAprobacion: new Date().toLocaleDateString()
-    };
+    try {
+      const response = await planAnual5RolesApi.update(planActual.id, {
+        estado: 'aprobado'
+      } as any);
 
-    setPlanes(prev => prev.map(p => p.id === planAprobado.id ? planAprobado : p));
-    setPlanActual(planAprobado);
-    setMostrarModalAprobacion(false);
+      if (response.success) {
+        // Recargar planes
+        const reloadResponse = await planAnual5RolesApi.findAll();
+        if (reloadResponse.success && reloadResponse.data) {
+          const planesMapeados = reloadResponse.data.map(mapearPlanAnualDesdeBD);
+          setPlanes(planesMapeados);
+          const planAprobadoBD = planesMapeados.find(p => p.id === planActual.id);
+          if (planAprobadoBD) {
+            setPlanActual(planAprobadoBD);
+          }
+        }
 
-    toast.success('Plan Anual Aprobado', {
-      description: `El Plan ${planAprobado.año} ha sido aprobado exitosamente`
-    });
+        setMostrarModalAprobacion(false);
+        toast.success('Plan Anual Aprobado', {
+          description: `El Plan ${planActual.año} ha sido aprobado exitosamente`
+        });
+      } else {
+        throw new Error(response.error || 'Error al aprobar el plan');
+      }
+    } catch (error: any) {
+      console.error('Error al aprobar plan:', error);
+      toast.error('Error al aprobar plan', {
+        description: error.message || 'No se pudo aprobar el plan en el servidor'
+      });
+    }
   };
 
   const handleExportarPDF = (plan: PlanAnual) => {
@@ -317,6 +530,14 @@ export function PlanAnualModule() {
 
   return (
     <div className="space-y-4">
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-sm text-gray-600">Cargando planes anuales...</p>
+          </div>
+        </div>
+      ) : (
       <AnimatePresence mode="wait">
         {vistaActiva === 'lista' && (
           <motion.div
@@ -386,6 +607,7 @@ export function PlanAnualModule() {
           </motion.div>
         )}
       </AnimatePresence>
+      )}
 
       {/* MODAL DE APROBACIÓN */}
       {mostrarModalAprobacion && planActual && (
@@ -564,7 +786,14 @@ interface CrearPlanAnualProps {
 function CrearPlanAnual({ onVolver, onGuardar, planExistente }: CrearPlanAnualProps) {
   const [paso, setPaso] = useState(1);
   const [año, setAño] = useState(planExistente ? planExistente.año : new Date().getFullYear() + 1);
-  const [jefeOCI, setJefeOCI] = useState<Usuario | null>(planExistente ? planExistente.jefeOCI : null);
+  const [jefeOCI, setJefeOCI] = useState<Usuario | null>(
+    planExistente && planExistente.jefeOCI 
+      ? {
+          ...planExistente.jefeOCI,
+          iniciales: planExistente.jefeOCI.nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+        }
+      : null
+  );
   const [roles, setRoles] = useState<RolDecreto[]>(
     ROLES_DECRETO_648.map(r => ({ ...r, actividades: planExistente ? planExistente.roles.find(p => p.id === r.id)?.actividades || [] : [] }))
   );
@@ -722,44 +951,52 @@ function CrearPlanAnual({ onVolver, onGuardar, planExistente }: CrearPlanAnualPr
     });
   };
 
-  const handleGuardarBorrador = () => {
-    const nuevoPlan: PlanAnual = {
-      id: `plan-${Date.now()}`,
-      año,
-      estado: 'Borrador',
-      jefeOCI: {
-        id: jefeOCI!.id,
-        nombre: jefeOCI!.nombre,
-        cargo: jefeOCI!.cargo
-      },
-      roles,
-      fechaCreacion: new Date().toLocaleDateString(),
-      version: 1
-    };
+  const handleGuardarBorrador = async () => {
+    try {
+      const nuevoPlan: PlanAnual = {
+        id: planExistente?.id || `plan-${Date.now()}`,
+        año,
+        estado: 'Borrador',
+        jefeOCI: {
+          id: jefeOCI!.id,
+          nombre: jefeOCI!.nombre,
+          cargo: jefeOCI!.cargo
+        },
+        roles,
+        fechaCreacion: new Date().toLocaleDateString(),
+        version: 1
+      };
 
-    onGuardar(nuevoPlan);
+      await onGuardar(nuevoPlan);
+    } catch (error) {
+      console.error('Error al guardar borrador:', error);
+    }
   };
 
-  const handleEnviarRevision = () => {
-    const nuevoPlan: PlanAnual = {
-      id: `plan-${Date.now()}`,
-      año,
-      estado: 'En Revisión',
-      jefeOCI: {
-        id: jefeOCI!.id,
-        nombre: jefeOCI!.nombre,
-        cargo: jefeOCI!.cargo
-      },
-      roles,
-      fechaCreacion: new Date().toLocaleDateString(),
-      version: 1
-    };
+  const handleEnviarRevision = async () => {
+    try {
+      const nuevoPlan: PlanAnual = {
+        id: planExistente?.id || `plan-${Date.now()}`,
+        año,
+        estado: 'En Revisión',
+        jefeOCI: {
+          id: jefeOCI!.id,
+          nombre: jefeOCI!.nombre,
+          cargo: jefeOCI!.cargo
+        },
+        roles,
+        fechaCreacion: new Date().toLocaleDateString(),
+        version: 1
+      };
 
-    toast.success('Plan enviado a revisión', {
-      description: 'El Jefe OCI recibirá una notificación para aprobar el plan'
-    });
+      toast.success('Plan enviado a revisión', {
+        description: 'El Jefe OCI recibirá una notificación para aprobar el plan'
+      });
 
-    onGuardar(nuevoPlan);
+      await onGuardar(nuevoPlan);
+    } catch (error) {
+      console.error('Error al enviar a revisión:', error);
+    }
   };
 
   const progreso = (paso / TOTAL_PASOS) * 100;

@@ -1,5 +1,4 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
   Download, 
   Share2, 
@@ -10,11 +9,25 @@ import {
   Award,
   Copy,
   Mail,
-  MessageSquare
+  MessageSquare,
+  X,
+  Shield,
+  Hash,
+  Building2,
+  ShieldCheck,
+  Lock,
+  FileCheck,
+  Loader2,
+  ArrowUp
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { VerificationCertificate } from '../../types';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '@/utils/browser';
+import { Button } from '../ui/button';
+import { Card } from '../ui/card';
+import esapLogo from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import graduadosService from '../../services/api/graduados.service';
 
 interface VerificationCertificateDisplayProps {
   certificate: VerificationCertificate;
@@ -27,6 +40,36 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+
+  const formatDateOnly = (value?: string) => {
+    if (!value) {
+      return '';
+    }
+
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      const parsed = new Date(year, month, day, 12, 0, 0);
+      return parsed.toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+
+    return parsed.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
 
   // Scroll to top when certificate is displayed
   useEffect(() => {
@@ -81,66 +124,65 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   };
 
   const handleDownload = async () => {
-    /**
-     * FUNCIONALIDAD DE DESCARGA DE CERTIFICADO PDF
-     * ============================================
-     * En producción, este botón generaría un PDF real con:
-     * - Logo de ESAP
-     * - Datos completos del graduado y certificado
-     * - Código QR embebido
-     * - Firma digital certificada por ONAC (con metadatos PAdES)
-     * - Diseño profesional con marca de agua de seguridad
-     * 
-     * Librerías sugeridas para producción:
-     * - jsPDF + html2canvas (para capturar el diseño visual)
-     * - pdfmake (para construcción programática del PDF)
-     * - PDF-LIB (para firma digital y metadatos avanzados)
-     * 
-     * Proceso de generación en producción:
-     * 1. Capturar el contenido visual del certificado
-     * 2. Generar PDF con diseño profesional
-     * 3. Agregar firma digital certificada (ONAC)
-     * 4. Agregar metadatos de seguridad (PAdES)
-     * 5. Enviar por email al solicitante
-     * 6. Guardar registro en base de datos
-     */
-    
     setIsDownloading(true);
-    
-    // Simular proceso de generación de PDF (2 segundos)
-    toast.loading('Generando certificado PDF con firma digital...', { id: 'pdf-generation' });
-    
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Simulación de descarga exitosa
-    toast.success('¡Certificado descargado exitosamente!', { 
-      id: 'pdf-generation',
-      description: `Archivo: Certificado_${certificate.graduate.fullName.replace(/\s+/g, '_')}.pdf`
-    });
-    
-    // Notificación de envío por email
-    toast.info('📧 El certificado ha sido enviado a tu correo electrónico', {
-      description: `Enviado a: ${certificate.requester.email}`,
-      duration: 5000
-    });
-    
-    // Simulación de descarga del archivo
-    // En producción, aquí se descargaría el PDF real
-    const pdfUrl = `data:application/pdf;base64,JVBERi0xLjcKCjEgMCBvYmo...`; // Mock base64
-    const link = document.createElement('a');
-    link.href = pdfUrl;
-    link.download = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
-    // link.click(); // Descomentar en producción
-    
-    setIsDownloading(false);
-    
-    // Analytics o tracking (opcional)
-    console.log('📊 Certificado descargado:', {
-      certificateNumber: certificate.certificateNumber,
-      graduateName: certificate.graduate.fullName,
-      requesterEmail: certificate.requester.email,
-      timestamp: new Date().toISOString()
-    });
+    toast.loading('Generando certificado PDF...', { id: 'pdf-generation' });
+
+    try {
+      if (certificate?.id) {
+        try {
+          await graduadosService.descargas.registrar(certificate.id);
+        } catch (error) {
+          console.warn('No se pudo registrar la descarga:', error);
+        }
+      }
+
+      // 🔥 LLAMADA REAL AL BACKEND - Descargar PDF del certificado
+      const response = await fetch(
+        `http://localhost:3002/academic-registration/api/v1/certificates/${certificate.id}/pdf`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/pdf',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Error al descargar el certificado');
+      }
+
+      // Convertir la respuesta a blob
+      const blob = await response.blob();
+
+      // Crear URL del blob y descargar
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('¡Certificado descargado exitosamente!', {
+        id: 'pdf-generation',
+        description: `Archivo: Certificado_${certificate.graduate.fullName.replace(/\s+/g, '_')}.pdf`
+      });
+
+      // Notificación de envío por email
+      toast.info('📧 El certificado también fue enviado a tu correo electrónico', {
+        description: `Enviado a: ${certificate.requester.email}`,
+        duration: 5000
+      });
+    } catch (error: any) {
+      console.error('Error al descargar certificado:', error);
+      toast.error('Error al descargar certificado', {
+        id: 'pdf-generation',
+        description: error.message || 'Por favor intenta de nuevo'
+      });
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handleShare = async () => {
@@ -244,7 +286,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   return (
     <div 
       ref={containerRef}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 overflow-y-auto cursor-pointer"
+      className="fixed inset-0 bg-transparent backdrop-blur-md z-50 overflow-y-auto cursor-pointer"
       onClick={handleBackdropClick}
     >
       <div className="min-h-screen flex items-start justify-center px-4 pt-12 pb-8 cursor-auto" onClick={(e) => e.stopPropagation()}>
@@ -372,11 +414,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                         <p className="text-xs text-gray-600 uppercase tracking-wider">Fecha de Grado</p>
                       </div>
                       <p className="text-lg font-bold text-gray-900">
-                        {new Date(certificate.graduate.graduationDate).toLocaleDateString('es-CO', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
+                        {formatDateOnly(certificate.graduate.graduationDate)}
                       </p>
                     </div>
 
@@ -489,14 +527,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                         <div className="flex-1">
                           <p className="text-xs text-gray-600 uppercase tracking-wider mb-1">Fecha de Emisión</p>
                           <p className="font-semibold text-gray-900">
-                            {new Date(certificate.generatedAt).toLocaleDateString('es-CO', {
-                              weekday: 'long',
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
+                            {formatDateOnly(certificate.generatedAt)}
                           </p>
                         </div>
                       </div>

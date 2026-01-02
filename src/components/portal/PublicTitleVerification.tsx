@@ -11,6 +11,7 @@ import { VerificationCertificate } from '../../types';
 import { PublicNavbar } from './PublicNavbar';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { simularEnvioCorreo } from '../../utils/emailTemplates';
+import graduadosService from '../../services/api/graduados.service';
 
 interface PublicTitleVerificationProps {
   onBack: () => void;
@@ -19,35 +20,55 @@ interface PublicTitleVerificationProps {
 
 /**
  * LÓGICA DE NEGOCIO - VERIFICACIÓN DE TÍTULOS ESAP
- * 
+ *
  * Regla fundamental:
  * - TODOS los registros en la base de datos son graduados (Pregrado, Especialización o Maestría)
  * - NO existe el caso de una persona en BD que NO esté graduada
- * 
+ *
  * Flujos:
  * 1. Si el graduado ESTÁ en la BD → Certificado generado INSTANTÁNEAMENTE
  * 2. Si el graduado NO está en la BD → Solicitud de revisión manual (48-72 horas)
- * 
+ *
  * En el flujo 2, el equipo administrativo revisa registros históricos y:
  * - Si encuentra al graduado → Lo agrega a BD y genera certificado
  * - Si NO lo encuentra → Informa al solicitante que no es graduado ESAP
  */
 
-// Base de datos completa de graduados ESAP (Mock data)
-const ESAP_GRADUATES_DATABASE = [
-  { documentNumber: '1012345678', documentIssueDate: '2002-03-15', fullName: 'María Alejandra González Pérez', titleType: 'Pregrado', programName: 'Administración Pública', diplomaNumber: 'ESAP-2023-001234', graduationDate: '2023-06-15', honors: 'Cum Laude', gpa: 4.5 },
-  { documentNumber: '1023456789', documentIssueDate: '2004-07-22', fullName: 'Carlos Eduardo Ramírez Moreno', titleType: 'Pregrado', programName: 'Ciencia Política', diplomaNumber: 'ESAP-2022-005678', graduationDate: '2022-12-10', honors: 'Magna Cum Laude', gpa: 4.7 },
-  { documentNumber: '1034567890', documentIssueDate: '2006-01-10', fullName: 'Ana María Rodríguez Silva', titleType: 'Especialización', programName: 'Gestión Pública', diplomaNumber: 'ESAP-2024-002341', graduationDate: '2024-08-20', honors: 'Summa Cum Laude', gpa: 4.9 },
-  { documentNumber: '1045678901', documentIssueDate: '2003-11-05', fullName: 'Juan Pablo Martínez López', titleType: 'Maestría', programName: 'Gobierno y Políticas Públicas', diplomaNumber: 'ESAP-2023-009876', graduationDate: '2023-11-30', honors: 'Cum Laude', gpa: 4.6 },
-  { documentNumber: '1056789012', documentIssueDate: '2007-09-18', fullName: 'Laura Sofía Hernández Gómez', titleType: 'Pregrado', programName: 'Administración Pública', diplomaNumber: 'ESAP-2021-003456', graduationDate: '2021-06-25', honors: '', gpa: 4.2 },
-  { documentNumber: '1067890123', documentIssueDate: '2005-02-28', fullName: 'Diego Alejandro Vargas Castro', titleType: 'Especialización', programName: 'Gerencia Social', diplomaNumber: 'ESAP-2024-007890', graduationDate: '2024-05-15', honors: 'Magna Cum Laude', gpa: 4.8 },
-  { documentNumber: '1078901234', documentIssueDate: '2006-06-12', fullName: 'Valentina Andrea Ruiz Sánchez', titleType: 'Pregrado', programName: 'Ciencia Política', diplomaNumber: 'ESAP-2022-004567', graduationDate: '2022-11-20', honors: 'Cum Laude', gpa: 4.4 },
-  { documentNumber: '1089012345', documentIssueDate: '2004-04-08', fullName: 'Andrés Felipe Torres Mendoza', titleType: 'Maestría', programName: 'Administración y Planificación del Desarrollo Regional', diplomaNumber: 'ESAP-2023-008765', graduationDate: '2023-09-10', honors: 'Summa Cum Laude', gpa: 4.9 },
-  { documentNumber: '1090123456', documentIssueDate: '2007-12-03', fullName: 'Carolina Isabel Mejía Osorio', titleType: 'Pregrado', programName: 'Administración Pública', diplomaNumber: 'ESAP-2020-002345', graduationDate: '2020-12-15', honors: '', gpa: 4.1 },
-  { documentNumber: '1101234567', documentIssueDate: '2005-08-20', fullName: 'Santiago José Parra Quintero', titleType: 'Especialización', programName: 'Alta Gerencia', diplomaNumber: 'ESAP-2024-006789', graduationDate: '2024-07-30', honors: 'Cum Laude', gpa: 4.5 },
-];
-
 export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVerificationProps) {
+  const formatDateOnly = (value: string) => {
+    if (!value) {
+      return '';
+    }
+
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      const parsed = new Date(year, month, day, 12, 0, 0);
+      return parsed.toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    }
+
+    if (value.includes('/')) {
+      const [dayRaw, monthRaw, yearRaw] = value.split('/').map((segment) => segment.trim());
+      const day = Number(dayRaw);
+      const month = Number(monthRaw) - 1;
+      const year = Number(yearRaw);
+      const parsed = new Date(year, month, day, 12, 0, 0);
+      return parsed.toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    }
+
+    return value;
+  };
+
   // Form states
   const [graduateDocumentNumber, setGraduateDocumentNumber] = useState('');
   const [graduateDocumentIssueDate, setGraduateDocumentIssueDate] = useState('');
@@ -88,93 +109,122 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     }
 
     setIsGenerating(true);
-    
-    // Simular búsqueda del graduado en la base de datos
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    setReviewRequestCreated(false);
 
-    // Buscar graduado en la base de datos
-    const foundGraduate = ESAP_GRADUATES_DATABASE.find(
-      grad => grad.documentNumber === graduateDocumentNumber && grad.documentIssueDate === graduateDocumentIssueDate
-    );
-
-    if (!foundGraduate) {
-      // Graduado NO encontrado - Crear solicitud de revisión manual
-      // LÓGICA DE NEGOCIO: Todos en la BD están graduados (Pregrado/Especialización/Maestría)
-      // Si NO está en BD → Solicitud de revisión manual (48-72h)
-      setIsGenerating(false);
-      setReviewRequestCreated(true);
-      
-      toast.info('Solicitud de revisión creada', {
-        description: 'No se encontró el graduado en nuestra base de datos. Se ha generado una solicitud de revisión manual (48-72 horas).'
+    try {
+      const respuesta = await graduadosService.autoservicio.solicitarCertificado({
+        idNumber: graduateDocumentNumber,
+        idIssueDate: graduateDocumentIssueDate,
+        requesterType: requesterType === 'graduado' ? 'GRADUATE' : 'COMPANY',
+        requesterName,
+        requesterEmail,
       });
+      console.log('Respuesta solicitarCertificado:', respuesta);
 
-      // Enviar correo de confirmación de solicitud de revisión
-      const numeroSolicitud = 'REV-2025-' + Math.floor(1000 + Math.random() * 9000);
-      simularEnvioCorreo('verificacion-titulo-revision', {
+      if (!respuesta) {
+        setIsGenerating(false);
+        toast.error('No se recibió respuesta del servicio');
+        return;
+      }
+
+      if (respuesta.existe && !respuesta.certificado) {
+        setIsGenerating(false);
+        toast.error('Respuesta incompleta del servicio', {
+          description: 'El graduado existe, pero no llegó el certificado.',
+        });
+        return;
+      }
+
+      if (!respuesta.existe || !respuesta.certificado) {
+        // Graduado NO encontrado - Crear solicitud de revision manual
+        // LOGICA DE NEGOCIO: Todos en la BD estan graduados (Pregrado/Especializacion/Maestria)
+        // Si NO esta en BD -> Solicitud de revision manual (48-72h)
+        setIsGenerating(false);
+        setReviewRequestCreated(true);
+
+        toast.info('Solicitud de revision creada', {
+          description: respuesta?.mensaje || 'No se encontro el graduado en nuestra base de datos. Se ha generado una solicitud de revision manual (48-72 horas).'
+        });
+
+        // Enviar correo de confirmacion de solicitud de revision
+        const numeroSolicitud = 'REV-2025-' + Math.floor(1000 + Math.random() * 9000);
+        simularEnvioCorreo('verificacion-titulo-revision', {
+          nombreCompleto: requesterName,
+          correoDestino: requesterEmail,
+          consecutivoCertificado: numeroSolicitud,
+          datosAdicionales: {
+            nombreGraduado: 'Datos proporcionados',
+            documentoGraduado: graduateDocumentNumber
+          }
+        });
+
+        return;
+      }
+
+      const certificado = respuesta.certificado;
+
+      const certificate: VerificationCertificate = {
+        id: certificado.id,
+        certificateNumber: certificado.certificateNumber,
+        qrCode: certificado.verificationCode,
+        qrUrl: `${window.location.origin}/verificar-certificado/${certificado.verificationCode}`,
+
+        graduate: {
+          documentNumber: certificado.idNumber,
+          documentIssueDate: graduateDocumentIssueDate,
+          fullName: certificado.fullName,
+          titleType: certificado.programType,
+          programName: certificado.programName,
+          diplomaNumber: certificado.diplomaNumber || '',
+          graduationDate: certificado.graduationDate,
+        },
+
+        requester: {
+          name: requesterName,
+          email: requesterEmail,
+          type: requesterType,
+        },
+
+        status:
+          certificado.status === 'VALID'
+            ? 'active'
+            : certificado.status === 'REVOKED'
+              ? 'revoked'
+              : 'expired',
+        generatedAt: certificado.issueDate || new Date().toISOString(),
+        viewCount: 0,
+        qrScanCount: 0,
+        scanHistory: [],
+        certificatePdfUrl: certificado.pdfUrl,
+
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      setGeneratedCertificate(certificate);
+      setIsGenerating(false);
+      toast.success(respuesta.mensaje || 'Certificado generado exitosamente');
+
+      // Enviar correo con el certificado generado
+      simularEnvioCorreo('verificacion-titulo-generado', {
         nombreCompleto: requesterName,
         correoDestino: requesterEmail,
-        consecutivoCertificado: numeroSolicitud,
+        consecutivoCertificado: certificate.certificateNumber,
+        urlValidacion: certificate.qrUrl,
         datosAdicionales: {
-          nombreGraduado: 'Datos proporcionados',
-          documentoGraduado: graduateDocumentNumber
+          nombreGraduado: certificado.fullName,
+          programa: certificado.programName,
+          tipoTitulo: certificado.programType,
+          fechaGraduacion: new Date(certificado.graduationDate).toLocaleDateString('es-CO')
         }
       });
-
-      return;
+    } catch (error: any) {
+      setIsGenerating(false);
+      console.error('Error al verificar graduado:', error);
+      toast.error('Error al verificar graduado', {
+        description: error.response?.data?.message || error.message || 'Por favor intenta de nuevo'
+      });
     }
-
-    // Graduado encontrado - Generar certificado con datos reales
-    const certificate: VerificationCertificate = {
-      id: 'CERT-' + Date.now(),
-      certificateNumber: 'ESAP-CERT-2025-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-      qrCode: 'QR-' + Math.random().toString(36).substr(2, 16).toUpperCase(),
-      qrUrl: `${window.location.origin}/verificar/${Math.random().toString(36).substr(2, 16)}`,
-      
-      graduate: {
-        documentNumber: foundGraduate.documentNumber,
-        documentIssueDate: foundGraduate.documentIssueDate,
-        fullName: foundGraduate.fullName,
-        titleType: foundGraduate.titleType,
-        programName: foundGraduate.programName,
-        diplomaNumber: foundGraduate.diplomaNumber,
-        graduationDate: foundGraduate.graduationDate,
-        honors: foundGraduate.honors,
-        gpa: foundGraduate.gpa,
-      },
-      
-      requester: {
-        name: requesterName,
-        email: requesterEmail,
-        type: requesterType,
-      },
-      
-      status: 'active',
-      generatedAt: new Date().toISOString(),
-      viewCount: 0,
-      qrScanCount: 0,
-      scanHistory: [],
-      
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    setGeneratedCertificate(certificate);
-    setIsGenerating(false);
-    toast.success('Certificado generado exitosamente');
-
-    // Enviar correo con el certificado generado
-    simularEnvioCorreo('verificacion-titulo-generado', {
-      nombreCompleto: requesterName,
-      correoDestino: requesterEmail,
-      consecutivoCertificado: certificate.certificateNumber,
-      urlValidacion: certificate.qrUrl,
-      datosAdicionales: {
-        nombreGraduado: foundGraduate.fullName,
-        programa: foundGraduate.programName,
-        tipoTitulo: foundGraduate.titleType,
-        fechaGraduacion: new Date(foundGraduate.graduationDate).toLocaleDateString('es-CO')
-      }
-    });
   };
 
   const handleReset = () => {
@@ -273,7 +323,9 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                     </div>
                     <div className="space-y-1">
                       <p className="text-sm text-gray-600 font-medium">Fecha de Expedición</p>
-                      <p className="font-bold text-lg text-gray-900">{new Date(graduateDocumentIssueDate).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                      <p className="font-bold text-lg text-gray-900">
+                        {formatDateOnly(graduateDocumentIssueDate)}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-sm text-gray-600 font-medium">Solicitante</p>
@@ -744,12 +796,12 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                       </div>
                       <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-emerald-300">
                         <p className="text-sm font-semibold text-gray-600 mb-2">Fecha de Expedición</p>
-                        <p className="font-bold text-lg text-gray-900">2002-03-15</p>
+                        <p className="font-bold text-lg text-gray-900">2010-05-15</p>
                       </div>
                     </div>
                     <p className="text-sm text-emerald-700 flex items-center gap-2">
                       <CheckCircle className="w-4 h-4" />
-                      María Alejandra González Pérez - Pregrado en Administración Pública
+                      MARÍA FERNANDA RODRÍGUEZ GÓMEZ - Pregrado en Administración Pública Territorial
                     </p>
                   </div>
 

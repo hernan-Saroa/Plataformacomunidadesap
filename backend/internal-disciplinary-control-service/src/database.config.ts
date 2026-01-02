@@ -2,22 +2,33 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
-// Cargar explícitamente el archivo .env
-// Usar process.cwd() es más seguro para encontrar el .env en la raíz del proyecto
-// tanto en desarrollo (src) como en producción (dist)
-const envPath = path.resolve(process.cwd(), '.env');
-const result = dotenv.config({ path: envPath });
+// Load .env from cwd or from the service folder.
+const envPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '..', '.env'),
+];
+let result: dotenv.DotenvConfigOutput | null = null;
+let loadedPath: string | null = null;
 
-if (result.error) {
-  console.error('Error loading .env file from:', envPath, result.error);
-} else {
-  console.log('Successfully loaded .env file from:', envPath);
+for (const candidate of envPaths) {
+  const attempt = dotenv.config({ path: candidate });
+  if (!attempt.error) {
+    result = attempt;
+    loadedPath = candidate;
+    break;
+  }
+  result = attempt;
+}
+
+if (result?.error) {
+  console.error('Error loading .env file from:', envPaths, result.error);
+} else if (loadedPath) {
+  console.log('Successfully loaded .env file from:', loadedPath);
   console.log('DB_HOST:', process.env.DB_HOST);
   console.log('DB_PORT:', process.env.DB_PORT);
   console.log('DB_USER:', process.env.DB_USER);
   console.log('DB_NAME:', process.env.DB_NAME);
   console.log('DB_SCHEMA:', process.env.DB_SCHEMA);
-  // No loguear la contraseña por seguridad, pero verificar si existe
   console.log('DB_PASS exists:', !!process.env.DB_PASS);
 }
 

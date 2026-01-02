@@ -49,6 +49,27 @@ export class GatewayService {
     const targetUrl = `${serviceUrl}${versionPrefix}${pathWithoutPrefix}`;
     const contentType = (req.headers['content-type'] as string) || '';
     const isMultipart = contentType.toLowerCase().includes('multipart/form-data');
+    const forwardedForHeader = req.headers['x-forwarded-for'];
+    const realIpHeader = req.headers['x-real-ip'];
+    const forwardedFor = Array.isArray(forwardedForHeader)
+      ? forwardedForHeader.join(', ')
+      : typeof forwardedForHeader === 'string'
+        ? forwardedForHeader
+        : '';
+    const realIp = Array.isArray(realIpHeader)
+      ? realIpHeader[0]
+      : typeof realIpHeader === 'string'
+        ? realIpHeader
+        : '';
+    const clientIp = req.ip || req.connection?.remoteAddress || realIp || '';
+    const nextForwardedFor = forwardedFor || realIp || clientIp;
+    const forwardHeaders = {
+      ...req.headers,
+      host: undefined,
+      'x-forwarded-for': nextForwardedFor || undefined,
+      'x-real-ip': clientIp || undefined,
+      'x-forwarded-proto': (req.headers['x-forwarded-proto'] as string) || req.protocol,
+    };
 
     try {
       const response = await lastValueFrom(
@@ -56,9 +77,7 @@ export class GatewayService {
           method: req.method,
           url: targetUrl,
           data: isMultipart ? req : req.body,
-          headers: isMultipart
-            ? { ...req.headers, host: undefined }
-            : req.headers,
+          headers: isMultipart ? forwardHeaders : forwardHeaders,
           ...(isMultipart
             ? {
                 maxContentLength: Infinity,

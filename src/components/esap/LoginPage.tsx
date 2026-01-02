@@ -148,11 +148,10 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         { id: '7', nombre: 'Funcionario', tipo: 'interno', email: 'funcionario@esap.edu.co', rol: 'funcionario', password: 'Esap2026*' },
         { id: '8', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'ar.empresarial@esap.edu.co', rol: 'arquitectura', password: 'Esap2026*' },
         { id: '9', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'arqempresarial@esap.edu.co', rol: 'arquitectura', password: 'Esap2026*' },
-        { id: '10', nombre: 'Docente Planta', tipo: 'interno', email: 'planta@esap.edu.co', rol: 'planta-profesoral', password: 'Esap2026*' }, // ✅ NUEVO: Gestión Profesoral
-        { id: '11', nombre: 'Gestión Legal', tipo: 'interno', email: 'gestion.legal@esap.edu.co', rol: 'gestion-legal', password: 'Esap2026*' }, // ✅ NUEVO: Gestión Legal
-        { id: '12', nombre: 'Control Interno', tipo: 'interno', email: 'OCIG@esap.edu.co', rol: 'control-interno', password: 'Esap2026*' }, // ✅ NUEVO: Control Interno OCIG
-        { id: '13', nombre: 'Control Disciplinario', tipo: 'interno', email: 'c.disciplinario@esap.edu.co', rol: 'control-disciplinario', password: 'Esap2026*' }, // ✅ NUEVO: Control Disciplinario
-        { id: '14', nombre: 'Registro Académico', tipo: 'interno', email: 'registro.academico@esap.edu.co', rol: 'registro-academico', password: 'Esap2026*' }, // ✅ NUEVO: Registro Académico
+        { id: '10', nombre: 'Gestión Legal', tipo: 'interno', email: 'gestion.legal@esap.edu.co', rol: 'gestion-legal', password: 'Esap2026*' }, // ✅ Gestión Legal
+        { id: '11', nombre: 'Control Interno', tipo: 'interno', email: 'OCIG@esap.edu.co', rol: 'control-interno', password: 'Esap2026*' }, // ✅ Control Interno OCIG
+        { id: '12', nombre: 'Control Disciplinario', tipo: 'interno', email: 'c.disciplinario@esap.edu.co', rol: 'control-disciplinario', password: 'Esap2026*' }, // ✅ Control Disciplinario
+        { id: '13', nombre: 'Registro Académico', tipo: 'interno', email: 'registro.academico@esap.edu.co', rol: 'registro-academico', password: 'Esap2026*' }, // ✅ Registro Académico
       ];
 
       // // Verificar si el email existe en las credenciales válidas
@@ -221,6 +220,11 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       } else if (emailLower === 'planta@esap.edu.co') {
         toast.success('💼 ¡Bienvenido Docente Planta!', {
           description: 'Acceso a la Gestión Profesoral concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'gestion.legal@esap.edu.co') {
+        toast.success('⚖️ ¡Bienvenido Gestión Legal!', {
+          description: 'Acceso a la Gestión Legal concedido',
           duration: 3500,
         });
       } else if (emailLower === 'ocig@esap.edu.co') {
@@ -537,27 +541,45 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                     <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">funcionario@esap.edu.co <span className="text-blue-600">(Funcionario)</span></code>
                     <code className="block px-2 py-1 bg-white rounded text-[10px]">planta@esap.edu.co <span className="text-blue-600">(Docente Planta)</span></code>
                   </div>
-
-                  {/* Usuarios Internos - Backoffice */}
-                  <div className="pt-2 border-t border-blue-200">
-                    <p className="font-bold text-blue-900 mb-1.5 flex items-center gap-1">
-                      🏢 BACKOFFICE ADMINISTRATIVO (Internos)
-                    </p>
-                    <p className="text-[10px] text-blue-700 mb-1.5 italic">✅ Acceso total a todos los módulos:</p>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">superuser@esap.edu.co <span className="text-blue-600">(Super Admin)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">rector@esap.edu.co <span className="text-blue-600">(Rector)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">director@esap.edu.co <span className="text-blue-600">(Director)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">admin@esap.edu.co <span className="text-blue-600">(Administrador)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">cerlaboral@esap.edu.co <span className="text-blue-600">(Certificados)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">ar.empresarial@esap.edu.co <span className="text-blue-600">(Arq. Empresarial)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">arqempresarial@esap.edu.co <span className="text-blue-600">(Arq. Empresarial)</span></code>
-                    
-                    <p className="text-[10px] text-orange-700 mb-1.5 mt-3 italic">⚠️ Acceso exclusivo a un solo módulo:</p>
-                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">ocig@esap.edu.co <span className="text-orange-700">(🔍 Solo Control Interno OCIG)</span></code>
-                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">c.disciplinario@esap.edu.co <span className="text-orange-700">(⚖️ Solo Control Disciplinario)</span></code>
-                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.profesoral@esap.edu.co <span className="text-orange-700">(📚 Solo Gestión Profesoral)</span></code>
-                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.legal@esap.edu.co <span className="text-orange-700">(⚖️ Solo Gestión Legal)</span></code>
-                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">registro.academico@esap.edu.co <span className="text-orange-700">(📚 Solo Registro Académico)</span></code>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">🔧 Administrador:</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">admin@esap.edu.co</code>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">🎓 Estudiante:</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">estudiante@esap.edu.co</code>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">🔵 Docente Cátedra:</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">catedra@esap.edu.co</code>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">📋 Certificados:</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">cerlaboral@esap.edu.co</code>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">🏛️ Arq. Empresarial:</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">arqempresarial@esap.edu.co</code>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">⚖️ Gestión Legal:</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">gestion.legal@esap.edu.co</code>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">🔍 Control Interno:</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">OCIG@esap.edu.co</code>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">🔍 Control Disciplinario:</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">c.disciplinario@esap.edu.co</code>
+                  </div>
+                  <div className="flex items-center justify-between bg-gradient-to-r from-purple-50 to-purple-100 px-2 py-1 rounded border border-purple-300">
+                    <span className="font-bold text-purple-900">⚖️ Funcionario (Procesos):</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs font-bold text-purple-700">funcionario@esap.edu.co</code>
+                  </div>
+                  <div className="flex items-center justify-between pt-1.5 border-t border-blue-200">
+                    <span className="font-medium">🔑 Contraseña:</span>
+                    <code className="px-2 py-0.5 bg-white rounded font-mono font-bold">Esap2026*</code>
                   </div>
                 </div>
               </motion.div>
