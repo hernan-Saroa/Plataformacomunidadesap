@@ -280,6 +280,36 @@ export function ProgramaAnualCIG() {
   const [modalEditarOpen, setModalEditarOpen] = useState(false);
 
   // Función para mapear Auditoria (backend) a AuditoriaPrograma (frontend)
+  // Función auxiliar para parsear fechas en formato DD/MM/YYYY o YYYY-MM-DD
+  const parsearFecha = (fechaStr: string): Date | null => {
+    if (!fechaStr) return null;
+    
+    // Intentar formato DD/MM/YYYY (español)
+    const formatoEspanol = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+    const matchEspanol = fechaStr.match(formatoEspanol);
+    if (matchEspanol) {
+      const [, dia, mes, año] = matchEspanol;
+      // new Date(año, mes-1, dia) - mes es 0-indexed en JS
+      return new Date(parseInt(año), parseInt(mes) - 1, parseInt(dia));
+    }
+    
+    // Intentar formato YYYY-MM-DD (ISO)
+    const formatoISO = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+    const matchISO = fechaStr.match(formatoISO);
+    if (matchISO) {
+      const [, año, mes, dia] = matchISO;
+      return new Date(parseInt(año), parseInt(mes) - 1, parseInt(dia));
+    }
+    
+    // Intentar parseo directo (para otros formatos)
+    const fecha = new Date(fechaStr);
+    if (!isNaN(fecha.getTime())) {
+      return fecha;
+    }
+    
+    return null;
+  };
+
   const mapearAuditoriaAPrograma = (aud: any): AuditoriaPrograma => {
     // Determinar mes de inicio (0-11 para MesAño)
     // Priorizar metadata guardada, si no existe, calcular desde fechaInicio
@@ -292,12 +322,14 @@ export function ProgramaAnualCIG() {
       semanaInicio = aud.programaAnualMetadata.semanaInicio;
     } else if (aud.fechaInicio) {
       // Calcular desde fechaInicio si no hay metadata
-      const fecha = new Date(aud.fechaInicio);
-      mesInicio = fecha.getMonth() as MesAño;
-      // Calcular semana del mes (1-4)
-      const diaMes = fecha.getDate();
-      semanaInicio = Math.ceil(diaMes / 7);
-      if (semanaInicio > 4) semanaInicio = 4;
+      const fecha = parsearFecha(aud.fechaInicio);
+      if (fecha && !isNaN(fecha.getTime())) {
+        mesInicio = fecha.getMonth() as MesAño;
+        // Calcular semana del mes (1-4)
+        const diaMes = fecha.getDate();
+        semanaInicio = Math.ceil(diaMes / 7);
+        if (semanaInicio > 4) semanaInicio = 4;
+      }
     }
 
     // Calcular duraciones de fases
@@ -313,14 +345,16 @@ export function ProgramaAnualCIG() {
       duracionComunicacion = aud.programaAnualMetadata.duraciones.comunicacion || 10;
     } else if (aud.fechaInicio && aud.fechaFin) {
       // Calcular desde fechas si no hay metadata
-      const inicio = new Date(aud.fechaInicio);
-      const fin = new Date(aud.fechaFin);
-      const duracionTotal = Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
-      
-      // Distribuir duración en fases (proporción aproximada)
-      duracionPlaneacion = Math.max(3, Math.floor(duracionTotal * 0.15));
-      duracionEjecucion = Math.max(4, Math.floor(duracionTotal * 0.65));
-      duracionComunicacion = Math.max(2, Math.floor(duracionTotal * 0.20));
+      const inicio = parsearFecha(aud.fechaInicio);
+      const fin = parsearFecha(aud.fechaFin);
+      if (inicio && fin && !isNaN(inicio.getTime()) && !isNaN(fin.getTime())) {
+        const duracionTotal = Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // Distribuir duración en fases (proporción aproximada)
+        duracionPlaneacion = Math.max(3, Math.floor(duracionTotal * 0.15));
+        duracionEjecucion = Math.max(4, Math.floor(duracionTotal * 0.65));
+        duracionComunicacion = Math.max(2, Math.floor(duracionTotal * 0.20));
+      }
     }
 
     // Determinar tipo (Sede o Territorial)
@@ -438,9 +472,46 @@ export function ProgramaAnualCIG() {
           
           // Filtrar solo las del año actual
           const auditoriasAnoActual = response.data.filter((aud: any) => {
-            if (!aud.fechaInicio) return false;
-            const fechaInicio = new Date(aud.fechaInicio);
-            return fechaInicio.getFullYear() === añoActual;
+            // Si tiene programaAnualMetadata con mesInicio, incluirla aunque no tenga fechaInicio válida
+            if (aud.programaAnualMetadata?.mesInicio !== undefined) {
+              // Si tiene metadata, asumir que es del año actual si no hay fechaInicio
+              if (!aud.fechaInicio) {
+                console.log('[ProgramaAnualCIG] Auditoría sin fechaInicio pero con metadata, incluyendo:', aud.id, aud.codigo);
+                return true;
+              }
+            }
+            
+            if (!aud.fechaInicio) {
+              console.log('[ProgramaAnualCIG] Auditoría sin fechaInicio (filtrada):', aud.id, aud.codigo);
+              return false;
+            }
+            
+            // Usar función parsearFecha para manejar formato DD/MM/YYYY
+            const fechaInicio = parsearFecha(aud.fechaInicio);
+            // Validar que la fecha sea válida
+            if (!fechaInicio || isNaN(fechaInicio.getTime())) {
+              // Si tiene metadata, incluirla aunque la fecha sea inválida
+              if (aud.programaAnualMetadata?.mesInicio !== undefined) {
+                console.log('[ProgramaAnualCIG] Auditoría con fechaInicio inválida pero con metadata, incluyendo:', aud.id, aud.codigo);
+                return true;
+              }
+              console.warn('[ProgramaAnualCIG] Auditoría con fechaInicio inválida (filtrada):', aud.id, aud.codigo, 'fechaInicio:', aud.fechaInicio);
+              return false;
+            }
+            
+            const añoAud = fechaInicio.getFullYear();
+            // Validar que el año sea un número válido
+            if (isNaN(añoAud) || añoAud < 2000 || añoAud > 2100) {
+              // Si tiene metadata, incluirla aunque el año sea inválido
+              if (aud.programaAnualMetadata?.mesInicio !== undefined) {
+                console.log('[ProgramaAnualCIG] Auditoría con año inválido pero con metadata, incluyendo:', aud.id, aud.codigo);
+                return true;
+              }
+              console.warn('[ProgramaAnualCIG] Auditoría con año inválido (filtrada):', aud.id, aud.codigo, 'año:', añoAud);
+              return false;
+            }
+            
+            return añoAud === añoActual;
           });
 
           console.log('[ProgramaAnualCIG] Auditorías del año actual:', auditoriasAnoActual.length);
@@ -778,11 +849,28 @@ export function ProgramaAnualCIG() {
               let añoAuditoria = añoActual; // Por defecto usar año actual
               
               if (audOriginalResponse.success && audOriginalResponse.data?.fechaInicio) {
-                const fechaOriginal = new Date(audOriginalResponse.data.fechaInicio);
-                añoAuditoria = fechaOriginal.getFullYear();
-                console.log('[ProgramaAnualCIG] Año de la auditoría original:', añoAuditoria);
+                const fechaOriginal = parsearFecha(audOriginalResponse.data.fechaInicio);
+                // Validar que la fecha sea válida
+                if (fechaOriginal && !isNaN(fechaOriginal.getTime())) {
+                  const añoObtenido = fechaOriginal.getFullYear();
+                  // Validar que el año obtenido sea un número válido
+                  if (!isNaN(añoObtenido) && añoObtenido > 2000 && añoObtenido < 2100) {
+                    añoAuditoria = añoObtenido;
+                    console.log('[ProgramaAnualCIG] Año de la auditoría original:', añoAuditoria);
+                  } else {
+                    console.warn('[ProgramaAnualCIG] Año obtenido inválido:', añoObtenido, 'usando año actual:', añoAuditoria);
+                  }
+                } else {
+                  console.warn('[ProgramaAnualCIG] Fecha original inválida:', audOriginalResponse.data.fechaInicio, 'usando año actual:', añoAuditoria);
+                }
               } else {
                 console.log('[ProgramaAnualCIG] No se pudo obtener el año original, usando año actual:', añoAuditoria);
+              }
+
+              // Validar que añoAuditoria sea válido antes de usarlo
+              if (isNaN(añoAuditoria) || añoAuditoria < 2000 || añoAuditoria > 2100) {
+                console.error('[ProgramaAnualCIG] ⚠️ Año inválido detectado:', añoAuditoria, 'usando año actual como fallback');
+                añoAuditoria = añoActual;
               }
 
               // Calcular fechaInicio desde mesInicio y semanaInicio
@@ -791,6 +879,11 @@ export function ProgramaAnualCIG() {
               const diaSemana = (auditoriaActualizada.semanaInicio - 1) * 7 + 1;
               fechaInicio.setDate(diaSemana);
 
+              // Validar que la fecha calculada sea válida
+              if (isNaN(fechaInicio.getTime())) {
+                throw new Error(`Fecha de inicio inválida calculada: año=${añoAuditoria}, mes=${auditoriaActualizada.mesInicio}, semana=${auditoriaActualizada.semanaInicio}`);
+              }
+
               // Calcular fechaFin sumando todas las duraciones
               const duracionTotal = auditoriaActualizada.fases.planeacion.duracionDias + 
                                    auditoriaActualizada.fases.ejecucion.duracionDias + 
@@ -798,11 +891,24 @@ export function ProgramaAnualCIG() {
               const fechaFin = new Date(fechaInicio);
               fechaFin.setDate(fechaFin.getDate() + duracionTotal - 1);
 
+              // Validar que la fecha fin sea válida
+              if (isNaN(fechaFin.getTime())) {
+                throw new Error(`Fecha de fin inválida calculada: duración total=${duracionTotal} días`);
+              }
+
               // Preparar datos para el backend
+              const fechaInicioStr = fechaInicio.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+              const fechaFinStr = fechaFin.toISOString().split('T')[0];
+              
+              // Validar que las fechas en string sean válidas
+              if (!fechaInicioStr || fechaInicioStr === 'Invalid Date' || !fechaFinStr || fechaFinStr === 'Invalid Date') {
+                throw new Error(`Error al formatear fechas: fechaInicio=${fechaInicioStr}, fechaFin=${fechaFinStr}`);
+              }
+
               const updateData: any = {
                 nombre: auditoriaActualizada.nombre,
-                fechaInicio: fechaInicio.toISOString().split('T')[0], // Formato YYYY-MM-DD
-                fechaFin: fechaFin.toISOString().split('T')[0],
+                fechaInicio: fechaInicioStr,
+                fechaFin: fechaFinStr,
                 observacionesAdicionales: auditoriaActualizada.observaciones || '',
                 programaAnualMetadata: {
                   mesInicio: auditoriaActualizada.mesInicio,
@@ -847,12 +953,45 @@ export function ProgramaAnualCIG() {
                   
                   // Filtrar solo las del año actual
                   const auditoriasAnoActual = allResponse.data.filter((aud: any) => {
+                    // Si tiene programaAnualMetadata con mesInicio, incluirla aunque no tenga fechaInicio válida
+                    if (aud.programaAnualMetadata?.mesInicio !== undefined) {
+                      // Si tiene metadata, asumir que es del año actual si no hay fechaInicio
+                      if (!aud.fechaInicio) {
+                        console.log('[ProgramaAnualCIG] Auditoría sin fechaInicio pero con metadata, incluyendo:', aud.id, aud.codigo);
+                        return true;
+                      }
+                    }
+                    
                     if (!aud.fechaInicio) {
                       console.log('[ProgramaAnualCIG] Auditoría sin fechaInicio (filtrada):', aud.id, aud.codigo);
                       return false;
                     }
-                    const fecha = new Date(aud.fechaInicio);
+                    
+                    // Usar función parsearFecha para manejar formato DD/MM/YYYY
+                    const fecha = parsearFecha(aud.fechaInicio);
+                    // Validar que la fecha sea válida
+                    if (!fecha || isNaN(fecha.getTime())) {
+                      // Si tiene metadata, incluirla aunque la fecha sea inválida
+                      if (aud.programaAnualMetadata?.mesInicio !== undefined) {
+                        console.log('[ProgramaAnualCIG] Auditoría con fechaInicio inválida pero con metadata, incluyendo:', aud.id, aud.codigo);
+                        return true;
+                      }
+                      console.warn('[ProgramaAnualCIG] Auditoría con fechaInicio inválida (filtrada):', aud.id, aud.codigo, 'fechaInicio:', aud.fechaInicio);
+                      return false;
+                    }
+                    
                     const añoAud = fecha.getFullYear();
+                    // Validar que el año sea un número válido
+                    if (isNaN(añoAud) || añoAud < 2000 || añoAud > 2100) {
+                      // Si tiene metadata, incluirla aunque el año sea inválido
+                      if (aud.programaAnualMetadata?.mesInicio !== undefined) {
+                        console.log('[ProgramaAnualCIG] Auditoría con año inválido pero con metadata, incluyendo:', aud.id, aud.codigo);
+                        return true;
+                      }
+                      console.warn('[ProgramaAnualCIG] Auditoría con año inválido (filtrada):', aud.id, aud.codigo, 'año:', añoAud, 'fechaInicio:', aud.fechaInicio);
+                      return false;
+                    }
+                    
                     const esDelAño = añoAud === añoActual;
                     if (!esDelAño) {
                       console.log('[ProgramaAnualCIG] Auditoría fuera del año actual (filtrada):', aud.id, aud.codigo, 'año:', añoAud, 'esperado:', añoActual);
@@ -867,12 +1006,30 @@ export function ProgramaAnualCIG() {
                   if (!auditoriaActualizadaEnLista) {
                     const auditoriaEncontrada = allResponse.data.find((a: any) => a.id === auditoriaActualizada.id);
                     if (auditoriaEncontrada && auditoriaEncontrada.fechaInicio) {
-                      const fechaAud = new Date(auditoriaEncontrada.fechaInicio);
-                      const añoAud = fechaAud.getFullYear();
-                      console.warn('[ProgramaAnualCIG] ⚠️ La auditoría actualizada está en el año', añoAud, 'pero el filtro es para el año', añoActual);
-                      toast.warning('Auditoría actualizada', {
-                        description: `La auditoría se guardó en el año ${añoAud}. Cambia el año en el filtro para verla.`
-                      });
+                      const fechaAud = parsearFecha(auditoriaEncontrada.fechaInicio);
+                      // Validar que la fecha sea válida
+                      if (fechaAud && !isNaN(fechaAud.getTime())) {
+                        const añoAud = fechaAud.getFullYear();
+                        // Validar que el año sea válido
+                        if (!isNaN(añoAud) && añoAud >= 2000 && añoAud <= 2100) {
+                          console.warn('[ProgramaAnualCIG] ⚠️ La auditoría actualizada está en el año', añoAud, 'pero el filtro es para el año', añoActual);
+                          toast.warning('Auditoría actualizada', {
+                            description: `La auditoría se guardó en el año ${añoAud}. Cambia el año en el filtro para verla.`
+                          });
+                        } else {
+                          console.error('[ProgramaAnualCIG] ⚠️ La auditoría actualizada tiene un año inválido:', añoAud);
+                          toast.warning('Auditoría actualizada', {
+                            description: 'La auditoría se guardó pero tiene una fecha inválida. Por favor, verifica los datos.'
+                          });
+                        }
+                      } else {
+                        console.error('[ProgramaAnualCIG] ⚠️ La auditoría actualizada tiene una fecha inválida:', auditoriaEncontrada.fechaInicio);
+                        toast.warning('Auditoría actualizada', {
+                          description: 'La auditoría se guardó pero tiene una fecha inválida. Por favor, verifica los datos.'
+                        });
+                      }
+                    } else {
+                      console.warn('[ProgramaAnualCIG] ⚠️ No se encontró la auditoría actualizada en la respuesta o no tiene fechaInicio');
                     }
                   }
                   
@@ -922,6 +1079,82 @@ function VistaCalendario({
   año: number;
   onSeleccionarMes: (mes: MesAño | null) => void;
 }) {
+  // Función auxiliar para calcular qué meses ocupa cada fase
+  const calcularMesesFase = (aud: AuditoriaPrograma, fase: 'planeacion' | 'ejecucion' | 'comunicacion') => {
+    const diasPorMes = 30; // Aproximación
+    const mesesOcupados: MesAño[] = [];
+    
+    // Calcular mes de inicio de esta fase
+    let mesActual = aud.mesInicio;
+    if (fase === 'ejecucion') {
+      // Ejecución empieza después de planeación
+      const mesesPlaneacion = Math.ceil(aud.fases.planeacion.duracionDias / diasPorMes);
+      mesActual = ((aud.mesInicio + mesesPlaneacion) % 12) as MesAño;
+    } else if (fase === 'comunicacion') {
+      // Comunicación empieza después de ejecución
+      const mesesPlaneacion = Math.ceil(aud.fases.planeacion.duracionDias / diasPorMes);
+      const mesesEjecucion = Math.ceil(aud.fases.ejecucion.duracionDias / diasPorMes);
+      mesActual = ((aud.mesInicio + mesesPlaneacion + mesesEjecucion) % 12) as MesAño;
+    }
+    
+    // Obtener duración de la fase
+    const duracionDias = fase === 'planeacion' ? aud.fases.planeacion.duracionDias :
+                        fase === 'ejecucion' ? aud.fases.ejecucion.duracionDias :
+                        aud.fases.comunicacion.duracionDias;
+    
+    // Calcular cuántos meses ocupa esta fase
+    const mesesNecesarios = Math.max(1, Math.ceil(duracionDias / diasPorMes));
+    for (let i = 0; i < mesesNecesarios; i++) {
+      mesesOcupados.push(((mesActual + i) % 12) as MesAño);
+    }
+    
+    return { mesInicioFase: mesActual, mesesOcupados };
+  };
+
+  // Función para obtener la fase que corresponde a un mes específico
+  const obtenerFaseEnMes = (aud: AuditoriaPrograma, mesIdx: MesAño) => {
+    const { mesesOcupados: mesesPlaneacion } = calcularMesesFase(aud, 'planeacion');
+    if (mesesPlaneacion.includes(mesIdx)) {
+      return { fase: 'planeacion', color: aud.fases.planeacion.color, duracion: aud.fases.planeacion.duracionDias };
+    }
+    
+    const { mesesOcupados: mesesEjecucion } = calcularMesesFase(aud, 'ejecucion');
+    if (mesesEjecucion.includes(mesIdx)) {
+      return { fase: 'ejecucion', color: aud.fases.ejecucion.color, duracion: aud.fases.ejecucion.duracionDias };
+    }
+    
+    const { mesesOcupados: mesesComunicacion } = calcularMesesFase(aud, 'comunicacion');
+    if (mesesComunicacion.includes(mesIdx)) {
+      return { fase: 'comunicacion', color: aud.fases.comunicacion.color, duracion: aud.fases.comunicacion.duracionDias };
+    }
+    
+    return null;
+  };
+
+  // Función para obtener el tooltip completo
+  const getTooltipContent = (aud: AuditoriaPrograma) => {
+    return (
+      <div className="text-sm space-y-1">
+        <div className="font-bold text-white">{aud.codigo}</div>
+        <div className="text-white/90">{aud.nombre}</div>
+        <div className="text-white/80 text-xs mt-2 pt-2 border-t border-white/20">
+          <div><strong>Tipo:</strong> {aud.tipo}</div>
+          <div><strong>Proceso:</strong> {aud.procesoNombre}</div>
+          <div><strong>Auditor Líder:</strong> {aud.auditorLider.nombre}</div>
+          <div><strong>Estado:</strong> {aud.estadoPrograma}</div>
+          <div className="mt-2">
+            <div><strong>Planeación:</strong> {aud.fases.planeacion.duracionDias} días</div>
+            <div><strong>Ejecución:</strong> {aud.fases.ejecucion.duracionDias} días</div>
+            <div><strong>Comunicación:</strong> {aud.fases.comunicacion.duracionDias} días</div>
+          </div>
+          {aud.observaciones && (
+            <div className="mt-2 text-xs"><strong>Observaciones:</strong> {aud.observaciones}</div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <motion.div
       key="calendario"
@@ -940,7 +1173,14 @@ function VistaCalendario({
               >
                 <div className="text-sm text-blue-900">{mes}</div>
                 <div className="text-xs text-blue-600 mt-1">
-                  {auditorias.filter(a => a.mesInicio === idx).length} aud.
+                  {auditorias.filter(a => {
+                    const { mesesOcupados: mesesPlaneacion } = calcularMesesFase(a, 'planeacion');
+                    const { mesesOcupados: mesesEjecucion } = calcularMesesFase(a, 'ejecucion');
+                    const { mesesOcupados: mesesComunicacion } = calcularMesesFase(a, 'comunicacion');
+                    return mesesPlaneacion.includes(idx as MesAño) || 
+                           mesesEjecucion.includes(idx as MesAño) || 
+                           mesesComunicacion.includes(idx as MesAño);
+                  }).length} aud.
                 </div>
               </div>
             ))}
@@ -948,60 +1188,114 @@ function VistaCalendario({
 
           {/* Línea de tiempo con auditorías */}
           <div className="space-y-4">
-            {auditorias.map((aud) => (
-              <div key={aud.id} className="relative">
-                <div className="grid grid-cols-12 gap-2">
-                  {MESES.map((_, mesIdx) => (
-                    <div
-                      key={mesIdx}
-                      className="h-24 bg-gray-50 rounded border border-gray-200 relative"
-                    >
-                      {/* Renderizar fase si corresponde al mes */}
-                      {aud.mesInicio === mesIdx && (
-                        <div className="absolute inset-0 p-0.5">
-                          <div
-                            className="h-full rounded flex flex-col justify-center items-center shadow-md hover:shadow-lg transition-all cursor-pointer"
-                            style={{ 
-                              backgroundColor: aud.fases.planeacion.color,
-                              padding: '8px 12px'
-                            }}
-                          >
+            {auditorias.map((aud) => {
+              return (
+                <div key={aud.id} className="relative group">
+                  <div className="grid grid-cols-12 gap-2">
+                    {MESES.map((_, mesIdx) => {
+                      const fase = obtenerFaseEnMes(aud, mesIdx as MesAño);
+                      const etiquetaFase = fase?.fase === 'planeacion' ? 'P' : 
+                                          fase?.fase === 'ejecucion' ? 'E' : 
+                                          fase?.fase === 'comunicacion' ? 'C' : '';
+                      
+                      return (
+                        <div
+                          key={mesIdx}
+                          className="h-24 bg-gray-50 rounded border border-gray-200 relative"
+                        >
+                          {/* Renderizar fase si corresponde al mes */}
+                          {fase && (
                             <div 
-                              className="text-white font-black tracking-tight" 
-                              style={{ 
-                                fontSize: '15px', 
-                                lineHeight: '1.3',
-                                textShadow: '0 1px 2px rgba(0,0,0,0.2)'
-                              }}
+                              className="absolute inset-0 p-0.5"
+                              title={`${aud.codigo}: ${aud.nombre}`}
                             >
-                              {aud.codigo}
+                              <div
+                                className="h-full rounded flex flex-col justify-center items-center shadow-md hover:shadow-xl transition-all cursor-pointer group/item relative"
+                                style={{ 
+                                  backgroundColor: fase.color,
+                                  padding: '8px 12px'
+                                }}
+                              >
+                                {/* Tooltip */}
+                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover/item:block z-50 w-64 pointer-events-none">
+                                  <div 
+                                    className="bg-gray-900 text-white rounded-lg p-3 shadow-2xl border border-gray-700"
+                                    style={{ 
+                                      fontSize: '12px',
+                                      lineHeight: '1.4'
+                                    }}
+                                  >
+                                    {getTooltipContent(aud)}
+                                  </div>
+                                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                                    <div className="border-4 border-transparent border-t-gray-900"></div>
+                                  </div>
+                                </div>
+
+                                {/* Contenido truncado */}
+                                <div 
+                                  className="text-white font-black tracking-tight w-full text-center overflow-hidden" 
+                                  style={{ 
+                                    fontSize: '13px', 
+                                    lineHeight: '1.2',
+                                    textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                                    display: '-webkit-box',
+                                    WebkitLineClamp: 1,
+                                    WebkitBoxOrient: 'vertical',
+                                    textOverflow: 'ellipsis'
+                                  }}
+                                  title={aud.codigo}
+                                >
+                                  {aud.codigo}
+                                </div>
+                                <div 
+                                  className="text-white font-bold mt-0.5 text-xs" 
+                                  style={{ 
+                                    lineHeight: '1.2',
+                                    textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                                  }}
+                                >
+                                  {etiquetaFase}: {fase.duracion}d
+                                </div>
+                                <div 
+                                  className="text-white/90 text-[10px] mt-0.5 w-full text-center overflow-hidden" 
+                                  style={{ 
+                                    lineHeight: '1.1',
+                                    textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                                    display: '-webkit-box',
+                                    WebkitLineClamp: 1,
+                                    WebkitBoxOrient: 'vertical',
+                                    textOverflow: 'ellipsis'
+                                  }}
+                                  title={aud.nombre}
+                                >
+                                  {aud.nombre}
+                                </div>
+                              </div>
                             </div>
-                            <div 
-                              className="text-white font-bold mt-1" 
-                              style={{ 
-                                fontSize: '13px', 
-                                lineHeight: '1.3',
-                                textShadow: '0 1px 2px rgba(0,0,0,0.2)'
-                              }}
-                            >
-                              P: {aud.fases.planeacion.duracionDias}d
-                            </div>
-                          </div>
+                          )}
                         </div>
-                      )}
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Etiqueta lateral */}
+                  <div className="absolute -left-48 top-0 w-44 pr-2 flex items-center h-24">
+                    <div className="text-xs text-right w-full">
+                      <div 
+                        className="text-gray-900 truncate font-semibold" 
+                        title={aud.nombre}
+                      >
+                        {aud.nombre}
+                      </div>
+                      <div className="text-gray-500 mt-1" title={aud.auditorLider.nombre}>
+                        {aud.auditorLider.iniciales}
+                      </div>
                     </div>
-                  ))}
-                </div>
-                
-                {/* Etiqueta lateral */}
-                <div className="absolute -left-48 top-0 w-44 pr-2 flex items-center h-24">
-                  <div className="text-xs text-right">
-                    <div className="text-gray-900 truncate font-semibold">{aud.nombre}</div>
-                    <div className="text-gray-500 mt-1">{aud.auditorLider.iniciales}</div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Leyenda */}
