@@ -4,7 +4,7 @@ import { LandingPage } from './components/portal/LandingPage';
 import { LoginPage } from './components/portal/LoginPage';
 import { PortalDashboard } from './components/portal/PortalDashboard';
 import { BackofficeApp } from './components/esap/BackofficeApp';
-import { VisualizadorPTAAjustes } from './components/gestion-profesoral/VisualizadorPTAAjustes';
+import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
 import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStrength';
 import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
 import { Toaster } from './components/ui/sonner';
@@ -351,7 +351,7 @@ export default function App() {
       
       case 'pta-demo':
         return (
-          <VisualizadorPTAAjustes
+          <GestionProfesoralApp
             usuario={usuarioActual!}
             onLogout={handleLogout}
           />

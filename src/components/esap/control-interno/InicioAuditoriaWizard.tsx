@@ -442,7 +442,7 @@ export function InicioAuditoriaWizard({
 }: InicioAuditoriaWizardProps) {
   const [pasoActual, setPasoActual] = useState<PasoWizard>(1);
   const [configuracion, setConfiguracion] = useState<ConfiguracionAuditoria>({
-    objetivo: 'Evaluar el cumplimiento de los controles establecidos en el proceso de Gestión Financiera y verificar la adecuada aplicación de la normatividad vigente.',
+    objetivo: 'Evaluar el cumplimiento de los controles establecidos en el proceso de Gestión Financiera y verificar la adecuada aplicaci��n de la normatividad vigente.',
     alcance: 'Revisión de las operaciones financieras del período enero a diciembre 2024, incluyendo presupuesto, tesorería, contabilidad y gestión de cartera.',
     criterios: 'Decreto 648 de 2017, Manual de Contratación, Estatuto Anticorrupción, Régimen de Contabilidad Pública, políticas internas de ESAP.',
     fechaReunionApertura: new Date('2025-01-15T10:00:00'),
@@ -540,43 +540,43 @@ export function InicioAuditoriaWizard({
       />
       
       {/* Modal Container */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 pointer-events-none">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto"
+          className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto"
         >
           {/* Header */}
-          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
-                  <Sparkles className="w-6 h-6 text-white" />
+          <div className="p-3 sm:p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700">
+            <div className="flex items-start sm:items-center justify-between gap-2">
+              <div className="flex items-start sm:items-center gap-2 sm:gap-4 flex-1 min-w-0">
+                <div className="p-2 sm:p-3 bg-white/20 backdrop-blur-sm rounded-lg sm:rounded-xl flex-shrink-0">
+                  <Sparkles className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
                 </div>
-                <div>
-                  <h2 className="text-xl text-white font-bold">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm sm:text-xl text-white font-bold truncate">
                     Iniciar Auditoría - {auditoria.codigo}
                   </h2>
-                  <p className="text-sm text-blue-100 mt-1">
+                  <p className="text-xs sm:text-sm text-blue-100 mt-0.5 sm:mt-1 hidden sm:block">
                     RF004 - Generación automática de documentos oficiales
                   </p>
                 </div>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                className="p-1.5 sm:p-2 hover:bg-white/20 rounded-lg transition-colors flex-shrink-0"
               >
-                <X className="w-5 h-5 text-white" />
+                <X className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </button>
             </div>
 
             {/* Stepper */}
-            <div className="flex items-center gap-2 mt-6">
+            <div className="flex items-center gap-1 sm:gap-2 mt-4 sm:mt-6">
               {[1, 2, 3, 4].map((paso) => (
                 <div key={paso} className="flex items-center flex-1">
                   <div
-                    className={`flex items-center justify-center w-10 h-10 rounded-full transition-all ${
+                    className={`flex items-center justify-center w-7 h-7 sm:w-10 sm:h-10 rounded-full transition-all ${
                       paso === pasoActual
                         ? 'bg-white text-blue-600 shadow-lg scale-110'
                         : paso < pasoActual
@@ -585,14 +585,14 @@ export function InicioAuditoriaWizard({
                     }`}
                   >
                     {paso < pasoActual ? (
-                      <CheckCircle className="w-5 h-5" />
+                      <CheckCircle className="w-3 h-3 sm:w-5 sm:h-5" />
                     ) : (
-                      <span className="text-sm font-bold">{paso}</span>
+                      <span className="text-xs sm:text-sm font-bold">{paso}</span>
                     )}
                   </div>
                   {paso < 4 && (
                     <div
-                      className={`flex-1 h-1 mx-2 rounded transition-all ${
+                      className={`flex-1 h-0.5 sm:h-1 mx-1 sm:mx-2 rounded transition-all ${
                         paso < pasoActual ? 'bg-green-500' : 'bg-white/20'
                       }`}
                     />
@@ -603,7 +603,7 @@ export function InicioAuditoriaWizard({
           </div>
 
           {/* Contenido */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-6">
             <AnimatePresence mode="wait">
               {pasoActual === 1 && (
                 <Paso1Informacion auditoria={auditoria} />
@@ -632,16 +632,17 @@ export function InicioAuditoriaWizard({
           </div>
 
           {/* Footer - Botones */}
-          <div className="p-6 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+          <div className="p-3 sm:p-6 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-3">
             <ButtonSIGL
               variant="outline"
               icon={<ChevronLeft className="w-4 h-4" />}
               onClick={pasoActual === 1 ? onClose : retrocederPaso}
+              className="w-full sm:w-auto"
             >
               {pasoActual === 1 ? 'Cancelar' : 'Anterior'}
             </ButtonSIGL>
 
-            <div className="text-sm text-gray-600">
+            <div className="text-xs sm:text-sm text-gray-600 order-first sm:order-none">
               Paso {pasoActual} de 4
             </div>
 
@@ -651,6 +652,7 @@ export function InicioAuditoriaWizard({
                 icon={<ChevronRight className="w-4 h-4" />}
                 onClick={avanzarPaso}
                 disabled={loading}
+                className="w-full sm:w-auto"
               >
                 {loading ? 'Generando...' : 'Siguiente'}
               </ButtonSIGL>
@@ -660,6 +662,7 @@ export function InicioAuditoriaWizard({
                 icon={<Send className="w-4 h-4" />}
                 onClick={confirmarInicio}
                 disabled={loading}
+                className="w-full sm:w-auto"
               >
                 {loading ? 'Iniciando...' : 'Confirmar e Iniciar'}
               </ButtonSIGL>
@@ -688,114 +691,114 @@ function Paso1Informacion({ auditoria }: { auditoria: AuditoriaProgramada }) {
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="space-y-6"
+      className="space-y-4 sm:space-y-6"
     >
       <div>
-        <h3 className="text-lg text-gray-900 mb-2 flex items-center gap-2">
-          <Target className="w-5 h-5 text-blue-600" />
-          Auditoría Seleccionada
+        <h3 className="text-sm sm:text-lg text-gray-900 mb-2 flex items-center gap-2">
+          <Target className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
+          <span>Auditoría Seleccionada</span>
         </h3>
-        <p className="text-sm text-gray-600">
+        <p className="text-xs sm:text-sm text-gray-600">
           Revise la información de la auditoría que está a punto de iniciar formalmente.
         </p>
       </div>
 
       {/* Banner de auditoría seleccionada */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-5">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
-              <FileText className="w-6 h-6 text-white" />
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-3 sm:p-5">
+        <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
+          <div className="flex items-start sm:items-center gap-2 sm:gap-3 flex-1 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-600 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
+              <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
-            <div>
-              <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">Auditoría a Iniciar</p>
-              <h4 className="text-lg text-gray-900 font-bold">{auditoria.codigo}</h4>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] sm:text-xs text-blue-600 font-semibold uppercase tracking-wide">Auditoría a Iniciar</p>
+              <h4 className="text-sm sm:text-lg text-gray-900 font-bold truncate">{auditoria.codigo}</h4>
             </div>
           </div>
-          <BadgeSIGL variant="info" size="lg">
-            <CheckCircle className="w-4 h-4" />
-            <span className="ml-1">Seleccionada</span>
+          <BadgeSIGL variant="info" size="sm" className="flex-shrink-0">
+            <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="ml-1 hidden sm:inline">Seleccionada</span>
           </BadgeSIGL>
         </div>
-        <p className="text-sm text-gray-900 font-medium mb-1">{auditoria.nombre}</p>
-        <div className="flex items-center gap-3 mt-3">
+        <p className="text-xs sm:text-sm text-gray-900 font-medium mb-1">{auditoria.nombre}</p>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mt-3">
           <BadgeSIGL variant={auditoria.tipo === 'Sede' ? 'info' : 'success'} size="sm">
             {auditoria.tipo === 'Sede' ? <Building2 className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
             <span className="ml-1">{auditoria.tipo}</span>
           </BadgeSIGL>
-          <span className="text-xs text-gray-600">•</span>
+          <span className="text-xs text-gray-600 hidden sm:inline">•</span>
           <span className="text-xs text-gray-600">Inicio: {auditoria.fechaInicio.toLocaleDateString('es-CO')}</span>
         </div>
       </div>
 
       {/* Detalles organizados en grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         {/* Proceso y Área */}
-        <CardSIGL className="p-4">
+        <CardSIGL className="p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Building2 className="w-4 h-4 text-purple-600" />
+            <div className="w-7 h-7 sm:w-8 sm:h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600" />
             </div>
-            <h4 className="text-sm text-gray-900 font-semibold">Proceso Auditado</h4>
+            <h4 className="text-xs sm:text-sm text-gray-900 font-semibold">Proceso Auditado</h4>
           </div>
-          <p className="text-sm text-gray-900 font-medium mb-2">{auditoria.procesoNombre}</p>
+          <p className="text-xs sm:text-sm text-gray-900 font-medium mb-2">{auditoria.procesoNombre}</p>
           <div className="space-y-1">
-            <p className="text-xs text-gray-600">Responsable del Área:</p>
-            <p className="text-sm text-gray-900">{auditoria.responsableArea.nombre}</p>
-            <p className="text-xs text-gray-600">{auditoria.responsableArea.cargo}</p>
-            <p className="text-xs text-blue-600">{auditoria.responsableArea.email}</p>
+            <p className="text-[10px] sm:text-xs text-gray-600">Responsable del Área:</p>
+            <p className="text-xs sm:text-sm text-gray-900">{auditoria.responsableArea.nombre}</p>
+            <p className="text-[10px] sm:text-xs text-gray-600">{auditoria.responsableArea.cargo}</p>
+            <p className="text-[10px] sm:text-xs text-blue-600 truncate">{auditoria.responsableArea.email}</p>
           </div>
         </CardSIGL>
 
         {/* Equipo Auditor */}
-        <CardSIGL className="p-4">
+        <CardSIGL className="p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-              <Users className="w-4 h-4 text-green-600" />
+            <div className="w-7 h-7 sm:w-8 sm:h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600" />
             </div>
-            <h4 className="text-sm text-gray-900 font-semibold">Equipo Auditor</h4>
+            <h4 className="text-xs sm:text-sm text-gray-900 font-semibold">Equipo Auditor</h4>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             <div className="bg-green-50 border border-green-200 rounded-lg p-2">
-              <p className="text-xs text-green-700 font-semibold mb-1">Auditor Líder</p>
-              <p className="text-sm text-gray-900 font-medium">{auditoria.auditorLider.nombre}</p>
-              <p className="text-xs text-gray-600">{auditoria.auditorLider.email}</p>
+              <p className="text-[10px] sm:text-xs text-green-700 font-semibold mb-1">Auditor Líder</p>
+              <p className="text-xs sm:text-sm text-gray-900 font-medium">{auditoria.auditorLider.nombre}</p>
+              <p className="text-[10px] sm:text-xs text-gray-600 truncate">{auditoria.auditorLider.email}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-600 mb-1">Equipo de Apoyo:</p>
+              <p className="text-[10px] sm:text-xs text-gray-600 mb-1">Equipo de Apoyo:</p>
               {auditoria.equipoAuditores.map((auditor) => (
-                <p key={auditor.id} className="text-sm text-gray-900">• {auditor.nombre}</p>
+                <p key={auditor.id} className="text-xs sm:text-sm text-gray-900">• {auditor.nombre}</p>
               ))}
             </div>
           </div>
         </CardSIGL>
 
         {/* Cronograma */}
-        <CardSIGL className="p-4">
+        <CardSIGL className="p-3 sm:p-4 lg:col-span-2">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
-              <Clock className="w-4 h-4 text-orange-600" />
+            <div className="w-7 h-7 sm:w-8 sm:h-8 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600" />
             </div>
-            <h4 className="text-sm text-gray-900 font-semibold">Cronograma Estimado</h4>
+            <h4 className="text-xs sm:text-sm text-gray-900 font-semibold">Cronograma Estimado</h4>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-600">Fecha de Inicio:</span>
-              <span className="text-sm text-gray-900 font-medium">
+              <span className="text-[10px] sm:text-xs text-gray-600">Fecha de Inicio:</span>
+              <span className="text-xs sm:text-sm text-gray-900 font-medium">
                 {auditoria.fechaInicio.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
               </span>
             </div>
-            <div className="border-t border-gray-200 pt-2">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-600">Fase Planeación:</span>
+            <div className="border-t border-gray-200 pt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <span className="text-[10px] sm:text-xs text-gray-600">Fase Planeación:</span>
                 <BadgeSIGL variant="info" size="sm">{auditoria.duracionDias.planeacion} días</BadgeSIGL>
               </div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-600">Fase Ejecución:</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <span className="text-[10px] sm:text-xs text-gray-600">Fase Ejecución:</span>
                 <BadgeSIGL variant="warning" size="sm">{auditoria.duracionDias.ejecucion} días</BadgeSIGL>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600">Fase Comunicación:</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <span className="text-[10px] sm:text-xs text-gray-600">Fase Comunicación:</span>
                 <BadgeSIGL variant="success" size="sm">{auditoria.duracionDias.comunicacion} días</BadgeSIGL>
               </div>
             </div>
@@ -870,54 +873,54 @@ function Paso2Configuracion({
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="space-y-6"
+      className="space-y-4 sm:space-y-6"
     >
       <div>
-        <h3 className="text-lg text-gray-900 mb-2 flex items-center gap-2">
-          <Settings className="w-5 h-5 text-blue-600" />
-          Configuración de la Auditoría
+        <h3 className="text-sm sm:text-lg text-gray-900 mb-2 flex items-center gap-2">
+          <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
+          <span>Configuración de la Auditoría</span>
         </h3>
-        <p className="text-sm text-gray-600">
+        <p className="text-xs sm:text-sm text-gray-600">
           Complete la información que se incluirá en los documentos oficiales.
         </p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         <div>
-          <label className="block text-sm text-gray-700 mb-2">
+          <label className="block text-xs sm:text-sm text-gray-700 mb-2">
             Objetivo de la Auditoría <span className="text-red-500">*</span>
           </label>
           <textarea
             value={configuracion.objetivo}
             onChange={(e) => onChange({ ...configuracion, objetivo: e.target.value })}
             rows={3}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 py-2 sm:px-4 sm:py-3 border border-gray-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="Describa el objetivo principal de la auditoría..."
           />
         </div>
 
         <div>
-          <label className="block text-sm text-gray-700 mb-2">
+          <label className="block text-xs sm:text-sm text-gray-700 mb-2">
             Alcance <span className="text-red-500">*</span>
           </label>
           <textarea
             value={configuracion.alcance}
             onChange={(e) => onChange({ ...configuracion, alcance: e.target.value })}
             rows={3}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 py-2 sm:px-4 sm:py-3 border border-gray-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="Defina el alcance temporal y temático de la auditoría..."
           />
         </div>
 
         <div>
-          <label className="block text-sm text-gray-700 mb-2">
+          <label className="block text-xs sm:text-sm text-gray-700 mb-2">
             Criterios de Auditoría <span className="text-red-500">*</span>
           </label>
           <textarea
             value={configuracion.criterios}
             onChange={(e) => onChange({ ...configuracion, criterios: e.target.value })}
             rows={2}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 py-2 sm:px-4 sm:py-3 border border-gray-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="Normativa y referencias aplicables (leyes, decretos, políticas internas)..."
           />
         </div>
@@ -990,19 +993,19 @@ function Paso3Documentos({
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -20 }}
-        className="space-y-6"
+        className="space-y-4 sm:space-y-6"
       >
         <div>
-          <h3 className="text-lg text-gray-900 mb-2 flex items-center gap-2">
-            <FileCheck className="w-5 h-5 text-green-600" />
-            Documentos Generados
+          <h3 className="text-sm sm:text-lg text-gray-900 mb-2 flex items-center gap-2">
+            <FileCheck className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
+            <span>Documentos Generados</span>
           </h3>
-          <p className="text-sm text-gray-600">
+          <p className="text-xs sm:text-sm text-gray-600">
             Los siguientes documentos han sido generados automáticamente. Puede editarlos o cargar versiones personalizadas.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:gap-4">
           {documentos.map((doc, idx) => (
             <motion.div
               key={doc.tipo}
@@ -1010,31 +1013,32 @@ function Paso3Documentos({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
             >
-              <CardSIGL hover className="p-4">
-                <div className="flex items-start gap-4">
+              <CardSIGL hover className="p-3 sm:p-4">
+                <div className="flex items-start gap-3 sm:gap-4">
                   <div 
-                    className="p-3 rounded-lg flex-shrink-0"
+                    className="p-2 sm:p-3 rounded-lg flex-shrink-0"
                     style={{ backgroundColor: `${doc.color}20` }}
                   >
-                    <div style={{ color: doc.color }}>
+                    <div style={{ color: doc.color }} className="w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center">
                       {doc.icono}
                     </div>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-sm text-gray-900 font-medium mb-1">
+                    <h4 className="text-xs sm:text-sm text-gray-900 font-medium mb-1">
                       {doc.titulo}
                     </h4>
-                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+                    <div className="flex items-center gap-2 text-[10px] sm:text-xs text-gray-500 mb-2 sm:mb-3">
                       <span>{doc.size}</span>
                       <span>•</span>
                       <span>{doc.generadoEn.toLocaleTimeString('es-CO')}</span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
                       <ButtonSIGL
                         variant="outline"
                         size="sm"
                         icon={<Eye className="w-3 h-3" />}
                         onClick={() => onPreview(doc)}
+                        className="w-full sm:w-auto"
                       >
                         Ver
                       </ButtonSIGL>
@@ -1122,36 +1126,36 @@ function Paso4Confirmacion({
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="space-y-6"
+      className="space-y-4 sm:space-y-6"
     >
       <div>
-        <h3 className="text-lg text-gray-900 mb-2 flex items-center gap-2">
-          <CheckCircle className="w-5 h-5 text-green-600" />
-          Confirmar Inicio de Auditoría
+        <h3 className="text-sm sm:text-lg text-gray-900 mb-2 flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
+          <span>Confirmar Inicio de Auditoría</span>
         </h3>
-        <p className="text-sm text-gray-600">
+        <p className="text-xs sm:text-sm text-gray-600">
           Revise el resumen antes de confirmar. Esta acción iniciará formalmente la auditoría.
         </p>
       </div>
 
-      <CardSIGL className="p-6 border-2 border-blue-200 bg-blue-50/30">
-        <div className="space-y-4">
+      <CardSIGL className="p-4 sm:p-6 border-2 border-blue-200 bg-blue-50/30">
+        <div className="space-y-3 sm:space-y-4">
           <div>
-            <h4 className="text-sm text-gray-600 mb-2">Auditoría:</h4>
-            <p className="text-gray-900 font-medium">{auditoria.codigo} - {auditoria.nombre}</p>
+            <h4 className="text-xs sm:text-sm text-gray-600 mb-2">Auditoría:</h4>
+            <p className="text-xs sm:text-sm text-gray-900 font-medium">{auditoria.codigo} - {auditoria.nombre}</p>
           </div>
 
           <div>
-            <h4 className="text-sm text-gray-600 mb-2">Área Auditada:</h4>
-            <p className="text-gray-900">{auditoria.procesoNombre}</p>
-            <p className="text-sm text-gray-700">{auditoria.responsableArea.nombre}</p>
+            <h4 className="text-xs sm:text-sm text-gray-600 mb-2">Área Auditada:</h4>
+            <p className="text-xs sm:text-sm text-gray-900">{auditoria.procesoNombre}</p>
+            <p className="text-xs sm:text-sm text-gray-700">{auditoria.responsableArea.nombre}</p>
           </div>
 
           <div>
-            <h4 className="text-sm text-gray-600 mb-2">Documentos a enviar:</h4>
+            <h4 className="text-xs sm:text-sm text-gray-600 mb-2">Documentos a enviar:</h4>
             <div className="flex flex-wrap gap-2">
               {documentos.map((doc) => (
-                <BadgeSIGL key={doc.tipo} variant="info" size="sm">
+                <BadgeSIGL key={doc.tipo} variant="info" size="sm" className="text-[10px] sm:text-xs">
                   {doc.titulo}
                 </BadgeSIGL>
               ))}
@@ -1160,22 +1164,22 @@ function Paso4Confirmacion({
         </div>
       </CardSIGL>
 
-      <div className="space-y-3">
-        <h4 className="text-sm text-gray-700 font-medium">Al confirmar se realizarán las siguientes acciones:</h4>
+      <div className="space-y-2 sm:space-y-3">
+        <h4 className="text-xs sm:text-sm text-gray-700 font-medium">Al confirmar se realizarán las siguientes acciones:</h4>
         
         <div className="space-y-2">
           {[
-            { icon: <FileCheck className="w-4 h-4" />, text: 'Se crearán los 4 documentos oficiales en el expediente digital', color: 'blue' },
-            { icon: <Mail className="w-4 h-4" />, text: `Se enviará notificación a ${auditoria.responsableArea.email}`, color: 'green' },
-            { icon: <Mail className="w-4 h-4" />, text: 'Se notificará al equipo auditor del inicio formal', color: 'green' },
-            { icon: <Calendar className="w-4 h-4" />, text: 'La auditoría pasará a estado "En Planeación"', color: 'purple' },
-            { icon: <Shield className="w-4 h-4" />, text: 'Se registrará la acción en el log de auditoría (compliance)', color: 'orange' }
+            { icon: <FileCheck className="w-3 h-3 sm:w-4 sm:h-4" />, text: 'Se crearán los 4 documentos oficiales en el expediente digital', color: 'blue' },
+            { icon: <Mail className="w-3 h-3 sm:w-4 sm:h-4" />, text: `Se enviará notificación a ${auditoria.responsableArea.email}`, color: 'green' },
+            { icon: <Mail className="w-3 h-3 sm:w-4 sm:h-4" />, text: 'Se notificará al equipo auditor del inicio formal', color: 'green' },
+            { icon: <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />, text: 'La auditoría pasará a estado "En Planeación"', color: 'purple' },
+            { icon: <Shield className="w-3 h-3 sm:w-4 sm:h-4" />, text: 'Se registrará la acción en el log de auditoría (compliance)', color: 'orange' }
           ].map((item, idx) => (
-            <div key={idx} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-              <div className={`p-1.5 rounded bg-${item.color}-100 text-${item.color}-600 flex-shrink-0`}>
+            <div key={idx} className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 bg-gray-50 rounded-lg">
+              <div className={`p-1 sm:p-1.5 rounded bg-${item.color}-100 text-${item.color}-600 flex-shrink-0`}>
                 {item.icon}
               </div>
-              <p className="text-sm text-gray-700">{item.text}</p>
+              <p className="text-xs sm:text-sm text-gray-700">{item.text}</p>
             </div>
           ))}
         </div>

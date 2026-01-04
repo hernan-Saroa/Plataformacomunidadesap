@@ -22,9 +22,8 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ClipboardList, Layers, Calendar, CheckCircle2, 
-  Info, TrendingUp, Target, Users, FileText,
-  AlertTriangle, Activity, Filter, Search,
-  Download, Plus, BarChart3
+  Info, FileText, AlertTriangle, Filter, Search,
+  Download, Plus, BarChart3, Activity
 } from 'lucide-react';
 
 // Componentes del sistema
@@ -156,58 +155,6 @@ export function PlanificacionModuleRediseno() {
             titulo="Planificación de Auditorías"
             subtitulo="Gestión del ciclo completo de planificación anual de auditorías"
           />
-        </div>
-
-        {/* Dashboard KPIs - 6 Indicadores Clave */}
-        <div className="px-6 pb-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <KPICard
-              label="Auditorías Planificadas"
-              valor={estadisticas.totalAuditoriasPlanificadas}
-              icono={<Target className="w-5 h-5" />}
-              color="blue"
-              tendencia={{ valor: metricas.porcentajeAprobacion, tipo: 'positivo' }}
-              footer={`${metricas.porcentajeAprobacion}% aprobadas`}
-            />
-            <KPICard
-              label="Universo Auditable"
-              valor={estadisticas.procesosUniverso}
-              icono={<Layers className="w-5 h-5" />}
-              color="purple"
-              tendencia={{ valor: metricas.porcentajeCobertura, tipo: 'neutral' }}
-              footer={`${estadisticas.procesosAuditables} auditables`}
-            />
-            <KPICard
-              label="Auditorías Calendarizadas"
-              valor={estadisticas.auditoriasCalendarizadas}
-              icono={<Calendar className="w-5 h-5" />}
-              color="green"
-              tendencia={{ valor: metricas.porcentajeCalendarizacion, tipo: 'positivo' }}
-              footer={`${metricas.porcentajeCalendarizacion}% programadas`}
-            />
-            <KPICard
-              label="Cumplimiento Programa"
-              valor={`${estadisticas.cumplimientoPrograma}%`}
-              icono={<TrendingUp className="w-5 h-5" />}
-              color="yellow"
-              tendencia={{ valor: 75, tipo: 'positivo' }}
-              footer="En seguimiento"
-            />
-            <KPICard
-              label="Áreas Involucradas"
-              valor={estadisticas.areasInvolucradas}
-              icono={<Activity className="w-5 h-5" />}
-              color="indigo"
-              footer="Dependencias ESAP"
-            />
-            <KPICard
-              label="Auditores Asignados"
-              valor={estadisticas.auditoresAsignados}
-              icono={<Users className="w-5 h-5" />}
-              color="teal"
-              footer="Equipo auditor"
-            />
-          </div>
         </div>
 
         {/* Barra de Filtros y Acciones */}
@@ -431,105 +378,6 @@ export function PlanificacionModuleRediseno() {
           planAnualAño: filtros.año
         }}
       />
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// KPI CARD COMPONENT
-// ════════════════════════════════════════════════════════════════════════════
-
-interface KPICardProps {
-  label: string;
-  valor: string | number;
-  icono: React.ReactNode;
-  color: 'blue' | 'purple' | 'green' | 'yellow' | 'indigo' | 'teal';
-  tendencia?: {
-    valor: number;
-    tipo: 'positivo' | 'negativo' | 'neutral';
-  };
-  footer?: string;
-}
-
-function KPICard({ label, valor, icono, color, tendencia, footer }: KPICardProps) {
-  const colorClasses = {
-    blue: {
-      bg: 'bg-blue-50',
-      border: 'border-blue-200',
-      iconBg: 'bg-blue-100',
-      iconText: 'text-blue-600',
-      text: 'text-blue-700'
-    },
-    purple: {
-      bg: 'bg-purple-50',
-      border: 'border-purple-200',
-      iconBg: 'bg-purple-100',
-      iconText: 'text-purple-600',
-      text: 'text-purple-700'
-    },
-    green: {
-      bg: 'bg-green-50',
-      border: 'border-green-200',
-      iconBg: 'bg-green-100',
-      iconText: 'text-green-600',
-      text: 'text-green-700'
-    },
-    yellow: {
-      bg: 'bg-yellow-50',
-      border: 'border-yellow-200',
-      iconBg: 'bg-yellow-100',
-      iconText: 'text-yellow-600',
-      text: 'text-yellow-700'
-    },
-    indigo: {
-      bg: 'bg-indigo-50',
-      border: 'border-indigo-200',
-      iconBg: 'bg-indigo-100',
-      iconText: 'text-indigo-600',
-      text: 'text-indigo-700'
-    },
-    teal: {
-      bg: 'bg-teal-50',
-      border: 'border-teal-200',
-      iconBg: 'bg-teal-100',
-      iconText: 'text-teal-600',
-      text: 'text-teal-700'
-    }
-  };
-
-  const colors = colorClasses[color];
-
-  return (
-    <div className={`rounded-lg border ${colors.bg} ${colors.border} p-3 transition-all hover:shadow-md`}>
-      <div className="flex items-start justify-between mb-2">
-        <div className={`w-8 h-8 sm:w-9 sm:h-9 ${colors.iconBg} rounded-lg flex items-center justify-center ${colors.iconText}`}>
-          {icono}
-        </div>
-        {tendencia && (
-          <div className={`flex items-center gap-1 text-xs font-medium ${ 
-            tendencia.tipo === 'positivo' ? 'text-green-600' :
-            tendencia.tipo === 'negativo' ? 'text-red-600' :
-            'text-gray-600'
-          }`}>
-            <TrendingUp className={`w-3 h-3 ${
-              tendencia.tipo === 'negativo' ? 'rotate-180' : ''
-            }`} />
-            {tendencia.valor}%
-          </div>
-        )}
-      </div>
-      
-      <div className="mb-1">
-        <div className={`text-xl sm:text-2xl font-semibold ${colors.text}`}>{valor}</div>
-      </div>
-      
-      <div className="text-xs text-gray-600 mb-1">{label}</div>
-      
-      {footer && (
-        <div className={`text-xs ${colors.text} font-medium mt-1`}>
-          {footer}
-        </div>
-      )}
     </div>
   );
 }

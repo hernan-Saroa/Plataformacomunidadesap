@@ -55,7 +55,7 @@ type VistaDisponible =
   | 'planes-mejoramiento';
 
 export function GestionLegalFull() {
-  const [vistaActual, setVistaActual] = useState<VistaDisponible>('defensa-judicial');
+  const [vistaActual, setVistaActual] = useState<VistaDisponible>('dashboard');
   
   // ✅ Estados del tour guiado multi-módulo
   const [isTourOpen, setIsTourOpen] = useState(false);

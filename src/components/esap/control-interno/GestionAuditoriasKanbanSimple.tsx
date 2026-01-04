@@ -70,12 +70,15 @@ import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from '.
 import { ModalAsignarAuditorIndividual } from './ModalAsignarAuditorIndividual';
 import { ModalCambiarEstadoAuditoria } from './ModalCambiarEstadoAuditoria';
 import { ModalConfirmacionAccion } from './ModalConfirmacionAccion';
+import { ModalFormularioAuditoria } from './ModalFormularioAuditoria';
 import { InicioAuditoriaWizard } from './InicioAuditoriaWizard';
 import { ExpedienteAuditoriaCompleto } from './ExpedienteAuditoriaCompleto';
 import { LoadingSpinner, CardLoading } from '../../ui/loading-spinner';
 import { SkeletonAuditoriaCard, SkeletonKanbanColumn } from '../../ui/skeleton';
 import { EmptyState } from '../../ui/empty-state';
 import type { AuditoriaFormData } from '../../../utils/validation';
+import { TooltipGuia } from './TooltipGuia';
+import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
 
 // Integración con Planes de Mejoramiento
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
@@ -2195,57 +2198,61 @@ export function GestionAuditoriasKanbanSimple() {
             </p>
           </div>
 
-          {/* Botones de Vista */}
+          {/* Botones de Vista + Tooltip */}
           <div className="flex items-center gap-2">
-            {/* BOTONES COLAPSAR/EXPANDIR TODAS LAS TARJETAS */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={colapsarTodasTarjetas}
-                className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all hover:bg-blue-50 border-2 border-blue-300 hover:border-blue-500"
-                style={{ color: '#1e5da8' }}
-                title="Colapsar todas las tarjetas"
-              >
-                <ChevronsDown className="w-4 h-4" />
-                <span className="hidden sm:inline">Colapsar Todas</span>
-              </button>
-              <button
-                onClick={expandirTodasTarjetas}
-                className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all hover:bg-green-50 border-2 border-green-300 hover:border-green-500"
-                style={{ color: '#059669' }}
-                title="Expandir todas las tarjetas"
-              >
-                <ChevronsUp className="w-4 h-4" />
-                <span className="hidden sm:inline">Expandir Todas</span>
-              </button>
-            </div>
+            <TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['auditorias-kanban']} />
+          </div>
+        </div>
 
-            <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
-              <button
-                onClick={() => setVistaActiva('kanban')}
-                className="px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all"
-                style={{
-                  background: vistaActiva === 'kanban' ? '#FFFFFF' : 'transparent',
-                  color: vistaActiva === 'kanban' ? '#F97316' : '#6B7280',
-                  boxShadow: vistaActiva === 'kanban' ? '0 1px 2px rgba(0, 0, 0, 0.05)' : 'none'
-                }}
-              >
-                <Columns3 className="w-4 h-4" />
-                Kanban
-              </button>
-              <button
-                onClick={() => setVistaActiva('lista')}
-                className="px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all"
-                style={{
-                  background: vistaActiva === 'lista' ? '#FFFFFF' : 'transparent',
-                  color: vistaActiva === 'lista' ? '#F97316' : '#6B7280',
-                  boxShadow: vistaActiva === 'lista' ? '0 1px 2px rgba(0, 0, 0, 0.05)' : 'none'
-                }}
-              >
-                <List className="w-4 h-4" />
-                Lista
-              </button>
-            </div>
-            {/* Botón "Nueva Auditoría" eliminado según requerimiento */}
+        {/* Segunda fila de controles */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          {/* BOTONES COLAPSAR/EXPANDIR TODAS LAS TARJETAS */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={colapsarTodasTarjetas}
+              className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all hover:bg-blue-50 border-2 border-blue-300 hover:border-blue-500"
+              style={{ color: '#1e5da8' }}
+              title="Colapsar todas las tarjetas"
+            >
+              <ChevronsDown className="w-4 h-4" />
+              <span className="hidden sm:inline">Colapsar Todas</span>
+            </button>
+            <button
+              onClick={expandirTodasTarjetas}
+              className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all hover:bg-green-50 border-2 border-green-300 hover:border-green-500"
+              style={{ color: '#059669' }}
+              title="Expandir todas las tarjetas"
+            >
+              <ChevronsUp className="w-4 h-4" />
+              <span className="hidden sm:inline">Expandir Todas</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
+            <button
+              onClick={() => setVistaActiva('kanban')}
+              className="px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all"
+              style={{
+                background: vistaActiva === 'kanban' ? '#FFFFFF' : 'transparent',
+                color: vistaActiva === 'kanban' ? '#F97316' : '#6B7280',
+                boxShadow: vistaActiva === 'kanban' ? '0 1px 2px rgba(0, 0, 0, 0.05)' : 'none'
+              }}
+            >
+              <Columns3 className="w-4 h-4" />
+              Kanban
+            </button>
+            <button
+              onClick={() => setVistaActiva('lista')}
+              className="px-3 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all"
+              style={{
+                background: vistaActiva === 'lista' ? '#FFFFFF' : 'transparent',
+                color: vistaActiva === 'lista' ? '#F97316' : '#6B7280',
+                boxShadow: vistaActiva === 'lista' ? '0 1px 2px rgba(0, 0, 0, 0.05)' : 'none'
+              }}
+            >
+              <List className="w-4 h-4" />
+              Lista
+            </button>
           </div>
         </div>
 
@@ -2851,7 +2858,12 @@ export function GestionAuditoriasKanbanSimple() {
         )}
 
         {/* MODAL INICIO DE AUDITORÍA - RF004 */}
-        {modalInicioAuditoriaOpen && auditoriaSeleccionada && (
+        {modalInicioAuditoriaOpen && auditoriaSeleccionada && (() => {
+          // Convertir fecha formato DD/MM/YYYY a Date object
+          const [dia, mes, anio] = auditoriaSeleccionada.fechaInicio.split('/');
+          const fechaInicioDate = new Date(parseInt(anio), parseInt(mes) - 1, parseInt(dia));
+          
+          return (
           <InicioAuditoriaWizard
             auditoria={{
               id: auditoriaSeleccionada.id,
@@ -2878,7 +2890,7 @@ export function GestionAuditoriasKanbanSimple() {
                   email: auditoriaSeleccionada.auditorAsignado.nombre.toLowerCase().replace(' ', '.') + '@esap.edu.co'
                 }
               ],
-              fechaInicio: new Date(auditoriaSeleccionada.fechaInicio),
+              fechaInicio: fechaInicioDate,
               duracionDias: {
                 planeacion: 7,
                 ejecucion: 20,
@@ -2901,7 +2913,8 @@ export function GestionAuditoriasKanbanSimple() {
               ));
             }}
           />
-        )}
+          );
+        })()}
 
         {/* MODAL DE ASIGNACIÓN DE AUDITORES */}
         <ModalAsignarAuditorIndividual

@@ -185,13 +185,70 @@ const MOCK_ROLES: SystemRole[] = [
     creado_por: 'Super Admin',
     ultima_modificacion: '2024-11-05',
     modificado_por: 'Coordinador TI'
+  },
+  // ========== ROLES DE CONTROL INTERNO ==========
+  {
+    id: '9',
+    nombre: 'Jefe de Control Interno',
+    descripcion: 'Control total sobre todos los módulos de Control Interno de Gestión',
+    icono: 'Shield',
+    color: '#dc2626',
+    tipo: 'sistema',
+    usuarios_count: 1,
+    permisos_count: 80,
+    esta_activo: true,
+    requiere_2fa: true,
+    fecha_creacion: '2024-01-01',
+    creado_por: 'Sistema'
+  },
+  {
+    id: '10',
+    nombre: 'Profesional Auditor',
+    descripcion: 'Gestión completa de auditorías y seguimiento de planes de mejoramiento',
+    icono: 'FileText',
+    color: '#2563eb',
+    tipo: 'sistema',
+    usuarios_count: 3,
+    permisos_count: 52,
+    esta_activo: true,
+    requiere_2fa: true,
+    fecha_creacion: '2024-01-01',
+    creado_por: 'Sistema'
+  },
+  {
+    id: '11',
+    nombre: 'Auxiliar de Auditoría',
+    descripcion: 'Soporte en procesos de auditoría y gestión documental',
+    icono: 'FileText',
+    color: '#16a34a',
+    tipo: 'sistema',
+    usuarios_count: 2,
+    permisos_count: 23,
+    esta_activo: true,
+    requiere_2fa: false,
+    fecha_creacion: '2024-01-01',
+    creado_por: 'Sistema'
+  },
+  {
+    id: '12',
+    nombre: 'Consulta (Control Interno)',
+    descripcion: 'Solo lectura de información pública del módulo de Control Interno',
+    icono: 'Eye',
+    color: '#64748b',
+    tipo: 'sistema',
+    usuarios_count: 5,
+    permisos_count: 15,
+    esta_activo: true,
+    requiere_2fa: false,
+    fecha_creacion: '2024-01-01',
+    creado_por: 'Sistema'
   }
 ];
 
 const MOCK_STATS: RoleStats = {
-  total_roles: 8,
-  roles_sistema: 6,
-  usuarios_asignados: 5056,
+  total_roles: 12,
+  roles_sistema: 10,
+  usuarios_asignados: 5067,
   permisos_disponibles: 45
 };
 
