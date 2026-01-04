@@ -13,8 +13,8 @@ import { Auditoria } from './auditoria.entity';
 @Entity('objetivo_auditoria', { schema: 'control_interno' })
 @Index(['auditoriaId'])
 export class ObjetivoAuditoria {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
   @Column({ name: 'auditoria_id', type: 'uuid', nullable: false })
   auditoriaId: string;

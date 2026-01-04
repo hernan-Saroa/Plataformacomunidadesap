@@ -15,8 +15,8 @@ import { Auditoria } from './auditoria.entity';
 @Index(['personaId'])
 @Index(['activo'])
 export class EquipoAuditor {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
   @Column({ name: 'auditoria_id', type: 'uuid', nullable: false })
   auditoriaId: string;

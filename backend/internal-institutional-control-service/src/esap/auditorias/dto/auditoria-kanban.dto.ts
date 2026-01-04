@@ -14,7 +14,7 @@ export interface PersonaDto {
 }
 
 export interface ObjetivoDto {
-  id: string;
+  id: number;
   descripcion: string;
 }
 

@@ -119,7 +119,7 @@ export class AuditoriasService {
    * Serializa una auditoría para la respuesta JSON
    */
   private serializeAuditoria(auditoria: Auditoria): any {
-    return {
+    const serialized: any = {
       ...auditoria,
       fechaInicio: this.serializeDate(auditoria.fechaInicio),
       fechaFin: this.serializeDate(auditoria.fechaFin),
@@ -130,6 +130,42 @@ export class AuditoriasService {
             : auditoria.checklistCompletados)
         : {},
     };
+
+    // Asegurar que los IDs numéricos se mantengan como números
+    if (auditoria.auditorLiderId !== null && auditoria.auditorLiderId !== undefined) {
+      serialized.auditorLiderId = Number(auditoria.auditorLiderId);
+    }
+    if (auditoria.auditorAsignadoId !== null && auditoria.auditorAsignadoId !== undefined) {
+      serialized.auditorAsignadoId = Number(auditoria.auditorAsignadoId);
+    }
+    if (auditoria.supervisorAsignadoId !== null && auditoria.supervisorAsignadoId !== undefined) {
+      serialized.supervisorAsignadoId = Number(auditoria.supervisorAsignadoId);
+    }
+
+    // Serializar objetivos, criterios y equipoAuditores con IDs numéricos
+    if (auditoria.objetivos && Array.isArray(auditoria.objetivos)) {
+      serialized.objetivos = auditoria.objetivos.map(obj => ({
+        ...obj,
+        id: Number(obj.id),
+      }));
+    }
+
+    if (auditoria.criterios && Array.isArray(auditoria.criterios)) {
+      serialized.criterios = auditoria.criterios.map(crit => ({
+        ...crit,
+        id: Number(crit.id),
+      }));
+    }
+
+    if (auditoria.equipoAuditores && Array.isArray(auditoria.equipoAuditores)) {
+      serialized.equipoAuditores = auditoria.equipoAuditores.map(eq => ({
+        ...eq,
+        id: Number(eq.id),
+        personaId: Number(eq.personaId),
+      }));
+    }
+
+    return serialized;
   }
 
   /**
@@ -237,8 +273,12 @@ export class AuditoriasService {
       throw new BadRequestException(`Ya existe una auditoría con el código ${codigo}`);
     }
 
-    const auditoria = this.auditoriaRepository.create({
-      ...createDto,
+    const auditoriaData: any = {
+      nombre: createDto.nombre,
+      tipo: createDto.tipo,
+      territorial: createDto.territorial,
+      sede: createDto.sede,
+      responsable: createDto.responsable,
       codigo,
       fechaInicio: fechaInicio,
       fechaFin: fechaFin,
@@ -247,11 +287,119 @@ export class AuditoriasService {
       progreso: createDto.progreso ?? 0,
       hallazgos: 0,
       activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
-    });
+    };
+
+    // Incluir campos opcionales si tienen valor
+    if (createDto.descripcion) auditoriaData.descripcion = createDto.descripcion;
+    if (createDto.areaObjetivo) auditoriaData.areaObjetivo = createDto.areaObjetivo;
+    if (createDto.procesoAuditado) auditoriaData.procesoAuditado = createDto.procesoAuditado;
+    if (createDto.alcance) auditoriaData.alcance = createDto.alcance;
+    // Metodología se puede guardar en observaciones si no hay un campo específico
+    if (createDto.metodologia) {
+      // Si ya hay observaciones, concatenar metodología
+      if (createDto.observacionesAdicionales) {
+        auditoriaData.observacionesAdicionales = `${createDto.observacionesAdicionales}\n\nMetodología:\n${createDto.metodologia}`;
+      } else {
+        auditoriaData.observacionesAdicionales = `Metodología:\n${createDto.metodologia}`;
+      }
+    } else if (createDto.observacionesAdicionales) {
+      auditoriaData.observacionesAdicionales = createDto.observacionesAdicionales;
+    }
+    if (createDto.nivelRiesgo) auditoriaData.calificacionRiesgo = createDto.nivelRiesgo;
+    if (createDto.calificacionRiesgo) auditoriaData.calificacionRiesgo = createDto.calificacionRiesgo;
+    if (createDto.auditorLiderId) auditoriaData.auditorLiderId = createDto.auditorLiderId;
+    if (createDto.auditorAsignadoId) auditoriaData.auditorAsignadoId = createDto.auditorAsignadoId;
+    if (createDto.supervisorAsignadoId) auditoriaData.supervisorAsignadoId = createDto.supervisorAsignadoId;
+    if (createDto.responsableAreaNombre) auditoriaData.responsableAreaNombre = createDto.responsableAreaNombre;
+    if (createDto.responsableAreaCargo) auditoriaData.responsableAreaCargo = createDto.responsableAreaCargo;
+    if (createDto.responsableAreaEmail) auditoriaData.responsableAreaEmail = createDto.responsableAreaEmail;
+    if (createDto.observacionesAdicionales) auditoriaData.observacionesAdicionales = createDto.observacionesAdicionales;
+
+    const auditoria = this.auditoriaRepository.create(auditoriaData);
 
     const saved = await this.auditoriaRepository.save(auditoria);
     // Serializar fechas para evitar problemas de zona horaria
-    return this.serializeAuditoria(saved) as any;
+    // Asegurar que saved es un objeto, no un array
+    const auditoriaGuardada = Array.isArray(saved) ? saved[0] : saved;
+
+    // Guardar objetivos si se proporcionan
+    if (createDto.objetivos && Array.isArray(createDto.objetivos) && createDto.objetivos.length > 0) {
+      const objetivos = createDto.objetivos
+        .filter(descripcion => descripcion && descripcion.trim().length > 0)
+        .map((descripcion, index) => {
+          return this.objetivoRepository.create({
+            auditoriaId: auditoriaGuardada.id,
+            descripcion: descripcion.trim(),
+            orden: index + 1,
+          });
+        });
+
+      if (objetivos.length > 0) {
+        await this.objetivoRepository.save(objetivos);
+      }
+    }
+
+    // Guardar criterios si se proporcionan
+    if (createDto.criteriosAuditoria && Array.isArray(createDto.criteriosAuditoria) && createDto.criteriosAuditoria.length > 0) {
+      const criterios = createDto.criteriosAuditoria
+        .filter(criterio => criterio && criterio.trim().length > 0)
+        .map((criterio, index) => {
+          return this.criterioRepository.create({
+            auditoriaId: auditoriaGuardada.id,
+            criterio: criterio.trim(),
+            orden: index + 1,
+          });
+        });
+
+      if (criterios.length > 0) {
+        await this.criterioRepository.save(criterios);
+      }
+    }
+
+    // Guardar equipo de auditores si se proporciona
+    if (createDto.equipoAuditores && Array.isArray(createDto.equipoAuditores) && createDto.equipoAuditores.length > 0) {
+      const equipo = createDto.equipoAuditores
+        .filter(personaId => personaId)
+        .map((personaId) => {
+          // Convertir string a number si es necesario
+          let personaIdNum: number;
+          if (typeof personaId === 'string') {
+            // Si viene como "aud-001", extraer el número
+            if (personaId.startsWith('aud-')) {
+              personaIdNum = parseInt(personaId.replace('aud-', ''), 10);
+            } else {
+              // Si es solo un número como string, convertir directamente
+              personaIdNum = parseInt(personaId, 10);
+            }
+          } else {
+            personaIdNum = Number(personaId);
+          }
+          
+          // Validar que sea un número válido
+          if (isNaN(personaIdNum)) {
+            throw new BadRequestException(`ID de persona inválido: ${personaId}`);
+          }
+          
+          return this.equipoRepository.create({
+            auditoriaId: auditoriaGuardada.id,
+            personaId: personaIdNum,
+            rol: 'Auditor',
+            activo: true,
+          });
+        });
+
+      if (equipo.length > 0) {
+        await this.equipoRepository.save(equipo);
+      }
+    }
+
+    // Recargar la auditoría con las relaciones
+    const auditoriaCompleta = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaGuardada.id },
+      relations: ['objetivos', 'criterios', 'equipoAuditores'],
+    });
+
+    return this.serializeAuditoria(auditoriaCompleta || auditoriaGuardada) as any;
   }
 
   /**
@@ -623,131 +771,207 @@ export class AuditoriasService {
    * Obtiene todas las auditorías para el Kanban con todas las relaciones
    */
   async findAllKanban(): Promise<AuditoriaKanbanDto[]> {
-    const auditorias = await this.auditoriaRepository.find({
-      where: { activa: true },
-      relations: ['objetivos', 'equipoAuditores', 'territorialInfo', 'especialInfo'],
-      order: { createdAt: 'DESC' },
-    });
+    try {
+      const auditorias = await this.auditoriaRepository.find({
+        where: { activa: true },
+        relations: ['objetivos', 'equipoAuditores', 'territorialInfo', 'especialInfo'],
+        order: { createdAt: 'DESC' },
+      });
 
-    // Obtener información de personas desde auth.personas usando query raw
-    const auditoriasConPersonas = await Promise.all(
-      auditorias.map(async (auditoria) => {
-        // Obtener datos de personas desde auth.personas
-        let auditorLider: PersonaDto | undefined;
-        let auditorAsignado: PersonaDto | undefined;
+      // Si no hay auditorías, retornar array vacío
+      if (!auditorias || auditorias.length === 0) {
+        return [];
+      }
 
-        if (auditoria.auditorLiderId) {
-          const lider = await this.auditoriaRepository.query(
-            `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
-             FROM auth.personas 
-             WHERE id_tercero = $1`,
-            [auditoria.auditorLiderId]
-          );
-          if (lider && lider.length > 0) {
-            const p = lider[0];
-            const iniciales = p.sig_tercero || this.getIniciales(p.nom_largo);
-            auditorLider = {
-              nombre: p.nom_largo,
-              cargo: 'Auditor Líder', // TODO: Obtener desde auditor_perfil
-              iniciales,
-              tipoIdentificacion: p.tip_identificacion || 'CC',
-              numeroIdentificacion: p.num_identificacion,
-            };
-          }
-        }
+      // Obtener información de personas desde auth.personas usando query raw
+      const auditoriasConPersonas = await Promise.all(
+        auditorias.map(async (auditoria) => {
+          try {
+            // Obtener datos de personas desde auth.personas
+            let auditorLider: PersonaDto | undefined;
+            let auditorAsignado: PersonaDto | undefined;
 
-        if (auditoria.auditorAsignadoId) {
-          const asignado = await this.auditoriaRepository.query(
-            `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
-             FROM auth.personas 
-             WHERE id_tercero = $1`,
-            [auditoria.auditorAsignadoId]
-          );
-          if (asignado && asignado.length > 0) {
-            const p = asignado[0];
-            const iniciales = p.sig_tercero || this.getIniciales(p.nom_largo);
-            auditorAsignado = {
-              nombre: p.nom_largo,
-              cargo: 'Auditor', // TODO: Obtener desde auditor_perfil
-              iniciales,
-              tipoIdentificacion: p.tip_identificacion || 'CC',
-              numeroIdentificacion: p.num_identificacion,
-            };
-          }
-        }
+            if (auditoria.auditorLiderId) {
+              try {
+                const lider = await this.auditoriaRepository.query(
+                  `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                   FROM auth.personas 
+                   WHERE id_tercero = $1`,
+                  [auditoria.auditorLiderId]
+                );
+                if (lider && lider.length > 0 && lider[0]) {
+                  const p = lider[0];
+                  const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
+                  const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                  auditorLider = {
+                    nombre: nombreCompleto,
+                    cargo: 'Auditor Líder',
+                    iniciales,
+                    tipoIdentificacion: (p.tip_identificacion || 'CC') as 'CC' | 'CE' | 'TI' | 'PA',
+                    numeroIdentificacion: p.num_identificacion || '',
+                  };
+                }
+              } catch (error) {
+                console.error(`Error al obtener auditor líder ${auditoria.auditorLiderId}:`, error);
+                // Continuar sin auditor líder si hay error
+              }
+            }
 
-        // Obtener nombres del equipo de auditores
-        const equipoActivo = auditoria.equipoAuditores?.filter(e => e.activo) || [];
-        const equipoNombres = await Promise.all(
-          equipoActivo.map(async (equipo) => {
-            const persona = await this.auditoriaRepository.query(
-              `SELECT nom_largo FROM auth.personas WHERE id_tercero = $1`,
-              [equipo.personaId]
+            if (auditoria.auditorAsignadoId) {
+              try {
+                const asignado = await this.auditoriaRepository.query(
+                  `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                   FROM auth.personas 
+                   WHERE id_tercero = $1`,
+                  [auditoria.auditorAsignadoId]
+                );
+                if (asignado && asignado.length > 0 && asignado[0]) {
+                  const p = asignado[0];
+                  const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
+                  const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                  auditorAsignado = {
+                    nombre: nombreCompleto,
+                    cargo: 'Auditor',
+                    iniciales,
+                    tipoIdentificacion: (p.tip_identificacion || 'CC') as 'CC' | 'CE' | 'TI' | 'PA',
+                    numeroIdentificacion: p.num_identificacion || '',
+                  };
+                }
+              } catch (error) {
+                console.error(`Error al obtener auditor asignado ${auditoria.auditorAsignadoId}:`, error);
+                // Continuar sin auditor asignado si hay error
+              }
+            }
+
+            // Obtener nombres del equipo de auditores
+            const equipoActivo = auditoria.equipoAuditores?.filter(e => e.activo) || [];
+            const equipoNombres = await Promise.all(
+              equipoActivo.map(async (equipo) => {
+                try {
+                  if (!equipo.personaId) return 'N/A';
+                  const persona = await this.auditoriaRepository.query(
+                    `SELECT nom_largo FROM auth.personas WHERE id_tercero = $1`,
+                    [equipo.personaId]
+                  );
+                  return persona && persona.length > 0 && persona[0]?.nom_largo 
+                    ? persona[0].nom_largo 
+                    : 'N/A';
+                } catch (error) {
+                  console.error(`Error al obtener persona del equipo ${equipo.personaId}:`, error);
+                  return 'N/A';
+                }
+              })
             );
-            return persona && persona.length > 0 ? persona[0].nom_largo : 'N/A';
-          })
-        );
 
-        // Formatear fechas a DD/MM/YYYY
-        const fechaInicio = this.formatDateDDMMYYYY(auditoria.fechaInicio);
-        const fechaFin = this.formatDateDDMMYYYY(auditoria.fechaFin);
+            // Formatear fechas a DD/MM/YYYY con validación
+            const fechaInicio = auditoria.fechaInicio 
+              ? this.formatDateDDMMYYYY(auditoria.fechaInicio)
+              : '';
+            const fechaFin = auditoria.fechaFin 
+              ? this.formatDateDDMMYYYY(auditoria.fechaFin)
+              : '';
 
-        // Mapear objetivos
-        const objetivos: ObjetivoDto[] = (auditoria.objetivos || [])
-          .filter(obj => obj.activo)
-          .sort((a, b) => a.orden - b.orden)
-          .map(obj => ({
-            id: obj.id,
-            descripcion: obj.descripcion,
-          }));
+            // Mapear objetivos con validación
+            const objetivos: ObjetivoDto[] = (auditoria.objetivos || [])
+              .filter(obj => obj && obj.activo)
+              .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+              .map(obj => ({
+                id: obj.id,
+                descripcion: obj.descripcion || '',
+              }));
 
-        return {
-          id: auditoria.id,
-          codigo: auditoria.codigo,
-          titulo: auditoria.nombre,
-          descripcion: auditoria.descripcion,
-          estado: auditoria.estadoKanban || this.mapFaseToEstadoKanban(auditoria.fase),
-          riesgo: auditoria.riesgoKanban || 'Medio',
-          semaforo: auditoria.semaforo || 'verde',
-          territorial: auditoria.territorial,
-          auditorLider,
-          auditorAsignado,
-          fechaInicio,
-          fechaFin,
-          progreso: auditoria.progreso,
-          hallazgos: auditoria.hallazgos,
-          diasRestantes: auditoria.diasRestantes || this.calcularDiasRestantes(auditoria.fechaFin),
-          porcentajeTiempo: auditoria.porcentajeTiempo || this.calcularPorcentajeTiempo(auditoria.fechaInicio, auditoria.fechaFin),
-          ultimaActuacion: auditoria.ultimaActuacion,
-          objetivos,
-          calificacionRiesgo: auditoria.calificacionRiesgo,
-          documentos: auditoria.totalDocumentos,
-          informes: auditoria.totalInformes,
-          tareas: auditoria.totalTareas,
-          tipo: auditoria.tipo || 'Gestión', // Usar el tipo real de la auditoría, no tipoKanban
-          tipoKanban: auditoria.tipoKanban || 'regular', // Mantener tipoKanban separado
-          prioridad: auditoria.prioridadKanban || 'media',
-          areaObjetivo: auditoria.areaObjetivo,
-          permiteCambiarObjetivos: auditoria.permiteCambiarObjetivos,
-          equipoAuditores: equipoNombres,
-          territorialInfo: auditoria.territorialInfo ? {
-            nombre: auditoria.territorialInfo.nombre,
-            ciudad: auditoria.territorialInfo.ciudad,
-            departamento: auditoria.territorialInfo.departamento,
-          } : undefined,
-          especial: auditoria.especialInfo ? {
-            tipoMotivo: auditoria.especialInfo.tipoMotivo,
-            solicitante: auditoria.especialInfo.solicitante,
-            justificacion: auditoria.especialInfo.justificacion,
-          } : undefined,
-          actividadesCompletas: auditoria.actividadesCompletas,
-          actividadesPendientes: auditoria.actividadesPendientes,
-          alcance: auditoria.alcance || '', // Agregar alcance al DTO
-        };
-      })
-    );
+            return {
+              id: auditoria.id,
+              codigo: auditoria.codigo || '',
+              titulo: auditoria.nombre || '',
+              descripcion: auditoria.descripcion || '',
+              estado: auditoria.estadoKanban || this.mapFaseToEstadoKanban(auditoria.fase),
+              riesgo: auditoria.riesgoKanban || 'Medio',
+              semaforo: auditoria.semaforo || 'verde',
+              territorial: auditoria.territorial || '',
+              auditorLider,
+              auditorAsignado,
+              fechaInicio,
+              fechaFin,
+              progreso: auditoria.progreso ?? 0,
+              hallazgos: auditoria.hallazgos ?? 0,
+              diasRestantes: auditoria.diasRestantes ?? (auditoria.fechaFin ? this.calcularDiasRestantes(auditoria.fechaFin) : 0),
+              porcentajeTiempo: auditoria.porcentajeTiempo ?? (auditoria.fechaInicio && auditoria.fechaFin ? this.calcularPorcentajeTiempo(auditoria.fechaInicio, auditoria.fechaFin) : 0),
+              ultimaActuacion: auditoria.ultimaActuacion,
+              objetivos,
+              calificacionRiesgo: auditoria.calificacionRiesgo,
+              documentos: auditoria.totalDocumentos ?? 0,
+              informes: auditoria.totalInformes ?? 0,
+              tareas: auditoria.totalTareas ?? 0,
+              tipo: auditoria.tipo || 'Gestión',
+              tipoKanban: auditoria.tipoKanban || 'regular',
+              prioridad: auditoria.prioridadKanban || 'media',
+              areaObjetivo: auditoria.areaObjetivo,
+              permiteCambiarObjetivos: auditoria.permiteCambiarObjetivos ?? true,
+              equipoAuditores: equipoNombres,
+              territorialInfo: auditoria.territorialInfo ? {
+                nombre: auditoria.territorialInfo.nombre || '',
+                ciudad: auditoria.territorialInfo.ciudad || '',
+                departamento: auditoria.territorialInfo.departamento || '',
+              } : undefined,
+              especial: auditoria.especialInfo ? {
+                tipoMotivo: auditoria.especialInfo.tipoMotivo || '',
+                solicitante: auditoria.especialInfo.solicitante || '',
+                justificacion: auditoria.especialInfo.justificacion || '',
+              } : undefined,
+              actividadesCompletas: auditoria.actividadesCompletas ?? false,
+              actividadesPendientes: auditoria.actividadesPendientes ?? 0,
+              alcance: auditoria.alcance || '',
+            };
+          } catch (error) {
+            console.error(`Error al procesar auditoría ${auditoria.id}:`, error);
+            // Retornar un objeto básico en caso de error
+            return {
+              id: auditoria.id,
+              codigo: auditoria.codigo || '',
+              titulo: auditoria.nombre || 'Auditoría sin nombre',
+              descripcion: auditoria.descripcion || '',
+              estado: auditoria.estadoKanban || this.mapFaseToEstadoKanban(auditoria.fase),
+              riesgo: auditoria.riesgoKanban || 'Medio',
+              semaforo: auditoria.semaforo || 'verde',
+              territorial: auditoria.territorial || '',
+              auditorLider: undefined,
+              auditorAsignado: undefined,
+              fechaInicio: auditoria.fechaInicio ? this.formatDateDDMMYYYY(auditoria.fechaInicio) : '',
+              fechaFin: auditoria.fechaFin ? this.formatDateDDMMYYYY(auditoria.fechaFin) : '',
+              progreso: auditoria.progreso ?? 0,
+              hallazgos: auditoria.hallazgos ?? 0,
+              diasRestantes: 0,
+              porcentajeTiempo: 0,
+              ultimaActuacion: undefined,
+              objetivos: [],
+              calificacionRiesgo: undefined,
+              documentos: 0,
+              informes: 0,
+              tareas: 0,
+              tipo: auditoria.tipo || 'Gestión',
+              tipoKanban: auditoria.tipoKanban || 'regular',
+              prioridad: auditoria.prioridadKanban || 'media',
+              areaObjetivo: undefined,
+              permiteCambiarObjetivos: true,
+              equipoAuditores: [],
+              territorialInfo: undefined,
+              especial: undefined,
+              actividadesCompletas: false,
+              actividadesPendientes: 0,
+              alcance: '',
+            };
+          }
+        })
+      );
 
-    return auditoriasConPersonas;
+      return auditoriasConPersonas;
+    } catch (error) {
+      console.error('Error en findAllKanban:', error);
+      // Si hay un error crítico, retornar array vacío en lugar de lanzar excepción
+      // Esto permite que el frontend muestre un estado vacío en lugar de un error
+      return [];
+    }
   }
 
   /**

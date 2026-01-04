@@ -192,18 +192,139 @@ export function PlanificacionModuleRediseno() {
     cargarEstadisticas();
   }, [filtros.año]);
 
+  // Función auxiliar para mapear tipoAuditoria del formulario al enum del backend
+  const mapTipoAuditoria = (tipoAuditoria: string): string => {
+    const mapping: Record<string, string> = {
+      'regular': 'Gestión',
+      'territorial': 'Gestión',
+      'especial': 'Control Interno',
+      'seguimiento': 'Cumplimiento'
+    };
+    return mapping[tipoAuditoria] || 'Gestión';
+  };
+
   // Handler para crear auditoría
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
     console.log('📝 Nueva auditoría OCIG desde Planeación:', data);
     
-    // Simulación de delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    toast.success('✅ Auditoría OCIG creada exitosamente', {
-      description: `"${data.titulo}" ha sido agregada al Plan Anual ${data.planAnualAño || 2025}`
-    });
-    
-    setModalNuevaAuditoriaOpen(false);
+    try {
+      // Validar fechas antes de enviar
+      if (new Date(data.fechaFin) < new Date(data.fechaInicio)) {
+        toast.error('Error de validación', {
+          description: 'La fecha de finalización debe ser posterior a la fecha de inicio'
+        });
+        return;
+      }
+
+      // Mapear datos del formulario al formato del backend
+      const auditoriaData: any = {
+        nombre: data.titulo, // Mapear titulo -> nombre
+        descripcion: data.descripcion || undefined,
+        tipo: mapTipoAuditoria(data.tipoAuditoria),
+        territorial: data.territorial,
+        sede: data.territorial || 'Sede Principal',
+        responsable: data.auditorLider || data.auditorAsignado || 'No asignado',
+        fechaInicio: data.fechaInicio,
+        fechaFin: data.fechaFin,
+        fase: 'planeacion' as const,
+        prioridad: 'Media' as const,
+        progreso: 0,
+      };
+
+      // Agregar campos adicionales si tienen valor
+      if (data.areaObjetivo) auditoriaData.areaObjetivo = data.areaObjetivo;
+      if (data.procesoAuditado) auditoriaData.procesoAuditado = data.procesoAuditado;
+      if (data.alcance) auditoriaData.alcance = data.alcance;
+      if (data.metodologia) auditoriaData.metodologia = data.metodologia;
+      if (data.nivelRiesgo) auditoriaData.nivelRiesgo = data.nivelRiesgo;
+      
+      // Mapear IDs de auditores (convertir 'aud-001' a número si es necesario)
+      // Por ahora enviamos el string, el backend puede manejarlo
+      if (data.auditorLider) {
+        const liderId = data.auditorLider.startsWith('aud-') 
+          ? parseInt(data.auditorLider.replace('aud-', ''), 10) 
+          : data.auditorLider;
+        if (!isNaN(Number(liderId))) auditoriaData.auditorLiderId = Number(liderId);
+      }
+      
+      if (data.auditorAsignado) {
+        const asignadoId = data.auditorAsignado.startsWith('aud-') 
+          ? parseInt(data.auditorAsignado.replace('aud-', ''), 10) 
+          : data.auditorAsignado;
+        if (!isNaN(Number(asignadoId))) auditoriaData.auditorAsignadoId = Number(asignadoId);
+      }
+      
+      if (data.supervisorAsignado) {
+        const supervisorId = data.supervisorAsignado.startsWith('aud-') 
+          ? parseInt(data.supervisorAsignado.replace('aud-', ''), 10) 
+          : data.supervisorAsignado;
+        if (!isNaN(Number(supervisorId))) auditoriaData.supervisorAsignadoId = Number(supervisorId);
+      }
+
+      // Arrays - objetivos, criterios, normatividad, riesgos, controles, equipo
+      if (data.objetivos && data.objetivos.length > 0) {
+        auditoriaData.objetivos = data.objetivos;
+      }
+      
+      if (data.criteriosAuditoria && data.criteriosAuditoria.length > 0) {
+        auditoriaData.criteriosAuditoria = data.criteriosAuditoria;
+      }
+      
+      if (data.normatividadAplicable && data.normatividadAplicable.length > 0) {
+        // Por ahora guardamos normatividad en observaciones, luego podemos crear una tabla específica
+        auditoriaData.observacionesAdicionales = data.observacionesAdicionales 
+          ? `${data.observacionesAdicionales}\n\nNormatividad aplicable:\n${data.normatividadAplicable.join('\n')}`
+          : `Normatividad aplicable:\n${data.normatividadAplicable.join('\n')}`;
+      }
+      
+      if (data.riesgosIdentificados && data.riesgosIdentificados.length > 0) {
+        // Guardar riesgos en calificacionRiesgo o crear campo específico
+        auditoriaData.calificacionRiesgo = data.calificacionRiesgo 
+          ? `${data.calificacionRiesgo}\n\nRiesgos identificados:\n${data.riesgosIdentificados.join('\n')}`
+          : `Riesgos identificados:\n${data.riesgosIdentificados.join('\n')}`;
+      }
+      
+      if (data.controlesAplicar && data.controlesAplicar.length > 0) {
+        // Guardar controles en observaciones
+        const controlesText = `Controles a aplicar:\n${data.controlesAplicar.join('\n')}`;
+        auditoriaData.observacionesAdicionales = auditoriaData.observacionesAdicionales 
+          ? `${auditoriaData.observacionesAdicionales}\n\n${controlesText}`
+          : controlesText;
+      }
+      
+      if (data.equipoAuditores && data.equipoAuditores.length > 0) {
+        auditoriaData.equipoAuditores = data.equipoAuditores;
+      }
+      
+      // Presupuesto (convertir string a número si es posible)
+      if (data.presupuestoEstimado) {
+        const presupuesto = data.presupuestoEstimado.replace(/[^\d]/g, ''); // Remover puntos y comas
+        if (presupuesto) {
+          auditoriaData.presupuestoEstimado = presupuesto;
+        }
+      }
+
+      // Llamar a la API para crear la auditoría
+      const response = await auditoriasApi.create(auditoriaData);
+      
+      if (response.success && response.data) {
+        toast.success('✅ Auditoría OCIG creada exitosamente', {
+          description: `"${data.titulo}" ha sido agregada al Plan Anual ${data.planAnualAño || 2025}`
+        });
+        
+        setModalNuevaAuditoriaOpen(false);
+        
+        // Recargar datos si es necesario (puedes agregar una función de recarga aquí)
+        // await cargarAuditorias();
+      } else {
+        throw new Error(response.message || 'Error al crear la auditoría');
+      }
+    } catch (error: any) {
+      console.error('Error al crear auditoría:', error);
+      toast.error('Error al crear auditoría', {
+        description: error.message || 'No se pudo guardar la auditoría. Por favor, intente nuevamente.'
+      });
+    }
   };
 
   // Calcular métricas derivadas

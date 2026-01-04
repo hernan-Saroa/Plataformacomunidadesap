@@ -1716,7 +1716,10 @@ function ColumnaKanban({
       <div
         ref={drop}
         className={`p-3 space-y-3 overflow-y-auto ${isOver ? 'bg-blue-50' : ''}`}
-        style={{ minHeight: 'calc(100vh - 280px)' }}
+        style={{ 
+          minHeight: 'calc(100vh - 280px)',
+          maxHeight: 'calc(100vh - 280px)'
+        }}
       >
         <AnimatePresence>
           {auditorias.map((auditoria) => (
@@ -1796,29 +1799,93 @@ export function GestionAuditoriasKanbanSimple() {
           auditoriasData = [];
         }
       } else {
-        // Cargar activas - respuesta es array directo
-        const data = await controlInternoService.getAuditoriasKanban();
-        if (Array.isArray(data)) {
-          auditoriasData = data as Auditoria[];
+        // Cargar activas - usar auditoriasApi que devuelve ApiResponse
+        const response = await auditoriasApi.getAllKanban();
+        if (response.success && response.data && Array.isArray(response.data)) {
+          auditoriasData = response.data as Auditoria[];
         } else {
-          console.warn('[cargarAuditorias] Respuesta de activas no es un array:', data);
-          auditoriasData = [];
+          console.warn('[cargarAuditorias] Respuesta de activas no válida:', response);
+          // Si hay error pero la respuesta tiene data, intentar usarla
+          if (response.data && Array.isArray(response.data)) {
+            auditoriasData = response.data as Auditoria[];
+          } else {
+            auditoriasData = [];
+          }
         }
       }
       
       console.log('[cargarAuditorias] Datos recibidos del backend:', auditoriasData);
+      console.log('[cargarAuditorias] Total auditorías:', auditoriasData.length);
+      
       // Verificar que los datos incluyan alcance y riesgoKanban
       if (auditoriasData && auditoriasData.length > 0) {
         console.log('[cargarAuditorias] Primera auditoría:', {
           codigo: auditoriasData[0].codigo,
+          titulo: auditoriasData[0].titulo,
+          estado: auditoriasData[0].estado,
           alcance: (auditoriasData[0] as any).alcance,
-          riesgo: (auditoriasData[0] as any).riesgo,
-          riesgoKanban: (auditoriasData[0] as any).riesgoKanban
+          riesgo: auditoriasData[0].riesgo,
         });
       }
       
+      // Mapear datos del backend al formato esperado por el frontend
+      const auditoriasMapeadas: Auditoria[] = auditoriasData.map((aud: any) => ({
+        id: aud.id,
+        codigo: aud.codigo || '',
+        titulo: aud.titulo || aud.nombre || '',
+        descripcion: aud.descripcion || '',
+        estado: aud.estado || 'Planeación',
+        riesgo: aud.riesgo || 'Medio',
+        semaforo: aud.semaforo || 'verde',
+        territorial: aud.territorial || '',
+        auditorLider: aud.auditorLider || {
+          nombre: 'Sin asignar',
+          cargo: 'Auditor Líder',
+          iniciales: 'SA',
+          tipoIdentificacion: 'CC',
+          numeroIdentificacion: ''
+        },
+        auditorAsignado: aud.auditorAsignado || {
+          nombre: 'Sin asignar',
+          cargo: 'Auditor',
+          iniciales: 'SA',
+          tipoIdentificacion: 'CC',
+          numeroIdentificacion: ''
+        },
+        fechaInicio: aud.fechaInicio || '',
+        fechaFin: aud.fechaFin || '',
+        progreso: aud.progreso ?? 0,
+        hallazgos: aud.hallazgos ?? 0,
+        diasRestantes: aud.diasRestantes ?? 0,
+        porcentajeTiempo: aud.porcentajeTiempo ?? 0,
+        ultimaActuacion: aud.ultimaActuacion,
+        objetivos: aud.objetivos || [],
+        calificacionRiesgo: aud.calificacionRiesgo,
+        documentos: aud.documentos ?? 0,
+        informes: aud.informes ?? 0,
+        tareas: aud.tareas ?? 0,
+        tipo: aud.tipoKanban || aud.tipo || 'regular',
+        prioridad: aud.prioridad || 'media',
+        areaObjetivo: aud.areaObjetivo,
+        permiteCambiarObjetivos: aud.permiteCambiarObjetivos ?? true,
+        equipoAuditores: aud.equipoAuditores || [],
+        territorialInfo: aud.territorialInfo,
+        especial: aud.especial,
+        actividadesCompletas: aud.actividadesCompletas ?? false,
+        actividadesPendientes: aud.actividadesPendientes ?? 0,
+        alcance: aud.alcance || '',
+      }));
+      
       // Asegurar que siempre sea un array
-      setAuditorias(Array.isArray(auditoriasData) ? auditoriasData : []);
+      setAuditorias(auditoriasMapeadas);
+      
+      if (auditoriasMapeadas.length === 0) {
+        toast.info('No hay auditorías disponibles', {
+          description: mostrarArchivadas 
+            ? 'No hay auditorías archivadas' 
+            : 'No hay auditorías activas en el sistema'
+        });
+      }
     } catch (err: any) {
       console.error('Error al cargar auditorías:', err);
       setError(err.message || 'Error al cargar las auditorías');

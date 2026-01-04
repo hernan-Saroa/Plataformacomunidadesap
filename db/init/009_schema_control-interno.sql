@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS control_interno.auditoria (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     codigo VARCHAR(255) UNIQUE NOT NULL,
     nombre VARCHAR(500) NOT NULL,
+    descripcion TEXT,
     tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional')),
     fase VARCHAR(50) NOT NULL CHECK (fase IN ('planeacion', 'en-curso', 'revision', 'completada')) DEFAULT 'planeacion',
     territorial VARCHAR(255) NOT NULL,
@@ -95,6 +96,10 @@ CREATE TABLE IF NOT EXISTS control_interno.auditoria (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Agregar columna descripcion si no existe (para bases de datos existentes)
+ALTER TABLE control_interno.auditoria 
+ADD COLUMN IF NOT EXISTS descripcion TEXT;
 
 CREATE INDEX idx_auditoria_codigo ON control_interno.auditoria(codigo);
 CREATE INDEX idx_auditoria_tipo ON control_interno.auditoria(tipo);

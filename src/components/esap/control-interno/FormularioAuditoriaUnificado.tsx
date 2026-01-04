@@ -429,6 +429,13 @@ export function FormularioAuditoriaUnificado({
       return;
     }
 
+    // Validar que fechaFin sea posterior a fechaInicio
+    if (new Date(formData.fechaFin) < new Date(formData.fechaInicio)) {
+      toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
+      setPasoActual(4);
+      return;
+    }
+
     if (formData.objetivos.length === 0) {
       toast.error('Debe agregar al menos un objetivo');
       setPasoActual(5);
@@ -1066,16 +1073,39 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               <Input
                 type="date"
                 value={formData.fechaInicio}
-                onChange={(e) => onChange('fechaInicio', e.target.value)}
+                onChange={(e) => {
+                  const nuevaFechaInicio = e.target.value;
+                  onChange('fechaInicio', nuevaFechaInicio);
+                  // Si la fecha de fin es anterior a la nueva fecha de inicio, ajustarla
+                  if (formData.fechaFin && nuevaFechaInicio && formData.fechaFin < nuevaFechaInicio) {
+                    onChange('fechaFin', '');
+                    toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
+                  }
+                }}
+                max={formData.fechaFin || undefined}
                 className="border-gray-300"
               />
             </FieldWrapper>
 
-            <FieldWrapper label="Fecha de Finalización" required>
+            <FieldWrapper 
+              label="Fecha de Finalización" 
+              required
+              error={formData.fechaInicio && formData.fechaFin && formData.fechaFin < formData.fechaInicio 
+                ? 'La fecha de finalización debe ser posterior a la fecha de inicio' 
+                : null}
+            >
               <Input
                 type="date"
                 value={formData.fechaFin}
-                onChange={(e) => onChange('fechaFin', e.target.value)}
+                onChange={(e) => {
+                  const nuevaFechaFin = e.target.value;
+                  if (formData.fechaInicio && nuevaFechaFin && nuevaFechaFin < formData.fechaInicio) {
+                    toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
+                    return;
+                  }
+                  onChange('fechaFin', nuevaFechaFin);
+                }}
+                min={formData.fechaInicio || undefined}
                 className="border-gray-300"
               />
             </FieldWrapper>
