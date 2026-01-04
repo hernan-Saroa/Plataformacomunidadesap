@@ -250,6 +250,7 @@ export function PlanAnualModule() {
     // Mapear estado del backend al frontend
     const mapearEstadoBD = (estadoBD: string): PlanAnual['estado'] => {
       if (estadoBD === 'aprobado') return 'Aprobado';
+      if (estadoBD === 'en-revision') return 'En Revisión';
       if (estadoBD === 'en-ejecucion') return 'Vigente';
       if (estadoBD === 'completado') return 'Cerrado';
       return 'Borrador';
@@ -257,25 +258,56 @@ export function PlanAnualModule() {
 
     // Mapear actividades del backend al frontend
     const mapearActividades = (actividadesBD: any[]): Actividad[] => {
-      return actividadesBD.map(act => ({
-        id: act.id,
-        nombre: act.nombre || '',
-        descripcion: act.descripcion || '',
-        responsableId: act.responsableId || act.responsable || '',
-        responsableNombre: act.responsable || '',
-        fechaInicio: act.fechaInicio || '',
-        fechaFin: act.fechaFin || '',
-        porcentaje: act.porcentajeAvance || 0,
-        estado: mapearEstadoActividadBD(act.estado || 'pendiente')
-      }));
+      return actividadesBD.map(act => {
+        // Las fechas pueden venir como Date o string, convertir a formato YYYY-MM-DD
+        const formatearFecha = (fecha: any): string => {
+          if (!fecha) return '';
+          if (typeof fecha === 'string') {
+            // Si ya es string, puede venir como 'YYYY-MM-DD' o 'YYYY-MM-DDTHH:mm:ss'
+            return fecha.split('T')[0];
+          }
+          if (fecha instanceof Date) {
+            return fecha.toISOString().split('T')[0];
+          }
+          return '';
+        };
+
+        // Buscar el responsable en USUARIOS_MOCK por nombre si no hay responsableId
+        const responsableNombre = act.responsable || '';
+        let responsableId = act.responsableId || '';
+        
+        // Si no hay responsableId pero sí hay nombre, buscar en USUARIOS_MOCK
+        if (!responsableId && responsableNombre) {
+          const usuarioEncontrado = USUARIOS_MOCK.find(u => 
+            u.nombre.toLowerCase() === responsableNombre.toLowerCase()
+          );
+          if (usuarioEncontrado) {
+            responsableId = usuarioEncontrado.id;
+          }
+        }
+
+        return {
+          id: act.id,
+          nombre: act.nombre || '',
+          descripcion: act.descripcion || '',
+          responsableId: responsableId,
+          responsableNombre: responsableNombre,
+          fechaInicio: formatearFecha(act.fecha_inicio || act.fechaInicio),
+          fechaFin: formatearFecha(act.fecha_fin || act.fechaFin),
+          porcentaje: act.porcentaje_avance || act.porcentajeAvance || 0,
+          estado: mapearEstadoActividadBD(act.estado || 'pendiente')
+        };
+      });
     };
 
     // Mapear roles del backend al frontend
+    // Los roles vienen ordenados por rol_numero desde la BD
     const rolesMapeados = planBD.roles?.map((rolBD: any, index: number) => {
-      const rolTemplate = ROLES_DECRETO_648[index] || ROLES_DECRETO_648[0];
+      // Buscar el template por rol_numero (1-5) que coincide con el id del template
+      const rolTemplate = ROLES_DECRETO_648.find(r => r.id === rolBD.rol_numero) || ROLES_DECRETO_648[index] || ROLES_DECRETO_648[0];
       return {
         ...rolTemplate,
-        id: rolBD.id || rolTemplate.id,
+        id: rolTemplate.id, // Mantener el id del template (1-5) para que coincida con la búsqueda
         actividades: mapearActividades(rolBD.actividades || [])
       };
     }) || ROLES_DECRETO_648.map(r => ({ ...r, actividades: [] }));
@@ -371,11 +403,21 @@ export function PlanAnualModule() {
 
   const handleGuardarPlan = async (plan: PlanAnual) => {
     try {
+      // Mapear estado del frontend al backend
+      const mapearEstado = (estado: PlanAnual['estado']): 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' => {
+        if (estado === 'Borrador') return 'borrador';
+        if (estado === 'En Revisión') return 'en-revision';
+        if (estado === 'Aprobado') return 'aprobado';
+        if (estado === 'Vigente') return 'en-ejecucion';
+        if (estado === 'Cerrado') return 'completado';
+        return 'borrador';
+      };
+
       // Mapear PlanAnual (frontend) a formato del backend
       const planData = {
         año: plan.año,
         responsable: plan.jefeOCI.nombre,
-        estado: (plan.estado === 'Borrador' ? 'borrador' : plan.estado === 'En Revisión' ? 'borrador' : 'aprobado') as 'borrador' | 'aprobado' | 'en-ejecucion' | 'completado'
+        estado: mapearEstado(plan.estado)
       };
 
       let response;
@@ -388,29 +430,79 @@ export function PlanAnualModule() {
       }
 
       if (response.success && response.data) {
+        console.log('[PlanAnual] Guardando actividades...', {
+          planRoles: plan.roles.map(r => ({ id: r.id, nombre: r.nombre, actividades: r.actividades.length })),
+          bdRoles: response.data.roles?.map((r: any) => ({ id: r.id, nombre: r.nombre }))
+        });
+
         // Guardar actividades para cada rol
-        for (let i = 0; i < plan.roles.length; i++) {
-          const rol = plan.roles[i];
-          const rolBD = response.data.roles?.[i];
+        // Buscar roles por nombre en lugar de por índice para evitar problemas de orden
+        for (const rol of plan.roles) {
+          // Buscar el rol correspondiente en la BD por rol_numero o nombre
+          const rolBD = response.data.roles?.find((r: any) => 
+            r.rol_numero === rol.id || 
+            r.nombre === rol.nombre ||
+            r.id === rol.id
+          );
           
-          if (rolBD && rol.actividades.length > 0) {
+          if (!rolBD) {
+            console.warn(`[PlanAnual] No se encontró rol BD para: ${rol.nombre} (id: ${rol.id})`);
+            continue;
+          }
+
+          if (rol.actividades.length > 0) {
+            console.log(`[PlanAnual] Guardando ${rol.actividades.length} actividades para rol: ${rol.nombre} (BD ID: ${rolBD.id})`);
+            
             for (const actividad of rol.actividades) {
-              if (!actividad.id || actividad.id.startsWith('act-')) {
-                // Nueva actividad
-                await planAnual5RolesApi.addActividad(response.data.id, {
-                  rolId: rolBD.id,
-                  nombre: actividad.nombre,
-                  descripcion: actividad.descripcion,
-                  responsable: actividad.responsableNombre,
-                  fechaInicio: actividad.fechaInicio,
-                  fechaFin: actividad.fechaFin,
-                  estado: actividad.estado === 'Pendiente' ? 'pendiente' : 
-                          actividad.estado === 'En Ejecución' ? 'en-progreso' :
-                          actividad.estado === 'Completada' ? 'completada' : 'retrasada',
-                  porcentajeAvance: actividad.porcentaje
-                } as any);
+              try {
+                // Validar que la actividad tenga los campos mínimos
+                if (!actividad.nombre || !actividad.responsableNombre || !actividad.fechaInicio || !actividad.fechaFin) {
+                  console.warn('[PlanAnual] Actividad incompleta, omitiendo:', actividad);
+                  continue;
+                }
+
+                // Mapear estado del frontend al backend
+                const estadoBD = actividad.estado === 'Pendiente' ? 'pendiente' : 
+                                actividad.estado === 'En Ejecución' ? 'en-progreso' :
+                                actividad.estado === 'Completada' ? 'completada' : 'retrasada';
+                
+                const actividadData = {
+                  nombre: actividad.nombre.trim(),
+                  descripcion: (actividad.descripcion || '').trim(),
+                  responsable: actividad.responsableNombre.trim(),
+                  fecha_inicio: actividad.fechaInicio,
+                  fecha_fin: actividad.fechaFin,
+                  estado: estadoBD,
+                  porcentaje_avance: actividad.porcentaje || 0,
+                  prioridad: 'Media' as const
+                };
+
+                if (!actividad.id || actividad.id.startsWith('act-')) {
+                  // Nueva actividad - usar rolBD.id como parámetro en la URL
+                  console.log('[PlanAnual] Creando nueva actividad:', actividadData);
+                  const actividadResponse = await planAnual5RolesApi.addActividad(rolBD.id, actividadData as any);
+                  if (!actividadResponse.success) {
+                    console.error('[PlanAnual] Error al crear actividad:', actividadResponse.error);
+                    throw new Error(`Error al crear actividad: ${actividadResponse.error}`);
+                  }
+                  console.log('[PlanAnual] Actividad creada exitosamente');
+                } else {
+                  // Actualizar actividad existente
+                  console.log('[PlanAnual] Actualizando actividad existente:', actividad.id, actividadData);
+                  const actividadResponse = await planAnual5RolesApi.updateActividad(actividad.id, actividadData as any);
+                  if (!actividadResponse.success) {
+                    console.error('[PlanAnual] Error al actualizar actividad:', actividadResponse.error);
+                    throw new Error(`Error al actualizar actividad: ${actividadResponse.error}`);
+                  }
+                  console.log('[PlanAnual] Actividad actualizada exitosamente');
+                }
+              } catch (error: any) {
+                console.error('[PlanAnual] Error al guardar actividad:', error);
+                throw new Error(`Error al guardar actividad "${actividad.nombre}": ${error.message}`);
               }
             }
+          } else {
+            console.log(`[PlanAnual] Rol ${rol.nombre} no tiene actividades para guardar`);
           }
         }
 
@@ -438,17 +530,100 @@ export function PlanAnualModule() {
 
   const handleActualizarPlan = async (planActualizado: PlanAnual) => {
     try {
+      // Mapear estado del frontend al backend
+      const mapearEstado = (estado: PlanAnual['estado']): 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' => {
+        if (estado === 'Borrador') return 'borrador';
+        if (estado === 'En Revisión') return 'en-revision';
+        if (estado === 'Aprobado') return 'aprobado';
+        if (estado === 'Vigente') return 'en-ejecucion';
+        if (estado === 'Cerrado') return 'completado';
+        return 'borrador'; // Por defecto
+      };
+
       const planData = {
         año: planActualizado.año,
         responsable: planActualizado.jefeOCI.nombre,
-        estado: (planActualizado.estado === 'Borrador' ? 'borrador' : 
-                planActualizado.estado === 'Aprobado' ? 'aprobado' :
-                planActualizado.estado === 'Vigente' ? 'en-ejecucion' : 'completado') as 'borrador' | 'aprobado' | 'en-ejecucion' | 'completado'
+        estado: mapearEstado(planActualizado.estado)
       };
 
       const response = await planAnual5RolesApi.update(planActualizado.id, planData);
 
-      if (response.success) {
+      if (response.success && response.data) {
+        console.log('[PlanAnual] Actualizando actividades del plan...', {
+          planRoles: planActualizado.roles.map(r => ({ id: r.id, nombre: r.nombre, actividades: r.actividades.length })),
+          bdRoles: response.data.roles?.map((r: any) => ({ id: r.id, nombre: r.nombre }))
+        });
+
+        // Guardar actividades para cada rol (igual que en handleGuardarPlan)
+        for (const rol of planActualizado.roles) {
+          // Buscar el rol correspondiente en la BD por rol_numero o nombre
+          const rolBD = response.data.roles?.find((r: any) => 
+            r.rol_numero === rol.id || 
+            r.nombre === rol.nombre ||
+            r.id === rol.id
+          );
+          
+          if (!rolBD) {
+            console.warn(`[PlanAnual] No se encontró rol BD para: ${rol.nombre} (id: ${rol.id})`);
+            continue;
+          }
+
+          if (rol.actividades.length > 0) {
+            console.log(`[PlanAnual] Guardando ${rol.actividades.length} actividades para rol: ${rol.nombre} (BD ID: ${rolBD.id})`);
+            
+            for (const actividad of rol.actividades) {
+              try {
+                // Validar que la actividad tenga los campos mínimos
+                if (!actividad.nombre || !actividad.responsableNombre || !actividad.fechaInicio || !actividad.fechaFin) {
+                  console.warn('[PlanAnual] Actividad incompleta, omitiendo:', actividad);
+                  continue;
+                }
+
+                // Mapear estado del frontend al backend
+                const estadoBD = actividad.estado === 'Pendiente' ? 'pendiente' : 
+                                actividad.estado === 'En Ejecución' ? 'en-progreso' :
+                                actividad.estado === 'Completada' ? 'completada' : 'retrasada';
+                
+                const actividadData = {
+                  nombre: actividad.nombre.trim(),
+                  descripcion: (actividad.descripcion || '').trim(),
+                  responsable: actividad.responsableNombre.trim(),
+                  fecha_inicio: actividad.fechaInicio,
+                  fecha_fin: actividad.fechaFin,
+                  estado: estadoBD,
+                  porcentaje_avance: actividad.porcentaje || 0,
+                  prioridad: 'Media' as const
+                };
+
+                if (!actividad.id || actividad.id.startsWith('act-')) {
+                  // Nueva actividad - usar rolBD.id como parámetro en la URL
+                  console.log('[PlanAnual] Creando nueva actividad:', actividadData);
+                  const actividadResponse = await planAnual5RolesApi.addActividad(rolBD.id, actividadData as any);
+                  if (!actividadResponse.success) {
+                    console.error('[PlanAnual] Error al crear actividad:', actividadResponse.error);
+                    throw new Error(`Error al crear actividad: ${actividadResponse.error}`);
+                  }
+                  console.log('[PlanAnual] Actividad creada exitosamente');
+                } else {
+                  // Actualizar actividad existente
+                  console.log('[PlanAnual] Actualizando actividad existente:', actividad.id, actividadData);
+                  const actividadResponse = await planAnual5RolesApi.updateActividad(actividad.id, actividadData as any);
+                  if (!actividadResponse.success) {
+                    console.error('[PlanAnual] Error al actualizar actividad:', actividadResponse.error);
+                    throw new Error(`Error al actualizar actividad: ${actividadResponse.error}`);
+                  }
+                  console.log('[PlanAnual] Actividad actualizada exitosamente');
+                }
+              } catch (error: any) {
+                console.error('[PlanAnual] Error al guardar actividad:', error);
+                throw new Error(`Error al guardar actividad "${actividad.nombre}": ${error.message}`);
+              }
+            }
+          } else {
+            console.log(`[PlanAnual] Rol ${rol.nombre} no tiene actividades para guardar`);
+          }
+        }
+
         // Recargar planes
         const reloadResponse = await planAnual5RolesApi.findAll();
         if (reloadResponse.success && reloadResponse.data) {
@@ -786,17 +961,52 @@ interface CrearPlanAnualProps {
 function CrearPlanAnual({ onVolver, onGuardar, planExistente }: CrearPlanAnualProps) {
   const [paso, setPaso] = useState(1);
   const [año, setAño] = useState(planExistente ? planExistente.año : new Date().getFullYear() + 1);
-  const [jefeOCI, setJefeOCI] = useState<Usuario | null>(
-    planExistente && planExistente.jefeOCI 
-      ? {
-          ...planExistente.jefeOCI,
-          iniciales: planExistente.jefeOCI.nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
-        }
-      : null
-  );
-  const [roles, setRoles] = useState<RolDecreto[]>(
-    ROLES_DECRETO_648.map(r => ({ ...r, actividades: planExistente ? planExistente.roles.find(p => p.id === r.id)?.actividades || [] : [] }))
-  );
+  const [jefeOCI, setJefeOCI] = useState<Usuario | null>(() => {
+    if (!planExistente || !planExistente.jefeOCI) {
+      return null;
+    }
+
+    // Buscar el usuario en USUARIOS_MOCK por ID primero
+    let usuarioEncontrado = USUARIOS_MOCK.find(u => u.id === planExistente.jefeOCI.id);
+    
+    // Si no se encuentra por ID, buscar por nombre
+    if (!usuarioEncontrado && planExistente.jefeOCI.nombre) {
+      usuarioEncontrado = USUARIOS_MOCK.find(u => 
+        u.nombre.toLowerCase() === planExistente.jefeOCI.nombre.toLowerCase()
+      );
+    }
+
+    // Si se encuentra, usar ese usuario
+    if (usuarioEncontrado) {
+      return {
+        ...usuarioEncontrado,
+        iniciales: planExistente.jefeOCI.nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+      };
+    }
+
+    // Si no se encuentra, crear un objeto Usuario con los datos del plan
+    return {
+      id: planExistente.jefeOCI.id || '',
+      nombre: planExistente.jefeOCI.nombre,
+      cargo: planExistente.jefeOCI.cargo || 'Jefe OCI',
+      iniciales: planExistente.jefeOCI.nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+    };
+  });
+  const [roles, setRoles] = useState<RolDecreto[]>(() => {
+    if (!planExistente) {
+      return ROLES_DECRETO_648.map(r => ({ ...r, actividades: [] }));
+    }
+    
+    // Mapear roles del plan existente, buscando por id del template (1-5)
+    return ROLES_DECRETO_648.map(templateRol => {
+      // Buscar el rol correspondiente en el plan existente por id (que es el rol_numero 1-5)
+      const rolExistente = planExistente.roles.find(p => p.id === templateRol.id);
+      return {
+        ...templateRol,
+        actividades: rolExistente?.actividades || []
+      };
+    });
+  });
   const [rolActual, setRolActual] = useState(0);
   const [errores, setErrores] = useState<Record<string, string>>({});
 
@@ -989,13 +1199,17 @@ function CrearPlanAnual({ onVolver, onGuardar, planExistente }: CrearPlanAnualPr
         version: 1
       };
 
+      // Guardar primero, luego mostrar el toast solo si es exitoso
+      await onGuardar(nuevoPlan);
+      
       toast.success('Plan enviado a revisión', {
         description: 'El Jefe OCI recibirá una notificación para aprobar el plan'
       });
-
-      await onGuardar(nuevoPlan);
     } catch (error) {
       console.error('Error al enviar a revisión:', error);
+      toast.error('Error al enviar plan a revisión', {
+        description: error instanceof Error ? error.message : 'No se pudo enviar el plan a revisión'
+      });
     }
   };
 

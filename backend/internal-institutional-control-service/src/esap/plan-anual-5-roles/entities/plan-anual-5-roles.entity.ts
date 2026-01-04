@@ -32,7 +32,7 @@ export class PlanAnual5Roles {
     default: 'borrador',
   })
   @Index()
-  estado: 'borrador' | 'aprobado' | 'en-ejecucion' | 'completado';
+  estado: 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado';
 
   @Column({ type: 'integer', default: 0 })
   porcentaje_cumplimiento_general: number;

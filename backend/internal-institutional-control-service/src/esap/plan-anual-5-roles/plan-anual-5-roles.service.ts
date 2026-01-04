@@ -106,6 +106,34 @@ export class PlanAnual5RolesService {
   }
 
   /**
+   * Actualiza un plan anual existente
+   */
+  async update(id: string, updateDto: Partial<CreatePlanAnual5RolesDto>): Promise<PlanAnual5Roles> {
+    const plan = await this.findOne(id);
+
+    // Actualizar campos si se proporcionan
+    if (updateDto.año !== undefined) {
+      // Verificar que no exista otro plan con ese año
+      const existing = await this.findByYear(updateDto.año);
+      if (existing && existing.id !== id) {
+        throw new BadRequestException(`Ya existe un plan anual para el año ${updateDto.año}`);
+      }
+      plan.año = updateDto.año;
+    }
+
+    if (updateDto.responsable !== undefined) {
+      plan.responsable = updateDto.responsable;
+    }
+
+    if (updateDto.estado !== undefined) {
+      plan.estado = updateDto.estado;
+    }
+
+    const savedPlan = await this.planRepository.save(plan);
+    return this.findOne(savedPlan.id);
+  }
+
+  /**
    * Obtiene los roles del template desde la BD (NO desde memoria)
    */
   private async getRolesTemplate(): Promise<RolTemplate[]> {

@@ -52,6 +52,7 @@ interface FiltrosAvanzados {
 
 interface EstadisticasGlobales {
   totalAuditoriasPlanificadas: number;
+  totalPlanesAnuales: number; // Número de planes anuales
   auditoriasAprobadas: number;
   procesosUniverso: number;
   procesosAuditables: number;
@@ -67,6 +68,7 @@ interface EstadisticasGlobales {
 
 const ESTADISTICAS_MOCK: EstadisticasGlobales = {
   totalAuditoriasPlanificadas: 24,
+  totalPlanesAnuales: 3,
   auditoriasAprobadas: 18,
   procesosUniverso: 45,
   procesosAuditables: 32,
@@ -169,6 +171,7 @@ export function PlanificacionModuleRediseno() {
               return rolSum + (rol.actividades?.length || 0);
             }, 0) || 0);
           }, 0),
+          totalPlanesAnuales: planes.length, // Número de planes anuales
           auditoriasAprobadas: auditoriasAprobadas.length,
           procesosUniverso: procesos.length,
           procesosAuditables: procesosSeleccionados.length, // Solo los seleccionados (prioridad = 1)
@@ -353,7 +356,7 @@ export function PlanificacionModuleRediseno() {
       label: 'Plan Anual',
       icon: <ClipboardList className="w-4 h-4" />,
       descripcion: 'Define QUÉ procesos se auditarán - Selección de auditorías a ejecutar',
-      badge: estadisticas.totalAuditoriasPlanificadas
+      badge: estadisticas.totalPlanesAnuales
     },
     {
       id: 'programa' as TabActiva,

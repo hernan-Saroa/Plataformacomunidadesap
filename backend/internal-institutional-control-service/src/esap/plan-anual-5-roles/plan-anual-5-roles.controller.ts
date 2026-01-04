@@ -54,6 +54,19 @@ export class PlanAnual5RolesController {
     return this.service.create(createDto);
   }
 
+  // Ruta genérica de actualización debe ir ANTES de las rutas con parámetros dinámicos
+  @Put(':id')
+  async update(
+    @Param('id') id: string,
+    @Body() updateDto: Partial<CreatePlanAnual5RolesDto>,
+  ) {
+    if (!id || id === 'undefined') {
+      throw new BadRequestException('id es requerido');
+    }
+    return this.service.update(id, updateDto);
+  }
+
+  // Rutas específicas de actividades deben ir DESPUÉS de las genéricas
   @Post(':rolId/actividades')
   @HttpCode(HttpStatus.CREATED)
   async addActividad(
