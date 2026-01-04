@@ -27,8 +27,8 @@ import { ModuloFirmaElectronicaWorldClass } from './firma-electronica/ModuloFirm
 // Importar módulo de Control Interno
 import { ControlInternoFull } from './control-interno/ControlInternoFull';
 
-// Importar Portal del Usuario Auditado
-import { PortalTransaccionalUsuario } from './control-interno/PortalTransaccionalUsuario';
+// Importar Portal del Usuario Auditado (Material Design 3)
+import { PortalTransaccionalUsuarioMD3 } from './control-interno/PortalTransaccionalUsuarioMD3';
 
 // Importar módulo de Control Interno Disciplinario
 import { ControlDisciplinarioFull } from './disciplinario/ControlDisciplinarioFull';
@@ -267,7 +267,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'control-interno':
         // Si es usuario de procesos (auditado), mostrar portal del usuario
         if (userData?.module === 'procesos') {
-          return <PortalTransaccionalUsuario onLogout={handleLogout} />;
+          return <PortalTransaccionalUsuarioMD3 onLogout={handleLogout} />;
         }
         // Si es usuario de Control Interno (auditor), mostrar dashboard completo
         return <ControlInternoFull />;

@@ -7,6 +7,7 @@ import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
 import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStrength';
 import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
+import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
@@ -26,6 +27,7 @@ import { AlertTriangle, Clock } from 'lucide-react';
  * - Vista 'pta-demo': Visualizador de PTA con Ajustes Solicitados
  * - Vista 'password-demo': Demo de Validación de Contraseñas
  * - Vista 'procesos-coactivos-demo': Demo de Procesos Coactivos
+ * - Vista 'edicion-foto-perfil-demo': Demo de Edición de Foto de Perfil
  * 
  * Features:
  * - Persistencia de sesión en localStorage
@@ -33,7 +35,7 @@ import { AlertTriangle, Clock } from 'lucide-react';
  * - Alerta previa antes de cerrar sesión
  */
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
 
 interface Usuario {
   id: string;
@@ -54,7 +56,11 @@ const TIMEOUT_INACTIVIDAD = 15 * 60 * 1000; // 15 minutos
 const TIEMPO_ALERTA = 1 * 60 * 1000; // 1 minuto antes de cerrar sesión
 
 export default function App() {
-  const [vistaActual, setVistaActual] = useState<Vista>('landing');
+  // Leer parámetro de vista desde URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const viewParam = urlParams.get('view') as Vista | null;
+  
+  const [vistaActual, setVistaActual] = useState<Vista>(viewParam || 'landing');
   const [usuarioActual, setUsuarioActual] = useState<Usuario | null>(null);
   const [mostrarAlertaInactividad, setMostrarAlertaInactividad] = useState(false);
   
@@ -362,6 +368,9 @@ export default function App() {
       
       case 'procesos-coactivos-demo':
         return <DemoProcesosCoactivos />;
+      
+      case 'edicion-foto-perfil-demo':
+        return <DemoEdicionFotoPerfil />;
       
       default:
         return <LandingPage onIrALogin={handleIrALogin} />;
