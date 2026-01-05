@@ -1,0 +1,37 @@
+name: CD - Deploy to DEV
+
+on:
+  push:
+    branches: [ develop ]
+  workflow_dispatch:  # Permite ejecución manual
+
+jobs:
+  deploy:
+    name: Deploy to DEV Environment
+    runs-on: ubuntu-latest
+    environment: dev
+    
+    needs: []  # Se ejecuta independientemente, pero puedes agregar dependencias si quieres
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy to DEV Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.DEV_USERNAME }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          script: |
+            cd ${{ secrets.DEV_DEPLOY_PATH }}
+            git pull origin develop
+            ./deploy.dev.sh rebuild
+            ./deploy.dev.sh db-migrate
+      
+      - name: Deployment Summary
+        run: |
+          echo "✅ Deployment to DEV completed successfully"
+          echo "Frontend: http://${{ secrets.DEV_FRONTEND_URL }}"
+          echo "API Gateway: http://${{ secrets.DEV_API_URL }}"
+
