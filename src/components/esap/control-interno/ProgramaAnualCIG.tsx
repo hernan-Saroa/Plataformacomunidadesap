@@ -39,10 +39,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Calendar, Plus, Filter, Search, Users, MapPin, Clock,
+  Calendar, Plus, Filter, Search, Users, MapPin,
   ChevronLeft, ChevronRight, Download, Check, X, AlertCircle,
-  Grid, List, Edit2, Save, Trash2, Building2, Target, TrendingUp,
-  CheckCircle2, AlertTriangle, Eye, BarChart3, FileText, Layers, Info
+  Grid, List, Edit2, Save, Trash2, Building2,
+  AlertTriangle, Eye, BarChart3, FileText, Layers
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { auditoriasApi } from './services/api';
@@ -540,68 +540,6 @@ export function ProgramaAnualCIG() {
             Exportar
           </ButtonSIGL>
         </div>
-      </motion.div>
-
-      {/* ============ MÉTRICAS EJECUTIVAS ============ */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"
-      >
-        <CardSIGL hoverable className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <Target className="w-5 h-5 text-blue-600" />
-            <Badge variant="info" size="sm">Total</Badge>
-          </div>
-          <div className="text-2xl text-gray-900">{metricas.total}</div>
-          <div className="text-xs text-gray-600 mt-1">Auditorías</div>
-        </CardSIGL>
-
-        <CardSIGL hoverable className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <Building2 className="w-5 h-5 text-purple-600" />
-            <Badge variant="default" size="sm">Sede</Badge>
-          </div>
-          <div className="text-2xl text-gray-900">{metricas.sede}</div>
-          <div className="text-xs text-gray-600 mt-1">Procesos Sede</div>
-        </CardSIGL>
-
-        <CardSIGL hoverable className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <MapPin className="w-5 h-5 text-green-600" />
-            <Badge variant="success" size="sm">Terr.</Badge>
-          </div>
-          <div className="text-2xl text-gray-900">{metricas.territoriales}</div>
-          <div className="text-xs text-gray-600 mt-1">Territoriales</div>
-        </CardSIGL>
-
-        <CardSIGL hoverable className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
-            <Badge variant="success" size="sm">✓</Badge>
-          </div>
-          <div className="text-2xl text-gray-900">{metricas.aprobadas}</div>
-          <div className="text-xs text-gray-600 mt-1">Aprobadas</div>
-        </CardSIGL>
-
-        <CardSIGL hoverable className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <Clock className="w-5 h-5 text-yellow-600" />
-            <Badge variant="warning" size="sm">⏳</Badge>
-          </div>
-          <div className="text-2xl text-gray-900">{metricas.pendientes}</div>
-          <div className="text-xs text-gray-600 mt-1">Pendientes</div>
-        </CardSIGL>
-
-        <CardSIGL hoverable className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <Edit2 className="w-5 h-5 text-gray-600" />
-            <Badge variant="default" size="sm">✎</Badge>
-          </div>
-          <div className="text-2xl text-gray-900">{metricas.borradores}</div>
-          <div className="text-xs text-gray-600 mt-1">Borradores</div>
-        </CardSIGL>
       </motion.div>
 
       {/* ============ BARRA DE FILTROS Y NAVEGACIÓN ============ */}

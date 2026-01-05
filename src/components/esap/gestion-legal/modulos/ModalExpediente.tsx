@@ -34,6 +34,7 @@ import { ModalCompartir } from './ModalCompartir';
 import { ModalCrearTarea } from './ModalCrearTarea';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { copyToClipboard } from '../../../../utils/clipboard';
 
 interface ModalExpedienteProps {
   isOpen: boolean;
@@ -52,6 +53,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
   const [modalCrearTareaAbierto, setModalCrearTareaAbierto] = useState(false);
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
+  const [modalEditarTareaAbierto, setModalEditarTareaAbierto] = useState(false);
+  const [tareaEnEdicion, setTareaEnEdicion] = useState<any>(null);
+
+  // Estado para tareas - ahora reactivo
+  
 
   // Estado para documentos cargados desde la API
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -395,14 +401,15 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   const handleCompartir = async () => {
     const expedienteUrl = `${window.location.origin}/gestion-legal/defensa-judicial?expediente=${encodeURIComponent(expediente.id)}`;
-
-    try {
-      await navigator.clipboard.writeText(expedienteUrl);
+    
+    const copiado = await copyToClipboard(expedienteUrl);
+    
+    if (copiado) {
       toast.success('🔗 Enlace copiado al portapapeles', {
         description: 'El enlace del expediente está listo para compartir',
         duration: 4000
       });
-    } catch (error) {
+    } else {
       toast.info('📋 Enlace del expediente', {
         description: expedienteUrl,
         duration: 6000
@@ -569,7 +576,81 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   ];
 
-  // Tareas now loaded from API via loadTareas()
+  // ==================== HANDLERS DE TAREAS ====================
+  
+  const handleMarcarCompletada = (tareaId: number) => {
+    const tarea = tareas.find(t => t.id === tareaId);
+    if (!tarea) return;
+
+    toast.loading('⏳ Actualizando estado de la tarea...', {
+      id: 'marcar-completada',
+      duration: 1500
+    });
+
+    setTimeout(() => {
+      setTareas(tareas.map(t => 
+        t.id === tareaId 
+          ? { ...t, estado: 'Completado' }
+          : t
+      ));
+
+      toast.success('✅ Tarea marcada como completada', {
+        id: 'marcar-completada',
+        description: `"${tarea.titulo}" ha sido completada exitosamente`,
+        duration: 4000
+      });
+
+      // Log para analytics
+      console.log('📊 Tarea completada:', {
+        expediente: expediente.id,
+        tareaId: tareaId,
+        titulo: tarea.titulo,
+        timestamp: new Date().toISOString()
+      });
+    }, 1500);
+  };
+
+  const handleEditarTarea = (tarea: any) => {
+    setTareaEnEdicion(tarea);
+    setModalEditarTareaAbierto(true);
+    
+    toast.info('✏️ Abriendo editor de tarea', {
+      description: `Editando: "${tarea.titulo}"`,
+      duration: 2000
+    });
+  };
+
+  const handleGuardarEdicionTarea = (tareaEditada: any) => {
+    toast.loading('⏳ Guardando cambios...', {
+      id: 'guardar-tarea',
+      duration: 1500
+    });
+
+    setTimeout(() => {
+      setTareas(tareas.map(t => 
+        t.id === tareaEditada.id 
+          ? tareaEditada
+          : t
+      ));
+
+      setModalEditarTareaAbierto(false);
+      setTareaEnEdicion(null);
+
+      toast.success('✅ Tarea actualizada correctamente', {
+        id: 'guardar-tarea',
+        description: `"${tareaEditada.titulo}" ha sido modificada`,
+        duration: 4000
+      });
+
+      // Log para analytics
+      console.log('📊 Tarea editada:', {
+        expediente: expediente.id,
+        tareaId: tareaEditada.id,
+        titulo: tareaEditada.titulo,
+        timestamp: new Date().toISOString()
+      });
+    }, 1500);
+  };
 
   const partes = [
     {
@@ -1524,12 +1605,71 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           <option value="alerta">Alerta</option>
                         </select>
                       </div>
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setShowNuevaNota(false)}>
-                          Cancelar
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-0.5">Vencimiento</p>
+                          <p className="text-xs font-bold text-gray-900 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {tarea.vencimiento}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-0.5">Días restantes</p>
+                          <Badge 
+                            className="text-xs font-bold"
+                            style={{ 
+                              background: semaforoTarea.bg, 
+                              color: semaforoTarea.color,
+                              border: `1px solid ${semaforoTarea.color}`
+                            }}
+                          >
+                            {tarea.diasRestantes} días
+                          </Badge>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-0.5">Responsable</p>
+                          <p className="text-xs font-bold text-gray-900 truncate flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            {tarea.responsable}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-0.5">Estado</p>
+                          <Badge 
+                            className="text-xs font-semibold"
+                            style={{
+                              background: tarea.estado === 'Completado' ? '#D1FAE5' : (tarea.estado === 'En proceso' ? '#DBEAFE' : '#FEF3C7'),
+                              color: tarea.estado === 'Completado' ? '#065F46' : (tarea.estado === 'En proceso' ? '#1E40AF' : '#92400E')
+                            }}
+                          >
+                            {tarea.estado}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="text-xs flex-1 font-bold"
+                          onClick={() => handleMarcarCompletada(tarea.id)}
+                          disabled={tarea.estado === 'Completado'}
+                          style={{
+                            opacity: tarea.estado === 'Completado' ? 0.5 : 1,
+                            cursor: tarea.estado === 'Completado' ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          <CheckCircle className="w-3 h-3 mr-1" />
+                          {tarea.estado === 'Completado' ? 'Completada' : 'Marcar Completada'}
                         </Button>
-                        <Button size="sm" className="bg-yellow-600 hover:bg-yellow-700 text-white" onClick={handleCrearNota}>
-                          Guardar Nota
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="text-xs font-bold"
+                          onClick={() => handleEditarTarea(tarea)}
+                        >
+                          <Edit className="w-3 h-3" />
                         </Button>
                       </div>
                     </div>
@@ -1643,106 +1783,40 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         </DialogContent >
       </Dialog >
 
-      {/* Modal de Reasignar Profesional - usando Portal para aparecer encima */}
-      {
-        showReasignarModal && createPortal(
-          <div
-            className="fixed inset-0 flex items-center justify-center"
-            style={{ zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.7)' }}
-            onClick={() => setShowReasignarModal(false)}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div
-              className="w-full max-w-md bg-white p-6 m-4 shadow-2xl rounded-lg border border-gray-200"
-              style={{ pointerEvents: 'auto' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
-                  <User className="w-5 h-5" style={{ color: '#003DA5' }} />
-                  Reasignar Profesional
-                </h3>
-                <button
-                  type="button"
-                  className="p-1 rounded hover:bg-gray-100"
-                  onClick={() => setShowReasignarModal(false)}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="mb-4">
-                <p className="text-sm text-gray-600 mb-2">
-                  Abogado actual: <strong>{expediente.abogadoAsignado}</strong>
-                </p>
-                <p className="text-sm text-gray-600 mb-4">
-                  Seleccione el nuevo profesional responsable:
-                </p>
-
-                <select
-                  value={selectedAbogado}
-                  onChange={(e) => setSelectedAbogado(e.target.value)}
-                  disabled={loadingAbogados}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  style={{ pointerEvents: 'auto' }}
-                >
-                  <option value="">
-                    {loadingAbogados ? 'Cargando...' : 'Seleccione un abogado'}
-                  </option>
-                  {abogados.map((abogado: any) => (
-                    <option key={abogado.id} value={abogado.nombreCompleto}>
-                      {abogado.nombreCompleto}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
-                  onClick={() => setShowReasignarModal(false)}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  className="flex-1 px-4 py-2 text-white font-bold rounded-lg disabled:opacity-50"
-                  style={{ backgroundColor: '#003DA5' }}
-                  onClick={handleConfirmarReasignacion}
-                  disabled={reasignando || !selectedAbogado}
-                >
-                  {reasignando ? 'Guardando...' : 'Confirmar'}
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )
-      }
-
-      {/* ==================== MODALES SECUNDARIOS (FUERA DEL DIALOG PRINCIPAL) ==================== */}
-      <ModalNotificar
-        isOpen={modalNotificarAbierto}
-        onClose={() => setModalNotificarAbierto(false)}
+    {/* ==================== MODALES SECUNDARIOS (FUERA DEL DIALOG PRINCIPAL) ==================== */}
+    <ModalNotificar 
+      isOpen={modalNotificarAbierto} 
+      onClose={() => setModalNotificarAbierto(false)} 
+      expediente={expediente} 
+    />
+    <ModalCompartir 
+      isOpen={modalCompartirAbierto} 
+      onClose={() => setModalCompartirAbierto(false)} 
+      expediente={expediente} 
+    />
+    <ModalCrearTarea 
+      isOpen={modalCrearTareaAbierto} 
+      onClose={() => setModalCrearTareaAbierto(false)} 
+      expediente={expediente} 
+    />
+    {tareaEnEdicion && (
+      <ModalCrearTarea 
+        isOpen={modalEditarTareaAbierto} 
+        onClose={() => {
+          setModalEditarTareaAbierto(false);
+          setTareaEnEdicion(null);
+        }}
         expediente={expediente}
+        tareaInicial={tareaEnEdicion}
+        onGuardar={handleGuardarEdicionTarea}
+        modoEdicion={true}
       />
-      <ModalCompartir
-        isOpen={modalCompartirAbierto}
-        onClose={() => setModalCompartirAbierto(false)}
-        expediente={expediente}
-      />
-      <ModalCrearTarea
-        isOpen={modalCrearTareaAbierto}
-        onClose={() => setModalCrearTareaAbierto(false)}
-        expediente={expediente}
-      />
-      <ModalAgregarNota
-        isOpen={modalAgregarNotaAbierto}
-        onClose={() => setModalAgregarNotaAbierto(false)}
-        expediente={expediente}
-      />
+    )}
+    <ModalAgregarNota 
+      isOpen={modalAgregarNotaAbierto} 
+      onClose={() => setModalAgregarNotaAbierto(false)} 
+      expediente={expediente} 
+    />
     </>
   );
 }
