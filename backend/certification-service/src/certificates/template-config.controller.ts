@@ -229,8 +229,14 @@ export class TemplateConfigController {
   ) {
     const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
     const parsedOffset = offset ? Number.parseInt(offset, 10) : undefined;
-    const limitValue = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
-    const offsetValue = Number.isFinite(parsedOffset) ? parsedOffset : undefined;
+    const defaultLimit = 10;
+    const maxLimit = 10;
+    const limitValue = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit as number, 1), maxLimit)
+      : defaultLimit;
+    const offsetValue = Number.isFinite(parsedOffset)
+      ? Math.max(parsedOffset as number, 0)
+      : 0;
     return await this.templateConfigService.getChangeHistory(
       tipo || 'docente',
       limitValue,
