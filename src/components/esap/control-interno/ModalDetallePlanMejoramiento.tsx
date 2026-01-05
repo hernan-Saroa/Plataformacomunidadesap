@@ -18,15 +18,17 @@
  * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Calendar, User, Clock, AlertTriangle, CheckCircle2, FileText,
   TrendingUp, Activity, Target, Flag, Plus, Upload, Download,
   Edit2, Trash2, Eye, MessageSquare, Paperclip, History,
-  BarChart3, Users, Building2, AlertCircle, Check, XCircle
+  BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, ChevronDown
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { planesMejoramientoApi, hallazgosApi } from './services/api';
+import type { PlanMejoramiento as PlanMejoramientoBD, AccionMejoramiento, Hallazgo as HallazgoBD } from './services/types';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -332,6 +334,219 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
+// FUNCIONES DE MAPEO
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Mapea el estado del backend al estado del modal
+ */
+function mapearEstadoBD(estadoBD: string): PlanMejoramientoDetalle['estado'] {
+  switch (estadoBD) {
+    case 'borrador':
+      return 'FORMULACION';
+    case 'aprobado':
+      return 'APROBACION';
+    case 'en-ejecucion':
+      return 'EN_EJECUCION';
+    case 'cerrado':
+      return 'CUMPLIDO';
+    default:
+      return 'FORMULACION';
+  }
+}
+
+/**
+ * Mapea el estado de acción del backend al estado del modal
+ */
+function mapearEstadoAccionBD(estadoBD: string): AccionCorrectiva['estado'] {
+  switch (estadoBD) {
+    case 'programada':
+      return 'PENDIENTE';
+    case 'en-progreso':
+    case 'en-ejecucion':
+      return 'EN_EJECUCION';
+    case 'implementada':
+    case 'completada':
+      return 'COMPLETADA';
+    case 'vencida':
+    case 'atrasada':
+      return 'VENCIDA';
+    default:
+      return 'PENDIENTE';
+  }
+}
+
+/**
+ * Mapea la gravedad del backend a criticidad del modal
+ */
+function mapearGravedadACriticidad(gravedad: string): Hallazgo['criticidad'] {
+  const gravedadLower = gravedad?.toLowerCase() || '';
+  if (gravedadLower === 'alta' || gravedadLower === 'crítica' || gravedadLower === 'critica') {
+    return 'ALTA';
+  }
+  if (gravedadLower === 'media' || gravedadLower === 'moderado' || gravedadLower === 'moderada') {
+    return 'MEDIA';
+  }
+  return 'BAJA';
+}
+
+/**
+ * Mapea un PlanMejoramiento del backend a PlanMejoramientoDetalle del modal
+ */
+async function mapearPlanDetalleDesdeBD(
+  planBD: any, // Usar any temporalmente para manejar diferentes estructuras del backend
+  hallazgosCargados: HallazgoBD[] = []
+): Promise<PlanMejoramientoDetalle> {
+  console.log('[ModalDetallePlan] Mapeando planBD:', planBD);
+  console.log('[ModalDetallePlan] Acciones recibidas:', planBD.acciones);
+  
+  // Mapear acciones - pueden venir como AccionCorrectiva del backend o AccionMejoramiento del tipo
+  const accionesMapeadas: AccionCorrectiva[] = (planBD.acciones || []).map((accion: any) => {
+    console.log('[ModalDetallePlan] Mapeando accion:', accion);
+    // Calcular si está vencida
+    let estado = mapearEstadoAccionBD(accion.estado);
+    if (estado === 'PENDIENTE' || estado === 'EN_EJECUCION') {
+      const hoy = new Date();
+      const fechaFin = new Date(accion.fechaFin);
+      if (fechaFin < hoy && accion.porcentajeAvance < 100) {
+        estado = 'VENCIDA';
+      }
+    }
+
+    // Formatear fechas (pueden venir en formato ISO o YYYY-MM-DD)
+    const fechaInicioStr = accion.fechaInicio ? String(accion.fechaInicio) : '';
+    const fechaFinStr = accion.fechaFin ? String(accion.fechaFin) : '';
+    
+    const fechaInicio = fechaInicioStr.includes('T') 
+      ? fechaInicioStr.split('T')[0] 
+      : fechaInicioStr;
+    const fechaFin = fechaFinStr.includes('T') 
+      ? fechaFinStr.split('T')[0] 
+      : fechaFinStr;
+
+    // El backend tiene planId, no hallazgoId directamente en las acciones
+    // Si hay un hallazgo en el plan, usar su ID
+    const hallazgoIdPlan = planBD.hallazgoId || planBD.hallazgo?.id || '';
+
+    return {
+      id: accion.id,
+      hallazgoId: hallazgoIdPlan, // Las acciones del backend pertenecen al plan, que tiene un hallazgo
+      descripcion: accion.descripcion || '',
+      responsable: accion.responsable || '',
+      fechaInicio: fechaInicio || new Date().toISOString().split('T')[0],
+      fechaVencimiento: fechaFin || new Date().toISOString().split('T')[0],
+      estado,
+      progreso: accion.porcentajeAvance || 0,
+      evidencias: (accion.evidencias && Array.isArray(accion.evidencias)) ? accion.evidencias.length : 0,
+      observaciones: accion.observaciones || ''
+    };
+  });
+  
+  console.log('[ModalDetallePlan] Acciones mapeadas:', accionesMapeadas);
+
+  // Mapear hallazgos
+  const hallazgosMapeados: Hallazgo[] = hallazgosCargados.map((h: HallazgoBD) => {
+    const accionesHallazgo = accionesMapeadas.filter(a => a.hallazgoId === h.id);
+    const accionesCompletadas = accionesHallazgo.filter(a => a.estado === 'COMPLETADA').length;
+    
+    // Calcular progreso basado en el promedio del progreso de las acciones, no solo las completadas
+    let progreso = 0;
+    if (accionesHallazgo.length > 0) {
+      const sumaProgreso = accionesHallazgo.reduce((sum, accion) => sum + accion.progreso, 0);
+      progreso = Math.round(sumaProgreso / accionesHallazgo.length);
+    }
+
+    return {
+      id: h.id,
+      codigo: h.codigo,
+      descripcion: h.descripcion || h.titulo || '',
+      criticidad: mapearGravedadACriticidad(h.gravedad || ''),
+      proceso: h.criterioIncumplido || '', // Usar criterioIncumplido como proceso
+      responsable: h.responsableArea || '',
+      accionesCount: accionesHallazgo.length,
+      accionesCompletadas,
+      progreso
+    };
+  });
+
+  // Calcular fecha de vencimiento (usar la fecha más lejana de las acciones o fechaLimite/fechaCreacion + 1 año)
+  const fechaElaboracion = new Date(planBD.fechaLimite || planBD.fechaCreacion || planBD.createdAt || planBD.fechaElaboracion || new Date());
+  let fechaVencimiento = new Date(fechaElaboracion);
+  fechaVencimiento.setFullYear(fechaVencimiento.getFullYear() + 1);
+
+  if (accionesMapeadas.length > 0) {
+    const fechasFin = accionesMapeadas.map(a => new Date(a.fechaVencimiento));
+    const fechaMax = new Date(Math.max(...fechasFin.map(d => d.getTime())));
+    if (fechaMax > fechaVencimiento) {
+      fechaVencimiento = fechaMax;
+    }
+  }
+
+  // Crear timeline básico desde las fechas disponibles
+  const timeline: ActividadTimeline[] = [];
+  
+  if (planBD.fechaCreacion) {
+    timeline.push({
+      id: 'timeline-creacion',
+      tipo: 'CREACION',
+      descripcion: `Plan ${planBD.codigo} creado`,
+      usuario: planBD.creadoPor || 'Sistema',
+      fecha: new Date(planBD.fechaCreacion).toLocaleDateString('es-ES')
+    });
+  }
+
+  if (planBD.fechaAprobacion) {
+    timeline.push({
+      id: 'timeline-aprobacion',
+      tipo: 'ACTUALIZACION',
+      descripcion: `Plan ${planBD.codigo} aprobado`,
+      usuario: planBD.actualizadoPor || 'Sistema',
+      fecha: new Date(planBD.fechaAprobacion).toLocaleDateString('es-ES')
+    });
+  }
+
+  if (planBD.fechaActualizacion) {
+    timeline.push({
+      id: 'timeline-actualizacion',
+      tipo: 'ACTUALIZACION',
+      descripcion: `Plan ${planBD.codigo} actualizado`,
+      usuario: planBD.actualizadoPor || 'Sistema',
+      fecha: new Date(planBD.fechaActualizacion).toLocaleDateString('es-ES')
+    });
+  }
+
+  // Ordenar timeline por fecha (más reciente primero)
+  timeline.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+
+  // El backend puede tener 'titulo' en lugar de 'nombre', 'fechaLimite' en lugar de 'fechaElaboracion'
+  const nombrePlan = planBD.nombre || planBD.titulo || planBD.codigo || 'Plan sin nombre';
+  const fechaCreacionPlan = planBD.fechaCreacion || planBD.createdAt || planBD.fechaElaboracion || new Date().toISOString().split('T')[0];
+  const responsablePlan = planBD.responsable || planBD.responsableImplementacion || '';
+  const areaPlan = planBD.area || planBD.areaResponsable || '';
+  const auditoriaCodigo = planBD.auditoriaCodigo || planBD.auditoria?.codigo || '';
+  
+  console.log('[ModalDetallePlan] Plan final mapeado - Hallazgos:', hallazgosMapeados.length, 'Acciones:', accionesMapeadas.length);
+
+  return {
+    id: planBD.id,
+    codigo: planBD.codigo,
+    nombre: nombrePlan,
+    area: areaPlan,
+    responsableGeneral: responsablePlan,
+    fechaCreacion: fechaCreacionPlan,
+    fechaVencimiento: fechaVencimiento.toISOString().split('T')[0],
+    estado: mapearEstadoBD(planBD.estado),
+    progresoGlobal: planBD.porcentajeAvanceGeneral || 0,
+    hallazgos: hallazgosMapeados,
+    acciones: accionesMapeadas,
+    documentos: [], // Los documentos se cargarían por separado si existe un endpoint
+    timeline,
+    auditoria: auditoriaCodigo,
+    observaciones: planBD.observaciones || ''
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -343,17 +558,192 @@ interface ModalDetallePlanProps {
 export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePlanProps) {
   const [tabActiva, setTabActiva] = useState<TabActiva>('resumen');
   const [modalActualizacion, setModalActualizacion] = useState(false);
-  const plan = PLAN_MOCK; // En producción: cargar según planId
+  const [plan, setPlan] = useState<PlanMejoramientoDetalle | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Cargar datos del plan desde el backend
+  useEffect(() => {
+    const cargarPlan = async () => {
+      if (!planId) return;
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Cargar plan desde el backend
+        const response = await planesMejoramientoApi.getById(planId);
+        
+        if (!response.success || !response.data) {
+          throw new Error(response.error || 'Error al cargar el plan');
+        }
+
+        const planBD = response.data;
+
+        console.log('[ModalDetallePlan] Plan cargado desde BD:', planBD);
+        console.log('[ModalDetallePlan] Hallazgo:', planBD.hallazgo);
+        console.log('[ModalDetallePlan] HallazgosIds:', planBD.hallazgosIds);
+        console.log('[ModalDetallePlan] Acciones:', planBD.acciones);
+
+        // Cargar TODOS los hallazgos de la auditoría, no solo el asociado al plan
+        let hallazgosCargados: HallazgoBD[] = [];
+        
+        // Si el plan tiene auditoriaId, cargar todos los hallazgos de esa auditoría
+        if (planBD.auditoriaId) {
+          try {
+            console.log('[ModalDetallePlan] Cargando hallazgos de la auditoría:', planBD.auditoriaId);
+            const hallazgosResponse = await hallazgosApi.getByAuditoria(planBD.auditoriaId);
+            if (hallazgosResponse.success && hallazgosResponse.data) {
+              hallazgosCargados = hallazgosResponse.data;
+              console.log('[ModalDetallePlan] Hallazgos cargados de la auditoría:', hallazgosCargados.length);
+            }
+          } catch (errorHallazgos) {
+            console.warn('[ModalDetallePlan] Error al cargar hallazgos de la auditoría:', errorHallazgos);
+            // Si falla, intentar con el método alternativo
+          }
+        }
+        
+        // Si no se cargaron hallazgos desde la auditoría, intentar métodos alternativos
+        if (hallazgosCargados.length === 0) {
+          // Si viene el objeto hallazgo directamente (estructura del backend)
+          if (planBD.hallazgo && typeof planBD.hallazgo === 'object') {
+            hallazgosCargados = [planBD.hallazgo as HallazgoBD];
+          }
+          // Si viene un array de IDs
+          else if (planBD.hallazgosIds && Array.isArray(planBD.hallazgosIds) && planBD.hallazgosIds.length > 0) {
+            try {
+              // Cargar cada hallazgo por ID
+              const hallazgosPromises = planBD.hallazgosIds.map((id: string) => 
+                hallazgosApi.getById(id).then(r => r.success && r.data ? r.data : null).catch(() => null)
+              );
+              const hallazgosResults = await Promise.all(hallazgosPromises);
+              hallazgosCargados = hallazgosResults.filter((h): h is HallazgoBD => h !== null && h !== undefined);
+            } catch (errorHallazgos) {
+              console.warn('[ModalDetallePlan] Error al cargar hallazgos por IDs:', errorHallazgos);
+            }
+          }
+          // Si viene un solo ID de hallazgo (hallazgoId)
+          else if (planBD.hallazgoId) {
+            try {
+              const hallazgoResponse = await hallazgosApi.getById(planBD.hallazgoId);
+              if (hallazgoResponse.success && hallazgoResponse.data) {
+                hallazgosCargados = [hallazgoResponse.data];
+              }
+            } catch (errorHallazgos) {
+              console.warn('[ModalDetallePlan] Error al cargar hallazgo por ID:', errorHallazgos);
+            }
+          }
+        }
+
+        console.log('[ModalDetallePlan] Total de hallazgos cargados:', hallazgosCargados.length);
+
+        // Mapear plan a formato del modal
+        const planMapeado = await mapearPlanDetalleDesdeBD(planBD, hallazgosCargados);
+        console.log('[ModalDetallePlan] Plan mapeado:', planMapeado);
+        setPlan(planMapeado);
+      } catch (err: any) {
+        console.error('[ModalDetallePlan] Error al cargar plan:', err);
+        setError(err.message || 'Error al cargar el plan de mejoramiento');
+        toast.error('Error al cargar el plan', {
+          description: err.message || 'No se pudo cargar la información del plan'
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarPlan();
+  }, [planId]);
+
+  // Función para recargar el plan después de crear/editar acciones
+  const handleRecargarPlan = async () => {
+    if (!planId) return;
+
+    try {
+      setLoading(true);
+      const response = await planesMejoramientoApi.getById(planId);
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.error || 'Error al recargar el plan');
+      }
+
+      const planBD = response.data;
+
+      // Cargar TODOS los hallazgos de la auditoría
+      let hallazgosCargados: HallazgoBD[] = [];
+      
+      if (planBD.auditoriaId) {
+        try {
+          const hallazgosResponse = await hallazgosApi.getByAuditoria(planBD.auditoriaId);
+          if (hallazgosResponse.success && hallazgosResponse.data) {
+            hallazgosCargados = hallazgosResponse.data;
+          }
+        } catch (errorHallazgos) {
+          console.warn('[ModalDetallePlan] Error al recargar hallazgos de la auditoría:', errorHallazgos);
+          // Fallback a métodos alternativos
+          if (planBD.hallazgo && typeof planBD.hallazgo === 'object') {
+            hallazgosCargados = [planBD.hallazgo as HallazgoBD];
+          } else if (planBD.hallazgosIds && Array.isArray(planBD.hallazgosIds) && planBD.hallazgosIds.length > 0) {
+            try {
+              const hallazgosPromises = planBD.hallazgosIds.map((id: string) => 
+                hallazgosApi.getById(id).then(r => r.success && r.data ? r.data : null).catch(() => null)
+              );
+              const hallazgosResults = await Promise.all(hallazgosPromises);
+              hallazgosCargados = hallazgosResults.filter((h): h is HallazgoBD => h !== null && h !== undefined);
+            } catch (errorHallazgos2) {
+              console.warn('[ModalDetallePlan] Error al recargar hallazgos por IDs:', errorHallazgos2);
+            }
+          }
+        }
+      }
+
+      const planMapeado = await mapearPlanDetalleDesdeBD(planBD, hallazgosCargados);
+      setPlan(planMapeado);
+    } catch (err: any) {
+      console.error('[ModalDetallePlan] Error al recargar plan:', err);
+      toast.error('Error al recargar el plan', {
+        description: err.message || 'No se pudo recargar la información'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Estado para el formulario de actualización
   const [datosActualizacion, setDatosActualizacion] = useState({
-    estado: plan.estado,
-    fechaVencimiento: plan.fechaVencimiento,
-    responsableGeneral: plan.responsableGeneral,
-    observaciones: plan.observaciones || ''
+    estado: 'FORMULACION' as PlanMejoramientoDetalle['estado'],
+    fechaVencimiento: '',
+    responsableGeneral: '',
+    observaciones: ''
   });
 
+  // Actualizar datos de actualización cuando se carga el plan
+  useEffect(() => {
+    if (plan) {
+      setDatosActualizacion({
+        estado: plan.estado,
+        fechaVencimiento: plan.fechaVencimiento,
+        responsableGeneral: plan.responsableGeneral,
+        observaciones: plan.observaciones || ''
+      });
+    }
+  }, [plan]);
+
   const estadisticas = useMemo(() => {
+    if (!plan) {
+      return {
+        totalAcciones: 0,
+        accionesCompletadas: 0,
+        accionesEnEjecucion: 0,
+        accionesPendientes: 0,
+        accionesVencidas: 0,
+        totalHallazgos: 0,
+        hallazgosResueltos: 0,
+        hallazgosCriticosAbiertos: 0,
+        porcentajeCompletado: 0
+      };
+    }
+
     const totalAcciones = plan.acciones.length;
     const accionesCompletadas = plan.acciones.filter(a => a.estado === 'COMPLETADA').length;
     const accionesEnEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
@@ -381,7 +771,9 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
     setModalActualizacion(true);
   };
 
-  const handleGuardarActualizacion = () => {
+  const handleGuardarActualizacion = async () => {
+    if (!plan) return;
+
     // Validaciones básicas
     if (!datosActualizacion.estado) {
       toast.error('Debes seleccionar un estado');
@@ -393,35 +785,58 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
       return;
     }
 
-    // Simular actualización (en producción, aquí se haría el PUT al backend)
-    toast.success('Plan de Mejoramiento Actualizado', {
-      description: `El plan ${plan.codigo} ha sido actualizado exitosamente`,
-      duration: 4000,
-    });
+    try {
+      // Actualizar en el backend
+      await planesMejoramientoApi.update(plan.id, {
+        estado: datosActualizacion.estado === 'FORMULACION' ? 'borrador' :
+                datosActualizacion.estado === 'APROBACION' ? 'aprobado' :
+                datosActualizacion.estado === 'EN_EJECUCION' ? 'en-ejecucion' :
+                datosActualizacion.estado === 'CUMPLIDO' ? 'cerrado' : 'borrador',
+        observaciones: datosActualizacion.observaciones
+      });
 
-    // Registrar en timeline simulado
-    console.log('📝 Actualizando plan:', {
-      planId: plan.id,
-      estadoAnterior: plan.estado,
-      estadoNuevo: datosActualizacion.estado,
-      observaciones: datosActualizacion.observaciones,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
+      toast.success('Plan de Mejoramiento Actualizado', {
+        description: `El plan ${plan.codigo} ha sido actualizado exitosamente`,
+        duration: 4000,
+      });
 
-    setModalActualizacion(false);
-    
-    // Aquí podrías actualizar el estado local o refrescar los datos
-    // onPlanActualizado?.();
+      setModalActualizacion(false);
+      
+      // Recargar datos del plan
+      const response = await planesMejoramientoApi.getById(planId);
+      if (response.success && response.data) {
+        // Recargar también hallazgos si es necesario
+        let hallazgosCargados: HallazgoBD[] = [];
+        if (response.data.hallazgosIds && response.data.hallazgosIds.length > 0) {
+          try {
+            const hallazgosPromises = response.data.hallazgosIds.map((id: string) => 
+              hallazgosApi.getById(id).then(r => r.data)
+            );
+            const hallazgosResults = await Promise.all(hallazgosPromises);
+            hallazgosCargados = hallazgosResults.filter((h): h is HallazgoBD => h !== undefined);
+          } catch (errorHallazgos) {
+            console.warn('[ModalDetallePlan] Error al recargar hallazgos:', errorHallazgos);
+          }
+        }
+        const planMapeado = await mapearPlanDetalleDesdeBD(response.data, hallazgosCargados);
+        setPlan(planMapeado);
+      }
+    } catch (err: any) {
+      console.error('[ModalDetallePlan] Error al actualizar plan:', err);
+      toast.error('Error al actualizar el plan', {
+        description: err.message || 'No se pudo actualizar el plan'
+      });
+    }
   };
 
   const handleDescargarReporte = () => {
+    if (!plan) return;
+
     toast.success('Generando Reporte PDF', {
       description: 'El reporte del plan se está descargando...',
       duration: 3000,
     });
     
-    // Simular descarga
     console.log('📄 Descargando reporte del plan:', {
       planId: plan.id,
       codigo: plan.codigo,
@@ -437,6 +852,42 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
     EN_SEGUIMIENTO: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'En Seguimiento' },
     CUMPLIDO: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Cumplido' }
   };
+
+  // Manejar estados de carga y error
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="absolute inset-0" onClick={onClose} />
+        <div className="relative bg-white rounded-2xl shadow-2xl p-8 z-[9999]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-8 h-8 animate-spin text-[#1e5da8]" />
+            <p className="text-gray-600">Cargando plan de mejoramiento...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !plan) {
+    return (
+      <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="absolute inset-0" onClick={onClose} />
+        <div className="relative bg-white rounded-2xl shadow-2xl p-8 z-[9999] max-w-md">
+          <div className="flex flex-col items-center gap-4">
+            <AlertCircle className="w-12 h-12 text-red-500" />
+            <h3 className="text-lg font-semibold text-gray-900">Error al cargar el plan</h3>
+            <p className="text-gray-600 text-center">{error || 'No se pudo cargar la información del plan'}</p>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#2a6dbd] transition-colors"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const config = estadoConfig[plan.estado];
 
@@ -603,7 +1054,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
             >
               {tabActiva === 'resumen' && <TabResumen plan={plan} estadisticas={estadisticas} />}
               {tabActiva === 'hallazgos' && <TabHallazgos plan={plan} />}
-              {tabActiva === 'acciones' && <TabAcciones plan={plan} />}
+              {tabActiva === 'acciones' && <TabAcciones plan={plan} planId={planId} onAccionCreada={handleRecargarPlan} />}
               {tabActiva === 'documentos' && <TabDocumentos plan={plan} />}
               {tabActiva === 'seguimiento' && <TabSeguimiento plan={plan} />}
             </motion.div>
@@ -1036,8 +1487,9 @@ function CardHallazgo({ hallazgo, plan }: { hallazgo: Hallazgo; plan: PlanMejora
 // TAB: ACCIONES
 // ════════════════════════════════════════════════════════════════════════════
 
-function TabAcciones({ plan }: { plan: PlanMejoramientoDetalle }) {
+function TabAcciones({ plan, planId, onAccionCreada }: { plan: PlanMejoramientoDetalle; planId: string; onAccionCreada?: () => void }) {
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | AccionCorrectiva['estado']>('TODOS');
+  const [modalCrearAccion, setModalCrearAccion] = useState(false);
 
   const accionesFiltradas = filtroEstado === 'TODOS'
     ? plan.acciones
@@ -1052,40 +1504,77 @@ function TabAcciones({ plan }: { plan: PlanMejoramientoDetalle }) {
         </div>
 
         <div className="flex gap-2">
-          <FiltroButton
-            active={filtroEstado === 'TODOS'}
-            onClick={() => setFiltroEstado('TODOS')}
-            label="Todas"
-          />
-          <FiltroButton
-            active={filtroEstado === 'COMPLETADA'}
-            onClick={() => setFiltroEstado('COMPLETADA')}
-            label="Completadas"
-            color="green"
-          />
-          <FiltroButton
-            active={filtroEstado === 'EN_EJECUCION'}
-            onClick={() => setFiltroEstado('EN_EJECUCION')}
-            label="En Ejecución"
-            color="yellow"
-          />
-          <FiltroButton
-            active={filtroEstado === 'PENDIENTE'}
-            onClick={() => setFiltroEstado('PENDIENTE')}
-            label="Pendientes"
-            color="gray"
-          />
+          <button
+            onClick={() => setModalCrearAccion(true)}
+            className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Agregar Acción
+          </button>
         </div>
       </div>
 
-      {accionesFiltradas.map((accion) => (
-        <CardAccion key={accion.id} accion={accion} plan={plan} />
-      ))}
+      <div className="flex gap-2 mb-4">
+        <FiltroButton
+          active={filtroEstado === 'TODOS'}
+          onClick={() => setFiltroEstado('TODOS')}
+          label="Todas"
+        />
+        <FiltroButton
+          active={filtroEstado === 'COMPLETADA'}
+          onClick={() => setFiltroEstado('COMPLETADA')}
+          label="Completadas"
+          color="green"
+        />
+        <FiltroButton
+          active={filtroEstado === 'EN_EJECUCION'}
+          onClick={() => setFiltroEstado('EN_EJECUCION')}
+          label="En Ejecución"
+          color="yellow"
+        />
+        <FiltroButton
+          active={filtroEstado === 'PENDIENTE'}
+          onClick={() => setFiltroEstado('PENDIENTE')}
+          label="Pendientes"
+          color="gray"
+        />
+      </div>
+
+      {accionesFiltradas.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+          <Target className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No hay acciones</h3>
+          <p className="text-sm text-gray-600 mb-4">Comienza agregando una acción correctiva al plan</p>
+          <button
+            onClick={() => setModalCrearAccion(true)}
+            className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium mx-auto"
+          >
+            <Plus className="w-4 h-4" />
+            Agregar Primera Acción
+          </button>
+        </div>
+      ) : (
+        accionesFiltradas.map((accion) => (
+          <CardAccion key={accion.id} accion={accion} plan={plan} planId={planId} onAccionEditada={onAccionCreada} />
+        ))
+      )}
+
+      {modalCrearAccion && (
+        <ModalCrearAccion
+          planId={planId}
+          plan={plan}
+          onClose={() => setModalCrearAccion(false)}
+          onAccionCreada={() => {
+            setModalCrearAccion(false);
+            onAccionCreada?.();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejoramientoDetalle }) {
+function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionCorrectiva; plan: PlanMejoramientoDetalle; planId: string; onAccionEditada?: () => void }) {
   const [modalEditar, setModalEditar] = useState(false);
   const [modalEvidencia, setModalEvidencia] = useState(false);
   
@@ -1255,8 +1744,10 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
       {/* Modal Editar Acción */}
       {modalEditar && (
         <ModalEditarAccion 
-          accion={accion} 
+          accion={accion}
+          planId={planId}
           onClose={() => setModalEditar(false)}
+          onAccionActualizada={onAccionEditada}
         />
       )}
 
@@ -1550,8 +2041,183 @@ function FiltroButton({ active, onClick, label, color = 'gray' }: any) {
   );
 }
 
-// Importar ChevronDown si no está
-import { ChevronDown } from 'lucide-react';
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: CREAR ACCIÓN
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalCrearAccionProps {
+  planId: string;
+  plan: PlanMejoramientoDetalle;
+  onClose: () => void;
+  onAccionCreada: () => void;
+}
+
+function ModalCrearAccion({ planId, plan, onClose, onAccionCreada }: ModalCrearAccionProps) {
+  const [datosAccion, setDatosAccion] = useState({
+    descripcion: '',
+    responsable: plan.responsableGeneral || '',
+    fechaInicio: new Date().toISOString().split('T')[0],
+    fechaFin: plan.fechaVencimiento || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    observaciones: ''
+  });
+
+  const handleGuardar = async () => {
+    // Validaciones
+    if (!datosAccion.descripcion.trim()) {
+      toast.error('La descripción es obligatoria');
+      return;
+    }
+
+    if (!datosAccion.responsable.trim()) {
+      toast.error('El responsable es obligatorio');
+      return;
+    }
+
+    try {
+      // Crear acción en el backend
+      const response = await planesMejoramientoApi.addAccion(planId, {
+        descripcion: datosAccion.descripcion,
+        responsable: datosAccion.responsable,
+        fechaInicio: datosAccion.fechaInicio,
+        fechaFin: datosAccion.fechaFin,
+        observaciones: datosAccion.observaciones || undefined,
+        estado: 'programada',
+        porcentajeAvance: 0
+      });
+
+      if (response.success) {
+        toast.success('Acción Creada', {
+          description: 'La acción correctiva ha sido creada exitosamente',
+          duration: 3000,
+        });
+        onAccionCreada();
+      } else {
+        throw new Error(response.error || 'Error al crear la acción');
+      }
+    } catch (err: any) {
+      console.error('[ModalCrearAccion] Error al crear acción:', err);
+      toast.error('Error al crear la acción', {
+        description: err.message || 'No se pudo crear la acción correctiva'
+      });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10001] overflow-hidden flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-xl font-medium mb-1">Nueva Acción Correctiva</h3>
+              <p className="text-sm text-blue-100">Agregar una nueva acción al plan {plan.codigo}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="ml-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="flex-1 overflow-auto px-6 py-6">
+          <div className="space-y-4">
+            {/* Descripción */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Descripción <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={datosAccion.descripcion}
+                onChange={(e) => setDatosAccion({ ...datosAccion, descripcion: e.target.value })}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Descripción detallada de la acción correctiva"
+              />
+            </div>
+
+            {/* Responsable */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Responsable <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={datosAccion.responsable}
+                onChange={(e) => setDatosAccion({ ...datosAccion, responsable: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Nombre del responsable"
+              />
+            </div>
+
+            {/* Fechas */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fecha Inicio
+                </label>
+                <input
+                  type="date"
+                  value={datosAccion.fechaInicio}
+                  onChange={(e) => setDatosAccion({ ...datosAccion, fechaInicio: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fecha Fin <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={datosAccion.fechaFin}
+                  onChange={(e) => setDatosAccion({ ...datosAccion, fechaFin: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Observaciones */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Observaciones
+              </label>
+              <textarea
+                value={datosAccion.observaciones}
+                onChange={(e) => setDatosAccion({ ...datosAccion, observaciones: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Observaciones adicionales (opcional)"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-4 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleGuardar}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm font-medium"
+            >
+              Crear Acción
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // MODAL: EDITAR ACCIÓN
@@ -1559,10 +2225,12 @@ import { ChevronDown } from 'lucide-react';
 
 interface ModalEditarAccionProps {
   accion: AccionCorrectiva;
+  planId: string;
   onClose: () => void;
+  onAccionActualizada?: () => void;
 }
 
-function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
+function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: ModalEditarAccionProps) {
   const [datosEdicion, setDatosEdicion] = useState({
     descripcion: accion.descripcion,
     responsable: accion.responsable,
@@ -1573,7 +2241,7 @@ function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
     observaciones: accion.observaciones || ''
   });
 
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     // Validaciones
     if (!datosEdicion.descripcion.trim()) {
       toast.error('La descripción es obligatoria');
@@ -1590,21 +2258,40 @@ function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
       return;
     }
 
-    // Simular actualización
-    toast.success('Acción Actualizada', {
-      description: 'Los cambios han sido guardados exitosamente',
-      duration: 3000,
-    });
+    try {
+      // Mapear estado del frontend al backend
+      const estadoBackend = datosEdicion.estado === 'PENDIENTE' ? 'programada' :
+                           datosEdicion.estado === 'EN_EJECUCION' ? 'en-progreso' :
+                           datosEdicion.estado === 'COMPLETADA' ? 'completada' :
+                           datosEdicion.estado === 'VENCIDA' ? 'vencida' : 'programada';
 
-    console.log('📝 Actualizando acción:', {
-      accionId: accion.id,
-      datosAnteriores: accion,
-      datosNuevos: datosEdicion,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
+      // Actualizar acción en el backend
+      const response = await planesMejoramientoApi.updateAccion(planId, accion.id, {
+        descripcion: datosEdicion.descripcion,
+        responsable: datosEdicion.responsable,
+        fechaInicio: datosEdicion.fechaInicio,
+        fechaFin: datosEdicion.fechaVencimiento,
+        estado: estadoBackend,
+        porcentajeAvance: datosEdicion.progreso,
+        observaciones: datosEdicion.observaciones || undefined
+      });
 
-    onClose();
+      if (response.success) {
+        toast.success('Acción Actualizada', {
+          description: 'Los cambios han sido guardados exitosamente',
+          duration: 3000,
+        });
+        onAccionActualizada?.();
+        onClose();
+      } else {
+        throw new Error(response.error || 'Error al actualizar la acción');
+      }
+    } catch (err: any) {
+      console.error('[ModalEditarAccion] Error al actualizar acción:', err);
+      toast.error('Error al actualizar la acción', {
+        description: err.message || 'No se pudo actualizar la acción correctiva'
+      });
+    }
   };
 
   return (
@@ -1770,17 +2457,28 @@ function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
 
 interface ModalCargarEvidenciaProps {
   accion: AccionCorrectiva;
+  planId: string;
   onClose: () => void;
+  onEvidenciaCargada?: () => void;
 }
 
-function ModalCargarEvidencia({ accion, onClose }: ModalCargarEvidenciaProps) {
+function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada }: ModalCargarEvidenciaProps) {
   const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([]);
   const [observaciones, setObservaciones] = useState('');
+  const [subiendo, setSubiendo] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const nuevosArchivos = Array.from(e.target.files);
-      setArchivosSeleccionados([...archivosSeleccionados, ...nuevosArchivos]);
+      // Validar tamaño (10MB máximo por archivo)
+      const archivosValidos = nuevosArchivos.filter(archivo => {
+        if (archivo.size > 10 * 1024 * 1024) {
+          toast.error(`El archivo ${archivo.name} es demasiado grande (máx. 10MB)`);
+          return false;
+        }
+        return true;
+      });
+      setArchivosSeleccionados([...archivosSeleccionados, ...archivosValidos]);
     }
   };
 
@@ -1789,31 +2487,56 @@ function ModalCargarEvidencia({ accion, onClose }: ModalCargarEvidenciaProps) {
     setArchivosSeleccionados(nuevosArchivos);
   };
 
-  const handleCargar = () => {
+  const getFileType = (fileName: string, mimeType: string): string => {
+    const extension = fileName.split('.').pop()?.toLowerCase() || '';
+    if (['pdf'].includes(extension)) return 'PDF';
+    if (['doc', 'docx'].includes(extension)) return 'Word';
+    if (['xls', 'xlsx'].includes(extension)) return 'Excel';
+    if (['jpg', 'jpeg', 'png', 'gif'].includes(extension)) return 'Imagen';
+    return mimeType.split('/')[1]?.toUpperCase() || 'Archivo';
+  };
+
+  const handleCargar = async () => {
     if (archivosSeleccionados.length === 0) {
       toast.error('Debes seleccionar al menos un archivo');
       return;
     }
 
-    // Simular carga de archivos
-    toast.success('Evidencias Cargadas', {
-      description: `${archivosSeleccionados.length} archivo(s) cargado(s) exitosamente`,
-      duration: 3000,
-    });
+    setSubiendo(true);
 
-    console.log('📎 Cargando evidencias:', {
-      accionId: accion.id,
-      archivos: archivosSeleccionados.map(f => ({
-        nombre: f.name,
-        tamanio: f.size,
-        tipo: f.type
-      })),
-      observaciones,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
+    try {
+      // Para cada archivo, necesitamos subirlo y obtener su URL
+      // Por ahora, como el backend espera una URL, vamos a crear URLs temporales
+      // En producción, esto debería subir el archivo a un servicio de almacenamiento primero
+      for (const archivo of archivosSeleccionados) {
+        // Generar una URL/ruta temporal (en producción, esto vendría del servicio de upload)
+        // Por ahora, usamos una ruta relativa que el backend puede manejar
+        const nombreArchivo = `${Date.now()}_${archivo.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const urlArchivo = `/uploads/evidencias/${nombreArchivo}`;
 
-    onClose();
+        await planesMejoramientoApi.addEvidencia(planId, accion.id, {
+          nombre: archivo.name,
+          tipo: getFileType(archivo.name, archivo.type),
+          url: urlArchivo,
+          fecha: new Date().toISOString()
+        });
+      }
+
+      toast.success('Evidencias Cargadas', {
+        description: `${archivosSeleccionados.length} archivo(s) cargado(s) exitosamente`,
+        duration: 3000,
+      });
+
+      onEvidenciaCargada?.();
+      onClose();
+    } catch (error: any) {
+      console.error('[ModalCargarEvidencia] Error al cargar evidencias:', error);
+      toast.error('Error al cargar evidencias', {
+        description: error.message || 'No se pudieron cargar las evidencias'
+      });
+    } finally {
+      setSubiendo(false);
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -1948,10 +2671,20 @@ function ModalCargarEvidencia({ accion, onClose }: ModalCargarEvidenciaProps) {
             </button>
             <button
               onClick={handleCargar}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+              disabled={subiendo}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Upload className="w-4 h-4" />
-              Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Archivo(s)` : 'Evidencias'}
+              {subiendo ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Cargando...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Archivo(s)` : 'Evidencias'}
+                </>
+              )}
             </button>
           </div>
         </div>

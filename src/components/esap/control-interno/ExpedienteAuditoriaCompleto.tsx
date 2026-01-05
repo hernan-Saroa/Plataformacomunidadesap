@@ -503,6 +503,8 @@ export function ExpedienteAuditoriaCompleto({
               diasTranscurridos: aud.diasTranscurridos || 0,
             },
             progreso: {
+              // El progreso se calculará dinámicamente basado en actividades completadas
+              // Por ahora usamos el valor del backend como fallback
               general: aud.progreso || 0,
               planeacion: aud.progresoPlaneacion || 0,
               ejecucion: aud.progresoEjecucion || 0,
@@ -680,6 +682,50 @@ export function ExpedienteAuditoriaCompleto({
     );
   }, [auditoria.cronograma]);
 
+  // Calcular progreso real basado en actividades completadas
+  const progresoReal = useMemo(() => {
+    // Contar actividades completadas por fase
+    const contarCompletadas = (actividades: typeof ACTIVIDADES_PLANEACION) => {
+      let totalItems = 0;
+      let completados = 0;
+      
+      actividades.forEach(actividad => {
+        actividad.checklist.forEach(item => {
+          totalItems++;
+          if (checklistCompletados[item.id]) {
+            completados++;
+          }
+        });
+      });
+      
+      return totalItems > 0 ? Math.round((completados / totalItems) * 100) : 0;
+    };
+
+    const progresoPlaneacion = contarCompletadas(ACTIVIDADES_PLANEACION);
+    const progresoEjecucion = contarCompletadas(ACTIVIDADES_EJECUCION);
+    const progresoComunicacion = contarCompletadas(ACTIVIDADES_COMUNICACION);
+
+    // Progreso general: promedio ponderado (Planeación: 30%, Ejecución: 50%, Comunicación: 20%)
+    const progresoGeneral = Math.round(
+      progresoPlaneacion * 0.3 + 
+      progresoEjecucion * 0.5 + 
+      progresoComunicacion * 0.2
+    );
+
+    return {
+      general: progresoGeneral,
+      planeacion: progresoPlaneacion,
+      ejecucion: progresoEjecucion,
+      comunicacion: progresoComunicacion,
+    };
+  }, [checklistCompletados]);
+
+  // Usar progreso real si hay actividades completadas, sino usar el del backend
+  const progresoMostrar = useMemo(() => {
+    const tieneActividadesCompletadas = Object.keys(checklistCompletados).length > 0;
+    return tieneActividadesCompletadas ? progresoReal : auditoria.progreso;
+  }, [progresoReal, auditoria.progreso, checklistCompletados]);
+
   const documentosFiltrados = useMemo(() => {
     if (filtroDocumentos === 'todos') return documentos;
     return documentos.filter((doc) => doc.fase === filtroDocumentos);
@@ -843,7 +889,7 @@ export function ExpedienteAuditoriaCompleto({
                 </div>
                 <div className="flex items-center gap-2">
                   <Activity className="w-4 h-4" />
-                  <span>{auditoria.progreso.general}% completado</span>
+                  <span>{progresoMostrar.general}% completado</span>
                 </div>
               </div>
             </div>
@@ -919,11 +965,11 @@ export function ExpedienteAuditoriaCompleto({
                 <div className="w-32 bg-gray-200 rounded-full h-2 overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all"
-                    style={{ width: `${auditoria.progreso.general}%` }}
+                    style={{ width: `${progresoMostrar.general}%` }}
                   />
                 </div>
                 <span className="text-sm text-gray-900 w-10 text-right">
-                  {auditoria.progreso.general}%
+                  {progresoMostrar.general}%
                 </span>
               </div>
             </div>
@@ -969,7 +1015,10 @@ export function ExpedienteAuditoriaCompleto({
               <div className="flex-1 overflow-y-auto p-6">
                 {/* TAB 1: GENERAL */}
                 <TabsContent value="general" className="mt-0">
-                  <TabGeneral auditoria={auditoria} />
+                  <TabGeneral 
+                    auditoria={auditoria} 
+                    progreso={progresoMostrar}
+                  />
                 </TabsContent>
 
                 {/* TAB 2: PLANEACIÓN */}
@@ -1031,7 +1080,13 @@ export function ExpedienteAuditoriaCompleto({
 // ============ TABS INDIVIDUALES ============
 
 // TAB 1: GENERAL
-function TabGeneral({ auditoria }: { auditoria: Auditoria }) {
+function TabGeneral({ 
+  auditoria, 
+  progreso 
+}: { 
+  auditoria: Auditoria;
+  progreso: { general: number; planeacion: number; ejecucion: number; comunicacion: number };
+}) {
   return (
     <div className="space-y-6">
       {/* Resumen ejecutivo */}
@@ -1283,12 +1338,12 @@ function TabGeneral({ auditoria }: { auditoria: Auditoria }) {
                 <FileSearch className="w-5 h-5 text-purple-600" />
                 <span className="text-sm text-gray-700">Planeación</span>
               </div>
-              <span className="text-sm text-gray-900">{auditoria.progreso.planeacion}%</span>
+              <span className="text-sm text-gray-900">{progreso.planeacion}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
               <div
                 className="h-full bg-purple-600 rounded-full transition-all"
-                style={{ width: `${auditoria.progreso.planeacion}%` }}
+                style={{ width: `${progreso.planeacion}%` }}
               />
             </div>
           </div>
@@ -1300,12 +1355,12 @@ function TabGeneral({ auditoria }: { auditoria: Auditoria }) {
                 <ClipboardCheck className="w-5 h-5 text-amber-600" />
                 <span className="text-sm text-gray-700">Ejecución</span>
               </div>
-              <span className="text-sm text-gray-900">{auditoria.progreso.ejecucion}%</span>
+              <span className="text-sm text-gray-900">{progreso.ejecucion}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
               <div
                 className="h-full bg-amber-600 rounded-full transition-all"
-                style={{ width: `${auditoria.progreso.ejecucion}%` }}
+                style={{ width: `${progreso.ejecucion}%` }}
               />
             </div>
           </div>
@@ -1317,12 +1372,12 @@ function TabGeneral({ auditoria }: { auditoria: Auditoria }) {
                 <FileText className="w-5 h-5 text-green-600" />
                 <span className="text-sm text-gray-700">Comunicación</span>
               </div>
-              <span className="text-sm text-gray-900">{auditoria.progreso.comunicacion}%</span>
+              <span className="text-sm text-gray-900">{progreso.comunicacion}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
               <div
                 className="h-full bg-green-600 rounded-full transition-all"
-                style={{ width: `${auditoria.progreso.comunicacion}%` }}
+                style={{ width: `${progreso.comunicacion}%` }}
               />
             </div>
           </div>

@@ -1831,52 +1831,61 @@ export function GestionAuditoriasKanbanSimple() {
       }
       
       // Mapear datos del backend al formato esperado por el frontend
-      const auditoriasMapeadas: Auditoria[] = auditoriasData.map((aud: any) => ({
-        id: aud.id,
-        codigo: aud.codigo || '',
-        titulo: aud.titulo || aud.nombre || '',
-        descripcion: aud.descripcion || '',
-        estado: aud.estado || 'Planeación',
-        riesgo: aud.riesgo || 'Medio',
-        semaforo: aud.semaforo || 'verde',
-        territorial: aud.territorial || '',
-        auditorLider: aud.auditorLider || {
-          nombre: 'Sin asignar',
-          cargo: 'Auditor Líder',
-          iniciales: 'SA',
-          tipoIdentificacion: 'CC',
-          numeroIdentificacion: ''
-        },
-        auditorAsignado: aud.auditorAsignado || {
-          nombre: 'Sin asignar',
-          cargo: 'Auditor',
-          iniciales: 'SA',
-          tipoIdentificacion: 'CC',
-          numeroIdentificacion: ''
-        },
-        fechaInicio: aud.fechaInicio || '',
-        fechaFin: aud.fechaFin || '',
-        progreso: aud.progreso ?? 0,
-        hallazgos: aud.hallazgos ?? 0,
-        diasRestantes: aud.diasRestantes ?? 0,
-        porcentajeTiempo: aud.porcentajeTiempo ?? 0,
-        ultimaActuacion: aud.ultimaActuacion,
-        objetivos: aud.objetivos || [],
-        calificacionRiesgo: aud.calificacionRiesgo,
-        documentos: aud.documentos ?? 0,
-        informes: aud.informes ?? 0,
-        tareas: aud.tareas ?? 0,
-        tipo: aud.tipoKanban || aud.tipo || 'regular',
-        prioridad: aud.prioridad || 'media',
-        areaObjetivo: aud.areaObjetivo,
-        permiteCambiarObjetivos: aud.permiteCambiarObjetivos ?? true,
-        equipoAuditores: aud.equipoAuditores || [],
-        territorialInfo: aud.territorialInfo,
-        especial: aud.especial,
-        actividadesCompletas: aud.actividadesCompletas ?? false,
-        actividadesPendientes: aud.actividadesPendientes ?? 0,
-        alcance: aud.alcance || '',
-      }));
+      const añoActual = new Date().getFullYear();
+      const auditoriasMapeadas: Auditoria[] = auditoriasData.map((aud: any) => {
+        // Generar código automático si no existe
+        const codigoAuditoria = aud.codigo || `AUD-${añoActual}-${aud.id.substring(0, 6).toUpperCase()}`;
+        const auditoriaMapeada: any = {
+          id: aud.id,
+          codigo: codigoAuditoria,
+          titulo: aud.titulo || aud.nombre || '',
+          descripcion: aud.descripcion || '',
+          estado: aud.estado || 'Planeación',
+          riesgo: aud.riesgo || 'Medio',
+          semaforo: aud.semaforo || 'verde',
+          territorial: aud.territorial || '',
+          auditorLider: aud.auditorLider || {
+            nombre: 'Sin asignar',
+            cargo: 'Auditor Líder',
+            iniciales: 'SA',
+            tipoIdentificacion: 'CC',
+            numeroIdentificacion: ''
+          },
+          auditorAsignado: aud.auditorAsignado || {
+            nombre: 'Sin asignar',
+            cargo: 'Auditor',
+            iniciales: 'SA',
+            tipoIdentificacion: 'CC',
+            numeroIdentificacion: ''
+          },
+          fechaInicio: aud.fechaInicio || '',
+          fechaFin: aud.fechaFin || '',
+          progreso: aud.progreso ?? 0,
+          hallazgos: aud.hallazgos ?? 0,
+          diasRestantes: aud.diasRestantes ?? 0,
+          porcentajeTiempo: aud.porcentajeTiempo ?? 0,
+          ultimaActuacion: aud.ultimaActuacion,
+          objetivos: aud.objetivos || [],
+          calificacionRiesgo: aud.calificacionRiesgo,
+          documentos: aud.documentos ?? 0,
+          informes: aud.informes ?? 0,
+          tareas: aud.tareas ?? 0,
+          tipo: aud.tipoKanban || aud.tipo || 'regular',
+          prioridad: aud.prioridad || 'media',
+          areaObjetivo: aud.areaObjetivo,
+          permiteCambiarObjetivos: aud.permiteCambiarObjetivos ?? true,
+          equipoAuditores: aud.equipoAuditores || [],
+          territorialInfo: aud.territorialInfo,
+          especial: aud.especial,
+          actividadesCompletas: aud.actividadesCompletas ?? false,
+          actividadesPendientes: aud.actividadesPendientes ?? 0,
+          alcance: aud.alcance || '',
+          // Preservar IDs de auditores para el formulario de edición
+          auditorLiderId: aud.auditorLiderId,
+          auditorAsignadoId: aud.auditorAsignadoId,
+        };
+        return auditoriaMapeada as Auditoria;
+      });
       
       // Asegurar que siempre sea un array
       setAuditorias(auditoriasMapeadas);
@@ -3288,7 +3297,7 @@ export function GestionAuditoriasKanbanSimple() {
                       <div className="text-center p-3 rounded-lg" style={{ background: '#FEF3C7' }}>
                         <FileText className="w-4 h-4 mx-auto mb-1 text-yellow-600" />
                         <p className="text-xs text-gray-600 mb-1">Docs</p>
-                        <p className="font-bold text-yellow-700">{auditoria.documentos || 0}</p>
+                        <p className="font-bold text-yellow-700">{auditoria.documentos || ''}</p>
                       </div>
                       <div className="text-center p-3 rounded-lg" style={{ background: '#E0E7FF' }}>
                         <FileText className="w-4 h-4 mx-auto mb-1 text-indigo-600" />
@@ -3469,9 +3478,9 @@ export function GestionAuditoriasKanbanSimple() {
               fechaInicio: convertirFechaDDMMYYYYaISO(auditoriaParaEditar.fechaInicio || ''),
               fechaFin: convertirFechaDDMMYYYYaISO(auditoriaParaEditar.fechaFin || ''),
               objetivos: auditoriaParaEditar.objetivos?.map(obj => obj.descripcion) || [],
-              // Pasar el ID del auditor si está disponible, o el nombre como fallback
-              auditorLider: (auditoriaParaEditar as any).auditorLiderId?.toString() || auditoriaParaEditar.auditorLider?.nombre || '',
-              auditorAsignado: (auditoriaParaEditar as any).auditorAsignadoId?.toString() || auditoriaParaEditar.auditorAsignado?.nombre || '',
+              // Pasar el ID del auditor (número) como string para el select
+              auditorLider: (auditoriaParaEditar as any).auditorLiderId ? String((auditoriaParaEditar as any).auditorLiderId) : '',
+              auditorAsignado: (auditoriaParaEditar as any).auditorAsignadoId ? String((auditoriaParaEditar as any).auditorAsignadoId) : '',
               // Obtener el tipo real de la auditoría (no tipoKanban)
               tipoAuditoria: (auditoriaParaEditar as any).tipo || 'Gestión',
               // Obtener alcance desde la auditoría (puede venir del backend o estar vacío)

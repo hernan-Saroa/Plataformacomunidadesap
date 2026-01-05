@@ -658,8 +658,8 @@ export const planesMejoramientoApi = {
   /**
    * Actualizar acción de mejoramiento
    */
-  updateAccion: async (accionId: string, data: Partial<AccionMejoramiento>): Promise<ApiResponse<AccionMejoramiento>> => {
-    return apiRequest<AccionMejoramiento>(`/acciones-mejoramiento/${accionId}`, {
+  updateAccion: async (planId: string, accionId: string, data: Partial<AccionMejoramiento>): Promise<ApiResponse<AccionMejoramiento>> => {
+    return apiRequest<AccionMejoramiento>(`/planes-mejoramiento/${planId}/acciones/${accionId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -672,6 +672,21 @@ export const planesMejoramientoApi = {
     return apiRequest<AccionMejoramiento>(`/acciones-mejoramiento/${accionId}/progreso`, {
       method: 'PATCH',
       body: JSON.stringify({ porcentajeAvance: porcentaje }),
+    });
+  },
+
+  /**
+   * Cargar evidencia en una acción
+   */
+  addEvidencia: async (planId: string, accionId: string, evidencia: {
+    nombre: string;
+    tipo: string;
+    url: string;
+    fecha?: string;
+  }): Promise<ApiResponse<AccionMejoramiento>> => {
+    return apiRequest<AccionMejoramiento>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias`, {
+      method: 'POST',
+      body: JSON.stringify(evidencia),
     });
   },
 };

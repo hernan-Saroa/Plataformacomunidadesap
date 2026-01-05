@@ -270,7 +270,7 @@ export interface PlanMejoramiento {
   fechaElaboracion: string;
   fechaAprobacion?: string;
   
-  estado: 'borrador' | 'aprobado' | 'en-ejecucion' | 'cerrado';
+  estado: 'borrador' | 'revision' | 'aprobado' | 'en_ejecucion' | 'completado' | 'vencido' | 'rechazado';
   porcentajeAvanceGeneral: number;
   
   observaciones: string;

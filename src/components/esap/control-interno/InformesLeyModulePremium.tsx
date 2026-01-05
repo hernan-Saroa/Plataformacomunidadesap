@@ -19,7 +19,7 @@
  * - Integración con catálogo normativo (16 informes)
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Calendar, Clock, Search, Download, Eye, CheckCircle2, 
@@ -39,6 +39,10 @@ import {
   PeriodicidadInforme,
   calcularProximaFechaGeneracion
 } from './CatalogoInformesLey';
+
+// API
+import { controlInternoApi } from './services/api';
+import { EntregaInforme, InformeLey } from './services/types';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -60,57 +64,6 @@ interface InformeGenerado {
 
 type VistaActual = 'catalogo' | 'generados' | 'proximos';
 
-// ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK
-// ════════════════════════════════════════════════════════════════════════════
-
-const INFORMES_GENERADOS_MOCK: InformeGenerado[] = [
-  {
-    id: 'gen-1',
-    informeLeyId: 'inf-ley-001',
-    informeNombre: 'Informe Pormenorizado del Estado del Control Interno',
-    periodo: '2025-S1',
-    fechaGeneracion: '2025-02-20',
-    fechaVencimiento: '2025-02-28',
-    estado: 'ENVIADO',
-    generadoPor: 'Fernando Ávila',
-    archivoUrl: '#',
-    destinatarios: ['DAFP', 'Contraloría General']
-  },
-  {
-    id: 'gen-2',
-    informeLeyId: 'inf-ley-002',
-    informeNombre: 'Informe Anual de Evaluación del Sistema de Control Interno',
-    periodo: '2024',
-    fechaGeneracion: '2025-02-15',
-    fechaVencimiento: '2025-02-28',
-    estado: 'ENVIADO',
-    generadoPor: 'Fernando Ávila',
-    archivoUrl: '#',
-    destinatarios: ['DAFP', 'Alta Dirección']
-  },
-  {
-    id: 'gen-3',
-    informeLeyId: 'inf-ley-006',
-    informeNombre: 'Informe de Austeridad del Gasto Público',
-    periodo: '2024',
-    fechaGeneracion: '2025-02-10',
-    fechaVencimiento: '2025-02-28',
-    estado: 'ENVIADO',
-    generadoPor: 'Fernando Ávila',
-    archivoUrl: '#'
-  },
-  {
-    id: 'gen-4',
-    informeLeyId: 'inf-ley-003',
-    informeNombre: 'Rendición de la Cuenta Fiscal',
-    periodo: '2024',
-    fechaGeneracion: '2025-03-01',
-    fechaVencimiento: '2025-03-15',
-    estado: 'BORRADOR',
-    generadoPor: 'Fernando Ávila'
-  }
-];
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -118,7 +71,75 @@ const INFORMES_GENERADOS_MOCK: InformeGenerado[] = [
 
 export function InformesLeyModulePremium() {
   const [vistaActiva, setVistaActiva] = useState<VistaActual>('catalogo');
-  const [informesGenerados] = useState<InformeGenerado[]>(INFORMES_GENERADOS_MOCK);
+  const [informesGenerados, setInformesGenerados] = useState<InformeGenerado[]>([]);
+  const [informesLey, setInformesLey] = useState<InformeLey[]>([]);
+  const [cargandoInformes, setCargandoInformes] = useState(true);
+
+  // Cargar informes desde la base de datos
+  useEffect(() => {
+    const cargarInformes = async () => {
+      try {
+        setCargandoInformes(true);
+        const response = await controlInternoApi.informesLey.getAll();
+        
+        if (response.success && response.data) {
+          // Guardar todos los informes de ley
+          setInformesLey(response.data);
+          
+          // Extraer todas las entregas de todos los informes
+          const todasLasEntregas: InformeGenerado[] = [];
+          
+          response.data.forEach((informe: InformeLey) => {
+            if (informe.entregas && informe.entregas.length > 0) {
+              informe.entregas.forEach((entrega: EntregaInforme) => {
+                // Mapear estado de EntregaInforme a InformeGenerado
+                let estado: 'BORRADOR' | 'GENERADO' | 'ENVIADO' | 'ATRASADO' = 'BORRADOR';
+                if (entrega.estado === 'entregado') {
+                  estado = 'ENVIADO';
+                } else if (entrega.estado === 'vencido') {
+                  estado = 'ATRASADO';
+                } else if (entrega.archivoUrl) {
+                  estado = 'GENERADO';
+                } else {
+                  estado = 'BORRADOR';
+                }
+
+                todasLasEntregas.push({
+                  id: entrega.id,
+                  informeLeyId: informe.id,
+                  informeNombre: informe.nombre,
+                  periodo: entrega.periodo,
+                  fechaGeneracion: entrega.fechaCreacion || new Date().toISOString(),
+                  fechaVencimiento: entrega.fechaVencimiento,
+                  estado,
+                  generadoPor: entrega.creadoPor || 'Usuario',
+                  archivoUrl: entrega.archivoUrl,
+                  observaciones: entrega.observaciones,
+                  destinatarios: []
+                });
+              });
+            }
+          });
+
+          // Ordenar por fecha de generación (más recientes primero)
+          todasLasEntregas.sort((a, b) => 
+            new Date(b.fechaGeneracion).getTime() - new Date(a.fechaGeneracion).getTime()
+          );
+
+          setInformesGenerados(todasLasEntregas);
+        }
+      } catch (error) {
+        console.error('Error cargando informes:', error);
+        toast.error('Error al cargar informes', {
+          description: 'No se pudieron cargar los informes'
+        });
+      } finally {
+        setCargandoInformes(false);
+      }
+    };
+
+    cargarInformes();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -165,8 +186,8 @@ export function InformesLeyModulePremium() {
           transition={{ duration: 0.2 }}
         >
           {vistaActiva === 'catalogo' && <VistaCatalogo />}
-          {vistaActiva === 'generados' && <VistaGenerados informes={informesGenerados} />}
-          {vistaActiva === 'proximos' && <VistaProximos />}
+          {vistaActiva === 'generados' && <VistaGenerados informes={informesGenerados} cargandoInformes={cargandoInformes} />}
+          {vistaActiva === 'proximos' && <VistaProximos informesLey={informesLey} cargandoInformes={cargandoInformes} />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -421,9 +442,10 @@ function CardInforme({ informe, onVerDetalle }: CardInformeProps) {
 
 interface VistaGeneradosProps {
   informes: InformeGenerado[];
+  cargandoInformes: boolean;
 }
 
-function VistaGenerados({ informes }: VistaGeneradosProps) {
+function VistaGenerados({ informes, cargandoInformes }: VistaGeneradosProps) {
   const estadisticas = useMemo(() => {
     const enviados = informes.filter(i => i.estado === 'ENVIADO').length;
     const borradores = informes.filter(i => i.estado === 'BORRADOR').length;
@@ -484,7 +506,7 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
   const config = estadoConfig[informe.estado];
   const Icon = config.icon;
 
-  const handleDescargar = () => {
+  const handleDescargar = async () => {
     if (!informe.archivoUrl) {
       toast.error('Archivo no disponible', {
         description: 'No hay archivo asociado a este informe',
@@ -492,50 +514,72 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
       return;
     }
 
-    toast.success('Descargando Informe', {
-      description: `${informe.informeNombre} (${informe.periodo})`,
-      duration: 3000,
-    });
+    try {
+      toast.success('Descargando Informe', {
+        description: `${informe.informeNombre} (${informe.periodo})`,
+        duration: 3000,
+      });
 
-    console.log('📥 Descargando informe:', {
-      informeId: informe.id,
-      nombre: informe.informeNombre,
-      periodo: informe.periodo,
-      archivoUrl: informe.archivoUrl,
-      estado: informe.estado,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
+      // Construir la URL completa del archivo
+      // Si archivoUrl ya es una URL completa, usarla directamente
+      // Si es una ruta relativa, construir la URL completa
+      const apiBaseUrl = 'http://localhost:3007'; // Por defecto, se puede usar import.meta.env.VITE_API_URL en producción
+      const urlArchivo = informe.archivoUrl.startsWith('http') 
+        ? informe.archivoUrl 
+        : `${apiBaseUrl}${informe.archivoUrl.startsWith('/') ? '' : '/'}${informe.archivoUrl}`;
 
-    // En producción: descargar el archivo
-    // fetch(informe.archivoUrl)
-    //   .then(response => response.blob())
-    //   .then(blob => {
-    //     const url = window.URL.createObjectURL(blob);
-    //     const a = document.createElement('a');
-    //     a.href = url;
-    //     a.download = `${informe.informeNombre}_${informe.periodo}.pdf`;
-    //     a.click();
-    //     window.URL.revokeObjectURL(url);
-    //   });
+      // Intentar HEAD primero para verificar si el archivo existe
+      const headResponse = await fetch(urlArchivo, {
+        method: 'HEAD',
+      });
+
+      if (!headResponse.ok) {
+        if (headResponse.status === 404) {
+          throw new Error('El archivo no se encuentra en el servidor');
+        }
+        throw new Error(`Error al verificar archivo: ${headResponse.statusText} (${headResponse.status})`);
+      }
+
+      // Si el archivo existe, proceder con la descarga
+      const response = await fetch(urlArchivo, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error al descargar: ${response.statusText} (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${informe.informeNombre.replace(/[^a-z0-9]/gi, '_')}_${informe.periodo}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Archivo descargado', {
+        description: 'El informe se ha descargado correctamente',
+        duration: 2000,
+      });
+    } catch (error) {
+      console.error('Error descargando archivo:', error);
+      const mensajeError = error instanceof Error 
+        ? error.message 
+        : 'Error desconocido al descargar el archivo';
+      
+      toast.error('Error al descargar', {
+        description: mensajeError.includes('no se encuentra') || mensajeError.includes('404')
+          ? 'El archivo no está disponible en el servidor'
+          : mensajeError,
+      });
+    }
   };
 
   const handleVerDetalle = () => {
     setModalDetalle(true);
-    
-    toast.info('Abriendo Detalle del Informe', {
-      description: informe.informeNombre,
-      duration: 2000,
-    });
 
-    console.log('👁️ Ver detalle del informe:', {
-      informeId: informe.id,
-      nombre: informe.informeNombre,
-      periodo: informe.periodo,
-      estado: informe.estado,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
   };
 
   return (
@@ -605,51 +649,79 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
 // VISTA: PRÓXIMOS A VENCER
 // ════════════════════════════════════════════════════════════════════════════
 
-function VistaProximos() {
+interface VistaProximosProps {
+  informesLey: InformeLey[];
+  cargandoInformes: boolean;
+}
+
+function VistaProximos({ informesLey, cargandoInformes }: VistaProximosProps) {
   const [informeSeleccionado, setInformeSeleccionado] = useState<InformeLeyNormativo | null>(null);
   
+  // Calcular entregas próximas a vencer (dentro de 60 días)
   const proximosInformes = useMemo(() => {
     const ahora = new Date();
-    const dentro60Dias = new Date(ahora.getTime() + 60 * 24 * 60 * 60 * 1000);
+    const ahoraMs = ahora.getTime();
+    const msEnUnDia = 1000 * 60 * 60 * 24;
+    const msEn60Dias = 60 * msEnUnDia;
 
-    return CATALOGO_INFORMES_LEY
-      .filter(inf => inf.activo)
-      .map(inf => {
-        const proximaFecha = calcularProximaFechaGeneracion(inf);
-        if (!proximaFecha) return null;
+    // Recorrer todos los informes y sus entregas
+    const entregasProximas: Array<{
+      entrega: EntregaInforme;
+      informe: InformeLey;
+      diasRestantes: number;
+      semaforo: 'rojo' | 'amarillo' | 'verde';
+    }> = [];
 
-        const fecha = new Date(proximaFecha);
-        const diasRestantes = Math.ceil((fecha.getTime() - ahora.getTime()) / (1000 * 60 * 60 * 24));
-
-        if (diasRestantes > 60) return null;
-
-        return {
-          ...inf,
-          proximaFecha,
-          diasRestantes,
-          semaforo: diasRestantes <= 7 ? 'rojo' : diasRestantes <= 15 ? 'amarillo' : 'verde'
-        };
-      })
-      .filter((i): i is NonNullable<typeof i> => i !== null)
-      .sort((a, b) => a.diasRestantes - b.diasRestantes);
-  }, []);
-
-  const handleGenerarAhora = (informe: InformeLeyNormativo) => {
-    setInformeSeleccionado(informe);
-    
-    toast.info('Generando informe próximo a vencer', {
-      description: `${informe.nombreCorto} - ${informe.periodicidad}`,
-      duration: 2000,
+    informesLey.forEach((informe) => {
+      if (!informe.activo) return;
+      
+      if (informe.entregas && informe.entregas.length > 0) {
+        informe.entregas.forEach((entrega) => {
+          const fechaVencimiento = new Date(entrega.fechaVencimiento);
+          const fechaVencimientoMs = fechaVencimiento.getTime();
+          const diferenciaMs = fechaVencimientoMs - ahoraMs;
+          const diasRestantes = Math.ceil(diferenciaMs / msEnUnDia);
+          
+          // Solo incluir si está dentro de los próximos 60 días (incluyendo vencidos)
+          if (diferenciaMs <= msEn60Dias) {
+            const semaforo: 'rojo' | 'amarillo' | 'verde' = 
+              diasRestantes < 0 ? 'rojo' : 
+              diasRestantes <= 7 ? 'rojo' : 
+              diasRestantes <= 15 ? 'amarillo' : 
+              'verde';
+            
+            entregasProximas.push({
+              entrega,
+              informe,
+              diasRestantes,
+              semaforo
+            });
+          }
+        });
+      }
     });
 
-    console.log('⏰ Generar informe próximo a vencer:', {
-      informeId: informe.id,
-      nombre: informe.nombreCorto,
-      periodicidad: informe.periodicidad,
-      proximaFecha: proximosInformes.find(i => i.id === informe.id)?.proximaFecha,
-      diasRestantes: proximosInformes.find(i => i.id === informe.id)?.diasRestantes,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
+    // Ordenar por días restantes (más urgentes primero)
+    entregasProximas.sort((a, b) => a.diasRestantes - b.diasRestantes);
+
+    return entregasProximas;
+  }, [informesLey]);
+
+  // Buscar el informe del catálogo para obtener los datos normativos
+  const obtenerInformeCatalogo = (informeLey: InformeLey): InformeLeyNormativo | null => {
+    // Intentar encontrar por ID o código
+    return CATALOGO_INFORMES_LEY.find(inf => inf.id === informeLey.id || inf.codigo === informeLey.codigo) || null;
+  };
+
+  const handleGenerarAhora = (informeLey: InformeLey) => {
+    const informeCatalogo = obtenerInformeCatalogo(informeLey);
+    if (informeCatalogo) {
+      setInformeSeleccionado(informeCatalogo);
+    }
+    
+    toast.info('Generar informe próximo a vencer', {
+      description: `${informeLey.nombre}`,
+      duration: 2000,
     });
   };
 
@@ -662,62 +734,94 @@ function VistaProximos() {
         </div>
 
         <div className="space-y-4">
-          {proximosInformes.length === 0 ? (
+          {cargandoInformes ? (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+              <Loader className="w-8 h-8 animate-spin text-[#1e5da8] mx-auto mb-4" />
+              <p className="text-gray-600">Cargando informes próximos a vencer...</p>
+            </div>
+          ) : proximosInformes.length === 0 ? (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
               <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
               <h3 className="text-base text-gray-900 mb-2">No hay informes próximos a vencer</h3>
               <p className="text-sm text-gray-600">Todos los informes están al día</p>
             </div>
           ) : (
-            proximosInformes.map((informe) => (
-              <div key={informe.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-start gap-6">
-                  <div className={`w-3 h-3 rounded-full mt-2 ${
-                    informe.semaforo === 'verde' ? 'bg-green-500' :
-                    informe.semaforo === 'amarillo' ? 'bg-amber-500' :
-                    'bg-red-500'
-                  }`} />
+            proximosInformes.map((item) => {
+              const { entrega, informe, diasRestantes, semaforo } = item;
+              const informeCatalogo = obtenerInformeCatalogo(informe);
+              return (
+                <div key={entrega.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-start gap-6">
+                    <div className={`w-3 h-3 rounded-full mt-2 ${
+                      semaforo === 'verde' ? 'bg-green-500' :
+                      semaforo === 'amarillo' ? 'bg-amber-500' :
+                      'bg-red-500'
+                    }`} />
 
-                  <div className="flex-1">
-                    <h3 className="text-base text-gray-900 font-medium mb-2">{informe.nombreCorto}</h3>
-                    <div className="grid grid-cols-3 gap-4 text-sm mb-3">
-                      <div>
-                        <span className="text-gray-600">Próxima generación:</span>
-                        <span className="ml-2 text-gray-900 font-medium">
-                          {new Date(informe.proximaFecha).toLocaleDateString('es-CO', { 
-                            year: 'numeric', 
-                            month: 'short', 
-                            day: 'numeric' 
-                          })}
-                        </span>
+                    <div className="flex-1">
+                      <h3 className="text-base text-gray-900 font-medium mb-2">{informe.nombre}</h3>
+                      <div className="grid grid-cols-3 gap-4 text-sm mb-3">
+                        <div>
+                          <span className="text-gray-600">Periodo:</span>
+                          <span className="ml-2 text-gray-900 font-medium">{entrega.periodo}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Vencimiento:</span>
+                          <span className="ml-2 text-gray-900 font-medium">
+                            {new Date(entrega.fechaVencimiento).toLocaleDateString('es-CO', { 
+                              year: 'numeric', 
+                              month: 'short', 
+                              day: 'numeric' 
+                            })}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Días restantes:</span>
+                          <span className={`ml-2 font-medium ${
+                            diasRestantes < 0 ? 'text-red-600' :
+                            diasRestantes <= 7 ? 'text-red-600' :
+                            diasRestantes <= 15 ? 'text-amber-600' :
+                            'text-green-600'
+                          }`}>
+                            {diasRestantes < 0 ? `Vencido (${Math.abs(diasRestantes)} días)` : `${diasRestantes} días`}
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-gray-600">Días restantes:</span>
-                        <span className={`ml-2 font-medium ${
-                          informe.diasRestantes <= 7 ? 'text-red-600' :
-                          informe.diasRestantes <= 15 ? 'text-amber-600' :
-                          'text-green-600'
+
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className={`px-3 py-1 rounded-lg text-xs font-medium ${
+                          entrega.estado === 'entregado' ? 'bg-green-100 text-green-700' :
+                          entrega.estado === 'vencido' ? 'bg-red-100 text-red-700' :
+                          'bg-yellow-100 text-yellow-700'
                         }`}>
-                          {informe.diasRestantes} días
+                          {entrega.estado}
+                        </span>
+                        <span className="px-3 py-1 rounded-lg text-xs font-medium bg-blue-100 text-blue-700">
+                          {informe.periodicidad}
+                        </span>
+                        <span className="px-3 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-700">
+                          {informe.categoria}
                         </span>
                       </div>
-                      <div>
-                        <span className="text-gray-600">Periodicidad:</span>
-                        <span className="ml-2 text-gray-900">{informe.periodicidad}</span>
-                      </div>
-                    </div>
-                  </div>
 
-                  <button 
-                    onClick={() => handleGenerarAhora(informe)}
-                    className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Generar Ahora
-                  </button>
+                      {entrega.observaciones && (
+                        <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded mb-3">
+                          {entrega.observaciones}
+                        </div>
+                      )}
+                    </div>
+
+                    <button 
+                      onClick={() => handleGenerarAhora(informe)}
+                      className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Generar Ahora
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -968,7 +1072,10 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
         onClick={onClose}
       />
       
-      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl z-10">
+      <div 
+        className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
           <h3 className="text-xl font-medium">Generar Informe</h3>
@@ -978,21 +1085,6 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
         {/* Contenido */}
         <div className="px-6 py-6">
           <div className="space-y-4">
-            {/* Información del Informe */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <div className="text-sm font-medium text-blue-900 mb-1">Informe Pormenorizado del Estado del Control Interno</div>
-              <div className="flex items-center gap-4 text-xs text-blue-700">
-                <span>Base Normativa: {informe.baseNormativa}</span>
-                <span>•</span>
-                <span>Periodicidad: {informe.periodicidad}</span>
-              </div>
-              {informe.destinatarios && informe.destinatarios.length > 0 && (
-                <div className="text-xs text-blue-700 mt-2">
-                  <span className="font-medium">Destinatarios:</span> {informe.destinatarios.join(', ')}
-                </div>
-              )}
-            </div>
-
             {/* Periodo */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">

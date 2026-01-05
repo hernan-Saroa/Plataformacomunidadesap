@@ -27,7 +27,7 @@ import {
   BarChart3, ClipboardCheck, FileCheck, Building2, Activity, 
   Info, List, LayoutGrid, GripVertical, ArrowRight, Filter,
   TrendingUp, Flag, Circle, Maximize2, Minimize2, Zap, Award,
-  PlayCircle, PauseCircle, AlertOctagon
+  PlayCircle, PauseCircle, AlertOctagon, HelpCircle
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
@@ -88,16 +88,37 @@ interface PlanMejoramiento {
 /**
  * Mapea el estado del backend al estado del frontend
  */
-function mapearEstadoBD(estadoBD: string): EstadoPlan {
+function mapearEstadoBD(estadoBD: string, fechaFin?: string, porcentajeAvance?: number): EstadoPlan {
+  // Si el estado es vencido, siempre mapear a CON_RETRASO
+  if (estadoBD === 'vencido') {
+    return 'CON_RETRASO';
+  }
+  
+  // Si el estado es en_ejecucion, verificar si está vencido para mapear a CON_RETRASO
+  if (estadoBD === 'en_ejecucion') {
+    if (fechaFin) {
+      const hoy = new Date();
+      const fin = new Date(fechaFin);
+      const diasRestantes = Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+      // Si está vencido (días restantes negativos) o muy cerca de vencer con bajo avance
+      if (diasRestantes < 0 || (diasRestantes <= 30 && porcentajeAvance && porcentajeAvance < 50)) {
+        return 'CON_RETRASO';
+      }
+    }
+    return 'EN_EJECUCION';
+  }
+  
   switch (estadoBD) {
     case 'borrador':
       return 'FORMULACION';
+    case 'revision':
+      return 'FORMULACION'; // REVISION se mapea a FORMULACION en el frontend
     case 'aprobado':
       return 'APROBADO';
-    case 'en-ejecucion':
-      return 'EN_EJECUCION';
-    case 'cerrado':
+    case 'completado':
       return 'COMPLETADO';
+    case 'rechazado':
+      return 'SUSPENDIDO'; // RECHAZADO se mapea a SUSPENDIDO en el frontend (temporalmente)
     default:
       return 'FORMULACION';
   }
@@ -106,20 +127,20 @@ function mapearEstadoBD(estadoBD: string): EstadoPlan {
 /**
  * Mapea el estado del frontend al estado del backend
  */
-function mapearEstadoFrontend(estado: EstadoPlan): 'borrador' | 'aprobado' | 'en-ejecucion' | 'cerrado' {
+function mapearEstadoFrontend(estado: EstadoPlan): 'borrador' | 'revision' | 'aprobado' | 'en_ejecucion' | 'completado' | 'vencido' | 'rechazado' {
   switch (estado) {
     case 'FORMULACION':
       return 'borrador';
     case 'APROBADO':
       return 'aprobado';
     case 'EN_EJECUCION':
-      return 'en-ejecucion';
+      return 'en_ejecucion';
     case 'CON_RETRASO':
-      return 'en-ejecucion'; // CON_RETRASO se maneja como en-ejecucion con flag
+      return 'vencido'; // CON_RETRASO se mapea a vencido en el backend
     case 'COMPLETADO':
-      return 'cerrado';
+      return 'completado';
     case 'SUSPENDIDO':
-      return 'borrador'; // SUSPENDIDO se maneja como borrador
+      return 'rechazado'; // SUSPENDIDO se mapea a rechazado en el backend (temporalmente)
     default:
       return 'borrador';
   }
@@ -183,22 +204,59 @@ function mapearPlanDesdeBD(planBD: PlanMejoramientoBD): PlanMejoramiento {
   const accionesEnProceso = acciones.filter(a => a.estado === 'en-ejecucion').length;
   const accionesPendientes = acciones.filter(a => a.estado === 'programada').length;
   
+  // Función auxiliar para validar y crear fecha válida
+  const crearFechaValida = (fechaString: string | null | undefined, fechaDefault?: Date): Date => {
+    if (!fechaString) {
+      return fechaDefault || new Date();
+    }
+    const fecha = new Date(fechaString);
+    if (isNaN(fecha.getTime())) {
+      return fechaDefault || new Date();
+    }
+    return fecha;
+  };
+  
   // Calcular fecha fin (usar la fecha más lejana de las acciones, o fechaElaboracion + 1 año)
-  let fechaFin = new Date(planBD.fechaElaboracion);
+  const fechaElaboracionValida = crearFechaValida(planBD.fechaElaboracion || planBD.fechaCreacion);
+  let fechaFin = new Date(fechaElaboracionValida);
   fechaFin.setFullYear(fechaFin.getFullYear() + 1);
   
   if (acciones.length > 0) {
-    const fechasFin = acciones.map(a => new Date(a.fechaFin));
-    const fechaMax = new Date(Math.max(...fechasFin.map(d => d.getTime())));
-    if (fechaMax > fechaFin) {
-      fechaFin = fechaMax;
+    const fechasFinValidas = acciones
+      .map(a => crearFechaValida(a.fechaFin))
+      .filter(f => !isNaN(f.getTime()));
+    
+    if (fechasFinValidas.length > 0) {
+      const fechaMax = new Date(Math.max(...fechasFinValidas.map(d => d.getTime())));
+      if (!isNaN(fechaMax.getTime()) && fechaMax > fechaFin) {
+        fechaFin = fechaMax;
+      }
     }
   }
   
-  const diasRestantes = calcularDiasRestantes(fechaFin.toISOString().split('T')[0]);
+  // Asegurar que fechaFin sea válida antes de convertir a ISO
+  if (isNaN(fechaFin.getTime())) {
+    fechaFin = new Date();
+    fechaFin.setFullYear(fechaFin.getFullYear() + 1);
+  }
+  
+  const fechaFinISO = fechaFin.toISOString().split('T')[0];
+  const diasRestantes = calcularDiasRestantes(fechaFinISO);
   const porcentajeAvance = planBD.porcentajeAvanceGeneral || 0;
-  const semaforo = calcularSemaforo(diasRestantes, porcentajeAvance, fechaFin.toISOString().split('T')[0]);
+  const semaforo = calcularSemaforo(diasRestantes, porcentajeAvance, fechaFinISO);
   const alertas = calcularAlertas(acciones);
+  
+  // Validar y formatear fechas para el retorno
+  const fechaCreacionValida = crearFechaValida(planBD.fechaElaboracion || planBD.fechaCreacion);
+  const fechaCreacionISO = fechaCreacionValida.toISOString().split('T')[0];
+  
+  const fechaAprobacionValida = planBD.fechaAprobacion ? crearFechaValida(planBD.fechaAprobacion) : null;
+  const fechaAprobacionISO = fechaAprobacionValida && !isNaN(fechaAprobacionValida.getTime()) 
+    ? fechaAprobacionValida.toISOString().split('T')[0] 
+    : undefined;
+  
+  const fechaActualizacionValida = crearFechaValida(planBD.fechaActualizacion || planBD.fechaCreacion || planBD.fechaElaboracion);
+  const fechaActualizacionISO = fechaActualizacionValida.toISOString().split('T')[0];
   
   return {
     id: planBD.id,
@@ -207,11 +265,11 @@ function mapearPlanDesdeBD(planBD: PlanMejoramientoBD): PlanMejoramiento {
     area: '', // No viene en BD, se puede obtener de la auditoría
     responsable: planBD.responsable || '',
     cargoResponsable: '', // No viene en BD
-    fechaCreacion: planBD.fechaElaboracion || planBD.fechaCreacion || new Date().toISOString().split('T')[0],
-    fechaAprobacion: planBD.fechaAprobacion,
-    fechaInicio: planBD.fechaAprobacion, // Usar fechaAprobacion como inicio
-    fechaFin: fechaFin.toISOString().split('T')[0],
-    estado: mapearEstadoBD(planBD.estado),
+    fechaCreacion: fechaCreacionISO,
+    fechaAprobacion: fechaAprobacionISO,
+    fechaInicio: fechaAprobacionISO, // Usar fechaAprobacion como inicio
+    fechaFin: fechaFinISO,
+    estado: mapearEstadoBD(planBD.estado, fechaFinISO, porcentajeAvance),
     semaforo,
     totalHallazgos: planBD.hallazgosIds?.length || 0,
     totalAcciones,
@@ -222,7 +280,7 @@ function mapearPlanDesdeBD(planBD: PlanMejoramientoBD): PlanMejoramiento {
     hallazgosCriticos: 0, // Se calcularía desde los hallazgos si se cargan
     hallazgosModerados: 0,
     hallazgosLeves: 0,
-    ultimaActualizacion: planBD.fechaActualizacion || planBD.fechaCreacion || new Date().toISOString().split('T')[0],
+    ultimaActualizacion: fechaActualizacionISO,
     alertas,
     diasRestantes
   };
@@ -520,6 +578,7 @@ export function PlanesMejoramientoModuleRediseno() {
   const [planes, setPlanes] = useState<PlanMejoramiento[]>([]);
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
   const [cargando, setCargando] = useState(true);
+  const [vistaActiva, setVistaActiva] = useState<'seguimiento' | 'soporte'>('seguimiento');
 
   // Integración con Auditorías
   const { 
@@ -662,7 +721,7 @@ export function PlanesMejoramientoModuleRediseno() {
                 cargo: auditorLiderObj?.cargo || 'Responsable de Auditoría',
                 fechaFinalizacion: auditoria.fechaFin || new Date().toISOString().split('T')[0],
                 estadoPlan: 'SIN_PLAN' as const,
-                fechaLimitePlan: calcularFechaLimitePlan(auditoria.fechaFin || new Date().toISOString().split('T')[0]),
+                fechaLimitePlan: calcularFechaLimitePlan(auditoria.fechaFin),
                 plazoFormulacion: 30,
                 hallazgos: hallazgosMapeados
               };
@@ -700,8 +759,27 @@ export function PlanesMejoramientoModuleRediseno() {
   }, []); // Solo ejecutar una vez al montar
 
   // Función auxiliar para calcular fecha límite (30 días después)
-  const calcularFechaLimitePlan = (fechaFin: string): string => {
+  const calcularFechaLimitePlan = (fechaFin: string | null | undefined): string => {
+    // Validar que la fecha sea válida
+    if (!fechaFin) {
+      // Si no hay fecha, usar la fecha actual + 30 días
+      const fecha = new Date();
+      fecha.setDate(fecha.getDate() + 30);
+      return fecha.toISOString().split('T')[0];
+    }
+
+    // Intentar crear la fecha
     const fecha = new Date(fechaFin);
+    
+    // Validar que la fecha sea válida
+    if (isNaN(fecha.getTime())) {
+      // Si la fecha es inválida, usar la fecha actual + 30 días
+      const fechaDefault = new Date();
+      fechaDefault.setDate(fechaDefault.getDate() + 30);
+      return fechaDefault.toISOString().split('T')[0];
+    }
+
+    // Si la fecha es válida, agregar 30 días
     fecha.setDate(fecha.getDate() + 30);
     return fecha.toISOString().split('T')[0];
   };
@@ -745,22 +823,43 @@ export function PlanesMejoramientoModuleRediseno() {
     if (!auditoria) return;
 
     try {
-      // Generar código único
-      const año = new Date().getFullYear();
-      const codigo = `PM-${año}-${String(planes.length + 1).padStart(3, '0')}`;
+      // Obtener el primer hallazgo si existe
+      const primerHallazgo = auditoria.hallazgos && auditoria.hallazgos.length > 0 
+        ? auditoria.hallazgos[0] 
+        : null;
+
+      // Calcular fecha límite (30 días después de la fecha de fin de la auditoría)
+      const fechaLimite = calcularFechaLimitePlan(auditoria.fechaFin);
       
-      // Crear plan en BD
+      // Asegurar que fechaLimite esté en formato ISO 8601 válido (YYYY-MM-DDTHH:mm:ss.sssZ)
+      // El backend espera ISO 8601, pero parseDateOnly puede manejar YYYY-MM-DD
+      // Para cumplir con el validador @IsDateString(), usamos formato ISO completo
+      const fechaLimiteISO = fechaLimite.includes('T') 
+        ? fechaLimite 
+        : `${fechaLimite}T00:00:00Z`;
+
+      // Obtener área responsable y responsable de implementación
+      const areaResponsable = auditoria.areaResponsable 
+        || auditoria.areaObjetivo 
+        || auditoria.territorial 
+        || auditoria.sede 
+        || 'Área no especificada';
+      
+      const responsableImplementacion = auditoria.responsable 
+        || auditoria.responsableAreaNombre 
+        || 'Responsable no especificado';
+
+      // Crear plan en BD según el DTO del backend
       const planData = {
-        codigo,
-        nombre: auditoria.nombre || `Plan de Mejoramiento - ${auditoria.codigo}`,
+        titulo: auditoria.nombre || `Plan de Mejoramiento - ${auditoria.codigo}`,
+        descripcion: auditoria.descripcion || `Plan de mejoramiento derivado de la auditoría ${auditoria.codigo}`,
         auditoriaId: auditoria.id,
-        auditoriaCodigo: auditoria.codigo,
-        responsable: auditoria.responsable || '',
-        fechaElaboracion: new Date().toISOString().split('T')[0],
-        estado: 'borrador' as const,
-        porcentajeAvanceGeneral: 0,
-        observaciones: '',
-        hallazgosIds: auditoria.hallazgos?.map((h: any) => h.id) || [],
+        hallazgoId: primerHallazgo?.id || undefined,
+        hallazgoCodigo: primerHallazgo?.codigo || undefined,
+        areaResponsable: areaResponsable,
+        responsableImplementacion: responsableImplementacion,
+        fechaLimite: fechaLimiteISO,
+        objetivos: [`Mejorar los procesos identificados en la auditoría ${auditoria.codigo}`],
         acciones: []
       };
 
@@ -781,7 +880,7 @@ export function PlanesMejoramientoModuleRediseno() {
           progresoGeneral: 0
         });
 
-        toast.success(`Plan ${codigo} creado exitosamente`);
+        toast.success(`Plan ${planMapeado.codigo || 'creado'} creado exitosamente`);
         setModalCrearPlanOpen(false);
         limpiarSeleccion();
       } else {
@@ -1942,5 +2041,95 @@ function ModalCrearPlanDesdeAuditoria({
         </div>
       </div>
     </ModalSIGL>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TAB BUTTON
+// ════════════════════════════════════════════════════════════════════════════
+
+interface TabButtonProps {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  badge?: string;
+}
+
+function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        relative px-6 py-4 flex items-center gap-2 text-sm font-medium border-b-2 transition-all
+        ${active 
+          ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50' 
+          : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+        }
+      `}
+    >
+      {icon}
+      {label}
+      {badge && (
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+          active ? 'bg-[#1e5da8] text-white' : 'bg-gray-200 text-gray-700'
+        }`}>
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// VISTA: SOPORTE
+// ════════════════════════════════════════════════════════════════════════════
+
+function SoporteView() {
+  return (
+    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+        <div className="text-center mb-8">
+          <HelpCircle className="w-16 h-16 text-blue-600 mx-auto mb-4" />
+          <h2 className="text-2xl text-gray-900 font-bold mb-2">Centro de Soporte</h2>
+          <p className="text-gray-600">Guías, documentación y ayuda para Planes de Mejoramiento</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="p-6 hover:shadow-lg transition-shadow">
+            <FileText className="w-8 h-8 text-blue-600 mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Guía de Uso</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Aprende a crear y gestionar planes de mejoramiento paso a paso
+            </p>
+            <button className="text-blue-600 text-sm font-medium hover:underline">
+              Ver guía →
+            </button>
+          </Card>
+
+          <Card className="p-6 hover:shadow-lg transition-shadow">
+            <AlertCircle className="w-8 h-8 text-amber-600 mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Preguntas Frecuentes</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Respuestas a las dudas más comunes sobre planes de mejoramiento
+            </p>
+            <button className="text-blue-600 text-sm font-medium hover:underline">
+              Ver FAQs →
+            </button>
+          </Card>
+
+          <Card className="p-6 hover:shadow-lg transition-shadow">
+            <Info className="w-8 h-8 text-green-600 mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Contactar Soporte</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              ¿Necesitas ayuda? Contacta con nuestro equipo de soporte técnico
+            </p>
+            <button className="text-blue-600 text-sm font-medium hover:underline">
+              Contactar →
+            </button>
+          </Card>
+        </div>
+      </div>
+    </div>
   );
 }
