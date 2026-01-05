@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner@2.0.3';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 interface HistorialDocumentosCompletadosProps {
   isOpen: boolean;
@@ -67,15 +68,22 @@ export function HistorialDocumentosCompletados({
     }, 2500);
   };
 
-  const handleCompartir = (doc: any) => {
+  const handleCompartir = async (doc: any) => {
     // Copiar enlace al clipboard
     const enlace = `https://firmas.esap.gov.co/verificar/${doc.id}`;
-    navigator.clipboard.writeText(enlace);
+    const copiado = await copyToClipboard(enlace);
     
-    toast.success('🔗 Enlace copiado', {
-      description: 'El enlace de verificación ha sido copiado al portapapeles',
-      duration: 3000
-    });
+    if (copiado) {
+      toast.success('🔗 Enlace copiado', {
+        description: 'El enlace de verificación ha sido copiado al portapapeles',
+        duration: 3000
+      });
+    } else {
+      toast.info('🔗 Enlace de verificación', {
+        description: enlace,
+        duration: 5000
+      });
+    }
   };
 
   const handleEnviarEmail = (doc: any) => {

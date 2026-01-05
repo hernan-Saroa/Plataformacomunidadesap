@@ -5,8 +5,6 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { DndProvider, useDrag, useDrop } from 'react-dnd';
-import { HTML5Backend } from 'react-dnd-html5-backend';
 import { motion } from 'motion/react';
 import {
   Plus, FileText, FolderOpen, Clock, ChevronDown, Scale,
@@ -20,16 +18,23 @@ import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
-import { Textarea } from '../../../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { toast } from 'sonner@2.0.3';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
-import { legalService, ocService, ComentarioOC, DocumentoOC } from '../../../../services/api/legal.service';
+import { Input } from '../../../ui/input';
+import { Textarea } from '../../../ui/textarea';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { ModalHeaderClean } from './ModalHeaderClean';
+
+// Tipo para drag and drop
+const ItemTypes = {
+  REQUERIMIENTO: 'requerimiento_organo'
+};
 
 // Types
 interface RequerimientoOC {

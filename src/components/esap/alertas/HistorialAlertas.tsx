@@ -23,6 +23,7 @@ import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { Card } from '../../ui/card';
 import { toast } from 'sonner@2.0.3';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 type CanalNotificacion = 'EMAIL' | 'TEAMS' | 'SMS' | 'IN_APP';
 type NivelAlerta = 'VERDE' | 'AMARILLO' | 'ROJO' | 'VENCIDO';
@@ -876,9 +877,13 @@ export function HistorialAlertas() {
                           variant="outline"
                           size="sm"
                           className="flex-1"
-                          onClick={() => {
-                            navigator.clipboard.writeText(JSON.stringify(alertaSeleccionada, null, 2));
-                            toast.success('✓ Copiado al portapapeles');
+                          onClick={async () => {
+                            const copiado = await copyToClipboard(JSON.stringify(alertaSeleccionada, null, 2));
+                            if (copiado) {
+                              toast.success('✓ Copiado al portapapeles');
+                            } else {
+                              toast.error('✗ No se pudo copiar');
+                            }
                           }}
                         >
                           <ExternalLink className="w-4 h-4 mr-2" />

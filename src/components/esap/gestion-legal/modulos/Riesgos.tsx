@@ -33,7 +33,6 @@ import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalNuevoRiesgo } from './ModalNuevoRiesgo';
 import { ModalDetalleRiesgo } from './ModalDetalleRiesgo';
-import { riesgosService, RiesgoAPI } from '../../../../services/api/legal.service';
 
 type VistaModulo = 'matriz' | 'tabla';
 
@@ -91,6 +90,22 @@ export function Riesgos() {
   const [filtroZona, setFiltroZona] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [modalNuevoRiesgo, setModalNuevoRiesgo] = useState(false);
+  const [modalDetalleRiesgo, setModalDetalleRiesgo] = useState<Riesgo | null>(null);
+
+  // Handlers
+  const handleNuevoRiesgo = () => {
+    setModalNuevoRiesgo(true);
+  };
+
+  const handleGuardarRiesgo = (data: any) => {
+    console.log('Nuevo riesgo:', data);
+    // Aquí se integraría con el backend
+  };
+
+  const handleVerDetalleRiesgo = (riesgo: Riesgo) => {
+    setModalDetalleRiesgo(riesgo);
+  };
 
   // Estado para lista de riesgos (solo API, sin mocks)
   const [riesgos, setRiesgos] = useState<Riesgo[]>([]);
@@ -180,7 +195,7 @@ export function Riesgos() {
             label: 'Nuevo Riesgo',
             labelMobile: 'Nuevo',
             icon: <Plus className="w-4 h-4" />,
-            onClick: () => setModalNuevoOpen(true),
+            onClick: handleNuevoRiesgo,
             variant: 'primary'
           }
         ]}
@@ -312,23 +327,23 @@ export function Riesgos() {
       />
 
       {vistaActual === 'matriz' ? (
-        <MatrizRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalle} />
+        <MatrizRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalleRiesgo} />
       ) : (
-        <TablaRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalle} />
+        <TablaRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalleRiesgo} />
       )}
 
       {/* Modal Nuevo Riesgo */}
       <ModalNuevoRiesgo
-        open={modalNuevoOpen}
-        onClose={() => setModalNuevoOpen(false)}
-        onRiesgoCreado={handleRiesgoCreado}
+        isOpen={modalNuevoRiesgo}
+        onClose={() => setModalNuevoRiesgo(false)}
+        onGuardar={handleGuardarRiesgo}
       />
 
       {/* Modal Detalle Riesgo */}
       <ModalDetalleRiesgo
-        open={modalDetalleOpen}
-        onClose={() => setModalDetalleOpen(false)}
-        riesgo={riesgoSeleccionado}
+        isOpen={modalDetalleRiesgo !== null}
+        onClose={() => setModalDetalleRiesgo(null)}
+        riesgo={modalDetalleRiesgo}
       />
     </div>
   );
@@ -458,11 +473,9 @@ function MatrizRiesgos({ riesgos, onVerDetalle }: MatrizRiesgosProps) {
 
       {/* Lista de riesgos debajo de la matriz */}
       <div className="mt-6 pt-6 border-t border-gray-200">
-        <h4 className="font-bold text-sm text-gray-900 mb-3">
-          Detalle de Riesgos ({riesgos.length} total)
-        </h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {riesgos.map(riesgo => (
+        <h4 className="font-bold text-sm text-gray-900 mb-3">Detalle de Riesgos</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {riesgos.slice(0, 6).map(riesgo => (
             <TarjetaRiesgoCompacta key={riesgo.id} riesgo={riesgo} onVerDetalle={onVerDetalle} />
           ))}
         </div>
@@ -543,8 +556,7 @@ interface TarjetaRiesgoCompactaProps {
 }
 
 function TarjetaRiesgoCompacta({ riesgo, onVerDetalle }: TarjetaRiesgoCompactaProps) {
-  const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual] || ZONA_RIESGO_CONFIG.MODERADO;
-  const tipoLabel = TIPO_RIESGO_MAP[riesgo.tipoRiesgo || riesgo.tipo || 'GESTION'] || 'Gestión';
+  const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual];
 
   return (
     <motion.div
@@ -583,7 +595,7 @@ function TarjetaRiesgoCompacta({ riesgo, onVerDetalle }: TarjetaRiesgoCompactaPr
 
       <div className="mt-2 pt-2 border-t border-gray-200">
         <Button
-          onClick={(e: React.MouseEvent) => { e.stopPropagation(); onVerDetalle(riesgo); }}
+          onClick={() => onVerDetalle(riesgo)}
           size="sm"
           className="w-full"
           style={{ background: '#003DA5', color: '#FFFFFF' }}

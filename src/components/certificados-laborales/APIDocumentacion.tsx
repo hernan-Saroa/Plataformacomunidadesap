@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
+import { copyToClipboard } from '../../utils/clipboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
 interface CodeExample {
@@ -28,16 +29,23 @@ interface CodeExample {
 export function APIDocumentacion() {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  const handleCopyCode = (code: string, label: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(label);
+  const handleCopyCode = async (code: string, label: string) => {
+    const copiado = await copyToClipboard(code);
     
-    toast.success('Código copiado', {
-      description: `${label} copiado al portapapeles`,
-      duration: 2000
-    });
-
-    setTimeout(() => setCopiedCode(null), 2000);
+    if (copiado) {
+      setCopiedCode(label);
+      toast.success('Código copiado', {
+        description: `${label} copiado al portapapeles`,
+        duration: 2000
+      });
+      
+      setTimeout(() => setCopiedCode(null), 2000);
+    } else {
+      toast.info(label, {
+        description: code,
+        duration: 5000
+      });
+    }
   };
 
   const endpoints = [

@@ -1,302 +1,594 @@
 /**
- * Modal para ver detalle de un riesgo
- * Incluye toda la información del riesgo, causas, consecuencias y controles
+ * ModalDetalleRiesgo - Vista completa de detalle del riesgo
+ * ✅ DISEÑO LIMPIO ESAP 2025 - ESTÁNDAR
  */
 
-import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../ui/dialog';
+import { useState } from 'react';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import {
-    Shield,
-    X,
-    AlertTriangle,
-    Activity,
-    Target,
-    FileText,
-    Users,
-    Calendar,
-    TrendingUp,
-    CheckCircle2,
-    Clock
+  AlertTriangle, Shield, FileText, X, Edit, Archive, Target,
+  TrendingUp, Activity, CheckCircle, Clock, User, Calendar,
+  Zap, AlertCircle, Download, Trash2, ChevronRight
 } from 'lucide-react';
+import { toast } from 'sonner@2.0.3';
+import { ModalHeaderClean } from './ModalHeaderClean';
 import type { Riesgo } from '../core/types';
 
 interface ModalDetalleRiesgoProps {
-    open: boolean;
-    onClose: () => void;
-    riesgo: Riesgo | null;
+  isOpen: boolean;
+  onClose: () => void;
+  riesgo: Riesgo | null;
 }
 
-// Configuración de zonas
-const ZONA_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
-    EXTREMO: { color: '#DC2626', bg: '#FEE2E2', label: '🔴 Extremo' },
-    ALTO: { color: '#EA580C', bg: '#FFEDD5', label: '🟠 Alto' },
-    MODERADO: { color: '#F59E0B', bg: '#FEF3C7', label: '🟡 Moderado' },
-    BAJO: { color: '#10B981', bg: '#D1FAE5', label: '🟢 Bajo' }
+const ZONA_RIESGO_CONFIG = {
+  EXTREMO: { color: '#DC2626', label: '🔴 Extremo', bg: '#FEE2E2' },
+  ALTO: { color: '#EA580C', label: '🟠 Alto', bg: '#FFEDD5' },
+  MODERADO: { color: '#F59E0B', label: '🟡 Moderado', bg: '#FEF3C7' },
+  BAJO: { color: '#10B981', label: '🟢 Bajo', bg: '#D1FAE5' }
 };
 
-const TIPO_RIESGO_MAP: Record<string, string> = {
-    GESTION: '📊 Gestión',
-    CORRUPCION: '⚠️ Corrupción',
-    SEGURIDAD_DIGITAL: '🔒 Seguridad Digital',
-    FISCAL: '💰 Fiscal'
+const TIPO_RIESGO_MAP = {
+  GESTION: '📊 Gestión',
+  CORRUPCION: '⚠️ Corrupción',
+  SEGURIDAD_DIGITAL: '🔒 Seguridad Digital',
+  FISCAL: '💰 Fiscal'
 };
 
-const ETAPA_MAP: Record<string, { label: string; color: string }> = {
-    IDENTIFICADO: { label: '📋 Identificado', color: '#6B7280' },
-    ANALIZADO: { label: '🔍 Analizado', color: '#3B82F6' },
-    VALORADO: { label: '📊 Valorado', color: '#8B5CF6' },
-    TRATAMIENTO: { label: '⚙️ En Tratamiento', color: '#F59E0B' },
-    MONITOREO: { label: '👁️ Monitoreo', color: '#10B981' },
-    CERRADO: { label: '✅ Cerrado', color: '#059669' },
-    MATERIALIZADO: { label: '❌ Materializado', color: '#DC2626' }
+const ETAPA_CONFIG = {
+  IDENTIFICADO: { label: 'Identificado', color: 'bg-gray-100 text-gray-700', icon: '📝' },
+  EVALUADO: { label: 'Evaluado', color: 'bg-blue-100 text-blue-700', icon: '📊' },
+  EN_TRATAMIENTO: { label: 'En Tratamiento', color: 'bg-yellow-100 text-yellow-700', icon: '⚙️' },
+  MONITOREADO: { label: 'Monitoreado', color: 'bg-purple-100 text-purple-700', icon: '👁️' },
+  CERRADO: { label: 'Cerrado', color: 'bg-green-100 text-green-700', icon: '✅' }
 };
 
-export function ModalDetalleRiesgo({ open, onClose, riesgo }: ModalDetalleRiesgoProps) {
-    if (!riesgo) return null;
+export function ModalDetalleRiesgo({ isOpen, onClose, riesgo }: ModalDetalleRiesgoProps) {
+  const [tabActiva, setTabActiva] = useState('general');
 
-    const zonaConfig = ZONA_CONFIG[riesgo.zonaResidual] || ZONA_CONFIG.MODERADO;
-    const tipoLabel = TIPO_RIESGO_MAP[riesgo.tipoRiesgo || riesgo.tipo] || riesgo.tipoRiesgo;
-    const etapaInfo = ETAPA_MAP[riesgo.etapa] || { label: riesgo.etapa, color: '#6B7280' };
+  if (!riesgo) return null;
 
-    return (
-        <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-xl" style={{ color: '#003DA5' }}>
-                            <Shield className="w-6 h-6" />
-                            {riesgo.codigo || riesgo.id}
-                        </div>
-                        <Badge
-                            className="text-sm font-bold"
-                            style={{ backgroundColor: zonaConfig.bg, color: zonaConfig.color, border: `2px solid ${zonaConfig.color}` }}
-                        >
-                            {zonaConfig.label}
-                        </Badge>
-                    </DialogTitle>
-                </DialogHeader>
+  const zonaConfig = ZONA_RIESGO_CONFIG[riesgo.zonaResidual];
+  const etapaConfig = ETAPA_CONFIG[riesgo.etapa] || { label: riesgo.etapa, color: 'bg-gray-100 text-gray-700', icon: '📋' };
 
-                <div className="space-y-6 py-4">
-                    {/* Información Principal */}
-                    <Card className="p-4 border-l-4" style={{ borderLeftColor: zonaConfig.color }}>
-                        <h3 className="font-bold text-lg mb-2" style={{ color: '#003DA5' }}>
-                            {riesgo.nombre}
-                        </h3>
-                        <p className="text-gray-600 mb-4">{riesgo.descripcion}</p>
+  const calcularValorRiesgo = (prob: number, imp: number) => prob * imp;
+  const valorInherente = calcularValorRiesgo(riesgo.probabilidadInherente || 0, riesgo.impactoInherente || 0);
+  const valorResidual = calcularValorRiesgo(riesgo.probabilidadResidual || 0, riesgo.impactoResidual || 0);
+  const reduccionRiesgo = ((valorInherente - valorResidual) / valorInherente * 100).toFixed(0);
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div>
-                                <span className="text-xs text-gray-500 block">Proceso</span>
-                                <span className="font-semibold text-sm">{riesgo.proceso}</span>
-                            </div>
-                            <div>
-                                <span className="text-xs text-gray-500 block">Tipo de Riesgo</span>
-                                <span className="font-semibold text-sm">{tipoLabel}</span>
-                            </div>
-                            <div>
-                                <span className="text-xs text-gray-500 block">Etapa</span>
-                                <Badge style={{ backgroundColor: etapaInfo.color }} className="text-white text-xs">
-                                    {etapaInfo.label}
-                                </Badge>
-                            </div>
-                            <div>
-                                <span className="text-xs text-gray-500 block">Responsable</span>
-                                <span className="font-semibold text-sm flex items-center gap-1">
-                                    <Users className="w-3 h-3" />
-                                    {riesgo.responsable}
-                                </span>
-                            </div>
-                        </div>
-                    </Card>
+  // Mock data para timeline
+  const timeline = [
+    {
+      fecha: '2024-11-15',
+      accion: 'Riesgo identificado en evaluación de procesos',
+      usuario: 'Dra. María Fernández',
+      tipo: 'identificacion'
+    },
+    {
+      fecha: '2024-11-18',
+      accion: 'Evaluación inicial completada - Clasificado como ALTO',
+      usuario: 'Coordinador de Riesgos',
+      tipo: 'evaluacion'
+    },
+    {
+      fecha: '2024-11-22',
+      accion: 'Controles preventivos implementados',
+      usuario: 'Jefe Área Jurídica',
+      tipo: 'tratamiento'
+    },
+    {
+      fecha: '2024-12-01',
+      accion: 'Reevaluación - Riesgo reducido a MODERADO',
+      usuario: 'Coordinador de Riesgos',
+      tipo: 'actualizacion'
+    }
+  ];
 
-                    {/* Valoración del Riesgo */}
-                    <Card className="p-4">
-                        <h4 className="font-bold text-sm mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
-                            <Target className="w-4 h-4" />
-                            Valoración del Riesgo
-                        </h4>
+  const handleEditar = () => {
+    toast.info('Función de edición del riesgo', {
+      description: `Editando ${riesgo.id}`
+    });
+    onClose();
+  };
 
-                        <div className="grid grid-cols-2 gap-4">
-                            {/* Valoración Inherente */}
-                            <div className="p-3 rounded-lg bg-gray-50">
-                                <h5 className="text-xs font-bold text-gray-500 mb-2">RIESGO INHERENTE</h5>
-                                <div className="flex items-center gap-4">
-                                    <div className="text-center">
-                                        <div className="text-2xl font-bold text-gray-700">{riesgo.probabilidadInherente}</div>
-                                        <div className="text-xs text-gray-500">Prob.</div>
-                                    </div>
-                                    <div className="text-xl text-gray-400">×</div>
-                                    <div className="text-center">
-                                        <div className="text-2xl font-bold text-gray-700">{riesgo.impactoInherente}</div>
-                                        <div className="text-xs text-gray-500">Imp.</div>
-                                    </div>
-                                    <div className="text-xl text-gray-400">=</div>
-                                    <Badge
-                                        className="text-sm font-bold"
-                                        style={{
-                                            backgroundColor: ZONA_CONFIG[riesgo.zonaInherente]?.bg || '#E5E7EB',
-                                            color: ZONA_CONFIG[riesgo.zonaInherente]?.color || '#374151'
-                                        }}
-                                    >
-                                        {ZONA_CONFIG[riesgo.zonaInherente]?.label || riesgo.zonaInherente}
-                                    </Badge>
-                                </div>
-                            </div>
+  const handleArchivar = () => {
+    toast.success('Riesgo archivado', {
+      description: `${riesgo.id} ha sido archivado exitosamente`
+    });
+    onClose();
+  };
 
-                            {/* Valoración Residual */}
-                            <div className="p-3 rounded-lg" style={{ backgroundColor: zonaConfig.bg }}>
-                                <h5 className="text-xs font-bold text-gray-500 mb-2">RIESGO RESIDUAL</h5>
-                                <div className="flex items-center gap-4">
-                                    <div className="text-center">
-                                        <div className="text-2xl font-bold" style={{ color: zonaConfig.color }}>{riesgo.probabilidadResidual}</div>
-                                        <div className="text-xs text-gray-500">Prob.</div>
-                                    </div>
-                                    <div className="text-xl text-gray-400">×</div>
-                                    <div className="text-center">
-                                        <div className="text-2xl font-bold" style={{ color: zonaConfig.color }}>{riesgo.impactoResidual}</div>
-                                        <div className="text-xs text-gray-500">Imp.</div>
-                                    </div>
-                                    <div className="text-xl text-gray-400">=</div>
-                                    <Badge
-                                        className="text-sm font-bold"
-                                        style={{ backgroundColor: zonaConfig.color, color: '#FFFFFF' }}
-                                    >
-                                        {zonaConfig.label}
-                                    </Badge>
-                                </div>
-                            </div>
-                        </div>
-                    </Card>
+  const handleEliminar = () => {
+    toast.error('Riesgo eliminado', {
+      description: `${riesgo.id} ha sido eliminado del sistema`
+    });
+    onClose();
+  };
 
-                    {/* Causas y Consecuencias */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Causas */}
-                        <Card className="p-4">
-                            <h4 className="font-bold text-sm mb-3 flex items-center gap-2 text-orange-600">
-                                <AlertTriangle className="w-4 h-4" />
-                                Causas del Riesgo
-                            </h4>
-                            {riesgo.causas && riesgo.causas.length > 0 ? (
-                                <ul className="space-y-2">
-                                    {riesgo.causas.map((causa, idx) => (
-                                        <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
-                                            <span className="text-orange-500 mt-0.5">•</span>
-                                            {causa}
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p className="text-sm text-gray-400">No hay causas registradas</p>
-                            )}
-                        </Card>
+  const handleExportar = () => {
+    const contenidoPDF = `
+═══════════════════════════════════════════════════════════════
+    ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP
+            FICHA TÉCNICA DE RIESGO INSTITUCIONAL
+═══════════════════════════════════════════════════════════════
 
-                        {/* Consecuencias */}
-                        <Card className="p-4">
-                            <h4 className="font-bold text-sm mb-3 flex items-center gap-2 text-red-600">
-                                <TrendingUp className="w-4 h-4" />
-                                Consecuencias
-                            </h4>
-                            {riesgo.consecuencias && riesgo.consecuencias.length > 0 ? (
-                                <ul className="space-y-2">
-                                    {riesgo.consecuencias.map((cons, idx) => (
-                                        <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
-                                            <span className="text-red-500 mt-0.5">•</span>
-                                            {cons}
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p className="text-sm text-gray-400">No hay consecuencias registradas</p>
-                            )}
-                        </Card>
-                    </div>
+IDENTIFICACIÓN DEL RIESGO
+═══════════════════════════════════════════════════════════════
+ID del Riesgo:        ${riesgo.id}
+Descripción:          ${riesgo.descripcion}
+Proceso:              ${riesgo.proceso}
+Tipo de Riesgo:       ${TIPO_RIESGO_MAP[riesgo.tipo]}
+Etapa:                ${etapaConfig.label}
+Estado:               ${riesgo.estado}
 
-                    {/* Controles Existentes */}
-                    {riesgo.controlesExistentes && riesgo.controlesExistentes.length > 0 && (
-                        <Card className="p-4">
-                            <h4 className="font-bold text-sm mb-3 flex items-center gap-2 text-green-600">
-                                <CheckCircle2 className="w-4 h-4" />
-                                Controles Existentes
-                            </h4>
-                            <div className="space-y-2">
-                                {riesgo.controlesExistentes.map((control, idx) => (
-                                    <div key={control.id || idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                                        <span className="text-sm text-gray-700">{control.descripcion}</span>
-                                        <Badge className="bg-green-100 text-green-700">
-                                            {control.efectividad}% efectivo
-                                        </Badge>
-                                    </div>
-                                ))}
-                            </div>
-                        </Card>
-                    )}
+EVALUACIÓN DE RIESGO INHERENTE (Sin Controles)
+═══════════════════════════════════════════════════════════════
+Probabilidad:         ${riesgo.probabilidadInherente} (${['', 'Raro', 'Improbable', 'Posible', 'Probable', 'Casi Seguro'][riesgo.probabilidadInherente || 0]})
+Impacto:              ${riesgo.impactoInherente} (${['', 'Insignificante', 'Menor', 'Moderado', 'Mayor', 'Catastrófico'][riesgo.impactoInherente || 0]})
+Valor Riesgo:         ${valorInherente}
+Zona:                 ${ZONA_RIESGO_CONFIG[riesgo.zonaInherente || 'BAJO'].label}
 
-                    {/* Plan de Tratamiento */}
-                    {riesgo.planTratamiento && riesgo.planTratamiento.length > 0 && (
-                        <Card className="p-4">
-                            <h4 className="font-bold text-sm mb-3 flex items-center gap-2 text-blue-600">
-                                <Activity className="w-4 h-4" />
-                                Plan de Tratamiento
-                            </h4>
-                            <div className="space-y-3">
-                                {riesgo.planTratamiento.map((accion, idx) => (
-                                    <div key={idx} className="p-3 border rounded-lg">
-                                        <div className="flex items-start justify-between">
-                                            <div>
-                                                <p className="font-semibold text-sm text-gray-800">{accion.accion}</p>
-                                                <p className="text-xs text-gray-500 mt-1">
-                                                    <Users className="w-3 h-3 inline mr-1" />
-                                                    {accion.responsable}
-                                                </p>
-                                            </div>
-                                            <Badge
-                                                className={`text-xs ${accion.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
-                                                        accion.estado === 'EN_CURSO' ? 'bg-blue-100 text-blue-700' :
-                                                            'bg-gray-100 text-gray-700'
-                                                    }`}
-                                            >
-                                                {accion.estado}
-                                            </Badge>
-                                        </div>
-                                        <div className="mt-2 flex items-center gap-4">
-                                            <div className="flex-1 bg-gray-200 rounded-full h-2">
-                                                <div
-                                                    className="bg-blue-600 h-2 rounded-full"
-                                                    style={{ width: `${accion.avance}%` }}
-                                                />
-                                            </div>
-                                            <span className="text-xs font-semibold">{accion.avance}%</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </Card>
-                    )}
+EVALUACIÓN DE RIESGO RESIDUAL (Con Controles)
+═══════════════════════════════════════════════════════════════
+Probabilidad:         ${riesgo.probabilidadResidual} (${['', 'Raro', 'Improbable', 'Posible', 'Probable', 'Casi Seguro'][riesgo.probabilidadResidual || 0]})
+Impacto:              ${riesgo.impactoResidual} (${['', 'Insignificante', 'Menor', 'Moderado', 'Mayor', 'Catastrófico'][riesgo.impactoResidual || 0]})
+Valor Riesgo:         ${valorResidual}
+Zona:                 ${zonaConfig.label}
 
-                    {/* Fechas */}
-                    <div className="flex items-center justify-between text-xs text-gray-400 pt-2 border-t">
-                        <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            Creado: {riesgo.fechaCreacion ? new Date(riesgo.fechaCreacion).toLocaleDateString() : 'N/A'}
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            Última actualización: {riesgo.fechaActualizacion ? new Date(riesgo.fechaActualizacion).toLocaleDateString() : 'N/A'}
-                        </span>
-                    </div>
+EFECTIVIDAD DE CONTROLES
+═══════════════════════════════════════════════════════════════
+Reducción del Riesgo: ${reduccionRiesgo}%
 
-                    {/* Botón Cerrar */}
-                    <div className="flex justify-end pt-4 border-t">
-                        <Button variant="outline" onClick={onClose}>
-                            <X className="w-4 h-4 mr-1" />
-                            Cerrar
-                        </Button>
-                    </div>
+CAUSAS IDENTIFICADAS
+═══════════════════════════════════════════════════════════════
+${riesgo.causas?.map((c, i) => `${i + 1}. ${c}`).join('\n') || 'No especificadas'}
+
+CONSECUENCIAS POTENCIALES
+═══════════════════════════════════════════════════════════════
+${riesgo.consecuencias?.map((c, i) => `${i + 1}. ${c}`).join('\n') || 'No especificadas'}
+
+CONTROLES EXISTENTES
+═══════════════════════════════════════════════════════════════
+${riesgo.controles?.map((c, i) => `${i + 1}. ${c}`).join('\n') || 'No especificados'}
+
+PLAN DE TRATAMIENTO
+═══════════════════════════════════════════════════════════════
+${riesgo.planTratamiento || 'Sin plan de tratamiento definido'}
+
+RESPONSABLE
+═══════════════════════════════════════════════════════════════
+${riesgo.responsable || 'Sin asignar'}
+
+═══════════════════════════════════════════════════════════════
+Documento generado el: ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}
+Sistema SIGL - Gestión de Riesgos ESAP
+Metodología DAFP - MECI
+═══════════════════════════════════════════════════════════════
+    `;
+
+    const blob = new Blob([contenidoPDF], { type: 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Riesgo_${riesgo.id}_${new Date().getTime()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    toast.success('✅ Ficha de riesgo exportada', {
+      description: `Riesgo_${riesgo.id}.txt`,
+      duration: 4000
+    });
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl h-auto max-h-[80vh] flex flex-col p-0 overflow-hidden !top-[10vh] !translate-y-0">
+        <DialogTitle className="sr-only">
+          Detalle del Riesgo {riesgo.id}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Vista completa del riesgo {riesgo.id} con evaluación, controles, tratamiento y seguimiento
+        </DialogDescription>
+
+        {/* Header ESAP 2025 - FIJO */}
+        <ModalHeaderClean
+          titulo={riesgo.id}
+          subtitulo={riesgo.descripcion}
+          icono={AlertTriangle}
+          colorIcono="orange"
+          badgePrincipal={etapaConfig.label}
+          badges={
+            <>
+              <Badge
+                className="font-bold text-xs border-2"
+                style={{ borderColor: zonaConfig.color, color: zonaConfig.color, backgroundColor: zonaConfig.bg }}
+              >
+                {zonaConfig.label}
+              </Badge>
+              <Badge className="text-xs font-bold bg-purple-100 text-purple-700 border border-purple-300">
+                {TIPO_RIESGO_MAP[riesgo.tipo]}
+              </Badge>
+            </>
+          }
+          onClose={onClose}
+        />
+
+        {/* Contenido - CON SCROLL */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
+          <div className="space-y-6">
+
+            {/* ALERTA DE ZONA DE RIESGO */}
+            <div
+              className="p-4 rounded-lg border-2 flex items-center gap-3"
+              style={{ backgroundColor: zonaConfig.bg, borderColor: zonaConfig.color }}
+            >
+              <AlertTriangle className="w-6 h-6 flex-shrink-0" style={{ color: zonaConfig.color }} />
+              <div className="flex-1">
+                <p className="font-bold text-sm" style={{ color: zonaConfig.color }}>
+                  Zona de Riesgo: {zonaConfig.label}
+                </p>
+                <p className="text-xs text-gray-700 mt-1">
+                  {riesgo.zonaResidual === 'EXTREMO' && '⚠️ Requiere acción inmediata y escalamiento a Alta Dirección'}
+                  {riesgo.zonaResidual === 'ALTO' && '⚡ Plan de tratamiento prioritario requerido'}
+                  {riesgo.zonaResidual === 'MODERADO' && '👁️ Monitoreo mensual y controles preventivos'}
+                  {riesgo.zonaResidual === 'BAJO' && '✅ Seguimiento trimestral suficiente'}
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold" style={{ color: zonaConfig.color }}>
+                  {valorResidual}
                 </div>
-            </DialogContent>
-        </Dialog>
-    );
+                <div className="text-xs text-gray-600">Valor</div>
+              </div>
+            </div>
+
+            {/* INFORMACIÓN GENERAL */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-white rounded-lg border border-gray-200">
+                <p className="text-xs text-gray-500 mb-1">Proceso Afectado</p>
+                <p className="text-sm font-bold text-gray-900">{riesgo.proceso}</p>
+              </div>
+
+              <div className="p-4 bg-white rounded-lg border border-gray-200">
+                <p className="text-xs text-gray-500 mb-1">Responsable del Riesgo</p>
+                <p className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <User className="w-4 h-4 text-gray-500" />
+                  {riesgo.responsable || 'Sin asignar'}
+                </p>
+              </div>
+            </div>
+
+            {/* TABS CON INFORMACIÓN DETALLADA */}
+            <Tabs value={tabActiva} onValueChange={setTabActiva}>
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="general">
+                  <FileText className="w-4 h-4 mr-2" />
+                  General
+                </TabsTrigger>
+                <TabsTrigger value="evaluacion">
+                  <TrendingUp className="w-4 h-4 mr-2" />
+                  Evaluación
+                </TabsTrigger>
+                <TabsTrigger value="controles">
+                  <Shield className="w-4 h-4 mr-2" />
+                  Controles
+                </TabsTrigger>
+                <TabsTrigger value="timeline">
+                  <Activity className="w-4 h-4 mr-2" />
+                  Timeline
+                </TabsTrigger>
+              </TabsList>
+
+              {/* TAB: GENERAL */}
+              <TabsContent value="general" className="space-y-4 mt-4">
+                <div>
+                  <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-orange-600" />
+                    Causas del Riesgo
+                  </h3>
+                  <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    {riesgo.causas && riesgo.causas.length > 0 ? (
+                      <ul className="space-y-2">
+                        {riesgo.causas.map((causa, idx) => (
+                          <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                            <ChevronRight className="w-4 h-4 text-orange-500 flex-shrink-0 mt-0.5" />
+                            <span>{causa}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-gray-500 italic">No se han especificado causas</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600" />
+                    Consecuencias Potenciales
+                  </h3>
+                  <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    {riesgo.consecuencias && riesgo.consecuencias.length > 0 ? (
+                      <ul className="space-y-2">
+                        {riesgo.consecuencias.map((consecuencia, idx) => (
+                          <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                            <ChevronRight className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                            <span>{consecuencia}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-gray-500 italic">No se han especificado consecuencias</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                    <Target className="w-4 h-4 text-blue-600" />
+                    Plan de Tratamiento
+                  </h3>
+                  <div className="space-y-3">
+                    {riesgo.planTratamiento && riesgo.planTratamiento.length > 0 ? (
+                      riesgo.planTratamiento.map((plan, idx) => (
+                        <div key={idx} className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <p className="text-sm font-bold text-gray-900">{plan.accion}</p>
+                            <Badge className={`text-xs font-bold flex-shrink-0 ${
+                              plan.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
+                              plan.estado === 'EN_CURSO' ? 'bg-blue-100 text-blue-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {plan.estado === 'COMPLETADA' ? '✅ Completada' :
+                               plan.estado === 'EN_CURSO' ? '⚙️ En Curso' :
+                               '⏳ Pendiente'}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-xs text-gray-700 mb-2">
+                            <div>
+                              <span className="font-semibold">Responsable:</span> {plan.responsable}
+                            </div>
+                            <div>
+                              <span className="font-semibold">Fecha límite:</span> {plan.fechaLimite.toLocaleDateString('es-CO')}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-gray-200 rounded-full">
+                                <div
+                                  className="h-2 bg-blue-600 rounded-full transition-all"
+                                  style={{ width: `${plan.avance}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-bold text-gray-700">{plan.avance}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p className="text-sm text-gray-700">Sin plan de tratamiento definido aún</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* TAB: EVALUACIÓN */}
+              <TabsContent value="evaluacion" className="space-y-4 mt-4">
+                {/* Comparativa Inherente vs Residual */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Riesgo Inherente */}
+                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
+                    <h4 className="font-bold text-red-900 mb-3 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4" />
+                      Riesgo Inherente (Sin Controles)
+                    </h4>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs text-red-700">Probabilidad</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex-1 h-2 bg-red-200 rounded-full">
+                            <div
+                              className="h-2 bg-red-600 rounded-full"
+                              style={{ width: `${(riesgo.probabilidadInherente || 0) * 20}%` }}
+                            />
+                          </div>
+                          <span className="text-sm font-bold text-red-900">{riesgo.probabilidadInherente}/5</span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-red-700">Impacto</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex-1 h-2 bg-red-200 rounded-full">
+                            <div
+                              className="h-2 bg-red-600 rounded-full"
+                              style={{ width: `${(riesgo.impactoInherente || 0) * 20}%` }}
+                            />
+                          </div>
+                          <span className="text-sm font-bold text-red-900">{riesgo.impactoInherente}/5</span>
+                        </div>
+                      </div>
+                      <div className="pt-3 border-t border-red-300">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-red-700">Valor de Riesgo</span>
+                          <span className="text-2xl font-bold text-red-900">{valorInherente}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Riesgo Residual */}
+                  <div className="border-2 rounded-lg p-4" style={{ backgroundColor: zonaConfig.bg, borderColor: zonaConfig.color }}>
+                    <h4 className="font-bold mb-3 flex items-center gap-2" style={{ color: zonaConfig.color }}>
+                      <Shield className="w-4 h-4" />
+                      Riesgo Residual (Con Controles)
+                    </h4>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs" style={{ color: zonaConfig.color }}>Probabilidad</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex-1 h-2 bg-white rounded-full">
+                            <div
+                              className="h-2 rounded-full"
+                              style={{ width: `${(riesgo.probabilidadResidual || 0) * 20}%`, backgroundColor: zonaConfig.color }}
+                            />
+                          </div>
+                          <span className="text-sm font-bold" style={{ color: zonaConfig.color }}>{riesgo.probabilidadResidual}/5</span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs" style={{ color: zonaConfig.color }}>Impacto</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex-1 h-2 bg-white rounded-full">
+                            <div
+                              className="h-2 rounded-full"
+                              style={{ width: `${(riesgo.impactoResidual || 0) * 20}%`, backgroundColor: zonaConfig.color }}
+                            />
+                          </div>
+                          <span className="text-sm font-bold" style={{ color: zonaConfig.color }}>{riesgo.impactoResidual}/5</span>
+                        </div>
+                      </div>
+                      <div className="pt-3 border-t" style={{ borderColor: zonaConfig.color }}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs" style={{ color: zonaConfig.color }}>Valor de Riesgo</span>
+                          <span className="text-2xl font-bold" style={{ color: zonaConfig.color }}>{valorResidual}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Efectividad de Controles */}
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <h4 className="font-bold text-green-900 mb-2 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4" />
+                    Efectividad de Controles
+                  </h4>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <div className="h-3 bg-green-200 rounded-full">
+                        <div
+                          className="h-3 bg-green-600 rounded-full transition-all"
+                          style={{ width: `${reduccionRiesgo}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span className="text-xl font-bold text-green-900">{reduccionRiesgo}%</span>
+                  </div>
+                  <p className="text-xs text-green-700 mt-2">
+                    Los controles han reducido el riesgo de {valorInherente} a {valorResidual} puntos
+                  </p>
+                </div>
+              </TabsContent>
+
+              {/* TAB: CONTROLES */}
+              <TabsContent value="controles" className="space-y-4 mt-4">
+                <div>
+                  <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-blue-600" />
+                    Controles Existentes
+                  </h3>
+                  {riesgo.controlesExistentes && riesgo.controlesExistentes.length > 0 ? (
+                    <div className="space-y-2">
+                      {riesgo.controlesExistentes.map((control, idx) => (
+                        <div key={control.id} className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-gray-900">{control.descripcion}</p>
+                            <div className="mt-2">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-gray-200 rounded-full">
+                                  <div
+                                    className="h-2 bg-green-600 rounded-full transition-all"
+                                    style={{ width: `${control.efectividad}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-bold text-gray-700">{control.efectividad}% efectivo</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center">
+                      <Shield className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500">No se han definido controles aún</p>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* TAB: TIMELINE */}
+              <TabsContent value="timeline" className="space-y-3 mt-4">
+                {timeline.map((evento, idx) => (
+                  <div key={idx} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div
+                        className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center"
+                        style={{ backgroundColor: '#003DA5' }}
+                      >
+                        <Activity className="w-4 h-4 text-white" />
+                      </div>
+                      {idx < timeline.length - 1 && (
+                        <div className="w-0.5 h-full min-h-[40px] bg-gray-300 mt-1" />
+                      )}
+                    </div>
+                    <div className="flex-1 pb-4">
+                      <p className="text-sm font-bold text-gray-900">{evento.accion}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        👤 {evento.usuario} • 📅 {evento.fecha}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </TabsContent>
+            </Tabs>
+
+            {/* INFO METODOLOGÍA */}
+            <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <Target className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-purple-900">
+                  <p className="font-bold mb-1">💡 Metodología DAFP - MECI</p>
+                  <p className="text-purple-700">
+                    Este riesgo se gestiona bajo la metodología de Administración del Riesgo del
+                    Departamento Administrativo de la Función Pública, cumpliendo con el MECI
+                    (Modelo Estándar de Control Interno).
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer con acciones */}
+        <div className="flex-shrink-0 border-t bg-gray-50 px-6 py-4 flex items-center justify-between gap-3 flex-wrap">
+          <Button variant="outline" onClick={onClose}>
+            <X className="w-4 h-4 mr-2" />
+            Cerrar
+          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" onClick={handleExportar}>
+              <Download className="w-4 h-4 mr-2" />
+              Exportar
+            </Button>
+            <Button variant="outline" onClick={handleEditar}>
+              <Edit className="w-4 h-4 mr-2" />
+              Editar
+            </Button>
+            <Button variant="outline" onClick={handleArchivar} className="text-orange-600 border-orange-300">
+              <Archive className="w-4 h-4 mr-2" />
+              Archivar
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }

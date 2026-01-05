@@ -1120,31 +1120,6 @@ interface DashboardUniversoProps {
 function DashboardUniverso({ metricas, areas }: DashboardUniversoProps) {
   return (
     <div className="space-y-6">
-      {/* MÉTRICAS GENERALES */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        <Card className="p-4 text-center border-2" style={{ borderColor: '#003DA5' }}>
-          <div className="text-3xl font-black mb-1" style={{ color: '#003DA5' }}>
-            {metricas.total}
-          </div>
-          <p className="text-xs text-gray-600">Áreas Totales</p>
-        </Card>
-
-        <Card className="p-4 text-center border-2 border-purple-200">
-          <div className="text-3xl font-black text-purple-600 mb-1">{metricas.sede}</div>
-          <p className="text-xs text-gray-600">Procesos Sede</p>
-        </Card>
-
-        <Card className="p-4 text-center border-2 border-green-200">
-          <div className="text-3xl font-black text-green-600 mb-1">{metricas.territorial}</div>
-          <p className="text-xs text-gray-600">Territoriales</p>
-        </Card>
-
-        <Card className="p-4 text-center border-2 border-blue-200">
-          <div className="text-3xl font-black text-blue-600 mb-1">{metricas.seleccionadas}</div>
-          <p className="text-xs text-gray-600">Seleccionadas</p>
-        </Card>
-      </div>
-
       {/* DISTRIBUCIÓN DE RIESGO DAFP */}
       <Card className="p-6">
         <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">

@@ -24,8 +24,7 @@ import { Badge } from '../ui/badge';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { ModalCodigoQR } from './ModalCodigoQR';
 import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';
-import { certificadosService } from '../../services/api/certificados.service';
-import { getPublicBaseUrl } from '../../config/environment';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface CertificadoDetallePanelProps {
   certificado: {
@@ -420,24 +419,15 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   };
 
   const handleCopiarEnlace = async () => {
-    const ok = await copiarAlPortapapeles(verificationUrl);
-    if (ok) {
+    const enlace = `https://esap.edu.co/verificar/${certificado.consecutivo}`;
+    const copiado = await copiarAlPortapapeles(enlace);
+
+    if (copiado) {
       toast.success('Enlace copiado', {
         description: 'El enlace de verificación fue copiado al portapapeles'
       });
     } else {
       toast.error('No se pudo copiar el enlace');
-    }
-  };
-
-  const handleCopiarConsecutivo = async () => {
-    const ok = await copiarAlPortapapeles(certificado.consecutivo);
-    if (ok) {
-      toast.success('Consecutivo copiado', {
-        description: certificado.consecutivo
-      });
-    } else {
-      toast.error('No se pudo copiar el consecutivo');
     }
   };
 
