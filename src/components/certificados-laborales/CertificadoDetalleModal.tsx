@@ -22,6 +22,7 @@ import { toast } from 'sonner@2.0.3';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card } from '../ui/card';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface CertificadoDetalleModalProps {
   certificado: any;
@@ -77,20 +78,37 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
     });
   };
 
-  const handleCompartir = () => {
-    navigator.clipboard.writeText(`https://esap.edu.co/certificados/${certificado.consecutivo}`);
-    toast.success('Enlace copiado', {
-      description: 'El enlace del certificado se copió al portapapeles',
-      duration: 3000
-    });
+  const handleCompartir = async () => {
+    const enlace = `https://esap.edu.co/certificados/${certificado.consecutivo}`;
+    const copiado = await copyToClipboard(enlace);
+    
+    if (copiado) {
+      toast.success('Enlace copiado', {
+        description: 'El enlace del certificado se copió al portapapeles',
+        duration: 3000
+      });
+    } else {
+      toast.info('Enlace del certificado', {
+        description: enlace,
+        duration: 5000
+      });
+    }
   };
 
-  const handleCopiarID = () => {
-    navigator.clipboard.writeText(certificado.consecutivo);
-    toast.success('ID copiado', {
-      description: 'El consecutivo se copió al portapapeles',
-      duration: 2000
-    });
+  const handleCopiarID = async () => {
+    const copiado = await copyToClipboard(certificado.consecutivo);
+    
+    if (copiado) {
+      toast.success('ID copiado', {
+        description: 'El consecutivo se copió al portapapeles',
+        duration: 2000
+      });
+    } else {
+      toast.info('ID del certificado', {
+        description: certificado.consecutivo,
+        duration: 5000
+      });
+    }
   };
 
   return (

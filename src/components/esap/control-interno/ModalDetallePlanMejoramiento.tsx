@@ -345,6 +345,14 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
   const [modalActualizacion, setModalActualizacion] = useState(false);
   const plan = PLAN_MOCK; // En producción: cargar según planId
 
+  // Estado para el formulario de actualización
+  const [datosActualizacion, setDatosActualizacion] = useState({
+    estado: plan.estado,
+    fechaVencimiento: plan.fechaVencimiento,
+    responsableGeneral: plan.responsableGeneral,
+    observaciones: plan.observaciones || ''
+  });
+
   const estadisticas = useMemo(() => {
     const totalAcciones = plan.acciones.length;
     const accionesCompletadas = plan.acciones.filter(a => a.estado === 'COMPLETADA').length;
@@ -374,13 +382,52 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
   };
 
   const handleGuardarActualizacion = () => {
-    toast.success('Plan actualizado exitosamente');
+    // Validaciones básicas
+    if (!datosActualizacion.estado) {
+      toast.error('Debes seleccionar un estado');
+      return;
+    }
+
+    if (!datosActualizacion.fechaVencimiento) {
+      toast.error('Debes especificar una fecha de vencimiento');
+      return;
+    }
+
+    // Simular actualización (en producción, aquí se haría el PUT al backend)
+    toast.success('Plan de Mejoramiento Actualizado', {
+      description: `El plan ${plan.codigo} ha sido actualizado exitosamente`,
+      duration: 4000,
+    });
+
+    // Registrar en timeline simulado
+    console.log('📝 Actualizando plan:', {
+      planId: plan.id,
+      estadoAnterior: plan.estado,
+      estadoNuevo: datosActualizacion.estado,
+      observaciones: datosActualizacion.observaciones,
+      usuario: 'Usuario Actual',
+      timestamp: new Date().toISOString()
+    });
+
     setModalActualizacion(false);
+    
+    // Aquí podrías actualizar el estado local o refrescar los datos
+    // onPlanActualizado?.();
   };
 
   const handleDescargarReporte = () => {
-    toast.success('Generando reporte PDF...');
-    // Aquí iría la lógica para generar y descargar el reporte
+    toast.success('Generando Reporte PDF', {
+      description: 'El reporte del plan se está descargando...',
+      duration: 3000,
+    });
+    
+    // Simular descarga
+    console.log('📄 Descargando reporte del plan:', {
+      planId: plan.id,
+      codigo: plan.codigo,
+      formato: 'PDF',
+      timestamp: new Date().toISOString()
+    });
   };
 
   const estadoConfig = {
@@ -394,50 +441,50 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
   const config = estadoConfig[plan.estado];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-start justify-center bg-black/60 backdrop-blur-sm">
       {/* Overlay con efecto blur */}
-      <div className="absolute inset-0 bg-white/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0" onClick={onClose} />
 
-      {/* Modal - Tamaño optimizado */}
-      <div className="relative w-full max-w-6xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
+      {/* Modal - Tamaño optimizado con mejor responsive */}
+      <div className="relative w-full max-w-[95vw] lg:max-w-[85vw] xl:max-w-7xl my-8 mx-4 bg-white rounded-2xl shadow-2xl flex flex-col max-h-[calc(100vh-4rem)] z-[9999]">
         {/* Header */}
-        <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
-          <div className="flex items-start justify-between">
+        <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-4 sm:px-6 lg:px-8 py-4 sm:py-5 lg:py-6 rounded-t-2xl">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-2">
-                <h2 className="text-xl font-medium">{plan.codigo}</h2>
-                <span className={`px-3 py-1 rounded-lg text-sm font-medium ${config.bg} ${config.text}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
+                <h2 className="text-lg sm:text-xl lg:text-2xl font-medium">{plan.codigo}</h2>
+                <span className={`px-3 py-1 rounded-lg text-xs sm:text-sm font-medium ${config.bg} ${config.text} inline-block w-fit`}>
                   {config.label}
                 </span>
               </div>
-              <p className="text-blue-100 mb-3 text-sm">{plan.nombre}</p>
+              <p className="text-blue-100 mb-4 text-sm sm:text-base">{plan.nombre}</p>
               
-              <div className="grid grid-cols-4 gap-3 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-xs sm:text-sm">
                 <div>
                   <div className="text-blue-200 text-xs mb-1">Área Responsable</div>
                   <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4" />
+                    <Building2 className="w-4 h-4 flex-shrink-0" />
                     <span className="truncate">{plan.area}</span>
                   </div>
                 </div>
                 <div>
                   <div className="text-blue-200 text-xs mb-1">Responsable</div>
                   <div className="flex items-center gap-2">
-                    <User className="w-4 h-4" />
+                    <User className="w-4 h-4 flex-shrink-0" />
                     <span className="truncate">{plan.responsableGeneral}</span>
                   </div>
                 </div>
                 <div>
                   <div className="text-blue-200 text-xs mb-1">Fecha Vencimiento</div>
                   <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
+                    <Calendar className="w-4 h-4 flex-shrink-0" />
                     {plan.fechaVencimiento}
                   </div>
                 </div>
                 <div>
                   <div className="text-blue-200 text-xs mb-1">Progreso Global</div>
                   <div className="flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4" />
+                    <TrendingUp className="w-4 h-4 flex-shrink-0" />
                     {plan.progresoGlobal}%
                   </div>
                 </div>
@@ -591,9 +638,9 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
 
       {/* Modal de Actualización */}
       {modalActualizacion && (
-        <div className="fixed inset-0 z-60 overflow-hidden flex items-center justify-center p-4">
-          {/* Overlay con efecto blur */}
-          <div className="absolute inset-0 bg-white/30 backdrop-blur-sm" onClick={() => setModalActualizacion(false)} />
+        <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+          {/* Overlay con efecto blur oscuro */}
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setModalActualizacion(false)} />
 
           {/* Modal - Tamaño optimizado */}
           <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
@@ -1039,6 +1086,9 @@ function TabAcciones({ plan }: { plan: PlanMejoramientoDetalle }) {
 }
 
 function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejoramientoDetalle }) {
+  const [modalEditar, setModalEditar] = useState(false);
+  const [modalEvidencia, setModalEvidencia] = useState(false);
+  
   const estadoConfig = {
     PENDIENTE: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Pendiente', icon: Clock },
     EN_EJECUCION: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'En Ejecución', icon: Activity },
@@ -1049,6 +1099,44 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
   const config = estadoConfig[accion.estado];
   const Icon = config.icon;
   const hallazgo = plan.hallazgos.find(h => h.id === accion.hallazgoId);
+
+  const handleEditar = () => {
+    setModalEditar(true);
+  };
+
+  const handleCargarEvidencia = () => {
+    setModalEvidencia(true);
+  };
+
+  const handleMarcarCompletada = () => {
+    // Validar que no esté ya completada
+    if (accion.estado === 'COMPLETADA') {
+      toast.warning('Acción ya completada', {
+        description: 'Esta acción ya se encuentra en estado completado',
+      });
+      return;
+    }
+
+    // Simular actualización (en producción: PUT al backend)
+    toast.success('Acción Marcada como Completada', {
+      description: `La acción "${accion.descripcion.substring(0, 50)}..." ha sido completada`,
+      duration: 4000,
+    });
+
+    // Log para debugging
+    console.log('✅ Marcando acción como completada:', {
+      accionId: accion.id,
+      estadoAnterior: accion.estado,
+      progresoAnterior: accion.progreso,
+      estadoNuevo: 'COMPLETADA',
+      progresoNuevo: 100,
+      usuario: 'Usuario Actual',
+      timestamp: new Date().toISOString()
+    });
+
+    // Aquí se actualizaría el estado o se refrescarían los datos
+    // onAccionActualizada?.();
+  };
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-5">
@@ -1137,16 +1225,25 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
 
           {/* Acciones */}
           <div className="flex gap-2">
-            <button className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded text-sm hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+            <button 
+              onClick={handleEditar}
+              className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded text-sm hover:bg-gray-50 transition-colors flex items-center gap-1.5"
+            >
               <Edit2 className="w-3.5 h-3.5" />
               Editar
             </button>
-            <button className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded text-sm hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+            <button 
+              onClick={handleCargarEvidencia}
+              className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded text-sm hover:bg-gray-50 transition-colors flex items-center gap-1.5"
+            >
               <Upload className="w-3.5 h-3.5" />
               Cargar Evidencia
             </button>
             {accion.estado !== 'COMPLETADA' && (
-              <button className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded text-sm hover:shadow transition-all flex items-center gap-1.5">
+              <button 
+                onClick={handleMarcarCompletada}
+                className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded text-sm hover:shadow transition-all flex items-center gap-1.5"
+              >
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Marcar Completada
               </button>
@@ -1154,6 +1251,22 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
           </div>
         </div>
       </div>
+
+      {/* Modal Editar Acción */}
+      {modalEditar && (
+        <ModalEditarAccion 
+          accion={accion} 
+          onClose={() => setModalEditar(false)}
+        />
+      )}
+
+      {/* Modal Cargar Evidencia */}
+      {modalEvidencia && (
+        <ModalCargarEvidencia 
+          accion={accion} 
+          onClose={() => setModalEvidencia(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1188,6 +1301,63 @@ function MiniCardAccion({ accion }: { accion: AccionCorrectiva }) {
 // ════════════════════════════════════════════════════════════════════════════
 
 function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
+  const [modalCargarDocumento, setModalCargarDocumento] = useState(false);
+  const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<DocumentoPlan | null>(null);
+
+  const handleCargarDocumento = () => {
+    setModalCargarDocumento(true);
+  };
+
+  const handleVerDocumento = (doc: DocumentoPlan) => {
+    setDocumentoVistaPrevia(doc);
+    
+    toast.info('Abriendo Vista Previa', {
+      description: `Cargando ${doc.nombre}...`,
+      duration: 2000,
+    });
+
+    // Log para debugging
+    console.log('👁️ Ver documento:', {
+      documentoId: doc.id,
+      nombre: doc.nombre,
+      tipo: doc.tipo,
+      tamanio: doc.tamanio,
+      usuario: 'Usuario Actual',
+      timestamp: new Date().toISOString()
+    });
+
+    // En producción: abrir modal de vista previa o redirigir a URL del documento
+    // window.open(doc.url, '_blank');
+  };
+
+  const handleDescargarDocumento = (doc: DocumentoPlan) => {
+    toast.success('Descargando Documento', {
+      description: `${doc.nombre} se está descargando...`,
+      duration: 3000,
+    });
+
+    // Log para debugging
+    console.log('📥 Descargar documento:', {
+      documentoId: doc.id,
+      nombre: doc.nombre,
+      tipo: doc.tipo,
+      tamanio: doc.tamanio,
+      usuario: 'Usuario Actual',
+      timestamp: new Date().toISOString()
+    });
+
+    // En producción: llamar al endpoint de descarga
+    // fetch(`/api/documentos/${doc.id}/descargar`)
+    //   .then(response => response.blob())
+    //   .then(blob => {
+    //     const url = window.URL.createObjectURL(blob);
+    //     const a = document.createElement('a');
+    //     a.href = url;
+    //     a.download = doc.nombre;
+    //     a.click();
+    //   });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
@@ -1196,7 +1366,10 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
           <p className="text-sm text-gray-600">{plan.documentos.length} archivos</p>
         </div>
 
-        <button className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2">
+        <button 
+          onClick={handleCargarDocumento}
+          className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
+        >
           <Upload className="w-4 h-4" />
           Cargar Documento
         </button>
@@ -1221,10 +1394,18 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
               </div>
 
               <div className="flex gap-2">
-                <button className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors">
+                <button 
+                  onClick={() => handleVerDocumento(doc)}
+                  className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
+                  title="Ver documento"
+                >
                   <Eye className="w-4 h-4" />
                 </button>
-                <button className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors">
+                <button 
+                  onClick={() => handleDescargarDocumento(doc)}
+                  className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
+                  title="Descargar documento"
+                >
                   <Download className="w-4 h-4" />
                 </button>
               </div>
@@ -1232,6 +1413,22 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
           </div>
         ))}
       </div>
+
+      {/* Modal Cargar Documento */}
+      {modalCargarDocumento && (
+        <ModalCargarDocumentoPlan
+          planId={plan.id}
+          onClose={() => setModalCargarDocumento(false)}
+        />
+      )}
+
+      {/* Modal Vista Previa */}
+      {documentoVistaPrevia && (
+        <ModalVistaPreviaDocumento
+          documento={documentoVistaPrevia}
+          onClose={() => setDocumentoVistaPrevia(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1355,3 +1552,724 @@ function FiltroButton({ active, onClick, label, color = 'gray' }: any) {
 
 // Importar ChevronDown si no está
 import { ChevronDown } from 'lucide-react';
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: EDITAR ACCIÓN
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalEditarAccionProps {
+  accion: AccionCorrectiva;
+  onClose: () => void;
+}
+
+function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
+  const [datosEdicion, setDatosEdicion] = useState({
+    descripcion: accion.descripcion,
+    responsable: accion.responsable,
+    fechaInicio: accion.fechaInicio,
+    fechaVencimiento: accion.fechaVencimiento,
+    estado: accion.estado,
+    progreso: accion.progreso,
+    observaciones: accion.observaciones || ''
+  });
+
+  const handleGuardar = () => {
+    // Validaciones
+    if (!datosEdicion.descripcion.trim()) {
+      toast.error('La descripción es obligatoria');
+      return;
+    }
+
+    if (!datosEdicion.responsable.trim()) {
+      toast.error('El responsable es obligatorio');
+      return;
+    }
+
+    if (datosEdicion.progreso < 0 || datosEdicion.progreso > 100) {
+      toast.error('El progreso debe estar entre 0 y 100');
+      return;
+    }
+
+    // Simular actualización
+    toast.success('Acción Actualizada', {
+      description: 'Los cambios han sido guardados exitosamente',
+      duration: 3000,
+    });
+
+    console.log('📝 Actualizando acción:', {
+      accionId: accion.id,
+      datosAnteriores: accion,
+      datosNuevos: datosEdicion,
+      usuario: 'Usuario Actual',
+      timestamp: new Date().toISOString()
+    });
+
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10001] overflow-hidden flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-xl font-medium mb-1">Editar Acción Correctiva</h3>
+              <p className="text-sm text-blue-100">Actualizar información de la acción</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="ml-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="flex-1 overflow-auto px-6 py-6">
+          <div className="space-y-4">
+            {/* Descripción */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Descripción <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={datosEdicion.descripcion}
+                onChange={(e) => setDatosEdicion({ ...datosEdicion, descripcion: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Descripción detallada de la acción correctiva"
+              />
+            </div>
+
+            {/* Responsable y Estado */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Responsable <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={datosEdicion.responsable}
+                  onChange={(e) => setDatosEdicion({ ...datosEdicion, responsable: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                  placeholder="Nombre del responsable"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Estado
+                </label>
+                <select
+                  value={datosEdicion.estado}
+                  onChange={(e) => setDatosEdicion({ ...datosEdicion, estado: e.target.value as AccionCorrectiva['estado'] })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                >
+                  <option value="PENDIENTE">Pendiente</option>
+                  <option value="EN_EJECUCION">En Ejecución</option>
+                  <option value="COMPLETADA">Completada</option>
+                  <option value="VENCIDA">Vencida</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Fechas */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fecha Inicio
+                </label>
+                <input
+                  type="date"
+                  value={datosEdicion.fechaInicio}
+                  onChange={(e) => setDatosEdicion({ ...datosEdicion, fechaInicio: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fecha Vencimiento
+                </label>
+                <input
+                  type="date"
+                  value={datosEdicion.fechaVencimiento}
+                  onChange={(e) => setDatosEdicion({ ...datosEdicion, fechaVencimiento: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Progreso */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Progreso: {datosEdicion.progreso}%
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={datosEdicion.progreso}
+                onChange={(e) => setDatosEdicion({ ...datosEdicion, progreso: parseInt(e.target.value) })}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-gray-600 mt-1">
+                <span>0%</span>
+                <span>50%</span>
+                <span>100%</span>
+              </div>
+            </div>
+
+            {/* Observaciones */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Observaciones
+              </label>
+              <textarea
+                value={datosEdicion.observaciones}
+                onChange={(e) => setDatosEdicion({ ...datosEdicion, observaciones: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Observaciones adicionales (opcional)"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleGuardar}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              Guardar Cambios
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: CARGAR EVIDENCIA
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalCargarEvidenciaProps {
+  accion: AccionCorrectiva;
+  onClose: () => void;
+}
+
+function ModalCargarEvidencia({ accion, onClose }: ModalCargarEvidenciaProps) {
+  const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([]);
+  const [observaciones, setObservaciones] = useState('');
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const nuevosArchivos = Array.from(e.target.files);
+      setArchivosSeleccionados([...archivosSeleccionados, ...nuevosArchivos]);
+    }
+  };
+
+  const handleEliminarArchivo = (index: number) => {
+    const nuevosArchivos = archivosSeleccionados.filter((_, i) => i !== index);
+    setArchivosSeleccionados(nuevosArchivos);
+  };
+
+  const handleCargar = () => {
+    if (archivosSeleccionados.length === 0) {
+      toast.error('Debes seleccionar al menos un archivo');
+      return;
+    }
+
+    // Simular carga de archivos
+    toast.success('Evidencias Cargadas', {
+      description: `${archivosSeleccionados.length} archivo(s) cargado(s) exitosamente`,
+      duration: 3000,
+    });
+
+    console.log('📎 Cargando evidencias:', {
+      accionId: accion.id,
+      archivos: archivosSeleccionados.map(f => ({
+        nombre: f.name,
+        tamanio: f.size,
+        tipo: f.type
+      })),
+      observaciones,
+      usuario: 'Usuario Actual',
+      timestamp: new Date().toISOString()
+    });
+
+    onClose();
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10001] overflow-hidden flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-xl font-medium mb-1">Cargar Evidencias</h3>
+              <p className="text-sm text-blue-100">Adjuntar documentos y archivos de soporte</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="ml-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="flex-1 overflow-auto px-6 py-6">
+          <div className="space-y-4">
+            {/* Información de la Acción */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="text-sm font-medium text-blue-900 mb-1">Acción Correctiva</div>
+              <div className="text-sm text-blue-700">{accion.descripcion}</div>
+              <div className="text-xs text-blue-600 mt-2">
+                Evidencias actuales: {accion.evidencias} archivo(s)
+              </div>
+            </div>
+
+            {/* Zona de carga */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Seleccionar Archivos <span className="text-red-500">*</span>
+              </label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#1e5da8] transition-colors">
+                <input
+                  type="file"
+                  multiple
+                  onChange={handleFileChange}
+                  className="hidden"
+                  id="file-upload"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                />
+                <label
+                  htmlFor="file-upload"
+                  className="cursor-pointer flex flex-col items-center"
+                >
+                  <Upload className="w-12 h-12 text-gray-400 mb-2" />
+                  <span className="text-sm text-gray-700 font-medium">
+                    Haz clic para seleccionar archivos
+                  </span>
+                  <span className="text-xs text-gray-500 mt-1">
+                    PDF, Word, Excel, Imágenes (máx. 10MB por archivo)
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {/* Lista de archivos seleccionados */}
+            {archivosSeleccionados.length > 0 && (
+              <div>
+                <div className="text-sm font-medium text-gray-700 mb-2">
+                  Archivos Seleccionados ({archivosSeleccionados.length})
+                </div>
+                <div className="space-y-2">
+                  {archivosSeleccionados.map((archivo, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg p-3"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <Paperclip className="w-4 h-4 text-gray-600" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-gray-900 truncate">
+                            {archivo.name}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            {formatFileSize(archivo.size)}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleEliminarArchivo(index)}
+                        className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Observaciones */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Observaciones
+              </label>
+              <textarea
+                value={observaciones}
+                onChange={(e) => setObservaciones(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Descripción de las evidencias (opcional)"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleCargar}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Archivo(s)` : 'Evidencias'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: CARGAR DOCUMENTO AL PLAN
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalCargarDocumentoPlanProps {
+  planId: string;
+  onClose: () => void;
+}
+
+function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanProps) {
+  const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([]);
+  const [tipoDocumento, setTipoDocumento] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const nuevosArchivos = Array.from(e.target.files);
+      setArchivosSeleccionados([...archivosSeleccionados, ...nuevosArchivos]);
+    }
+  };
+
+  const handleEliminarArchivo = (index: number) => {
+    const nuevosArchivos = archivosSeleccionados.filter((_, i) => i !== index);
+    setArchivosSeleccionados(nuevosArchivos);
+  };
+
+  const handleCargar = () => {
+    if (archivosSeleccionados.length === 0) {
+      toast.error('Debes seleccionar al menos un archivo');
+      return;
+    }
+
+    if (!tipoDocumento) {
+      toast.error('Debes seleccionar el tipo de documento');
+      return;
+    }
+
+    // Simular carga de documentos
+    toast.success('Documentos Cargados', {
+      description: `${archivosSeleccionados.length} documento(s) cargado(s) exitosamente al plan`,
+      duration: 3000,
+    });
+
+    console.log('📄 Cargando documentos al plan:', {
+      planId,
+      tipoDocumento,
+      descripcion,
+      archivos: archivosSeleccionados.map(f => ({
+        nombre: f.name,
+        tamanio: f.size,
+        tipo: f.type
+      })),
+      usuario: 'Usuario Actual',
+      timestamp: new Date().toISOString()
+    });
+
+    onClose();
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10001] overflow-hidden flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-xl font-medium mb-1">Cargar Documento al Plan</h3>
+              <p className="text-sm text-blue-100">Adjuntar documentos y evidencias del plan de mejoramiento</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="ml-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="flex-1 overflow-auto px-6 py-6">
+          <div className="space-y-4">
+            {/* Tipo de Documento */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Tipo de Documento <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={tipoDocumento}
+                onChange={(e) => setTipoDocumento(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+              >
+                <option value="">Seleccionar tipo...</option>
+                <option value="plan">Plan de Mejoramiento</option>
+                <option value="evidencia">Evidencia</option>
+                <option value="informe">Informe de Seguimiento</option>
+                <option value="acta">Acta</option>
+                <option value="certificado">Certificado</option>
+                <option value="otro">Otro</option>
+              </select>
+            </div>
+
+            {/* Zona de carga */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Seleccionar Archivos <span className="text-red-500">*</span>
+              </label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#1e5da8] transition-colors">
+                <input
+                  type="file"
+                  multiple
+                  onChange={handleFileChange}
+                  className="hidden"
+                  id="file-upload-plan"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                />
+                <label
+                  htmlFor="file-upload-plan"
+                  className="cursor-pointer flex flex-col items-center"
+                >
+                  <Upload className="w-12 h-12 text-gray-400 mb-2" />
+                  <span className="text-sm text-gray-700 font-medium">
+                    Haz clic para seleccionar archivos
+                  </span>
+                  <span className="text-xs text-gray-500 mt-1">
+                    PDF, Word, Excel, Imágenes (máx. 10MB por archivo)
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {/* Lista de archivos seleccionados */}
+            {archivosSeleccionados.length > 0 && (
+              <div>
+                <div className="text-sm font-medium text-gray-700 mb-2">
+                  Archivos Seleccionados ({archivosSeleccionados.length})
+                </div>
+                <div className="space-y-2">
+                  {archivosSeleccionados.map((archivo, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg p-3"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <FileText className="w-4 h-4 text-gray-600" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-gray-900 truncate">
+                            {archivo.name}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            {formatFileSize(archivo.size)}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleEliminarArchivo(index)}
+                        className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Descripción */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Descripción
+              </label>
+              <textarea
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Descripción del documento (opcional)"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleCargar}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Documento(s)` : 'Documentos'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: VISTA PREVIA DOCUMENTO
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalVistaPreviaDocumentoProps {
+  documento: DocumentoPlan;
+  onClose: () => void;
+}
+
+function ModalVistaPreviaDocumento({ documento, onClose }: ModalVistaPreviaDocumentoProps) {
+  const handleDescargar = () => {
+    toast.success('Descargando Documento', {
+      description: `${documento.nombre} se está descargando...`,
+      duration: 3000,
+    });
+
+    console.log('📥 Descargar documento desde vista previa:', {
+      documentoId: documento.id,
+      nombre: documento.nombre,
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10002] overflow-hidden flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      
+      <div className="relative w-full max-w-5xl max-h-[95vh] bg-white rounded-xl shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 min-w-0">
+              <h3 className="text-xl font-medium mb-1 truncate">{documento.nombre}</h3>
+              <div className="flex items-center gap-4 text-sm text-blue-100">
+                <span>{documento.tipo}</span>
+                <span>•</span>
+                <span>{documento.tamanio}</span>
+                <span>•</span>
+                <span>{documento.fechaCarga}</span>
+                <span>•</span>
+                <span>{documento.autor}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 ml-4">
+              <button
+                onClick={handleDescargar}
+                className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+                title="Descargar"
+              >
+                <Download className="w-5 h-5" />
+              </button>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Contenido - Vista Previa */}
+        <div className="flex-1 overflow-auto bg-gray-100 p-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 min-h-full flex items-center justify-center">
+            <div className="text-center">
+              <FileText className="w-24 h-24 text-gray-400 mx-auto mb-4" />
+              <h4 className="text-lg font-medium text-gray-900 mb-2">Vista Previa del Documento</h4>
+              <p className="text-sm text-gray-600 mb-6 max-w-md">
+                La vista previa de documentos estará disponible próximamente. Por ahora puedes descargar el archivo para visualizarlo.
+              </p>
+              <button
+                onClick={handleDescargar}
+                className="px-6 py-3 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 mx-auto"
+              >
+                <Download className="w-5 h-5" />
+                Descargar Documento
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-between items-center text-sm text-gray-600">
+            <div>
+              Documento cargado el {documento.fechaCarga} por {documento.autor}
+            </div>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

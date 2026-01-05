@@ -52,7 +52,7 @@ import {
 
 // ============ TIPOS ============
 
-type VistaActiva = 'logs' | 'estadisticas';
+type VistaActiva = 'logs';
 
 // ============ DATOS MOCK ============
 
@@ -273,9 +273,6 @@ export function AuditoriaCambiosModule() {
     registrosPorPagina: 20
   });
 
-  // Estadísticas
-  const [estadisticas, setEstadisticas] = useState<AuditLogStats | null>(null);
-
   // Cargar logs mock al montar
   useEffect(() => {
     generarLogsMock().then(() => {
@@ -299,25 +296,6 @@ export function AuditoriaCambiosModule() {
       setCargando(false);
     }
   };
-
-  const cargarEstadisticas = async () => {
-    const hoy = new Date();
-    const hace30Dias = new Date();
-    hace30Dias.setDate(hace30Dias.getDate() - 30);
-
-    try {
-      const stats = await auditLogService.obtenerEstadisticas(hace30Dias, hoy);
-      setEstadisticas(stats);
-    } catch (error) {
-      toast.error('Error al cargar estadísticas');
-    }
-  };
-
-  useEffect(() => {
-    if (vistaActiva === 'estadisticas') {
-      cargarEstadisticas();
-    }
-  }, [vistaActiva]);
 
   const handleVerDetalle = (log: AuditLog) => {
     setLogSeleccionado(log);
@@ -453,17 +431,6 @@ export function AuditoriaCambiosModule() {
               <FileText className="w-4 h-4" />
               <span className="font-medium">Registros de Auditoría</span>
             </button>
-            <button
-              onClick={() => setVistaActiva('estadisticas')}
-              className={`flex-1 px-4 py-3 rounded-lg transition-all flex items-center justify-center gap-2 ${
-                vistaActiva === 'estadisticas'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span className="font-medium">Estadísticas</span>
-            </button>
           </div>
         </Card>
 
@@ -478,10 +445,6 @@ export function AuditoriaCambiosModule() {
               onCambiarPagina={handleCambiarPagina}
               cargando={cargando}
             />
-          )}
-
-          {vistaActiva === 'estadisticas' && (
-            <VistaEstadisticas estadisticas={estadisticas} />
           )}
         </AnimatePresence>
 
@@ -734,177 +697,6 @@ function FilaLog({
         </Button>
       </td>
     </motion.tr>
-  );
-}
-
-function VistaEstadisticas({ estadisticas }: { estadisticas: AuditLogStats | null }) {
-  if (!estadisticas) {
-    return (
-      <motion.div
-        key="estadisticas"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-      >
-        <Card className="p-8 text-center text-gray-500">
-          Cargando estadísticas...
-        </Card>
-      </motion.div>
-    );
-  }
-
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
-
-  return (
-    <motion.div
-      key="estadisticas"
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 20 }}
-      className="space-y-6"
-    >
-      {/* GRÁFICO 1: Actividad por Día */}
-      <Card className="p-6">
-        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-blue-600" />
-          Actividad de los Últimos 30 Días
-        </h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={estadisticas.actividadPorDia}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis 
-              dataKey="fecha" 
-              tickFormatter={(value) => new Date(value).toLocaleDateString('es-CO', { month: 'short', day: 'numeric' })}
-            />
-            <YAxis />
-            <Tooltip 
-              labelFormatter={(value) => new Date(value).toLocaleDateString('es-CO')}
-              formatter={(value: any) => [value, 'Registros']}
-            />
-            <Line type="monotone" dataKey="cantidad" stroke="#3B82F6" strokeWidth={2} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* GRÁFICO 2: Top Usuarios */}
-        <Card className="p-6">
-          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <User className="w-5 h-5 text-green-600" />
-            Top 10 Usuarios Más Activos
-          </h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={estadisticas.topUsuarios.slice(0, 10)}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="usuarioNombre" angle={-45} textAnchor="end" height={100} />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="cantidad" fill="#10B981" />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-
-        {/* GRÁFICO 3: Acciones Frecuentes */}
-        <Card className="p-6">
-          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-purple-600" />
-            Acciones Más Frecuentes
-          </h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={estadisticas.accionesFrecuentes}
-                dataKey="cantidad"
-                nameKey="accion"
-                cx="50%"
-                cy="50%"
-                outerRadius={100}
-                label
-              >
-                {estadisticas.accionesFrecuentes.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </Card>
-
-        {/* GRÁFICO 4: Entidades Modificadas */}
-        <Card className="p-6">
-          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-orange-600" />
-            Entidades Más Modificadas
-          </h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={estadisticas.entidadesMasModificadas}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="entidad" angle={-45} textAnchor="end" height={100} />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="cantidad" fill="#F59E0B" />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-
-        {/* GRÁFICO 5: Distribución Criticidad */}
-        <Card className="p-6">
-          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-red-600" />
-            Distribución por Criticidad
-          </h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={estadisticas.criticidadDistribucion}
-                dataKey="cantidad"
-                nameKey="criticidad"
-                cx="50%"
-                cy="50%"
-                outerRadius={100}
-                label
-              >
-                {estadisticas.criticidadDistribucion.map((entry, index) => {
-                  const color = obtenerColorCriticidad(entry.criticidad as any);
-                  return <Cell key={`cell-${index}`} fill={color} />;
-                })}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
-
-      {/* RESUMEN */}
-      <Card className="p-6 bg-gradient-to-r from-blue-50 to-purple-50">
-        <h3 className="font-bold text-gray-900 mb-4">Resumen Ejecutivo</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg p-4">
-            <div className="text-2xl font-bold text-blue-900">
-              {estadisticas.totalRegistros}
-            </div>
-            <div className="text-sm text-gray-600">Total Registros</div>
-          </div>
-          <div className="bg-white rounded-lg p-4">
-            <div className="text-2xl font-bold text-green-900">
-              {estadisticas.topUsuarios.length}
-            </div>
-            <div className="text-sm text-gray-600">Usuarios Activos</div>
-          </div>
-          <div className="bg-white rounded-lg p-4">
-            <div className="text-2xl font-bold text-purple-900">
-              {estadisticas.accionesFrecuentes.length}
-            </div>
-            <div className="text-sm text-gray-600">Tipos de Acciones</div>
-          </div>
-          <div className="bg-white rounded-lg p-4">
-            <div className="text-2xl font-bold text-orange-900">
-              {estadisticas.entidadesMasModificadas.length}
-            </div>
-            <div className="text-sm text-gray-600">Entidades Afectadas</div>
-          </div>
-        </div>
-      </Card>
-    </motion.div>
   );
 }
 

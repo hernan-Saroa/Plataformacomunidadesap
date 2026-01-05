@@ -138,23 +138,24 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[95vh] p-0 gap-0 overflow-hidden">
-        <DialogHeader className="sr-only">
-          <DialogTitle>Nueva Consulta Jurídica</DialogTitle>
-          <DialogDescription>Registrar nueva consulta jurídica</DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+        <DialogTitle className="sr-only">Nueva Consulta Jurídica</DialogTitle>
+        <DialogDescription className="sr-only">
+          Registrar nueva solicitud de asesoría jurídica interna
+        </DialogDescription>
 
-        {/* HEADER LIMPIO ESAP 2025 */}
+        {/* HEADER - flex-shrink-0 (siempre visible) */}
         <ModalHeaderClean
           icono={FileQuestion}
+          colorIcono="blue"
           titulo="Nueva Consulta Jurídica"
           subtitulo="Registrar solicitud de asesoría jurídica interna"
-          colorIcono="blue"
+          badgePrincipal="Formulario de Registro"
           onClose={onClose}
         />
 
-        {/* CONTENIDO */}
-        <div className="p-6 overflow-y-auto flex-1" style={{ maxHeight: 'calc(95vh - 200px)' }}>
+        {/* CONTENIDO - flex-1 overflow-y-auto (solo esto hace scroll) */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Información de la Consulta */}
             <Card className="p-4 bg-blue-50 border-blue-200">
@@ -323,39 +324,43 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
                 </div>
               </div>
             </Card>
-
-            {/* Botones de acción */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleCancel}
-                disabled={enviando}
-                className="gap-2"
-              >
-                <X className="w-4 h-4" />
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={enviando}
-                className="gap-2"
-                style={{ background: '#2962FF', color: '#FFFFFF' }}
-              >
-                {enviando ? (
-                  <>
-                    <Clock className="w-4 h-4 animate-spin" />
-                    Registrando...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    Registrar Consulta
-                  </>
-                )}
-              </Button>
-            </div>
           </form>
+        </div>
+
+        {/* FOOTER - flex-shrink-0 (siempre visible) */}
+        <div className="flex-shrink-0 px-6 py-4 bg-white border-t border-gray-200 flex items-center justify-between">
+          <p className="text-xs text-gray-600">
+            Los campos marcados con <span className="text-red-500 font-bold">*</span> son obligatorios
+          </p>
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              disabled={enviando}
+            >
+              <X className="w-4 h-4 mr-2" />
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={enviando}
+              style={{ background: '#2962FF', color: '#FFFFFF' }}
+            >
+              {enviando ? (
+                <>
+                  <Clock className="w-4 h-4 mr-2 animate-spin" />
+                  Registrando...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Registrar Consulta
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

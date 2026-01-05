@@ -23,8 +23,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, AlertTriangle, Target, Users, Calendar, Clock,
   ChevronDown, CheckCircle2, Plus, Eye, Send, Edit2, Trash2, 
-  Save, Download, X, AlertCircle, HelpCircle, Book, Mail, 
-  Phone, ExternalLink, CheckSquare, ArrowLeft, Search,
+  Save, Download, X, AlertCircle, CheckSquare, ArrowLeft, Search,
   BarChart3, ClipboardCheck, FileCheck, Building2, Activity, 
   Info, List, LayoutGrid, GripVertical, ArrowRight, Filter,
   TrendingUp, Flag, Circle, Maximize2, Minimize2, Zap, Award,
@@ -350,7 +349,6 @@ const COLUMNAS_KANBAN = [
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanesMejoramientoModuleRediseno() {
-  const [vistaActiva, setVistaActiva] = useState<'seguimiento' | 'soporte'>('seguimiento');
   const [planes, setPlanes] = useState<PlanMejoramiento[]>(PLANES_EJEMPLO);
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
 
@@ -427,48 +425,13 @@ export function PlanesMejoramientoModuleRediseno() {
           subtitulo="Control Interno de Gestión"
         />
 
-        {/* Navegación */}
-        <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-          <div className="mx-auto px-8 max-w-[1920px]">
-            <div className="flex gap-1">
-              <TabButton
-                active={vistaActiva === 'seguimiento'}
-                onClick={() => setVistaActiva('seguimiento')}
-                icon={<BarChart3 className="w-4 h-4" />}
-                label="Seguimiento de Planes"
-                badge={planes.length.toString()}
-              />
-              <TabButton
-                active={vistaActiva === 'soporte'}
-                onClick={() => setVistaActiva('soporte')}
-                icon={<HelpCircle className="w-4 h-4" />}
-                label="Soporte"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Contenido */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={vistaActiva}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-          >
-            {vistaActiva === 'seguimiento' ? (
-              <SeguimientoView 
-                planes={planes} 
-                setPlanes={setPlanes}
-                onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
-                auditoriasDisponibles={auditoriasConHallazgos}
-              />
-            ) : (
-              <SoporteView />
-            )}
-          </motion.div>
-        </AnimatePresence>
+        {/* Contenido Principal */}
+        <SeguimientoView 
+          planes={planes} 
+          setPlanes={setPlanes}
+          onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
+          auditoriasDisponibles={auditoriasConHallazgos}
+        />
 
         {/* Modal Crear Plan desde Auditoría */}
         {modalCrearPlanOpen && (
@@ -492,43 +455,6 @@ function calcularFechaLimite(): string {
   const fecha = new Date();
   fecha.setFullYear(fecha.getFullYear() + 1);
   return fecha.toISOString().split('T')[0];
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// TAB BUTTON
-// ════════════════════════════════════════════════════════════════════════════
-
-interface TabButtonProps {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-  badge?: string;
-}
-
-function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      className={`
-        relative px-6 py-4 flex items-center gap-2 text-sm font-medium border-b-2 transition-all
-        ${active 
-          ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50' 
-          : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-        }
-      `}
-    >
-      {icon}
-      {label}
-      {badge && (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-          active ? 'bg-[#1e5da8] text-white' : 'bg-gray-200 text-gray-700'
-        }`}>
-          {badge}
-        </span>
-      )}
-    </button>
-  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -674,62 +600,6 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
                 Lista
               </button>
             </div>
-          </div>
-        </div>
-
-        {/* KPIs */}
-        <div className="grid grid-cols-6 gap-3 mb-4">
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-            <div className="text-xs text-blue-700 mb-1">Total Planes</div>
-            <div className="text-2xl font-semibold text-blue-900">{estadisticas.total}</div>
-            <div className="text-xs text-blue-600 mt-1">{estadisticas.totalAcciones} acciones</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200">
-            <div className="text-xs text-purple-700 mb-1">Formulación</div>
-            <div className="text-2xl font-semibold text-purple-900">{estadisticas.formulacion}</div>
-            <div className="text-xs text-purple-600 mt-1">Por iniciar</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-            <div className="text-xs text-green-700 mb-1">En Ejecución</div>
-            <div className="text-2xl font-semibold text-green-900">{estadisticas.enEjecucion}</div>
-            <div className="text-xs text-green-600 mt-1">Activos</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-lg p-4 border border-orange-200">
-            <div className="text-xs text-orange-700 mb-1">Con Retraso</div>
-            <div className="text-2xl font-semibold text-orange-900">{estadisticas.conRetraso}</div>
-            <div className="text-xs text-orange-600 mt-1">{estadisticas.alertasActivas} alertas</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg p-4 border border-emerald-200">
-            <div className="text-xs text-emerald-700 mb-1">Completados</div>
-            <div className="text-2xl font-semibold text-emerald-900">{estadisticas.completados}</div>
-            <div className="text-xs text-emerald-600 mt-1">Finalizados</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-4 border border-indigo-200">
-            <div className="text-xs text-indigo-700 mb-1">Progreso Global</div>
-            <div className="text-2xl font-semibold text-indigo-900">{estadisticas.promedioAvance}%</div>
-            <div className="text-xs text-indigo-600 mt-1">{estadisticas.accionesCompletadas}/{estadisticas.totalAcciones}</div>
-          </div>
-        </div>
-
-        {/* Indicadores Semáforo */}
-        <div className="flex items-center gap-6 text-sm">
-          <span className="text-gray-600">Indicadores de Alerta:</span>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-green-500" />
-            <span className="text-gray-700">{estadisticas.planesVerdes} en término</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-amber-500" />
-            <span className="text-gray-700">{estadisticas.planesAmarillos} próximos a vencer</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-500" />
-            <span className="text-gray-700">{estadisticas.planesRojos} vencidos</span>
           </div>
         </div>
       </div>
@@ -1444,54 +1314,6 @@ function obtenerNombreEstado(estado: EstadoPlan): string {
     SUSPENDIDO: 'Suspendido'
   };
   return nombres[estado];
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// VISTA: SOPORTE
-// ════════════════════════════════════════════════════════════════════════════
-
-function SoporteView() {
-  return (
-    <div className="mx-auto px-8 py-8 max-w-[1800px]">
-      <div className="grid grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200">
-          <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Book className="w-7 h-7 text-[#1e5da8]" />
-          </div>
-          <h3 className="text-base text-gray-900 mb-2 font-medium">Documentación</h3>
-          <p className="text-sm text-gray-600 mb-4">Manuales y guías</p>
-          <button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2">
-            <Download className="w-4 h-4" />
-            Descargar
-          </button>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200">
-          <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Mail className="w-7 h-7 text-[#1e5da8]" />
-          </div>
-          <h3 className="text-base text-gray-900 mb-2 font-medium">Correo</h3>
-          <p className="text-sm text-gray-600 mb-4">controlinterno@esap.edu.co</p>
-          <button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2">
-            <ExternalLink className="w-4 h-4" />
-            Contactar
-          </button>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200">
-          <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Phone className="w-7 h-7 text-[#1e5da8]" />
-          </div>
-          <h3 className="text-base text-gray-900 mb-2 font-medium">Teléfono</h3>
-          <p className="text-sm text-gray-600 mb-4">Ext. 2450 - 2451</p>
-          <button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2">
-            <Phone className="w-4 h-4" />
-            Llamar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════

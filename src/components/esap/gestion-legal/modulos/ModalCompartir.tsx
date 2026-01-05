@@ -19,51 +19,78 @@ import { useState } from 'react';
 import { toast } from 'sonner@2.0.3';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { copyToClipboard } from '../../../../utils/clipboard';
 
 interface ModalCompartirProps {
   isOpen: boolean;
   onClose: () => void;
-  expediente: ExpedienteJudicial;
+  expediente?: ExpedienteJudicial; // Objeto completo del expediente
+  expedienteId?: string; // ID del expediente (alternativo)
+  tipoExpediente?: string; // Tipo de expediente (alternativo)
 }
 
-export function ModalCompartir({ isOpen, onClose, expediente }: ModalCompartirProps) {
+export function ModalCompartir({ isOpen, onClose, expediente, expedienteId, tipoExpediente }: ModalCompartirProps) {
   const [emailDestino, setEmailDestino] = useState('');
   const [copiando, setCopiando] = useState(false);
 
+  // Validación defensiva: Si no hay expediente ni expedienteId, no renderizar el modal
+  if (!expediente && !expedienteId) {
+    return null;
+  }
+
+  // Usar el expediente completo o crear uno temporal con el ID
+  const expedienteData = expediente || {
+    id: expedienteId || 'SIN-ID',
+    demandante: 'Consulta Jurídica',
+    etapa: tipoExpediente || 'CONSULTA'
+  };
+
   // Generar URL del expediente
-  const expedienteUrl = `${window.location.origin}/gestion-legal/defensa-judicial?expediente=${encodeURIComponent(expediente.id)}`;
+  const expedienteUrl = `${window.location.origin}/gestion-legal/defensa-judicial?expediente=${encodeURIComponent(expedienteData.id)}`;
   
   // URL corta simulada
-  const urlCorta = `esap.gov.co/exp/${expediente.id.split('/')[0]}`;
+  const urlCorta = `esap.gov.co/exp/${expedienteData.id.split('/')[0]}`;
 
   const handleCopiarEnlace = async () => {
     setCopiando(true);
-    try {
-      await navigator.clipboard.writeText(expedienteUrl);
+    const copiado = await copyToClipboard(expedienteUrl);
+    
+    if (copiado) {
       toast.success('✅ Enlace copiado al portapapeles', {
         description: 'El enlace está listo para compartir',
         duration: 3000
       });
-    } catch (error) {
+    } else {
+      // Si ambos métodos fallan, mostrar el enlace para copiar manualmente
       toast.info('📋 Enlace del expediente', {
         description: expedienteUrl,
-        duration: 6000
+        duration: 8000,
+        action: {
+          label: 'Cerrar',
+          onClick: () => {}
+        }
       });
     }
     setTimeout(() => setCopiando(false), 1000);
   };
 
   const handleCopiarUrlCorta = async () => {
-    try {
-      await navigator.clipboard.writeText(`https://${urlCorta}`);
+    const urlCompleta = `https://${urlCorta}`;
+    const copiado = await copyToClipboard(urlCompleta);
+    
+    if (copiado) {
       toast.success('✅ URL corta copiada', {
         description: 'Enlace corto copiado al portapapeles',
         duration: 3000
       });
-    } catch (error) {
+    } else {
       toast.info('📋 URL corta', {
-        description: `https://${urlCorta}`,
-        duration: 6000
+        description: urlCompleta,
+        duration: 8000,
+        action: {
+          label: 'Cerrar',
+          onClick: () => {}
+        }
       });
     }
   };
@@ -97,7 +124,7 @@ export function ModalCompartir({ isOpen, onClose, expediente }: ModalCompartirPr
 
       console.log('📧 EMAIL COMPARTIR EXPEDIENTE:', {
         destinatario: emailDestino,
-        expediente: expediente.id,
+        expediente: expedienteData.id,
         url: expedienteUrl,
         fecha: new Date().toISOString()
       });
@@ -115,7 +142,7 @@ export function ModalCompartir({ isOpen, onClose, expediente }: ModalCompartirPr
     // Simular generación de QR
     setTimeout(() => {
       toast.info('✅ Código QR generado', {
-        description: `QR_Expediente_${expediente.id.replace(/\//g, '_')}.png`,
+        description: `QR_Expediente_${expedienteData.id.replace(/\//g, '_')}.png`,
         duration: 3000
       });
     }, 1000);
@@ -131,177 +158,171 @@ export function ModalCompartir({ isOpen, onClose, expediente }: ModalCompartirPr
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+      <DialogContent className="max-w-2xl h-[90vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
-          Compartir Expediente - {expediente.id}
+          Compartir Expediente - {expedienteData.id}
         </DialogTitle>
         <DialogDescription className="sr-only">
-          Compartir expediente {expediente.id}
+          Compartir expediente {expedienteData.id}
         </DialogDescription>
 
-        {/* ==================== HEADER LIMPIO Y USABLE ==================== */}
+        {/* HEADER - flex-shrink-0 (siempre visible) */}
         <ModalHeaderClean
-          titulo="Compartir Expediente"
-          subtitulo={`${expediente.id} - ${expediente.demandante}`}
           icono={Share}
           colorIcono="blue"
-          badgePrincipal={expediente.etapa}
+          titulo="Compartir Expediente"
+          subtitulo={`${expedienteData.id} - ${expedienteData.demandante}`}
+          badgePrincipal={expedienteData.etapa}
           onClose={onClose}
         />
 
-        {/* ==================== CONTENIDO ==================== */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
-          {/* Enlace directo */}
-          <Card className="p-4 border-2 border-blue-200 bg-blue-50">
-            <Label className="text-sm font-bold mb-3 block flex items-center gap-2" style={{ color: '#2962FF' }}>
-              <Link2 className="w-4 h-4" />
-              Enlace directo al expediente
-            </Label>
-            <div className="flex items-center gap-2 mb-3">
-              <Input
-                value={expedienteUrl}
-                readOnly
-                className="font-mono text-xs bg-white font-semibold"
-              />
-              <Button
-                size="sm"
-                onClick={handleCopiarEnlace}
-                disabled={copiando}
-                className="font-bold text-white"
-                style={{ background: '#2962FF' }}
-              >
-                {copiando ? (
-                  <CheckCircle className="w-4 h-4" />
-                ) : (
+        {/* CONTENIDO - flex-1 overflow-y-auto (solo esto hace scroll) */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
+          <div className="space-y-5">
+            {/* Enlace directo */}
+            <Card className="p-4 border-2 border-blue-200 bg-blue-50">
+              <Label className="text-sm font-bold mb-3 block flex items-center gap-2" style={{ color: '#2962FF' }}>
+                <Link2 className="w-4 h-4" />
+                Enlace directo al expediente
+              </Label>
+              <div className="flex items-center gap-2 mb-3">
+                <Input
+                  value={expedienteUrl}
+                  readOnly
+                  className="font-mono text-xs bg-white font-semibold"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleCopiarEnlace}
+                  disabled={copiando}
+                  className="font-bold text-white"
+                  style={{ background: '#2962FF' }}
+                >
+                  {copiando ? (
+                    <CheckCircle className="w-4 h-4" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs" style={{ color: '#1E54E8' }}>
+                Copia este enlace para compartir el expediente con personas autorizadas
+              </p>
+            </Card>
+
+            {/* URL corta */}
+            <Card className="p-4 border-2 border-gray-200">
+              <Label className="text-sm font-bold text-gray-900 mb-3 block flex items-center gap-2">
+                <Link2 className="w-4 h-4" />
+                Enlace corto
+              </Label>
+              <div className="flex items-center gap-2 mb-3">
+                <Input
+                  value={`https://${urlCorta}`}
+                  readOnly
+                  className="font-mono text-sm bg-gray-50 font-bold"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCopiarUrlCorta}
+                  className="font-bold"
+                  style={{ borderColor: '#2962FF', color: '#2962FF' }}
+                >
                   <Copy className="w-4 h-4" />
-                )}
-              </Button>
-            </div>
-            <p className="text-xs" style={{ color: '#1E54E8' }}>
-              Copia este enlace para compartir el expediente con personas autorizadas
-            </p>
-          </Card>
+                </Button>
+              </div>
+              <p className="text-xs text-gray-600">
+                URL corta más fácil de compartir y recordar
+              </p>
+            </Card>
 
-          {/* URL corta */}
-          <Card className="p-4 border-2 border-gray-200">
-            <Label className="text-sm font-bold text-gray-900 mb-3 block flex items-center gap-2">
-              <Link2 className="w-4 h-4" />
-              Enlace corto
-            </Label>
-            <div className="flex items-center gap-2 mb-3">
-              <Input
-                value={`https://${urlCorta}`}
-                readOnly
-                className="font-mono text-sm bg-gray-50 font-bold"
-              />
+            {/* Compartir por email */}
+            <Card className="p-4 border-2 border-green-200 bg-green-50">
+              <Label className="text-sm font-bold text-green-900 mb-3 block flex items-center gap-2">
+                <Mail className="w-4 h-4" />
+                Compartir por correo electrónico
+              </Label>
+              <div className="flex items-center gap-2 mb-3">
+                <Input
+                  type="email"
+                  value={emailDestino}
+                  onChange={(e) => setEmailDestino(e.target.value)}
+                  placeholder="correo@ejemplo.com"
+                  className="bg-white font-semibold"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleCompartirPorEmail}
+                  className="font-bold text-white"
+                  style={{ background: '#4CAF50' }}
+                >
+                  <Mail className="w-4 h-4 mr-1" />
+                  Enviar
+                </Button>
+              </div>
+              <p className="text-xs text-green-800">
+                Se enviará un correo con el enlace y resumen del expediente
+              </p>
+            </Card>
+
+            {/* Opciones adicionales */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Button
-                size="sm"
                 variant="outline"
-                onClick={handleCopiarUrlCorta}
-                className="font-bold"
-                style={{ borderColor: '#2962FF', color: '#2962FF' }}
+                className="h-auto py-4 flex-col items-start font-bold"
+                onClick={handleDescargarQR}
+                style={{ borderColor: '#2962FF' }}
               >
-                <Copy className="w-4 h-4" />
+                <div className="flex items-center gap-2 mb-1" style={{ color: '#2962FF' }}>
+                  <QrCode className="w-5 h-5" />
+                  <span className="font-black">Código QR</span>
+                </div>
+                <span className="text-xs font-semibold text-gray-600">
+                  Generar código QR para compartir
+                </span>
               </Button>
-            </div>
-            <p className="text-xs text-gray-600">
-              URL corta más fácil de compartir y recordar
-            </p>
-          </Card>
 
-          {/* Compartir por email */}
-          <Card className="p-4 border-2 border-green-200 bg-green-50">
-            <Label className="text-sm font-bold text-green-900 mb-3 block flex items-center gap-2">
-              <Mail className="w-4 h-4" />
-              Compartir por correo electrónico
-            </Label>
-            <div className="flex items-center gap-2 mb-3">
-              <Input
-                type="email"
-                value={emailDestino}
-                onChange={(e) => setEmailDestino(e.target.value)}
-                placeholder="correo@ejemplo.com"
-                className="bg-white font-semibold"
-              />
               <Button
-                size="sm"
-                onClick={handleCompartirPorEmail}
-                className="font-bold text-white"
-                style={{ background: '#4CAF50' }}
+                variant="outline"
+                className="h-auto py-4 flex-col items-start font-bold"
+                onClick={handleAbrirEnNuevaPestana}
+                style={{ borderColor: '#2962FF' }}
               >
-                <Mail className="w-4 h-4 mr-1" />
-                Enviar
+                <div className="flex items-center gap-2 mb-1" style={{ color: '#2962FF' }}>
+                  <ExternalLink className="w-5 h-5" />
+                  <span className="font-black">Nueva pestaña</span>
+                </div>
+                <span className="text-xs font-semibold text-gray-600">
+                  Abrir expediente en nueva pestaña
+                </span>
               </Button>
             </div>
-            <p className="text-xs text-green-800">
-              Se enviará un correo con el enlace y resumen del expediente
-            </p>
-          </Card>
 
-          {/* Opciones adicionales */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Button
-              variant="outline"
-              className="h-auto py-4 flex-col items-start font-bold"
-              onClick={handleDescargarQR}
-              style={{ borderColor: '#2962FF' }}
-            >
-              <div className="flex items-center gap-2 mb-1" style={{ color: '#2962FF' }}>
-                <QrCode className="w-5 h-5" />
-                <span className="font-black">Código QR</span>
+            {/* Información de seguridad */}
+            <Card className="p-3 bg-amber-50 border-amber-300">
+              <div className="flex items-start gap-2">
+                <Users className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-amber-900 mb-1">
+                    🔒 Compartir de forma segura
+                  </p>
+                  <p className="text-xs text-amber-800">
+                    Solo comparte este expediente con personas autorizadas. El acceso requiere autenticación 
+                    y permisos en el sistema SIGL ESAP.
+                  </p>
+                </div>
               </div>
-              <span className="text-xs font-semibold text-gray-600">
-                Generar código QR para compartir
-              </span>
-            </Button>
-
-            <Button
-              variant="outline"
-              className="h-auto py-4 flex-col items-start font-bold"
-              onClick={handleAbrirEnNuevaPestana}
-              style={{ borderColor: '#2962FF' }}
-            >
-              <div className="flex items-center gap-2 mb-1" style={{ color: '#2962FF' }}>
-                <ExternalLink className="w-5 h-5" />
-                <span className="font-black">Nueva pestaña</span>
-              </div>
-              <span className="text-xs font-semibold text-gray-600">
-                Abrir expediente en nueva pestaña
-              </span>
-            </Button>
+            </Card>
           </div>
-
-          {/* Información de seguridad */}
-          <Card className="p-3 bg-amber-50 border-amber-300">
-            <div className="flex items-start gap-2">
-              <Users className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-amber-900 mb-1">
-                  🔒 Compartir de forma segura
-                </p>
-                <p className="text-xs text-amber-800">
-                  Solo comparte este expediente con personas autorizadas. El acceso requiere autenticación 
-                  y permisos en el sistema SIGL ESAP.
-                </p>
-              </div>
-            </div>
-          </Card>
         </div>
 
-        {/* ==================== FOOTER STICKY CON BOTONES ==================== */}
-        <div 
-          className="flex-shrink-0 bg-white border-t-2 px-6 py-4"
-          style={{ 
-            borderTopColor: '#2962FF',
-            boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)'
-          }}
-        >
-          <div className="flex items-center justify-end">
-            <Button variant="outline" onClick={onClose} className="font-bold">
-              <X className="w-4 h-4 mr-1.5" />
-              Cerrar
-            </Button>
-          </div>
+        {/* FOOTER - flex-shrink-0 (siempre visible) */}
+        <div className="flex-shrink-0 px-6 py-4 bg-white border-t border-gray-200 flex items-center justify-end">
+          <Button variant="outline" onClick={onClose}>
+            <X className="w-4 h-4 mr-2" />
+            Cerrar
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

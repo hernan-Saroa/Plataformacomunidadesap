@@ -7,14 +7,13 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
-import { BackofficeApp } from './components/esap/BackofficeApp';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { useNavigate, Routes, Route } from 'react-router-dom';
 import { LandingPage } from './components/portal/LandingPage';
+import { LoginPage } from './components/portal/LoginPage';
 import { PortalDashboard } from './components/portal/PortalDashboard';
-import { AuthenticatedPortalNavbar } from './components/portal/AuthenticatedPortalNavbar';
-import { LoginPage } from './components/esap/LoginPage';
-import { SystemSelector } from './components/esap/SystemSelector';
-import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStrength';
+import { BackofficeApp } from './components/esap/BackofficeApp';
+import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
 import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
@@ -34,7 +33,6 @@ import { VerificarCertificadoPublico } from './components/portal/VerificarCertif
 import ValidarCertificadoGraduado from './components/portal/ValidarCertificadoGraduado';
 
 /** Entrante */
-import { ErrorBoundary } from './components/ErrorBoundary';
 // import { LoginPage } from './components/portal/LoginPage';
 import { VisualizadorPTAAjustes } from './components/gestion-profesoral/VisualizadorPTAAjustes';
 // import { Toaster } from './components/ui/sonner';
@@ -825,7 +823,7 @@ export default function App() {
       
       case 'pta-demo':
         return (
-          <VisualizadorPTAAjustes
+          <GestionProfesoralApp
             usuario={usuarioActual!}
             onLogout={handleLogout}
           />

@@ -23,8 +23,7 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Calendar, Clock, Search, Download, Eye, CheckCircle2, 
-  AlertTriangle, Plus, Send, Archive, BarChart3, HelpCircle, 
-  Filter, TrendingUp, Book, Mail, Phone, ExternalLink, AlertCircle,
+  Plus, Send, Archive, Book,
   CheckSquare, XCircle, Loader
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
@@ -32,8 +31,6 @@ import { toast } from 'sonner@2.0.3';
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
-import { Badge } from '../../ui/badge';
-import { Card } from '../../ui/card';
 
 // Catálogo
 import { 
@@ -61,7 +58,7 @@ interface InformeGenerado {
   destinatarios?: string[];
 }
 
-type VistaActual = 'catalogo' | 'generados' | 'proximos' | 'soporte';
+type VistaActual = 'catalogo' | 'generados' | 'proximos';
 
 // ════════════════════════════════════════════════════════════════════════════
 // DATOS MOCK
@@ -154,12 +151,6 @@ export function InformesLeyModulePremium() {
               icon={<Clock className="w-4 h-4" />}
               label="Próximos a Vencer"
             />
-            <TabButton
-              active={vistaActiva === 'soporte'}
-              onClick={() => setVistaActiva('soporte')}
-              icon={<HelpCircle className="w-4 h-4" />}
-              label="Soporte"
-            />
           </div>
         </div>
       </div>
@@ -176,7 +167,6 @@ export function InformesLeyModulePremium() {
           {vistaActiva === 'catalogo' && <VistaCatalogo />}
           {vistaActiva === 'generados' && <VistaGenerados informes={informesGenerados} />}
           {vistaActiva === 'proximos' && <VistaProximos />}
-          {vistaActiva === 'soporte' && <VistaSoporte />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -260,49 +250,6 @@ function VistaCatalogo() {
 
   return (
     <div className="mx-auto px-8 py-6 max-w-[1920px]">
-      {/* Dashboard */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-xl text-gray-900 font-medium mb-1">Catálogo Normativo de Informes</h2>
-            <p className="text-sm text-gray-600">16 informes de ley configurados y activos</p>
-          </div>
-        </div>
-
-        {/* KPIs */}
-        <div className="grid grid-cols-5 gap-4">
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-            <div className="text-xs text-blue-700 mb-1">Total Informes</div>
-            <div className="text-2xl font-semibold text-blue-900">{estadisticas.total}</div>
-            <div className="text-xs text-blue-600 mt-1">Activos</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200">
-            <div className="text-xs text-purple-700 mb-1">Semestrales</div>
-            <div className="text-2xl font-semibold text-purple-900">{estadisticas.semestrales}</div>
-            <div className="text-xs text-purple-600 mt-1">2 por año</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-            <div className="text-xs text-green-700 mb-1">Anuales</div>
-            <div className="text-2xl font-semibold text-green-900">{estadisticas.anuales}</div>
-            <div className="text-xs text-green-600 mt-1">1 por año</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-lg p-4 border border-orange-200">
-            <div className="text-xs text-orange-700 mb-1">Trimestrales</div>
-            <div className="text-2xl font-semibold text-orange-900">{estadisticas.trimestrales}</div>
-            <div className="text-xs text-orange-600 mt-1">4 por año</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-cyan-50 to-blue-50 rounded-lg p-4 border border-cyan-200">
-            <div className="text-xs text-cyan-700 mb-1">Mensuales</div>
-            <div className="text-2xl font-semibold text-cyan-900">{estadisticas.mensuales}</div>
-            <div className="text-xs text-cyan-600 mt-1">12 por año</div>
-          </div>
-        </div>
-      </div>
-
       {/* Búsqueda y Filtros */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
         <div className="flex items-center gap-4">
@@ -525,6 +472,8 @@ function VistaGenerados({ informes }: VistaGeneradosProps) {
 }
 
 function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
+  const [modalDetalle, setModalDetalle] = useState(false);
+  
   const estadoConfig = {
     ENVIADO: { label: 'Enviado', bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2 },
     BORRADOR: { label: 'Borrador', bg: 'bg-yellow-100', text: 'text-yellow-700', icon: Loader },
@@ -534,6 +483,60 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
 
   const config = estadoConfig[informe.estado];
   const Icon = config.icon;
+
+  const handleDescargar = () => {
+    if (!informe.archivoUrl) {
+      toast.error('Archivo no disponible', {
+        description: 'No hay archivo asociado a este informe',
+      });
+      return;
+    }
+
+    toast.success('Descargando Informe', {
+      description: `${informe.informeNombre} (${informe.periodo})`,
+      duration: 3000,
+    });
+
+    console.log('📥 Descargando informe:', {
+      informeId: informe.id,
+      nombre: informe.informeNombre,
+      periodo: informe.periodo,
+      archivoUrl: informe.archivoUrl,
+      estado: informe.estado,
+      usuario: 'Usuario Actual',
+      timestamp: new Date().toISOString()
+    });
+
+    // En producción: descargar el archivo
+    // fetch(informe.archivoUrl)
+    //   .then(response => response.blob())
+    //   .then(blob => {
+    //     const url = window.URL.createObjectURL(blob);
+    //     const a = document.createElement('a');
+    //     a.href = url;
+    //     a.download = `${informe.informeNombre}_${informe.periodo}.pdf`;
+    //     a.click();
+    //     window.URL.revokeObjectURL(url);
+    //   });
+  };
+
+  const handleVerDetalle = () => {
+    setModalDetalle(true);
+    
+    toast.info('Abriendo Detalle del Informe', {
+      description: informe.informeNombre,
+      duration: 2000,
+    });
+
+    console.log('👁️ Ver detalle del informe:', {
+      informeId: informe.id,
+      nombre: informe.informeNombre,
+      periodo: informe.periodo,
+      estado: informe.estado,
+      usuario: 'Usuario Actual',
+      timestamp: new Date().toISOString()
+    });
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -569,17 +572,31 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
 
         <div className="flex gap-2">
           {informe.archivoUrl && (
-            <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2">
+            <button 
+              onClick={handleDescargar}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+            >
               <Download className="w-4 h-4" />
               Descargar
             </button>
           )}
-          <button className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2">
+          <button 
+            onClick={handleVerDetalle}
+            className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+          >
             <Eye className="w-4 h-4" />
             Ver Detalle
           </button>
         </div>
       </div>
+
+      {/* Modal Detalle Informe Generado */}
+      {modalDetalle && (
+        <ModalDetalleInformeGenerado 
+          informe={informe} 
+          onClose={() => setModalDetalle(false)}
+        />
+      )}
     </div>
   );
 }
@@ -589,6 +606,8 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
 // ════════════════════════════════════════════════════════════════════════════
 
 function VistaProximos() {
+  const [informeSeleccionado, setInformeSeleccionado] = useState<InformeLeyNormativo | null>(null);
+  
   const proximosInformes = useMemo(() => {
     const ahora = new Date();
     const dentro60Dias = new Date(ahora.getTime() + 60 * 24 * 60 * 60 * 1000);
@@ -615,112 +634,106 @@ function VistaProximos() {
       .sort((a, b) => a.diasRestantes - b.diasRestantes);
   }, []);
 
+  const handleGenerarAhora = (informe: InformeLeyNormativo) => {
+    setInformeSeleccionado(informe);
+    
+    toast.info('Generando informe próximo a vencer', {
+      description: `${informe.nombreCorto} - ${informe.periodicidad}`,
+      duration: 2000,
+    });
+
+    console.log('⏰ Generar informe próximo a vencer:', {
+      informeId: informe.id,
+      nombre: informe.nombreCorto,
+      periodicidad: informe.periodicidad,
+      proximaFecha: proximosInformes.find(i => i.id === informe.id)?.proximaFecha,
+      diasRestantes: proximosInformes.find(i => i.id === informe.id)?.diasRestantes,
+      usuario: 'Usuario Actual',
+      timestamp: new Date().toISOString()
+    });
+  };
+
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <h2 className="text-xl text-gray-900 font-medium mb-2">Informes Próximos a Vencer</h2>
-        <p className="text-sm text-gray-600">Próximos 60 días</p>
-      </div>
+    <>
+      <div className="mx-auto px-8 py-6 max-w-[1920px]">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+          <h2 className="text-xl text-gray-900 font-medium mb-2">Informes Próximos a Vencer</h2>
+          <p className="text-sm text-gray-600">Próximos 60 días</p>
+        </div>
 
-      <div className="space-y-4">
-        {proximosInformes.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-base text-gray-900 mb-2">No hay informes próximos a vencer</h3>
-            <p className="text-sm text-gray-600">Todos los informes están al día</p>
-          </div>
-        ) : (
-          proximosInformes.map((informe) => (
-            <div key={informe.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-start gap-6">
-                <div className={`w-3 h-3 rounded-full mt-2 ${
-                  informe.semaforo === 'verde' ? 'bg-green-500' :
-                  informe.semaforo === 'amarillo' ? 'bg-amber-500' :
-                  'bg-red-500'
-                }`} />
+        <div className="space-y-4">
+          {proximosInformes.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+              <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
+              <h3 className="text-base text-gray-900 mb-2">No hay informes próximos a vencer</h3>
+              <p className="text-sm text-gray-600">Todos los informes están al día</p>
+            </div>
+          ) : (
+            proximosInformes.map((informe) => (
+              <div key={informe.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-start gap-6">
+                  <div className={`w-3 h-3 rounded-full mt-2 ${
+                    informe.semaforo === 'verde' ? 'bg-green-500' :
+                    informe.semaforo === 'amarillo' ? 'bg-amber-500' :
+                    'bg-red-500'
+                  }`} />
 
-                <div className="flex-1">
-                  <h3 className="text-base text-gray-900 font-medium mb-2">{informe.nombreCorto}</h3>
-                  <div className="grid grid-cols-3 gap-4 text-sm mb-3">
-                    <div>
-                      <span className="text-gray-600">Próxima generación:</span>
-                      <span className="ml-2 text-gray-900 font-medium">{informe.proximaFecha}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Días restantes:</span>
-                      <span className={`ml-2 font-medium ${
-                        informe.diasRestantes <= 7 ? 'text-red-600' :
-                        informe.diasRestantes <= 15 ? 'text-amber-600' :
-                        'text-green-600'
-                      }`}>
-                        {informe.diasRestantes} días
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Periodicidad:</span>
-                      <span className="ml-2 text-gray-900">{informe.periodicidad}</span>
+                  <div className="flex-1">
+                    <h3 className="text-base text-gray-900 font-medium mb-2">{informe.nombreCorto}</h3>
+                    <div className="grid grid-cols-3 gap-4 text-sm mb-3">
+                      <div>
+                        <span className="text-gray-600">Próxima generación:</span>
+                        <span className="ml-2 text-gray-900 font-medium">
+                          {new Date(informe.proximaFecha).toLocaleDateString('es-CO', { 
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric' 
+                          })}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Días restantes:</span>
+                        <span className={`ml-2 font-medium ${
+                          informe.diasRestantes <= 7 ? 'text-red-600' :
+                          informe.diasRestantes <= 15 ? 'text-amber-600' :
+                          'text-green-600'
+                        }`}>
+                          {informe.diasRestantes} días
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Periodicidad:</span>
+                        <span className="ml-2 text-gray-900">{informe.periodicidad}</span>
+                      </div>
                     </div>
                   </div>
+
+                  <button 
+                    onClick={() => handleGenerarAhora(informe)}
+                    className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Generar Ahora
+                  </button>
                 </div>
-
-                <button className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2">
-                  <Plus className="w-4 h-4" />
-                  Generar Ahora
-                </button>
               </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// VISTA: SOPORTE
-// ════════════════════════════════════════════════════════════════════════════
-
-function VistaSoporte() {
-  return (
-    <div className="mx-auto px-8 py-8 max-w-[1800px]">
-      <div className="grid grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200">
-          <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Book className="w-7 h-7 text-[#1e5da8]" />
-          </div>
-          <h3 className="text-base text-gray-900 mb-2 font-medium">Documentación</h3>
-          <p className="text-sm text-gray-600 mb-4">Guías y manuales</p>
-          <button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2">
-            <Download className="w-4 h-4" />
-            Descargar
-          </button>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200">
-          <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Mail className="w-7 h-7 text-[#1e5da8]" />
-          </div>
-          <h3 className="text-base text-gray-900 mb-2 font-medium">Correo</h3>
-          <p className="text-sm text-gray-600 mb-4">controlinterno@esap.edu.co</p>
-          <button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2">
-            <ExternalLink className="w-4 h-4" />
-            Contactar
-          </button>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200">
-          <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Phone className="w-7 h-7 text-[#1e5da8]" />
-          </div>
-          <h3 className="text-base text-gray-900 mb-2 font-medium">Teléfono</h3>
-          <p className="text-sm text-gray-600 mb-4">Ext. 2450 - 2451</p>
-          <button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2">
-            <Phone className="w-4 h-4" />
-            Llamar
-          </button>
+            ))
+          )}
         </div>
       </div>
-    </div>
+
+      {/* Modal Generar Informe */}
+      {informeSeleccionado && (
+        <ModalGenerarInforme 
+          informe={informeSeleccionado} 
+          onClose={() => setInformeSeleccionado(null)}
+          onGenerar={() => {
+            setInformeSeleccionado(null);
+            toast.success('Informe generado y agregado al historial');
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -734,36 +747,123 @@ interface ModalDetalleInformeProps {
 }
 
 function ModalDetalleInforme({ informe, onClose }: ModalDetalleInformeProps) {
+  const [modalGenerar, setModalGenerar] = useState(false);
+
+  const handleGenerarInforme = () => {
+    setModalGenerar(true);
+  };
+
+  return (
+    <>
+      <ModalSIGL isOpen={true} onClose={onClose} title="" size="large">
+        <div className="p-8">
+          <div className="mb-6">
+            <h2 className="text-2xl text-gray-900 mb-2">{informe.nombreCorto}</h2>
+            <p className="text-sm text-gray-600">{informe.nombre}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-xs text-gray-600 mb-1">Base Normativa</div>
+              <div className="text-sm text-gray-900">{informe.baseNormativa}</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-xs text-gray-600 mb-1">Periodicidad</div>
+              <div className="text-sm text-gray-900">{informe.periodicidad}</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-xs text-gray-600 mb-1">Meses de Generación</div>
+              <div className="text-sm text-gray-900">{informe.mesesGeneracion?.join(', ')}</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-xs text-gray-600 mb-1">Destinatarios</div>
+              <div className="text-sm text-gray-900">{informe.destinatarios?.join(', ')}</div>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 rounded-lg p-4 mb-6">
+            <h3 className="text-sm text-gray-900 font-medium mb-2">Descripción</h3>
+            <p className="text-sm text-gray-700">{informe.descripcion}</p>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cerrar
+            </button>
+            <button 
+              onClick={handleGenerarInforme}
+              className="px-6 py-2.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Generar Informe
+            </button>
+          </div>
+        </div>
+      </ModalSIGL>
+
+      {/* Modal Generar Informe */}
+      {modalGenerar && (
+        <ModalGenerarInforme 
+          informe={informe} 
+          onClose={() => setModalGenerar(false)}
+          onGenerar={() => {
+            setModalGenerar(false);
+            onClose();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: DETALLE INFORME GENERADO
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalDetalleInformeGeneradoProps {
+  informe: InformeGenerado;
+  onClose: () => void;
+}
+
+function ModalDetalleInformeGenerado({ informe, onClose }: ModalDetalleInformeGeneradoProps) {
   return (
     <ModalSIGL isOpen={true} onClose={onClose} title="" size="large">
       <div className="p-8">
         <div className="mb-6">
-          <h2 className="text-2xl text-gray-900 mb-2">{informe.nombreCorto}</h2>
-          <p className="text-sm text-gray-600">{informe.nombre}</p>
+          <h2 className="text-2xl text-gray-900 mb-2">{informe.informeNombre}</h2>
+          <p className="text-sm text-gray-600">Periodo: {informe.periodo}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-xs text-gray-600 mb-1">Base Normativa</div>
-            <div className="text-sm text-gray-900">{informe.baseNormativa}</div>
+            <div className="text-xs text-gray-600 mb-1">Estado</div>
+            <div className="text-sm text-gray-900">
+              {informe.estado === 'ENVIADO' ? 'Enviado' :
+              informe.estado === 'BORRADOR' ? 'Borrador' :
+              informe.estado === 'GENERADO' ? 'Generado' :
+              'Atrasado'}
+            </div>
           </div>
           <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-xs text-gray-600 mb-1">Periodicidad</div>
-            <div className="text-sm text-gray-900">{informe.periodicidad}</div>
+            <div className="text-xs text-gray-600 mb-1">Generado por</div>
+            <div className="text-sm text-gray-900">{informe.generadoPor}</div>
           </div>
           <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-xs text-gray-600 mb-1">Meses de Generación</div>
-            <div className="text-sm text-gray-900">{informe.mesesGeneracion?.join(', ')}</div>
+            <div className="text-xs text-gray-600 mb-1">Fecha de Generación</div>
+            <div className="text-sm text-gray-900">{informe.fechaGeneracion}</div>
           </div>
           <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-xs text-gray-600 mb-1">Destinatarios</div>
-            <div className="text-sm text-gray-900">{informe.destinatarios?.join(', ')}</div>
+            <div className="text-xs text-gray-600 mb-1">Fecha de Vencimiento</div>
+            <div className="text-sm text-gray-900">{informe.fechaVencimiento}</div>
           </div>
         </div>
 
         <div className="bg-blue-50 rounded-lg p-4 mb-6">
-          <h3 className="text-sm text-gray-900 font-medium mb-2">Descripción</h3>
-          <p className="text-sm text-gray-700">{informe.descripcion}</p>
+          <h3 className="text-sm text-gray-900 font-medium mb-2">Observaciones</h3>
+          <p className="text-sm text-gray-700">{informe.observaciones || 'Sin observaciones'}</p>
         </div>
 
         <div className="flex justify-end gap-3">
@@ -772,10 +872,6 @@ function ModalDetalleInforme({ informe, onClose }: ModalDetalleInformeProps) {
             className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
           >
             Cerrar
-          </button>
-          <button className="px-6 py-2.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            Generar Informe
           </button>
         </div>
       </div>
@@ -811,5 +907,151 @@ function FilterButton({ active, onClick, label, count, color = 'gray' }: FilterB
     >
       {label} ({count})
     </button>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: GENERAR INFORME
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalGenerarInformeProps {
+  informe: InformeLeyNormativo;
+  onClose: () => void;
+  onGenerar: () => void;
+}
+
+function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInformeProps) {
+  const [periodo, setPeriodo] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+
+  const handleGenerar = () => {
+    // Validaciones
+    if (!periodo.trim()) {
+      toast.error('El periodo es obligatorio');
+      return;
+    }
+
+    // Simular generación del informe
+    toast.success('Informe Generado Exitosamente', {
+      description: `${informe.nombreCorto} - Periodo ${periodo}`,
+      duration: 4000,
+    });
+
+    console.log('📄 Generando informe:', {
+      informeId: informe.id,
+      nombre: informe.nombreCorto,
+      nombreCompleto: informe.nombre,
+      periodo,
+      descripcion,
+      baseNormativa: informe.baseNormativa,
+      periodicidad: informe.periodicidad,
+      destinatarios: informe.destinatarios,
+      usuario: 'Fernando Ávila',
+      timestamp: new Date().toISOString()
+    });
+
+    // En producción: llamar al backend para generar el informe
+    // POST /api/informes-ley/generar
+    // {
+    //   informeLeyId: informe.id,
+    //   periodo,
+    //   descripcion
+    // }
+
+    onGenerar();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl z-10">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <h3 className="text-xl font-medium">Generar Informe</h3>
+          <p className="text-sm text-blue-100 mt-1">{informe.nombreCorto}</p>
+        </div>
+
+        {/* Contenido */}
+        <div className="px-6 py-6">
+          <div className="space-y-4">
+            {/* Información del Informe */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <div className="text-sm font-medium text-blue-900 mb-1">Informe Pormenorizado del Estado del Control Interno</div>
+              <div className="flex items-center gap-4 text-xs text-blue-700">
+                <span>Base Normativa: {informe.baseNormativa}</span>
+                <span>•</span>
+                <span>Periodicidad: {informe.periodicidad}</span>
+              </div>
+              {informe.destinatarios && informe.destinatarios.length > 0 && (
+                <div className="text-xs text-blue-700 mt-2">
+                  <span className="font-medium">Destinatarios:</span> {informe.destinatarios.join(', ')}
+                </div>
+              )}
+            </div>
+
+            {/* Periodo */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Periodo <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={periodo}
+                onChange={(e) => setPeriodo(e.target.value)}
+                placeholder={informe.periodicidad === 'SEMESTRAL' ? 'Ej: 2025-S1' : 'Ej: 2024'}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+              />
+              <p className="text-xs text-gray-600 mt-1">
+                {informe.periodicidad === 'SEMESTRAL' 
+                  ? 'Formato: AAAA-S1 o AAAA-S2 (semestral)'
+                  : informe.periodicidad === 'TRIMESTRAL'
+                  ? 'Formato: AAAA-T1, AAAA-T2, AAAA-T3 o AAAA-T4 (trimestral)'
+                  : informe.periodicidad === 'MENSUAL'
+                  ? 'Formato: AAAA-MM (mensual)'
+                  : 'Formato: AAAA (anual)'
+                }
+              </p>
+            </div>
+
+            {/* Descripción */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Descripción
+              </label>
+              <textarea
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Descripción o notas adicionales sobre este informe (opcional)"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cerrar
+            </button>
+            <button
+              onClick={handleGenerar}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Generar Informe
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

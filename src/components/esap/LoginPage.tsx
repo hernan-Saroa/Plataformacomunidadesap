@@ -97,22 +97,20 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // console.log('🚀 Starting login process');
+    console.log('🚀 [1] Starting login process');
+    console.log('🚀 [2] Form data:', { email, password: password ? '***' : '', rememberMe });
 
     if (!validateForm()) {
-      // console.log('❌ Form validation failed');
+      console.log('❌ [3] Form validation failed', errors);
       toast.error('Por favor corrija los errores en el formulario');
       return;
     }
 
+    console.log('✅ [4] Form validation passed');
     setIsLoading(true);
 
     try {
-      /* console.log('📡 Calling authService.login with:', {
-        email: email.toLowerCase(),
-        password: password ? '***' : '',
-        rememberMe
-      });*/
+      console.log('📡 [5] About to call authService.login');
 
       // Llamar a la API de autenticación real
       const response = await authService.login({
@@ -121,7 +119,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         rememberMe,
       });
 
-      // console.log('✅ Auth service response:', response);
+      console.log('✅ [6] Auth service response received:', response);
 
       // Determinar el tipo de usuario basado en el email para mostrar mensaje personalizado
       const emailLower = email.toLowerCase();
@@ -244,10 +242,10 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         });
       }
 
-      // console.log('🔄 Calling onLogin handler with user data');
+      console.log('🔄 [7] Calling onLogin handler with user data');
       // Pasar los datos del usuario autenticado al handler de login
       onLogin(response.user, response.accessToken, rememberMe);
-      // console.log('✅ onLogin handler completed');
+      console.log('✅ [8] onLogin handler completed');
 
     } catch (error: any) {
       console.error('❌ Error de autenticación:', error);
