@@ -28,6 +28,7 @@ import type { ExpedienteJudicial } from '../core/types';
 import { toast } from 'sonner@2.0.3';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalEvidenciasProps {
   isOpen: boolean;
@@ -48,7 +49,8 @@ const categorias = [
 export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidenciasProps) {
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [busqueda, setBusqueda] = useState('');
-  const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
+  const [vistaDetallada, setVistaDetallada] = useState(true);
+  const [filtroCategoria, setFiltroCategoria] = useState('TODOS');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [newEvidenciaData, setNewEvidenciaData] = useState({
@@ -57,38 +59,29 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     tipo: 'Documentales',
     relevancia: 'Media'
   });
+  
+  // Estados para modal de visor
+  const [modalVisorAbierto, setModalVisorAbierto] = useState(false);
+  const [evidenciaSeleccionada, setEvidenciaSeleccionada] = useState<any | null>(null);
 
-  useEffect(() => {
-    if (isOpen && (expediente.uuid || expediente.id)) {
-      loadEvidencias();
-    }
-  }, [isOpen, expediente]);
-
+  // Función para cargar evidencias desde el API
   const loadEvidencias = async () => {
     try {
-      const data = await legalService.getEvidencias(expediente.uuid || expediente.id);
-      setEvidencias(
-        data.map((ev: any) => ({
-          id: ev.id,
-          nombre: ev.nombre || ev.tipo || 'Evidencia',
-          descripcion: ev.descripcion || 'Sin descripción',
-          categoria: ev.categoria || ev.tipo || 'Documentales',
-          tipo: ev.tipo || 'Documentales',
-          folios: ev.folios || 0,
-          relevancia: ev.relevancia || 'Media',
-          estado: ev.estado || 'Pendiente',
-          estadoColor: ev.estado === 'Admitida' ? 'green' : 'orange',
-          fecha: ev.fecha || new Date().toLocaleDateString('es-CO'),
-          aportadoPor: ev.aportadoPor || 'ESAP',
-          url: ev.url || ev.archivoUrl
-        }))
-      );
+      const expedienteId = expediente.uuid || expediente.id;
+      const lista = await legalService.getEvidencias(expedienteId);
+      setEvidencias(lista);
     } catch (error) {
-      console.error(error);
-      toast.error('Error al cargar evidencias');
-      setEvidencias([]);
+      console.error('Error cargando evidencias:', error);
+      toast.error('Error al cargar las evidencias');
     }
   };
+
+  // Cargar evidencias al abrir el modal
+  useEffect(() => {
+    if (isOpen && expediente.id) {
+      loadEvidencias();
+    }
+  }, [isOpen, expediente.id]);
 
   const getIconoTipo = (tipo: string) => {
     switch (tipo) {
@@ -496,12 +489,23 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
               )}
             </div>
           </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-            <Button onClick={handleCreateEvidencia} disabled={!selectedFile}>Crear Evidencia</Button>
-          </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal visor de documentos */}
+      {evidenciaSeleccionada && (
+        <VisorDocumentoModal
+          isOpen={modalVisorAbierto}
+          onClose={() => {
+            setModalVisorAbierto(false);
+            setEvidenciaSeleccionada(null);
+          }}
+          archivo={evidenciaSeleccionada.nombre}
+          numero={`Evidencia #${evidenciaSeleccionada.id}`}
+          asunto={evidenciaSeleccionada.descripcion}
+          expedienteId={expediente.id}
+        />
+      )}
     </>
   );
 }

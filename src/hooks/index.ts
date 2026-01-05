@@ -66,3 +66,6 @@ export { usePTAEnFirme, usePasarAEnFirme, useSolicitudModificacion, useGestionar
 
 // Aprobación Granular por Actividad
 export { usePTAAprobacionGranular, useAprobarActividad, useGestionAprobacionGranular } from './usePTAAprobacionGranular';
+
+// ✅ NUEVO: Integración PTA con Módulo de Personas
+export { usePTAConPersonas } from './usePTAConPersonas';

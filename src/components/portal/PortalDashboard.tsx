@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { RoleSelector } from './RoleSelector';
 import { UnifiedPortalViewV5 } from './UnifiedPortalViewV5';
 import { AuthenticatedPortalNavbar } from './AuthenticatedPortalNavbar';
+import { PortalTransaccionalUsuario } from '../esap/control-interno/PortalTransaccionalUsuario';
 
 interface PortalDashboardProps {
   userName: string;
@@ -81,7 +82,7 @@ export function PortalDashboard({
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navbar Autenticado */}
-      {onLogout && (
+      {onLogout && !(activeRole === 'Administrativo' && userEmail === 'funcionario@esap.edu.co') && (
         <AuthenticatedPortalNavbar
           userName={userName}
           userEmail={userEmail}
@@ -136,12 +137,18 @@ export function PortalDashboard({
           )}
 
           {activeRole === 'Administrativo' && (
-            <UnifiedPortalViewV5
-              userName={userName}
-              userEmail={userEmail}
-              activeRole="Administrativo"
-              roleData={roleData.Administrativo}
-            />
+            <>
+              {userEmail === 'funcionario@esap.edu.co' ? (
+                <PortalTransaccionalUsuario onLogout={onLogout} />
+              ) : (
+                <UnifiedPortalViewV5
+                  userName={userName}
+                  userEmail={userEmail}
+                  activeRole="Administrativo"
+                  roleData={roleData.Administrativo}
+                />
+              )}
+            </>
           )}
 
           {activeRole === 'Aspirante' && (

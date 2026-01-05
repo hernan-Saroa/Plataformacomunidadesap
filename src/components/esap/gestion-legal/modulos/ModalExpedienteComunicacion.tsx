@@ -160,13 +160,13 @@ export function ModalExpedienteComunicacion({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-6xl max-h-[95vh] p-0 gap-0 overflow-hidden">
-          <DialogHeader className="sr-only">
-            <DialogTitle>Expediente Comunicación {comunicacion.id}</DialogTitle>
-            <DialogDescription>Visualización completa de la comunicación</DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-6xl h-[95vh] flex flex-col p-0">
+          <DialogTitle className="sr-only">Expediente Comunicación {comunicacion.id}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Visualización completa de la comunicación
+          </DialogDescription>
 
-          {/* HEADER LIMPIO ESAP 2025 */}
+          {/* HEADER - flex-shrink-0 (siempre visible) */}
           <ModalHeaderClean
             icono={getIcono()}
             titulo={`Comunicación ${comunicacion.id}`}
@@ -180,8 +180,8 @@ export function ModalExpedienteComunicacion({
             onClose={onClose}
           />
 
-          {/* MÉTRICAS SUPERIORES */}
-          <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
+          {/* MÉTRICAS SUPERIORES - flex-shrink-0 (siempre visible) */}
+          <div className="flex-shrink-0 px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-white shadow-sm">
