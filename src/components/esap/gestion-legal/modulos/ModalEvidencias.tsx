@@ -25,10 +25,10 @@ import {
   X
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
+import { getServiceUrl } from '../../../../config/environment';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalEvidenciasProps {
   isOpen: boolean;
@@ -49,8 +49,7 @@ const categorias = [
 export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidenciasProps) {
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [busqueda, setBusqueda] = useState('');
-  const [vistaDetallada, setVistaDetallada] = useState(true);
-  const [filtroCategoria, setFiltroCategoria] = useState('TODOS');
+  const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [newEvidenciaData, setNewEvidenciaData] = useState({
@@ -59,29 +58,38 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     tipo: 'Documentales',
     relevancia: 'Media'
   });
-  
-  // Estados para modal de visor
-  const [modalVisorAbierto, setModalVisorAbierto] = useState(false);
-  const [evidenciaSeleccionada, setEvidenciaSeleccionada] = useState<any | null>(null);
 
-  // Función para cargar evidencias desde el API
-  const loadEvidencias = async () => {
-    try {
-      const expedienteId = expediente.uuid || expediente.id;
-      const lista = await legalService.getEvidencias(expedienteId);
-      setEvidencias(lista);
-    } catch (error) {
-      console.error('Error cargando evidencias:', error);
-      toast.error('Error al cargar las evidencias');
-    }
-  };
-
-  // Cargar evidencias al abrir el modal
   useEffect(() => {
-    if (isOpen && expediente.id) {
+    if (isOpen && (expediente.uuid || expediente.id)) {
       loadEvidencias();
     }
-  }, [isOpen, expediente.id]);
+  }, [isOpen, expediente]);
+
+  const loadEvidencias = async () => {
+    try {
+      const data = await legalService.getEvidencias(expediente.uuid || expediente.id);
+      setEvidencias(
+        data.map((ev: any) => ({
+          id: ev.id,
+          nombre: ev.archivoNombre || ev.nombre || ev.tipo || 'Evidencia',
+          descripcion: ev.descripcion || 'Sin descripción',
+          categoria: ev.categoria || ev.tipo || 'Documentales',
+          tipo: ev.tipo || 'Documentales',
+          folios: ev.folios || 0,
+          relevancia: ev.relevancia || ev.prioridad || 'Media',
+          estado: ev.estado || 'Pendiente',
+          estadoColor: ev.estado === 'Admitida' ? 'green' : 'orange',
+          fecha: ev.fechaPresentacion ? new Date(ev.fechaPresentacion).toLocaleDateString('es-CO') : new Date().toLocaleDateString('es-CO'),
+          aportadoPor: ev.aportadoPor || 'ESAP',
+          url: ev.archivoUrl
+        }))
+      );
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al cargar evidencias');
+      setEvidencias([]);
+    }
+  };
 
   const getIconoTipo = (tipo: string) => {
     switch (tipo) {
@@ -129,8 +137,8 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
 
     try {
       const expedienteId = expediente.uuid || expediente.id;
-      const baseUrl = 'http://localhost:3008';
-      const url = `${baseUrl}/api/legal/evidencias/expediente/${expedienteId}/download-zip`;
+      const baseUrl = getServiceUrl('legal');
+      const url = `${baseUrl}/legal/evidencias/expediente/${expedienteId}/download-zip`;
 
       const response = await fetch(url);
 
@@ -158,27 +166,60 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     }
   };
 
-  const handleVerEvidencia = (ev: any) => {
-    if (ev.url) {
-      const baseUrl = 'http://localhost:3008';
-      const url = ev.url.startsWith('http') ? ev.url : `${baseUrl}${ev.url}`;
-      window.open(url, '_blank');
-    } else {
-      toast.error('No hay archivo asociado a esta evidencia');
+  // Helper para construir URL correcta de archivo
+  const getFileUrl = (archivoUrl: string): string => {
+    if (!archivoUrl) return '';
+
+    const baseUrl = getServiceUrl('legal');
+
+    // Si es URL absoluta con /api/, corregirla
+    if (archivoUrl.startsWith('http') && archivoUrl.includes('/api/legal/files/')) {
+      return archivoUrl.replace('/api/legal/files/', '/legal/files/');
     }
+    // Si es URL absoluta correcta, devolverla
+    if (archivoUrl.startsWith('http')) {
+      return archivoUrl;
+    }
+
+    // Rutas relativas
+    if (archivoUrl.startsWith('/api/legal/files/')) {
+      return `${baseUrl}${archivoUrl.replace('/api', '')}`;
+    }
+    if (archivoUrl.startsWith('files/')) {
+      return `${baseUrl}/legal/${archivoUrl}`;
+    }
+    if (archivoUrl.includes('/legal/files/') && !archivoUrl.includes('/api/')) {
+      return `${baseUrl}${archivoUrl}`;
+    }
+    if (archivoUrl.includes('/files/')) {
+      const filename = archivoUrl.split('/files/').pop();
+      return `${baseUrl}/legal/files/${filename}`;
+    }
+    return `${baseUrl}/legal/files/${archivoUrl}`;
+  };
+
+  const handleVerEvidencia = (ev: any) => {
+    const fileUrl = getFileUrl(ev.url);
+    if (!fileUrl) {
+      toast.error('No hay archivo asociado a esta evidencia');
+      return;
+    }
+    window.open(fileUrl, '_blank');
+    toast.success('👁️ Documento abierto', { description: ev.nombre });
   };
 
   const handleDescargarEvidencia = async (ev: any) => {
-    if (!ev.url) {
+    const fileUrl = getFileUrl(ev.url);
+    if (!fileUrl) {
       toast.error('No hay archivo para descargar');
       return;
     }
 
+    toast.loading('⏳ Descargando...', { id: 'download-evidencia' });
     try {
-      const baseUrl = 'http://localhost:3008';
-      const url = ev.url.startsWith('http') ? ev.url : `${baseUrl}${ev.url}`;
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error('Error al descargar');
 
-      const response = await fetch(url);
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -189,10 +230,10 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
 
-      toast.success(`✅ ${ev.nombre} descargado`);
+      toast.success('✅ Descarga completada', { id: 'download-evidencia', description: ev.nombre });
     } catch (error) {
       console.error('Error descargando:', error);
-      toast.error('Error al descargar el archivo');
+      toast.error('Error al descargar el archivo', { id: 'download-evidencia' });
     }
   };
 
@@ -489,23 +530,12 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
               )}
             </div>
           </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCreateEvidencia} disabled={!selectedFile}>Crear Evidencia</Button>
+          </div>
         </DialogContent>
       </Dialog>
-
-      {/* Modal visor de documentos */}
-      {evidenciaSeleccionada && (
-        <VisorDocumentoModal
-          isOpen={modalVisorAbierto}
-          onClose={() => {
-            setModalVisorAbierto(false);
-            setEvidenciaSeleccionada(null);
-          }}
-          archivo={evidenciaSeleccionada.nombre}
-          numero={`Evidencia #${evidenciaSeleccionada.id}`}
-          asunto={evidenciaSeleccionada.descripcion}
-          expedienteId={expediente.id}
-        />
-      )}
     </>
   );
 }

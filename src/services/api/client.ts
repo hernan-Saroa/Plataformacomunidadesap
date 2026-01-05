@@ -249,6 +249,11 @@ class APIClient {
     };
 
     try {
+      // Si el body es FormData, el navegador establecerá el Content-Type correcto con el boundary
+      if (fetchOptions.body instanceof FormData) {
+        delete (requestHeaders as any)['Content-Type'];
+      }
+
       const response = await fetch(url, {
         ...fetchOptions,
         headers: requestHeaders,
@@ -282,8 +287,24 @@ class APIClient {
         }
       }
 
-      // Parsear respuesta
-      const data: any = await response.json();
+      // Parsear respuesta - manejar respuestas vacías
+      const text = await response.text();
+      let data: any = {};
+
+      if (text && text.length > 0) {
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          // Si no es JSON válido pero no está vacío, devolver el texto tal cual si T es string
+          // o lanzar error si esperamos JSON estricto
+          console.warn('Respuesta no es JSON válido:', text);
+          data = { message: text };
+        }
+      } else {
+        // Respuesta vacía (ej: 204 No Content)
+        // Para DELETE, muchas veces esperamos éxito sin contenido body
+        return {} as T;
+      }
 
       // Verificar si es el formato del backend (success/data) o el formato esperado (exito/datos)
       if (data.success !== undefined) {
@@ -357,7 +378,7 @@ class APIClient {
     return this.request<T>(endpoint, {
       ...options,
       method: 'POST',
-      body: body ? JSON.stringify(body) : undefined,
+      body: body instanceof FormData ? body : (body ? JSON.stringify(body) : undefined),
     });
   }
 
@@ -365,7 +386,7 @@ class APIClient {
     return this.request<T>(endpoint, {
       ...options,
       method: 'PUT',
-      body: body ? JSON.stringify(body) : undefined,
+      body: body instanceof FormData ? body : (body ? JSON.stringify(body) : undefined),
     });
   }
 
@@ -373,7 +394,7 @@ class APIClient {
     return this.request<T>(endpoint, {
       ...options,
       method: 'PATCH',
-      body: body ? JSON.stringify(body) : undefined,
+      body: body instanceof FormData ? body : (body ? JSON.stringify(body) : undefined),
     });
   }
 
@@ -411,20 +432,75 @@ class APIClient {
 
   /**
    * Upload de archivos (FormData)
+   * NOTA: No usamos this.request() porque agrega Content-Type: application/json
+   * que rompe las subidas multipart/form-data
    */
   async upload<T = any>(endpoint: string, formData: FormData, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<T> {
-    const { headers = {}, ...restOptions } = options;
+    const { params, requiresAuth = true } = options;
+    const url = this.buildURL(endpoint, params);
 
-    // No incluir Content-Type para FormData (el browser lo setea automáticamente)
-    const uploadHeaders = { ...headers };
-    delete (uploadHeaders as any)['Content-Type'];
+    // Headers para upload: NO incluir Content-Type (el browser lo setea automáticamente)
+    const uploadHeaders: Record<string, string> = {
+      'Accept': 'application/json',
+    };
 
-    return this.request<T>(endpoint, {
-      ...restOptions,
-      method: 'POST',
-      headers: uploadHeaders,
-      body: formData,
-    });
+    // Agregar auth si es necesario
+    if (requiresAuth) {
+      const token = this.getAccessToken();
+      if (token) {
+        uploadHeaders['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: uploadHeaders,
+        body: formData,
+      });
+
+      const data: any = await response.json();
+
+      // Verificar formato de respuesta
+      if (data.success !== undefined) {
+        if (!data.success) {
+          throw new APIClientError(
+            response.status,
+            'UPLOAD_ERROR',
+            data.message || 'Error subiendo archivo',
+            data.details
+          );
+        }
+        return data.data as T;
+      } else if (data.exito !== undefined) {
+        if (!data.exito) {
+          throw new APIClientError(
+            response.status,
+            data.error?.codigo || 'UPLOAD_ERROR',
+            data.error?.mensaje || 'Error subiendo archivo'
+          );
+        }
+        return data.datos as T;
+      }
+
+      return data as T;
+    } catch (error) {
+      if (error instanceof APIClientError) {
+        throw error;
+      }
+      if (error instanceof TypeError) {
+        throw new APIClientError(
+          0,
+          'NETWORK_ERROR',
+          'Error de conexión. Por favor verifica tu conexión a internet.'
+        );
+      }
+      throw new APIClientError(
+        500,
+        'UPLOAD_ERROR',
+        'Error inesperado al subir archivo'
+      );
+    }
   }
 
   /**

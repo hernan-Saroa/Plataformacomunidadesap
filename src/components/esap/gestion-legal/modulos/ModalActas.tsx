@@ -21,8 +21,9 @@ import {
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState, useEffect } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
+import { getServiceUrl } from '../../../../config/environment';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { ModalHeaderClean } from './ModalHeaderClean';
@@ -134,10 +135,36 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
     return 'orange';
   };
 
-  const getFullUrl = (url: string) => {
-    if (!url) return '';
-    if (url.startsWith('http')) return url;
-    return `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+  // Helper para construir URL correcta de archivo
+  const getFileUrl = (archivoUrl: string): string => {
+    if (!archivoUrl) return '';
+
+    const baseUrl = getServiceUrl('legal');
+
+    // Si es URL absoluta con /api/, corregirla
+    if (archivoUrl.startsWith('http') && archivoUrl.includes('/api/legal/files/')) {
+      return archivoUrl.replace('/api/legal/files/', '/legal/files/');
+    }
+    // Si es URL absoluta correcta, devolverla
+    if (archivoUrl.startsWith('http')) {
+      return archivoUrl;
+    }
+
+    // Rutas relativas
+    if (archivoUrl.startsWith('/api/legal/files/')) {
+      return `${baseUrl}${archivoUrl.replace('/api', '')}`;
+    }
+    if (archivoUrl.startsWith('files/')) {
+      return `${baseUrl}/legal/${archivoUrl}`;
+    }
+    if (archivoUrl.includes('/legal/files/') && !archivoUrl.includes('/api/')) {
+      return `${baseUrl}${archivoUrl}`;
+    }
+    if (archivoUrl.includes('/files/')) {
+      const filename = archivoUrl.split('/files/').pop();
+      return `${baseUrl}/legal/files/${filename}`;
+    }
+    return `${baseUrl}/legal/files/${archivoUrl}`;
   };
 
   const handleDescargarActa = async (acta: any) => {
@@ -147,7 +174,8 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
     }
     try {
       toast.info('Iniciando descarga...');
-      const response = await fetch(getFullUrl(acta.archivoUrl));
+      const fileUrl = getFileUrl(acta.archivoUrl);
+      const response = await fetch(fileUrl);
       if (!response.ok) throw new Error('Error al descargar');
 
       const blob = await response.blob();
@@ -170,7 +198,8 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
       toast.warning('Esta acta aún no ha sido firmada y digitalizada');
       return;
     }
-    window.open(getFullUrl(acta.archivoUrl), '_blank');
+    const fileUrl = getFileUrl(acta.archivoUrl);
+    window.open(fileUrl, '_blank');
   };
 
   const handleCargarActa = () => {
@@ -264,8 +293,8 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
     try {
       const expedienteId = expediente.uuid || expediente.id;
-      const baseUrl = 'http://localhost:3008';
-      const url = `${baseUrl}/api/legal/actas/expediente/${expedienteId}/download-zip`;
+      const baseUrl = getServiceUrl('legal');
+      const url = `${baseUrl}/legal/actas/expediente/${expedienteId}/download-zip`;
 
       const response = await fetch(url);
 
