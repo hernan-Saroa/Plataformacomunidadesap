@@ -42,7 +42,10 @@ import { ModalDetallePlanMejoramiento } from './ModalDetallePlanMejoramiento';
 
 // Integración
 import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesContext';
-import { useInicializarDatosEjemplo } from './DatosEjemploAuditorias';
+
+// API
+import { planesMejoramientoApi, auditoriasApi, hallazgosApi } from './services/api';
+import type { PlanMejoramiento as PlanMejoramientoBD, AccionMejoramiento } from './services/types';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -76,6 +79,171 @@ interface PlanMejoramiento {
   ultimaActualizacion: string;
   alertas: number;
   diasRestantes: number;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCIONES DE MAPEO BD ↔ FRONTEND
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Mapea el estado del backend al estado del frontend
+ */
+function mapearEstadoBD(estadoBD: string): EstadoPlan {
+  switch (estadoBD) {
+    case 'borrador':
+      return 'FORMULACION';
+    case 'aprobado':
+      return 'APROBADO';
+    case 'en-ejecucion':
+      return 'EN_EJECUCION';
+    case 'cerrado':
+      return 'COMPLETADO';
+    default:
+      return 'FORMULACION';
+  }
+}
+
+/**
+ * Mapea el estado del frontend al estado del backend
+ */
+function mapearEstadoFrontend(estado: EstadoPlan): 'borrador' | 'aprobado' | 'en-ejecucion' | 'cerrado' {
+  switch (estado) {
+    case 'FORMULACION':
+      return 'borrador';
+    case 'APROBADO':
+      return 'aprobado';
+    case 'EN_EJECUCION':
+      return 'en-ejecucion';
+    case 'CON_RETRASO':
+      return 'en-ejecucion'; // CON_RETRASO se maneja como en-ejecucion con flag
+    case 'COMPLETADO':
+      return 'cerrado';
+    case 'SUSPENDIDO':
+      return 'borrador'; // SUSPENDIDO se maneja como borrador
+    default:
+      return 'borrador';
+  }
+}
+
+/**
+ * Calcula el semáforo basado en días restantes y porcentaje de avance
+ */
+function calcularSemaforo(diasRestantes: number, porcentajeAvance: number, fechaFin: string): SemaforoPlan {
+  const hoy = new Date();
+  const fin = new Date(fechaFin);
+  const dias = Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+  
+  if (dias < 0) return 'rojo'; // Vencido
+  if (dias <= 30) return 'amarillo'; // Próximo a vencer
+  if (porcentajeAvance < 50 && dias <= 60) return 'amarillo'; // Bajo avance y poco tiempo
+  return 'verde'; // En término
+}
+
+/**
+ * Calcula días restantes hasta la fecha fin
+ */
+function calcularDiasRestantes(fechaFin: string): number {
+  const hoy = new Date();
+  const fin = new Date(fechaFin);
+  const diff = fin.getTime() - hoy.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Calcula alertas basado en acciones vencidas o próximas a vencer
+ */
+function calcularAlertas(acciones: AccionMejoramiento[]): number {
+  const hoy = new Date();
+  let alertas = 0;
+  
+  acciones.forEach(accion => {
+    const fechaFin = new Date(accion.fechaFin);
+    const diasRestantes = Math.ceil((fechaFin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Si está vencida y no completada
+    if (diasRestantes < 0 && accion.estado !== 'completada') {
+      alertas++;
+    }
+    // Si está próxima a vencer (menos de 7 días) y no completada
+    else if (diasRestantes <= 7 && diasRestantes >= 0 && accion.estado !== 'completada') {
+      alertas++;
+    }
+  });
+  
+  return alertas;
+}
+
+/**
+ * Convierte un PlanMejoramiento de BD a la estructura del frontend
+ */
+function mapearPlanDesdeBD(planBD: PlanMejoramientoBD): PlanMejoramiento {
+  const acciones = planBD.acciones || [];
+  const totalAcciones = acciones.length;
+  const accionesCompletadas = acciones.filter(a => a.estado === 'completada').length;
+  const accionesEnProceso = acciones.filter(a => a.estado === 'en-ejecucion').length;
+  const accionesPendientes = acciones.filter(a => a.estado === 'programada').length;
+  
+  // Calcular fecha fin (usar la fecha más lejana de las acciones, o fechaElaboracion + 1 año)
+  let fechaFin = new Date(planBD.fechaElaboracion);
+  fechaFin.setFullYear(fechaFin.getFullYear() + 1);
+  
+  if (acciones.length > 0) {
+    const fechasFin = acciones.map(a => new Date(a.fechaFin));
+    const fechaMax = new Date(Math.max(...fechasFin.map(d => d.getTime())));
+    if (fechaMax > fechaFin) {
+      fechaFin = fechaMax;
+    }
+  }
+  
+  const diasRestantes = calcularDiasRestantes(fechaFin.toISOString().split('T')[0]);
+  const porcentajeAvance = planBD.porcentajeAvanceGeneral || 0;
+  const semaforo = calcularSemaforo(diasRestantes, porcentajeAvance, fechaFin.toISOString().split('T')[0]);
+  const alertas = calcularAlertas(acciones);
+  
+  return {
+    id: planBD.id,
+    codigo: planBD.codigo,
+    auditoria: planBD.auditoriaCodigo || planBD.nombre || 'Auditoría sin código',
+    area: '', // No viene en BD, se puede obtener de la auditoría
+    responsable: planBD.responsable || '',
+    cargoResponsable: '', // No viene en BD
+    fechaCreacion: planBD.fechaElaboracion || planBD.fechaCreacion || new Date().toISOString().split('T')[0],
+    fechaAprobacion: planBD.fechaAprobacion,
+    fechaInicio: planBD.fechaAprobacion, // Usar fechaAprobacion como inicio
+    fechaFin: fechaFin.toISOString().split('T')[0],
+    estado: mapearEstadoBD(planBD.estado),
+    semaforo,
+    totalHallazgos: planBD.hallazgosIds?.length || 0,
+    totalAcciones,
+    accionesCompletadas,
+    accionesEnProceso,
+    accionesPendientes,
+    porcentajeAvance,
+    hallazgosCriticos: 0, // Se calcularía desde los hallazgos si se cargan
+    hallazgosModerados: 0,
+    hallazgosLeves: 0,
+    ultimaActualizacion: planBD.fechaActualizacion || planBD.fechaCreacion || new Date().toISOString().split('T')[0],
+    alertas,
+    diasRestantes
+  };
+}
+
+/**
+ * Convierte un PlanMejoramiento del frontend a la estructura de BD
+ */
+function mapearPlanABD(plan: PlanMejoramiento, auditoriaId?: string, auditoriaCodigo?: string): Partial<PlanMejoramientoBD> {
+  return {
+    codigo: plan.codigo,
+    nombre: plan.auditoria,
+    auditoriaId: auditoriaId || '',
+    auditoriaCodigo: auditoriaCodigo || plan.auditoria,
+    responsable: plan.responsable,
+    fechaElaboracion: plan.fechaCreacion,
+    fechaAprobacion: plan.fechaAprobacion,
+    estado: mapearEstadoFrontend(plan.estado),
+    porcentajeAvanceGeneral: plan.porcentajeAvance,
+    observaciones: ''
+  };
 }
 
 // Datos de ejemplo mejorados con semáforos
@@ -349,20 +517,221 @@ const COLUMNAS_KANBAN = [
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanesMejoramientoModuleRediseno() {
-  const [planes, setPlanes] = useState<PlanMejoramiento[]>(PLANES_EJEMPLO);
+  const [planes, setPlanes] = useState<PlanMejoramiento[]>([]);
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
+  const [cargando, setCargando] = useState(true);
 
   // Integración con Auditorías
   const { 
     auditoriaSeleccionada, 
     limpiarSeleccion,
     auditoriasConHallazgos,
+    agregarAuditoriaConHallazgos,
+    limpiarAuditoriasConHallazgos,
     navegarAFormulacion,
     setNavegarAFormulacion,
     crearPlan
   } = useIntegracionAuditoriaPlanes();
 
-  useInicializarDatosEjemplo();
+  // Cargar auditorías finalizadas con hallazgos desde BD
+  useEffect(() => {
+    const cargarAuditoriasConHallazgos = async () => {
+      try {
+        console.log('[PlanesMejoramiento] 🚀 Iniciando carga de auditorías desde BD...');
+        console.log('[PlanesMejoramiento] Estado actual del contexto:', auditoriasConHallazgos.length, 'auditorías');
+        
+        // Limpiar datos mock primero
+        console.log('[PlanesMejoramiento] Limpiando datos mock del contexto...');
+        limpiarAuditoriasConHallazgos();
+        
+        // Usar getAllKanban() que devuelve las auditorías en el formato del frontend
+        // Esto es lo mismo que usa el módulo de Auditorías OCIG
+        console.log('[PlanesMejoramiento] Obteniendo auditorías desde Kanban API...');
+        const responseKanban = await auditoriasApi.getAllKanban();
+        
+        if (!responseKanban.success || !responseKanban.data) {
+          console.error('[PlanesMejoramiento] Error al obtener auditorías:', responseKanban.error);
+          return;
+        }
+        
+        console.log(`[PlanesMejoramiento] Total auditorías en Kanban: ${responseKanban.data.length}`);
+        
+        // Filtrar auditorías finalizadas con el mismo criterio que el botón en Auditorías OCIG
+        // auditoria.estado === 'Finalizada' && auditoria.hallazgos > 0
+        // Pero también buscaremos hallazgos en BD porque el contador puede no estar actualizado
+        const auditoriasFinalizadas = responseKanban.data.filter((aud: any) => {
+          const estado = aud.estado || '';
+          const hallazgos = aud.hallazgos || 0;
+          return estado === 'Finalizada';
+        });
+        
+        console.log(`[PlanesMejoramiento] Auditorías finalizadas encontradas: ${auditoriasFinalizadas.length}`);
+        console.log(`[PlanesMejoramiento] Auditorías con contador de hallazgos > 0: ${auditoriasFinalizadas.filter((a: any) => (a.hallazgos || 0) > 0).length}`);
+        
+        if (auditoriasFinalizadas.length === 0) {
+          console.warn('[PlanesMejoramiento] ⚠️ No se encontraron auditorías finalizadas');
+          // Log de todas las auditorías para debug
+          const estadosUnicos = [...new Set(responseKanban.data.map((a: any) => a.estado))];
+          console.log('[PlanesMejoramiento] Estados encontrados en Kanban:', estadosUnicos);
+          console.log('[PlanesMejoramiento] Ejemplo de auditorías:', responseKanban.data.slice(0, 5).map((a: any) => ({
+            id: a.id,
+            codigo: a.codigo,
+            estado: a.estado,
+            hallazgos: a.hallazgos
+          })));
+          return;
+        }
+        
+        // Obtener todos los hallazgos de una vez y luego filtrar por auditoría
+        console.log('[PlanesMejoramiento] Obteniendo todos los hallazgos desde BD...');
+        const responseTodosHallazgos = await hallazgosApi.getAll();
+        
+        if (!responseTodosHallazgos.success || !responseTodosHallazgos.data) {
+          console.error('[PlanesMejoramiento] Error al obtener hallazgos:', responseTodosHallazgos.error);
+          return;
+        }
+        
+        console.log(`[PlanesMejoramiento] Total hallazgos en BD: ${responseTodosHallazgos.data.length}`);
+        
+        const auditoriasConHallazgosBD: any[] = [];
+        
+        // Para cada auditoría finalizada, buscar sus hallazgos en BD
+        for (const auditoria of auditoriasFinalizadas) {
+          try {
+            // Filtrar hallazgos por auditoriaId o código de auditoría
+            // Usar comparación más flexible para asegurar que encontremos los hallazgos
+            const hallazgosDeAuditoria = responseTodosHallazgos.data.filter((h: any) => {
+              // Comparar por ID (UUID)
+              const coincideId = h.auditoriaId && auditoria.id && String(h.auditoriaId).toLowerCase() === String(auditoria.id).toLowerCase();
+              // Comparar por código
+              const coincideCodigo = h.auditoria && auditoria.codigo && String(h.auditoria).trim() === String(auditoria.codigo).trim();
+              return coincideId || coincideCodigo;
+            });
+            
+            console.log(`[PlanesMejoramiento] Búsqueda para auditoría ${auditoria.codigo} (ID: ${auditoria.id}): ${hallazgosDeAuditoria.length} hallazgos encontrados`);
+            
+            if (hallazgosDeAuditoria.length > 0) {
+              console.log(`[PlanesMejoramiento] ✅ Auditoría ${auditoria.codigo} tiene ${hallazgosDeAuditoria.length} hallazgos en BD`);
+              
+              // Convertir hallazgos del backend al formato esperado
+              const hallazgosMapeados = hallazgosDeAuditoria.map((h: any) => {
+                // Mapear gravedad: 'Baja' | 'Media' | 'Alta' | 'Crítica' → 'LEVE' | 'MODERADO' | 'GRAVE'
+                let gravedad: 'GRAVE' | 'MODERADO' | 'LEVE' = 'LEVE';
+                if (h.gravedad) {
+                  const gravedadLower = h.gravedad.toLowerCase();
+                  if (gravedadLower === 'alta' || gravedadLower === 'crítica' || gravedadLower === 'critica') {
+                    gravedad = 'GRAVE';
+                  } else if (gravedadLower === 'media' || gravedadLower === 'moderado' || gravedadLower === 'moderada') {
+                    gravedad = 'MODERADO';
+                  } else {
+                    gravedad = 'LEVE';
+                  }
+                }
+
+                // El tipo Hallazgo tiene causaRaiz, impacto, recomendacion como strings (no arrays)
+                // Convertirlos a arrays para el formato esperado por AuditoriaParaPlan
+                const causas = h.causaRaiz ? (h.causaRaiz.includes(';') ? h.causaRaiz.split(';').map((c: string) => c.trim()) : [h.causaRaiz]) : [];
+                const efectos = h.impacto ? (h.impacto.includes(';') ? h.impacto.split(';').map((e: string) => e.trim()) : [h.impacto]) : [];
+                const recomendaciones = h.recomendacion ? (h.recomendacion.includes(';') ? h.recomendacion.split(';').map((r: string) => r.trim()) : [h.recomendacion]) : [];
+
+                return {
+                  id: h.id,
+                  titulo: h.titulo || h.descripcion || 'Hallazgo sin título',
+                  gravedad,
+                  descripcion: h.descripcion || '',
+                  causas,
+                  efectos,
+                  recomendaciones
+                };
+              });
+
+              // Convertir auditoría al formato AuditoriaParaPlan
+              // Nota: En el formato del Kanban, auditorLider puede ser un objeto o un string
+              const aud = auditoria as any; // Type assertion para manejar ambos formatos
+              const auditorLiderObj = typeof aud.auditorLider === 'object' && aud.auditorLider !== null 
+                ? aud.auditorLider as { nombre?: string; cargo?: string }
+                : null;
+              const auditorLiderStr = typeof aud.auditorLider === 'string' ? aud.auditorLider : '';
+              
+              const auditoriaParaPlan = {
+                id: auditoria.id,
+                codigo: auditoria.codigo || '',
+                nombre: aud.titulo || auditoria.nombre || '',
+                areaResponsable: aud.areaObjetivo || auditoria.territorial || auditoria.sede || '',
+                responsable: auditorLiderObj?.nombre || auditorLiderStr || '',
+                cargo: auditorLiderObj?.cargo || 'Responsable de Auditoría',
+                fechaFinalizacion: auditoria.fechaFin || new Date().toISOString().split('T')[0],
+                estadoPlan: 'SIN_PLAN' as const,
+                fechaLimitePlan: calcularFechaLimitePlan(auditoria.fechaFin || new Date().toISOString().split('T')[0]),
+                plazoFormulacion: 30,
+                hallazgos: hallazgosMapeados
+              };
+
+              auditoriasConHallazgosBD.push(auditoriaParaPlan);
+            }
+          } catch (errorHallazgo) {
+            console.error(`[PlanesMejoramiento] Error al cargar hallazgos de auditoría ${auditoria.id}:`, errorHallazgo);
+          }
+        }
+        
+        // Agregar todas las auditorías desde BD (ya limpiamos al inicio)
+        if (auditoriasConHallazgosBD.length > 0) {
+          console.log(`[PlanesMejoramiento] ✅ Agregando ${auditoriasConHallazgosBD.length} auditorías con hallazgos desde BD`);
+          // Agregar todas las auditorías de BD
+          auditoriasConHallazgosBD.forEach(aud => {
+            agregarAuditoriaConHallazgos(aud);
+          });
+          toast.success(`${auditoriasConHallazgosBD.length} auditorías con hallazgos cargadas desde BD`);
+        } else {
+          console.warn('[PlanesMejoramiento] ⚠️ No se encontraron auditorías finalizadas con hallazgos en BD');
+          console.log('[PlanesMejoramiento] Esto puede significar que:');
+          console.log('  1. No hay auditorías finalizadas en BD');
+          console.log('  2. Las auditorías finalizadas no tienen hallazgos asociados');
+          console.log('  3. El estado/fase de las auditorías no coincide con los filtros');
+        }
+      } catch (error) {
+        console.error('[PlanesMejoramiento] ❌ Error al cargar auditorías con hallazgos:', error);
+        toast.error('Error al cargar auditorías finalizadas. Revisa la consola para más detalles.');
+      }
+    };
+
+    // Siempre intentar cargar desde BD al montar el componente
+    cargarAuditoriasConHallazgos();
+  }, []); // Solo ejecutar una vez al montar
+
+  // Función auxiliar para calcular fecha límite (30 días después)
+  const calcularFechaLimitePlan = (fechaFin: string): string => {
+    const fecha = new Date(fechaFin);
+    fecha.setDate(fecha.getDate() + 30);
+    return fecha.toISOString().split('T')[0];
+  };
+
+  // Cargar planes desde BD
+  useEffect(() => {
+    const cargarPlanes = async () => {
+      try {
+        setCargando(true);
+        const response = await planesMejoramientoApi.getAll();
+        
+        if (response.success && response.data) {
+          const planesMapeados = response.data.map(planBD => mapearPlanDesdeBD(planBD));
+          setPlanes(planesMapeados);
+        } else {
+          console.warn('[PlanesMejoramiento] No se pudieron cargar planes, usando datos de ejemplo');
+          setPlanes(PLANES_EJEMPLO);
+        }
+      } catch (error) {
+        console.error('[PlanesMejoramiento] Error al cargar planes:', error);
+        toast.error('Error al cargar planes de mejoramiento');
+        // Fallback a datos de ejemplo
+        setPlanes(PLANES_EJEMPLO);
+      } finally {
+        setCargando(false);
+      }
+    };
+
+    cargarPlanes();
+  }, []);
 
   // Auto-abrir modal si viene desde auditorías
   useEffect(() => {
@@ -372,51 +741,75 @@ export function PlanesMejoramientoModuleRediseno() {
     }
   }, [auditoriaSeleccionada, navegarAFormulacion, setNavegarAFormulacion]);
 
-  const handleCrearPlanDesdeAuditoria = (auditoria: any) => {
+  const handleCrearPlanDesdeAuditoria = async (auditoria: any) => {
     if (!auditoria) return;
 
-    const nuevoPlan: PlanMejoramiento = {
-      id: `plan-${Date.now()}`,
-      codigo: `PM-${new Date().getFullYear()}-${String(planes.length + 1).padStart(3, '0')}`,
-      auditoria: auditoria.nombre,
-      area: auditoria.areaResponsable,
-      responsable: auditoria.responsable,
-      cargoResponsable: auditoria.cargo,
-      fechaCreacion: new Date().toISOString().split('T')[0],
-      fechaFin: auditoria.fechaLimitePlan || calcularFechaLimite(),
-      estado: 'FORMULACION',
-      semaforo: 'amarillo',
-      totalHallazgos: auditoria.hallazgos.length,
-      totalAcciones: 0,
-      accionesCompletadas: 0,
-      accionesEnProceso: 0,
-      accionesPendientes: 0,
-      porcentajeAvance: 0,
-      hallazgosCriticos: auditoria.hallazgos.filter((h: any) => h.gravedad === 'GRAVE').length,
-      hallazgosModerados: auditoria.hallazgos.filter((h: any) => h.gravedad === 'MODERADO').length,
-      hallazgosLeves: auditoria.hallazgos.filter((h: any) => h.gravedad === 'LEVE').length,
-      ultimaActualizacion: new Date().toISOString().split('T')[0],
-      alertas: 0,
-      diasRestantes: 365
-    };
+    try {
+      // Generar código único
+      const año = new Date().getFullYear();
+      const codigo = `PM-${año}-${String(planes.length + 1).padStart(3, '0')}`;
+      
+      // Crear plan en BD
+      const planData = {
+        codigo,
+        nombre: auditoria.nombre || `Plan de Mejoramiento - ${auditoria.codigo}`,
+        auditoriaId: auditoria.id,
+        auditoriaCodigo: auditoria.codigo,
+        responsable: auditoria.responsable || '',
+        fechaElaboracion: new Date().toISOString().split('T')[0],
+        estado: 'borrador' as const,
+        porcentajeAvanceGeneral: 0,
+        observaciones: '',
+        hallazgosIds: auditoria.hallazgos?.map((h: any) => h.id) || [],
+        acciones: []
+      };
 
-    setPlanes(prev => [nuevoPlan, ...prev]);
+      const response = await planesMejoramientoApi.create(planData);
 
-    // Actualizar contexto
-    crearPlan({
-      auditoriaId: auditoria.id,
-      codigoAuditoria: auditoria.codigo,
-      fechaCreacion: nuevoPlan.fechaCreacion,
-      estado: 'EN_FORMULACION',
-      accionesCreadas: 0,
-      progresoGeneral: 0
-    });
+      if (response.success && response.data) {
+        // Mapear el plan desde BD y agregarlo al estado
+        const planMapeado = mapearPlanDesdeBD(response.data);
+        setPlanes(prev => [planMapeado, ...prev]);
 
-    toast.success(`Plan ${nuevoPlan.codigo} creado exitosamente`);
-    setModalCrearPlanOpen(false);
-    limpiarSeleccion();
+        // Actualizar contexto
+        crearPlan({
+          auditoriaId: auditoria.id,
+          codigoAuditoria: auditoria.codigo,
+          fechaCreacion: planMapeado.fechaCreacion,
+          estado: 'EN_FORMULACION',
+          accionesCreadas: 0,
+          progresoGeneral: 0
+        });
+
+        toast.success(`Plan ${codigo} creado exitosamente`);
+        setModalCrearPlanOpen(false);
+        limpiarSeleccion();
+      } else {
+        throw new Error(response.error || 'Error al crear el plan');
+      }
+    } catch (error: any) {
+      console.error('[PlanesMejoramiento] Error al crear plan:', error);
+      toast.error(`Error al crear plan: ${error.message || 'Error desconocido'}`);
+    }
   };
   
+  if (cargando) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <HeaderModuloCIG
+          titulo="Planes de Mejoramiento"
+          subtitulo="Control Interno de Gestión"
+        />
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1e5da8] mx-auto mb-4"></div>
+            <p className="text-gray-600">Cargando planes de mejoramiento...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="min-h-screen bg-gray-50">
@@ -425,13 +818,48 @@ export function PlanesMejoramientoModuleRediseno() {
           subtitulo="Control Interno de Gestión"
         />
 
-        {/* Contenido Principal */}
-        <SeguimientoView 
-          planes={planes} 
-          setPlanes={setPlanes}
-          onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
-          auditoriasDisponibles={auditoriasConHallazgos}
-        />
+        {/* Navegación */}
+        <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
+          <div className="mx-auto px-8 max-w-[1920px]">
+            <div className="flex gap-1">
+              <TabButton
+                active={vistaActiva === 'seguimiento'}
+                onClick={() => setVistaActiva('seguimiento')}
+                icon={<BarChart3 className="w-4 h-4" />}
+                label="Seguimiento de Planes"
+                badge={planes.length.toString()}
+              />
+              <TabButton
+                active={vistaActiva === 'soporte'}
+                onClick={() => setVistaActiva('soporte')}
+                icon={<HelpCircle className="w-4 h-4" />}
+                label="Soporte"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={vistaActiva}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            {vistaActiva === 'seguimiento' ? (
+              <SeguimientoView 
+                planes={planes} 
+                setPlanes={setPlanes}
+                onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
+                auditoriasDisponibles={auditoriasConHallazgos}
+              />
+            ) : (
+              <SoporteView />
+            )}
+          </motion.div>
+        </AnimatePresence>
 
         {/* Modal Crear Plan desde Auditoría */}
         {modalCrearPlanOpen && (
@@ -531,11 +959,32 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
     };
   }, [planes]);
 
-  const handleMoverPlan = (planId: string, nuevoEstado: EstadoPlan) => {
-    setPlanes(prev => prev.map(p => 
-      p.id === planId ? { ...p, estado: nuevoEstado } : p
-    ));
-    toast.success(`Plan movido a ${obtenerNombreEstado(nuevoEstado)}`);
+  const handleMoverPlan = async (planId: string, nuevoEstado: EstadoPlan) => {
+    try {
+      const plan = planes.find(p => p.id === planId);
+      if (!plan) {
+        toast.error('Plan no encontrado');
+        return;
+      }
+
+      // Actualizar en BD
+      const estadoBD = mapearEstadoFrontend(nuevoEstado);
+      const response = await planesMejoramientoApi.update(planId, { estado: estadoBD });
+
+      if (response.success && response.data) {
+        // Actualizar estado local con el plan completo desde BD
+        const planActualizado = mapearPlanDesdeBD(response.data);
+        setPlanes(prev => prev.map(p => 
+          p.id === planId ? planActualizado : p
+        ));
+        toast.success(`Plan movido a ${obtenerNombreEstado(nuevoEstado)}`);
+      } else {
+        throw new Error(response.error || 'Error al actualizar el plan');
+      }
+    } catch (error: any) {
+      console.error('[PlanesMejoramiento] Error al mover plan:', error);
+      toast.error(`Error al mover plan: ${error.message || 'Error desconocido'}`);
+    }
   };
 
   const toggleColapsoColumna = (columnaId: string) => {
@@ -1336,7 +1785,7 @@ function ModalCrearPlanDesdeAuditoria({
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState(auditoria);
 
   return (
-    <ModalSIGL isOpen={true} onClose={onCerrar} title="Crear Plan de Mejoramiento" size="large">
+    <ModalSIGL isOpen={true} onClose={onCerrar} title="Crear Plan de Mejoramiento2" size="large">
       <div className="p-6">
         {/* Intro */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">

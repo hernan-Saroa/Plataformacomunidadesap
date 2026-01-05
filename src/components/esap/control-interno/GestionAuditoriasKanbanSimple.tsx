@@ -165,7 +165,7 @@ interface Auditoria {
 
 // ============ SERVICIO API ============
 import { controlInternoService } from '../../../services/api/controlInternoService';
-import { auditoriasApi } from './services/api';
+import { auditoriasApi, hallazgosApi } from './services/api';
 
 // ============ DATOS DE PRUEBA (ELIMINADOS - AHORA SE OBTIENEN DE LA BD) ============
 /*
@@ -2027,18 +2027,176 @@ export function GestionAuditoriasKanbanSimple() {
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
     console.log('Crear auditoría OCIG:', data);
     
-    // Simulación de delay (para testing de estados de carga)
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Aquí iría la lógica real de creación
-    // Simulación: agregar a la lista de auditorías
-    // En producción esto haría un POST al backend
-    
-    toast.success('✅ Auditoría OCIG creada exitosamente', {
-      description: `"${data.titulo}" con ${data.hallazgos.length} hallazgos registrados`
-    });
-    
-    setModalFormularioOpen(false);
+    try {
+      // Validar fechas antes de enviar
+      if (new Date(data.fechaFin) < new Date(data.fechaInicio)) {
+        toast.error('Error de validación', {
+          description: 'La fecha de finalización debe ser posterior a la fecha de inicio'
+        });
+        return;
+      }
+
+      // Mapear tipo de auditoría del formulario al formato del backend
+      const mapTipoAuditoria = (tipo: string): string => {
+        const mapping: Record<string, string> = {
+          'regular': 'Gestión',
+          'territorial': 'Gestión',
+          'especial': 'Gestión',
+          'seguimiento': 'Gestión'
+        };
+        return mapping[tipo] || 'Gestión';
+      };
+
+      // Mapear datos del formulario al formato del backend
+      const auditoriaData: any = {
+        nombre: data.titulo,
+        descripcion: data.descripcion || undefined,
+        tipo: mapTipoAuditoria(data.tipoAuditoria),
+        territorial: data.territorial,
+        sede: data.territorial || 'Sede Principal',
+        responsable: data.auditorLider || data.auditorAsignado || 'No asignado',
+        fechaInicio: data.fechaInicio,
+        fechaFin: data.fechaFin,
+        fase: 'planeacion' as const,
+        prioridad: 'Media' as const,
+        progreso: 0,
+      };
+
+      // Agregar campos adicionales si tienen valor
+      if (data.areaObjetivo) auditoriaData.areaObjetivo = data.areaObjetivo;
+      if (data.procesoAuditado) auditoriaData.procesoAuditado = data.procesoAuditado;
+      if (data.alcance) auditoriaData.alcance = data.alcance;
+      if (data.metodologia) auditoriaData.metodologia = data.metodologia;
+      if (data.nivelRiesgo) auditoriaData.nivelRiesgo = data.nivelRiesgo;
+      
+      // Mapear IDs de auditores
+      if (data.auditorLider) {
+        const liderId = typeof data.auditorLider === 'string' && !isNaN(Number(data.auditorLider))
+          ? parseInt(data.auditorLider, 10)
+          : null;
+        if (liderId && liderId > 0) auditoriaData.auditorLiderId = liderId;
+      }
+      
+      if (data.auditorAsignado) {
+        const asignadoId = typeof data.auditorAsignado === 'string' && !isNaN(Number(data.auditorAsignado))
+          ? parseInt(data.auditorAsignado, 10)
+          : null;
+        if (asignadoId && asignadoId > 0) auditoriaData.auditorAsignadoId = asignadoId;
+      }
+
+      // Arrays - objetivos
+      if (data.objetivos && data.objetivos.length > 0) {
+        auditoriaData.objetivos = data.objetivos;
+      }
+
+      console.log('[handleCrearAuditoria] Datos de auditoría a enviar:', auditoriaData);
+
+      // Crear la auditoría
+      const response = await auditoriasApi.create(auditoriaData);
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Error al crear la auditoría');
+      }
+
+      const auditoriaCreada = response.data;
+      console.log('[handleCrearAuditoria] Auditoría creada:', auditoriaCreada);
+
+      // Crear los hallazgos si hay alguno
+      if (data.hallazgos && data.hallazgos.length > 0) {
+        console.log(`[handleCrearAuditoria] Creando ${data.hallazgos.length} hallazgos...`);
+        
+        // Mapear tipo del formulario al tipo opcional del backend (no-conformidad, observacion, oportunidad-mejora)
+        const mapTipoHallazgo = (tipo: string): 'no-conformidad' | 'observacion' | 'oportunidad-mejora' => {
+          const mapping: Record<string, 'no-conformidad' | 'observacion' | 'oportunidad-mejora'> = {
+            'observacion': 'observacion',
+            'hallazgo_administrativo': 'no-conformidad',
+            'hallazgo_disciplinario': 'no-conformidad',
+            'hallazgo_fiscal': 'no-conformidad',
+            'hallazgo_penal': 'no-conformidad'
+          };
+          return mapping[tipo] || 'observacion';
+        };
+
+        // Mapear estado del formulario al estado del backend (HallazgoEstado enum)
+        const mapEstadoHallazgo = (estado: string): 'borrador' | 'notificado' | 'en-controversia' | 'ratificado' | 'modificado' | 'cerrado' => {
+          const mapping: Record<string, 'borrador' | 'notificado' | 'en-controversia' | 'ratificado' | 'modificado' | 'cerrado'> = {
+            'identificado': 'borrador',
+            'comunicado': 'notificado',
+            'en_mejoramiento': 'notificado',
+            'cerrado': 'cerrado'
+          };
+          return mapping[estado] || 'borrador';
+        };
+
+        // Crear cada hallazgo
+        let hallazgosCreados = 0;
+        for (const hallazgoForm of data.hallazgos) {
+          // Validar que el hallazgo tenga datos mínimos requeridos
+          if (!hallazgoForm.descripcion || hallazgoForm.descripcion.trim().length < 10) {
+            console.warn('[handleCrearAuditoria] Hallazgo sin descripción válida, omitiendo:', hallazgoForm);
+            continue;
+          }
+
+          if (!hallazgoForm.criterio || hallazgoForm.criterio.trim().length < 5) {
+            console.warn('[handleCrearAuditoria] Hallazgo sin criterio válido, omitiendo:', hallazgoForm);
+            continue;
+          }
+
+          // Mapear datos al formato que espera el DTO del backend
+          const hallazgoData: any = {
+            // Campos requeridos
+            categoria: 'borrador' as const, // HallazgoCategoria: 'critico' | 'controversia' | 'borrador'
+            area: data.areaObjetivo || 'No especificada', // Campo requerido
+            auditoria: auditoriaCreada.codigo || auditoriaCreada.nombre, // Campo requerido - código de la auditoría
+            auditoriaId: auditoriaCreada.id, // Opcional pero recomendado
+            descripcion: hallazgoForm.descripcion, // Campo requerido
+            criterioIncumplido: hallazgoForm.criterio, // Campo requerido
+            fechaDeteccion: hallazgoForm.fechaIdentificacion || new Date().toISOString().split('T')[0], // Campo requerido
+            
+            // Campos opcionales
+            titulo: hallazgoForm.descripcion.substring(0, 100) || 'Hallazgo sin título',
+            tipo: mapTipoHallazgo(hallazgoForm.tipo), // Tipo opcional: 'no-conformidad' | 'observacion' | 'oportunidad-mejora'
+            estado: mapEstadoHallazgo(hallazgoForm.estado), // Estado opcional pero recomendado
+            
+            // Recomendaciones como array
+            recomendaciones: hallazgoForm.recomendacion ? [hallazgoForm.recomendacion] : [],
+          };
+
+          console.log('[handleCrearAuditoria] Datos del hallazgo a enviar:', hallazgoData);
+
+          try {
+            const hallazgoResponse = await hallazgosApi.create(hallazgoData);
+            if (hallazgoResponse.success) {
+              hallazgosCreados++;
+              console.log('[handleCrearAuditoria] Hallazgo creado exitosamente:', hallazgoResponse.data);
+            } else {
+              console.error('[handleCrearAuditoria] Error al crear hallazgo:', hallazgoResponse.message);
+              console.error('[handleCrearAuditoria] Respuesta completa:', hallazgoResponse);
+            }
+          } catch (error: any) {
+            console.error('[handleCrearAuditoria] Error al crear hallazgo:', error);
+            console.error('[handleCrearAuditoria] Datos enviados:', hallazgoData);
+            // Continuar con los demás hallazgos aunque falle uno
+          }
+        }
+
+        console.log(`[handleCrearAuditoria] ${hallazgosCreados} de ${data.hallazgos.length} hallazgos creados`);
+      }
+
+      // Recargar auditorías desde la BD
+      await cargarAuditorias();
+
+      toast.success('✅ Auditoría OCIG creada exitosamente', {
+        description: `"${data.titulo}"${data.hallazgos.length > 0 ? ` con ${data.hallazgos.length} hallazgo(s)` : ''}`
+      });
+      
+      setModalFormularioOpen(false);
+    } catch (error: any) {
+      console.error('Error al crear auditoría:', error);
+      toast.error('Error al crear auditoría', {
+        description: error.message || 'No se pudo guardar la auditoría. Por favor, intente nuevamente.'
+      });
+    }
   };
 
   const handleEditarAuditoria = (auditoria: Auditoria) => {
@@ -2089,35 +2247,41 @@ export function GestionAuditoriasKanbanSimple() {
       }
 
       // Mapear IDs de auditores
-      // El formulario puede enviar el nombre o el ID
-      // Si es un nombre, necesitamos buscar el ID en la base de datos
-      // Por ahora, si viene como string que no es numérico, lo ignoramos
-      // TODO: Implementar búsqueda de ID por nombre si es necesario
+      // El formulario envía el ID como string (ej: '1', '2', etc.)
+      // Necesitamos convertirlo a número para el backend
       
       if (data.auditorLider) {
-        // Intentar convertir a número si es posible
+        // Convertir a número si es posible
         const auditorLiderId = typeof data.auditorLider === 'string' && !isNaN(Number(data.auditorLider))
           ? parseInt(data.auditorLider, 10)
           : null;
         
-        // Si no es numérico, podría ser un nombre - por ahora lo ignoramos
-        // En el futuro, buscar el ID en la BD por nombre
         if (auditorLiderId && auditorLiderId > 0) {
           updateData.auditorLiderId = auditorLiderId;
+          console.log('[handleActualizarAuditoria] Auditor Líder ID:', auditorLiderId);
+        } else {
+          console.warn('[handleActualizarAuditoria] Auditor Líder ID inválido:', data.auditorLider);
         }
+      } else {
+        // Si viene vacío, establecer como null para limpiar el campo
+        updateData.auditorLiderId = null;
       }
 
       if (data.auditorAsignado) {
-        // Intentar convertir a número si es posible
+        // Convertir a número si es posible
         const auditorAsignadoId = typeof data.auditorAsignado === 'string' && !isNaN(Number(data.auditorAsignado))
           ? parseInt(data.auditorAsignado, 10)
           : null;
         
-        // Si no es numérico, podría ser un nombre - por ahora lo ignoramos
-        // En el futuro, buscar el ID en la BD por nombre
         if (auditorAsignadoId && auditorAsignadoId > 0) {
           updateData.auditorAsignadoId = auditorAsignadoId;
+          console.log('[handleActualizarAuditoria] Auditor Asignado ID:', auditorAsignadoId);
+        } else {
+          console.warn('[handleActualizarAuditoria] Auditor Asignado ID inválido:', data.auditorAsignado);
         }
+      } else {
+        // Si viene vacío, establecer como null para limpiar el campo
+        updateData.auditorAsignadoId = null;
       }
 
       // Log para depuración
@@ -2170,14 +2334,18 @@ export function GestionAuditoriasKanbanSimple() {
   const convertirFechaAISO = (fecha: string | Date): string => {
     if (!fecha) return '';
     
-    // Si es un objeto Date, convertir a ISO
-    if (fecha instanceof Date) {
-      return fecha.toISOString().split('T')[0];
-    }
-    
     // Si es string y ya está en formato ISO (YYYY-MM-DD), devolver tal cual
+    // IMPORTANTE: Esto evita problemas de zona horaria - el input type="date" ya envía en este formato
     if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
       return fecha;
+    }
+    
+    // Si es un objeto Date, usar métodos locales (no UTC) para evitar desfase de un día
+    if (fecha instanceof Date) {
+      const año = fecha.getFullYear();
+      const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+      const dia = String(fecha.getDate()).padStart(2, '0');
+      return `${año}-${mes}-${dia}`;
     }
     
     // Si es string y está en formato DD/MM/YYYY, convertir
@@ -2189,12 +2357,22 @@ export function GestionAuditoriasKanbanSimple() {
       }
     }
     
-    // Intentar parsear como fecha y convertir
+    // Intentar parsear como fecha local (evitando problemas de UTC)
     if (typeof fecha === 'string') {
       try {
-        const fechaDate = new Date(fecha);
-        if (!isNaN(fechaDate.getTime())) {
-          return fechaDate.toISOString().split('T')[0];
+        // Si parece ser una fecha ISO sin hora, agregar hora local para evitar UTC
+        if (/^\d{4}-\d{2}-\d{2}$/.test(fecha.trim())) {
+          // Ya debería haber sido capturado arriba, pero por si acaso devolver tal cual
+          return fecha.trim();
+        }
+        // Para otros formatos, parsear agregando hora local
+        const fechaLocal = new Date(fecha + 'T00:00:00');
+        if (!isNaN(fechaLocal.getTime())) {
+          // Usar métodos locales, NO toISOString() que usa UTC
+          const año = fechaLocal.getFullYear();
+          const mes = String(fechaLocal.getMonth() + 1).padStart(2, '0');
+          const dia = String(fechaLocal.getDate()).padStart(2, '0');
+          return `${año}-${mes}-${dia}`;
         }
       } catch (e) {
         console.warn('No se pudo convertir la fecha:', fecha);

@@ -19,7 +19,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Save, AlertCircle, CheckCircle, Plus, Trash2,
-  User, Calendar, Target, FileText, Shield, Info
+  User, Calendar, Target, FileText, Shield, Info, MapPin, Zap, Clock
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
@@ -83,35 +83,35 @@ const TERRITORIALES = [
 
 const AUDITORES_MOCK: Persona[] = [
   {
-    id: 'aud-001',
+    id: '1',
     nombre: 'Juan Pérez Gómez',
     cargo: 'Auditor Senior',
     tipoIdentificacion: 'CC',
     numeroIdentificacion: '80123456'
   },
   {
-    id: 'aud-002',
+    id: '2',
     nombre: 'Ana María López Silva',
     cargo: 'Auditor Junior',
     tipoIdentificacion: 'CC',
     numeroIdentificacion: '52987654'
   },
   {
-    id: 'aud-003',
+    id: '3',
     nombre: 'Carlos Ramírez Díaz',
     cargo: 'Auditor Senior',
     tipoIdentificacion: 'CC',
     numeroIdentificacion: '94123456'
   },
   {
-    id: 'aud-004',
+    id: '4',
     nombre: 'Diana López Vargas',
     cargo: 'Auditor Senior',
     tipoIdentificacion: 'CC',
     numeroIdentificacion: '72123456'
   },
   {
-    id: 'aud-005',
+    id: '5',
     nombre: 'Roberto Torres Sánchez',
     cargo: 'Auditor Líder',
     tipoIdentificacion: 'CC',
@@ -169,14 +169,37 @@ export function ModalFormularioAuditoria({
   initialData,
   mode
 }: ModalFormularioAuditoriaProps) {
+  // Función auxiliar para normalizar ID de auditor
+  const normalizarAuditorId = (value: any): string => {
+    if (!value) return '';
+    // Si viene como número, convertir a string
+    if (typeof value === 'number') {
+      return value.toString();
+    }
+    // Si viene como string numérico, devolver tal cual
+    if (typeof value === 'string' && !isNaN(Number(value))) {
+      return value;
+    }
+    // Si viene como nombre (string no numérico), buscar el ID en los auditores mock
+    if (typeof value === 'string' && value) {
+      const auditorEncontrado = AUDITORES_MOCK.find(a => 
+        a.nombre === value || a.nombre.includes(value)
+      );
+      if (auditorEncontrado) {
+        return auditorEncontrado.id;
+      }
+    }
+    return '';
+  };
+
   // Estado del formulario
   const [formData, setFormData] = useState<AuditoriaFormData>({
-    tipoAuditoria: initialData?.tipoAuditoria || 'Gestión',
+    tipoAuditoria: initialData?.tipoAuditoria || 'regular',
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
-    auditorLider: initialData?.auditorLider || '',
-    auditorAsignado: initialData?.auditorAsignado || '',
+    auditorLider: normalizarAuditorId(initialData?.auditorLider),
+    auditorAsignado: normalizarAuditorId(initialData?.auditorAsignado),
     fechaInicio: initialData?.fechaInicio || '',
     fechaFin: initialData?.fechaFin || '',
     objetivos: initialData?.objetivos || [],
@@ -202,12 +225,12 @@ export function ModalFormularioAuditoria({
       
       setFormData({
         codigo: initialData.codigo || '',
-        tipoAuditoria: initialData.tipoAuditoria || 'Gestión',
+        tipoAuditoria: initialData.tipoAuditoria || 'regular',
         titulo: initialData.titulo || '',
         descripcion: initialData.descripcion || '',
         territorial: initialData.territorial || '',
-        auditorLider: initialData.auditorLider || '',
-        auditorAsignado: initialData.auditorAsignado || '',
+        auditorLider: normalizarAuditorId(initialData.auditorLider),
+        auditorAsignado: normalizarAuditorId(initialData.auditorAsignado),
         fechaInicio: initialData.fechaInicio || '',
         fechaFin: initialData.fechaFin || '',
         objetivos: normalizedObjetivos,
@@ -433,28 +456,56 @@ export function ModalFormularioAuditoria({
                         label="Tipo de Auditoría"
                         error={touched.tipoAuditoria ? getFieldError(errors, 'Tipo de auditoría') : null}
                         required
-                        helpText="Seleccione el tipo de auditoría a realizar"
+                        helpText="Seleccione el tipo de auditoría según su naturaleza"
                       >
-                        <select
-                          value={formData.tipoAuditoria}
-                          onChange={(e) => handleChange('tipoAuditoria', e.target.value)}
-                          onBlur={() => handleBlur('tipoAuditoria')}
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                            hasFieldError(errors, 'Tipo de auditoría') && touched.tipoAuditoria
-                              ? 'border-red-500 focus:ring-red-500'
-                              : 'border-gray-300'
-                          }`}
-                        >
-                          <option value="">Seleccione un tipo...</option>
-                          <option value="Gestión">Gestión</option>
-                          <option value="Control Interno">Control Interno</option>
-                          <option value="Académica">Académica</option>
-                          <option value="RRHH">RRHH</option>
-                          <option value="Financiera">Financiera</option>
-                          <option value="TI">TI</option>
-                          <option value="Cumplimiento">Cumplimiento</option>
-                          <option value="Operacional">Operacional</option>
-                        </select>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {[
+                            { value: 'regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
+                            { value: 'territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
+                            { value: 'especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> },
+                            { value: 'seguimiento', label: 'Seguimiento', icono: <Clock className="w-5 h-5" /> }
+                          ].map(tipo => (
+                            <button
+                              key={tipo.value}
+                              type="button"
+                              onClick={() => {
+                                handleChange('tipoAuditoria', tipo.value);
+                                handleBlur('tipoAuditoria');
+                              }}
+                              className={`
+                                px-4 py-3 rounded-lg border-2 transition-all duration-200
+                                flex flex-col items-center justify-center gap-2 font-medium
+                                ${
+                                  formData.tipoAuditoria === tipo.value
+                                    ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                    : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                                }
+                                ${
+                                  hasFieldError(errors, 'Tipo de auditoría') && touched.tipoAuditoria
+                                    ? 'border-red-500'
+                                    : ''
+                                }
+                              `}
+                            >
+                              {tipo.icono}
+                              <span className="text-sm">{tipo.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                        {/* Información contextual según tipo */}
+                        {formData.tipoAuditoria === 'especial' && (
+                          <div className="mt-3 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                            <div className="flex items-start gap-3">
+                              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                              <div className="text-sm">
+                                <p className="font-bold text-amber-900 mb-1">Auditoría Especial</p>
+                                <p className="text-amber-700">
+                                  Las auditorías especiales se realizan por solicitudes específicas, denuncias o necesidades urgentes no contempladas en el Plan Anual. Requieren justificación detallada.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </FieldWrapper>
 
                       {/* Título */}

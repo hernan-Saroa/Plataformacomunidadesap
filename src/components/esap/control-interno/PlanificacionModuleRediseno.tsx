@@ -33,7 +33,7 @@ import { ProgramaAnualCIG } from './ProgramaAnualCIG';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
 import { toast } from 'sonner@2.0.3';
-import { universoAuditoriasApi, planAnual5RolesApi, auditoriasApi } from './services/api';
+import { universoAuditoriasApi, planAnual5RolesApi, auditoriasApi, hallazgosApi } from './services/api';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -309,18 +309,103 @@ export function PlanificacionModuleRediseno() {
       // Llamar a la API para crear la auditoría
       const response = await auditoriasApi.create(auditoriaData);
       
-      if (response.success && response.data) {
-        toast.success('✅ Auditoría OCIG creada exitosamente', {
-          description: `"${data.titulo}" ha sido agregada al Plan Anual ${data.planAnualAño || 2025}`
-        });
-        
-        setModalNuevaAuditoriaOpen(false);
-        
-        // Recargar datos si es necesario (puedes agregar una función de recarga aquí)
-        // await cargarAuditorias();
-      } else {
+      if (!response.success || !response.data) {
         throw new Error(response.message || 'Error al crear la auditoría');
       }
+
+      const auditoriaCreada = response.data;
+      console.log('[handleCrearAuditoria] Auditoría creada:', auditoriaCreada);
+
+      // Crear los hallazgos si hay alguno
+      if (data.hallazgos && data.hallazgos.length > 0) {
+        console.log(`[handleCrearAuditoria] Creando ${data.hallazgos.length} hallazgos...`);
+        
+        // Mapear tipo del formulario al tipo opcional del backend
+        const mapTipoHallazgo = (tipo: string): 'no-conformidad' | 'observacion' | 'oportunidad-mejora' => {
+          const mapping: Record<string, 'no-conformidad' | 'observacion' | 'oportunidad-mejora'> = {
+            'observacion': 'observacion',
+            'hallazgo_administrativo': 'no-conformidad',
+            'hallazgo_disciplinario': 'no-conformidad',
+            'hallazgo_fiscal': 'no-conformidad',
+            'hallazgo_penal': 'no-conformidad'
+          };
+          return mapping[tipo] || 'observacion';
+        };
+
+        // Mapear estado del formulario al estado del backend
+        const mapEstadoHallazgo = (estado: string): 'borrador' | 'notificado' | 'en-controversia' | 'ratificado' | 'modificado' | 'cerrado' => {
+          const mapping: Record<string, 'borrador' | 'notificado' | 'en-controversia' | 'ratificado' | 'modificado' | 'cerrado'> = {
+            'identificado': 'borrador',
+            'comunicado': 'notificado',
+            'en_mejoramiento': 'notificado',
+            'cerrado': 'cerrado'
+          };
+          return mapping[estado] || 'borrador';
+        };
+
+        // Crear cada hallazgo
+        let hallazgosCreados = 0;
+        for (const hallazgoForm of data.hallazgos) {
+          // Validar que el hallazgo tenga datos mínimos requeridos
+          if (!hallazgoForm.descripcion || hallazgoForm.descripcion.trim().length < 10) {
+            console.warn('[handleCrearAuditoria] Hallazgo sin descripción válida, omitiendo:', hallazgoForm);
+            continue;
+          }
+
+          if (!hallazgoForm.criterio || hallazgoForm.criterio.trim().length < 5) {
+            console.warn('[handleCrearAuditoria] Hallazgo sin criterio válido, omitiendo:', hallazgoForm);
+            continue;
+          }
+
+          // Mapear datos al formato que espera el DTO del backend
+          const hallazgoData: any = {
+            // Campos requeridos
+            categoria: 'borrador' as const, // HallazgoCategoria: 'critico' | 'controversia' | 'borrador'
+            area: data.areaObjetivo || 'No especificada', // Campo requerido
+            auditoria: auditoriaCreada.codigo || auditoriaCreada.nombre, // Campo requerido - código de la auditoría
+            auditoriaId: auditoriaCreada.id, // Opcional pero recomendado
+            descripcion: hallazgoForm.descripcion, // Campo requerido
+            criterioIncumplido: hallazgoForm.criterio, // Campo requerido
+            fechaDeteccion: hallazgoForm.fechaIdentificacion || new Date().toISOString().split('T')[0], // Campo requerido
+            
+            // Campos opcionales
+            titulo: hallazgoForm.descripcion.substring(0, 100) || 'Hallazgo sin título',
+            tipo: mapTipoHallazgo(hallazgoForm.tipo), // Tipo opcional: 'no-conformidad' | 'observacion' | 'oportunidad-mejora'
+            estado: mapEstadoHallazgo(hallazgoForm.estado), // Estado opcional pero recomendado
+            
+            // Recomendaciones como array
+            recomendaciones: hallazgoForm.recomendacion ? [hallazgoForm.recomendacion] : [],
+          };
+
+          console.log('[handleCrearAuditoria] Datos del hallazgo a enviar:', hallazgoData);
+
+          try {
+            const hallazgoResponse = await hallazgosApi.create(hallazgoData);
+            if (hallazgoResponse.success) {
+              hallazgosCreados++;
+              console.log('[handleCrearAuditoria] Hallazgo creado exitosamente:', hallazgoResponse.data);
+            } else {
+              console.error('[handleCrearAuditoria] Error al crear hallazgo:', hallazgoResponse.message);
+              console.error('[handleCrearAuditoria] Respuesta completa:', hallazgoResponse);
+            }
+          } catch (error: any) {
+            console.error('[handleCrearAuditoria] Error al crear hallazgo:', error);
+            console.error('[handleCrearAuditoria] Datos enviados:', hallazgoData);
+            // Continuar con los demás hallazgos aunque falle uno
+          }
+        }
+
+        console.log(`[handleCrearAuditoria] ${hallazgosCreados} de ${data.hallazgos.length} hallazgos creados`);
+      }
+      
+      toast.success('✅ Auditoría OCIG creada exitosamente', {
+        description: `"${data.titulo}"${data.hallazgos && data.hallazgos.length > 0 ? ` con ${data.hallazgos.length} hallazgo(s)` : ''} ha sido agregada al Plan Anual ${data.planAnualAño || 2025}`
+      });
+      
+      setModalNuevaAuditoriaOpen(false);
+      
+      // Recargar datos si es necesario (puedes agregar una función de recarga aquí)
+      // await cargarAuditorias();
     } catch (error: any) {
       console.error('Error al crear auditoría:', error);
       toast.error('Error al crear auditoría', {
