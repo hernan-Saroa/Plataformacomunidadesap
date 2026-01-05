@@ -25,7 +25,7 @@ export class ActasService {
             expedienteId: expedienteId,
             ...(file && {
                 archivoNombre: file.originalname,
-                archivoUrl: `http://localhost:3008/api/legal/files/${file.filename}`,
+                archivoUrl: `files/${file.filename}`,
                 archivoTamano: file.size,
             })
         });
@@ -41,11 +41,12 @@ export class ActasService {
         return this.actaRepository.save(acta);
     }
 
-    async delete(id: string): Promise<void> {
+    async delete(id: string): Promise<{ success: boolean; message: string }> {
         const acta = await this.actaRepository.findOneBy({ id });
         if (!acta) throw new NotFoundException('Acta no encontrada');
 
         await this.actaRepository.remove(acta);
+        return { success: true, message: 'Acta eliminada correctamente' };
     }
 
     async uploadArchivo(id: string, file: Express.Multer.File): Promise<Acta> {
@@ -53,7 +54,7 @@ export class ActasService {
         if (!acta) throw new NotFoundException('Acta no encontrada');
 
         acta.archivoNombre = file.originalname;
-        acta.archivoUrl = `http://localhost:3008/api/legal/files/${file.filename}`;
+        acta.archivoUrl = `files/${file.filename}`;
         acta.archivoTamano = file.size;
         acta.estado = 'Firmada';
 

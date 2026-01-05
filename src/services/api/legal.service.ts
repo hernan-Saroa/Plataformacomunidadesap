@@ -167,8 +167,8 @@ export class LegalService {
     }
 
     getAutosDownloadUrl(radicado: string): string {
-        const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
-        return `${baseUrl}${SERVICE_PREFIX}${`/autos/expediente/${radicado}/download-zip`}`;
+        const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : MICROSERVICE_URLS.gateway;
+        return `${baseUrl}/legal/autos/expediente/${radicado}/download-zip`;
     }
 
     // Documentos
@@ -288,7 +288,7 @@ export class LegalService {
     }
 
     getDocumentosConsultaDownloadUrl(consultaId: string): string {
-        const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
+        const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : MICROSERVICE_URLS.gateway;
         return `${baseUrl}${`${SERVICE_PREFIX}/consultas-juridicas/${consultaId}/documentos/download-zip`}`;
     }
 
