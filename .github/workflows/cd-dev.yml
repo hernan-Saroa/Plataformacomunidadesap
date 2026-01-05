@@ -2,7 +2,7 @@ name: CD - Deploy to DEV
 
 on:
   push:
-    branches: [ develop ]
+    branches: [ develop, feature/ci-cd-setup ]
   workflow_dispatch:  # Permite ejecución manual
 
 jobs:

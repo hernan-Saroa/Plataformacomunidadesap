@@ -2,7 +2,7 @@ name: CI - Tests & Build
 
 on:
   push:
-    branches: [ develop, qa, main ]
+    branches: [ develop, qa, main, feature/ci-cd-setup ]
   pull_request:
     branches: [ develop, qa, main ]
 
