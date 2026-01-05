@@ -1,6 +1,6 @@
 /**
  * SidebarPremium - Navegación principal del Backoffice ESAP
- * Actualizado: Módulos Aspirantes y Gestión Profesoral eliminados
+ * Actualizado: Módulo de Gestión Profesoral restaurado en v2
  */
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -43,7 +43,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
-type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos';
+type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -91,7 +91,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     dashboard: true,            // Dashboard siempre visible
     'estructura-org': true,     // Estructura Organizacional ABIERTA por defecto
-    'gestion-usuarios': false,  // Gestión Académica CERRADA por defecto
+    'gestion-usuarios': true,  // Gestión Académica ABIERTA por defecto (cambiado de false a true)
     'arquitectura': false,      // Arquitectura Empresarial CERRADA por defecto
   });
   
@@ -1040,6 +1040,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                           badge: certificatesPendingCount > 0 ? certificatesPendingCount.toString() : undefined
                         }
                       ]
+                    )}
+
+                    {/* Gestión Profesoral - PTA */}
+                    {renderMenuItem(
+                      'gestion-profesoral',
+                      <BookOpen className="w-5 h-5" strokeWidth={2} />,
+                      'Gestión Profesoral',
+                      'PTAs y docentes'
                     )}
 
                     {renderMenuItem(

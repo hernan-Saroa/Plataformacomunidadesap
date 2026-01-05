@@ -1,9 +1,15 @@
 /**
  * PTA Context - Estado Global del Plan de Trabajo Académico
  * Maneja toda la lógica de estado y persistencia del PTA
+ * 
+ * ✅ INTEGRADO CON MÓDULO DE PERSONAS
+ * Versión: 2.0.0 - Integración Personas ↔ PTA
+ * Fecha: 2026-01-03
  */
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { personasPTAIntegrationService } from '../services/personasPTAIntegrationService';
+import type { DocentePTA } from '../types/integracion-personas-pta';
 
 // ============================================================================
 // TYPES
@@ -68,13 +74,17 @@ export interface Archivo {
 
 export interface PTAData {
   id: string;
-  docenteId: string;
+  docenteId: string; // Mantener por compatibilidad
+  personId: string; // ✅ NUEVO: ID de la persona en el módulo de Personas
   periodo: string;
   horasBase: number;
   estado: 'Borrador' | 'En Concertación' | 'En Aprobación' | 'Aprobado' | 'En Firme' | 'Rechazado';
   fechaCreacion: string;
   fechaActualizacion: string;
   fechaLimite: string;
+  
+  // ✅ NUEVO: Información del docente desde Personas
+  docenteInfo?: DocentePTA;
   
   // Componentes
   asignaturas: Asignatura[];
@@ -94,8 +104,12 @@ export interface PTAData {
 interface PTAContextType {
   pta: PTAData | null;
   
+  // ✅ NUEVO: Información del docente actual
+  docenteActual: DocentePTA | null;
+  
   // Acciones generales
   inicializarPTA: (docenteId: string, periodo: string, horasBase: number) => void;
+  inicializarPTAConPersonId: (personId: string, periodo: string) => Promise<void>; // ✅ NUEVO
   cargarPTA: (ptaId: string) => Promise<void>;
   guardarPTA: () => Promise<void>;
   
@@ -149,6 +163,7 @@ export function PTAProvider({ children }: { children: ReactNode }) {
   const [pta, setPTA] = useState<PTAData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [docenteActual, setDocenteActual] = useState<DocentePTA | null>(null);
 
   // Guardar en localStorage automáticamente
   useEffect(() => {
@@ -162,6 +177,7 @@ export function PTAProvider({ children }: { children: ReactNode }) {
     const nuevoPTA: PTAData = {
       id: `PTA-${Date.now()}`,
       docenteId,
+      personId: '', // ✅ NUEVO: Inicializar vacío
       periodo,
       horasBase,
       estado: 'Borrador',
@@ -175,6 +191,43 @@ export function PTAProvider({ children }: { children: ReactNode }) {
     };
     
     setPTA(nuevoPTA);
+  };
+
+  // Inicializar PTA con personId
+  const inicializarPTAConPersonId = async (personId: string, periodo: string) => {
+    setIsLoading(true);
+    try {
+      // Obtener información del docente desde Personas
+      const docenteInfo = personasPTAIntegrationService.buscarDocente({ personId });
+      if (!docenteInfo) {
+        throw new Error('No se pudo obtener la información del docente');
+      }
+      
+      const nuevoPTA: PTAData = {
+        id: `PTA-${Date.now()}`,
+        docenteId: docenteInfo.userId, // ID del usuario
+        personId,
+        periodo,
+        horasBase: docenteInfo.horasProgramables,
+        estado: 'Borrador',
+        fechaCreacion: new Date().toISOString(),
+        fechaActualizacion: new Date().toISOString(),
+        fechaLimite: '2025-12-15',
+        docenteInfo, // ✅ Información completa del docente
+        asignaturas: [],
+        actividadesInvestigacion: [],
+        actividadesExtension: [],
+        actividadesComplementarias: []
+      };
+      
+      setPTA(nuevoPTA);
+      setDocenteActual(docenteInfo);
+    } catch (error: any) {
+      console.error('[PTAContext] Error al inicializar PTA:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Cargar PTA existente
@@ -538,7 +591,9 @@ export function PTAProvider({ children }: { children: ReactNode }) {
 
   const value: PTAContextType = {
     pta,
+    docenteActual,
     inicializarPTA,
+    inicializarPTAConPersonId,
     cargarPTA,
     guardarPTA,
     agregarAsignatura,

@@ -102,7 +102,7 @@ export function CreateJobOfferModal({ onClose }: CreateJobOfferModalProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.2 }}
-        className="fixed inset-0 z-[111] flex items-center justify-center p-4"
+        className="fixed inset-0 z-[9998] flex items-center justify-center p-2 sm:p-4"
         style={{
           background: 'rgba(0, 0, 0, 0.5)',
           backdropFilter: 'blur(2px)'
@@ -115,39 +115,39 @@ export function CreateJobOfferModal({ onClose }: CreateJobOfferModalProps) {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ duration: 0.25, type: 'spring', damping: 25 }}
-          className="bg-white rounded-2xl w-full overflow-hidden"
+          className="bg-white rounded-xl sm:rounded-2xl w-full overflow-hidden z-[9999]"
           style={{
-            maxWidth: '800px',
-            maxHeight: '90vh',
+            maxWidth: '900px',
+            maxHeight: '95vh',
             boxShadow: '0 20px 50px rgba(0, 0, 0, 0.3)'
           }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header - Especificaciones Figma */}
           <div 
-            className="px-8 pt-8 pb-6 border-b"
+            className="px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 pb-4 sm:pb-6 border-b"
             style={{
               background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
               borderColor: '#002D7A'
             }}
           >
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
                 <div 
-                  className="w-14 h-14 rounded-xl flex items-center justify-center"
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{
                     background: 'rgba(255, 255, 255, 0.2)',
                     backdropFilter: 'blur(10px)'
                   }}
                 >
-                  <Briefcase className="w-7 h-7 text-white" strokeWidth={2.5} />
+                  <Briefcase className="w-6 h-6 sm:w-7 sm:h-7 text-white" strokeWidth={2.5} />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   {/* H2: 24px Bold según especificaciones */}
                   <h2 
-                    className="font-bold text-white"
+                    className="font-bold text-white truncate"
                     style={{
-                      fontSize: '24px',
+                      fontSize: 'clamp(18px, 5vw, 24px)',
                       lineHeight: '32px',
                       letterSpacing: '0px'
                     }}

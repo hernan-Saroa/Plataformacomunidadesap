@@ -23,8 +23,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Folder, FolderOpen, FileText, Upload, Download, Search, Eye,
   ChevronRight, ChevronDown, Plus, Filter, Calendar, User,
-  Archive, CheckCircle2, AlertCircle, Clock, HelpCircle,
-  Book, Mail, Phone, ExternalLink, File, FolderCheck, FileCheck
+  Archive, CheckCircle2, AlertCircle, Clock,
+  File, FolderCheck, FileCheck
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
@@ -67,7 +67,7 @@ interface Expediente {
   documentos: Documento[];
 }
 
-type VistaActual = 'expedientes' | 'busqueda' | 'estadisticas' | 'soporte';
+type VistaActual = 'expedientes' | 'estadisticas';
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN DE FASES
@@ -212,22 +212,10 @@ export function ExpedientesModulePremium() {
               badge={EXPEDIENTES_MOCK.length.toString()}
             />
             <TabButton
-              active={vistaActiva === 'busqueda'}
-              onClick={() => setVistaActiva('busqueda')}
-              icon={<Search className="w-4 h-4" />}
-              label="Búsqueda Avanzada"
-            />
-            <TabButton
               active={vistaActiva === 'estadisticas'}
               onClick={() => setVistaActiva('estadisticas')}
               icon={<Archive className="w-4 h-4" />}
               label="Estadísticas"
-            />
-            <TabButton
-              active={vistaActiva === 'soporte'}
-              onClick={() => setVistaActiva('soporte')}
-              icon={<HelpCircle className="w-4 h-4" />}
-              label="Soporte"
             />
           </div>
         </div>
@@ -243,9 +231,7 @@ export function ExpedientesModulePremium() {
           transition={{ duration: 0.2 }}
         >
           {vistaActiva === 'expedientes' && <VistaExpedientes />}
-          {vistaActiva === 'busqueda' && <VistaBusqueda />}
           {vistaActiva === 'estadisticas' && <VistaEstadisticas />}
-          {vistaActiva === 'soporte' && <VistaSoporte />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -445,6 +431,8 @@ interface CardExpedienteProps {
 }
 
 function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedienteProps) {
+  const [modalCargar, setModalCargar] = useState(false);
+  
   const estadoConfig = {
     ABIERTO: { bg: 'bg-green-100', text: 'text-green-700', label: 'Abierto' },
     EN_PROCESO: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'En Proceso' },
@@ -471,109 +459,144 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
     return grupos;
   }, [expediente.documentos]);
 
+  const handleCargarDocumento = () => {
+    setModalCargar(true);
+    
+    toast.info('Abrir cargador de documentos', {
+      description: `Expediente ${expediente.codigoAuditoria}`,
+      duration: 2000,
+    });
+
+    console.log('📤 Cargar documento al expediente:', {
+      expedienteId: expediente.id,
+      codigoAuditoria: expediente.codigoAuditoria,
+      nombreAuditoria: expediente.nombreAuditoria,
+      estado: expediente.estado,
+      documentosActuales: expediente.totalDocumentos,
+      timestamp: new Date().toISOString()
+    });
+  };
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
-    >
-      {/* Header del Expediente */}
-      <div className="p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-4 flex-1">
-            <div className="w-12 h-12 bg-gradient-to-br from-[#1e5da8] to-[#2a6dbd] rounded-xl flex items-center justify-center flex-shrink-0">
-              <Folder className="w-6 h-6 text-white" />
-            </div>
-
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <h3 className="text-lg text-gray-900 font-medium">{expediente.codigoAuditoria}</h3>
-                <span className={`px-3 py-1 rounded-lg text-xs font-medium ${config.bg} ${config.text}`}>
-                  {config.label}
-                </span>
+    <>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+      >
+        {/* Header del Expediente */}
+        <div className="p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-4 flex-1">
+              <div className="w-12 h-12 bg-gradient-to-br from-[#1e5da8] to-[#2a6dbd] rounded-xl flex items-center justify-center flex-shrink-0">
+                <Folder className="w-6 h-6 text-white" />
               </div>
 
-              <p className="text-sm text-gray-700 mb-3">{expediente.nombreAuditoria}</p>
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <h3 className="text-lg text-gray-900 font-medium">{expediente.codigoAuditoria}</h3>
+                  <span className={`px-3 py-1 rounded-lg text-xs font-medium ${config.bg} ${config.text}`}>
+                    {config.label}
+                  </span>
+                </div>
 
-              <div className="grid grid-cols-4 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-600">Tipo:</span>
-                  <span className="ml-2 text-gray-900">{expediente.tipoAuditoria}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Responsable:</span>
-                  <span className="ml-2 text-gray-900">{expediente.responsable}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Inicio:</span>
-                  <span className="ml-2 text-gray-900">{expediente.fechaInicio}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Documentos:</span>
-                  <span className="ml-2 text-gray-900 font-medium">{expediente.totalDocumentos}</span>
+                <p className="text-sm text-gray-700 mb-3">{expediente.nombreAuditoria}</p>
+
+                <div className="grid grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">Tipo:</span>
+                    <span className="ml-2 text-gray-900">{expediente.tipoAuditoria}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Responsable:</span>
+                    <span className="ml-2 text-gray-900">{expediente.responsable}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Inicio:</span>
+                    <span className="ml-2 text-gray-900">{expediente.fechaInicio}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Documentos:</span>
+                    <span className="ml-2 text-gray-900 font-medium">{expediente.totalDocumentos}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex gap-2">
-            <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2">
-              <Upload className="w-4 h-4" />
-              Cargar
-            </button>
-            <button
-              onClick={onToggleExpand}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
-            >
-              {expandido ? (
-                <>
-                  <ChevronDown className="w-4 h-4" />
-                  Ocultar Carpetas
-                </>
-              ) : (
-                <>
-                  <ChevronRight className="w-4 h-4" />
-                  Ver Carpetas
-                </>
-              )}
-            </button>
+            <div className="flex gap-2">
+              <button 
+                onClick={handleCargarDocumento}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+              >
+                <Upload className="w-4 h-4" />
+                Cargar
+              </button>
+              <button
+                onClick={onToggleExpand}
+                className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+              >
+                {expandido ? (
+                  <>
+                    <ChevronDown className="w-4 h-4" />
+                    Ocultar Carpetas
+                  </>
+                ) : (
+                  <>
+                    <ChevronRight className="w-4 h-4" />
+                    Ver Carpetas
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Estructura de Carpetas por Fase */}
-      <AnimatePresence>
-        {expandido && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="border-t border-gray-200 bg-gray-50"
-          >
-            <div className="p-6">
-              <h4 className="text-sm font-medium text-gray-900 mb-4">Estructura del Expediente por Fases</h4>
+        {/* Estructura de Carpetas por Fase */}
+        <AnimatePresence>
+          {expandido && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="border-t border-gray-200 bg-gray-50"
+            >
+              <div className="p-6">
+                <h4 className="text-sm font-medium text-gray-900 mb-4">Estructura del Expediente por Fases</h4>
 
-              <div className="space-y-3">
-                {FASES_AUDITORIA.map((fase) => {
-                  const docs = documentosPorFase[fase.id];
-                  const Icon = fase.icon;
+                <div className="space-y-3">
+                  {FASES_AUDITORIA.map((fase) => {
+                    const docs = documentosPorFase[fase.id];
+                    const Icon = fase.icon;
 
-                  return (
-                    <CarpetaFase
-                      key={fase.id}
-                      fase={fase}
-                      documentos={docs}
-                      icon={<Icon className="w-5 h-5" />}
-                    />
-                  );
-                })}
+                    return (
+                      <CarpetaFase
+                        key={fase.id}
+                        fase={fase}
+                        documentos={docs}
+                        icon={<Icon className="w-5 h-5" />}
+                      />
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* Modal Cargar Documento */}
+      {modalCargar && (
+        <ModalCargarDocumento
+          expediente={expediente}
+          onClose={() => setModalCargar(false)}
+          onCargar={() => {
+            setModalCargar(false);
+            toast.success('Documento cargado exitosamente');
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -589,6 +612,7 @@ interface CarpetaFaseProps {
 
 function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
   const [expandido, setExpandido] = useState(false);
+  const [documentoVisualizando, setDocumentoVisualizando] = useState<Documento | null>(null);
 
   const colorClasses = {
     blue: 'bg-blue-50 border-blue-200 text-blue-700',
@@ -601,134 +625,149 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
 
   const colorClass = colorClasses[fase.color as keyof typeof colorClasses];
 
+  const handleVerDocumento = (doc: Documento) => {
+    setDocumentoVisualizando(doc);
+    
+    toast.info('Visualizar documento', {
+      description: doc.nombre,
+      duration: 2000,
+    });
+
+    console.log('👁️ Ver documento:', {
+      documentoId: doc.id,
+      nombre: doc.nombre,
+      tipo: doc.tipo,
+      tamanio: doc.tamanio,
+      fase: doc.fase,
+      faseNombre: fase.nombre,
+      autor: doc.autor,
+      fechaCreacion: doc.fechaCreacion,
+      accion: 'visualizar',
+      timestamp: new Date().toISOString()
+    });
+
+    // En producción: abrir visor de documentos o nueva pestaña
+    // window.open(`/api/expedientes/documentos/${doc.id}/preview`, '_blank');
+  };
+
+  const handleDescargarDocumento = (doc: Documento, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    toast.success('Descargando documento', {
+      description: `${doc.nombre} (${doc.tamanio})`,
+      duration: 3000,
+    });
+
+    console.log('⬇️ Descargar documento:', {
+      documentoId: doc.id,
+      nombre: doc.nombre,
+      tipo: doc.tipo,
+      tamanio: doc.tamanio,
+      fase: doc.fase,
+      faseNombre: fase.nombre,
+      autor: doc.autor,
+      fechaCreacion: doc.fechaCreacion,
+      accion: 'descargar',
+      urlDescarga: `/api/expedientes/documentos/${doc.id}/download`,
+      timestamp: new Date().toISOString()
+    });
+
+    // En producción: iniciar descarga real del documento
+    // const link = document.createElement('a');
+    // link.href = `/api/expedientes/documentos/${doc.id}/download`;
+    // link.download = doc.nombre;
+    // link.click();
+  };
+
   return (
-    <div className={`rounded-lg border ${colorClass}`}>
-      <button
-        onClick={() => setExpandido(!expandido)}
-        className="w-full p-4 flex items-center justify-between hover:bg-opacity-70 transition-all"
-      >
-        <div className="flex items-center gap-3">
-          {expandido ? <FolderOpen className="w-5 h-5" /> : <Folder className="w-5 h-5" />}
-          <div className="text-left">
-            <div className="font-medium text-sm">{fase.nombre}</div>
-            <div className="text-xs opacity-80">{fase.descripcion}</div>
+    <>
+      <div className={`rounded-lg border ${colorClass}`}>
+        <button
+          onClick={() => setExpandido(!expandido)}
+          className="w-full p-4 flex items-center justify-between hover:bg-opacity-70 transition-all"
+        >
+          <div className="flex items-center gap-3">
+            {expandido ? <FolderOpen className="w-5 h-5" /> : <Folder className="w-5 h-5" />}
+            <div className="text-left">
+              <div className="font-medium text-sm">{fase.nombre}</div>
+              <div className="text-xs opacity-80">{fase.descripcion}</div>
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-medium px-2 py-1 bg-white bg-opacity-60 rounded">
-            {documentos.length} documentos
-          </span>
-          {expandido ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        </div>
-      </button>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium px-2 py-1 bg-white bg-opacity-60 rounded">
+              {documentos.length} documentos
+            </span>
+            {expandido ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </div>
+        </button>
 
-      <AnimatePresence>
-        {expandido && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="border-t border-current border-opacity-20"
-          >
-            <div className="p-4 bg-white bg-opacity-50">
-              {documentos.length === 0 ? (
-                <div className="text-center py-8 text-sm opacity-60">
-                  <File className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                  No hay documentos en esta fase
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {documentos.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 hover:shadow-sm transition-shadow"
-                    >
-                      <div className="flex items-center gap-3 flex-1">
-                        <FileText className="w-4 h-4 text-gray-400" />
-                        <div className="flex-1">
-                          <div className="text-sm text-gray-900">{doc.nombre}</div>
-                          <div className="text-xs text-gray-600">
-                            {doc.tamanio} • {doc.fechaCreacion} • {doc.autor}
+        <AnimatePresence>
+          {expandido && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="border-t border-current border-opacity-20"
+            >
+              <div className="p-4 bg-white bg-opacity-50">
+                {documentos.length === 0 ? (
+                  <div className="text-center py-8 text-sm opacity-60">
+                    <File className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    No hay documentos en esta fase
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {documentos.map((doc) => (
+                      <div
+                        key={doc.id}
+                        className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 hover:shadow-sm transition-shadow"
+                      >
+                        <div className="flex items-center gap-3 flex-1">
+                          <FileText className="w-4 h-4 text-gray-400" />
+                          <div className="flex-1">
+                            <div className="text-sm text-gray-900">{doc.nombre}</div>
+                            <div className="text-xs text-gray-600">
+                              {doc.tamanio} • {doc.fechaCreacion} • {doc.autor}
+                            </div>
                           </div>
                         </div>
+
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => handleVerDocumento(doc)}
+                            className="p-2 text-gray-600 hover:text-[#1e5da8] hover:bg-blue-50 rounded transition-colors"
+                            title="Ver documento"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={(e) => handleDescargarDocumento(doc, e)}
+                            className="p-2 text-gray-600 hover:text-[#1e5da8] hover:bg-blue-50 rounded transition-colors"
+                            title="Descargar documento"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-
-                      <div className="flex gap-2">
-                        <button className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors">
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors">
-                          <Download className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// VISTA: BÚSQUEDA AVANZADA
-// ════════════════════════════════════════════════════════════════════════════
-
-function VistaBusqueda() {
-  return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-        <h2 className="text-xl text-gray-900 font-medium mb-6">Búsqueda Avanzada de Documentos</h2>
-
-        <div className="space-y-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Código de Auditoría</label>
-            <input
-              type="text"
-              placeholder="Ej: AU-2025-001"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Fase</label>
-              <select className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]">
-                <option>Todas las fases</option>
-                {FASES_AUDITORIA.map(fase => (
-                  <option key={fase.id} value={fase.id}>{fase.nombre}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Fecha Desde</label>
-              <input
-                type="date"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Fecha Hasta</label>
-              <input
-                type="date"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
-              />
-            </div>
-          </div>
-        </div>
-
-        <button className="px-6 py-2.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2">
-          <Search className="w-4 h-4" />
-          Buscar en Expedientes
-        </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-    </div>
+
+      {/* Modal Ver Documento */}
+      {documentoVisualizando && (
+        <ModalVerDocumento
+          documento={documentoVisualizando}
+          fase={fase}
+          onClose={() => setDocumentoVisualizando(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -803,54 +842,6 @@ function VistaEstadisticas() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// VISTA: SOPORTE
-// ════════════════════════════════════════════════════════════════════════════
-
-function VistaSoporte() {
-  return (
-    <div className="mx-auto px-8 py-8 max-w-[1800px]">
-      <div className="grid grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200">
-          <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Book className="w-7 h-7 text-[#1e5da8]" />
-          </div>
-          <h3 className="text-base text-gray-900 mb-2 font-medium">Documentación</h3>
-          <p className="text-sm text-gray-600 mb-4">Manual de expedientes</p>
-          <button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2">
-            <Download className="w-4 h-4" />
-            Descargar
-          </button>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200">
-          <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Mail className="w-7 h-7 text-[#1e5da8]" />
-          </div>
-          <h3 className="text-base text-gray-900 mb-2 font-medium">Correo</h3>
-          <p className="text-sm text-gray-600 mb-4">controlinterno@esap.edu.co</p>
-          <button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2">
-            <ExternalLink className="w-4 h-4" />
-            Contactar
-          </button>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200">
-          <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Phone className="w-7 h-7 text-[#1e5da8]" />
-          </div>
-          <h3 className="text-base text-gray-900 mb-2 font-medium">Teléfono</h3>
-          <p className="text-sm text-gray-600 mb-4">Ext. 2450 - 2451</p>
-          <button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2">
-            <Phone className="w-4 h-4" />
-            Llamar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
 // COMPONENTES AUXILIARES
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -876,5 +867,289 @@ function FilterButton({ active, onClick, label, count, color = 'gray' }: FilterB
     >
       {label} ({count})
     </button>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: CARGAR DOCUMENTO
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalCargarDocumentoProps {
+  expediente: Expediente;
+  onClose: () => void;
+  onCargar: () => void;
+}
+
+function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocumentoProps) {
+  const [fase, setFase] = useState<FaseAuditoria>('PLANIFICACION');
+  const [nombreDocumento, setNombreDocumento] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+
+  const handleCargar = () => {
+    // Validaciones
+    if (!nombreDocumento.trim()) {
+      toast.error('El nombre del documento es obligatorio');
+      return;
+    }
+
+    // Simular carga del documento
+    toast.success('Documento Cargado Exitosamente', {
+      description: `${nombreDocumento} agregado a ${FASES_AUDITORIA.find(f => f.id === fase)?.nombre}`,
+      duration: 4000,
+    });
+
+    console.log('📤 Cargar documento al expediente:', {
+      expedienteId: expediente.id,
+      codigoAuditoria: expediente.codigoAuditoria,
+      nombreAuditoria: expediente.nombreAuditoria,
+      documento: {
+        nombre: nombreDocumento,
+        fase: fase,
+        faseNombre: FASES_AUDITORIA.find(f => f.id === fase)?.nombre,
+        descripcion,
+        fechaCarga: new Date().toISOString(),
+        usuario: expediente.responsable
+      },
+      timestamp: new Date().toISOString()
+    });
+
+    // En producción: llamar al backend para cargar el documento
+    // POST /api/expedientes/${expediente.id}/documentos
+    // FormData con archivo + metadatos
+
+    onCargar();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl z-10">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <h3 className="text-xl font-medium">Cargar Documento al Expediente</h3>
+          <p className="text-sm text-blue-100 mt-1">{expediente.codigoAuditoria} - {expediente.nombreAuditoria}</p>
+        </div>
+
+        {/* Contenido */}
+        <div className="px-6 py-6">
+          <div className="space-y-4">
+            {/* Información del Expediente */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-4 text-sm">
+                <div>
+                  <span className="text-blue-700 font-medium">Expediente:</span>
+                  <span className="ml-2 text-blue-900">{expediente.codigoAuditoria}</span>
+                </div>
+                <span className="text-blue-400">•</span>
+                <div>
+                  <span className="text-blue-700 font-medium">Estado:</span>
+                  <span className="ml-2 text-blue-900">{expediente.estado}</span>
+                </div>
+                <span className="text-blue-400">•</span>
+                <div>
+                  <span className="text-blue-700 font-medium">Docs actuales:</span>
+                  <span className="ml-2 text-blue-900 font-semibold">{expediente.totalDocumentos}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Selección de Fase */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Fase del Proceso <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={fase}
+                onChange={(e) => setFase(e.target.value as FaseAuditoria)}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+              >
+                {FASES_AUDITORIA.map(f => (
+                  <option key={f.id} value={f.id}>
+                    {f.nombre} - {f.descripcion}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Selecciona la fase a la que pertenece este documento
+              </p>
+            </div>
+
+            {/* Nombre del Documento */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nombre del Documento <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={nombreDocumento}
+                onChange={(e) => setNombreDocumento(e.target.value)}
+                placeholder="Ej: Programa de Auditoría AU-2025-001.pdf"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+              />
+            </div>
+
+            {/* Descripción */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Descripción / Notas
+              </label>
+              <textarea
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Información adicional sobre este documento (opcional)"
+              />
+            </div>
+
+            {/* Selector de Archivo (simulado) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Archivo
+              </label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#1e5da8] transition-colors cursor-pointer">
+                <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-600 mb-1">
+                  Haz clic para seleccionar o arrastra el archivo aquí
+                </p>
+                <p className="text-xs text-gray-500">
+                  PDF, DOCX, XLSX, hasta 50MB
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleCargar}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              Cargar Documento
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: VER DOCUMENTO
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalVerDocumentoProps {
+  documento: Documento;
+  fase: typeof FASES_AUDITORIA[0];
+  onClose: () => void;
+}
+
+function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps) {
+  return (
+    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-2xl z-10">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <h3 className="text-xl font-medium">Vista Previa del Documento</h3>
+          <p className="text-sm text-blue-100 mt-1">{documento.nombre}</p>
+        </div>
+
+        {/* Contenido */}
+        <div className="px-6 py-6">
+          <div className="space-y-4">
+            {/* Información del Documento */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="text-xs text-blue-700 mb-1">Fase del Proceso</div>
+                <div className="text-sm text-blue-900 font-medium">{fase.nombre}</div>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="text-xs text-blue-700 mb-1">Tipo de Documento</div>
+                <div className="text-sm text-blue-900 font-medium">{documento.tipo}</div>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="text-xs text-blue-700 mb-1">Tamaño</div>
+                <div className="text-sm text-blue-900 font-medium">{documento.tamanio}</div>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="text-xs text-blue-700 mb-1">Fecha de Creación</div>
+                <div className="text-sm text-blue-900 font-medium">{documento.fechaCreacion}</div>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 col-span-2">
+                <div className="text-xs text-blue-700 mb-1">Autor</div>
+                <div className="text-sm text-blue-900 font-medium">{documento.autor}</div>
+              </div>
+            </div>
+
+            {/* Simulación de Vista Previa */}
+            <div className="border-2 border-gray-200 rounded-lg bg-gray-50 p-12 text-center min-h-[400px] flex flex-col items-center justify-center">
+              <FileText className="w-20 h-20 text-gray-400 mb-4" />
+              <h4 className="text-lg text-gray-900 font-medium mb-2">Vista Previa del Documento</h4>
+              <p className="text-sm text-gray-600 mb-4 max-w-md">
+                En producción, aquí se mostrará el visor de documentos integrado para visualizar PDFs, Word, Excel, etc.
+              </p>
+              <div className="bg-white border border-gray-200 rounded-lg p-4 text-left max-w-md">
+                <p className="text-xs text-gray-600 mb-2">Endpoint de integración:</p>
+                <code className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">
+                  GET /api/expedientes/documentos/{documento.id}/preview
+                </code>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-between items-center">
+            <div className="text-xs text-gray-600">
+              ID: {documento.id}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  toast.success('Descargando documento', {
+                    description: `${documento.nombre} (${documento.tamanio})`,
+                    duration: 3000,
+                  });
+                  console.log('⬇️ Descargar desde modal:', {
+                    documentoId: documento.id,
+                    nombre: documento.nombre,
+                    timestamp: new Date().toISOString()
+                  });
+                }}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Descargar
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

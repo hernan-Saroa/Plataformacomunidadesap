@@ -3,17 +3,10 @@ import {
   Shield,
   LayoutDashboard,
   ClipboardList,
-  Target,
   AlertTriangle,
   FolderOpen,
   Settings,
-  Sliders,
   FileText,
-  Bell,
-  Users,
-  BarChart3,
-  Zap,
-  Activity,
 } from "lucide-react";
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
@@ -25,10 +18,9 @@ import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";
 import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  // RF001-004
 // ELIMINADO: ProcesoAuditoriaModuleRediseno - Integrado en Expediente del Kanban (RF005-009)
 import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRediseno";  // RF010-011
-import { InformesLeyModulePremium } from "./InformesLeyModulePremium";  // RF012 - VERSIÓN PREMIUM
-import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - VERSIÓN PREMIUM - EXPEDIENTES
-import { RolesYPermisosModulePremium } from "./RolesYPermisosModulePremium";  // RF015 - VERSIÓN PREMIUM
-import { AuditoriasEspecialesModuleCompleto } from "./AuditoriasEspecialesModuleCompleto";  // RF018 - MÓDULO INDEPENDIENTE
+import { InformesLeyModulePremium } from "./InformesLeyModulePremium";  // RF012 - MÓDULO INDEPENDIENTE
+import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
+import { RolesYPermisosModulePremium } from "./RolesYPermisosModulePremium";  // RF015 - MÓDULO INDEPENDIENTE
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
 
 type SeccionActiva =
@@ -38,7 +30,6 @@ type SeccionActiva =
   | "informes-ley"                   // RF012 - MÓDULO INDEPENDIENTE
   | "expedientes"                    // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
   | "roles-permisos"                 // RF015 - MÓDULO INDEPENDIENTE
-  | "auditorias-especiales"          // RF018 - MÓDULO INDEPENDIENTE
   | "config-auditorias";             // RF019-B - Config Auditorías (Tipos + Listas)
 
 export function ControlInternoFull() {
@@ -134,16 +125,7 @@ function ControlInternoContent({
       color: "#DC2626", // Rojo - Seguridad
     },
     
-    // ━━━━━━━━━━━ 7. AUDITORÍAS ESPECIALES (RF018) ━━━━━━━━━━━
-    {
-      id: "auditorias-especiales",
-      label: "Auditorías Especiales",
-      subtitle: "No Programadas • Extraordinarias",
-      icon: <Zap className="w-5 h-5" />,
-      color: "#EA580C", // Naranja - Especiales
-    },
-    
-    // ━━━━━━━━━━━ 8. CONFIGURACIONES ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 7. CONFIGURACIONES ━━━━━━━━━━━
     {
       id: "config-auditorias",
       label: "Configuraciones",
@@ -172,9 +154,6 @@ function ControlInternoContent({
       
       case "roles-permisos":
         return <RolesYPermisosModulePremium />;
-      
-      case "auditorias-especiales":
-        return <AuditoriasEspecialesModuleCompleto />;
       
       case "config-auditorias":
         return <ConfiguracionesModulePremium />;
