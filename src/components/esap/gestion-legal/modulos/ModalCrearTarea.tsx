@@ -27,15 +27,25 @@ interface ModalCrearTareaProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  tareaInicial?: any;
+  onGuardar?: (tarea: any) => void;
+  modoEdicion?: boolean;
 }
 
-export function ModalCrearTarea({ isOpen, onClose, expediente }: ModalCrearTareaProps) {
-  const [titulo, setTitulo] = useState('');
-  const [descripcion, setDescripcion] = useState('');
-  const [fechaVencimiento, setFechaVencimiento] = useState('');
-  const [prioridad, setPrioridad] = useState<'Alta' | 'Media' | 'Baja'>('Media');
-  const [responsableSeleccionado, setResponsableSeleccionado] = useState('');
-  const [estado, setEstado] = useState<'Pendiente' | 'En proceso' | 'Completada'>('Pendiente');
+export function ModalCrearTarea({ 
+  isOpen, 
+  onClose, 
+  expediente, 
+  tareaInicial, 
+  onGuardar,
+  modoEdicion = false 
+}: ModalCrearTareaProps) {
+  const [titulo, setTitulo] = useState(tareaInicial?.titulo || '');
+  const [descripcion, setDescripcion] = useState(tareaInicial?.descripcion || '');
+  const [fechaVencimiento, setFechaVencimiento] = useState(tareaInicial?.vencimiento || '');
+  const [prioridad, setPrioridad] = useState<'Alta' | 'Media' | 'Baja'>(tareaInicial?.prioridad || 'Media');
+  const [responsableSeleccionado, setResponsableSeleccionado] = useState(tareaInicial?.responsable || '');
+  const [estado, setEstado] = useState<'Pendiente' | 'En proceso' | 'Completado'>(tareaInicial?.estado || 'Pendiente');
   const [enviandoTarea, setEnviandoTarea] = useState(false);
 
   // Usuarios disponibles para asignar
@@ -100,27 +110,49 @@ export function ModalCrearTarea({ isOpen, onClose, expediente }: ModalCrearTarea
       return;
     }
 
-    // Simular creación
+    // Simular creación o edición
     setEnviandoTarea(true);
 
     setTimeout(() => {
-      const responsable = usuariosDisponibles.find(u => u.id === responsableSeleccionado);
+      const responsable = usuariosDisponibles.find(u => u.id === responsableSeleccionado) || 
+                         usuariosDisponibles.find(u => u.nombre === responsableSeleccionado);
       
-      toast.success('✅ Tarea creada exitosamente', {
-        description: `Se asignó a ${responsable?.nombre}`,
-        duration: 4000
-      });
+      const diasCalc = calcularDiasRestantes(fechaVencimiento);
+      
+      const tareaData = {
+        id: tareaInicial?.id || Date.now(),
+        titulo: titulo.trim(),
+        descripcion: descripcion.trim(),
+        vencimiento: fechaVencimiento,
+        diasRestantes: diasCalc || 0,
+        prioridad,
+        responsable: responsable?.nombre || responsableSeleccionado,
+        estado
+      };
 
-      // Limpiar formulario
-      setTitulo('');
-      setDescripcion('');
-      setFechaVencimiento('');
-      setPrioridad('Media');
-      setResponsableSeleccionado('');
-      setEstado('Pendiente');
+      if (modoEdicion && onGuardar) {
+        // Modo edición
+        onGuardar(tareaData);
+      } else {
+        // Modo creación
+        toast.success('✅ Tarea creada exitosamente', {
+          description: `Se asignó a ${responsable?.nombre || responsableSeleccionado}`,
+          duration: 4000
+        });
+
+        // Limpiar formulario
+        setTitulo('');
+        setDescripcion('');
+        setFechaVencimiento('');
+        setPrioridad('Media');
+        setResponsableSeleccionado('');
+        setEstado('Pendiente');
+        setEnviandoTarea(false);
+        
+        onClose();
+      }
+
       setEnviandoTarea(false);
-      
-      onClose();
     }, 1500);
   };
 
@@ -148,18 +180,18 @@ export function ModalCrearTarea({ isOpen, onClose, expediente }: ModalCrearTarea
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
-          Crear Nueva Tarea - Expediente {expediente.id}
+          {modoEdicion ? 'Editar Tarea' : 'Crear Nueva Tarea'} - Expediente {expediente.id}
         </DialogTitle>
         <DialogDescription className="sr-only">
-          Formulario para crear una nueva tarea asociada al expediente {expediente.id}
+          Formulario para {modoEdicion ? 'editar la tarea' : 'crear una nueva tarea'} asociada al expediente {expediente.id}
         </DialogDescription>
 
         {/* ==================== HEADER LIMPIO Y USABLE ==================== */}
         <ModalHeaderClean
-          titulo="Crear Nueva Tarea"
-          subtitulo={`Asignar tarea al expediente ${expediente.id}`}
+          titulo={modoEdicion ? 'Editar Tarea' : 'Crear Nueva Tarea'}
+          subtitulo={`${modoEdicion ? 'Modificar' : 'Asignar'} tarea al expediente ${expediente.id}`}
           icono={Target}
-          colorIcono="green"
+          colorIcono={modoEdicion ? 'orange' : 'green'}
           badgePrincipal={expediente.etapa}
           onClose={onClose}
         />
@@ -296,6 +328,41 @@ export function ModalCrearTarea({ isOpen, onClose, expediente }: ModalCrearTarea
             </div>
           </div>
 
+          {/* Estado (solo en modo edición) */}
+          {modoEdicion && (
+            <div>
+              <Label className="text-sm font-bold text-gray-700 mb-2 block">
+                📊 Estado de la tarea
+              </Label>
+              <div className="flex gap-2">
+                {(['Pendiente', 'En proceso', 'Completado'] as const).map((estadoOpcion) => (
+                  <Button
+                    key={estadoOpcion}
+                    type="button"
+                    variant={estado === estadoOpcion ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setEstado(estadoOpcion)}
+                    className="flex-1 font-bold text-xs"
+                    style={
+                      estado === estadoOpcion
+                        ? {
+                            background: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
+                            color: '#FFFFFF'
+                          }
+                        : {
+                            borderColor: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
+                            color: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B'
+                          }
+                    }
+                  >
+                    <CheckCircle className="w-3 h-3 mr-1" />
+                    {estadoOpcion}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Estado */}
           <div>
             <Label className="text-sm font-bold text-gray-700 mb-2 block">
@@ -393,17 +460,17 @@ export function ModalCrearTarea({ isOpen, onClose, expediente }: ModalCrearTarea
               onClick={handleCrear}
               disabled={enviandoTarea}
               className="font-bold text-white"
-              style={{ background: '#2962FF' }}
+              style={{ background: modoEdicion ? '#F57C00' : '#2962FF' }}
             >
               {enviandoTarea ? (
                 <>
                   <div className="w-4 h-4 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Creando...
+                  {modoEdicion ? 'Guardando...' : 'Creando...'}
                 </>
               ) : (
                 <>
-                  <Plus className="w-4 h-4 mr-1.5" />
-                  Crear Tarea
+                  <CheckCircle className="w-4 h-4 mr-1.5" />
+                  {modoEdicion ? 'Guardar Cambios' : 'Crear Tarea'}
                 </>
               )}
             </Button>

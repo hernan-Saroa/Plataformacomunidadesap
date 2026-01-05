@@ -164,23 +164,27 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[95vh] p-0 gap-0 overflow-hidden">
-        <DialogHeader className="sr-only">
-          <DialogTitle>Nueva Comunicación</DialogTitle>
-          <DialogDescription>Registrar nueva comunicación jurídica</DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+        <DialogTitle className="sr-only">Nueva Comunicación</DialogTitle>
+        <DialogDescription className="sr-only">
+          Registrar nueva comunicación jurídica
+        </DialogDescription>
 
-        {/* HEADER LIMPIO ESAP 2025 */}
+        {/* HEADER - flex-shrink-0 (siempre visible) */}
         <ModalHeaderClean
           icono={getTipoIcon()}
           titulo="Nueva Comunicación"
           subtitulo="Registrar comunicación jurídica entrante"
           colorIcono="blue"
+          badges={[
+            { texto: 'Clasificación IA Habilitada', color: 'azul' },
+            ...(formData.urgente ? [{ texto: '🔴 Urgente', color: 'rojo' as const }] : [])
+          ]}
           onClose={onClose}
         />
 
-        {/* CONTENIDO */}
-        <div className="p-6 overflow-y-auto flex-1" style={{ maxHeight: 'calc(95vh - 200px)' }}>
+        {/* CONTENIDO - flex-1 overflow-y-auto (solo esto hace scroll) */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Tipo de Comunicación */}
             <Card className="p-4 bg-blue-50 border-blue-200">
@@ -201,10 +205,10 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
                     value={formData.tipo}
                     onValueChange={(value) => setFormData({ ...formData, tipo: value as TipoComunicacion })}
                   >
-                    <SelectTrigger id="tipo">
-                      <SelectValue />
+                    <SelectTrigger id="tipo" className="bg-white">
+                      <SelectValue placeholder="Seleccione tipo de comunicación" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[100000]">
                       <SelectItem value="JUDICIAL">⚖️ Judicial (Juzgados)</SelectItem>
                       <SelectItem value="CORREO">📧 Correo Electrónico</SelectItem>
                       <SelectItem value="OFICIO">📄 Oficio Interno</SelectItem>
@@ -221,15 +225,18 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
                       value={formData.tipoProceso}
                       onValueChange={(value) => setFormData({ ...formData, tipoProceso: value })}
                     >
-                      <SelectTrigger id="tipoProceso">
-                        <SelectValue placeholder="Seleccione..." />
+                      <SelectTrigger id="tipoProceso" className="bg-white">
+                        <SelectValue placeholder="Seleccione tipo de proceso..." />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Acción Popular">Acción Popular</SelectItem>
-                        <SelectItem value="NRD">Nulidad y Restablecimiento</SelectItem>
-                        <SelectItem value="Laboral">Laboral</SelectItem>
-                        <SelectItem value="Tutela">Tutela</SelectItem>
-                        <SelectItem value="Otro">Otro</SelectItem>
+                      <SelectContent className="z-[100000]">
+                        <SelectItem value="Acción Popular">⚖️ Acción Popular</SelectItem>
+                        <SelectItem value="NRD">📋 Nulidad y Restablecimiento del Derecho</SelectItem>
+                        <SelectItem value="Laboral">💼 Laboral</SelectItem>
+                        <SelectItem value="Tutela">🛡️ Tutela</SelectItem>
+                        <SelectItem value="Ejecutivo">💰 Ejecutivo</SelectItem>
+                        <SelectItem value="Penal">⚖️ Penal</SelectItem>
+                        <SelectItem value="Civil">📝 Civil</SelectItem>
+                        <SelectItem value="Otro">📂 Otro</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -406,39 +413,43 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
                 </div>
               </div>
             </Card>
-
-            {/* Botones de acción */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleCancel}
-                disabled={enviando}
-                className="gap-2"
-              >
-                <X className="w-4 h-4" />
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={enviando}
-                className="gap-2"
-                style={{ background: '#2962FF', color: '#FFFFFF' }}
-              >
-                {enviando ? (
-                  <>
-                    <Calendar className="w-4 h-4 animate-spin" />
-                    Registrando...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    Registrar Comunicación
-                  </>
-                )}
-              </Button>
-            </div>
           </form>
+        </div>
+
+        {/* FOOTER - flex-shrink-0 (siempre visible) */}
+        <div className="flex-shrink-0 px-6 py-4 bg-white border-t border-gray-200 flex items-center justify-between">
+          <p className="text-xs text-gray-600">
+            Los campos marcados con <span className="text-red-500 font-bold">*</span> son obligatorios
+          </p>
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              disabled={enviando}
+            >
+              <X className="w-4 h-4 mr-2" />
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={enviando}
+              style={{ background: '#2962FF', color: '#FFFFFF' }}
+            >
+              {enviando ? (
+                <>
+                  <Calendar className="w-4 h-4 mr-2 animate-spin" />
+                  Registrando...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Registrar Comunicación
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

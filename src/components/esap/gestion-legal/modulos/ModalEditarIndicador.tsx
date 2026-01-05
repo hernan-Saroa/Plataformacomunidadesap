@@ -114,7 +114,7 @@ export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: 
   if (!isOpen || !indicador) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm overflow-y-auto">
+    <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm overflow-y-auto">
       <div className="min-h-screen md:min-h-0 flex items-start md:items-center justify-center p-0 md:p-4 md:py-8">
         <div className="bg-white rounded-none md:rounded-2xl shadow-2xl w-full md:max-w-3xl md:max-h-[90vh] overflow-hidden flex flex-col my-0 md:my-4">
           {/* Header con ModalHeaderClean */}
