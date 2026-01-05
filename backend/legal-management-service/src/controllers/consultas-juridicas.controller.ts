@@ -90,7 +90,7 @@ export class ConsultasJuridicasController {
         const respuestaData = {
             numeroOficioRespuesta: body.numeroOficioRespuesta,
             tipoRespuesta: body.tipoRespuesta,
-            documentoRespuestaUrl: file ? `http://localhost:3008/legal/files/${file.filename}` : null,
+            documentoRespuestaUrl: file ? `files/${file.filename}` : null,
             observaciones: body.observaciones
         };
 

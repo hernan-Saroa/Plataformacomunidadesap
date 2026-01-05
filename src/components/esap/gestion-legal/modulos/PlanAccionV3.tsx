@@ -23,7 +23,6 @@ import { ModalDetalleIndicador } from './pei/ModalDetalleIndicador';
 import axios from 'axios';
 import { buildApiUrl } from '../../../../config/environment';
 
-// const API_URL = 'http://localhost:3008/api/legal/pei';
 const API_URL = buildApiUrl('legal', '/pei');
 
 export function ModuloPlanAccionV3() {

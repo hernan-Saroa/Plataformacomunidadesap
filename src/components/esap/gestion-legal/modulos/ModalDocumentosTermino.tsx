@@ -4,6 +4,7 @@ import { Button } from '../../../ui/button';
 import { FileText, Download, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { getServiceUrl } from '../../../../config/environment';
 
 interface ModalDocumentosTerminoProps {
     open: boolean;
@@ -25,7 +26,8 @@ export function ModalDocumentosTermino({ open, onOpenChange, terminoId, radicado
     const fetchDocs = async (id: string) => {
         setLoading(true);
         try {
-            const res = await fetch(`http://localhost:3008/api/legal/terminos/${id}/documentos`);
+            const baseUrl = getServiceUrl('legal');
+            const res = await fetch(`${baseUrl}/legal/terminos/${id}/documentos`);
             if (res.ok) {
                 const data = await res.json();
                 setDocumentos(data);
