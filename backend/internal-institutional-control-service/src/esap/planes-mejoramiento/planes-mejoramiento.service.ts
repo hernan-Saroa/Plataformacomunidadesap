@@ -294,12 +294,42 @@ export class PlanesMejoramientoService {
     const codigo = await this.generarCodigo();
 
     // Resolver hallazgo
-    let hallazgoId: string | null = createDto.hallazgoId || null;
-    if (!hallazgoId && createDto.hallazgoCodigo) {
+    let hallazgoId: string | null = null;
+    
+    if (createDto.hallazgoId) {
+      // Verificar si es un UUID válido
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isUUID = uuidRegex.test(createDto.hallazgoId);
+      
+      if (isUUID) {
+        // Si es un UUID, usarlo directamente
+        hallazgoId = createDto.hallazgoId;
+        console.log(`[PlanesMejoramientoService] HallazgoId es UUID, usando directamente: ${hallazgoId}`);
+      } else {
+        // Si no es un UUID, buscar el hallazgo por código
+        console.log(`[PlanesMejoramientoService] Buscando hallazgo por código: "${createDto.hallazgoId}"`);
+        const hallazgo = await this.hallazgoRepository.findOne({
+          where: { codigo: createDto.hallazgoId },
+        });
+        if (hallazgo) {
+          hallazgoId = hallazgo.id;
+          console.log(`[PlanesMejoramientoService] Hallazgo encontrado: ${hallazgo.id} (código: ${hallazgo.codigo})`);
+        } else {
+          console.warn(`[PlanesMejoramientoService] No se encontró hallazgo con código: "${createDto.hallazgoId}"`);
+        }
+      }
+    } else if (createDto.hallazgoCodigo) {
+      // Si se proporciona hallazgoCodigo, buscar por código
+      console.log(`[PlanesMejoramientoService] Buscando hallazgo por código (hallazgoCodigo): "${createDto.hallazgoCodigo}"`);
       const hallazgo = await this.hallazgoRepository.findOne({
         where: { codigo: createDto.hallazgoCodigo },
       });
-      hallazgoId = hallazgo?.id ?? null;
+      if (hallazgo) {
+        hallazgoId = hallazgo.id;
+        console.log(`[PlanesMejoramientoService] Hallazgo encontrado: ${hallazgo.id} (código: ${hallazgo.codigo})`);
+      } else {
+        console.warn(`[PlanesMejoramientoService] No se encontró hallazgo con código: "${createDto.hallazgoCodigo}"`);
+      }
     }
 
     // Resolver auditoría
@@ -376,16 +406,44 @@ export class PlanesMejoramientoService {
 
     // Actualizar hallazgoId si se proporciona
     if (updateDto.hallazgoId !== undefined) {
-      plan.hallazgoId = updateDto.hallazgoId;
+      // Verificar si es un UUID válido
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isUUID = uuidRegex.test(updateDto.hallazgoId);
+      
+      let resolvedHallazgoId: string | null = null;
+      
+      if (isUUID) {
+        // Si es un UUID, usarlo directamente
+        resolvedHallazgoId = updateDto.hallazgoId;
+      } else {
+        // Si no es un UUID, buscar el hallazgo por código
+        const hallazgo = await this.hallazgoRepository.findOne({
+          where: { codigo: updateDto.hallazgoId },
+        });
+        resolvedHallazgoId = hallazgo?.id ?? null;
+      }
+      
+      plan.hallazgoId = resolvedHallazgoId;
       
       // IMPORTANTE: Sincronizar auditoriaId con el hallazgo actualizado
       // Si se cambia el hallazgo, actualizar la auditoría desde el nuevo hallazgo
-      if (updateDto.hallazgoId) {
+      if (resolvedHallazgoId) {
         const hallazgo = await this.hallazgoRepository.findOne({
-          where: { id: updateDto.hallazgoId },
+          where: { id: resolvedHallazgoId },
           relations: ['auditoriaEntity'],
         });
         if (hallazgo?.auditoriaEntity) {
+          plan.auditoriaId = hallazgo.auditoriaEntity.id;
+        }
+      }
+    } else if (updateDto.hallazgoCodigo !== undefined) {
+      // Si se proporciona hallazgoCodigo, buscar por código
+      const hallazgo = await this.hallazgoRepository.findOne({
+        where: { codigo: updateDto.hallazgoCodigo },
+      });
+      if (hallazgo) {
+        plan.hallazgoId = hallazgo.id;
+        if (hallazgo.auditoriaEntity) {
           plan.auditoriaId = hallazgo.auditoriaEntity.id;
         }
       }

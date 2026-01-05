@@ -11,6 +11,7 @@ import { AuditoriaTerritorialInfo } from './entities/auditoria-territorial-info.
 import { AuditoriaEspecialInfo } from './entities/auditoria-especial-info.entity';
 import { AuditorPerfil } from './entities/auditor-perfil.entity';
 import { CriterioAuditoria } from './entities/criterio-auditoria.entity';
+import { HallazgosModule } from '../hallazgos/hallazgos.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { CriterioAuditoria } from './entities/criterio-auditoria.entity';
       AuditorPerfil,
       CriterioAuditoria,
     ]),
+    HallazgosModule,
   ],
   controllers: [AuditoriasController],
   providers: [AuditoriasService],

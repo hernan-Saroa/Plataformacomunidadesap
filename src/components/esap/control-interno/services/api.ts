@@ -57,14 +57,6 @@ async function apiRequest<T>(
   const url = `${API_BASE_URL}${endpoint}`;
   
   try {
-    console.log('[API Request]', options?.method || 'GET', url);
-    console.log('[API Request] API_BASE_URL:', API_BASE_URL);
-    console.log('[API Request] Endpoint:', endpoint);
-    console.log('[API Request] URL completa:', url);
-    if (options?.body) {
-      console.log('[API Request] Body:', options.body);
-    }
-    
     const response = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
@@ -72,8 +64,6 @@ async function apiRequest<T>(
       },
       ...options,
     });
-
-    console.log('[API Response]', response.status, response.statusText, response.headers.get('content-type'));
 
     // Leer el texto de la respuesta una sola vez
     const responseText = await response.text();
@@ -92,13 +82,10 @@ async function apiRequest<T>(
       if (responseText && responseText.trim()) {
         try {
           data = JSON.parse(responseText);
-          console.log('[API Response Data]', data);
         } catch (parseError) {
-          console.error('[API Error] Error al parsear JSON:', parseError);
-          console.error('[API Error] Response text (primeros 500 chars):', responseText.substring(0, 500));
           return {
             success: false,
-            error: 'Error al parsear respuesta del servidor (la respuesta no es JSON válido)',
+            error: 'Error al parsear respuesta del servidor (la respuesta no es JSON válido)' + parseError,
           };
         }
       } else {
@@ -106,10 +93,6 @@ async function apiRequest<T>(
       }
     } else if (responseText) {
       // Respuesta no es JSON (probablemente HTML de error)
-      console.error('[API Error] Respuesta no es JSON. Status:', response.status);
-      console.error('[API Error] Content-Type:', contentType);
-      console.error('[API Error] Response preview:', responseText.substring(0, 200));
-      
       // Si es HTML, probablemente es un error de routing
       if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
         return {
@@ -135,14 +118,11 @@ async function apiRequest<T>(
       success: true,
       data: data?.data || data,
     };
-    console.log('[apiRequest] Resultado final:', result);
     return result;
   } catch (error) {
-    console.error('[API Error] Error en fetch:', error);
-    console.error('[API Error] URL intentada:', url);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Error desconocido',
+      error: error instanceof Error ? error.message : 'Error desconocido' + error,
     };
   }
 }

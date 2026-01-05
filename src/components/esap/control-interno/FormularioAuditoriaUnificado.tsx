@@ -89,6 +89,9 @@ export interface AuditoriaUnificadaFormData {
   areaObjetivo: string;
   procesoAuditado: string;
   alcance: string;
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   
   // 3. EQUIPO AUDITOR
   auditorLider: string;
@@ -261,6 +264,9 @@ export function FormularioAuditoriaUnificado({
     areaObjetivo: initialData?.areaObjetivo || '',
     procesoAuditado: initialData?.procesoAuditado || '',
     alcance: initialData?.alcance || '',
+    responsableAreaNombre: initialData?.responsableAreaNombre || '',
+    responsableAreaCargo: initialData?.responsableAreaCargo || '',
+    responsableAreaEmail: initialData?.responsableAreaEmail || '',
     auditorLider: initialData?.auditorLider || '',
     auditorAsignado: initialData?.auditorAsignado || '',
     equipoAuditores: initialData?.equipoAuditores || [],
@@ -909,6 +915,43 @@ function Paso2ClasificacionAlcance({ formData, onChange }: PasoProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </FieldWrapper>
+
+          {/* Responsable del Área Auditada */}
+          <div className="pt-4 border-t border-gray-200">
+            <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <User className="w-4 h-4" />
+              Responsable del Área Auditada
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <FieldWrapper label="Nombre Completo">
+                <Input
+                  value={formData.responsableAreaNombre || ''}
+                  onChange={(e) => onChange('responsableAreaNombre', e.target.value)}
+                  placeholder="Nombre del responsable"
+                  className="border-gray-300"
+                />
+              </FieldWrapper>
+              
+              <FieldWrapper label="Cargo">
+                <Input
+                  value={formData.responsableAreaCargo || ''}
+                  onChange={(e) => onChange('responsableAreaCargo', e.target.value)}
+                  placeholder="Cargo o puesto"
+                  className="border-gray-300"
+                />
+              </FieldWrapper>
+              
+              <FieldWrapper label="Email">
+                <Input
+                  type="email"
+                  value={formData.responsableAreaEmail || ''}
+                  onChange={(e) => onChange('responsableAreaEmail', e.target.value)}
+                  placeholder="email@esap.edu.co"
+                  className="border-gray-300"
+                />
+              </FieldWrapper>
+            </div>
+          </div>
         </div>
       </Card>
     </div>
@@ -1413,7 +1456,7 @@ function Paso6RecursosProductos({ formData, onChange }: PasoProps) {
             helpText="Costo aproximado de la auditoría"
           >
             <Input
-              type="text"
+              type="number"
               value={formData.presupuestoEstimado}
               onChange={(e) => onChange('presupuestoEstimado', e.target.value)}
               placeholder="Ej: $5,000,000 COP"

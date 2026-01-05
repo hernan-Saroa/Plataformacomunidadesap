@@ -40,6 +40,7 @@ interface Hallazgo {
   descripcion: string;
   criticidad: 'ALTA' | 'MEDIA' | 'BAJA';
   proceso: string;
+  area: string;
   responsable: string;
   accionesCount: number;
   accionesCompletadas: number;
@@ -82,6 +83,7 @@ interface PlanMejoramientoDetalle {
   nombre: string;
   area: string;
   responsableGeneral: string;
+  responsableAreaNombre?: string;
   fechaCreacion: string;
   fechaVencimiento: string;
   estado: 'FORMULACION' | 'APROBACION' | 'EN_EJECUCION' | 'EN_SEGUIMIENTO' | 'CUMPLIDO';
@@ -120,6 +122,7 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Falta de políticas documentadas de seguridad de la información',
       criticidad: 'ALTA',
       proceso: 'Gestión de Seguridad TI',
+      area: 'Gestión de TI',
       responsable: 'Jorge Silva',
       accionesCount: 3,
       accionesCompletadas: 1,
@@ -131,6 +134,7 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Ausencia de backups periódicos de bases de datos críticas',
       criticidad: 'ALTA',
       proceso: 'Infraestructura TI',
+      area: 'Gestión de TI',
       responsable: 'María González',
       accionesCount: 2,
       accionesCompletadas: 1,
@@ -142,6 +146,7 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Falta de capacitación en ciberseguridad para funcionarios',
       criticidad: 'MEDIA',
       proceso: 'Talento Humano TI',
+      area: 'Gestión de TI',
       responsable: 'Carlos Méndez',
       accionesCount: 2,
       accionesCompletadas: 2,
@@ -153,6 +158,7 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Documentación desactualizada de procedimientos técnicos',
       criticidad: 'BAJA',
       proceso: 'Gestión Documental TI',
+      area: 'Gestión de TI',
       responsable: 'Ana Torres',
       accionesCount: 1,
       accionesCompletadas: 0,
@@ -456,13 +462,20 @@ async function mapearPlanDetalleDesdeBD(
       progreso = Math.round(sumaProgreso / accionesHallazgo.length);
     }
 
+    // Obtener responsable del hallazgo o usar el responsableAreaNombre de la auditoría como fallback
+    const hallazgoAny = h as any;
+    const responsableHallazgo = hallazgoAny.responsable || 
+      hallazgoAny.auditoriaEntity?.responsableAreaNombre || 
+      '';
+
     return {
       id: h.id,
       codigo: h.codigo,
       descripcion: h.descripcion || h.titulo || '',
       criticidad: mapearGravedadACriticidad(h.gravedad || ''),
       proceso: h.criterioIncumplido || '', // Usar criterioIncumplido como proceso
-      responsable: h.responsableArea || '',
+      area: hallazgoAny.area || '',
+      responsable: responsableHallazgo,
       accionesCount: accionesHallazgo.length,
       accionesCompletadas,
       progreso
@@ -524,6 +537,8 @@ async function mapearPlanDetalleDesdeBD(
   const responsablePlan = planBD.responsable || planBD.responsableImplementacion || '';
   const areaPlan = planBD.area || planBD.areaResponsable || '';
   const auditoriaCodigo = planBD.auditoriaCodigo || planBD.auditoria?.codigo || '';
+  // Obtener responsableAreaNombre de la auditoría
+  const responsableAreaNombre = (planBD.auditoria as any)?.responsableAreaNombre || '';
   
   console.log('[ModalDetallePlan] Plan final mapeado - Hallazgos:', hallazgosMapeados.length, 'Acciones:', accionesMapeadas.length);
 
@@ -533,6 +548,7 @@ async function mapearPlanDetalleDesdeBD(
     nombre: nombrePlan,
     area: areaPlan,
     responsableGeneral: responsablePlan,
+    responsableAreaNombre: responsableAreaNombre, // Agregar responsableAreaNombre
     fechaCreacion: fechaCreacionPlan,
     fechaVencimiento: fechaVencimiento.toISOString().split('T')[0],
     estado: mapearEstadoBD(planBD.estado),
@@ -1124,6 +1140,9 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
                     <InfoItem label="Auditoría Origen" valor={plan.auditoria} />
                     <InfoItem label="Área Responsable" valor={plan.area} />
                     <InfoItem label="Responsable General" valor={plan.responsableGeneral} />
+                    {plan.responsableAreaNombre && (
+                      <InfoItem label="Responsable del Área Auditada" valor={plan.responsableAreaNombre} />
+                    )}
                     <InfoItem label="Fecha Creación" valor={plan.fechaCreacion} />
                     <InfoItem label="Fecha Vencimiento" valor={plan.fechaVencimiento} />
                     <InfoItem label="Progreso Global" valor={`${plan.progresoGlobal}%`} />
@@ -1296,6 +1315,9 @@ function TabResumen({ plan, estadisticas }: { plan: PlanMejoramientoDetalle; est
           <InfoItem label="Auditoría Origen" valor={plan.auditoria} />
           <InfoItem label="Área Responsable" valor={plan.area} />
           <InfoItem label="Responsable General" valor={plan.responsableGeneral} />
+          {plan.responsableAreaNombre && (
+            <InfoItem label="Responsable del Área Auditada" valor={plan.responsableAreaNombre} />
+          )}
           <InfoItem label="Fecha Creación" valor={plan.fechaCreacion} />
           <InfoItem label="Fecha Vencimiento" valor={plan.fechaVencimiento} />
           <InfoItem label="Progreso Global" valor={`${plan.progresoGlobal}%`} />
@@ -1410,8 +1432,12 @@ function CardHallazgo({ hallazgo, plan }: { hallazgo: Hallazgo; plan: PlanMejora
             <p className="text-sm text-gray-700 mb-2">{hallazgo.descripcion}</p>
             <div className="flex items-center gap-4 text-xs text-gray-600">
               <div className="flex items-center gap-1">
+                <Building2 className="w-3 h-3" />
+                {hallazgo.area || 'No especificada'}
+              </div>
+              <div className="flex items-center gap-1">
                 <User className="w-3 h-3" />
-                {hallazgo.responsable}
+                {hallazgo.responsable || 'No asignado'}
               </div>
               <div className="flex items-center gap-1">
                 <Target className="w-3 h-3" />
@@ -1577,6 +1603,7 @@ function TabAcciones({ plan, planId, onAccionCreada }: { plan: PlanMejoramientoD
 function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionCorrectiva; plan: PlanMejoramientoDetalle; planId: string; onAccionEditada?: () => void }) {
   const [modalEditar, setModalEditar] = useState(false);
   const [modalEvidencia, setModalEvidencia] = useState(false);
+  const [marcandoCompletada, setMarcandoCompletada] = useState(false);
   
   const estadoConfig = {
     PENDIENTE: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Pendiente', icon: Clock },
@@ -1597,7 +1624,7 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
     setModalEvidencia(true);
   };
 
-  const handleMarcarCompletada = () => {
+  const handleMarcarCompletada = async () => {
     // Validar que no esté ya completada
     if (accion.estado === 'COMPLETADA') {
       toast.warning('Acción ya completada', {
@@ -1606,25 +1633,52 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
       return;
     }
 
-    // Simular actualización (en producción: PUT al backend)
-    toast.success('Acción Marcada como Completada', {
-      description: `La acción "${accion.descripcion.substring(0, 50)}..." ha sido completada`,
-      duration: 4000,
-    });
+    // Prevenir múltiples clicks mientras se procesa
+    if (marcandoCompletada) {
+      return;
+    }
 
-    // Log para debugging
-    console.log('✅ Marcando acción como completada:', {
-      accionId: accion.id,
-      estadoAnterior: accion.estado,
-      progresoAnterior: accion.progreso,
-      estadoNuevo: 'COMPLETADA',
-      progresoNuevo: 100,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
+    try {
+      setMarcandoCompletada(true);
 
-    // Aquí se actualizaría el estado o se refrescarían los datos
-    // onAccionActualizada?.();
+      // Mapear estado del frontend al backend
+      const estadoBackend = 'completada';
+
+      // Actualizar acción en el backend
+      const response = await planesMejoramientoApi.updateAccion(planId, accion.id, {
+        estado: estadoBackend,
+        porcentajeAvance: 100,
+      });
+
+      if (response.success) {
+        toast.success('Acción Marcada como Completada', {
+          description: `La acción "${accion.descripcion.substring(0, 50)}..." ha sido completada`,
+          duration: 4000,
+        });
+
+        // Log para debugging
+        console.log('✅ Acción marcada como completada:', {
+          accionId: accion.id,
+          estadoAnterior: accion.estado,
+          progresoAnterior: accion.progreso,
+          estadoNuevo: 'COMPLETADA',
+          progresoNuevo: 100,
+          timestamp: new Date().toISOString()
+        });
+
+        // Refrescar los datos del plan
+        onAccionEditada?.();
+      } else {
+        throw new Error(response.error || 'Error al actualizar la acción');
+      }
+    } catch (err: any) {
+      console.error('[CardAccion] Error al marcar acción como completada:', err);
+      toast.error('Error al completar la acción', {
+        description: err.message || 'No se pudo actualizar el estado de la acción. Por favor, intenta nuevamente.'
+      });
+    } finally {
+      setMarcandoCompletada(false);
+    }
   };
 
   return (
@@ -1731,10 +1785,20 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
             {accion.estado !== 'COMPLETADA' && (
               <button 
                 onClick={handleMarcarCompletada}
-                className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded text-sm hover:shadow transition-all flex items-center gap-1.5"
+                disabled={marcandoCompletada}
+                className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded text-sm hover:shadow transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Marcar Completada
+                {marcandoCompletada ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Procesando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Marcar Completada
+                  </>
+                )}
               </button>
             )}
           </div>

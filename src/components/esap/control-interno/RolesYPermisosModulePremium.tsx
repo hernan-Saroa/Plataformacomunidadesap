@@ -25,8 +25,8 @@ import { toast } from 'sonner@2.0.3';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 import { TooltipGuia } from './TooltipGuia';
 import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
-import { usersService, type User } from '../../services/usersService';
-import { rolesService, type SystemRole } from '../../services/api';
+import { usersService, type User } from '@/services/usersService';
+import { rolesService, type SystemRole } from '@/services/api';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS

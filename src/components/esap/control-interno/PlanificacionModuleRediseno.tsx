@@ -239,6 +239,9 @@ export function PlanificacionModuleRediseno() {
       if (data.alcance) auditoriaData.alcance = data.alcance;
       if (data.metodologia) auditoriaData.metodologia = data.metodologia;
       if (data.nivelRiesgo) auditoriaData.nivelRiesgo = data.nivelRiesgo;
+      if (data.responsableAreaNombre) auditoriaData.responsableAreaNombre = data.responsableAreaNombre;
+      if (data.responsableAreaCargo) auditoriaData.responsableAreaCargo = data.responsableAreaCargo;
+      if (data.responsableAreaEmail) auditoriaData.responsableAreaEmail = data.responsableAreaEmail;
       
       // Mapear IDs de auditores (convertir 'aud-001' a número si es necesario)
       // Por ahora enviamos el string, el backend puede manejarlo

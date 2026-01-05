@@ -12,6 +12,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { AuditoriasService } from './auditorias.service';
+import { HallazgosService } from '../hallazgos/hallazgos.service';
 import { CreateAuditoriaDto } from './dto/create-auditoria.dto';
 import { UpdateAuditoriaDto } from './dto/update-auditoria.dto';
 import { CreateNotaDto } from './dto/create-nota.dto';
@@ -20,7 +21,10 @@ import { FaseAuditoria } from './entities/auditoria.entity';
 
 @Controller('auditorias')
 export class AuditoriasController {
-  constructor(private readonly auditoriasService: AuditoriasService) {}
+  constructor(
+    private readonly auditoriasService: AuditoriasService,
+    private readonly hallazgosService: HallazgosService,
+  ) {}
 
   /**
    * GET /esap/auditorias
@@ -65,14 +69,6 @@ export class AuditoriasController {
     return this.auditoriasService.findByFase(fase);
   }
 
-  /**
-   * GET /esap/auditorias/:id/notas
-   * Obtiene todas las notas de una auditoría
-   */
-  @Get(':id/notas')
-  getNotasByAuditoria(@Param('id') id: string) {
-    return this.auditoriasService.getNotasByAuditoria(id);
-  }
 
   /**
    * POST /esap/auditorias/:id/notas
@@ -177,6 +173,24 @@ export class AuditoriasController {
   @Get('codigo/:codigo')
   findByCodigo(@Param('codigo') codigo: string) {
     return this.auditoriasService.findByCodigo(codigo);
+  }
+
+  /**
+   * GET /esap/auditorias/:id/hallazgos
+   * Obtiene todos los hallazgos de una auditoría
+   */
+  @Get(':id/hallazgos')
+  getHallazgosByAuditoria(@Param('id') id: string) {
+    return this.hallazgosService.findByAuditoria(id);
+  }
+
+  /**
+   * GET /esap/auditorias/:id/notas
+   * Obtiene todas las notas de una auditoría
+   */
+  @Get(':id/notas')
+  getNotasByAuditoria(@Param('id') id: string) {
+    return this.auditoriasService.getNotasByAuditoria(id);
   }
 
   /**
