@@ -33,6 +33,7 @@ import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalNuevoRiesgo } from './ModalNuevoRiesgo';
 import { ModalDetalleRiesgo } from './ModalDetalleRiesgo';
+import { riesgosService, RiesgoAPI } from '../../../../services/api/legal.service';
 
 type VistaModulo = 'matriz' | 'tabla';
 
@@ -53,8 +54,8 @@ const TIPO_RIESGO_MAP: Record<string, string> = {
 // Función para convertir RiesgoAPI a Riesgo (tipo local)
 function apiToLocalRiesgo(api: RiesgoAPI): Riesgo {
   return {
-    id: api.codigo || api.id,
-    codigo: api.codigo,
+    id: api.id, // UUID real para llamadas API
+    codigo: api.codigo, // Código para mostrar en UI
     etapa: api.etapa as EtapaRiesgo,
     proceso: api.proceso,
     tipo: api.tipoRiesgo,
@@ -90,29 +91,14 @@ export function Riesgos() {
   const [filtroZona, setFiltroZona] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [modalNuevoRiesgo, setModalNuevoRiesgo] = useState(false);
-  const [modalDetalleRiesgo, setModalDetalleRiesgo] = useState<Riesgo | null>(null);
-
-  // Handlers
-  const handleNuevoRiesgo = () => {
-    setModalNuevoRiesgo(true);
-  };
-
-  const handleGuardarRiesgo = (data: any) => {
-    console.log('Nuevo riesgo:', data);
-    // Aquí se integraría con el backend
-  };
-
-  const handleVerDetalleRiesgo = (riesgo: Riesgo) => {
-    setModalDetalleRiesgo(riesgo);
-  };
 
   // Estado para lista de riesgos (solo API, sin mocks)
   const [riesgos, setRiesgos] = useState<Riesgo[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Estado para el modal de nuevo riesgo
+  // Estado para el modal de nuevo riesgo (también usado para edición)
   const [modalNuevoOpen, setModalNuevoOpen] = useState(false);
+  const [riesgoEditando, setRiesgoEditando] = useState<Riesgo | null>(null);
 
   // Estado para el modal de detalle
   const [riesgoSeleccionado, setRiesgoSeleccionado] = useState<Riesgo | null>(null);
@@ -165,15 +151,81 @@ export function Riesgos() {
   const altos = riesgos.filter(r => r.zonaResidual === 'ALTO').length;
   const moderados = riesgos.filter(r => r.zonaResidual === 'MODERADO').length;
 
-  // Handler para agregar nuevo riesgo
-  const handleRiesgoCreado = (nuevoRiesgo: Riesgo) => {
-    setRiesgos(prev => [nuevoRiesgo, ...prev]);
+  // Handler para agregar nuevo riesgo - LLAMA AL BACKEND
+  const handleRiesgoCreado = async (formData: any) => {
+    const toastId = toast.loading('Creando riesgo...');
+    try {
+      // Enviar al backend
+      const created = await riesgosService.create(formData);
+
+      // Convertir respuesta y agregar a la lista
+      const nuevoRiesgo = apiToLocalRiesgo(created);
+      setRiesgos(prev => [nuevoRiesgo, ...prev]);
+
+      // Cerrar modal y notificar éxito
+      setModalNuevoOpen(false);
+      toast.success('Riesgo creado exitosamente', {
+        id: toastId,
+        description: `Código: ${created.codigo}`
+      });
+    } catch (error) {
+      console.error('Error creando riesgo:', error);
+      toast.error('Error al crear el riesgo', { id: toastId });
+    }
   };
 
   // Handler para ver detalle de riesgo
   const handleVerDetalle = (riesgo: Riesgo) => {
     setRiesgoSeleccionado(riesgo);
     setModalDetalleOpen(true);
+  };
+
+  // Handler para iniciar edición de riesgo
+  const handleEditarRiesgo = (riesgo: Riesgo) => {
+    setRiesgoEditando(riesgo);
+    setModalNuevoOpen(true);
+  };
+
+  // Handler para guardar riesgo actualizado
+  const handleRiesgoActualizado = async (formData: any) => {
+    if (!riesgoEditando) return;
+
+    const toastId = toast.loading('Actualizando riesgo...');
+    try {
+      const updated = await riesgosService.update(riesgoEditando.id, formData);
+      const riesgoActualizado = apiToLocalRiesgo(updated);
+
+      // Actualizar en la lista local
+      setRiesgos(prev => prev.map(r => r.id === riesgoActualizado.id ? riesgoActualizado : r));
+
+      setModalNuevoOpen(false);
+      setRiesgoEditando(null);
+      toast.success('Riesgo actualizado exitosamente', { id: toastId });
+    } catch (error) {
+      console.error('Error actualizando riesgo:', error);
+      toast.error('Error al actualizar el riesgo', { id: toastId });
+    }
+  };
+
+  // Handler para archivar riesgo
+  const handleArchivarRiesgo = async (riesgo: Riesgo) => {
+    const toastId = toast.loading('Archivando riesgo...');
+    try {
+      await riesgosService.archivar(riesgo.id);
+
+      // Actualizar estado local
+      setRiesgos(prev => prev.map(r =>
+        r.id === riesgo.id ? { ...r, estado: 'ARCHIVADO' as const } : r
+      ));
+
+      toast.success('Riesgo archivado', {
+        id: toastId,
+        description: `${riesgo.codigo || riesgo.id} ha sido archivado`
+      });
+    } catch (error) {
+      console.error('Error archivando riesgo:', error);
+      toast.error('Error al archivar el riesgo', { id: toastId });
+    }
   };
 
   return (
@@ -195,7 +247,7 @@ export function Riesgos() {
             label: 'Nuevo Riesgo',
             labelMobile: 'Nuevo',
             icon: <Plus className="w-4 h-4" />,
-            onClick: handleNuevoRiesgo,
+            onClick: () => setModalNuevoOpen(true),
             variant: 'primary'
           }
         ]}
@@ -327,23 +379,29 @@ export function Riesgos() {
       />
 
       {vistaActual === 'matriz' ? (
-        <MatrizRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalleRiesgo} />
+        <MatrizRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalle} />
       ) : (
-        <TablaRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalleRiesgo} />
+        <TablaRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalle} />
       )}
 
-      {/* Modal Nuevo Riesgo */}
+      {/* Modal Nuevo/Editar Riesgo */}
       <ModalNuevoRiesgo
-        isOpen={modalNuevoRiesgo}
-        onClose={() => setModalNuevoRiesgo(false)}
-        onGuardar={handleGuardarRiesgo}
+        open={modalNuevoOpen}
+        onClose={() => {
+          setModalNuevoOpen(false);
+          setRiesgoEditando(null);
+        }}
+        onRiesgoCreado={riesgoEditando ? handleRiesgoActualizado : handleRiesgoCreado}
+        riesgoEditar={riesgoEditando}
       />
 
       {/* Modal Detalle Riesgo */}
       <ModalDetalleRiesgo
-        isOpen={modalDetalleRiesgo !== null}
-        onClose={() => setModalDetalleRiesgo(null)}
-        riesgo={modalDetalleRiesgo}
+        open={modalDetalleOpen}
+        onClose={() => setModalDetalleOpen(false)}
+        riesgo={riesgoSeleccionado}
+        onEdit={handleEditarRiesgo}
+        onArchive={handleArchivarRiesgo}
       />
     </div>
   );
@@ -473,9 +531,11 @@ function MatrizRiesgos({ riesgos, onVerDetalle }: MatrizRiesgosProps) {
 
       {/* Lista de riesgos debajo de la matriz */}
       <div className="mt-6 pt-6 border-t border-gray-200">
-        <h4 className="font-bold text-sm text-gray-900 mb-3">Detalle de Riesgos</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {riesgos.slice(0, 6).map(riesgo => (
+        <h4 className="font-bold text-sm text-gray-900 mb-3">
+          Detalle de Riesgos ({riesgos.length} total)
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {riesgos.map(riesgo => (
             <TarjetaRiesgoCompacta key={riesgo.id} riesgo={riesgo} onVerDetalle={onVerDetalle} />
           ))}
         </div>
@@ -496,7 +556,8 @@ function TablaRiesgos({ riesgos, onVerDetalle }: TablaRiesgosProps) {
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">ID</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Código</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Nombre</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Descripción</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Proceso</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Tipo</th>
@@ -510,7 +571,8 @@ function TablaRiesgos({ riesgos, onVerDetalle }: TablaRiesgosProps) {
               const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual];
               return (
                 <tr key={riesgo.id} className="border-t border-gray-200 hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{riesgo.id}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{riesgo.codigo || riesgo.id}</td>
+                  <td className="px-4 py-3 text-sm text-gray-800 font-medium">{riesgo.nombre}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">
                     <div className="line-clamp-2">{riesgo.descripcion}</div>
                   </td>
@@ -556,7 +618,8 @@ interface TarjetaRiesgoCompactaProps {
 }
 
 function TarjetaRiesgoCompacta({ riesgo, onVerDetalle }: TarjetaRiesgoCompactaProps) {
-  const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual];
+  const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual] || ZONA_RIESGO_CONFIG.MODERADO;
+  const tipoLabel = TIPO_RIESGO_MAP[riesgo.tipoRiesgo || riesgo.tipo || 'GESTION'] || 'Gestión';
 
   return (
     <motion.div
@@ -568,7 +631,10 @@ function TarjetaRiesgoCompacta({ riesgo, onVerDetalle }: TarjetaRiesgoCompactaPr
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div>
-          <h5 className="font-bold text-sm" style={{ color: '#003DA5' }}>{riesgo.id}</h5>
+          <h5 className="font-bold text-sm" style={{ color: '#003DA5' }}>
+            {riesgo.codigo || riesgo.id}
+          </h5>
+          <p className="text-xs text-gray-800 font-medium line-clamp-1">{riesgo.nombre}</p>
           <p className="text-xs text-gray-600 line-clamp-2">{riesgo.descripcion}</p>
         </div>
         <Badge
@@ -595,7 +661,7 @@ function TarjetaRiesgoCompacta({ riesgo, onVerDetalle }: TarjetaRiesgoCompactaPr
 
       <div className="mt-2 pt-2 border-t border-gray-200">
         <Button
-          onClick={() => onVerDetalle(riesgo)}
+          onClick={(e: React.MouseEvent) => { e.stopPropagation(); onVerDetalle(riesgo); }}
           size="sm"
           className="w-full"
           style={{ background: '#003DA5', color: '#FFFFFF' }}

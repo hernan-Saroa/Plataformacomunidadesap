@@ -24,7 +24,7 @@ import { Badge } from '../ui/badge';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { ModalCodigoQR } from './ModalCodigoQR';
 import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';
-import { copyToClipboard } from '../../utils/clipboard';
+import { getPublicBaseUrl } from '../../config/environment';
 
 interface CertificadoDetallePanelProps {
   certificado: {
@@ -428,6 +428,17 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
       });
     } else {
       toast.error('No se pudo copiar el enlace');
+    }
+  };
+
+  const handleCopiarConsecutivo = async () => {
+    const copiado = await copiarAlPortapapeles(certificado.consecutivo);
+    if (copiado) {
+      toast.success('Consecutivo copiado', {
+        description: 'El numero de consecutivo fue copiado al portapapeles'
+      });
+    } else {
+      toast.error('No se pudo copiar el consecutivo');
     }
   };
 

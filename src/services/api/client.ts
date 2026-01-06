@@ -91,23 +91,21 @@ class APIClient {
     if (API_MODE === 'direct' && endpoint.startsWith('/')) {
       const serviceUrlMap = MICROSERVICE_URLS as Record<string, string>;
 
-      // Extraer el nombre del servicio del endpoint
-      // Ejemplo: /auth/api/v1/roles -> auth
-      const match = endpoint.match(/^\/([^/]+)\/api\/v\d+(.*)$/);
+      // Primero intentar formato con /api/vX/: /auth/api/v1/roles -> auth
+      const matchWithVersion = endpoint.match(/^\/([^/]+)\/api\/v\d+(.*)$/);
 
-      if (match) {
-        const [, serviceName, restPath] = match;
+      // Segundo, intentar formato simple: /legal/riesgos -> legal, /riesgos
+      const matchSimple = endpoint.match(/^\/([^/]+)(\/.*)$/);
+
+      if (matchWithVersion) {
+        const [, serviceName, restPath] = matchWithVersion;
         const serviceUrl = serviceUrlMap[serviceName];
 
         if (serviceUrl) {
-          // Eliminar el prefijo /api/v1 si existe, ya que los microservicios en modo directo
-          // pueden no esperarlo si sus controladores no lo definen (como en legal-management ahora)
           const cleanPath = (restPath || '/').replace(/^\/api\/v\d+/, '');
-
-          // Construir URL directa al microservicio (sin el prefijo del servicio ni versión)
           fullUrl = `${serviceUrl}${cleanPath}`;
 
-          console.log('🔗 API Client [DIRECT MODE]:', {
+          console.log('🔗 API Client [DIRECT MODE - versioned]:', {
             endpoint,
             serviceName,
             serviceUrl,
@@ -116,8 +114,25 @@ class APIClient {
             finalURL: fullUrl,
           });
         } else {
-          // Servicio no encontrado, usar baseURL normal
           console.warn(`⚠️ Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
+          fullUrl = `${this.baseURL}${endpoint}`;
+        }
+      } else if (matchSimple) {
+        // Formato simple sin /api/vX: /legal/riesgos -> legal service + /legal/riesgos
+        const [, serviceName, restPath] = matchSimple;
+        const serviceUrl = serviceUrlMap[serviceName];
+
+        if (serviceUrl) {
+          // Para rutas como /legal/riesgos, el backend espera /legal/riesgos (con prefijo)
+          fullUrl = `${serviceUrl}${endpoint}`;
+
+          console.log('🔗 API Client [DIRECT MODE - simple]:', {
+            endpoint,
+            serviceName,
+            serviceUrl,
+            finalURL: fullUrl,
+          });
+        } else {
           fullUrl = `${this.baseURL}${endpoint}`;
         }
       } else {
