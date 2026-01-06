@@ -28,7 +28,7 @@ export class EvidenciasService {
             ...data,
             expedienteId: expedienteId,
             archivoNombre: data.archivoNombre || file.originalname, // Keep custom or use original
-            archivoUrl: `http://localhost:3008/api/legal/files/${file.filename}`,
+            archivoUrl: `files/${file.filename}`, // Ruta relativa, el frontend construye la URL completa
             archivoTamano: file.size,
             // tipo is handled in data
         });
@@ -44,10 +44,11 @@ export class EvidenciasService {
         return this.evidenciaRepository.save(evidencia);
     }
 
-    async delete(id: string): Promise<void> {
+    async delete(id: string): Promise<{ success: boolean; message: string }> {
         const evidencia = await this.evidenciaRepository.findOneBy({ id });
         if (!evidencia) throw new NotFoundException('Evidencia no encontrada');
 
         await this.evidenciaRepository.remove(evidencia);
+        return { success: true, message: 'Evidencia eliminada correctamente' };
     }
 }

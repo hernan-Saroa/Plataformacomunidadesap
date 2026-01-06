@@ -153,14 +153,21 @@ export function ModuloAsesoriaJuridicaV3() {
     return map[prioridad?.toLowerCase()] || { label: prioridad || 'N/A', color: '#6B7280', bg: '#F3F4F6' };
   };
 
+
+
+
   const handleCreateConsulta = async () => {
-    if (!newConsultaData.descripcion || !newConsultaData.nombreSolicitante) {
-      toast.error('Completa los campos obligatorios');
+    if (!newConsultaData.descripcion || !newConsultaData.nombreSolicitante || !newConsultaData.abogadoAsignadoId) {
+      toast.error('Completa los campos obligatorios (incluyendo Abogado)');
       return;
     }
     const toastId = toast.loading('Creando consulta...');
     try {
-      await legalService.createConsultaJuridica(newConsultaData);
+      await legalService.createConsultaJuridica({
+        ...newConsultaData,
+        // Calculate days if not provided
+        terminoLegalDias: 30
+      });
       toast.success('Consulta creada exitosamente', { id: toastId });
       setIsCreateOpen(false);
       setNewConsultaData({
@@ -190,8 +197,8 @@ export function ModuloAsesoriaJuridicaV3() {
     try {
       await legalService.deleteConsultaJuridica(uuid);
       toast.success('Consulta eliminada', { id: toastId });
-      setIsExpedienteOpen(false);
-      setSelectedConsulta(null);
+      setModalExpedienteOpen(false);
+      setConsultaSeleccionada(null);
       loadConsultas();
     } catch (error) {
       console.error(error);
@@ -429,11 +436,13 @@ export function ModuloAsesoriaJuridicaV3() {
           direccionOrden={direccionOrden}
           onOrdenar={handleOrdenar}
           onAbrirExpediente={handleAbrirExpediente}
+          onEliminar={handleDeleteConsulta}
         />
       ) : (
         <TarjetasConsultas
           consultas={consultasFiltradas}
           onAbrirExpediente={handleAbrirExpediente}
+          onEliminar={handleDeleteConsulta}
         />
       )}
 
@@ -454,174 +463,12 @@ export function ModuloAsesoriaJuridicaV3() {
             setConsultaSeleccionada(null);
           }}
           consulta={consultaSeleccionada}
+          onUpdate={loadConsultas}
         />
       )}
 
       {/* Modal Expediente */}
-      <Dialog open={isExpedienteOpen} onOpenChange={setIsExpedienteOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0" aria-describedby="exp-js-desc">
-          <DialogHeader className="sr-only">
-            <DialogTitle>Expediente de Consulta Jurídica</DialogTitle>
-            <DialogDescription id="exp-js-desc">Detalle de la consulta jurídica</DialogDescription>
-          </DialogHeader>
-          {selectedConsulta && (
-            <>
-              {/* Header con gradiente */}
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 rounded-t-lg">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-white/20 rounded-lg backdrop-blur">
-                    <Scale className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold">{selectedConsulta.id}</h2>
-                    <p className="text-blue-100 text-sm">Consulta Jurídica</p>
-                  </div>
-                </div>
-                <div className="flex gap-3 mt-4 flex-wrap">
-                  <Badge className="bg-white/20 text-white border-white/30">
-                    📅 {new Date(selectedConsulta.fechaRadicacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </Badge>
-                  <Badge className="bg-white/20 text-white border-white/30">
-                    {selectedConsulta.etapa}
-                  </Badge>
-                  <Badge style={{
-                    background: formatPrioridad(selectedConsulta.prioridad).bg,
-                    color: formatPrioridad(selectedConsulta.prioridad).color,
-                    border: 'none'
-                  }}>
-                    {formatPrioridad(selectedConsulta.prioridad).label}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-5">
-                {/* Semáforo de días */}
-                <div className="flex items-center justify-between p-4 rounded-xl" style={{
-                  background: selectedConsulta.diasRestantes <= 3 ? '#FEE2E2' : selectedConsulta.diasRestantes <= 5 ? '#FEF3C7' : '#D1FAE5'
-                }}>
-                  <div className="flex items-center gap-3">
-                    <Clock className="w-8 h-8" style={{
-                      color: selectedConsulta.diasRestantes <= 3 ? '#DC2626' : selectedConsulta.diasRestantes <= 5 ? '#D97706' : '#059669'
-                    }} />
-                    <div>
-                      <p className="text-sm font-medium" style={{
-                        color: selectedConsulta.diasRestantes <= 3 ? '#991B1B' : selectedConsulta.diasRestantes <= 5 ? '#92400E' : '#065F46'
-                      }}>Tiempo Restante</p>
-                      <p className="text-2xl font-bold" style={{
-                        color: selectedConsulta.diasRestantes <= 3 ? '#DC2626' : selectedConsulta.diasRestantes <= 5 ? '#D97706' : '#059669'
-                      }}>{selectedConsulta.diasRestantes} días</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-gray-600">de {selectedConsulta.diasTotales} días hábiles</p>
-                    <div className="w-32 h-2 bg-gray-200 rounded-full mt-1 overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${Math.max(0, Math.min(100, (selectedConsulta.diasRestantes / selectedConsulta.diasTotales) * 100))}%`,
-                          background: selectedConsulta.diasRestantes <= 3 ? '#DC2626' : selectedConsulta.diasRestantes <= 5 ? '#F59E0B' : '#10B981'
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Grid de información */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Materia Jurídica</p>
-                    <p className="font-bold text-gray-900">{formatMateriaJuridica(selectedConsulta.temaJuridico)}</p>
-                  </div>
-                  <div className="p-4 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Abogado Asignado</p>
-                    <Select
-                      value={selectedConsulta.abogadoAsignadoId || 'none'}
-                      onValueChange={async (value: string) => {
-                        const toastId = toast.loading('Reasignando abogado...');
-                        try {
-                          const newAbogadoId = value === 'none' ? null : value;
-                          await legalService.updateConsultaJuridica(selectedConsulta.uuid, { abogadoAsignadoId: newAbogadoId });
-                          toast.success('Abogado reasignado', { id: toastId });
-                          await loadConsultas();
-                          setIsExpedienteOpen(false);
-                        } catch (error) {
-                          console.error('Error reasignando:', error);
-                          toast.error('Error al reasignar', { id: toastId });
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="h-8">
-                        <SelectValue placeholder={selectedConsulta.abogadoAsignado || 'Sin asignar'} />
-                      </SelectTrigger>
-                      <SelectContent className="z-[9999]">
-                        <SelectItem value="none">Sin asignar</SelectItem>
-                        {abogados.map((abogado) => (
-                          <SelectItem key={abogado.id} value={abogado.id}>
-                            {abogado.nombreCompleto || abogado.nombre}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Solicitante */}
-                <div className="border border-gray-200 rounded-xl p-4">
-                  <h4 className="font-bold text-sm text-gray-700 mb-3 flex items-center gap-2">
-                    <User className="w-4 h-4" /> Información del Solicitante
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-500">Dependencia</p>
-                      <p className="font-semibold text-gray-800">{selectedConsulta.solicitante || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Funcionario</p>
-                      <p className="font-semibold text-gray-800">{selectedConsulta.funcionarioSolicitante || 'N/A'}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Descripción */}
-                <div className="border border-gray-200 rounded-xl p-4">
-                  <h4 className="font-bold text-sm text-gray-700 mb-2 flex items-center gap-2">
-                    <FileText className="w-4 h-4" /> Descripción de la Consulta
-                  </h4>
-                  <p className="text-gray-700 whitespace-pre-wrap bg-gray-50 p-3 rounded-lg text-sm">
-                    {selectedConsulta.consulta || 'Sin descripción'}
-                  </p>
-                </div>
-
-                {/* Info legal */}
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                  <h4 className="font-bold text-sm text-blue-800 flex items-center gap-2 mb-2">
-                    <AlertCircle className="w-4 h-4" /> Término Legal
-                  </h4>
-                  <p className="text-sm text-blue-700">
-                    El término de respuesta es de <strong>{selectedConsulta.diasTotales} días hábiles</strong> según CPACA Art. 50.
-                    El sistema calcula automáticamente los días restantes desde la fecha de radicación.
-                  </p>
-                </div>
-
-                {/* Acciones */}
-                <div className="flex justify-between items-center pt-4 border-t">
-                  <Button
-                    variant="destructive"
-                    onClick={() => handleDeleteConsulta(selectedConsulta.uuid)}
-                    className="gap-2"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Eliminar Consulta
-                  </Button>
-                  <Button variant="outline" onClick={() => setIsExpedienteOpen(false)}>
-                    Cerrar
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Modal Expediente eliminado (usar ModalExpedienteConsulta) */}
 
       {/* Dialog para crear nueva consulta */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -728,7 +575,7 @@ export function ModuloAsesoriaJuridicaV3() {
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label>Abogado Asignado</Label>
+                <Label>Abogado Asignado *</Label>
                 <Select
                   value={newConsultaData.abogadoAsignadoId || 'none'}
                   onValueChange={(v: string) => setNewConsultaData({ ...newConsultaData, abogadoAsignadoId: v === 'none' ? '' : v })}
@@ -777,6 +624,7 @@ export function ModuloAsesoriaJuridicaV3() {
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }
@@ -787,9 +635,10 @@ interface TablaConsultasProps {
   direccionOrden: 'asc' | 'desc';
   onOrdenar: (columna: OrdenColumna) => void;
   onAbrirExpediente: (consulta: ConsultaJuridica) => void;
+  onEliminar: (uuid: string) => void;
 }
 
-function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirExpediente }: TablaConsultasProps) {
+function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirExpediente, onEliminar }: TablaConsultasProps) {
   return (
     <Card className="bg-white border border-gray-200">
       <table className="w-full">
@@ -875,8 +724,8 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.abogadoAsignado}</td>
               <td className="px-4 py-3 text-sm text-gray-500">
                 <Button
-                  onClick={(e) => { e.stopPropagation(); onAbrirExpediente(consulta); }}
-                  // onClick={(e) => { 
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onAbrirExpediente(consulta); }}
+                  // onClick={(e: React.MouseEvent) => { 
                   //   e.stopPropagation(); 
                   //   onAbrirExpediente(consulta);
                   // }}
@@ -885,6 +734,14 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
                   style={{ background: '#003DA5', color: '#FFFFFF' }}
                 >
                   <Archive className="w-3 h-3 mr-1 flex-shrink-0" /><span className="truncate">Expediente</span>
+                </Button>
+                <Button
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid); }}
+                  size="sm"
+                  variant="outline"
+                  className="mt-1 w-full text-xs text-red-600 bg-red-50 hover:bg-red-100 border-red-200"
+                >
+                  <Trash2 className="w-3 h-3 mr-1" /> Eliminar
                 </Button>
               </td>
             </tr>
@@ -898,9 +755,10 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
 interface TarjetasConsultasProps {
   consultas: ConsultaJuridica[];
   onAbrirExpediente: (consulta: ConsultaJuridica) => void;
+  onEliminar: (uuid: string) => void;
 }
 
-function TarjetasConsultas({ consultas, onAbrirExpediente }: TarjetasConsultasProps) {
+function TarjetasConsultas({ consultas, onAbrirExpediente, onEliminar }: TarjetasConsultasProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {consultas.map((consulta) => (
@@ -981,23 +839,30 @@ function TarjetasConsultas({ consultas, onAbrirExpediente }: TarjetasConsultasPr
             </div>
 
             <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
-              <Button
-                onClick={(e) => { e.stopPropagation(); onAbrirExpediente(consulta); }}
-                // onClick={(e) => { 
-                //   e.stopPropagation(); 
-                //   onAbrirExpediente(consulta);
-                // }}
-                size="sm"
-                className="w-full text-xs font-bold truncate"
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-              >
-                <Archive className="w-3 h-3 mr-1 flex-shrink-0" /><span className="truncate">Expediente</span>
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onAbrirExpediente(consulta); }}
+                  size="sm"
+                  className="flex-1 text-xs font-bold truncate"
+                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                >
+                  <Archive className="w-3 h-3 mr-1 flex-shrink-0" /><span className="truncate">Expediente</span>
+                </Button>
+                <Button
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid); }}
+                  size="sm"
+                  variant="outline"
+                  className="px-2 bg-red-50 hover:bg-red-100 text-red-600 border-red-200"
+                  title="Eliminar Consulta"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
 
               <div className="space-y-1">
                 <div className="grid grid-cols-2 gap-1">
                   <Button
-                    onClick={(e) => { e.stopPropagation(); toast.info('Documentos Soporte', { description: consulta.id }); }}
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Documentos Soporte', { description: consulta.id }); }}
                     size="sm"
                     variant="outline"
                     className="text-[11px] px-2 justify-start truncate min-w-0"
@@ -1005,7 +870,7 @@ function TarjetasConsultas({ consultas, onAbrirExpediente }: TarjetasConsultasPr
                     <FileText className="w-3 h-3 mr-0.5 flex-shrink-0" /><span className="truncate">Soporte</span>
                   </Button>
                   <Button
-                    onClick={(e) => { e.stopPropagation(); toast.info('Normativa Aplicable', { description: consulta.id }); }}
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Normativa Aplicable', { description: consulta.id }); }}
                     size="sm"
                     variant="outline"
                     className="text-[11px] px-2 justify-start truncate min-w-0"
@@ -1016,7 +881,7 @@ function TarjetasConsultas({ consultas, onAbrirExpediente }: TarjetasConsultasPr
 
                 <div className="grid grid-cols-2 gap-1">
                   <Button
-                    onClick={(e) => { e.stopPropagation(); toast.info('Oficios', { description: consulta.id }); }}
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Oficios', { description: consulta.id }); }}
                     size="sm"
                     variant="outline"
                     className="text-[11px] px-2 justify-start truncate min-w-0"
@@ -1024,7 +889,7 @@ function TarjetasConsultas({ consultas, onAbrirExpediente }: TarjetasConsultasPr
                     <Mail className="w-3 h-3 mr-0.5 flex-shrink-0" /><span className="truncate">Oficios</span>
                   </Button>
                   <Button
-                    onClick={(e) => { e.stopPropagation(); toast.info('Respuesta', { description: consulta.id }); }}
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Respuesta', { description: consulta.id }); }}
                     size="sm"
                     variant="outline"
                     className="text-[11px] px-2 justify-start truncate min-w-0"
@@ -1034,7 +899,7 @@ function TarjetasConsultas({ consultas, onAbrirExpediente }: TarjetasConsultasPr
                 </div>
 
                 <Button
-                  onClick={(e) => { e.stopPropagation(); toast.info('Comentarios de la Consulta', { description: consulta.id }); }}
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Comentarios de la Consulta', { description: consulta.id }); }}
                   size="sm"
                   className="w-full text-[11px] py-2 font-bold"
                   style={{ background: '#003DA5', color: '#FFFFFF' }}

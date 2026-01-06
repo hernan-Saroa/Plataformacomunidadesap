@@ -42,6 +42,21 @@ export class PlanMejoramiento {
   @Column({ default: 'ABIERTO' })
   estado: string; // 'ABIERTO', 'EN_EJECUCION', 'VENCIDO', 'CERRADO'
 
+  @Column({ name: 'documento_origen', nullable: true })
+  documentoOrigen: string;
+
+  @Column({ name: 'area_responsable', nullable: true })
+  areaResponsable: string;
+
+  @Column({ name: 'fecha_recepcion', nullable: true })
+  fechaRecepcion: Date;
+
+  @Column({ name: 'fecha_respuesta', nullable: true })
+  fechaRespuesta: Date;
+
+  @Column({ nullable: true })
+  severidad: string; // 'CRITICO', 'ALTO', 'MEDIO', 'BAJO'
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

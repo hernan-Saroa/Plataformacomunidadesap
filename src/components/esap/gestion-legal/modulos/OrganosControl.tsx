@@ -30,6 +30,7 @@ import { Textarea } from '../../../ui/textarea';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { getServiceUrl } from '../../../../config/environment';
 
 // Tipo para drag and drop
 const ItemTypes = {
@@ -1279,8 +1280,8 @@ export function OrganosControl() {
                             onClick={() => {
                               const filename = doc.archivoUrl?.split('/').pop();
                               if (filename) {
-                                const baseUrl = 'http://localhost:3008/api/legal/files';
-                                window.open(`${baseUrl}/${filename}`, '_blank');
+                                const baseUrl = getServiceUrl('legal');
+                                window.open(`${baseUrl}/legal/files/${filename}`, '_blank');
                               }
                             }}
                           >

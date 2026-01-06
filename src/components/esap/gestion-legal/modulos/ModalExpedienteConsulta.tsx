@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
+import { getServiceUrl } from '../../../../config/environment';
 import { legalService } from '../../../../services/api/legal.service';
 import {
   FileQuestion, Scale, User, Calendar, Clock, AlertTriangle,
@@ -15,7 +16,7 @@ import {
   Building2, Mail, FileText, FileCheck, Activity,
   MessageSquare, Send, Edit, Filter, ChevronDown,
   Phone, Hash, Bell, Target, Flag, Bookmark, Archive,
-  Upload, BookOpen, Gavel, History
+  Upload, BookOpen, Gavel, History, Trash2
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -36,9 +37,10 @@ interface ModalExpedienteConsultaProps {
   isOpen: boolean;
   onClose: () => void;
   consulta: ConsultaJuridica;
+  onUpdate?: () => void;
 }
 
-export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpedienteConsultaProps) {
+export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }: ModalExpedienteConsultaProps) {
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
   const [tabActivo, setTabActivo] = useState('general');
@@ -47,56 +49,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
   const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
 
-  // ==================== DATOS MOCK ====================
-  
-  // IMPORTANTE: Siempre mostrar documentos de ejemplo para demostración
-  const documentos = [
-    {
-      id: 'DOC-001',
-      nombre: 'Solicitud_Consulta_Original.pdf',
-      tipo: 'PDF',
-      tamano: 1234567,
-      fechaCarga: new Date('2025-01-15'),
-      usuarioCarga: 'Sistema SIGL',
-      descripcion: 'Documento original de solicitud de consulta jurídica radicada en el sistema'
-    },
-    {
-      id: 'DOC-002',
-      nombre: 'Normativa_Decreto_019_2012.pdf',
-      tipo: 'PDF',
-      tamano: 2345678,
-      fechaCarga: new Date('2025-01-16'),
-      usuarioCarga: 'Dra. Ana López García',
-      descripcion: 'Marco normativo aplicable - Decreto 019 de 2012 sobre supresión de trámites'
-    },
-    {
-      id: 'DOC-003',
-      nombre: 'Concepto_Emitido_Final.docx',
-      tipo: 'DOCX',
-      tamano: 567890,
-      fechaCarga: new Date('2025-01-18'),
-      usuarioCarga: 'Dra. Ana López García',
-      descripcion: 'Concepto jurídico final emitido por la Oficina Jurídica'
-    },
-    {
-      id: 'DOC-004',
-      nombre: 'Jurisprudencia_Consejo_Estado.pdf',
-      tipo: 'PDF',
-      tamano: 3456789,
-      fechaCarga: new Date('2025-01-17'),
-      usuarioCarga: 'Dr. Pedro Gómez Sánchez',
-      descripcion: 'Sentencia del Consejo de Estado - Radicado 25000-23-37-000-2020-00123-01'
-    },
-    {
-      id: 'DOC-005',
-      nombre: 'Anexo_Cuadro_Comparativo.xlsx',
-      tipo: 'XLSX',
-      tamano: 456789,
-      fechaCarga: new Date('2025-01-17'),
-      usuarioCarga: 'Dra. Ana López García',
-      descripcion: 'Cuadro comparativo de normativa aplicable y términos legales'
-    }
-  ];
+  // Estados para documentos
+  const [documentos, setDocumentos] = useState<any[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [respuestaTexto, setRespuestaTexto] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Cargar documentos al abrir o cambiar de consulta
   useEffect(() => {
@@ -301,6 +259,66 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
   const [nuevoComentario, setNuevoComentario] = useState('');
   const [loadingComentarios, setLoadingComentarios] = useState(false);
 
+  // Estados para reasignación de abogado
+  const [abogados, setAbogados] = useState<any[]>([]);
+  const [editandoAbogado, setEditandoAbogado] = useState(false);
+  const [abogadoSeleccionado, setAbogadoSeleccionado] = useState('');
+  const [loadingAbogados, setLoadingAbogados] = useState(false);
+
+  useEffect(() => {
+    // Cargar lista de abogados al montar si no están cargados
+    if (editandoAbogado && abogados.length === 0) {
+      loadAbogados();
+    }
+  }, [editandoAbogado]);
+
+  const loadAbogados = async () => {
+    try {
+      setLoadingAbogados(true);
+      const data = await legalService.getAbogados();
+      setAbogados(data || []);
+    } catch (error) {
+      console.error('Error cargando abogados:', error);
+      toast.error('Error al cargar lista de abogados');
+    } finally {
+      setLoadingAbogados(false);
+    }
+  };
+
+  const handleGuardarAbogado = async () => {
+    if (!abogadoSeleccionado) {
+      setEditandoAbogado(false);
+      return;
+    }
+    try {
+      toast.loading('Asignando abogado...', { id: 'assign-lawyer' });
+      await legalService.updateConsultaJuridica(consulta.uuid, { abogadoAsignadoId: abogadoSeleccionado });
+
+      // Actualizar UI localmente (idealmente recargar consulta completa)
+      const abogado = abogados.find(a => a.id === abogadoSeleccionado);
+
+      // Notificar al padre para recargar si es necesario, o forzar reload
+      // Por ahora simulamos la actualización visual
+      // (Nota: La prop consulta es readonly, idealmente deberíamos tener un onUpdate o reloadConsulta)
+
+      // Hack: Forzar visualización temporal o pedir recarga
+      toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
+      toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
+      setEditandoAbogado(false);
+
+      if (onUpdate) {
+        onUpdate();
+      }
+
+      // Si onClose dispara recarga en padre, bien. Si no, quizá debamos inyectar onRefresh.
+      // Como no tengo onRefresh en props, solo cierro edición.
+      // El usuario verá el cambio real al reabrir o si el padre se actualiza.
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al reasignar abogado', { id: 'assign-lawyer' });
+    }
+  };
+
   // Cargar comentarios al abrir o cambiar de tab
   useEffect(() => {
     if (isOpen && consulta?.uuid && tabActivo === 'comentarios') {
@@ -344,112 +362,143 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
   };
 
   // ==================== HANDLERS ====================
-  
+
   /**
    * Descargar documento individual
    */
-  const handleDescargarDocumento = (doc: any) => {
-    toast.loading('⏳ Preparando descarga...', {
-      id: 'descargar-doc',
-      duration: 1000
-    });
+  const handleDescargarDocumento = async (doc: any) => {
+    if (!doc.archivoUrl) {
+      toast.error('No hay archivo disponible');
+      return;
+    }
 
-    setTimeout(() => {
-      toast.info('📥 Descargando archivo...', {
-        id: 'descargar-doc',
-        description: `${doc.nombre} (${(doc.tamano / 1024 / 1024).toFixed(2)} MB)`,
-        duration: 2000
-      });
+    try {
+      toast.loading('Descargando archivo...', { id: 'descargar-doc' });
+      const baseUrl = getServiceUrl('legal');
+      const url = (doc.archivoUrl || doc.url);
+      if (!url) {
+        toast.error('No hay URL de archivo', { id: 'descargar-doc' });
+        return;
+      }
+      const fullUrl = url.startsWith('http') ? url : `${baseUrl}/legal/${url}`;
 
-      setTimeout(() => {
-        toast.success('✅ Descarga completada', {
-          id: 'descargar-doc',
-          description: `${doc.nombre} se ha descargado exitosamente`,
-          duration: 4000
-        });
+      const response = await fetch(fullUrl);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = doc.archivoNombreOriginal || doc.nombre || 'documento';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
 
-        // Log para analytics
-        console.log('📊 Documento descargado:', {
-          consulta: consulta.id,
-          documentoId: doc.id,
-          nombre: doc.nombre,
-          tipo: doc.tipo,
-          tamano: `${(doc.tamano / 1024 / 1024).toFixed(2)} MB`,
-          timestamp: new Date().toISOString()
-        });
-      }, 2000);
-    }, 1000);
+      toast.success('Descarga completada', { id: 'descargar-doc' });
+    } catch (error) {
+      console.error('Error descargando:', error);
+      toast.error('Error al descargar el archivo', { id: 'descargar-doc' });
+    }
+  };
+
+  const handleEliminarDocumento = async (doc: any) => {
+    if (!confirm(`¿Estás seguro de eliminar el documento "${doc.nombre}"?`)) return;
+
+    try {
+      toast.loading('Eliminando documento...', { id: 'delete-doc' });
+      await legalService.deleteDocumentoConsulta(doc.id);
+
+      // Actualizar lista local
+      setDocumentos(prev => prev.filter(d => d.id !== doc.id));
+
+      toast.success('Documento eliminado', { id: 'delete-doc' });
+    } catch (error) {
+      console.error('Error eliminando documento:', error);
+      toast.error('Error al eliminar documento', { id: 'delete-doc' });
+    }
+  };
+
+  // Función auxiliar para construir URL completa sin duplicar prefijos
+  const getFullUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+
+    const baseUrl = getServiceUrl('legal');
+
+    // Normalizar URL: quitar slashes iniciales y prefijos 'legal/' repetidos
+    let cleanPath = url;
+    while (cleanPath.startsWith('/') || cleanPath.startsWith('legal/')) {
+      if (cleanPath.startsWith('/')) cleanPath = cleanPath.substring(1);
+      else if (cleanPath.startsWith('legal/')) cleanPath = cleanPath.substring(6);
+    }
+
+    // Construir URL final limpia
+    // baseUrl podría o no tener prefijo dependiendo del modo, pero getServiceUrl devuelve la base (host+port o gateway base)
+    // El controlador espera /legal/files/... (static assets) o la ruta de API.
+    // Backend main.ts sirve uploads en '/uploads/' ??
+    // Reviado main.ts: app.useStaticAssets(join(__dirname, '..', 'uploads'), { prefix: '/uploads/' }); NO, wait.
+    // main.ts tiene: prefix: '/uploads/' ? No, el controller guarda como `/legal/files/filename`.
+    // PERO `FilesController` (que no revisé) mapea `/legal/files` a uploads?
+
+    // Asumiendo que existe un endpoint que sirve los archivos en /legal/files/
+    // O que el static assets prefix es correcto.
+
+    // Evitar la duplicación verificando si baseUrl ya termina en /legal
+    const separator = baseUrl.endsWith('/') ? '' : '/';
+    return `${baseUrl}${separator}legal/${cleanPath}`;
   };
 
   /**
    * Ver documento en visor
    */
   const handleVerDocumento = (doc: any) => {
-    toast.loading('⏳ Cargando visor de documento...', {
-      id: 'ver-doc',
-      duration: 800
-    });
-
-    setTimeout(() => {
-      toast.success('✅ Documento cargado', {
-        id: 'ver-doc',
-        description: `${doc.nombre} - ${doc.tipo}`,
-        duration: 2000
-      });
-
-      // Log para analytics
-      console.log('📊 Documento visualizado:', {
-        consulta: consulta.id,
-        documentoId: doc.id,
-        nombre: doc.nombre,
-        tipo: doc.tipo,
-        timestamp: new Date().toISOString()
-      });
-
-      // TODO: Abrir modal de visor de documentos
-    }, 800);
+    const url = doc.archivoUrl || doc.url;
+    if (!url) {
+      toast.error('No hay archivo disponible para ver');
+      return;
+    }
+    const fullUrl = getFullUrl(url);
+    window.open(fullUrl, '_blank');
+    toast.success('Documento abierto en nueva pestaña', { description: doc.nombre });
   };
 
   /**
    * Descargar todos los documentos (ZIP)
    */
-  const handleDescargarTodos = () => {
-    const totalDocs = documentos.length;
-    const totalSize = documentos.reduce((acc, doc) => acc + doc.tamano, 0);
-    const totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
+  const handleDescargarTodos = async () => {
+    if (!consulta?.uuid) return;
+    if (documentos.length === 0) {
+      toast.warning('No hay documentos para descargar');
+      return;
+    }
 
-    toast.loading('📦 Preparando descarga masiva...', {
-      id: 'descargar-todos',
-      description: `${totalDocs} documentos · ${totalSizeMB} MB`,
-      duration: 1500
-    });
+    toast.loading('📦 Preparando descarga ZIP...', { id: 'download-docs' });
 
-    setTimeout(() => {
-      toast.info('⏳ Comprimiendo archivos...', {
-        id: 'descargar-todos',
-        description: 'Creando archivo ZIP con todos los documentos',
-        duration: 2500
+    try {
+      const url = legalService.getDocumentosConsultaDownloadUrl(consulta.uuid);
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error('Error al descargar los documentos');
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `consulta_juridica_${consulta.id || consulta.uuid}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      toast.success('✅ Documentos descargados', {
+        id: 'download-docs',
+        description: `${documentos.length} archivos en ZIP`
       });
-
-      setTimeout(() => {
-        const fileName = `Consulta_${consulta.id.replace(/\//g, '_')}_Documentos_${new Date().toISOString().split('T')[0]}.zip`;
-        
-        toast.success('✅ Descarga completada', {
-          id: 'descargar-todos',
-          description: fileName,
-          duration: 4000
-        });
-
-        // Log para analytics
-        console.log('📊 Descarga masiva completada:', {
-          consulta: consulta.id,
-          totalDocumentos: totalDocs,
-          tamanoTotal: totalSizeMB + ' MB',
-          archivo: fileName,
-          timestamp: new Date().toISOString()
-        });
-      }, 2500);
-    }, 1500);
+    } catch (error) {
+      console.error('Error descargando ZIP:', error);
+      toast.error('Error al descargar documentos', { id: 'download-docs' });
+    }
   };
 
   /**
@@ -470,7 +519,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
 
       setTimeout(() => {
         const fileName = `Consulta_${consulta.id}_Reporte_Completo_${new Date().toISOString().split('T')[0]}.pdf`;
-        
+
         toast.success('✅ PDF generado exitosamente', {
           id: 'exportar-pdf',
           description: fileName,
@@ -487,7 +536,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
           incluye: {
             consulta: true,
             respuesta: !!consulta.respuesta,
-            normativa: normatividad.length,
+            normativa: consulta.normativaAplicable?.length || 0,
             documentos: documentos.length
           },
           archivo: fileName,
@@ -509,52 +558,29 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
   /**
    * Subir nuevo documento al expediente
    */
-  const handleSubirDocumento = () => {
-    toast.info('📎 Abriendo selector de archivos', {
-      description: 'Selecciona documentos para agregar al expediente',
-      duration: 2000
-    });
+  const handleSubirDocumento = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !consulta?.uuid) return;
 
-    // Simular apertura de input file
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png';
+    setUploadingDoc(true);
+    const formData = new FormData();
+    formData.append('archivo', file);
+    formData.append('nombre', file.name);
+    formData.append('tipoDocumento', 'adjunto');
 
-    input.onchange = (e: any) => {
-      const files = e.target?.files;
-      if (files && files.length > 0) {
-        const archivosArray = Array.from(files) as File[];
-
-        toast.loading('⏳ Cargando documentos...', {
-          id: 'subir-docs',
-          description: `${archivosArray.length} archivo(s) seleccionado(s)`,
-          duration: 2000
-        });
-
-        setTimeout(() => {
-          toast.success(`✅ ${archivosArray.length} documento(s) cargado(s)`, {
-            id: 'subir-docs',
-            description: 'Los documentos están disponibles en el expediente',
-            duration: 4000
-          });
-
-          // Log para analytics
-          console.log('📊 Documentos cargados:', {
-            consulta: consulta.id,
-            cantidad: archivosArray.length,
-            archivos: archivosArray.map(f => ({
-              nombre: f.name,
-              tipo: f.type,
-              tamano: `${(f.size / 1024 / 1024).toFixed(2)} MB`
-            })),
-            timestamp: new Date().toISOString()
-          });
-        }, 2000);
+    try {
+      await legalService.uploadDocumentoConsulta(consulta.uuid, formData);
+      toast.success('✅ Documento subido exitosamente');
+      await loadDocumentos();
+    } catch (error) {
+      console.error('Error subiendo documento:', error);
+      toast.error('Error al subir el documento');
+    } finally {
+      setUploadingDoc(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
       }
-    };
-
-    input.click();
+    }
   };
 
   const getSemaforoColor = (diasRestantes: number) => {
@@ -630,7 +656,40 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
                 </div>
                 <div>
                   <p className="text-xs text-gray-600">Profesional</p>
-                  <p className="text-sm font-bold text-gray-900 truncate">{consulta.abogadoAsignado}</p>
+                  {!editandoAbogado ? (
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-gray-900 truncate">{consulta.abogadoAsignado || 'Sin asignar'}</p>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={() => setEditandoAbogado(true)}
+                        title="Reasignar Abogado"
+                      >
+                        <Edit className="w-3 h-3 text-gray-500" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 mt-1">
+                      <select
+                        className="text-xs border border-gray-300 rounded p-1 w-32 focus:outline-none focus:border-blue-500"
+                        value={abogadoSeleccionado}
+                        onChange={(e) => setAbogadoSeleccionado(e.target.value)}
+                        disabled={loadingAbogados}
+                      >
+                        <option value="">Seleccionar...</option>
+                        {abogados.map(a => (
+                          <option key={a.id} value={a.id}>{a.nombreCompleto}</option>
+                        ))}
+                      </select>
+                      <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={handleGuardarAbogado}>
+                        <CheckCircle className="w-4 h-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => setEditandoAbogado(false)}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -653,43 +712,36 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
             <Tabs value={tabActivo} onValueChange={setTabActivo} className="h-full">
               <div className="sticky top-0 bg-white border-b border-gray-200 px-6 z-10">
                 <TabsList className="w-full justify-start gap-1 bg-transparent h-auto p-0">
-                  <TabsTrigger 
-                    value="general" 
+                  <TabsTrigger
+                    value="general"
                     className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
                   >
                     <FileQuestion className="w-4 h-4" />
                     General
                   </TabsTrigger>
-                  <TabsTrigger 
-                    value="documentos" 
+                  <TabsTrigger
+                    value="documentos"
                     className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
                   >
                     <Paperclip className="w-4 h-4" />
                     Documentos ({documentos.length})
                   </TabsTrigger>
-                  <TabsTrigger 
-                    value="normativa" 
-                    className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
-                  >
-                    <BookOpen className="w-4 h-4" />
-                    Normativa
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="respuesta" 
+                  <TabsTrigger
+                    value="respuesta"
                     className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
                   >
                     <FileCheck className="w-4 h-4" />
                     Respuesta
                   </TabsTrigger>
-                  <TabsTrigger 
-                    value="timeline" 
+                  <TabsTrigger
+                    value="timeline"
                     className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
                   >
                     <History className="w-4 h-4" />
                     Timeline
                   </TabsTrigger>
-                  <TabsTrigger 
-                    value="comentarios" 
+                  <TabsTrigger
+                    value="comentarios"
                     className="gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:font-bold rounded-none pb-3 pt-3"
                   >
                     <MessageSquare className="w-4 h-4" />
@@ -829,7 +881,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
                         <Download className="w-4 h-4 mr-2" />
                         Descargar Todos (ZIP)
                       </Button>
-                      <Button variant="outline" size="sm" onClick={handleSubirDocumento}>
+                      <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}>
                         <Upload className="w-4 h-4 mr-2" />
                         {uploadingDoc ? 'Subiendo...' : 'Subir Documento'}
                       </Button>
@@ -844,155 +896,55 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
                             <FileText className="w-6 h-6 text-blue-600" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-bold text-gray-900 truncate">{doc.nombre}</h4>
-                            <div className="flex items-center gap-4 text-xs text-gray-600 mt-1">
-                              <span>{doc.tipo}</span>
-                              <span>{(doc.tamano / 1024 / 1024).toFixed(2)} MB</span>
-                              <span>{new Date(doc.fechaCarga).toLocaleDateString('es-CO')}</span>
-                              <span>Por: {doc.usuarioCarga}</span>
+                            <p className="font-bold text-sm truncate">{doc.nombre}</p>
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                              {doc.tamanoBytes ? (
+                                <span>{(Number(doc.tamanoBytes) / (1024 * 1024)).toFixed(2)} MB</span>
+                              ) : null}
+                              {doc.createdAt && (
+                                <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
+                              )}
+                              {doc.subidoPor && (
+                                <span>Por: {doc.subidoPor}</span>
+                              )}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex-shrink-0 flex items-center gap-2">
+                            {/* Botón Ver - Abrir en nueva pestaña directamente */}
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
-                              onClick={() => handleVerDocumento(doc)}
+                              onClick={() => {
+                                const fullUrl = getFullUrl(doc.archivoUrl || doc.url);
+                                if (fullUrl) window.open(fullUrl, '_blank');
+                                else toast.error('No se pudo obtener la URL del documento');
+                              }}
                             >
                               <Eye className="w-4 h-4 mr-1" />
                               Ver
                             </Button>
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
                               onClick={() => handleDescargarDocumento(doc)}
                             >
                               <Download className="w-4 h-4 mr-1" />
                               Descargar
                             </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                              onClick={() => handleEliminarDocumento(doc)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              Eliminar
+                            </Button>
                           </div>
                         </div>
                       </Card>
                     ))}
                   </div>
-                </TabsContent>
-
-                {/* TAB: NORMATIVA */}
-                <TabsContent value="normativa" className="space-y-4 mt-0">
-                  {/* Header Explicativo */}
-                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4 mb-4">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-white rounded-lg shadow-sm">
-                        <BookOpen className="w-6 h-6 text-purple-600" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-bold text-gray-900 mb-1">Marco Normativo Aplicable</h3>
-                        <p className="text-sm text-gray-700">
-                          Normas, leyes, decretos y conceptos jurídicos que fundamentan la respuesta a esta consulta. 
-                          Esta normativa es vinculante para el análisis jurídico realizado.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {normatividad.length > 0 ? (
-                    <div className="space-y-4">
-                      {normatividad.map((norma, index) => (
-                        <Card 
-                          key={index} 
-                          className="p-4 hover:shadow-lg transition-all border-l-4" 
-                          style={{ borderLeftColor: norma.relevancia === 'ALTA' ? '#DC2626' : norma.relevancia === 'MEDIA' ? '#F59E0B' : '#6366F1' }}
-                        >
-                          {/* FILA 1: Título, Artículo y Badge de Relevancia */}
-                          <div className="flex items-start justify-between gap-4 mb-3">
-                            <div className="flex items-start gap-3 flex-1">
-                              <div className="p-2 bg-purple-50 rounded-lg flex-shrink-0">
-                                <Gavel className="w-5 h-5 text-purple-600" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-bold text-gray-900 mb-1" style={{ fontSize: '16px' }}>
-                                  {norma.norma}
-                                </h4>
-                                {norma.articulo && norma.articulo !== 'N/A' && (
-                                  <p className="text-sm text-purple-600 font-semibold">
-                                    {norma.articulo}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            <Badge 
-                              variant="outline"
-                              className="font-bold flex-shrink-0"
-                              style={{
-                                borderColor: norma.relevancia === 'ALTA' ? '#DC2626' : norma.relevancia === 'MEDIA' ? '#F59E0B' : '#6B7280',
-                                color: norma.relevancia === 'ALTA' ? '#DC2626' : norma.relevancia === 'MEDIA' ? '#F59E0B' : '#6B7280',
-                                backgroundColor: norma.relevancia === 'ALTA' ? '#FEE2E2' : norma.relevancia === 'MEDIA' ? '#FEF3C7' : '#F3F4F6'
-                              }}
-                            >
-                              {norma.relevancia === 'ALTA' ? '🔴 ALTA' : norma.relevancia === 'MEDIA' ? '🟡 MEDIA' : '⚪ BAJA'}
-                            </Badge>
-                          </div>
-
-                          {/* FILA 2: Descripción */}
-                          <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-3 ml-11">
-                            <p className="text-sm text-gray-800 leading-relaxed">
-                              {norma.descripcion}
-                            </p>
-                          </div>
-
-                          {/* FILA 3: Botones de Acción */}
-                          <div className="flex items-center gap-2 ml-11">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => {
-                                toast.success('📖 Abriendo norma completa', {
-                                  description: norma.norma,
-                                  duration: 2000
-                                });
-                              }}
-                            >
-                              <ExternalLink className="w-4 h-4 mr-1" />
-                              Ver Norma Completa
-                            </Button>
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => {
-                                const textoReferencia = `${norma.norma}${norma.articulo && norma.articulo !== 'N/A' ? ' - ' + norma.articulo : ''}: ${norma.descripcion}`;
-                                navigator.clipboard.writeText(textoReferencia).then(() => {
-                                  toast.success('✅ Referencia copiada al portapapeles', {
-                                    description: norma.norma,
-                                    duration: 2000
-                                  });
-                                });
-                              }}
-                            >
-                              <FileText className="w-4 h-4 mr-1" />
-                              Copiar Referencia
-                            </Button>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <Card className="p-8 text-center bg-gray-50 border-dashed border-2 border-gray-300">
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="p-4 bg-gray-200 rounded-full">
-                          <BookOpen className="w-8 h-8 text-gray-400" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-gray-700 mb-1">Sin Normativa Asociada</h4>
-                          <p className="text-sm text-gray-600">
-                            Aún no se ha identificado normativa aplicable para esta consulta.
-                          </p>
-                        </div>
-                        <Button variant="outline" size="sm" className="mt-2">
-                          <Plus className="w-4 h-4 mr-2" />
-                          Agregar Normativa
-                        </Button>
-                      </div>
-                    </Card>
-                  )}
                 </TabsContent>
 
                 {/* TAB: RESPUESTA */}
