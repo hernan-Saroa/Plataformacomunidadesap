@@ -16,7 +16,6 @@ interface ModalActualizarAvanceProps {
     indicador: any;
 }
 
-// const API_URL = 'http://localhost:3008/api/legal/pei';
 const API_URL = buildApiUrl('legal', '/pei');
 
 export function ModalActualizarAvance({ open, onClose, onSuccess, indicador }: ModalActualizarAvanceProps) {

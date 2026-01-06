@@ -159,6 +159,9 @@ export class TemplateConfigService {
       oldValue: oldValue,
       newValue: defaultName,
       changedBy: updatedBy,
+      metadata: {
+        reset: true,
+      },
     });
 
     return this.getActiveConfig(config.templateType);

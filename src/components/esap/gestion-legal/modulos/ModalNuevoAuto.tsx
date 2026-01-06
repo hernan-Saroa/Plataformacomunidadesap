@@ -12,11 +12,11 @@ import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Input } from '../../../ui/input';
-import { 
-  FileText, Calendar, Upload, X, AlertCircle, CheckCircle, 
+import {
+  FileText, Calendar, Upload, X, AlertCircle, CheckCircle,
   Save, Scale, Building2, User, Hash, FileUp, Paperclip
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface ModalNuevoAutoProps {
@@ -58,7 +58,7 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
   const [archivo, setArchivo] = useState<File | null>(null);
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /**
@@ -73,7 +73,7 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
     if (!juzgado.trim()) nuevosErrores.juzgado = 'Ingresa el juzgado que emitió el auto';
     if (!resumen.trim()) nuevosErrores.resumen = 'Ingresa un resumen del auto';
     if (resumen.trim().length < 20) nuevosErrores.resumen = 'El resumen debe tener al menos 20 caracteres';
-    
+
     // Validar fecha no sea futura
     if (fecha) {
       const fechaSeleccionada = new Date(fecha);
@@ -151,7 +151,7 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
 
     setTimeout(() => {
       const estadoInfo = ESTADOS_AUTO.find(e => e.valor === estado) || ESTADOS_AUTO[2];
-      
+
       const nuevoAuto = {
         id: Date.now(),
         tipo,
@@ -249,7 +249,7 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
         {/* ==================== CONTENIDO CON SCROLL ==================== */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <div className="space-y-5">
-            
+
             {/* Información del expediente */}
             <Card className="p-4 bg-blue-50 border-blue-200">
               <div className="flex items-center gap-2 text-sm">
@@ -271,9 +271,8 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
                   setTipo(e.target.value);
                   setErrores({ ...errores, tipo: '' });
                 }}
-                className={`w-full px-4 py-2.5 text-sm border rounded-lg bg-white font-semibold ${
-                  errores.tipo ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2.5 text-sm border rounded-lg bg-white font-semibold ${errores.tipo ? 'border-red-500' : 'border-gray-300'
+                  }`}
               >
                 <option value="">Selecciona el tipo de auto...</option>
                 {TIPOS_AUTO.map(t => (
@@ -373,9 +372,8 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
                   setErrores({ ...errores, resumen: '' });
                 }}
                 rows={4}
-                className={`w-full px-4 py-2.5 text-sm border rounded-lg resize-none ${
-                  errores.resumen ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2.5 text-sm border rounded-lg resize-none ${errores.resumen ? 'border-red-500' : 'border-gray-300'
+                  }`}
               />
               <div className="flex items-center justify-between mt-1">
                 {errores.resumen ? (
@@ -442,9 +440,9 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
                 <Paperclip className="w-4 h-4 inline mr-1" />
                 Archivo PDF (Opcional)
               </label>
-              
+
               {!archivo ? (
-                <div 
+                <div
                   onClick={() => fileInputRef.current?.click()}
                   className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all"
                 >
@@ -481,7 +479,7 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
                   </div>
                 </Card>
               )}
-              
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -521,7 +519,7 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
             <X className="w-4 h-4 mr-1" />
             Cancelar
           </Button>
-          
+
           <div className="flex items-center gap-2">
             <Button
               onClick={handleGuardar}

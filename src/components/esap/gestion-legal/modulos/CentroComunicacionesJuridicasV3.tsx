@@ -238,17 +238,17 @@ type VistaModulo = 'inbox' | 'lista';
 
 export function ModuloCentroComunicacionesJuridicasV3() {
   console.log('🔄 ModuloCentroComunicacionesJuridicasV3 renderizado');
-  
+
   const [tabActiva, setTabActiva] = useState<TabUnificadaType>('judiciales');
   const [busqueda, setBusqueda] = useState('');
   const [comunicacionSeleccionada, setComunicacionSeleccionada] = useState<ComunicacionUnificada | null>(null);
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('inbox');
-  
+
   // Estado reactivo para las comunicaciones
   const [comunicaciones, setComunicaciones] = useState<ComunicacionUnificada[]>(comunicacionesUnificadas);
-  
+
   // Estados para modales
   const [modalNuevaComunicacionOpen, setModalNuevaComunicacionOpen] = useState(false);
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
@@ -270,9 +270,9 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         className: (e.target as HTMLElement).className
       });
     };
-    
+
     document.addEventListener('click', handleGlobalClick, true);
-    
+
     return () => {
       document.removeEventListener('click', handleGlobalClick, true);
     };
@@ -332,21 +332,21 @@ export function ModuloCentroComunicacionesJuridicasV3() {
 
   const handleMarcarLeida = (id: string) => {
     console.log('🔵 Marcando como leída:', id);
-    setComunicaciones(prevComs => 
-      prevComs.map(com => 
-        com.id === id 
+    setComunicaciones(prevComs =>
+      prevComs.map(com =>
+        com.id === id
           ? { ...com, leida: true, estado: 'LEIDA' as EstadoComunicacion }
           : com
       )
     );
-    
+
     // Actualizar también la comunicación seleccionada si es la misma
     if (comunicacionSeleccionada?.id === id) {
-      setComunicacionSeleccionada(prev => 
+      setComunicacionSeleccionada(prev =>
         prev ? { ...prev, leida: true, estado: 'LEIDA' as EstadoComunicacion } : null
       );
     }
-    
+
     toast.success('Comunicación marcada como leída', {
       icon: <CheckCircle className="w-4 h-4" />
     });
@@ -354,19 +354,19 @@ export function ModuloCentroComunicacionesJuridicasV3() {
 
   const handleArchivar = (id: string) => {
     console.log('📦 Archivando comunicación:', id);
-    setComunicaciones(prevComs => 
-      prevComs.map(com => 
-        com.id === id 
+    setComunicaciones(prevComs =>
+      prevComs.map(com =>
+        com.id === id
           ? { ...com, estado: 'ARCHIVADA' as EstadoComunicacion }
           : com
       )
     );
-    
+
     // Limpiar selección si la comunicación archivada estaba seleccionada
     if (comunicacionSeleccionada?.id === id) {
       setComunicacionSeleccionada(null);
     }
-    
+
     toast.success('Comunicación archivada correctamente', {
       icon: <Archive className="w-4 h-4" />
     });
@@ -412,12 +412,12 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           : com
       )
     );
-    
+
     // Limpiar selección de comunicación si estaba seleccionada
     if (comunicacionSeleccionada && seleccionadas.has(comunicacionSeleccionada.id)) {
       setComunicacionSeleccionada(null);
     }
-    
+
     toast.success(`${seleccionadas.size} comunicaciones archivadas correctamente`, {
       icon: <Archive className="w-4 h-4" />
     });
@@ -451,7 +451,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             ]}
           />
         </div>
-        
+
         {/* Info Tooltip - Discreto pero útil */}
         <div className="flex-shrink-0 pt-1">
           <ModuleInfoTooltip
@@ -985,7 +985,7 @@ function VistaPreviaComunicacion({
 
       {/* Acciones */}
       <div className="space-y-2 pt-4 border-t">
-        <Button 
+        <Button
           className="w-full"
           style={{ background: '#003DA5' }}
           onClick={() => onVerExpediente(comunicacion)}

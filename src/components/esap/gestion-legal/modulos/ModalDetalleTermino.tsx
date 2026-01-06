@@ -9,6 +9,7 @@ import { Clock, Calendar, FileText, User, AlertTriangle, CheckCircle, Hash, Exte
 import { useState } from 'react';
 import { legalService } from '../../../../services/api/legal.service';
 import { toast } from 'sonner';
+import { getServiceUrl } from '../../../../config/environment';
 
 interface ModalDetalleTerminoProps {
     open: boolean;
@@ -45,7 +46,9 @@ export function ModalDetalleTermino({ open, onOpenChange, solicitud }: ModalDeta
             // Note: legalService needs this method. If not exists, allow me to define it or fetch raw
             // Assuming legalService.getTerminoDocumentos(uuid) exists or I add it.
             // For now using direct fetch to ensure it works without changing legal.service again immediately
-            const res = await fetch(`http://localhost:3008/api/legal/terminos/${uuid}/documentos`);
+            // For now using direct fetch to ensure it works without changing legal.service again immediately
+            const baseUrl = getServiceUrl('legal');
+            const res = await fetch(`${baseUrl}/legal/terminos/${uuid}/documentos`);
             if (res.ok) {
                 const data = await res.json();
                 setDocumentos(data);
