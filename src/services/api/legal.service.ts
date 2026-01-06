@@ -2,10 +2,9 @@
 import { apiClient } from './client';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environment';
 
-// Prefijo del servicio legal a través del gateway
-// Nueva estructura: /legal/api/v1/legal/{path}
-// Esto es necesario porque el backend espera prefijo 'legal/' y el gateway consume 'api/v1'
-const SERVICE_PREFIX = '/legal/api/v1/legal';
+// Prefijo del servicio legal - El backend registra rutas como /legal/riesgos, /legal/expedientes, etc.
+// En modo directo (localhost:3008), las rutas son /legal/*
+const SERVICE_PREFIX = '/legal';
 
 export interface Expediente {
     id: string;
@@ -620,10 +619,14 @@ export interface CreateRiesgoData {
     descripcion: string;
     proceso: string;
     tipoRiesgo: 'GESTION' | 'CORRUPCION' | 'SEGURIDAD_DIGITAL' | 'FISCAL';
+    etapa?: 'IDENTIFICADO' | 'ANALIZADO' | 'VALORADO' | 'TRATAMIENTO' | 'MONITOREO' | 'CERRADO' | 'MATERIALIZADO';
     probabilidadInherente: number;
     impactoInherente: number;
+    probabilidadResidual?: number;
+    impactoResidual?: number;
     causas?: string[];
     consecuencias?: string[];
+    controlesExistentes?: { id: string; descripcion: string; efectividad: number }[];
     responsable: string;
 }
 
