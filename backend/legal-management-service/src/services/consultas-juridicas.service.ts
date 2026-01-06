@@ -40,20 +40,23 @@ export class ConsultasJuridicasService {
     }
 
     async create(data: Partial<ConsultaJuridica>): Promise<ConsultaJuridica> {
-        // Generate radicado number - Find last radicado for current year
+        // Generate radicado number - Find max radicado for current year robustly
         const year = new Date().getFullYear();
         const prefix = `CJ-${year}-`;
 
-        const lastRecord = await this.consultaRepository.findOne({
+        // Get all radicados for this year to find the real max, avoiding string sort issues with mixed padding
+        const yearConsultas = await this.consultaRepository.find({
             where: { numeroRadicado: Like(`${prefix}%`) },
-            order: { numeroRadicado: 'DESC' }
+            select: ['numeroRadicado']
         });
 
         let nextNumber = 1;
-        if (lastRecord) {
-            const parts = lastRecord.numeroRadicado.split('-');
-            const lastNumber = parseInt(parts[parts.length - 1], 10);
-            nextNumber = lastNumber + 1;
+        if (yearConsultas.length > 0) {
+            const numbers = yearConsultas.map(c => {
+                const parts = c.numeroRadicado.split('-');
+                return parseInt(parts[parts.length - 1], 10) || 0;
+            });
+            nextNumber = Math.max(...numbers) + 1;
         }
 
         const numeroRadicado = `${prefix}${String(nextNumber).padStart(4, '0')}`;

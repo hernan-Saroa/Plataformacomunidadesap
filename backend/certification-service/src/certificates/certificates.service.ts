@@ -161,6 +161,91 @@ export class CertificatesService {
     return certificatesWithCount;
   }
 
+  async findCertificadosPaginados(params: {
+    page: number;
+    limit: number;
+    search?: string;
+    status?: string;
+    cargo?: string;
+    tipoVinculacion?: string;
+  }) {
+    const safePage = Math.max(params.page || 1, 1);
+    const safeLimit = Math.min(Math.max(params.limit || 10, 1), 10);
+    const skip = (safePage - 1) * safeLimit;
+
+    const qb = this.certificateRepo.createQueryBuilder('cert');
+
+    if (params.search) {
+      const term = `%${params.search.toLowerCase()}%`;
+      qb.andWhere(
+        `(LOWER(cert.full_name) LIKE :term OR LOWER(cert.id_number) LIKE :term OR LOWER(cert.certificate_number) LIKE :term OR LOWER(cert.position_category) LIKE :term OR LOWER(cert.career_category) LIKE :term)`,
+        { term },
+      );
+    }
+
+    if (params.status) {
+      const statusMap: Record<string, string> = {
+        activo: 'VALID',
+        revocado: 'REVOKED',
+        expirado: 'EXPIRED',
+        valid: 'VALID',
+        revoked: 'REVOKED',
+        expired: 'EXPIRED',
+      };
+      const normalized = params.status.toLowerCase();
+      const mappedStatus = statusMap[normalized];
+      if (mappedStatus) {
+        qb.andWhere('cert.status = :status', { status: mappedStatus });
+      }
+    }
+
+    if (params.cargo) {
+      qb.andWhere('cert.position_category = :cargo', { cargo: params.cargo });
+    }
+
+    if (params.tipoVinculacion) {
+      qb.andWhere('cert.career_category = :tipo', { tipo: params.tipoVinculacion });
+    }
+
+    qb.orderBy('cert.issue_date', 'DESC');
+
+    const [certificates, total] = await qb.skip(skip).take(safeLimit).getManyAndCount();
+
+    const certificatesWithCount = await Promise.all(
+      certificates.map(async (cert) => {
+        const validationCount = await this.validationRepo.count({
+          where: { certificate_id: cert.id },
+        });
+        return {
+          ...cert,
+          validation_count: validationCount,
+        };
+      }),
+    );
+
+    const [totalEmitidos, activos, revocados, expirados, escaneosQR] = await Promise.all([
+      this.certificateRepo.count(),
+      this.certificateRepo.count({ where: { status: 'VALID' } }),
+      this.certificateRepo.count({ where: { status: 'REVOKED' } }),
+      this.certificateRepo.count({ where: { status: 'EXPIRED' } }),
+      this.validationRepo.count(),
+    ]);
+
+    return {
+      items: certificatesWithCount,
+      total,
+      limit: safeLimit,
+      page: safePage,
+      stats: {
+        totalEmitidos,
+        certificadosActivos: activos,
+        certificadosRevocados: revocados,
+        certificadosExpirados: expirados,
+        escaneosQR,
+      },
+    };
+  }
+
   async findCertificadoById(id: string) {
     const certificate = await this.certificateRepo.findOne({
       where: { id },
@@ -558,10 +643,6 @@ export class CertificatesService {
       throw new NotFoundException('Documento no encontrado en el sistema');
     }
 
-    if (verificacion.tieneCertificado) {
-      throw new BadRequestException('Ya tienes un certificado laboral generado. No es posible solicitar otro certificado.');
-    }
-
     // Verificar que solicitud existe
     if (!verificacion.solicitud) {
       throw new BadRequestException('Error al recuperar información de la solicitud');
@@ -629,18 +710,6 @@ export class CertificatesService {
 
     if (new Date(solicitud.validation_expires_at) < new Date()) {
       throw new BadRequestException('El código de validación ha expirado. Solicita uno nuevo.');
-    }
-
-    // Verificar si ya tiene certificado
-    const certificadoExistente = await this.certificateRepo.findOne({
-      where: { request_id: solicitud.id },
-    });
-
-    if (certificadoExistente) {
-      return {
-        mensaje: 'Ya tienes un certificado generado',
-        certificado: certificadoExistente,
-      };
     }
 
     // Generar el certificado

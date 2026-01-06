@@ -20,12 +20,12 @@ import {
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState, useEffect } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
+import { getServiceUrl } from '../../../../config/environment';
 import { VisorPDFModal } from './VisorPDFModal';
 import { ModalNuevoAuto } from './ModalNuevoAuto';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import { DialogoConfirmacion } from './DialogoConfirmacion';
 
 interface ModalAutosProps {
   isOpen: boolean;
@@ -68,8 +68,6 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
   const [visorPDFAbierto, setVisorPDFAbierto] = useState(false);
   const [documentoActual, setDocumentoActual] = useState<typeof autosMock[0] | null>(null);
   const [modalNuevoAutoAbierto, setModalNuevoAutoAbierto] = useState(false);
-  const [modalEliminarAbierto, setModalEliminarAbierto] = useState(false);
-  const [autoAEliminar, setAutoAEliminar] = useState<typeof autosMock[0] | null>(null);
 
   // Create Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -102,9 +100,48 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
     }
   }, [isOpen, expediente.id]);
 
+  // Helper para construir URL correcta de archivo
+  const getFileUrl = (archivoUrl: string): string => {
+    if (!archivoUrl) return '';
+
+    const baseUrl = getServiceUrl('legal');
+
+    // Si es URL absoluta con /api/, corregirla
+    if (archivoUrl.startsWith('http') && archivoUrl.includes('/api/legal/files/')) {
+      return archivoUrl.replace('/api/legal/files/', '/legal/files/');
+    }
+    // Si es URL absoluta correcta, devolverla
+    if (archivoUrl.startsWith('http')) {
+      return archivoUrl;
+    }
+
+    // Rutas relativas
+    if (archivoUrl.startsWith('/api/legal/files/')) {
+      return `${baseUrl}${archivoUrl.replace('/api', '')}`;
+    }
+    if (archivoUrl.startsWith('files/')) {
+      return `${baseUrl}/legal/${archivoUrl}`;
+    }
+    if (archivoUrl.includes('/legal/files/') && !archivoUrl.includes('/api/')) {
+      return `${baseUrl}${archivoUrl}`;
+    }
+    if (archivoUrl.includes('/files/')) {
+      const filename = archivoUrl.split('/files/').pop();
+      return `${baseUrl}/legal/files/${filename}`;
+    }
+    return `${baseUrl}/legal/files/${archivoUrl}`;
+  };
+
   const handleDescargarAuto = async (auto: Auto) => {
+    const fileUrl = getFileUrl(auto.archivoUrl);
+    if (!fileUrl) {
+      toast.error('URL del archivo no disponible');
+      return;
+    }
+
+    toast.loading('⏳ Descargando...', { id: 'download-auto' });
     try {
-      const response = await fetch(auto.archivoUrl);
+      const response = await fetch(fileUrl);
       if (!response.ok) throw new Error('Error al descargar el archivo');
 
       const blob = await response.blob();
@@ -116,15 +153,21 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
+      toast.success('✅ Descarga completada', { id: 'download-auto', description: auto.archivoNombre });
     } catch (error) {
       console.error('Download error:', error);
-      toast.error('Error al descargar el archivo');
+      toast.error('Error al descargar el archivo', { id: 'download-auto' });
     }
   };
 
   const handleVerAuto = (auto: Auto) => {
-    // Same logic for now, opens in new tab
-    window.open(auto.archivoUrl, '_blank');
+    const fileUrl = getFileUrl(auto.archivoUrl);
+    if (!fileUrl) {
+      toast.error('URL del archivo no disponible');
+      return;
+    }
+    window.open(fileUrl, '_blank');
+    toast.success('👁️ Documento abierto en nueva pestaña', { description: auto.archivoNombre });
   };
 
   const handleCreateAuto = async () => {
@@ -435,10 +478,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => {
-                              setAutoAEliminar(auto);
-                              setModalEliminarAbierto(true);
-                            }}
+                            onClick={() => handleEliminarAuto(auto.id, auto.numero)}
                             title="Eliminar auto"
                             className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
                           >
@@ -483,7 +523,18 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 Descargar Todos (ZIP)
               </Button>
               <Button
-                onClick={() => setIsCreateOpen(true)}
+                onClick={() => {
+                  // Limpiar todos los valores antes de abrir
+                  setNewAutoData({
+                    tipo: '',
+                    numero: `AUTO-${new Date().getFullYear()}-${String(autos.length + 1).padStart(3, '0')}`,
+                    fechaAuto: new Date().toISOString().split('T')[0],
+                    juzgado: 'Juzgado 1° Administrativo',
+                    resumen: ''
+                  });
+                  setSelectedFile(null);
+                  setIsCreateOpen(true);
+                }}
                 className="font-bold text-white"
                 style={{ background: '#F57C00' }}
               >
@@ -567,27 +618,6 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
           setAutos([nuevoAuto, ...autos]);
           setFiltroTipo('TODOS');
           setBusqueda('');
-        }}
-      />
-
-      {/* Modal de confirmación para eliminar auto */}
-      <DialogoConfirmacion
-        isOpen={modalEliminarAbierto}
-        onClose={() => {
-          setModalEliminarAbierto(false);
-          setAutoAEliminar(null);
-        }}
-        titulo="Confirmar Eliminación"
-        mensaje={`¿Estás seguro de eliminar el auto ${autoAEliminar?.numero}? Esta acción no se puede deshacer y el documento será removido permanentemente del expediente.`}
-        tipo="peligro"
-        textoConfirmar="Sí, eliminar"
-        textoCancelar="Cancelar"
-        onConfirm={() => {
-          if (autoAEliminar) {
-            handleEliminarAuto(autoAEliminar.id, autoAEliminar.numero);
-          }
-          setModalEliminarAbierto(false);
-          setAutoAEliminar(null);
         }}
       />
     </Dialog>

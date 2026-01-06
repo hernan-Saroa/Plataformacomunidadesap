@@ -89,11 +89,14 @@ export const certificadosService = {
      * Listar certificados laborales
      */
     async listar(params?: {
-      estado?: 'Pendiente' | 'Aprobado' | 'Rechazado' | 'Generado';
+      estado?: string;
+      search?: string;
+      cargo?: string;
+      tipoVinculacion?: string;
       page?: number;
       limit?: number;
-    }): Promise<CertificadoLaboral[]> {
-      return apiClient.get<CertificadoLaboral[]>(`${SERVICE_PREFIX}/certificates/certificados`, { params, requiresAuth: false });
+    }): Promise<any> {
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/certificados`, { params, requiresAuth: false });
     },
 
     /**

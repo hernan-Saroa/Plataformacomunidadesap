@@ -82,6 +82,13 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   const [tipoVinculacionFilter, setTipoVinculacionFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const [totalItems, setTotalItems] = useState(0);
+  const [stats, setStats] = useState<Stats>({
+    certificadosEmitidos: 0,
+    certificadosActivos: 0,
+    escaneosQR: 0,
+    solicitudesHoy: 0,
+  });
 
   // Estados para modales
   const [selectedCertificado, setSelectedCertificado] = useState<CertificadoLaboral | null>(null);
@@ -106,11 +113,31 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       setError(null);
 
       console.log('🔄 Cargando certificados desde el backend...');
-      const data = await certificadosService.laborales.listar();
-      console.log(`✅ Se cargaron ${data.length} certificados`);
+      const params: Record<string, any> = {
+        page: currentPage,
+        limit: itemsPerPage,
+      };
+      if (searchQuery.trim()) {
+        params.search = searchQuery.trim();
+      }
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      if (cargoFilter !== 'all') {
+        params.cargo = cargoFilter;
+      }
+      if (tipoVinculacionFilter !== 'all') {
+        params.tipoVinculacion = tipoVinculacionFilter;
+      }
+
+      const response = await certificadosService.laborales.listar(params);
+      const items = Array.isArray(response) ? response : (response.items || []);
+      const total = Array.isArray(response) ? items.length : (response.total || 0);
+      const serverStats = Array.isArray(response) ? null : response.stats;
+      console.log(`✅ Se cargaron ${items.length} certificados`);
 
       // Transformar datos del backend al formato del componente
-      const certificadosTransformados: CertificadoLaboral[] = data.map((cert: any) => ({
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => ({
         id: cert.id,
         consecutivo: cert.certificate_number,
         certificateHash: cert.verification_code,
@@ -146,6 +173,13 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       );
 
       setCertificados(certificadosTransformados);
+      setTotalItems(total);
+      setStats({
+        certificadosEmitidos: serverStats?.totalEmitidos ?? total,
+        certificadosActivos: serverStats?.certificadosActivos ?? certificadosTransformados.filter(cert => cert.estado === 'activo').length,
+        escaneosQR: serverStats?.escaneosQR ?? certificadosTransformados.reduce((sum, cert) => sum + cert.cantidadEscaneos, 0),
+        solicitudesHoy: serverStats?.solicitudesHoy ?? 1,
+      });
 
       if (showRefreshToast) {
         toast.success('Datos actualizados', {
@@ -162,39 +196,17 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     }
   };
 
-  // Cargar certificados al montar el componente
+  // Cargar certificados al cambiar filtros/paginacion
   useEffect(() => {
     fetchCertificados();
-  }, []);
+  }, [currentPage, searchQuery, statusFilter, cargoFilter, tipoVinculacionFilter]);
 
-  const stats: Stats = {
-    certificadosEmitidos: certificados.length,
-    certificadosActivos: certificados.filter(cert => cert.estado === 'activo').length,
-    escaneosQR: certificados.reduce((total, cert) => total + cert.cantidadEscaneos, 0),
-    solicitudesHoy: 1
-  };
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, cargoFilter, tipoVinculacionFilter]);
 
-  // Filtros
-  const filteredCertificados = certificados.filter(cert => {
-    const matchesSearch = 
-      cert.empleado.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cert.empleado.documento.includes(searchQuery) ||
-      cert.consecutivo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cert.empleado.cargo.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || cert.estado === statusFilter;
-    const matchesCargo = cargoFilter === 'all' || cert.empleado.cargo === cargoFilter;
-    const matchesTipoVinculacion = tipoVinculacionFilter === 'all' || cert.empleado.tipoVinculacion === tipoVinculacionFilter;
-    
-    return matchesSearch && matchesStatus && matchesCargo && matchesTipoVinculacion;
-  });
-
-  // Paginación
-  const totalPages = Math.ceil(filteredCertificados.length / itemsPerPage);
-  const paginatedCertificados = filteredCertificados.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const paginatedCertificados = certificados;
 
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || cargoFilter !== 'all' || tipoVinculacionFilter !== 'all';
   const puedeConfigurarPlantilla = Boolean(canManageTemplates);
@@ -850,7 +862,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                   totalPages={totalPages}
                   onPageChange={setCurrentPage}
                   itemsPerPage={itemsPerPage}
-                  totalItems={filteredCertificados.length}
+                  totalItems={totalItems}
                 />
               </div>
             )}

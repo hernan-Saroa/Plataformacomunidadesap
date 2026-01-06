@@ -1,6 +1,6 @@
 // import { ApiClient } from './apiClient';
 import { apiClient } from './client';
-import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
+import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environment';
 
 // Prefijo del servicio legal a través del gateway
 // Nueva estructura: /legal/api/v1/legal/{path}
@@ -95,13 +95,32 @@ export class LegalService {
         return apiClient.get<Expediente>(`${SERVICE_PREFIX}/expedientes/${id}`);
     }
 
-    async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
-        return apiClient.post<Expediente>(`${SERVICE_PREFIX}/expedientes`, data);
-    }
-
     async updateExpediente(id: string, data: Partial<Expediente>): Promise<Expediente> {
         return apiClient.put<Expediente>(`${SERVICE_PREFIX}/expedientes/${id}`, data);
     }
+
+    // ==================== CONSULTAS JURÍDICAS ====================
+    async getConsultasJuridicas(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas`);
+    }
+
+    async getConsultaJuridica(id: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`);
+    }
+
+    async createConsultaJuridica(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/consultas-juridicas`, data);
+    }
+
+    async updateConsultaJuridica(id: string, data: any): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`, data);
+    }
+
+    async getAbogados(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
+    }
+
+    // ==================== ABOGADOS ====================
 
     // Actuaciones
     async getActuaciones(expedienteId: string): Promise<Actuacion[]> {
@@ -167,8 +186,8 @@ export class LegalService {
     }
 
     getAutosDownloadUrl(radicado: string): string {
-        const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
-        return `${baseUrl}${SERVICE_PREFIX}${`/autos/expediente/${radicado}/download-zip`}`;
+        const baseUrl = getServiceUrl('legal');
+        return `${baseUrl}/legal/autos/expediente/${radicado}/download-zip`;
     }
 
     // Documentos
@@ -288,8 +307,13 @@ export class LegalService {
     }
 
     getDocumentosConsultaDownloadUrl(consultaId: string): string {
-        const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
-        return `${baseUrl}${`${SERVICE_PREFIX}/consultas-juridicas/${consultaId}/documentos/download-zip`}`;
+        const baseUrl = getServiceUrl('legal');
+        if (API_MODE === 'direct') {
+            // In direct mode, match backend controller: /legal/consultas-juridicas/...
+            return `${baseUrl}/legal/consultas-juridicas/${consultaId}/documentos/download-zip`;
+        }
+        // Gateway mode follows standard pattern
+        return `${baseUrl}${SERVICE_PREFIX}/consultas-juridicas/${consultaId}/documentos/download-zip`;
     }
 
     // --- CONTROL DE TÉRMINOS E INFORMES ---

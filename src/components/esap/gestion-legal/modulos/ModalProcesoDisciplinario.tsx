@@ -55,7 +55,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     { id: 2, nombre: 'Prueba Documental #2', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_002.pdf', tamaño: '1.8 MB' },
     { id: 3, nombre: 'Prueba Documental #3', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_003.pdf', tamaño: '3.1 MB' }
   ]);
-  
+
   // Estado para el visor de documentos
   const [visorAbierto, setVisorAbierto] = useState(false);
   const [pruebaSeleccionada, setPruebaSeleccionada] = useState<any>(null);
@@ -69,6 +69,49 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   ]);
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState<any>(null);
 
+  // ==================== ESTADOS RECUPERADOS (POST-MERGE) ====================
+  const [mostrarModalNotificar, setMostrarModalNotificar] = useState(false);
+  const [mostrarModalPortales, setMostrarModalPortales] = useState(false);
+  const [mostrarModalCompartir, setMostrarModalCompartir] = useState(false);
+  const [enlaceCompartir, setEnlaceCompartir] = useState('');
+
+  // Dummy handler for file uploads mentioned in code but missing definition
+  const handleFileUpload = (e: any, tipo: string) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      toast.success(`Archivo ${file.name} cargado como ${tipo}`);
+      setHasChanges(true);
+    }
+  };
+
+  const confirmarNotificacion = () => {
+    toast.success('Notificación enviada a los destinatarios');
+    setMostrarModalNotificar(false);
+  };
+
+
+  // ==================== LÓGICA DE NEGOCIO RECUPERADA ====================
+
+  // Calcular días totales de la etapa
+  const diasTotalesEtapa = useMemo(() => {
+    switch (proceso.etapa?.toUpperCase()) {
+      case 'INDAGACIÓN PREVIA': return 180;
+      case 'INVESTIGACIÓN DISCIPLINARIA': return 180;
+      case 'JUZGAMIENTO': return 90;
+      case 'SEGUNDA INSTANCIA': return 45;
+      default: return 180;
+    }
+  }, [proceso.etapa]);
+
+  // Consolidar actuaciones
+  const actuacionesTotales = useMemo(() => {
+    const base = (proceso as any).actuaciones || [];
+    return [...nuevasActuaciones, ...base].sort((a: any, b: any) =>
+      new Date(b.fechaActuacion || b.fecha).getTime() - new Date(a.fechaActuacion || a.fecha).getTime()
+    );
+  }, [proceso, nuevasActuaciones]);
+
+
   const handleAgregarPrueba = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -80,7 +123,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   const handleVerPrueba = (prueba: any) => {
     setPruebaSeleccionada(prueba);
     setVisorAbierto(true);
-    
+
     toast.success('📄 Visor de documentos abierto', {
       description: `Visualizando: ${prueba.nombre}`,
       duration: 2000
@@ -118,17 +161,17 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       id: 'compartir-actuacion',
       duration: 1500
     });
-    
+
     setTimeout(async () => {
       const enlace = `https://esap.gov.co/procesos/${proceso.id}/actuacion-ultima`;
       setEnlaceCompartir(enlace);
-      
+
       // Copiar al portapapeles usando la utilidad
       const copiado = await copyToClipboard(enlace);
-      
+
       // Mostrar modal con el enlace
       setMostrarModalCompartir(true);
-      
+
       if (copiado) {
         toast.success('✅ Enlace generado y copiado al portapapeles', {
           id: 'compartir-actuacion',
@@ -145,14 +188,31 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     }, 1500);
   };
 
+  const handleGuardarNuevaDecision = async (decision: any) => {
+    try {
+      toast.loading('Guardando decisión...', { id: 'saving-decision' });
+      const res = await legalService.createJuzgamientoDecision(proceso.id, decision);
+
+      // Update local state (backend returns the created decision)
+      setDecisiones(prev => [res, ...prev]);
+      setMostrarFormularioDecision(false);
+      setHasChanges(true);
+
+      toast.success('Decisión registrada correctamente', { id: 'saving-decision' });
+    } catch (error) {
+      console.error('Error saving decision:', error);
+      toast.error('Error al guardar la decisión', { id: 'saving-decision' });
+    }
+  };
+
   const handleDescargarPDF = () => {
     const nombreArchivo = `Actuacion_${proceso.id}_${new Date().toLocaleDateString('es-CO').replace(/\//g, '-')}.pdf`;
-    
+
     toast.loading('📄 Generando documento PDF...', {
       id: 'descargar-pdf-actuacion',
       duration: 2000
     });
-    
+
     setTimeout(() => {
       toast.success('✅ Documento PDF generado y descargado', {
         id: 'descargar-pdf-actuacion',
@@ -163,11 +223,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           onClick: () => toast.info('Abriendo carpeta de descargas...')
         }
       });
-      
+
       // En producción esto descargará el archivo real:
       // window.open(`/api/procesos/${proceso.id}/actuacion/pdf`, '_blank');
       // O usar: downloadFile(`/api/procesos/${proceso.id}/actuacion/pdf`, nombreArchivo);
-      
+
       console.log(`📥 Descargando: ${nombreArchivo}`);
     }, 2000);
   };
@@ -178,39 +238,39 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
   const confirmarAbrirPortales = () => {
     const urlPortal = 'https://consultaprocesos.ramajudicial.gov.co/';
-    
+
     toast.loading('🌐 Abriendo Portal de Notificaciones Judiciales...', {
       id: 'abrir-portales',
       duration: 1500
     });
-    
+
     setTimeout(() => {
       // Abrir en nueva ventana
       window.open(urlPortal, '_blank', 'noopener,noreferrer');
-      
+
       toast.success('✅ Portal abierto en nueva ventana', {
         id: 'abrir-portales',
         description: 'Sistema de Portales de la Rama Judicial',
         duration: 3000
       });
-      
+
       setMostrarModalPortales(false);
     }, 1500);
   };
 
   // ==================== FUNCIONES PARA DOCUMENTOS DEL PROCESO ====================
-  
+
   const handleSubirDocumento = () => {
     toast.info('📎 Abriendo selector de archivos', {
       description: 'Selecciona el documento desde tu equipo',
       duration: 2000
     });
-    
+
     // Crear input file
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf,.doc,.docx,.jpg,.png';
-    
+
     input.onchange = (e: any) => {
       const file = e.target?.files?.[0];
       if (file) {
@@ -218,7 +278,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           id: 'subir-documento',
           duration: 2000
         });
-        
+
         setTimeout(() => {
           const nuevoDocumento = {
             id: documentos.length + 1,
@@ -227,16 +287,16 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             fecha: new Date().toLocaleDateString('es-CO'),
             tipo: 'Documento General'
           };
-          
+
           setDocumentos([nuevoDocumento, ...documentos]);
           setHasChanges(true);
-          
+
           toast.success('✅ Documento subido exitosamente', {
             id: 'subir-documento',
             description: `${file.name} agregado al proceso ${proceso.id}`,
             duration: 4000
           });
-          
+
           // Log para analytics
           console.log('📊 Documento subido:', {
             proceso: proceso.id,
@@ -247,14 +307,14 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         }, 2000);
       }
     };
-    
+
     input.click();
   };
 
   const handleVerDocumento = (doc: any) => {
     setDocumentoSeleccionado(doc);
     setVisorAbierto(true);
-    
+
     toast.success('📄 Visor de documentos abierto', {
       description: `Visualizando: ${doc.nombre}`,
       duration: 2000
@@ -266,7 +326,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       id: 'descargar-documento',
       duration: 1500
     });
-    
+
     setTimeout(() => {
       // Crear contenido HTML del documento
       const contenidoHTML = `
@@ -371,11 +431,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             </div>
             <div class="metadata-item">
               <span class="metadata-label">Fecha de Generación:</span>
-              <span>${new Date().toLocaleDateString('es-CO', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}</span>
+              <span>${new Date().toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })}</span>
             </div>
           </div>
           
@@ -430,7 +490,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         </body>
         </html>
       `;
-      
+
       // Crear blob y descargar
       const blob = new Blob([contenidoHTML], { type: 'text/html' });
       const url = window.URL.createObjectURL(blob);
@@ -441,13 +501,13 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      
+
       toast.success('✅ Descarga completada', {
         id: 'descargar-documento',
         description: `${doc.nombre} (${doc.tamaño}) guardado en Descargas`,
         duration: 4000
       });
-      
+
       // Log para analytics
       console.log('📊 Documento descargado:', {
         proceso: proceso.id,
@@ -840,7 +900,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           <TabsContent value="documentos" className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Documentos del Proceso</h3>
-              <Button 
+              <Button
                 onClick={handleSubirDocumento}
                 style={{ background: '#003DA5', color: '#FFFFFF' }}
               >
@@ -860,18 +920,18 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                       <h4 className="font-bold mb-1">{doc.nombre}</h4>
                       <p className="text-xs text-gray-500">{doc.tamaño} • {doc.fecha}</p>
                       <div className="flex gap-2 mt-2">
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
+                        <Button
+                          size="sm"
+                          variant="outline"
                           className="text-xs font-semibold border-blue-300 text-blue-600 hover:bg-blue-50 hover:border-blue-400"
                           onClick={() => handleVerDocumento(doc)}
                         >
                           <Eye className="w-3 h-3 mr-1" />
                           Ver
                         </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
+                        <Button
+                          size="sm"
+                          variant="outline"
                           className="text-xs font-semibold border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400"
                           onClick={() => handleDescargarDocumento(doc)}
                         >
