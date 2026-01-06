@@ -82,6 +82,10 @@ export class LegalService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`);
     }
 
+    async getJuzgamientoActuaciones(radicado: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`);
+    }
+
     async createJuzgamientoDecision(radicado: string, data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`, data);
     }
