@@ -105,6 +105,14 @@ export class JuzgamientoController {
         });
     }
 
+    @Get(':radicado/actuaciones')
+    async getActuaciones(@Param('radicado') radicado: string) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        // Return sorted actuations
+        return expediente.actuaciones || [];
+    }
+
     @Get(':radicado/decisiones')
     async getDecisiones(@Param('radicado') radicado: string) {
         const expediente = await this.expedienteService.findOneByRadicado(radicado);

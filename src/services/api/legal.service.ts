@@ -2,10 +2,9 @@
 import { apiClient } from './client';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environment';
 
-// Prefijo del servicio legal a través del gateway
-// Nueva estructura: /legal/api/v1/legal/{path}
-// Esto es necesario porque el backend espera prefijo 'legal/' y el gateway consume 'api/v1'
-const SERVICE_PREFIX = '/legal/api/v1/legal';
+// Prefijo del servicio legal - El backend registra rutas como /legal/riesgos, /legal/expedientes, etc.
+// En modo directo (localhost:3008), las rutas son /legal/*
+const SERVICE_PREFIX = '/legal';
 
 export interface Expediente {
     id: string;
@@ -82,6 +81,10 @@ export class LegalService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`);
     }
 
+    async getJuzgamientoActuaciones(radicado: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`);
+    }
+
     async createJuzgamientoDecision(radicado: string, data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`, data);
     }
@@ -141,6 +144,11 @@ export class LegalService {
 
     async getStatsGeneral(): Promise<any> {
         return apiClient.get<any>(`${SERVICE_PREFIX}/stats/general`);
+    }
+
+    // Dashboard Ejecutivo SIGL
+    async getDashboardEjecutivo(): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/dashboard/ejecutivo`);
     }
 
     async createAbogado(data: any): Promise<any> {
@@ -620,10 +628,14 @@ export interface CreateRiesgoData {
     descripcion: string;
     proceso: string;
     tipoRiesgo: 'GESTION' | 'CORRUPCION' | 'SEGURIDAD_DIGITAL' | 'FISCAL';
+    etapa?: 'IDENTIFICADO' | 'ANALIZADO' | 'VALORADO' | 'TRATAMIENTO' | 'MONITOREO' | 'CERRADO' | 'MATERIALIZADO';
     probabilidadInherente: number;
     impactoInherente: number;
+    probabilidadResidual?: number;
+    impactoResidual?: number;
     causas?: string[];
     consecuencias?: string[];
+    controlesExistentes?: { id: string; descripcion: string; efectividad: number }[];
     responsable: string;
 }
 
@@ -666,6 +678,102 @@ class RiesgosService {
     }
 }
 
+// ==================== CORREOS JURIDICOS SERVICE ====================
+export interface CorreoJuridico {
+    id: string;
+    graphMessageId: string;
+    asunto: string;
+    remitenteEmail: string;
+    remitenteNombre: string | null;
+    fechaRecepcion: string;
+    cuerpoHtml: string | null;
+    cuerpoTexto: string | null;
+    tieneAdjuntos: boolean;
+    leido: boolean;
+    archivado: boolean;
+    urgente: boolean;
+    tipo: 'JUDICIAL' | 'CORREO' | 'OFICIO';
+    categoria: string | null;
+    moduloSugerido: string | null;
+    confianzaClasificacion: number | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CorreoFilters {
+    tipo?: string;
+    leido?: boolean;
+    urgente?: boolean;
+    archivado?: boolean;
+    search?: string;
+}
+
+export interface SendCorreoDto {
+    to: string;
+    subject: string;
+    body: string;
+}
+
+export class CorreosJuridicosService {
+    /**
+     * Trigger manual sync from Microsoft Graph
+     */
+    async syncCorreos(): Promise<{ synced: number; errors: number }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`);
+    }
+
+    /**
+     * Test Microsoft Graph connection
+     */
+    async testConnection(): Promise<{ success: boolean; message: string }> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/test-connection`);
+    }
+
+    /**
+     * Get all emails with optional filters
+     */
+    async getCorreos(filters?: CorreoFilters): Promise<CorreoJuridico[]> {
+        const params: Record<string, string> = {};
+        if (filters?.tipo) params.tipo = filters.tipo;
+        if (filters?.leido !== undefined) params.leido = String(filters.leido);
+        if (filters?.urgente !== undefined) params.urgente = String(filters.urgente);
+        if (filters?.archivado !== undefined) params.archivado = String(filters.archivado);
+        if (filters?.search) params.search = filters.search;
+
+        return apiClient.get(`${SERVICE_PREFIX}/correos`, { params });
+    }
+
+    /**
+     * Get single email with full body
+     */
+    async getCorreo(id: string): Promise<CorreoJuridico> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/${id}`);
+    }
+
+    /**
+     * Mark email as read
+     */
+    async markAsRead(id: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/read`);
+    }
+
+    /**
+     * Archive email
+     */
+    async archive(id: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/archive`);
+    }
+
+    /**
+     * Send email via Microsoft Graph
+     */
+    async sendEmail(dto: SendCorreoDto): Promise<{ success: boolean }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/send`, dto);
+    }
+}
+
 export const legalService = new LegalService();
 export const ocService = new OCService();
 export const riesgosService = new RiesgosService();
+export const correosJuridicosService = new CorreosJuridicosService();
+
