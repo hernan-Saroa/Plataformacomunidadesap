@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, Raw, Repository } from 'typeorm';
@@ -392,22 +393,37 @@ export class GraduationCertificatesService {
       throw new NotFoundException('Certificado no encontrado');
     }
 
-    if (certificate.pdfFilename) {
-      // Leer PDF del sistema de archivos si ya existe
-      const storagePath =
-        process.env.STORAGE_PATH || './uploads/graduation-certificates';
-      const pdfFilePath = path.join(storagePath, certificate.pdfFilename);
+    const pdfFilename =
+      certificate.pdfFilename ||
+      (certificate.pdfUrl ? path.basename(certificate.pdfUrl) : undefined);
 
-      if (fs.existsSync(pdfFilePath)) {
+    if (pdfFilename) {
+      // Leer PDF del sistema de archivos si ya existe
+      const pdfFilePath = this.resolveExistingPdfPath(pdfFilename);
+      if (pdfFilePath) {
         return fs.readFileSync(pdfFilePath);
       }
+
+      this.logger.warn(
+        `PDF no encontrado en disco para certificado ${certificate.id} (filename=${pdfFilename})`,
+      );
     }
 
     // Si no existe el PDF, generarlo en tiempo real
-    return await this.pdfGeneratorService.generateCertificatePDF(
-      certificate,
-      frontendBaseUrl,
-    );
+    try {
+      return await this.pdfGeneratorService.generateCertificatePDF(
+        certificate,
+        frontendBaseUrl,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error generando PDF en tiempo real para certificado ${certificate.id}`,
+        error instanceof Error ? error.stack : `${error}`,
+      );
+      throw new InternalServerErrorException(
+        'No se pudo generar el PDF del certificado',
+      );
+    }
   }
 
   /**
@@ -1165,6 +1181,38 @@ export class GraduationCertificatesService {
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 192 && b === 168) return true;
     return false;
+  }
+
+  private resolveExistingPdfPath(pdfFilename: string): string | null {
+    const storagePath = process.env.STORAGE_PATH;
+    const candidates = [
+      storagePath ? path.join(storagePath, pdfFilename) : null,
+      path.join(process.cwd(), 'uploads', 'graduation-certificates', pdfFilename),
+      path.join(
+        process.cwd(),
+        'backend',
+        'academic-registration-service',
+        'uploads',
+        'graduation-certificates',
+        pdfFilename,
+      ),
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        'uploads',
+        'graduation-certificates',
+        pdfFilename,
+      ),
+    ].filter((candidate): candidate is string => Boolean(candidate));
+
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 }
 
