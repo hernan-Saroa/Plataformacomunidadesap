@@ -13,14 +13,16 @@ import {
   TrendingUp, Activity, CheckCircle, Clock, User, Calendar,
   Zap, AlertCircle, Download, Trash2, ChevronRight
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import type { Riesgo } from '../core/types';
 
 interface ModalDetalleRiesgoProps {
-  isOpen: boolean;
+  open: boolean;
   onClose: () => void;
   riesgo: Riesgo | null;
+  onEdit?: (riesgo: Riesgo) => void;
+  onArchive?: (riesgo: Riesgo) => void;
 }
 
 const ZONA_RIESGO_CONFIG = {
@@ -45,7 +47,7 @@ const ETAPA_CONFIG = {
   CERRADO: { label: 'Cerrado', color: 'bg-green-100 text-green-700', icon: '✅' }
 };
 
-export function ModalDetalleRiesgo({ isOpen, onClose, riesgo }: ModalDetalleRiesgoProps) {
+export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onArchive }: ModalDetalleRiesgoProps) {
   const [tabActiva, setTabActiva] = useState('general');
 
   if (!riesgo) return null;
@@ -87,16 +89,22 @@ export function ModalDetalleRiesgo({ isOpen, onClose, riesgo }: ModalDetalleRies
   ];
 
   const handleEditar = () => {
-    toast.info('Función de edición del riesgo', {
-      description: `Editando ${riesgo.id}`
-    });
-    onClose();
+    if (onEdit && riesgo) {
+      onEdit(riesgo);
+      onClose();
+    } else {
+      toast.info('Modo edición no disponible');
+    }
   };
 
-  const handleArchivar = () => {
-    toast.success('Riesgo archivado', {
-      description: `${riesgo.id} ha sido archivado exitosamente`
-    });
+  const handleArchivar = async () => {
+    if (onArchive && riesgo) {
+      onArchive(riesgo);
+    } else {
+      toast.success('Riesgo archivado', {
+        description: `${riesgo?.id} ha sido archivado exitosamente`
+      });
+    }
     onClose();
   };
 
@@ -185,7 +193,7 @@ Metodología DAFP - MECI
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl h-auto max-h-[80vh] flex flex-col p-0 overflow-hidden !top-[10vh] !translate-y-0">
         <DialogTitle className="sr-only">
           Detalle del Riesgo {riesgo.id}
@@ -338,14 +346,13 @@ Metodología DAFP - MECI
                         <div key={idx} className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                           <div className="flex items-start justify-between gap-3 mb-2">
                             <p className="text-sm font-bold text-gray-900">{plan.accion}</p>
-                            <Badge className={`text-xs font-bold flex-shrink-0 ${
-                              plan.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
+                            <Badge className={`text-xs font-bold flex-shrink-0 ${plan.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
                               plan.estado === 'EN_CURSO' ? 'bg-blue-100 text-blue-700' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>
+                                'bg-gray-100 text-gray-700'
+                              }`}>
                               {plan.estado === 'COMPLETADA' ? '✅ Completada' :
-                               plan.estado === 'EN_CURSO' ? '⚙️ En Curso' :
-                               '⏳ Pendiente'}
+                                plan.estado === 'EN_CURSO' ? '⚙️ En Curso' :
+                                  '⏳ Pendiente'}
                             </Badge>
                           </div>
                           <div className="grid grid-cols-2 gap-3 text-xs text-gray-700 mb-2">
