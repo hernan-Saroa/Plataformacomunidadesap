@@ -966,3 +966,4 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     </Dialog>
   );
 }
+

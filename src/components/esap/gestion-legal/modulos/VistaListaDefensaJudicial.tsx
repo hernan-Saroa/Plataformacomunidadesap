@@ -777,3 +777,4 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig }: FilaExpedie
     </>
   );
 }
+

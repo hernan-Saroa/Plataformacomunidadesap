@@ -1276,7 +1276,7 @@ export function OrganosControl() {
                               const filename = doc.archivoUrl?.split('/').pop();
                               if (filename) {
                                 const baseUrl = getServiceUrl('legal');
-                                window.open(`${baseUrl}/legal/files/${filename}`, '_blank');
+                                window.open(`${baseUrl}/legal/api/v1/files/${filename}`, '_blank');
                               }
                             }}
                           >

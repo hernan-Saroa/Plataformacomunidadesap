@@ -165,3 +165,4 @@ export function ModalCrearIndicador({ open, onClose, onSuccess }: ModalCrearIndi
         </Dialog>
     );
 }
+

@@ -101,35 +101,27 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
   }, [isOpen, expediente.id]);
 
   // Helper para construir URL correcta de archivo
+  // Gateway pattern: /legal/api/v1/files/:filename -> backend /files/:filename
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
-    const baseUrl = getServiceUrl('legal');
-
-    // Si es URL absoluta con /api/, corregirla
-    if (archivoUrl.startsWith('http') && archivoUrl.includes('/api/legal/files/')) {
-      return archivoUrl.replace('/api/legal/files/', '/legal/files/');
-    }
-    // Si es URL absoluta correcta, devolverla
+    // Si ya es URL absoluta, devolverla
     if (archivoUrl.startsWith('http')) {
       return archivoUrl;
     }
 
-    // Rutas relativas
-    if (archivoUrl.startsWith('/api/legal/files/')) {
-      return `${baseUrl}${archivoUrl.replace('/api', '')}`;
-    }
-    if (archivoUrl.startsWith('files/')) {
-      return `${baseUrl}/legal/${archivoUrl}`;
-    }
-    if (archivoUrl.includes('/legal/files/') && !archivoUrl.includes('/api/')) {
-      return `${baseUrl}${archivoUrl}`;
-    }
+    const baseUrl = getServiceUrl('legal');
+
+    // Extraer solo el nombre del archivo de cualquier ruta
+    let filename = archivoUrl;
     if (archivoUrl.includes('/files/')) {
-      const filename = archivoUrl.split('/files/').pop();
-      return `${baseUrl}/legal/files/${filename}`;
+      filename = archivoUrl.split('/files/').pop() || archivoUrl;
+    } else if (archivoUrl.includes('/')) {
+      filename = archivoUrl.split('/').pop() || archivoUrl;
     }
-    return `${baseUrl}/legal/files/${archivoUrl}`;
+
+    // Construir URL usando el patrón del gateway: /legal/api/v1/files/
+    return `${baseUrl}/legal/api/v1/files/${filename}`;
   };
 
   const handleDescargarAuto = async (auto: Auto) => {

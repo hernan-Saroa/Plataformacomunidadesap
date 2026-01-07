@@ -5,7 +5,7 @@ import { Actuacion } from '../entities/actuacion.entity';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 
-@Controller('legal/expedientes/:id/actuaciones')
+@Controller('expedientes/:id/actuaciones')
 export class ActuacionController {
     constructor(private readonly actuacionService: ActuacionService) { }
 
@@ -38,4 +38,5 @@ export class ActuacionController {
         return this.actuacionService.registrarActuacion(id, data);
     }
 }
+
 

@@ -138,7 +138,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     try {
       const expedienteId = expediente.uuid || expediente.id;
       const baseUrl = getServiceUrl('legal');
-      const url = `${baseUrl}/legal/evidencias/expediente/${expedienteId}/download-zip`;
+      const url = `${baseUrl}/legal/api/v1/evidencias/expediente/${expedienteId}/download-zip`;
 
       const response = await fetch(url);
 
@@ -173,8 +173,8 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     const baseUrl = getServiceUrl('legal');
 
     // Si es URL absoluta con /api/, corregirla
-    if (archivoUrl.startsWith('http') && archivoUrl.includes('/api/legal/files/')) {
-      return archivoUrl.replace('/api/legal/files/', '/legal/files/');
+    if (archivoUrl.startsWith('http') && archivoUrl.includes('/api/legal/api/v1/files/')) {
+      return archivoUrl.replace('/api/legal/api/v1/files/', '/legal/api/v1/files/');
     }
     // Si es URL absoluta correcta, devolverla
     if (archivoUrl.startsWith('http')) {
@@ -182,20 +182,20 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     }
 
     // Rutas relativas
-    if (archivoUrl.startsWith('/api/legal/files/')) {
+    if (archivoUrl.startsWith('/api/legal/api/v1/files/')) {
       return `${baseUrl}${archivoUrl.replace('/api', '')}`;
     }
     if (archivoUrl.startsWith('files/')) {
       return `${baseUrl}/legal/${archivoUrl}`;
     }
-    if (archivoUrl.includes('/legal/files/') && !archivoUrl.includes('/api/')) {
+    if (archivoUrl.includes('/legal/api/v1/files/') && !archivoUrl.includes('/api/')) {
       return `${baseUrl}${archivoUrl}`;
     }
     if (archivoUrl.includes('/files/')) {
       const filename = archivoUrl.split('/files/').pop();
-      return `${baseUrl}/legal/files/${filename}`;
+      return `${baseUrl}/legal/api/v1/files/${filename}`;
     }
-    return `${baseUrl}/legal/files/${archivoUrl}`;
+    return `${baseUrl}/legal/api/v1/files/${archivoUrl}`;
   };
 
   const handleVerEvidencia = (ev: any) => {

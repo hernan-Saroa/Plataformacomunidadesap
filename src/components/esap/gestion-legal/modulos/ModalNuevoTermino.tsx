@@ -130,3 +130,4 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         </Dialog>
     );
 }
+

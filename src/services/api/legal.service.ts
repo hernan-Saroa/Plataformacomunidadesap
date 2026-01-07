@@ -121,6 +121,10 @@ export class LegalService {
         return apiClient.get<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`);
     }
 
+    async getDashboardEjecutivo(): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/dashboard/ejecutivo`);
+    }
+
     async createConsultaJuridica(data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/consultas-juridicas`, data);
     }
