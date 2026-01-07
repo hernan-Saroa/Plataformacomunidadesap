@@ -4,7 +4,7 @@ import * as multer from 'multer';
 import { extname } from 'path';
 import { ComentariosDocumentosOCService } from '../services/comentarios-documentos-oc.service';
 
-@Controller('legal/requerimientos-oc')
+@Controller('requerimientos-oc')
 export class ComentariosDocumentosOCController {
     constructor(private readonly service: ComentariosDocumentosOCService) { }
 
@@ -79,3 +79,5 @@ export class ComentariosDocumentosOCController {
         return { success: true };
     }
 }
+
+

@@ -418,33 +418,23 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   };
 
   // Función auxiliar para construir URL completa sin duplicar prefijos
+  // Función auxiliar para construir URL completa usando el patrón del gateway
+  // Gateway pattern: /legal/api/v1/files/:filename
   const getFullUrl = (url: string) => {
     if (!url) return '';
     if (url.startsWith('http')) return url;
 
     const baseUrl = getServiceUrl('legal');
 
-    // Normalizar URL: quitar slashes iniciales y prefijos 'legal/' repetidos
-    let cleanPath = url;
-    while (cleanPath.startsWith('/') || cleanPath.startsWith('legal/')) {
-      if (cleanPath.startsWith('/')) cleanPath = cleanPath.substring(1);
-      else if (cleanPath.startsWith('legal/')) cleanPath = cleanPath.substring(6);
+    // Extraer nombre del archivo
+    let filename = url;
+    if (url.includes('/files/')) {
+      filename = url.split('/files/').pop() || url;
+    } else if (url.includes('/')) {
+      filename = url.split('/').pop() || url;
     }
 
-    // Construir URL final limpia
-    // baseUrl podría o no tener prefijo dependiendo del modo, pero getServiceUrl devuelve la base (host+port o gateway base)
-    // El controlador espera /legal/files/... (static assets) o la ruta de API.
-    // Backend main.ts sirve uploads en '/uploads/' ??
-    // Reviado main.ts: app.useStaticAssets(join(__dirname, '..', 'uploads'), { prefix: '/uploads/' }); NO, wait.
-    // main.ts tiene: prefix: '/uploads/' ? No, el controller guarda como `/legal/files/filename`.
-    // PERO `FilesController` (que no revisé) mapea `/legal/files` a uploads?
-
-    // Asumiendo que existe un endpoint que sirve los archivos en /legal/files/
-    // O que el static assets prefix es correcto.
-
-    // Evitar la duplicación verificando si baseUrl ya termina en /legal
-    const separator = baseUrl.endsWith('/') ? '' : '/';
-    return `${baseUrl}${separator}legal/${cleanPath}`;
+    return `${baseUrl}/legal/api/v1/files/${filename}`;
   };
 
   /**

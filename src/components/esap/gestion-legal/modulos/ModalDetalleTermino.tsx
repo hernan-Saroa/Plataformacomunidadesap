@@ -213,3 +213,4 @@ export function ModalDetalleTermino({ open, onOpenChange, solicitud }: ModalDeta
         </Dialog>
     );
 }
+

@@ -132,3 +132,4 @@ export function ModalActualizarAvance({ open, onClose, onSuccess, indicador }: M
         </Dialog>
     );
 }
+

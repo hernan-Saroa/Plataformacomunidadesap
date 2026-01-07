@@ -130,3 +130,4 @@ export function ModalDetallePlan({ open, onClose, plan }: ModalDetallePlanProps)
         </Dialog>
     );
 }
+

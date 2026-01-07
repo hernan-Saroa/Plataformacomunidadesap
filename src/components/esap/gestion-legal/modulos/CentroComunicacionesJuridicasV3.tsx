@@ -34,6 +34,8 @@ import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComunicacion';
 import { ModalExpedienteComunicacion } from './ModalExpedienteComunicacion';
+import { correosJuridicosService, CorreoJuridico } from '../../../../services/api/legal.service';
+import { RefreshCw, Loader2 } from 'lucide-react';
 
 // TIPOS UNIFICADOS
 type TipoComunicacion = 'JUDICIAL' | 'CORREO' | 'OFICIO';
@@ -60,8 +62,8 @@ interface ComunicacionUnificada {
   };
 }
 
-// DATOS MOCK UNIFICADOS
-const comunicacionesUnificadas: ComunicacionUnificada[] = [
+// DATOS MOCK (Fallback cuando no hay conexión con el backend)
+const comunicacionesMock: ComunicacionUnificada[] = [
   // ============= JUDICIALES (Notificaciones oficiales) =============
   {
     id: 'JUD-2025-001',
@@ -247,12 +249,81 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   const [tipoVista, setTipoVista] = useState<VistaModulo>('inbox');
 
   // Estado reactivo para las comunicaciones
-  const [comunicaciones, setComunicaciones] = useState<ComunicacionUnificada[]>(comunicacionesUnificadas);
+  const [comunicaciones, setComunicaciones] = useState<ComunicacionUnificada[]>(comunicacionesMock);
 
   // Estados para modales
   const [modalNuevaComunicacionOpen, setModalNuevaComunicacionOpen] = useState(false);
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [comunicacionParaExpediente, setComunicacionParaExpediente] = useState<ComunicacionUnificada | null>(null);
+
+  // Estados para carga de datos desde API
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [apiConnected, setApiConnected] = useState(false);
+
+  // Función para mapear correos de API a formato UI
+  const mapCorreoToUI = (correo: CorreoJuridico): ComunicacionUnificada => ({
+    id: correo.id,
+    tipo: correo.tipo as TipoComunicacion,
+    asunto: correo.asunto,
+    descripcion: correo.cuerpoTexto || '',
+    remitente: correo.remitenteNombre || correo.remitenteEmail,
+    fechaRadicacion: new Date(correo.fechaRecepcion),
+    urgente: correo.urgente,
+    leida: correo.leido,
+    estado: correo.archivado ? 'ARCHIVADA' : (correo.leido ? 'LEIDA' : 'PENDIENTE'),
+    documentosAdjuntos: correo.tieneAdjuntos ? ['adjunto'] : [],
+    clasificacionIA: correo.moduloSugerido ? {
+      tipoDetectado: correo.categoria || 'Correo',
+      moduloSugerido: correo.moduloSugerido,
+      confianza: correo.confianzaClasificacion || 70
+    } : undefined
+  });
+
+  // Cargar correos desde API
+  const loadCorreosFromAPI = async () => {
+    setLoading(true);
+    try {
+      const correos = await correosJuridicosService.getCorreos();
+      if (correos && correos.length > 0) {
+        setComunicaciones(correos.map(mapCorreoToUI));
+        setApiConnected(true);
+        console.log('✅ Correos cargados desde API:', correos.length);
+      } else {
+        // Usar mock si no hay datos
+        setComunicaciones(comunicacionesMock);
+        console.log('⚠️ Sin datos de API, usando mock');
+      }
+    } catch (error) {
+      console.error('❌ Error cargando correos:', error);
+      setComunicaciones(comunicacionesMock);
+      setApiConnected(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Sincronizar con Microsoft Graph
+  const handleSyncCorreos = async () => {
+    setSyncing(true);
+    try {
+      const result = await correosJuridicosService.syncCorreos();
+      toast.success(`✅ Sincronización completada: ${result.synced} correos nuevos`, {
+        description: result.errors > 0 ? `${result.errors} errores` : undefined
+      });
+      await loadCorreosFromAPI();
+    } catch (error) {
+      console.error('Error sincronizando:', error);
+      toast.error('Error al sincronizar con Microsoft 365');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Cargar datos al montar
+  useEffect(() => {
+    loadCorreosFromAPI();
+  }, []);
 
   // Debug: Monitorear cambios en el estado del modal
   useEffect(() => {
@@ -330,8 +401,10 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     archivadas: totalArchivadas
   };
 
-  const handleMarcarLeida = (id: string) => {
-    console.log('🔵 Marcando como leída:', id);
+  const handleMarcarLeida = async (id: string) => {
+    console.log('📘 Marcando como leída:', id);
+
+    // Actualizar estado local inmediatamente
     setComunicaciones(prevComs =>
       prevComs.map(com =>
         com.id === id
@@ -347,13 +420,22 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       );
     }
 
+    // Llamar API (no bloquea UI)
+    try {
+      await correosJuridicosService.markAsRead(id);
+    } catch (error) {
+      console.error('Error marcando como leída en API:', error);
+    }
+
     toast.success('Comunicación marcada como leída', {
       icon: <CheckCircle className="w-4 h-4" />
     });
   };
 
-  const handleArchivar = (id: string) => {
+  const handleArchivar = async (id: string) => {
     console.log('📦 Archivando comunicación:', id);
+
+    // Actualizar estado local inmediatamente
     setComunicaciones(prevComs =>
       prevComs.map(com =>
         com.id === id
@@ -365,6 +447,13 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     // Limpiar selección si la comunicación archivada estaba seleccionada
     if (comunicacionSeleccionada?.id === id) {
       setComunicacionSeleccionada(null);
+    }
+
+    // Llamar API (no bloquea UI)
+    try {
+      await correosJuridicosService.archive(id);
+    } catch (error) {
+      console.error('Error archivando en API:', error);
     }
 
     toast.success('Comunicación archivada correctamente', {
@@ -442,11 +531,19 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             }}
             buttons={[
               {
+                label: syncing ? 'Sincronizando...' : 'Sincronizar',
+                labelMobile: syncing ? '...' : 'Sync',
+                icon: syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />,
+                onClick: handleSyncCorreos,
+                variant: 'outline' as const,
+                disabled: syncing
+              },
+              {
                 label: 'Nueva Comunicación',
                 labelMobile: 'Nueva',
                 icon: <Plus className="w-4 h-4" />,
                 onClick: () => setModalNuevaComunicacionOpen(true),
-                variant: 'primary'
+                variant: 'primary' as const
               }
             ]}
           />
@@ -928,7 +1025,8 @@ function VistaPreviaComunicacion({
         </div>
       </div>
 
-      {/* Clasificación IA */}
+      {/* Clasificación IA - COMENTADO: No implementado aún, pendiente para futuras versiones */}
+      {/* 
       {comunicacion.clasificacionIA && (
         <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
           <div className="flex items-center gap-2 mb-2">
@@ -942,6 +1040,7 @@ function VistaPreviaComunicacion({
           </div>
         </div>
       )}
+      */}
 
       {/* Radicado externo */}
       {comunicacion.radicadoExterno && (
@@ -959,11 +1058,25 @@ function VistaPreviaComunicacion({
         </div>
       )}
 
-      {/* Descripción */}
+      {/* Descripción - Limpia la nota confidencial si existe */}
       <div className="mb-4">
         <p className="text-xs text-gray-500 mb-2">Descripción:</p>
-        <p className="text-sm text-gray-700">{comunicacion.descripcion}</p>
+        <p className="text-sm text-gray-700">
+          {comunicacion.descripcion.includes('NOTA CONFIDENCIAL')
+            ? comunicacion.descripcion.split('NOTA CONFIDENCIAL')[0].trim()
+            : comunicacion.descripcion}
+        </p>
       </div>
+
+      {/* Nota Confidencial - Se muestra en recuadro separado si existe */}
+      {comunicacion.descripcion.includes('NOTA CONFIDENCIAL') && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <p className="text-xs font-semibold text-amber-800 mb-1">⚠️ Nota de Confidencialidad:</p>
+          <p className="text-xs text-amber-700">
+            {comunicacion.descripcion.substring(comunicacion.descripcion.indexOf('NOTA CONFIDENCIAL'))}
+          </p>
+        </div>
+      )}
 
       {/* Documentos adjuntos */}
       {comunicacion.documentosAdjuntos.length > 0 && (
