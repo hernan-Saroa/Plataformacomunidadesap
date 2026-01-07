@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Query } from '@nestjs/common';
 import { AudienciaService } from '../services/audiencia.service';
 import { CreateAudienciaDto } from '../dtos/audiencia.dto';
 
-@Controller('audiencias')
+@Controller('legal/audiencias')
 export class AudienciaController {
     constructor(private readonly audienciaService: AudienciaService) { }
 

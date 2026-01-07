@@ -6,7 +6,7 @@ import { DocumentosConsultaService } from '../services/documentos-consulta.servi
 import type { Response } from 'express';
 import * as fs from 'fs';
 
-@Controller('consultas-juridicas')
+@Controller('legal/consultas-juridicas')
 export class DocumentosConsultaController {
     constructor(private readonly documentosService: DocumentosConsultaService) { }
 

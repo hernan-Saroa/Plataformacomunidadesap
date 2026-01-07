@@ -103,6 +103,15 @@ export class LegalService {
         return apiClient.put<Expediente>(`${SERVICE_PREFIX}/expedientes/${id}`, data);
     }
 
+    async createExpediente(data: Partial<Expediente>): Promise<Expediente> {
+        return apiClient.post<Expediente>(`${SERVICE_PREFIX}/expedientes`, data);
+    }
+
+    // Alias en español para mantener compatibilidad
+    async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
+        return this.createExpediente(data);
+    }
+
     // ==================== CONSULTAS JURÍDICAS ====================
     async getConsultasJuridicas(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas`);

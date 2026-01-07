@@ -5,7 +5,7 @@ import { extname } from 'path';
 import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
 
-@Controller('juzgamiento')
+@Controller('legal/juzgamiento')
 export class JuzgamientoController {
     constructor(private readonly expedienteService: ExpedienteService) { }
 

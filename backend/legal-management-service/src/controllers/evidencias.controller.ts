@@ -5,7 +5,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { EvidenciasService } from '../services/evidencias.service';
 
-@Controller('evidencias')
+@Controller('legal/evidencias')
 export class EvidenciasController {
     constructor(private readonly evidenciasService: EvidenciasService) { }
 

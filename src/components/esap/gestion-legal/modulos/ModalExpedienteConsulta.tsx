@@ -444,6 +444,11 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
     // Evitar la duplicación verificando si baseUrl ya termina en /legal
     const separator = baseUrl.endsWith('/') ? '' : '/';
+
+    // Si baseUrl ya contiene 'legal', no agregar 'legal/' de nuevo
+    if (baseUrl.includes('/legal')) {
+      return `${baseUrl}${separator}${cleanPath}`;
+    }
     return `${baseUrl}${separator}legal/${cleanPath}`;
   };
 

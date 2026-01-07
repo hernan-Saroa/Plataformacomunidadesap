@@ -5,7 +5,7 @@ import { extname } from 'path';
 import { AutosService } from '../services/autos.service';
 import type { Response } from 'express';
 
-@Controller('autos')
+@Controller('legal/autos')
 export class AutosController {
     constructor(private readonly autosService: AutosService) { }
 
