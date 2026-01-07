@@ -2,9 +2,10 @@
 import { apiClient } from './client';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environment';
 
-// Prefijo del servicio legal - El backend registra rutas como /legal/riesgos, /legal/expedientes, etc.
-// En modo directo (localhost:3008), las rutas son /legal/*
-const SERVICE_PREFIX = '/legal';
+// Prefijo del servicio legal en el API Gateway
+// Nueva estructura: /{service}/api/v{version}/{path}
+// URL: /legal/api/v1/* -> legal-management-service:3008/*
+const SERVICE_PREFIX = '/legal/api/v1';
 
 export interface Expediente {
     id: string;

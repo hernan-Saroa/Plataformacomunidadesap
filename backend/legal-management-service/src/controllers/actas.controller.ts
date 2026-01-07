@@ -5,7 +5,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ActasService } from '../services/actas.service';
 
-@Controller('legal/actas')
+@Controller('actas')
 export class ActasController {
     constructor(private readonly actasService: ActasService) { }
 
@@ -149,3 +149,4 @@ export class ActasController {
         return this.actasService.delete(id);
     }
 }
+
