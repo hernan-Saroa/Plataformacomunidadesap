@@ -15,6 +15,7 @@ import { PortalDashboard } from './components/portal/PortalDashboard';
 import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
 import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
+import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
@@ -52,6 +53,7 @@ import { VisualizadorPTAAjustes } from './components/gestion-profesoral/Visualiz
  * - Vista 'pta-demo': Visualizador de PTA con Ajustes Solicitados
  * - Vista 'password-demo': Demo de Validación de Contraseñas
  * - Vista 'procesos-coactivos-demo': Demo de Procesos Coactivos
+ * - Vista 'edicion-foto-perfil-demo': Demo de Edición de Foto de Perfil
  * 
  * Features:
  * - Persistencia de sesión en localStorage
@@ -834,6 +836,9 @@ export default function App() {
       
       case 'procesos-coactivos-demo':
         return <DemoProcesosCoactivos />;
+      
+      case 'edicion-foto-perfil-demo':
+        return <DemoEdicionFotoPerfil />;
       
       default:
         return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;
