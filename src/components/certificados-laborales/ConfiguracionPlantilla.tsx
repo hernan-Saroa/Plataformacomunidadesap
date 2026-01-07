@@ -709,6 +709,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   const [isLoadingHistorial, setIsLoadingHistorial] = useState(false);
   const [historialPage, setHistorialPage] = useState(1);
   const [revertingChangeId, setRevertingChangeId] = useState<string | null>(null);
+  const [historialDirty, setHistorialDirty] = useState(false);
 
   const [activeTab, setActiveTab] = useState<string>(canEdit ? 'Modificacion' : 'historial');
 
@@ -1754,10 +1755,10 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   useEffect(() => {
     if (activeTab !== 'historial') return;
     if (isLoadingHistorial) return;
-    if (logCambios.length === 0 && historialTotal === 0) {
+    if (historialDirty || (logCambios.length === 0 && historialTotal === 0)) {
       cargarHistorial(historialPage);
     }
-  }, [activeTab]);
+  }, [activeTab, historialDirty]);
 
 
 
@@ -2251,7 +2252,12 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      await recargarHistorial();
+      setHistorialDirty(true);
+
+
+
+
+      await recargarHistorial(true);
 
 
 
@@ -2455,7 +2461,12 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      await recargarHistorial();
+      setHistorialDirty(true);
+
+
+
+
+      await recargarHistorial(true);
 
 
 
@@ -2820,10 +2831,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-  const recargarHistorial = async () => {
+  const recargarHistorial = async (force = false) => {
     try {
-      if (activeTab !== 'historial') return;
+      if (!force && activeTab !== 'historial') return;
       await cargarHistorial(historialPage);
+      setHistorialDirty(false);
     } catch (error) {
       console.error('Error al recargar historial:', error);
     }
@@ -3116,7 +3128,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      await recargarHistorial();
+      setHistorialDirty(true);
+
+
+
+      await recargarHistorial(true);
 
 
 
@@ -3308,39 +3324,83 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      const contentChanges: any = {
+      const contentChanges: any = {};
 
 
 
-        typographyFont: borrador.tipografia.fuente,
+      let hasContentChanges = false;
 
 
 
-        cargoTitle: borrador.tituloCargo.texto,
+      if (borrador.tipografia.fuente !== plantilla.tipografia.fuente) {
 
 
 
-        certificateContentHtml: borrador.contenidoCertificado.texto,
+        contentChanges.typographyFont = borrador.tipografia.fuente;
 
 
 
-        updatedBy: publishingActor,
+        hasContentChanges = true;
 
 
 
-        status: 'published'
+      }
 
 
 
-      };
+      if (borrador.tituloCargo.texto !== plantilla.tituloCargo.texto) {
 
 
 
+        contentChanges.cargoTitle = borrador.tituloCargo.texto;
 
 
 
+        hasContentChanges = true;
 
-      await certificadosService.plantilla.actualizarContenidoPlantilla(contentChanges, templateType);
+
+
+      }
+
+
+
+      const contenidoNormalizado = normalizarVariables(borrador.contenidoCertificado.texto || '');
+
+
+
+      const contenidoActualNormalizado = normalizarVariables(plantilla.contenidoCertificado.texto || '');
+
+
+
+      if (contenidoNormalizado !== contenidoActualNormalizado) {
+
+
+
+        contentChanges.certificateContentHtml = contenidoNormalizado;
+
+
+
+        hasContentChanges = true;
+
+
+
+      }
+
+
+
+      if (hasContentChanges) {
+
+
+
+        contentChanges.updatedBy = publishingActor;
+
+
+
+        await certificadosService.plantilla.actualizarContenidoPlantilla(contentChanges, templateType);
+
+
+
+      }
 
 
 
@@ -3400,7 +3460,12 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      await recargarHistorial();
+      setHistorialDirty(true);
+
+
+
+
+      await recargarHistorial(true);
 
 
 

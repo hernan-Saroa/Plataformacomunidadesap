@@ -183,7 +183,7 @@ export function ValidarCertificadoQR() {
               color: '#6B7280'
             }}
           >
-            Verifica la autenticidad de un certificado laboral emitido por la ESAP ingresando el código QR
+            Verifica la autenticidad de un certificado laboral emitido por la ESAP ingresando el codigo QR o el consecutivo
           </p>
         </motion.div>
 
@@ -207,7 +207,7 @@ export function ValidarCertificadoQR() {
                       color: '#1F2937'
                     }}
                   >
-                    Código QR del Certificado
+                    Codigo QR o consecutivo del certificado
                   </label>
                   <div className="relative">
                     <QrCode 
@@ -217,7 +217,7 @@ export function ValidarCertificadoQR() {
                     <Input
                       id="codigoQR"
                       type="text"
-                      placeholder="Ej: ESAP-CERT-2025-ABC123XYZ"
+                      placeholder="Ej: QR-CERT-2025-ABC123XYZ o 12_620_700_20_CD 010"
                       value={codigoQR}
                       onChange={(e) => setCodigoQR(e.target.value.toUpperCase())}
                       className="pl-12 pr-14 py-6 text-base border-2"
@@ -237,7 +237,7 @@ export function ValidarCertificadoQR() {
                     className="mt-2 text-sm"
                     style={{ color: '#6B7280' }}
                   >
-                    El código QR se encuentra impreso en la parte inferior del certificado
+                    Puedes usar el codigo QR o el consecutivo que aparece en el certificado
                   </p>
                 </div>
 
@@ -253,13 +253,13 @@ export function ValidarCertificadoQR() {
                           color: '#1F2937'
                         }}
                       >
-                        Sistema de Verificación Seguro
+                        Sistema de verificacion seguro
                       </h4>
                       <p 
                         className="text-sm"
                         style={{ color: '#6B7280' }}
                       >
-                        Todos los certificados laborales emitidos por la ESAP incluyen un código QR único que permite verificar su autenticidad en tiempo real. Este sistema garantiza la integridad y validez del documento.
+                        Todos los certificados laborales emitidos por la ESAP incluyen un codigo QR unico y un consecutivo que permiten verificar su autenticidad en tiempo real. Este sistema garantiza la integridad y validez del documento.
                       </p>
                     </div>
                   </div>

@@ -135,24 +135,8 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
           console.warn('No se pudo registrar la descarga:', error);
         }
       }
-
-      // 🔥 LLAMADA REAL AL BACKEND - Descargar PDF del certificado
-      const response = await fetch(
-        `http://localhost:3002/academic-registration/api/v1/certificates/${certificate.id}/pdf`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/pdf',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Error al descargar el certificado');
-      }
-
-      // Convertir la respuesta a blob
-      const blob = await response.blob();
+      // Llamada al backend usando el servicio (usa el gateway configurado)
+      const blob = await graduadosService.certificados.descargarPDF(certificate.id);
 
       // Crear URL del blob y descargar
       const url = window.URL.createObjectURL(blob);

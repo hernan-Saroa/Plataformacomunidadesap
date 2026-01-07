@@ -257,14 +257,18 @@ export class CertificatesService {
   }
 
   async findCertificadoByCodigoVerificacion(codigo: string) {
-    // Buscar sin importar mayúsculas/minúsculas
+    const codigoTrim = (codigo || '').trim();
+    const codigoSinEspacios = codigoTrim.replace(/\s+/g, '');
+    // Buscar sin importar mayusculas/minusculas
     const certificate = await this.certificateRepo
       .createQueryBuilder('certificate')
-      .where('UPPER(certificate.verification_code) = UPPER(:codigo)', { codigo })
+      .where('UPPER(certificate.verification_code) = UPPER(:codigo)', { codigo: codigoTrim })
+      .orWhere('UPPER(certificate.certificate_number) = UPPER(:codigo)', { codigo: codigoTrim })
+      .orWhere("UPPER(REPLACE(certificate.certificate_number, ' ', '')) = UPPER(:codigoSinEspacios)", { codigoSinEspacios })
       .getOne();
 
     if (!certificate) {
-      throw new NotFoundException(`Certificado con código ${codigo} no encontrado`);
+      throw new NotFoundException(`Certificado con codigo ${codigoTrim} no encontrado`);
     }
     return certificate;
   }
@@ -276,7 +280,7 @@ export class CertificatesService {
     });
 
     if (!signer) {
-      throw new NotFoundException('No se encontró un firmante principal activo');
+      throw new NotFoundException('No se encontrИ un firmante principal activo');
     }
 
     // Generate unique verification code
@@ -384,7 +388,7 @@ export class CertificatesService {
 
     normalized = normalized.replace(/^::ffff:/i, '');
 
-    if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(normalized)) {
+    if (/^\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+$/.test(normalized)) {
       normalized = normalized.split(':')[0];
     }
 
@@ -454,7 +458,29 @@ export class CertificatesService {
       order: { validation_date: 'DESC' },
     });
 
-    return validaciones.map((v) => this.mapValidationToDTO(v));
+    const mapped = await Promise.all(
+      validaciones.map(async (validation) => {
+        if (!validation.city && !validation.country && validation.ip_address) {
+          const geo = await this.resolveGeoFromIp(validation.ip_address);
+          if (geo) {
+            validation.city = geo.city || validation.city;
+            validation.country = geo.country || validation.country;
+            validation.region = geo.region || validation.region;
+            validation.latitude = geo.latitude ?? validation.latitude;
+            validation.longitude = geo.longitude ?? validation.longitude;
+            validation.isp = geo.isp || validation.isp;
+            validation.location =
+              geo.city && geo.country
+                ? `${geo.city}, ${geo.country}`
+                : validation.location;
+            await this.validationRepo.save(validation);
+          }
+        }
+        return this.mapValidationToDTO(validation);
+      }),
+    );
+
+    return mapped;
   }
 
   async registrarValidacion(codigoVerificacion: string, ip?: string, userAgent?: string) {
@@ -555,12 +581,12 @@ export class CertificatesService {
       throw new NotFoundException(`Certificado con ID ${certificadoId} no encontrado`);
     }
 
-    // Formatear fecha de vinculación
+    // Formatear fecha de vinculacion
     const fechaVinculacion = this.certificateGenerator.formatFechaTexto(
       new Date(certificado.hiring_date),
     );
 
-    // Formatear fecha de expedición
+    // Formatear fecha de expedicion
     const fechaExpedicion = this.certificateGenerator.formatFechaTexto(
       new Date(certificado.issue_date),
     );
@@ -577,11 +603,11 @@ export class CertificatesService {
       tipoVinculacion: certificado.career_category,
       fechaVinculacion: fechaVinculacion,
       categoria: certificado.position_category,
-      ubicacion: certificado.department || 'Bogotá D.C.',
+      ubicacion: certificado.department || 'Bogota D.C.',
       salarioNumero: salarioNumero,
       salarioTexto: salarioTexto,
       fechaExpedicion: fechaExpedicion,
-      firmante: certificado.signer_name || 'ALBA LUCÍA MARÍN ZULUAGA',
+      firmante: certificado.signer_name || 'ALBA LUCIA MARIN ZULUAGA',
     });
 
     return buffer;
@@ -596,7 +622,7 @@ export class CertificatesService {
    * y si ya tiene un certificado generado
    */
   async verificarDocumentoPorSolicitud(documento: string) {
-    // Buscar la solicitud por número de documento
+    // Buscar la solicitud por numero de documento
     const solicitud = await this.requestRepo.findOne({
       where: { id_number: documento },
     });
@@ -604,7 +630,7 @@ export class CertificatesService {
     if (!solicitud) {
       return {
         existe: false,
-        mensaje: 'No se encontró ningún registro con este documento',
+        mensaje: 'No se encontro ningun registro con este documento',
       };
     }
 
@@ -632,9 +658,9 @@ export class CertificatesService {
   }
 
   /**
-   * Generar código de validación
-   * En producción: enviar email
-   * En local: devolver código fijo
+   * Generar codigo de validacion
+   * En produccion: enviar email
+   * En local: devolver codigo fijo
    */
   async generarCodigoValidacion(documento: string) {
     const verificacion = await this.verificarDocumentoPorSolicitud(documento);
@@ -645,31 +671,29 @@ export class CertificatesService {
 
     // Verificar que solicitud existe
     if (!verificacion.solicitud) {
-      throw new BadRequestException('Error al recuperar información de la solicitud');
+      throw new BadRequestException('Error al recuperar informacion de la solicitud');
     }
 
-    // Generar código de 6 dígitos
+    // Generar codigo de 6 digitos
     const codigoValidacion = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
 
-    // Guardar el código y expiración en la solicitud
+    // Guardar el codigo y expiracion en la solicitud
     await this.requestRepo.update(verificacion.solicitud.id, {
       validation_code: codigoValidacion,
       validation_expires_at: expiresAt,
     });
 
-    // Enviar email si hay configuración SMTP
+    // Enviar email si hay configuracion SMTP
     try {
       await this.enviarCodigoPorEmail(verificacion.solicitud.email, codigoValidacion);
     } catch (err) {
-      this.logger.warn(`No se pudo enviar el código por email: ${err?.message || err}`);
+      this.logger.warn(`No se pudo enviar el codigo por email: ${err?.message || err}`);
     }
 
     return {
-      mensaje: 'Código de validación generado',
+      mensaje: 'Codigo de validacion generado',
       email: verificacion.solicitud.email,
-      // En desarrollo mostramos el código, en producción no
-      // codigoTest: process.env.NODE_ENV !== 'production' ? codigoValidacion : undefined,
       // Devolver datos del empleado para mostrar en el frontend
       solicitud: {
         full_name: verificacion.solicitud.full_name,
@@ -687,7 +711,7 @@ export class CertificatesService {
   }
 
   /**
-   * Validar código y generar certificado
+   * Validar codigo y generar certificado
    */
   async validarCodigoYGenerarCertificado(documento: string, codigo: string) {
     // Buscar la solicitud
@@ -699,23 +723,23 @@ export class CertificatesService {
       throw new NotFoundException('Solicitud no encontrada');
     }
 
-    // Validar código y vigencia
+    // Validar codigo y vigencia
     if (!solicitud.validation_code || !solicitud.validation_expires_at) {
-      throw new BadRequestException('No se ha generado un código de validación para esta solicitud');
+      throw new BadRequestException('No se ha generado un codigo de validacion para esta solicitud');
     }
 
     if (solicitud.validation_code !== codigo) {
-      throw new BadRequestException('Código de validación incorrecto');
+      throw new BadRequestException('Codigo de validacion incorrecto');
     }
 
     if (new Date(solicitud.validation_expires_at) < new Date()) {
-      throw new BadRequestException('El código de validación ha expirado. Solicita uno nuevo.');
+      throw new BadRequestException('El codigo de validacion ha expirado. Solicita uno nuevo.');
     }
 
     // Generar el certificado
     const nuevoCertificado = await this.createCertificado(solicitud.id);
 
-    // Lipia el codifico y expiración en la solicitud
+    // Limpia el codigo y expiracion en la solicitud
     await this.requestRepo.update(solicitud.id, {
       validation_code: null,
       validation_expires_at: null,
@@ -727,3 +751,4 @@ export class CertificatesService {
     };
   }
 }
+
