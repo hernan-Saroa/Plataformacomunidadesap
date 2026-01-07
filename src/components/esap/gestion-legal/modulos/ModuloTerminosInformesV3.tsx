@@ -643,3 +643,4 @@ function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos }: VistaListaPr
     </CardSIGL>
   );
 }
+

@@ -121,3 +121,4 @@ export function ModalEvidencias({ open, onClose, plan, onSuccess }: ModalEvidenc
         </Dialog>
     );
 }
+

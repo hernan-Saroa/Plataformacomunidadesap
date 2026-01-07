@@ -311,3 +311,4 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
         </Dialog>
     );
 }
+

@@ -494,3 +494,4 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
     </div>
   );
 }
+

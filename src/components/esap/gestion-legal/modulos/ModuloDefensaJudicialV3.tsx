@@ -819,3 +819,4 @@ function VistaLista({ expedientes, isMobile, isTablet }: VistaListaProps) {
     </div>
   );
 }
+

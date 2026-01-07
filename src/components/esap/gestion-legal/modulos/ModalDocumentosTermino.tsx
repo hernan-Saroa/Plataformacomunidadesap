@@ -103,3 +103,4 @@ export function ModalDocumentosTermino({ open, onOpenChange, terminoId, radicado
         </Dialog>
     );
 }
+

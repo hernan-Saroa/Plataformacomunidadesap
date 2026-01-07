@@ -102,3 +102,4 @@ export function ModalComentarios({ open, onClose, plan, onSuccess }: ModalComent
         </Dialog>
     );
 }
+

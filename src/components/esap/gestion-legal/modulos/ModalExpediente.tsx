@@ -368,7 +368,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     try {
       const expedienteId = expediente.uuid || expediente.id;
       const baseUrl = getServiceUrl('legal');
-      const url = `${baseUrl}/legal/documentos/expediente/${expedienteId}/download-zip`;
+      const url = `${baseUrl}/legal/api/v1/documentos/expediente/${expedienteId}/download-zip`;
 
       const response = await fetch(url);
 
