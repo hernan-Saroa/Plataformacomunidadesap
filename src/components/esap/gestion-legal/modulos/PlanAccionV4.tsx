@@ -1049,3 +1049,4 @@ function VistaMatriz({ indicadores }: { indicadores: Indicador[] }) {
     </div>
   );
 }
+

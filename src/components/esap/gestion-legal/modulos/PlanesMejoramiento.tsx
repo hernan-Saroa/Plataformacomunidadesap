@@ -592,3 +592,4 @@ function getEnteBadge(origen: string) {
 
   return <Badge variant="outline" className={`text-[10px] border ${color}`}>{origen?.replace('_', ' ')}</Badge>;
 }
+

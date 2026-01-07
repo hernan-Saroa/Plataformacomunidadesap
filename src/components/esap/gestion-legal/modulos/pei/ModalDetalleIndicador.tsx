@@ -113,3 +113,4 @@ export function ModalDetalleIndicador({ open, onClose, indicador }: ModalDetalle
         </Dialog>
     );
 }
+

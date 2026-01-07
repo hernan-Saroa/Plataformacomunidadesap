@@ -102,3 +102,4 @@ export function ModalSeguimiento({ open, onClose, plan, onSuccess }: ModalSeguim
         </Dialog>
     );
 }
+

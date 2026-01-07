@@ -68,10 +68,10 @@ export function DashboardEjecutivoSIGL({ onNavigateToModule }: DashboardEjecutiv
   }, []);
 
   // Use fetched data or defaults (0) using optional chaining
-  const totalExpedientes = stats?.global.total || 0;
-  const totalUrgentes = stats?.global.urgentes || 0;
-  const totalVencidos = stats?.global.vencidos || 0;
-  const terminoPromedio = stats?.global.terminoPromedio || 0;
+  const totalExpedientes = stats?.global?.total || 0;
+  const totalUrgentes = stats?.global?.urgentes || 0;
+  const totalVencidos = stats?.global?.vencidos || 0;
+  const terminoPromedio = stats?.global?.terminoPromedio || 0;
   const expedientesUrgentes = stats?.topUrgentes || [];
 
   const handleExpedienteClick = (moduleId: string) => {

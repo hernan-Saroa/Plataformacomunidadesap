@@ -717,3 +717,4 @@ function VistaLista({ indicadores, onVerIndicador, onActualizar }: VistaListaPro
     </Card>
   );
 }
+

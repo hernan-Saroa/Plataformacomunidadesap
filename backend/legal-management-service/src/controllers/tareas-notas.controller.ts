@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
 import { TareasNotasService } from '../services/tareas-notas.service';
 
-@Controller('legal/expedientes')
+@Controller('expedientes')
 export class TareasNotasController {
     constructor(private readonly tareasNotasService: TareasNotasService) { }
 
@@ -79,4 +79,5 @@ export class TareasNotasController {
         return { message: 'Nota eliminada' };
     }
 }
+
 

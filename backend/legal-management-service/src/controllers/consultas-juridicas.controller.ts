@@ -4,7 +4,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ConsultasJuridicasService } from '../services/consultas-juridicas.service';
 
-@Controller('legal/consultas-juridicas')
+@Controller('consultas-juridicas')
 export class ConsultasJuridicasController {
     constructor(private readonly consultasService: ConsultasJuridicasService) { }
 
@@ -112,4 +112,5 @@ export class ConsultasJuridicasController {
         return { message: 'Consulta eliminada' };
     }
 }
+
 
