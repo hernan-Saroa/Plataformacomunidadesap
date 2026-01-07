@@ -498,7 +498,7 @@ function MatrizRiesgos({ riesgos, onVerDetalle }: MatrizRiesgosProps) {
                             </Badge>
                             <div className="text-[10px] text-gray-600">
                               {riesgosEnCelda.slice(0, 2).map(r => (
-                                <div key={r.id} className="truncate">{r.id}</div>
+                                <div key={r.id} className="truncate">{r.codigo || r.nombre || r.id}</div>
                               ))}
                               {riesgosEnCelda.length > 2 && (
                                 <div>+{riesgosEnCelda.length - 2} más</div>
