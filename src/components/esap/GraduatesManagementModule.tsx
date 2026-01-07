@@ -1402,7 +1402,7 @@ export function GraduatesManagementModule() {
 
       {/* Modal: Exportar Graduados */}
       <Dialog open={isExportModalOpen} onOpenChange={setIsExportModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[92vw] max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Download className="w-5 h-5" style={{ color: '#003DA5' }} />
@@ -1465,7 +1465,7 @@ export function GraduatesManagementModule() {
 
       {/* Modal: Editar Graduado */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[92vw] max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit className="w-5 h-5" style={{ color: '#003DA5' }} />

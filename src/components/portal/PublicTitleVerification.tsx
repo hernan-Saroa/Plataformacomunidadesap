@@ -3,7 +3,7 @@ import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { ArrowLeft, AlertCircle, Award, Calendar, User, Loader2, Building2, UserCircle, Mail, FileText, CheckCircle, Shield, Sparkles, MapPin, Phone } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Award, User, Loader2, Building2, UserCircle, Mail, FileText, CheckCircle, Shield, Sparkles, MapPin, Phone } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { motion } from 'motion/react';
 import { VerificationCertificateDisplay } from './VerificationCertificateDisplay';
@@ -88,10 +88,6 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       toast.error('Por favor ingresa el número de cédula del graduado');
       return;
     }
-    if (!graduateDocumentIssueDate) {
-      toast.error('Por favor ingresa la fecha de expedición de la cédula');
-      return;
-    }
     if (!requesterName) {
       toast.error('Por favor ingresa tu nombre o el de tu empresa');
       return;
@@ -114,7 +110,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     try {
       const respuesta = await graduadosService.autoservicio.solicitarCertificado({
         idNumber: graduateDocumentNumber,
-        idIssueDate: graduateDocumentIssueDate,
+        ...(graduateDocumentIssueDate ? { idIssueDate: graduateDocumentIssueDate } : {}),
         requesterType: requesterType === 'graduado' ? 'GRADUATE' : 'COMPANY',
         requesterName,
         requesterEmail,
@@ -607,23 +603,6 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                         className="h-12 text-base border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
                         required
                       />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="documentIssueDate" className="text-base font-semibold text-gray-900">
-                        Fecha de Expedición <span className="text-red-500">*</span>
-                      </Label>
-                      <div className="relative">
-                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none z-10" />
-                        <Input
-                          id="documentIssueDate"
-                          type="date"
-                          value={graduateDocumentIssueDate}
-                          onChange={(e) => setGraduateDocumentIssueDate(e.target.value)}
-                          className="h-12 text-base pl-12 border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
-                          required
-                        />
-                      </div>
                     </div>
                   </div>
                 </motion.div>

@@ -25,6 +25,7 @@ import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { ModalCodigoQR } from './ModalCodigoQR';
 import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';
 import { getPublicBaseUrl } from '../../config/environment';
+import { certificadosService } from '../../services/api/certificados.service';
 
 interface CertificadoDetallePanelProps {
   certificado: {

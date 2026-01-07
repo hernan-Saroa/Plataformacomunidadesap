@@ -450,10 +450,10 @@ export function ReviewRequestsModule() {
         : '';
 
       let nextForm: ApprovalForm = {
-        fullName: detail.fullName || '',
+        fullName: '',
         idNumber: detail.idNumber || request.graduateDocumentNumber,
-        email: detail.requesterEmail || request.requester.email || '',
-        phone: detail.requesterPhone || '',
+        email: '',
+        phone: '',
         programName: detail.programName || '',
         programType: '',
         degreeTitle: '',
@@ -1505,7 +1505,7 @@ export function ReviewRequestsModule() {
           }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[92vw] max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-amber-600" />
