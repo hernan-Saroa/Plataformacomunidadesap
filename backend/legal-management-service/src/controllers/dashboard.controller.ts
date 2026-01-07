@@ -2,7 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { DashboardService } from '../services/dashboard.service';
 import { DashboardStatsDto } from '../dto/dashboard-stats.dto';
 
-@Controller('legal/dashboard')
+@Controller('dashboard')
 export class DashboardController {
     constructor(private readonly dashboardService: DashboardService) { }
 
@@ -11,3 +11,4 @@ export class DashboardController {
         return this.dashboardService.getStats();
     }
 }
+
