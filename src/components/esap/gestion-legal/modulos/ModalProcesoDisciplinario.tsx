@@ -59,13 +59,23 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     if (proceso.id) {
       legalService.getJuzgamientoActuaciones(proceso.id)
         .then(data => {
-          setActuaciones(data);
+          // Defensive check: ensure data is an array
+          setActuaciones(Array.isArray(data) ? data : []);
         })
-        .catch(err => console.error('Error loading actuations:', err));
+        .catch(err => {
+          console.error('Error loading actuations:', err);
+          setActuaciones([]);
+        });
 
       legalService.getJuzgamientoDecisiones(proceso.id)
-        .then(data => setDecisiones(data))
-        .catch(err => console.error('Error loading decisions:', err));
+        .then(data => {
+          // Defensive check: ensure data is an array
+          setDecisiones(Array.isArray(data) ? data : []);
+        })
+        .catch(err => {
+          console.error('Error loading decisions:', err);
+          setDecisiones([]);
+        });
     }
   }, [proceso.id]);
 

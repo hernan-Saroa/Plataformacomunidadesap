@@ -392,12 +392,10 @@ export class GraduationCertificatesService {
       throw new NotFoundException('Certificado no encontrado');
     }
 
-    if (!frontendBaseUrl && certificate.pdfFilename) {
-      // Leer PDF del sistema de archivos
+    if (certificate.pdfFilename) {
+      // Leer PDF del sistema de archivos si ya existe
       const storagePath =
         process.env.STORAGE_PATH || './uploads/graduation-certificates';
-      const fs = require('fs');
-      const path = require('path');
       const pdfFilePath = path.join(storagePath, certificate.pdfFilename);
 
       if (fs.existsSync(pdfFilePath)) {
