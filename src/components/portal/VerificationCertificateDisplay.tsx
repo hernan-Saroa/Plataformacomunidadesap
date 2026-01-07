@@ -27,8 +27,11 @@ import { copyToClipboard } from '@/utils/browser';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import esapLogo from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
-import { buildApiUrl } from '../../config/environment';
 import graduadosService from '../../services/api/graduados.service';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import headerImg from '../../assets/graduation-certificates/img_primera.png';
+import footerImg from '../../assets/graduation-certificates/img_segunda.png';
 
 interface VerificationCertificateDisplayProps {
   certificate: VerificationCertificate;
@@ -37,6 +40,7 @@ interface VerificationCertificateDisplayProps {
 
 export function VerificationCertificateDisplay({ certificate, onClose }: VerificationCertificateDisplayProps) {
   const certificateRef = useRef<HTMLDivElement>(null);
+  const pdfTemplateRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -69,6 +73,38 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       year: 'numeric',
       month: 'long',
       day: 'numeric',
+    });
+  };
+
+  const formatDateLong = (value?: string) => {
+    if (!value) {
+      return '';
+    }
+
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      const parsed = new Date(year, month, day, 12, 0, 0);
+      return parsed.toLocaleDateString('es-CO', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'America/Bogota',
+      });
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+
+    return parsed.toLocaleDateString('es-CO', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'America/Bogota',
     });
   };
 
@@ -136,28 +172,40 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
           console.warn('No se pudo registrar la descarga:', error);
         }
       }
-      // Llamada al backend usando el servicio (usa el gateway configurado)
-      const blob = await graduadosService.certificados.descargarPDF(certificate.id);
 
-      // Crear URL del blob y descargar
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      if (!pdfTemplateRef.current) {
+        throw new Error('No se pudo preparar la plantilla del certificado.');
+      }
 
-      toast.success('¡Certificado descargado exitosamente!', {
-        id: 'pdf-generation',
-        description: `Archivo: Certificado_${certificate.graduate.fullName.replace(/\s+/g, '_')}.pdf`
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const canvas = await html2canvas(pdfTemplateRef.current, {
+        scale: 3,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: 816,
+        windowHeight: 1056,
+        imageTimeout: 0,
       });
 
-      // Notificación de envío por email
-      toast.info('📧 El certificado también fue enviado a tu correo electrónico', {
-        description: `Enviado a: ${certificate.requester.email}`,
-        duration: 5000
+      const pdf = new jsPDF({
+        unit: 'px',
+        format: [816, 1056],
+        orientation: 'portrait',
+        compress: true,
+      });
+
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      pdf.addImage(imgData, 'PNG', 0, 0, 816, 1056, '', 'FAST');
+
+      const fileName = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+      pdf.save(fileName);
+
+      toast.success('Certificado descargado exitosamente!', {
+        id: 'pdf-generation',
+        description: `Archivo: Certificado_${certificate.graduate.fullName.replace(/\s+/g, '_')}.pdf`
       });
     } catch (error: any) {
       console.error('Error al descargar certificado:', error);
@@ -260,6 +308,10 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   };
 
   const verificationUrl = `${window.location.origin}/verificar-certificado/${certificate.qrCode}`;
+  const templateFechaExpedicion = formatDateLong(certificate.generatedAt);
+  const templateLugarFecha = `Bogotá D.C. ${formatDateLong(certificate.graduate.graduationDate)}`;
+  const templateRegistroFolio = certificate.graduate.diplomaNumber || 'N/A';
+  const templateTitulo = certificate.graduate.titleType || certificate.graduate.programName;
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Solo cerrar si se hace clic directamente en el backdrop, no en sus hijos
@@ -274,6 +326,128 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       className="fixed inset-0 bg-transparent backdrop-blur-md z-50 overflow-y-auto cursor-pointer"
       onClick={handleBackdropClick}
     >
+      <div className="fixed left-[-9999px] top-0 opacity-0 pointer-events-none">
+        <div
+          ref={pdfTemplateRef}
+          style={{
+            width: '816px',
+            height: '1056px',
+            backgroundColor: '#ffffff',
+            fontFamily: '"Times New Roman", "Liberation Serif", "DejaVu Serif", Times, serif',
+            fontSize: '11pt',
+            lineHeight: '1.45',
+            color: '#000000',
+            padding: '45px',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '18px' }}>
+            <img
+              src={headerImg}
+              alt="Función Pública"
+              style={{ width: '58%', height: 'auto', maxHeight: '68px', objectFit: 'contain' }}
+            />
+            <div style={{ textAlign: 'right', fontSize: '9pt', marginTop: '8px' }}>
+              <strong>Código para validaciones:</strong> {certificate.qrCode}
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'left', marginBottom: '30px', fontSize: '10.5pt' }}>
+            Bogotá, D.C., {templateFechaExpedicion}
+          </div>
+
+          <div style={{ textAlign: 'center', fontSize: '14pt', fontWeight: 'bold', marginBottom: '18px', textTransform: 'uppercase' }}>
+            Escuela Superior de Administración Pública - ESAP
+          </div>
+
+          <div style={{ textAlign: 'center', fontSize: '12.5pt', fontWeight: 'bold', marginBottom: '28px' }}>
+            Verificación de título
+          </div>
+
+          <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '28px' }}>
+            A QUIEN INTERESE
+          </div>
+
+          <div style={{ textAlign: 'justify', marginBottom: '28px', padding: '0 15px' }}>
+            <p style={{ marginBottom: '18px' }}>
+              De conformidad con los registros en el Sistema de Control Académico de la Escuela Superior de
+              Administración Pública -ESAP-, nos permitimos informar la verificación del siguiente título académico:
+            </p>
+          </div>
+
+          <table style={{ width: '92%', borderCollapse: 'collapse', margin: '28px auto' }}>
+            <tbody>
+              <tr>
+                <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', fontWeight: 'bold', backgroundColor: '#f5f5f5', width: '40%', verticalAlign: 'middle' }}>
+                  Título otorgado:
+                </td>
+                <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', verticalAlign: 'middle' }}>
+                  {templateTitulo}
+                </td>
+              </tr>
+              <tr>
+                <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', fontWeight: 'bold', backgroundColor: '#f5f5f5', verticalAlign: 'middle' }}>
+                  Nombres y apellidos del egresado graduado:
+                </td>
+                <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', verticalAlign: 'middle' }}>
+                  {certificate.graduate.fullName}
+                </td>
+              </tr>
+              <tr>
+                <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', fontWeight: 'bold', backgroundColor: '#f5f5f5', verticalAlign: 'middle' }}>
+                  Número de documento de identificación:
+                </td>
+                <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', verticalAlign: 'middle' }}>
+                  CC {certificate.graduate.documentNumber}
+                </td>
+              </tr>
+              <tr>
+                <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', fontWeight: 'bold', backgroundColor: '#f5f5f5', verticalAlign: 'middle' }}>
+                  Lugar y fecha de expedición del título:
+                </td>
+                <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', verticalAlign: 'middle' }}>
+                  {templateLugarFecha}
+                </td>
+              </tr>
+              <tr>
+                <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', fontWeight: 'bold', backgroundColor: '#f5f5f5', verticalAlign: 'middle' }}>
+                  Registro – Folio - Libro:
+                </td>
+                <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', verticalAlign: 'middle' }}>
+                  {templateRegistroFolio}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style={{ textAlign: 'justify', marginBottom: '16px', padding: '0 15px' }}>
+            <p style={{ marginBottom: '12px' }}>Cordialmente,</p>
+          </div>
+
+          <div style={{ marginTop: '22px', textAlign: 'left', paddingLeft: '15px' }}>
+            <div style={{ fontWeight: 'bold', fontSize: '10.5pt' }}>
+              Dirección Técnica Registro y Control
+            </div>
+          </div>
+
+          <div style={{ marginTop: '28px', textAlign: 'center', fontSize: '9pt', fontWeight: 'bold' }}>
+            Puede validar la autenticidad de esta verificación en<br />
+            <a href={verificationUrl} style={{ color: '#1d4ed8', textDecoration: 'underline' }}>
+              {verificationUrl}
+            </a>
+          </div>
+
+          <div style={{ marginTop: 'auto', textAlign: 'center', paddingTop: '15px' }}>
+            <img
+              src={footerImg}
+              alt="Pie de página ESAP"
+              style={{ width: '100%', height: 'auto', maxHeight: '113px', objectFit: 'contain' }}
+            />
+          </div>
+        </div>
+      </div>
       <div className="min-h-screen flex items-start justify-center px-4 pt-12 pb-8 cursor-auto" onClick={(e) => e.stopPropagation()}>
         <div className="max-w-5xl w-full relative cursor-auto">
           {/* Botón flotante de cerrar premium - Esquina superior derecha del certificado */}
