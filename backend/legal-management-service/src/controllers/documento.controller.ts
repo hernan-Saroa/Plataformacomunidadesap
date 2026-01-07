@@ -5,7 +5,7 @@ import * as multer from 'multer';
 import { extname } from 'path';
 import { DocumentoService, CreateDocumentoDto, UpdateDocumentoDto } from '../services/documento.service';
 
-@Controller('legal/documentos')
+@Controller('documentos')
 export class DocumentoController {
     constructor(private readonly documentoService: DocumentoService) { }
 
@@ -162,3 +162,4 @@ export class DocumentoController {
         }
     }
 }
+

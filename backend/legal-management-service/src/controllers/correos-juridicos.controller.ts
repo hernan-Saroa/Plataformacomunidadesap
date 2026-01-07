@@ -20,7 +20,7 @@ export class SendEmailDto {
     body: string;
 }
 
-@Controller('legal/correos')
+@Controller('correos')
 export class CorreosJuridicosController {
     constructor(private readonly correosService: CorreosJuridicosService) { }
 
@@ -97,3 +97,4 @@ export class CorreosJuridicosController {
         return { success };
     }
 }
+

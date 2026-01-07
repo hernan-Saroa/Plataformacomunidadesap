@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Query } from '@nestjs/common';
 import { AudienciaService } from '../services/audiencia.service';
 import { CreateAudienciaDto } from '../dtos/audiencia.dto';
 
-@Controller('legal/audiencias')
+@Controller('audiencias')
 export class AudienciaController {
     constructor(private readonly audienciaService: AudienciaService) { }
 
@@ -23,3 +23,4 @@ export class AudienciaController {
         return this.audienciaService.create(dto);
     }
 }
+
