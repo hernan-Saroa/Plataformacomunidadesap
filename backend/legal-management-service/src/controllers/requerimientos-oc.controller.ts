@@ -5,7 +5,7 @@ import type { EstadoRequerimiento } from '../entities/requerimiento-oc.entity';
 import { OrganismoControlOC } from '../entities/organismo-control-legal.entity';
 import { SolicitudInsumo } from '../entities/solicitud-insumo.entity';
 
-@Controller('requerimientos-oc')
+@Controller('legal/requerimientos-oc')
 export class RequerimientosOCController {
     constructor(private readonly service: RequerimientosOCService) { }
 

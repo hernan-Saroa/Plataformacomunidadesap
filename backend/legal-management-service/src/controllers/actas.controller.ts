@@ -5,7 +5,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ActasService } from '../services/actas.service';
 
-@Controller('actas')
+@Controller('legal/actas')
 export class ActasController {
     constructor(private readonly actasService: ActasService) { }
 
