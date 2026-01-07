@@ -3,36 +3,67 @@
  * Modal para crear nuevos riesgos institucionales en la Matriz de Riesgos
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { AlertTriangle, Target, Shield, Activity, TrendingUp } from 'lucide-react';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface ModalNuevoRiesgoProps {
-  isOpen: boolean;
+  open: boolean;
   onClose: () => void;
-  onGuardar?: (data: any) => void;
+  onRiesgoCreado?: (data: any) => void;
+  riesgoEditar?: any; // Riesgo a editar (null para crear nuevo)
 }
 
-export function ModalNuevoRiesgo({ isOpen, onClose, onGuardar }: ModalNuevoRiesgoProps) {
-  const [formData, setFormData] = useState({
-    descripcion: '',
-    proceso: '',
-    tipoRiesgo: 'GESTION',
-    causas: '',
-    consecuencias: '',
-    controles: '',
-    responsable: '',
-    probabilidadInherente: '3', // 1-5
-    impactoInherente: '3', // 1-5
-    probabilidadResidual: '2', // 1-5
-    impactoResidual: '2', // 1-5
-    etapa: 'IDENTIFICADO'
-  });
+const initialFormState = {
+  nombre: '',
+  descripcion: '',
+  proceso: '',
+  tipoRiesgo: 'GESTION',
+  causas: '',
+  consecuencias: '',
+  controles: '',
+  responsable: '',
+  probabilidadInherente: '3',
+  impactoInherente: '3',
+  probabilidadResidual: '2',
+  impactoResidual: '2',
+  etapa: 'IDENTIFICADO'
+};
+
+export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }: ModalNuevoRiesgoProps) {
+  const [formData, setFormData] = useState(initialFormState);
+
+  const isEditing = !!riesgoEditar;
+
+  // Prellenar formulario cuando se edita
+  React.useEffect(() => {
+    if (riesgoEditar) {
+      setFormData({
+        nombre: riesgoEditar.nombre || '',
+        descripcion: riesgoEditar.descripcion || '',
+        proceso: riesgoEditar.proceso || '',
+        tipoRiesgo: riesgoEditar.tipoRiesgo || riesgoEditar.tipo || 'GESTION',
+        causas: Array.isArray(riesgoEditar.causas) ? riesgoEditar.causas.join('\n') : '',
+        consecuencias: Array.isArray(riesgoEditar.consecuencias) ? riesgoEditar.consecuencias.join('\n') : '',
+        controles: Array.isArray(riesgoEditar.controlesExistentes)
+          ? riesgoEditar.controlesExistentes.map((c: any) => c.descripcion).join('\n')
+          : '',
+        responsable: riesgoEditar.responsable || '',
+        probabilidadInherente: String(riesgoEditar.probabilidadInherente || 3),
+        impactoInherente: String(riesgoEditar.impactoInherente || 3),
+        probabilidadResidual: String(riesgoEditar.probabilidadResidual || 2),
+        impactoResidual: String(riesgoEditar.impactoResidual || 2),
+        etapa: riesgoEditar.etapa || 'IDENTIFICADO'
+      });
+    } else {
+      setFormData(initialFormState);
+    }
+  }, [riesgoEditar, open]);
 
   // Calcular zona de riesgo
   const calcularZonaRiesgo = (probabilidad: string, impacto: string): string => {
@@ -51,8 +82,12 @@ export function ModalNuevoRiesgo({ isOpen, onClose, onGuardar }: ModalNuevoRiesg
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validaciones
+    if (!formData.nombre.trim()) {
+      toast.error('El nombre del riesgo es obligatorio');
+      return;
+    }
     if (!formData.descripcion.trim()) {
       toast.error('La descripción del riesgo es obligatoria');
       return;
@@ -68,30 +103,36 @@ export function ModalNuevoRiesgo({ isOpen, onClose, onGuardar }: ModalNuevoRiesg
 
     const nuevoRiesgo = {
       ...formData,
-      id: `R-2025-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+      // Convertir strings a números/arrays para el backend
+      probabilidadInherente: parseInt(formData.probabilidadInherente),
+      impactoInherente: parseInt(formData.impactoInherente),
+      causas: formData.causas ? formData.causas.split('\n').filter(Boolean) : [],
+      consecuencias: formData.consecuencias ? formData.consecuencias.split('\n').filter(Boolean) : [],
+      controlesExistentes: formData.controles ?
+        formData.controles.split('\n').filter(Boolean).map(c => ({
+          id: `temp-${Math.random()}`,
+          descripcion: c,
+          efectividad: 0
+        })) : [],
+
+      // Campos calculados para frontend optimista (aunque backend los generará)
       zonaInherente,
       zonaResidual,
-      estado: 'ACTIVO',
       fechaIdentificacion: new Date(),
       fechaUltimaRevision: new Date()
     };
 
-    if (onGuardar) {
-      onGuardar(nuevoRiesgo);
+    // El padre (Riesgos.tsx) maneja el envío al API, toast y cierre del modal
+    if (onRiesgoCreado) {
+      onRiesgoCreado(nuevoRiesgo);
     }
-
-    toast.success('Riesgo creado exitosamente', {
-      description: `${nuevoRiesgo.id} - ${formData.descripcion.substring(0, 50)}...`
-    });
-
-    onClose();
   };
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  if (!isOpen) return null;
+  if (!open) return null;
 
   const getColorZona = (zona: string) => {
     switch (zona) {
@@ -111,11 +152,11 @@ export function ModalNuevoRiesgo({ isOpen, onClose, onGuardar }: ModalNuevoRiesg
         <div className="bg-white rounded-none md:rounded-2xl shadow-2xl w-full md:max-w-4xl md:max-h-[90vh] overflow-hidden flex flex-col my-0 md:my-4">
           {/* Header con ModalHeaderClean */}
           <ModalHeaderClean
-            titulo="Nuevo Riesgo Institucional"
-            subtitulo="Registrar riesgo en la Matriz de Gestión de Riesgos"
+            titulo={isEditing ? 'Editar Riesgo' : 'Nuevo Riesgo Institucional'}
+            subtitulo={isEditing ? `Modificando: ${riesgoEditar?.nombre || riesgoEditar?.codigo}` : 'Registrar riesgo en la Matriz de Gestión de Riesgos'}
             icono={AlertTriangle}
             colorIcono="red"
-            badgePrincipal="CREAR RIESGO"
+            badgePrincipal={isEditing ? 'EDITAR RIESGO' : 'CREAR RIESGO'}
             onClose={onClose}
           />
 
@@ -129,8 +170,22 @@ export function ModalNuevoRiesgo({ isOpen, onClose, onGuardar }: ModalNuevoRiesg
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="nombre" className="text-sm font-semibold text-gray-700">
+                  Nombre del Riesgo <span className="text-red-600">*</span>
+                </Label>
+                <Input
+                  id="nombre"
+                  placeholder="Ej: Vencimiento de términos"
+                  value={formData.nombre}
+                  onChange={(e) => handleChange('nombre', e.target.value)}
+                  className="border-2 border-gray-300 focus:border-red-500"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="descripcion" className="text-sm font-semibold text-gray-700">
-                  Descripción del Riesgo <span className="text-red-600">*</span>
+                  Descripción Detallada <span className="text-red-600">*</span>
                 </Label>
                 <Textarea
                   id="descripcion"
@@ -238,7 +293,7 @@ export function ModalNuevoRiesgo({ isOpen, onClose, onGuardar }: ModalNuevoRiesg
                   <Shield className="w-5 h-5 text-red-600" />
                   Riesgo Inherente (Sin controles)
                 </h4>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                   <div className="space-y-2">
                     <Label htmlFor="probabilidadInherente" className="text-sm font-semibold text-gray-700">
@@ -302,7 +357,7 @@ export function ModalNuevoRiesgo({ isOpen, onClose, onGuardar }: ModalNuevoRiesg
                   <TrendingUp className="w-5 h-5 text-green-600" />
                   Riesgo Residual (Con controles aplicados)
                 </h4>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                   <div className="space-y-2">
                     <Label htmlFor="probabilidadResidual" className="text-sm font-semibold text-gray-700">
@@ -430,7 +485,7 @@ export function ModalNuevoRiesgo({ isOpen, onClose, onGuardar }: ModalNuevoRiesg
                 className="flex-1 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold"
               >
                 <AlertTriangle className="w-4 h-4 mr-2" />
-                Crear Riesgo
+                {isEditing ? 'Actualizar Riesgo' : 'Crear Riesgo'}
               </Button>
             </div>
           </form>

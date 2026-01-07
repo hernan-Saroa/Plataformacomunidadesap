@@ -12,9 +12,10 @@ import {
   Eye, Download, Upload, Plus, Edit, Trash2, Send, Bell, Share2,
   FileDown, ExternalLink
 } from 'lucide-react';
+import jsPDF from 'jspdf';
 import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
-import { useState, useMemo, useEffect } from 'react'; // Added useMemo
-import { legalService } from '../../../../services/api/legal.service'; // Import Service
+import { useState, useMemo, useEffect } from 'react';
+import { legalService } from '../../../../services/api/legal.service';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
@@ -28,8 +29,6 @@ import { FormularioRegistrarDecision } from './FormularioRegistrarDecision';
 import { copyToClipboard } from '../../../../utils/clipboard';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 
-
-
 interface ModalProcesoDisciplinarioProps {
   isOpen: boolean;
   onClose: () => void;
@@ -40,34 +39,36 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   const [tabActivo, setTabActivo] = useState('general');
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Mapear Actuaciones del Proceso a las diferentes listas
-  // El backend debe devolver todas en proceso.actuaciones (si el mapeo fue correcto en ModuloJuzgamiento)
-  // Como 'proceso' puede venir sin actualizaciones live, idealmente deberíamos hacer refetch o actualizar localmente.
-  // Por simplicidad, usamos el prop 'proceso' y estados locales para nuevos items.
-
-  // Filtramos por tipo. Asumimos que existen tipos 'PRUEBA' y 'DOCUMENTO'.
-  const [nuevasActuaciones, setNuevasActuaciones] = useState<any[]>([]);
+  // Single source of truth for process actions/documents
+  const [actuaciones, setActuaciones] = useState<any[]>([]);
 
   const [mostrarFormularioDecision, setMostrarFormularioDecision] = useState(false);
   const [decisiones, setDecisiones] = useState<any[]>([]);
-  const [pruebas, setPruebas] = useState([
-    { id: 1, nombre: 'Prueba Documental #1', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_001.pdf', tamaño: '2.4 MB' },
-    { id: 2, nombre: 'Prueba Documental #2', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_002.pdf', tamaño: '1.8 MB' },
-    { id: 3, nombre: 'Prueba Documental #3', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_003.pdf', tamaño: '3.1 MB' }
-  ]);
+  const [decisionSeleccionada, setDecisionSeleccionada] = useState<any>(null);
 
-  // Estado para el visor de documentos
-  const [visorAbierto, setVisorAbierto] = useState(false);
+  // Derived states for tabs options
+  const pruebas = actuaciones.filter(a => a.tipoActuacion === 'EVIDENCIA');
+  const documentos = actuaciones.filter(a => a.tipoActuacion === 'DOCUMENTO');
+
   const [pruebaSeleccionada, setPruebaSeleccionada] = useState<any>(null);
-
-  // Estado para documentos del proceso
-  const [documentos, setDocumentos] = useState([
-    { id: 1, nombre: 'Documento_1.pdf', tamaño: '256 KB', fecha: '26/12/2024', tipo: 'Auto de Apertura' },
-    { id: 2, nombre: 'Documento_2.pdf', tamaño: '412 KB', fecha: '26/12/2024', tipo: 'Pliego de Cargos' },
-    { id: 3, nombre: 'Documento_3.pdf', tamaño: '189 KB', fecha: '26/12/2024', tipo: 'Notificación' },
-    { id: 4, nombre: 'Documento_4.pdf', tamaño: '324 KB', fecha: '26/12/2024', tipo: 'Respuesta a Descargos' }
-  ]);
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState<any>(null);
+  const [visorAbierto, setVisorAbierto] = useState(false);
+
+  // Fecha inicial para asegurar persistencia
+  useEffect(() => {
+    if (proceso.id) {
+      legalService.getJuzgamientoActuaciones(proceso.id)
+        .then(data => {
+          setActuaciones(data);
+        })
+        .catch(err => console.error('Error loading actuations:', err));
+
+      legalService.getJuzgamientoDecisiones(proceso.id)
+        .then(data => setDecisiones(data))
+        .catch(err => console.error('Error loading decisions:', err));
+    }
+  }, [proceso.id]);
+
 
   // ==================== ESTADOS RECUPERADOS (POST-MERGE) ====================
   const [mostrarModalNotificar, setMostrarModalNotificar] = useState(false);
@@ -75,12 +76,39 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   const [mostrarModalCompartir, setMostrarModalCompartir] = useState(false);
   const [enlaceCompartir, setEnlaceCompartir] = useState('');
 
-  // Dummy handler for file uploads mentioned in code but missing definition
-  const handleFileUpload = (e: any, tipo: string) => {
+  // Implementación Real de Carga de Archivos
+  const handleFileUpload = async (e: any, tipo: string) => {
     const file = e.target.files?.[0];
-    if (file) {
-      toast.success(`Archivo ${file.name} cargado como ${tipo}`);
+    if (!file) return;
+
+    try {
+      toast.loading(`Subiendo ${tipo.toLowerCase()}...`, { id: 'upload-file' });
+
+      // 1. Subir al backend
+      const res = await legalService.uploadJuzgamientoDocumento(proceso.id, file, tipo, file.name);
+
+      // 2. Crear objeto 'Actuación' para la lista unificada
+      const nuevaActuacion = {
+        id: res.id || Date.now(),
+        tipoActuacion: tipo,
+        descripcion: `Carga de ${tipo.toLowerCase()}: ${file.name} `,
+        fechaActuacion: new Date().toISOString(),
+        usuario: 'Usuario Actual',
+        documentoUrl: res.url || res.path,
+        documentoNombre: file.name,
+        nombreArchivo: file.name,   // Legacy support
+        tamaño: `${(file.size / 1024).toFixed(2)} KB`
+      };
+
+      // 3. Update single source
+      setActuaciones(prev => [nuevaActuacion, ...prev]);
       setHasChanges(true);
+
+      toast.success(`✅ ${tipo} cargado exitosamente`, { id: 'upload-file' });
+
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      toast.error('Error al subir el archivo', { id: 'upload-file' });
     }
   };
 
@@ -88,6 +116,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     toast.success('Notificación enviada a los destinatarios');
     setMostrarModalNotificar(false);
   };
+
 
 
   // ==================== LÓGICA DE NEGOCIO RECUPERADA ====================
@@ -103,13 +132,15 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     }
   }, [proceso.etapa]);
 
-  // Consolidar actuaciones
+  // Consolidar actuaciones (las del prop + las nuevas)
+  // Nota: 'actuaciones' ya contiene todo si el backend retorna todo en getJuzgamientoActuaciones
+  // Pero si queremos mergear con proceso.actuaciones original (si existiera), lo haríamos aquí.
+  // Asumiremos que 'actuaciones' es la fuente de verdad actualizada.
   const actuacionesTotales = useMemo(() => {
-    const base = (proceso as any).actuaciones || [];
-    return [...nuevasActuaciones, ...base].sort((a: any, b: any) =>
+    return [...actuaciones].sort((a: any, b: any) =>
       new Date(b.fechaActuacion || b.fecha).getTime() - new Date(a.fechaActuacion || a.fecha).getTime()
     );
-  }, [proceso, nuevasActuaciones]);
+  }, [actuaciones]);
 
 
   const handleAgregarPrueba = () => {
@@ -121,13 +152,26 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   };
 
   const handleVerPrueba = (prueba: any) => {
-    setPruebaSeleccionada(prueba);
+    setPruebaSeleccionada({
+      ...prueba,
+      nombre: prueba.documentoNombre || prueba.nombreArchivo || prueba.descripcion || 'Evidencia',
+      archivo: prueba.documentoUrl || prueba.url,
+      tipo: prueba.tipoActuacion || 'EVIDENCIA'
+    });
     setVisorAbierto(true);
 
     toast.success('📄 Visor de documentos abierto', {
-      description: `Visualizando: ${prueba.nombre}`,
+      description: `Visualizando: ${prueba.documentoNombre || 'Evidencia'} `,
       duration: 2000
     });
+  };
+
+  const handleAgregarDocumento = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.jpg,.png';
+    input.onchange = (e) => handleFileUpload(e, 'DOCUMENTO');
+    input.click();
   };
 
   const handleCerrar = () => {
@@ -137,23 +181,17 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         onClose();
       }
     } else {
-      toast.error('URL del documento no disponible');
+      onClose();
     }
   };
 
-  const handleDescargarPrueba = (prueba: any) => {
-    if (prueba.documentoUrl) {
-      // En producción se usa un endpoint de descarga o el mismo URL
-      window.open(prueba.documentoUrl, '_blank');
-    }
-  };
+  // Removed old handleDescargarPrueba, simplified to use same logic or dedicated logic
+  // The UI calls handleDescargarDocumento for documents, maybe handleVerPrueba is just for viewing.
 
   const handleGuardarCambios = () => {
-    // Backend saves uploads immediately, so this might just be for other form fields if any.
-    // For now, just close/reset state.
     toast.info('Los documentos se guardan automáticamente al subir.');
     setHasChanges(false);
-    onClose(); // Or reload data
+    onClose();
   };
 
   const handleCompartir = () => {
@@ -165,11 +203,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     setTimeout(async () => {
       const enlace = `https://esap.gov.co/procesos/${proceso.id}/actuacion-ultima`;
       setEnlaceCompartir(enlace);
-
-      // Copiar al portapapeles usando la utilidad
       const copiado = await copyToClipboard(enlace);
-
-      // Mostrar modal con el enlace
       setMostrarModalCompartir(true);
 
       if (copiado) {
@@ -192,12 +226,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     try {
       toast.loading('Guardando decisión...', { id: 'saving-decision' });
       const res = await legalService.createJuzgamientoDecision(proceso.id, decision);
-
-      // Update local state (backend returns the created decision)
       setDecisiones(prev => [res, ...prev]);
       setMostrarFormularioDecision(false);
       setHasChanges(true);
-
       toast.success('Decisión registrada correctamente', { id: 'saving-decision' });
     } catch (error) {
       console.error('Error saving decision:', error);
@@ -205,31 +236,93 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     }
   };
 
-  const handleDescargarPDF = () => {
-    const nombreArchivo = `Actuacion_${proceso.id}_${new Date().toLocaleDateString('es-CO').replace(/\//g, '-')}.pdf`;
+  const handleDescargarDecision = (decision: any) => {
+    try {
+      const doc = new jsPDF();
 
-    toast.loading('📄 Generando documento PDF...', {
-      id: 'descargar-pdf-actuacion',
-      duration: 2000
-    });
+      // Header
+      doc.setFontSize(16);
+      doc.setFont('times', 'bold');
+      doc.text('REPÚBLICA DE COLOMBIA', 105, 20, { align: 'center' });
+      doc.setFontSize(14);
+      doc.text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA', 105, 28, { align: 'center' });
+      doc.setFontSize(12);
+      doc.text('OFICINA DE CONTROL DISCIPLINARIO INTERNO', 105, 36, { align: 'center' });
 
-    setTimeout(() => {
-      toast.success('✅ Documento PDF generado y descargado', {
-        id: 'descargar-pdf-actuacion',
-        description: `${nombreArchivo} (245 KB)`,
-        duration: 4000,
-        action: {
-          label: 'Ver carpeta',
-          onClick: () => toast.info('Abriendo carpeta de descargas...')
+      doc.line(20, 40, 190, 40); // Horizontal line
+
+      // Title
+      doc.setFontSize(14);
+      doc.text(String(decision.tipoDecision).toUpperCase(), 105, 55, { align: 'center' });
+
+      // Info
+      doc.setFontSize(11);
+      doc.setFont('times', 'normal');
+      doc.text(`RADICADO: ${proceso.id}`, 20, 70);
+      doc.text(`FECHA: ${decision.fecha}`, 20, 78);
+      doc.text(`DISCIPLINADO: ${proceso.disciplinado || 'N/A'}`, 20, 86);
+
+      // Sections
+      let yPos = 100;
+
+      // Helper for wrapped text
+      const addWrappedSection = (label: string, text: string) => {
+        doc.setFont('times', 'bold');
+        doc.text(label, 20, yPos);
+        yPos += 7;
+
+        doc.setFont('times', 'normal');
+        // splitTextToSize(text, maxLineWidth)
+        const splitText = doc.splitTextToSize(text || 'No registrado', 170);
+        doc.text(splitText, 20, yPos);
+
+        // Calculate new Y based on lines added
+        yPos += (splitText.length * 6) + 10;
+
+        // Page break check
+        if (yPos > 270) {
+          doc.addPage();
+          yPos = 30;
         }
-      });
+      };
 
-      // En producción esto descargará el archivo real:
-      // window.open(`/api/procesos/${proceso.id}/actuacion/pdf`, '_blank');
-      // O usar: downloadFile(`/api/procesos/${proceso.id}/actuacion/pdf`, nombreArchivo);
+      // Fallo
+      doc.setFont('times', 'bold');
+      doc.text('FALLO:', 20, yPos);
+      doc.setFont('times', 'normal');
+      doc.text(`${decision.tipoFallo} - ${decision.sancion || 'Sin Sanción'}`, 40, yPos);
+      yPos += 15;
 
-      console.log(`📥 Descargando: ${nombreArchivo}`);
-    }, 2000);
+      addWrappedSection('CONSIDERACIONES:', decision.consideraciones);
+      addWrappedSection('FUNDAMENTOS JURÍDICOS:', decision.fundamentosJuridicos);
+
+      // Signature Area
+      yPos += 20;
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 40;
+      }
+
+      doc.setFont('times', 'bold');
+      doc.text(decision.responsable || 'Desconocido', 20, yPos);
+      doc.setFont('times', 'normal');
+      doc.text(decision.cargoResponsable || 'Cargo no especificado', 20, yPos + 6);
+
+      // Footer Paginator
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(10);
+        doc.text(`Página ${i} de ${pageCount} - Generado el ${new Date().toLocaleDateString()}`, 105, 285, { align: 'center' });
+      }
+
+      doc.save(`Decision_${String(decision.tipoDecision).replace(/ /g, '_')}.pdf`);
+      toast.success('✅ PDF generado y descargado exitosamente');
+
+    } catch (error) {
+      console.error('PDF Generation Error:', error);
+      toast.error('Error al generar el PDF de la decisión');
+    }
   };
 
   const handleAbrirEnPortales = () => {
@@ -238,295 +331,75 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
   const confirmarAbrirPortales = () => {
     const urlPortal = 'https://consultaprocesos.ramajudicial.gov.co/';
-
     toast.loading('🌐 Abriendo Portal de Notificaciones Judiciales...', {
       id: 'abrir-portales',
       duration: 1500
     });
-
     setTimeout(() => {
-      // Abrir en nueva ventana
       window.open(urlPortal, '_blank', 'noopener,noreferrer');
-
       toast.success('✅ Portal abierto en nueva ventana', {
         id: 'abrir-portales',
         description: 'Sistema de Portales de la Rama Judicial',
         duration: 3000
       });
-
       setMostrarModalPortales(false);
     }, 1500);
   };
 
-  // ==================== FUNCIONES PARA DOCUMENTOS DEL PROCESO ====================
+  // Document Handler Logic
 
-  const handleSubirDocumento = () => {
-    toast.info('📎 Abriendo selector de archivos', {
-      description: 'Selecciona el documento desde tu equipo',
-      duration: 2000
-    });
-
-    // Crear input file
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.pdf,.doc,.docx,.jpg,.png';
-
-    input.onchange = (e: any) => {
-      const file = e.target?.files?.[0];
-      if (file) {
-        toast.loading('⏳ Subiendo documento...', {
-          id: 'subir-documento',
-          duration: 2000
-        });
-
-        setTimeout(() => {
-          const nuevoDocumento = {
-            id: documentos.length + 1,
-            nombre: file.name,
-            tamaño: `${(file.size / 1024).toFixed(0)} KB`,
-            fecha: new Date().toLocaleDateString('es-CO'),
-            tipo: 'Documento General'
-          };
-
-          setDocumentos([nuevoDocumento, ...documentos]);
-          setHasChanges(true);
-
-          toast.success('✅ Documento subido exitosamente', {
-            id: 'subir-documento',
-            description: `${file.name} agregado al proceso ${proceso.id}`,
-            duration: 4000
-          });
-
-          // Log para analytics
-          console.log('📊 Documento subido:', {
-            proceso: proceso.id,
-            documento: file.name,
-            tamaño: nuevoDocumento.tamaño,
-            timestamp: new Date().toISOString()
-          });
-        }, 2000);
-      }
-    };
-
-    input.click();
-  };
-
+  // Document Handler Logic
+  // Updated for robustness: use blob for download, new tab for view
   const handleVerDocumento = (doc: any) => {
-    setDocumentoSeleccionado(doc);
-    setVisorAbierto(true);
-
-    toast.success('📄 Visor de documentos abierto', {
-      description: `Visualizando: ${doc.nombre}`,
-      duration: 2000
-    });
+    const url = doc.documentoUrl || doc.url || doc.archivoUrl;
+    if (url) {
+      window.open(url, '_blank');
+    } else {
+      toast.error('No hay documento para visualizar');
+    }
   };
 
-  const handleDescargarDocumento = (doc: any) => {
-    toast.loading('⏳ Preparando descarga...', {
-      id: 'descargar-documento',
-      duration: 1500
-    });
+  const handleDescargarDocumento = async (doc: any) => {
+    const url = doc.documentoUrl || doc.url || doc.archivoUrl;
+    const nombreArchivo = doc.documentoNombre || doc.nombre || doc.nombreArchivo || `documento_${Date.now()}.pdf`;
 
-    setTimeout(() => {
-      // Crear contenido HTML del documento
-      const contenidoHTML = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>${doc.nombre} - ${proceso.id}</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 40px;
-              line-height: 1.6;
-            }
-            .header { 
-              text-align: center; 
-              border-bottom: 3px solid #003DA5; 
-              padding-bottom: 20px; 
-              margin-bottom: 30px; 
-            }
-            .header h1 { 
-              color: #003DA5; 
-              margin: 0 0 10px 0;
-              font-size: 24px;
-            }
-            .header p { 
-              margin: 5px 0; 
-              color: #666;
-            }
-            .metadata { 
-              margin: 30px 0; 
-              padding: 20px; 
-              background: #f5f5f5;
-              border-left: 4px solid #003DA5;
-            }
-            .metadata-item { 
-              margin: 10px 0; 
-            }
-            .metadata-label { 
-              font-weight: bold; 
-              color: #003DA5;
-              display: inline-block;
-              width: 180px;
-            }
-            .content { 
-              margin: 30px 0;
-              text-align: justify;
-            }
-            .footer { 
-              margin-top: 50px; 
-              padding-top: 20px; 
-              border-top: 2px solid #ddd;
-              text-align: center;
-              color: #666;
-              font-size: 12px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</h1>
-            <p>ESAP - República de Colombia</p>
-            <p>Oficina de Control Disciplinario Interno</p>
-          </div>
-          
-          <div class="metadata">
-            <div class="metadata-item">
-              <span class="metadata-label">Proceso No:</span>
-              <span>${proceso.id}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">Tipo de Falta:</span>
-              <span>${proceso.tipoFalta}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">Etapa Procesal:</span>
-              <span>${proceso.etapa}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">Tipo de Documento:</span>
-              <span>${doc.tipo}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">Nombre del Archivo:</span>
-              <span>${doc.nombre}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">Tamaño:</span>
-              <span>${doc.tamaño}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">Fecha de Carga:</span>
-              <span>${doc.fecha}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">Disciplinado:</span>
-              <span>${proceso.disciplinado}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">Investigador Asignado:</span>
-              <span>${proceso.abogadoAsignado}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">Fecha de Generación:</span>
-              <span>${new Date().toLocaleDateString('es-CO', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })}</span>
-            </div>
-          </div>
-          
-          <div class="content">
-            <h2 style="color: #003DA5;">${doc.tipo.toUpperCase()}</h2>
-            
-            <p><strong>Documento del Expediente Disciplinario</strong></p>
-            
-            <p>El presente documento hace parte integral del expediente disciplinario ${proceso.id}, 
-            el cual se encuentra actualmente en etapa de <strong>${proceso.etapa}</strong>.</p>
-            
-            <p><strong>Objeto del Documento:</strong></p>
-            <p>Este ${doc.tipo} constituye un elemento fundamental del proceso disciplinario, 
-            siendo parte de la documentación oficial que soporta las actuaciones adelantadas por 
-            la Oficina de Control Disciplinario Interno de la ESAP.</p>
-            
-            <p><strong>Marco Legal:</strong></p>
-            <p>El presente documento se enmarca dentro de las disposiciones establecidas en el 
-            Código General Disciplinario (Ley 1952 de 2019) y demás normas concordantes que 
-            regulan el procedimiento disciplinario en Colombia.</p>
-            
-            <p><strong>Cadena de Custodia:</strong></p>
-            <p>Este documento ha sido incorporado al expediente digital disciplinario cumpliendo 
-            con todos los protocolos de cadena de custodia, autenticidad y preservación de evidencia 
-            establecidos por la normatividad vigente.</p>
-            
-            <p><strong>Acceso y Consulta:</strong></p>
-            <p>El documento ha sido puesto en conocimiento de las partes intervinientes en el proceso, 
-            garantizando el derecho de defensa, contradicción y acceso al expediente consagrado en el 
-            artículo 29 de la Constitución Política de Colombia.</p>
-            
-            <p><strong>Características del Archivo:</strong></p>
-            <ul>
-              <li>Nombre: ${doc.nombre}</li>
-              <li>Tamaño: ${doc.tamaño}</li>
-              <li>Fecha de incorporación: ${doc.fecha}</li>
-              <li>Tipo: ${doc.tipo}</li>
-            </ul>
-            
-            <p><strong>Declaración de Autenticidad:</strong></p>
-            <p>Se certifica que el presente documento es auténtico y hace parte oficial del 
-            expediente disciplinario ${proceso.id}, habiendo sido validado y aprobado por la 
-            Oficina de Control Disciplinario Interno de la ESAP.</p>
-          </div>
-          
-          <div class="footer">
-            <p><strong>Sistema de Gestión Legal ESAP</strong></p>
-            <p>Documento oficial del proceso disciplinario ${proceso.id}</p>
-            <p>Generado el: ${new Date().toLocaleString('es-CO')}</p>
-            <p>Control Disciplinario Interno - ESAP</p>
-          </div>
-        </body>
-        </html>
-      `;
+    if (url) {
+      try {
+        toast.loading('Iniciando descarga...', { id: 'downloading-doc-2' });
 
-      // Crear blob y descargar
-      const blob = new Blob([contenidoHTML], { type: 'text/html' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = doc.nombre.replace('.pdf', '.html');
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Network error');
 
-      toast.success('✅ Descarga completada', {
-        id: 'descargar-documento',
-        description: `${doc.nombre} (${doc.tamaño}) guardado en Descargas`,
-        duration: 4000
-      });
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
 
-      // Log para analytics
-      console.log('📊 Documento descargado:', {
-        proceso: proceso.id,
-        documento: doc.nombre,
-        tipo: doc.tipo,
-        timestamp: new Date().toISOString()
-      });
-    }, 1500);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = blobUrl;
+        a.download = nombreArchivo;
+
+        document.body.appendChild(a);
+        a.click();
+
+        window.URL.revokeObjectURL(blobUrl);
+        document.body.removeChild(a);
+
+        toast.success('Descarga completada', { id: 'downloading-doc-2' });
+      } catch (error) {
+        console.error('Download error:', error);
+        toast.error('Error al descargar el archivo. Verifica permisos o CORS.', { id: 'downloading-doc-2' });
+      }
+    } else {
+      toast.error('No hay URL disponible para este documento');
+    }
   };
+
 
   return (
     <Dialog open={isOpen} onOpenChange={handleCerrar}>
       <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
-        <DialogTitle className="sr-only">
-          Proceso Disciplinario {proceso.id}
-        </DialogTitle>
-        <DialogDescription className="sr-only">
-          Vista completa del proceso disciplinario {proceso.id}
-        </DialogDescription>
+        <DialogTitle className="sr-only">Proceso Disciplinario {proceso.id}</DialogTitle>
+        <DialogDescription className="sr-only">Vista completa del proceso disciplinario</DialogDescription>
 
         {/* ==================== HEADER STICKY ==================== */}
         <div className="sticky top-0 z-10 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4">
@@ -537,29 +410,18 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   <Gavel className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <DialogTitle className="text-2xl font-black text-white">
-                    {proceso.id}
-                  </DialogTitle>
+                  <DialogTitle className="text-2xl font-black text-white">{proceso.id}</DialogTitle>
                   <p className="text-sm text-blue-100">{proceso.tipoFalta}</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge className="bg-white/20 text-white font-semibold border-white/30">
-                  {proceso.etapa || 'SIN ETAPA'}
-                </Badge>
-                <Badge className="bg-orange-500 text-white font-semibold">
-                  {proceso.diasRestantes} días restantes
-                </Badge>
+                <Badge className="bg-white/20 text-white font-semibold border-white/30">{proceso.etapa || 'SIN ETAPA'}</Badge>
+                <Badge className="bg-orange-500 text-white font-semibold">{proceso.diasRestantes} días restantes</Badge>
               </div>
             </div>
 
-            <Button
-              onClick={onClose}
-              variant="ghost"
-              size="sm"
-              className="text-white hover:bg-white/20"
-            >
+            <Button onClick={onClose} variant="ghost" size="sm" className="text-white hover:bg-white/20">
               <X className="w-5 h-5" />
             </Button>
           </div>
@@ -599,8 +461,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               {/* Información del Proceso */}
               <Card className="p-4 border-2 border-blue-100">
                 <h3 className="font-black text-lg mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
-                  <Gavel className="w-5 h-5" />
-                  Información del Proceso
+                  <Gavel className="w-5 h-5" /> Información del Proceso
                 </h3>
                 <div className="space-y-3">
                   <div>
@@ -609,9 +470,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Tipo de Falta</p>
-                    <Badge className="bg-orange-100 text-orange-700 font-semibold">
-                      {proceso.tipoFalta}
-                    </Badge>
+                    <Badge className="bg-orange-100 text-orange-700 font-semibold">{proceso.tipoFalta}</Badge>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Etapa Actual</p>
@@ -621,9 +480,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                     <p className="text-sm text-gray-600">Investigador Asignado</p>
                     <div className="flex items-center gap-2 mt-1">
                       <Avatar className="w-8 h-8">
-                        <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                          {(proceso.abogadoAsignado || 'User').substring(0, 2)}
-                        </AvatarFallback>
+                        <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>{(proceso.abogadoAsignado || 'User').substring(0, 2)}</AvatarFallback>
                       </Avatar>
                       <p className="font-bold">{proceso.abogadoAsignado || 'Sin Asignar'}</p>
                     </div>
@@ -634,8 +491,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               {/* Información del Investigado */}
               <Card className="p-4 border-2 border-gray-200">
                 <h3 className="font-black text-lg mb-4 flex items-center gap-2 text-gray-800">
-                  <User className="w-5 h-5" />
-                  Investigado
+                  <User className="w-5 h-5" /> Investigado
                 </h3>
                 <div className="space-y-3">
                   <div>
@@ -657,8 +513,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             {/* Cronología de Términos */}
             <Card className="p-4 bg-blue-50 border-2 border-blue-200">
               <h3 className="font-black text-lg mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
-                <Clock className="w-5 h-5" />
-                Cronología de Términos ({proceso.etapa})
+                <Clock className="w-5 h-5" /> Cronología de Términos ({proceso.etapa})
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="text-center p-3 bg-white rounded-lg">
@@ -676,32 +531,18 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               </div>
             </Card>
 
-            {/* ==================== ÚLTIMA ACTUACIÓN PROCESAL ==================== */}
+            {/* Última Actuación */}
             <Card className="p-6 border-2 border-blue-200 shadow-md">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-black text-xl flex items-center gap-2" style={{ color: '#003DA5' }}>
-                  <AlertTriangle className="w-6 h-6" />
-                  ÚLTIMA ACTUACIÓN PROCESAL
+                  <AlertTriangle className="w-6 h-6" /> ÚLTIMA ACTUACIÓN PROCESAL
                 </h3>
               </div>
               <div className="p-4 bg-blue-50 rounded-lg mb-4">
                 <p className="text-sm text-gray-600 mb-1">Actuación:</p>
-                <p className="font-bold text-gray-900">
-                  {actuacionesTotales[0]?.descripcion || 'Inicio del proceso'}
-                </p>
+                <p className="font-bold text-gray-900">{actuacionesTotales[0]?.descripcion || 'Inicio del proceso'}</p>
                 <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                   <span>📅 {actuacionesTotales[0]?.fechaActuacion ? new Date(actuacionesTotales[0].fechaActuacion).toLocaleDateString('es-CO') : new Date().toLocaleDateString('es-CO')}</span>
-                </div>
-              </div>
-
-              <div className="p-5 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl mb-5 border border-blue-200">
-                <p className="text-sm font-semibold text-gray-600 mb-2">Actuación:</p>
-                <p className="font-black text-lg text-gray-900">
-                  {proceso.ultimaActuacion || 'Solicitud de informes a RRHH'}
-                </p>
-                <div className="flex items-center gap-4 mt-3 text-xs font-semibold text-gray-500">
-                  <span>📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</span>
-                  <span>⏰ {proceso.fechaActualizacion.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>
             </Card>
@@ -711,12 +552,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           <TabsContent value="hechos" className="flex-1 overflow-y-auto p-6">
             <Card className="p-6">
               <h3 className="font-black text-xl mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
-                <AlertTriangle className="w-6 h-6" />
-                Descripción de los Hechos
+                <AlertTriangle className="w-6 h-6" /> Descripción de los Hechos
               </h3>
-              <p className="text-gray-700 leading-relaxed mb-4">
-                {proceso.hechos || 'No se han registrado hechos.'}
-              </p>
+              <p className="text-gray-700 leading-relaxed mb-4">{proceso.hechos || 'No se han registrado hechos.'}</p>
             </Card>
           </TabsContent>
 
@@ -724,12 +562,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           <TabsContent value="pruebas" className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Material Probatorio</h3>
-              <Button
-                onClick={handleAgregarPrueba}
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Agregar Prueba
+              <Button onClick={handleAgregarPrueba} style={{ background: '#003DA5', color: '#FFFFFF' }}>
+                <Plus className="w-4 h-4 mr-2" /> Agregar Prueba
               </Button>
             </div>
 
@@ -742,13 +576,14 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                     <FileText className="w-6 h-6 text-blue-600" />
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-bold text-lg mb-1">{prueba.documentoNombre || `Prueba #${index + 1}`}</h4>
-                    <p className="text-sm text-gray-600 mb-3">
-                      {prueba.descripcion} - {new Date(prueba.fechaActuacion).toLocaleDateString()}
-                    </p>
+                    <h4 className="font-bold text-lg mb-1">{prueba.documentoNombre || prueba.nombre || `Prueba #${index + 1}`}</h4>
+                    <p className="text-sm text-gray-600 mb-3">{prueba.descripcion} - {new Date(prueba.fechaActuacion).toLocaleDateString()}</p>
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => handleVerPrueba(prueba)}>
                         <Eye className="w-4 h-4 mr-1.5" /> Ver
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => handleDescargarDocumento(prueba)}>
+                        <Download className="w-4 h-4 mr-1.5" /> Descargar
                       </Button>
                     </div>
                   </div>
@@ -759,9 +594,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
           {/* ==================== TAB: ACTUACIONES ==================== */}
           <TabsContent value="actuaciones" className="flex-1 overflow-y-auto p-6">
-            <h3 className="font-black text-xl mb-4" style={{ color: '#003DA5' }}>
-              Historial de Actuaciones
-            </h3>
+            <h3 className="font-black text-xl mb-4" style={{ color: '#003DA5' }}>Historial de Actuaciones</h3>
             <div className="space-y-3">
               {actuacionesTotales.length === 0 && <p className="text-gray-500">Solo inicio del proceso.</p>}
               {actuacionesTotales.map((act, idx) => (
@@ -784,38 +617,19 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               <Card className="p-6 text-center">
                 <CheckCircle className="w-16 h-16 mx-auto mb-4 text-gray-300" />
                 <h3 className="font-black text-xl mb-2 text-gray-600">Sin Decisiones Registradas</h3>
-                <p className="text-gray-500 mb-4">
-                  El proceso aún se encuentra en etapa de investigación
-                </p>
-                <Button
-                  onClick={() => {
-                    setMostrarFormularioDecision(true);
-                    setHasChanges(true);
-                  }}
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Registrar Decisión
+                <p className="text-gray-500 mb-4">El proceso aún se encuentra en etapa de investigación</p>
+                <Button onClick={() => { setMostrarFormularioDecision(true); setHasChanges(true); }} style={{ background: '#003DA5', color: '#FFFFFF' }}>
+                  <Plus className="w-4 h-4 mr-2" /> Registrar Decisión
                 </Button>
               </Card>
             ) : (
               <div className="space-y-4">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>
-                    Decisiones Registradas ({decisiones.length})
-                  </h3>
-                  <Button
-                    onClick={() => {
-                      setMostrarFormularioDecision(true);
-                      setHasChanges(true);
-                    }}
-                    style={{ background: '#003DA5', color: '#FFFFFF' }}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Nueva Decisión
+                  <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Decisiones Registradas ({decisiones.length})</h3>
+                  <Button onClick={() => { setMostrarFormularioDecision(true); setHasChanges(true); }} style={{ background: '#003DA5', color: '#FFFFFF' }}>
+                    <Plus className="w-4 h-4 mr-2" /> Nueva Decisión
                   </Button>
                 </div>
-
                 {decisiones.map((decision, index) => (
                   <Card key={index} className="p-6 border-2 border-blue-200">
                     <div className="flex items-start justify-between mb-4">
@@ -876,15 +690,15 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                       </div>
 
                       <div className="flex gap-2 pt-2">
-                        <Button size="sm" variant="outline" className="font-semibold">
+                        <Button size="sm" variant="outline" className="font-semibold" onClick={() => setDecisionSeleccionada(decision)}>
                           <Eye className="w-3.5 h-3.5 mr-1.5" />
                           Ver Detalle
                         </Button>
-                        <Button size="sm" variant="outline" className="font-semibold">
+                        <Button size="sm" variant="outline" className="font-semibold" onClick={() => handleDescargarDecision(decision)}>
                           <Download className="w-3.5 h-3.5 mr-1.5" />
                           Descargar
                         </Button>
-                        <Button size="sm" variant="outline" className="font-semibold text-orange-600 border-orange-300 hover:bg-orange-50">
+                        <Button size="sm" variant="outline" className="font-semibold text-orange-600 border-orange-300 hover:bg-orange-50" onClick={() => setMostrarModalNotificar(true)}>
                           <Bell className="w-3.5 h-3.5 mr-1.5" />
                           Notificar
                         </Button>
@@ -900,12 +714,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           <TabsContent value="documentos" className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Documentos del Proceso</h3>
-              <Button
-                onClick={handleSubirDocumento}
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Subir Documento
+              <Button onClick={handleAgregarDocumento} style={{ background: '#003DA5', color: '#FFFFFF' }}>
+                <Upload className="w-4 h-4 mr-2" /> Subir Documento
               </Button>
             </div>
 
@@ -917,26 +727,14 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   <div className="flex items-start gap-3">
                     <FileText className="w-8 h-8 text-blue-600" />
                     <div className="flex-1">
-                      <h4 className="font-bold mb-1">{doc.nombre}</h4>
-                      <p className="text-xs text-gray-500">{doc.tamaño} • {doc.fecha}</p>
+                      <h4 className="font-bold mb-1">{doc.documentoNombre || doc.nombre || 'Documento'}</h4>
+                      <p className="text-xs text-gray-500">{doc.tamaño || 'Tamaño desconocido'} • {doc.fechaActuacion ? new Date(doc.fechaActuacion).toLocaleDateString() : (doc.fecha || 'Fecha desconocida')}</p>
                       <div className="flex gap-2 mt-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs font-semibold border-blue-300 text-blue-600 hover:bg-blue-50 hover:border-blue-400"
-                          onClick={() => handleVerDocumento(doc)}
-                        >
-                          <Eye className="w-3 h-3 mr-1" />
-                          Ver
+                        <Button size="sm" variant="outline" className="text-xs font-semibold border-blue-300 text-blue-600 hover:bg-blue-50" onClick={() => handleVerDocumento(doc)}>
+                          <Eye className="w-3 h-3 mr-1" /> Ver
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs font-semibold border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400"
-                          onClick={() => handleDescargarDocumento(doc)}
-                        >
-                          <Download className="w-3 h-3 mr-1" />
-                          Descargar
+                        <Button size="sm" variant="outline" className="text-xs font-semibold border-orange-300 text-orange-600 hover:bg-orange-50" onClick={() => handleDescargarDocumento(doc)}>
+                          <Download className="w-3 h-3 mr-1" /> Descargar
                         </Button>
                       </div>
                     </div>
@@ -950,41 +748,19 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         {/* ==================== FOOTER STICKY ==================== */}
         <div className="flex-shrink-0 bg-gray-50 border-t px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <p className="text-sm text-gray-600">
-              <span className="font-semibold">Última actualización:</span> {proceso.fechaActualizacion.toLocaleDateString('es-CO')}
-            </p>
-            {hasChanges && (
-              <Badge className="bg-orange-100 text-orange-700 font-semibold text-xs">
-                Cambios sin guardar
-              </Badge>
-            )}
+            <p className="text-sm text-gray-600"><span className="font-semibold">Última actualización:</span> {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</p>
+            {hasChanges && <Badge className="bg-orange-100 text-orange-700 font-semibold text-xs">Cambios sin guardar</Badge>}
           </div>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={handleCerrar}
-              className="font-semibold"
-            >
-              Cerrar
-            </Button>
-            <Button
-              onClick={handleGuardarCambios}
-              disabled={!hasChanges}
-              className="font-semibold"
-              style={{
-                background: hasChanges ? '#003DA5' : '#9CA3AF',
-                color: '#FFFFFF',
-                cursor: hasChanges ? 'pointer' : 'not-allowed'
-              }}
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Guardar Cambios
+            <Button variant="outline" onClick={handleCerrar} className="font-semibold">Cerrar</Button>
+            <Button onClick={handleGuardarCambios} disabled={!hasChanges} className="font-semibold" style={{ background: hasChanges ? '#003DA5' : '#9CA3AF', color: '#FFFFFF', cursor: hasChanges ? 'pointer' : 'not-allowed' }}>
+              <CheckCircle className="w-4 h-4 mr-2" /> Guardar Cambios
             </Button>
           </div>
         </div>
       </DialogContent>
 
-      {/* ==================== MODAL: NOTIFICAR ==================== */}
+      {/* ==================== MODALES COMPLEMENTARIOS ==================== */}
       {mostrarModalNotificar && (
         <Dialog open={mostrarModalNotificar} onOpenChange={setMostrarModalNotificar}>
           <DialogContent className="max-w-2xl">
@@ -1042,7 +818,6 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         </Dialog>
       )}
 
-      {/* ==================== MODAL: PORTALES ==================== */}
       {mostrarModalPortales && (
         <Dialog open={mostrarModalPortales} onOpenChange={setMostrarModalPortales}>
           <DialogContent className="max-w-2xl">
@@ -1097,7 +872,13 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         </Dialog>
       )}
 
-      {/* ==================== MODAL: REGISTRAR DECISIÓN ==================== */}
+      {mostrarModalCompartir && (
+        <Dialog open={mostrarModalCompartir} onOpenChange={setMostrarModalCompartir}>
+          <DialogContent><DialogTitle>Enlace Generado</DialogTitle><p>{enlaceCompartir}</p></DialogContent>
+        </Dialog>
+      )}
+
+
       <FormularioRegistrarDecision
         isOpen={mostrarFormularioDecision}
         onClose={() => setMostrarFormularioDecision(false)}
@@ -1110,21 +891,67 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         <VisorDocumentoModal
           isOpen={visorAbierto}
           onClose={() => setVisorAbierto(false)}
-          archivo={pruebaSeleccionada.archivo}
-          numero={pruebaSeleccionada.nombre}
+          archivo={pruebaSeleccionada.documentoUrl || pruebaSeleccionada.archivo}
+          numero={pruebaSeleccionada.documentoNombre || pruebaSeleccionada.nombre}
           asunto={pruebaSeleccionada.descripcion}
         />
       )}
 
-      {/* ==================== MODAL: VISOR DE DOCUMENTOS DEL PROCESO ==================== */}
       {documentoSeleccionado && (
         <VisorDocumentoModal
           isOpen={visorAbierto}
           onClose={() => setVisorAbierto(false)}
-          archivo={documentoSeleccionado.nombre}
-          numero={documentoSeleccionado.tipo}
+          archivo={documentoSeleccionado.documentoUrl || documentoSeleccionado.archivo}
+          numero={documentoSeleccionado.documentoNombre || documentoSeleccionado.nombre}
           asunto={`Documento del proceso ${proceso.id}`}
         />
+      )}
+
+      {decisionSeleccionada && (
+        <Dialog open={!!decisionSeleccionada} onOpenChange={() => setDecisionSeleccionada(null)}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogTitle className="flex items-center gap-2 text-2xl font-black text-blue-900">
+              <Gavel className="w-6 h-6" /> {decisionSeleccionada.tipoDecision}
+            </DialogTitle>
+            <div className="space-y-6 pt-4">
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
+                <div>
+                  <p className="text-sm text-gray-500">Tipo de Fallo</p>
+                  <Badge className={decisionSeleccionada.tipoFallo === 'Absolutoria' ? 'bg-green-600' : 'bg-red-600'}>
+                    {decisionSeleccionada.tipoFallo}
+                  </Badge>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-500">Fecha</p>
+                  <p className="font-bold">{decisionSeleccionada.fecha}</p>
+                </div>
+              </div>
+
+              <Card className="p-4 border-l-4 border-orange-500 shadow-sm">
+                <h4 className="font-bold text-lg mb-2 text-orange-900">Sanción</h4>
+                <p className="text-gray-800">{decisionSeleccionada.sancion || 'No aplica'}</p>
+              </Card>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-blue-900 border-b pb-1">Consideraciones</h4>
+                <p className="text-sm text-gray-700 leading-relaxed text-justify whitespace-pre-wrap">
+                  {decisionSeleccionada.consideraciones}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-blue-900 border-b pb-1">Fundamentos Jurídicos</h4>
+                <p className="text-sm text-gray-700 leading-relaxed text-justify whitespace-pre-wrap">
+                  {decisionSeleccionada.fundamentosJuridicos}
+                </p>
+              </div>
+
+              <div className="flex justify-end pt-4 border-t">
+                <Button onClick={() => setDecisionSeleccionada(null)}>Cerrar</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </Dialog>
   );
