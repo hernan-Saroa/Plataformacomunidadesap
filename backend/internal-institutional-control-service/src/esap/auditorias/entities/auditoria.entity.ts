@@ -191,14 +191,14 @@ export class Auditoria {
   actividadesPendientes: number;
 
   // Foreign Keys a auth.personas
-  @Column({ name: 'auditor_lider_id', type: 'bigint', nullable: true })
-  auditorLiderId?: number;
+  @Column({ name: 'auditor_lider_id', type: 'uuid', nullable: true })
+  auditorLiderId?: string | null;
 
-  @Column({ name: 'auditor_asignado_id', type: 'bigint', nullable: true })
-  auditorAsignadoId?: number;
+  @Column({ name: 'auditor_asignado_id', type: 'uuid', nullable: true })
+  auditorAsignadoId?: string | null;
 
-  @Column({ name: 'supervisor_asignado_id', type: 'bigint', nullable: true })
-  supervisorAsignadoId?: number;
+  @Column({ name: 'supervisor_asignado_id', type: 'uuid', nullable: true })
+  supervisorAsignadoId?: string | null;
 
   // Campos adicionales del formulario
   @Column({ type: 'text', nullable: true })

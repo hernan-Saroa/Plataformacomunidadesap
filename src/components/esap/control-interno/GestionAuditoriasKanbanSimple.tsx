@@ -1833,8 +1833,15 @@ export function GestionAuditoriasKanbanSimple() {
       // Mapear datos del backend al formato esperado por el frontend
       const añoActual = new Date().getFullYear();
       const auditoriasMapeadas: Auditoria[] = auditoriasData.map((aud: any) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:1835',message:'Mapping auditoria from backend',data:{id:aud.id,codigo:aud.codigo,auditorLiderRaw:aud.auditorLider,auditorLiderId:aud.auditorLiderId,hasAuditorLider:!!aud.auditorLider,auditorLiderType:typeof aud.auditorLider,equipoAuditores:aud.equipoAuditores},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         // Generar código automático si no existe
         const codigoAuditoria = aud.codigo || `AUD-${añoActual}-${aud.id.substring(0, 6).toUpperCase()}`;
+        // #region agent log
+        const auditorLiderMapped = aud.auditorLider || {nombre: 'Sin asignar', cargo: 'Auditor Líder', iniciales: 'SA', tipoIdentificacion: 'CC', numeroIdentificacion: ''};
+        fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:1847',message:'After mapping auditorLider',data:{codigo:codigoAuditoria,auditorLiderMapped,auditorLiderMappedNombre:auditorLiderMapped.nombre},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         const auditoriaMapeada: any = {
           id: aud.id,
           codigo: codigoAuditoria,
@@ -1844,13 +1851,7 @@ export function GestionAuditoriasKanbanSimple() {
           riesgo: aud.riesgo || 'Medio',
           semaforo: aud.semaforo || 'verde',
           territorial: aud.territorial || '',
-          auditorLider: aud.auditorLider || {
-            nombre: 'Sin asignar',
-            cargo: 'Auditor Líder',
-            iniciales: 'SA',
-            tipoIdentificacion: 'CC',
-            numeroIdentificacion: ''
-          },
+          auditorLider: auditorLiderMapped,
           auditorAsignado: aud.auditorAsignado || {
             nombre: 'Sin asignar',
             cargo: 'Auditor',
@@ -3491,6 +3492,9 @@ export function GestionAuditoriasKanbanSimple() {
 
         {/* MODAL INICIO DE AUDITORÍA - RF004 */}
         {modalInicioAuditoriaOpen && auditoriaSeleccionada && (() => {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:3493',message:'Opening InicioAuditoriaWizard',data:{auditoriaId:auditoriaSeleccionada.id,codigo:auditoriaSeleccionada.codigo,auditorLider:auditoriaSeleccionada.auditorLider,hasAuditorLider:!!auditoriaSeleccionada.auditorLider,auditorLiderNombre:auditoriaSeleccionada.auditorLider?.nombre},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
           // Convertir fecha formato DD/MM/YYYY a Date object
           const [dia, mes, anio] = auditoriaSeleccionada.fechaInicio.split('/');
           const fechaInicioDate = new Date(parseInt(anio), parseInt(mes) - 1, parseInt(dia));
@@ -3512,8 +3516,8 @@ export function GestionAuditoriasKanbanSimple() {
               },
               auditorLider: {
                 id: auditoriaSeleccionada.id + '-lider',
-                nombre: auditoriaSeleccionada.auditorLider.nombre,
-                email: auditoriaSeleccionada.auditorLider.nombre.toLowerCase().replace(' ', '.') + '@esap.edu.co'
+                nombre: auditoriaSeleccionada.auditorLider?.nombre || 'Sin asignar',
+                email: auditoriaSeleccionada.auditorLider?.nombre ? auditoriaSeleccionada.auditorLider.nombre.toLowerCase().replace(' ', '.') + '@esap.edu.co' : 'sin.asignar@esap.edu.co'
               },
               equipoAuditores: [
                 {

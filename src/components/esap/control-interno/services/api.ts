@@ -56,13 +56,24 @@ async function apiRequest<T>(
 ): Promise<ApiResponse<T>> {
   const url = `${API_BASE_URL}${endpoint}`;
   
+  // Get JWT token from localStorage
+  const token = localStorage.getItem('esap_auth_token');
+  
+  // Build headers with authentication
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...options?.headers,
+  };
+  
+  // Add Authorization header if token exists
+  if (token) {
+    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+  }
+  
   try {
     const response = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
       ...options,
+      headers,
     });
 
     // Leer el texto de la respuesta una sola vez

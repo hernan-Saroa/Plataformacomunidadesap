@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsArray,
   IsBoolean,
+  IsUUID,
 } from 'class-validator';
 import { TipoAuditoria, FaseAuditoria, PrioridadAuditoria } from '../entities/auditoria.entity';
 
@@ -88,17 +89,14 @@ export class CreateAuditoriaDto {
   @IsOptional()
   presupuestoEstimado?: string;
 
-  @IsInt()
   @IsOptional()
-  auditorLiderId?: number;
+  auditorLiderId?: string | number;
 
-  @IsInt()
   @IsOptional()
-  auditorAsignadoId?: number;
+  auditorAsignadoId?: string | number;
 
-  @IsInt()
   @IsOptional()
-  supervisorAsignadoId?: number;
+  supervisorAsignadoId?: string | number;
 
   @IsString()
   @IsOptional()

@@ -94,103 +94,104 @@ export function PlanificacionModuleRediseno() {
     busqueda: ''
   });
 
+  // Función para cargar estadísticas (extraída para reutilización)
+  const cargarEstadisticas = async () => {
+    try {
+      setLoadingEstadisticas(true);
+      console.log('[Dashboard] Cargando estadísticas desde BD...');
+      
+      // Cargar datos en paralelo
+      const [procesosResponse, planesResponse, auditoriasResponse] = await Promise.all([
+        universoAuditoriasApi.getAllProcesos(),
+        planAnual5RolesApi.findAll(),
+        auditoriasApi.getAllKanban()
+      ]);
+
+      console.log('[Dashboard] Respuestas recibidas:', {
+        procesos: procesosResponse,
+        planes: planesResponse,
+        auditorias: auditoriasResponse
+      });
+
+      // Calcular estadísticas
+      const procesos = procesosResponse.success && procesosResponse.data ? procesosResponse.data : [];
+      const planes = planesResponse.success && planesResponse.data ? planesResponse.data : [];
+      const auditorias = auditoriasResponse.success && auditoriasResponse.data ? auditoriasResponse.data : [];
+
+      // Filtrar auditorías del año actual
+      const añoActual = filtros.año;
+      const auditoriasAnoActual = auditorias.filter((aud: any) => {
+        if (!aud.fechaInicio) return false;
+        const fechaInicio = new Date(aud.fechaInicio);
+        return fechaInicio.getFullYear() === añoActual;
+      });
+
+      // Procesos seleccionados (prioridad = 1)
+      const procesosSeleccionados = procesos.filter((p: any) => p.prioridad === 1);
+      
+      // Auditorías aprobadas (estado aprobado o en ejecución)
+      const auditoriasAprobadas = auditoriasAnoActual.filter((aud: any) => 
+        aud.estado === 'aprobado' || aud.estado === 'en-ejecucion' || aud.estadoKanban
+      );
+
+      // Auditorías calendarizadas = todas las auditorías activas del kanban
+      // (vienen filtradas por activa: true desde el backend)
+      // Todas son calendarizables para el programa anual
+      const auditoriasCalendarizadas = auditorias.length;
+
+      // Calcular áreas involucradas (procesos únicos)
+      const areasInvolucradas = new Set(procesosSeleccionados.map((p: any) => p.dependencia || p.territorial || 'Sede')).size;
+
+      // Calcular auditores asignados (de todas las auditorías)
+      const auditoresUnicos = new Set();
+      auditoriasAnoActual.forEach((aud: any) => {
+        if (aud.auditorLiderId) auditoresUnicos.add(aud.auditorLiderId);
+        if (aud.auditorAsignadoId) auditoresUnicos.add(aud.auditorAsignadoId);
+        if (aud.equipoAuditores && Array.isArray(aud.equipoAuditores)) {
+          aud.equipoAuditores.forEach((eq: any) => {
+            if (eq.personaId) auditoresUnicos.add(eq.personaId);
+          });
+        }
+      });
+
+      // Calcular cumplimiento (auditorías completadas / total)
+      const auditoriasCompletadas = auditoriasAnoActual.filter((aud: any) => 
+        aud.estado === 'cerrada' || aud.fase === 'completada'
+      );
+      const cumplimientoPrograma = auditoriasAnoActual.length > 0
+        ? Math.round((auditoriasCompletadas.length / auditoriasAnoActual.length) * 100)
+        : 0;
+
+      const nuevasEstadisticas: EstadisticasGlobales = {
+        totalAuditoriasPlanificadas: planes.reduce((sum: number, plan: any) => {
+          // Sumar actividades de todos los roles
+          return sum + (plan.roles?.reduce((rolSum: number, rol: any) => {
+            return rolSum + (rol.actividades?.length || 0);
+          }, 0) || 0);
+        }, 0),
+        totalPlanesAnuales: planes.length, // Número de planes anuales
+        auditoriasAprobadas: auditoriasAprobadas.length,
+        procesosUniverso: procesos.length,
+        procesosAuditables: procesosSeleccionados.length, // Solo los seleccionados (prioridad = 1)
+        auditoriasCalendarizadas: auditoriasCalendarizadas, // Ya es un número (auditorias.length)
+        cumplimientoPrograma,
+        areasInvolucradas,
+        auditoresAsignados: auditoresUnicos.size
+      };
+
+      console.log('[Dashboard] Estadísticas calculadas:', nuevasEstadisticas);
+      setEstadisticas(nuevasEstadisticas);
+    } catch (error) {
+      console.error('[Dashboard] Error al cargar estadísticas:', error);
+      // Mantener datos mock en caso de error
+      setEstadisticas(ESTADISTICAS_MOCK);
+    } finally {
+      setLoadingEstadisticas(false);
+    }
+  };
+
   // Cargar estadísticas desde la BD
   useEffect(() => {
-    const cargarEstadisticas = async () => {
-      try {
-        setLoadingEstadisticas(true);
-        console.log('[Dashboard] Cargando estadísticas desde BD...');
-        
-        // Cargar datos en paralelo
-        const [procesosResponse, planesResponse, auditoriasResponse] = await Promise.all([
-          universoAuditoriasApi.getAllProcesos(),
-          planAnual5RolesApi.findAll(),
-          auditoriasApi.getAllKanban()
-        ]);
-
-        console.log('[Dashboard] Respuestas recibidas:', {
-          procesos: procesosResponse,
-          planes: planesResponse,
-          auditorias: auditoriasResponse
-        });
-
-        // Calcular estadísticas
-        const procesos = procesosResponse.success && procesosResponse.data ? procesosResponse.data : [];
-        const planes = planesResponse.success && planesResponse.data ? planesResponse.data : [];
-        const auditorias = auditoriasResponse.success && auditoriasResponse.data ? auditoriasResponse.data : [];
-
-        // Filtrar auditorías del año actual
-        const añoActual = filtros.año;
-        const auditoriasAnoActual = auditorias.filter((aud: any) => {
-          if (!aud.fechaInicio) return false;
-          const fechaInicio = new Date(aud.fechaInicio);
-          return fechaInicio.getFullYear() === añoActual;
-        });
-
-        // Procesos seleccionados (prioridad = 1)
-        const procesosSeleccionados = procesos.filter((p: any) => p.prioridad === 1);
-        
-        // Auditorías aprobadas (estado aprobado o en ejecución)
-        const auditoriasAprobadas = auditoriasAnoActual.filter((aud: any) => 
-          aud.estado === 'aprobado' || aud.estado === 'en-ejecucion' || aud.estadoKanban
-        );
-
-        // Auditorías calendarizadas (con fecha de inicio)
-        const auditoriasCalendarizadas = auditoriasAnoActual.filter((aud: any) => 
-          aud.fechaInicio && aud.fechaFin
-        );
-
-        // Calcular áreas involucradas (procesos únicos)
-        const areasInvolucradas = new Set(procesosSeleccionados.map((p: any) => p.dependencia || p.territorial || 'Sede')).size;
-
-        // Calcular auditores asignados (de todas las auditorías)
-        const auditoresUnicos = new Set();
-        auditoriasAnoActual.forEach((aud: any) => {
-          if (aud.auditorLiderId) auditoresUnicos.add(aud.auditorLiderId);
-          if (aud.auditorAsignadoId) auditoresUnicos.add(aud.auditorAsignadoId);
-          if (aud.equipoAuditores && Array.isArray(aud.equipoAuditores)) {
-            aud.equipoAuditores.forEach((eq: any) => {
-              if (eq.personaId) auditoresUnicos.add(eq.personaId);
-            });
-          }
-        });
-
-        // Calcular cumplimiento (auditorías completadas / total)
-        const auditoriasCompletadas = auditoriasAnoActual.filter((aud: any) => 
-          aud.estado === 'cerrada' || aud.fase === 'completada'
-        );
-        const cumplimientoPrograma = auditoriasAnoActual.length > 0
-          ? Math.round((auditoriasCompletadas.length / auditoriasAnoActual.length) * 100)
-          : 0;
-
-        const nuevasEstadisticas: EstadisticasGlobales = {
-          totalAuditoriasPlanificadas: planes.reduce((sum: number, plan: any) => {
-            // Sumar actividades de todos los roles
-            return sum + (plan.roles?.reduce((rolSum: number, rol: any) => {
-              return rolSum + (rol.actividades?.length || 0);
-            }, 0) || 0);
-          }, 0),
-          totalPlanesAnuales: planes.length, // Número de planes anuales
-          auditoriasAprobadas: auditoriasAprobadas.length,
-          procesosUniverso: procesos.length,
-          procesosAuditables: procesosSeleccionados.length, // Solo los seleccionados (prioridad = 1)
-          auditoriasCalendarizadas: auditoriasCalendarizadas.length,
-          cumplimientoPrograma,
-          areasInvolucradas,
-          auditoresAsignados: auditoresUnicos.size
-        };
-
-        console.log('[Dashboard] Estadísticas calculadas:', nuevasEstadisticas);
-        setEstadisticas(nuevasEstadisticas);
-      } catch (error) {
-        console.error('[Dashboard] Error al cargar estadísticas:', error);
-        // Mantener datos mock en caso de error
-        setEstadisticas(ESTADISTICAS_MOCK);
-      } finally {
-        setLoadingEstadisticas(false);
-      }
-    };
-
     cargarEstadisticas();
   }, [filtros.año]);
 
@@ -643,7 +644,7 @@ export function PlanificacionModuleRediseno() {
             transition={{ duration: 0.2 }}
             className="h-full"
           >
-            {tabActiva === 'plan-anual' && <PlanAnualModule />}
+            {tabActiva === 'plan-anual' && <PlanAnualModule onPlanChange={cargarEstadisticas} />}
             {tabActiva === 'universo' && <UniversoAuditorias />}
             {tabActiva === 'programa' && <ProgramaAnualCIG />}
           </motion.div>

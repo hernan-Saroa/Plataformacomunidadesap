@@ -59,13 +59,11 @@ import {
   Info,
   TrendingUp,
   ArrowLeft,
-  Check,
   X,
   Briefcase,
   Link2,
   UserCog,
   Database,
-  Lock,
   Globe,
   Save,
   History

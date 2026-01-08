@@ -797,10 +797,16 @@ function Paso1Informacion({ auditoria }: { auditoria: AuditoriaProgramada }) {
             <h4 className="text-xs sm:text-sm text-gray-900 font-semibold">Equipo Auditor</h4>
           </div>
           <div className="space-y-2 sm:space-y-3">
+            {/* #region agent log */}
+            {(() => {
+              fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InicioAuditoriaWizard.tsx:800',message:'Rendering auditorLider in Paso1',data:{auditoriaId:auditoria.id,auditorLider:auditoria.auditorLider,hasAuditorLider:!!auditoria.auditorLider,auditorLiderNombre:auditoria.auditorLider?.nombre,auditorLiderEmail:auditoria.auditorLider?.email},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              return null;
+            })()}
+            {/* #endregion */}
             <div className="bg-green-50 border border-green-200 rounded-lg p-2">
               <p className="text-[10px] sm:text-xs text-green-700 font-semibold mb-1">Auditor Líder</p>
-              <p className="text-xs sm:text-sm text-gray-900 font-medium">{auditoria.auditorLider.nombre}</p>
-              <p className="text-[10px] sm:text-xs text-gray-600 truncate">{auditoria.auditorLider.email}</p>
+              <p className="text-xs sm:text-sm text-gray-900 font-medium">{auditoria.auditorLider?.nombre || 'Sin asignar'}</p>
+              <p className="text-[10px] sm:text-xs text-gray-600 truncate">{auditoria.auditorLider?.email || 'sin.asignar@esap.edu.co'}</p>
             </div>
             <div>
               <p className="text-[10px] sm:text-xs text-gray-600 mb-1">Equipo de Apoyo:</p>

@@ -37,6 +37,14 @@ export class AuditoriasService {
   ) {}
 
   /**
+   * Valida si un string es un UUID válido
+   */
+  private isValidUUID(uuid: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(uuid);
+  }
+
+  /**
    * Parsea una fecha string (YYYY-MM-DD) a Date sin conversión de zona horaria
    * Esto evita que las fechas se desplacen por diferencias de zona horaria
    */
@@ -131,15 +139,15 @@ export class AuditoriasService {
         : {},
     };
 
-    // Asegurar que los IDs numéricos se mantengan como números
+    // Los IDs son UUIDs (strings), mantenerlos como strings
     if (auditoria.auditorLiderId !== null && auditoria.auditorLiderId !== undefined) {
-      serialized.auditorLiderId = Number(auditoria.auditorLiderId);
+      serialized.auditorLiderId = String(auditoria.auditorLiderId);
     }
     if (auditoria.auditorAsignadoId !== null && auditoria.auditorAsignadoId !== undefined) {
-      serialized.auditorAsignadoId = Number(auditoria.auditorAsignadoId);
+      serialized.auditorAsignadoId = String(auditoria.auditorAsignadoId);
     }
     if (auditoria.supervisorAsignadoId !== null && auditoria.supervisorAsignadoId !== undefined) {
-      serialized.supervisorAsignadoId = Number(auditoria.supervisorAsignadoId);
+      serialized.supervisorAsignadoId = String(auditoria.supervisorAsignadoId);
     }
 
     // Serializar objetivos, criterios y equipoAuditores con IDs numéricos
@@ -307,9 +315,32 @@ export class AuditoriasService {
     }
     if (createDto.nivelRiesgo) auditoriaData.calificacionRiesgo = createDto.nivelRiesgo;
     if (createDto.calificacionRiesgo) auditoriaData.calificacionRiesgo = createDto.calificacionRiesgo;
-    if (createDto.auditorLiderId) auditoriaData.auditorLiderId = createDto.auditorLiderId;
-    if (createDto.auditorAsignadoId) auditoriaData.auditorAsignadoId = createDto.auditorAsignadoId;
-    if (createDto.supervisorAsignadoId) auditoriaData.supervisorAsignadoId = createDto.supervisorAsignadoId;
+    // Validar y asignar UUIDs solo si son válidos (convertir números a null)
+    if (createDto.auditorLiderId !== undefined && createDto.auditorLiderId !== null) {
+      const auditorLiderIdStr = String(createDto.auditorLiderId);
+      if (this.isValidUUID(auditorLiderIdStr)) {
+        auditoriaData.auditorLiderId = auditorLiderIdStr;
+      } else {
+        // Si no es un UUID válido (ej. número), establecer como null
+        auditoriaData.auditorLiderId = null;
+      }
+    }
+    if (createDto.auditorAsignadoId !== undefined && createDto.auditorAsignadoId !== null) {
+      const auditorAsignadoIdStr = String(createDto.auditorAsignadoId);
+      if (this.isValidUUID(auditorAsignadoIdStr)) {
+        auditoriaData.auditorAsignadoId = auditorAsignadoIdStr;
+      } else {
+        auditoriaData.auditorAsignadoId = null;
+      }
+    }
+    if (createDto.supervisorAsignadoId !== undefined && createDto.supervisorAsignadoId !== null) {
+      const supervisorAsignadoIdStr = String(createDto.supervisorAsignadoId);
+      if (this.isValidUUID(supervisorAsignadoIdStr)) {
+        auditoriaData.supervisorAsignadoId = supervisorAsignadoIdStr;
+      } else {
+        auditoriaData.supervisorAsignadoId = null;
+      }
+    }
     if (createDto.responsableAreaNombre) auditoriaData.responsableAreaNombre = createDto.responsableAreaNombre;
     if (createDto.responsableAreaCargo) auditoriaData.responsableAreaCargo = createDto.responsableAreaCargo;
     if (createDto.responsableAreaEmail) auditoriaData.responsableAreaEmail = createDto.responsableAreaEmail;
@@ -472,9 +503,43 @@ export class AuditoriasService {
     if (updateDto.totalTareas !== undefined) auditoria.totalTareas = updateDto.totalTareas;
     if (updateDto.actividadesCompletas !== undefined) auditoria.actividadesCompletas = updateDto.actividadesCompletas;
     if (updateDto.actividadesPendientes !== undefined) auditoria.actividadesPendientes = updateDto.actividadesPendientes;
-    if (updateDto.auditorLiderId !== undefined) auditoria.auditorLiderId = updateDto.auditorLiderId;
-    if (updateDto.auditorAsignadoId !== undefined) auditoria.auditorAsignadoId = updateDto.auditorAsignadoId;
-    if (updateDto.supervisorAsignadoId !== undefined) auditoria.supervisorAsignadoId = updateDto.supervisorAsignadoId;
+    // Validar y asignar UUIDs solo si son válidos (convertir números a null)
+    if (updateDto.auditorLiderId !== undefined) {
+      if (updateDto.auditorLiderId !== null) {
+        const auditorLiderIdStr = String(updateDto.auditorLiderId);
+        if (this.isValidUUID(auditorLiderIdStr)) {
+          auditoria.auditorLiderId = auditorLiderIdStr;
+        } else {
+          auditoria.auditorLiderId = null;
+        }
+      } else {
+        auditoria.auditorLiderId = null;
+      }
+    }
+    if (updateDto.auditorAsignadoId !== undefined) {
+      if (updateDto.auditorAsignadoId !== null) {
+        const auditorAsignadoIdStr = String(updateDto.auditorAsignadoId);
+        if (this.isValidUUID(auditorAsignadoIdStr)) {
+          auditoria.auditorAsignadoId = auditorAsignadoIdStr;
+        } else {
+          auditoria.auditorAsignadoId = null;
+        }
+      } else {
+        auditoria.auditorAsignadoId = null;
+      }
+    }
+    if (updateDto.supervisorAsignadoId !== undefined) {
+      if (updateDto.supervisorAsignadoId !== null) {
+        const supervisorAsignadoIdStr = String(updateDto.supervisorAsignadoId);
+        if (this.isValidUUID(supervisorAsignadoIdStr)) {
+          auditoria.supervisorAsignadoId = supervisorAsignadoIdStr;
+        } else {
+          auditoria.supervisorAsignadoId = null;
+        }
+      } else {
+        auditoria.supervisorAsignadoId = null;
+      }
+    }
     // Actualizar alcance - asegurar que se guarde incluso si está vacío
     if (updateDto.alcance !== undefined) {
       auditoria.alcance = updateDto.alcance;
@@ -845,6 +910,37 @@ export class AuditoriasService {
 
             // Obtener nombres del equipo de auditores
             const equipoActivo = auditoria.equipoAuditores?.filter(e => e.activo) || [];
+            
+            // Si no hay auditorLider pero hay equipoAuditores, usar el primero como auditor líder
+            if (!auditorLider && equipoActivo.length > 0) {
+              try {
+                const primerMiembro = equipoActivo[0];
+                if (primerMiembro.personaId) {
+                  const lider = await this.auditoriaRepository.query(
+                    `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                     FROM auth.personas 
+                     WHERE id_tercero = $1`,
+                    [primerMiembro.personaId]
+                  );
+                  if (lider && lider.length > 0 && lider[0]) {
+                    const p = lider[0];
+                    const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
+                    const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                    auditorLider = {
+                      nombre: nombreCompleto,
+                      cargo: 'Auditor Líder',
+                      iniciales,
+                      tipoIdentificacion: (p.tip_identificacion || 'CC') as 'CC' | 'CE' | 'TI' | 'PA',
+                      numeroIdentificacion: p.num_identificacion || '',
+                    };
+                  }
+                }
+              } catch (error) {
+                console.error(`Error al obtener auditor líder del equipo ${equipoActivo[0]?.personaId}:`, error);
+                // Continuar sin auditor líder si hay error
+              }
+            }
+            
             const equipoNombres = await Promise.all(
               equipoActivo.map(async (equipo) => {
                 try {
@@ -1033,13 +1129,50 @@ export class AuditoriasService {
 
         // Obtener nombres del equipo de auditores
         const equipoActivo = auditoria.equipoAuditores?.filter(e => e.activo) || [];
+        
+        // Si no hay auditorLider pero hay equipoAuditores, usar el primero como auditor líder
+        if (!auditorLider && equipoActivo.length > 0) {
+          try {
+            const primerMiembro = equipoActivo[0];
+            if (primerMiembro.personaId) {
+              const lider = await this.auditoriaRepository.query(
+                `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                 FROM auth.personas 
+                 WHERE id_tercero = $1`,
+                [primerMiembro.personaId]
+              );
+              if (lider && lider.length > 0 && lider[0]) {
+                const p = lider[0];
+                const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
+                const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                auditorLider = {
+                  nombre: nombreCompleto,
+                  cargo: 'Auditor Líder',
+                  iniciales,
+                  tipoIdentificacion: (p.tip_identificacion || 'CC') as 'CC' | 'CE' | 'TI' | 'PA',
+                  numeroIdentificacion: p.num_identificacion || '',
+                };
+              }
+            }
+          } catch (error) {
+            console.error(`Error al obtener auditor líder del equipo ${equipoActivo[0]?.personaId}:`, error);
+            // Continuar sin auditor líder si hay error
+          }
+        }
+        
         const equipoNombres = await Promise.all(
           equipoActivo.map(async (equipo) => {
-            const persona = await this.auditoriaRepository.query(
-              `SELECT nom_largo FROM auth.personas WHERE id_tercero = $1`,
-              [equipo.personaId]
-            );
-            return persona && persona.length > 0 ? persona[0].nom_largo : 'N/A';
+            try {
+              if (!equipo.personaId) return 'N/A';
+              const persona = await this.auditoriaRepository.query(
+                `SELECT nom_largo FROM auth.personas WHERE id_tercero = $1`,
+                [equipo.personaId]
+              );
+              return persona && persona.length > 0 ? persona[0].nom_largo : 'N/A';
+            } catch (error) {
+              console.error(`Error al obtener persona del equipo ${equipo.personaId}:`, error);
+              return 'N/A';
+            }
           })
         );
 

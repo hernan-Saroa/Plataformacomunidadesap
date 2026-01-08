@@ -42,7 +42,7 @@ import {
   Calendar, Plus, Filter, Search, Users, MapPin,
   ChevronLeft, ChevronRight, Download, Check, X, AlertCircle,
   Grid, List, Edit2, Save, Trash2, Building2,
-  AlertTriangle, Eye, BarChart3, FileText, Layers
+  AlertTriangle, Eye, BarChart3, FileText, Layers, Info
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { auditoriasApi } from './services/api';
@@ -416,33 +416,31 @@ export function ProgramaAnualCIG() {
       const response = await auditoriasApi.getAllKanban();
       
       if (response.success && response.data) {
-        const añoActual = new Date().getFullYear();
         console.log('[ProgramaAnualCIG] Total auditorías recibidas al recargar:', response.data.length);
         
-        const auditoriasAnoActual = response.data.filter((aud: any) => {
-          if (!aud.fechaInicio) {
-            console.log('[ProgramaAnualCIG] Auditoría sin fechaInicio (filtrada):', aud.id, aud.codigo);
-            return false;
-          }
-          const fechaInicio = new Date(aud.fechaInicio);
-          const añoAud = fechaInicio.getFullYear();
-          const esDelAño = añoAud === añoActual;
-          if (!esDelAño) {
-            console.log('[ProgramaAnualCIG] Auditoría fuera del año actual (filtrada):', aud.id, aud.codigo, 'año:', añoAud);
-          }
-          return esDelAño;
-        });
+        // Mostrar TODAS las auditorías activas del kanban (ya vienen filtradas por activa: true)
+        const todasLasAuditorias = response.data;
+        
+        console.log('[ProgramaAnualCIG] Auditorías a mostrar:', todasLasAuditorias.length);
+        console.log('[ProgramaAnualCIG] Detalle auditorías:', todasLasAuditorias.map((a: any) => ({ 
+          id: a.id, 
+          codigo: a.codigo, 
+          fechaInicio: a.fechaInicio,
+          tieneMetadata: !!a.programaAnualMetadata,
+          mesInicio: a.programaAnualMetadata?.mesInicio
+        })));
 
-        console.log('[ProgramaAnualCIG] Auditorías del año actual después de filtrar:', auditoriasAnoActual.length);
-        console.log('[ProgramaAnualCIG] IDs de auditorías filtradas:', auditoriasAnoActual.map((a: any) => ({ id: a.id, codigo: a.codigo, fechaInicio: a.fechaInicio })));
-
-        const auditoriasMapeadas = auditoriasAnoActual.map(mapearAuditoriaAPrograma);
+        const auditoriasMapeadas = todasLasAuditorias.map(mapearAuditoriaAPrograma);
         console.log('[ProgramaAnualCIG] Auditorías mapeadas después de recargar:', auditoriasMapeadas.length);
         setAuditoriasPrograma(auditoriasMapeadas);
         
         if (mostrarToast && auditoriasMapeadas.length > 0) {
           toast.success(`${auditoriasMapeadas.length} auditorías cargadas`, {
-            description: 'Datos actualizados desde la base de datos'
+            description: 'Datos actualizados desde el tablero'
+          });
+        } else if (mostrarToast && auditoriasMapeadas.length === 0) {
+          toast.info('No hay auditorías activas', {
+            description: 'Las auditorías aparecerán aquí cuando estén activas en el sistema'
           });
         }
       } else {
@@ -470,64 +468,32 @@ export function ProgramaAnualCIG() {
         if (response.success && response.data) {
           console.log('[ProgramaAnualCIG] Total auditorías recibidas:', response.data.length);
           
-          // Filtrar solo las del año actual
-          const auditoriasAnoActual = response.data.filter((aud: any) => {
-            // Si tiene programaAnualMetadata con mesInicio, incluirla aunque no tenga fechaInicio válida
-            if (aud.programaAnualMetadata?.mesInicio !== undefined) {
-              // Si tiene metadata, asumir que es del año actual si no hay fechaInicio
-              if (!aud.fechaInicio) {
-                console.log('[ProgramaAnualCIG] Auditoría sin fechaInicio pero con metadata, incluyendo:', aud.id, aud.codigo);
-                return true;
-              }
-            }
-            
-            if (!aud.fechaInicio) {
-              console.log('[ProgramaAnualCIG] Auditoría sin fechaInicio (filtrada):', aud.id, aud.codigo);
-              return false;
-            }
-            
-            // Usar función parsearFecha para manejar formato DD/MM/YYYY
-            const fechaInicio = parsearFecha(aud.fechaInicio);
-            // Validar que la fecha sea válida
-            if (!fechaInicio || isNaN(fechaInicio.getTime())) {
-              // Si tiene metadata, incluirla aunque la fecha sea inválida
-              if (aud.programaAnualMetadata?.mesInicio !== undefined) {
-                console.log('[ProgramaAnualCIG] Auditoría con fechaInicio inválida pero con metadata, incluyendo:', aud.id, aud.codigo);
-                return true;
-              }
-              console.warn('[ProgramaAnualCIG] Auditoría con fechaInicio inválida (filtrada):', aud.id, aud.codigo, 'fechaInicio:', aud.fechaInicio);
-              return false;
-            }
-            
-            const añoAud = fechaInicio.getFullYear();
-            // Validar que el año sea un número válido
-            if (isNaN(añoAud) || añoAud < 2000 || añoAud > 2100) {
-              // Si tiene metadata, incluirla aunque el año sea inválido
-              if (aud.programaAnualMetadata?.mesInicio !== undefined) {
-                console.log('[ProgramaAnualCIG] Auditoría con año inválido pero con metadata, incluyendo:', aud.id, aud.codigo);
-                return true;
-              }
-              console.warn('[ProgramaAnualCIG] Auditoría con año inválido (filtrada):', aud.id, aud.codigo, 'año:', añoAud);
-              return false;
-            }
-            
-            return añoAud === añoActual;
-          });
-
-          console.log('[ProgramaAnualCIG] Auditorías del año actual:', auditoriasAnoActual.length);
+          // TODAS las auditorías activas del kanban deben mostrarse
+          // No filtrar por fecha ni año, todas son válidas para el programa anual
+          // (el backend ya filtra por activa: true)
+          const todasLasAuditorias = response.data;
+          
+          console.log('[ProgramaAnualCIG] Auditorías a mostrar:', todasLasAuditorias.length);
+          console.log('[ProgramaAnualCIG] Detalle auditorías:', todasLasAuditorias.map((a: any) => ({ 
+            id: a.id, 
+            codigo: a.codigo, 
+            fechaInicio: a.fechaInicio,
+            tieneMetadata: !!a.programaAnualMetadata,
+            mesInicio: a.programaAnualMetadata?.mesInicio
+          })));
 
           // Mapear a formato de programa
-          const auditoriasMapeadas = auditoriasAnoActual.map(mapearAuditoriaAPrograma);
+          const auditoriasMapeadas = todasLasAuditorias.map(mapearAuditoriaAPrograma);
           console.log('[ProgramaAnualCIG] Auditorías mapeadas:', auditoriasMapeadas.length);
           setAuditoriasPrograma(auditoriasMapeadas);
           
           if (auditoriasMapeadas.length === 0) {
-            toast.info('No hay auditorías programadas para este año', {
-              description: 'Las auditorías aparecerán aquí cuando se programen'
+            toast.info('No hay auditorías activas', {
+              description: 'Las auditorías aparecerán aquí cuando estén activas en el sistema'
             });
           } else {
             toast.success(`${auditoriasMapeadas.length} auditorías cargadas`, {
-              description: 'Datos actualizados desde la base de datos'
+              description: 'Todas las auditorías activas del tablero'
             });
           }
         } else {
@@ -540,7 +506,7 @@ export function ProgramaAnualCIG() {
       } catch (error) {
         console.error('[ProgramaAnualCIG] Error al cargar auditorías:', error);
         toast.error('Error al cargar auditorías', {
-          description: error instanceof Error ? error.message : 'No se pudieron obtener las auditorías del programa anual'
+          description: error instanceof Error ? error.message : 'No se pudieron obtener las auditorías'
         });
         setAuditoriasPrograma([]);
       } finally {
@@ -549,7 +515,7 @@ export function ProgramaAnualCIG() {
     };
 
     cargarAuditorias();
-  }, [añoActual]);
+  }, []); // Remover dependencia de añoActual, cargar siempre todas las activas
 
   // Métricas calculadas desde datos reales
   const metricas = useMemo(() => {
@@ -1656,9 +1622,9 @@ function ModalDetalleAuditoria({ auditoria, isOpen, onClose }: ModalDetalleAudit
               <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
                 <p className="text-xs text-gray-600 mb-1">Fases</p>
                 <div className="flex gap-2">
-                  <Badge variant="info" size="sm">P: {auditoria.fases.planeacion.duracionDias}d</Badge>
-                  <Badge variant="success" size="sm">E: {auditoria.fases.ejecucion.duracionDias}d</Badge>
-                  <Badge variant="default" size="sm">C: {auditoria.fases.comunicacion.duracionDias}d</Badge>
+                  <Badge key="planeacion" variant="info" size="sm">P: {auditoria.fases.planeacion.duracionDias}d</Badge>
+                  <Badge key="ejecucion" variant="success" size="sm">E: {auditoria.fases.ejecucion.duracionDias}d</Badge>
+                  <Badge key="comunicacion" variant="default" size="sm">C: {auditoria.fases.comunicacion.duracionDias}d</Badge>
                 </div>
               </div>
             </div>

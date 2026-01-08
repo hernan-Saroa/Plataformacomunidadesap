@@ -28,7 +28,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar, CheckCircle, AlertCircle, ChevronRight, ChevronLeft,
   Plus, Trash2, User, Clock, Target, Shield, Eye, Edit, Save,
-  Download, Send, X, Check, Info, HelpCircle, FileText, Users
+  Download, Send, X, Check, Info, HelpCircle, FileText, Users, FileSpreadsheet
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Button } from '../../ui/button';
@@ -37,6 +37,19 @@ import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
 import { planAnual5RolesApi } from './services/api';
+import jsPDF from 'jspdf';
+import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+
+// Declaración de tipos para jspdf-autotable
+declare module 'jspdf' {
+  interface jsPDF {
+    autoTable: (options: any) => jsPDF;
+    lastAutoTable?: {
+      finalY: number;
+    };
+  }
+}
 import { useEffect } from 'react';
 
 // ============ TIPOS ============
@@ -238,7 +251,11 @@ const PLANES_MOCK: PlanAnual[] = [
 
 // ============ COMPONENTE PRINCIPAL ============
 
-export function PlanAnualModule() {
+interface PlanAnualModuleProps {
+  onPlanChange?: () => void; // Callback para notificar cambios en los planes
+}
+
+export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as PlanAnualModuleProps) {
   const [vistaActiva, setVistaActiva] = useState<'lista' | 'crear' | 'detalle' | 'editar'>('lista');
   const [planes, setPlanes] = useState<PlanAnual[]>([]);
   const [loading, setLoading] = useState(true);
@@ -516,6 +533,12 @@ export function PlanAnualModule() {
         toast.success('Plan Anual guardado exitosamente', {
           description: `Plan ${plan.año} guardado correctamente`
         });
+        
+        // Notificar al componente padre para actualizar estadísticas
+        if (onPlanChange) {
+          onPlanChange();
+        }
+        
         setVistaActiva('lista');
       } else {
         throw new Error(response.error || 'Error al guardar el plan');
@@ -638,6 +661,12 @@ export function PlanAnualModule() {
         toast.success('Plan Anual actualizado', {
           description: `Los cambios se han guardado correctamente`
         });
+        
+        // Notificar al componente padre para actualizar estadísticas
+        if (onPlanChange) {
+          onPlanChange();
+        }
+        
         setVistaActiva('detalle');
       } else {
         throw new Error(response.error || 'Error al actualizar el plan');
@@ -679,6 +708,11 @@ export function PlanAnualModule() {
         toast.success('Plan Anual Aprobado', {
           description: `El Plan ${planActual.año} ha sido aprobado exitosamente`
         });
+        
+        // Notificar al componente padre para actualizar estadísticas
+        if (onPlanChange) {
+          onPlanChange();
+        }
       } else {
         throw new Error(response.error || 'Error al aprobar el plan');
       }
@@ -690,17 +724,545 @@ export function PlanAnualModule() {
     }
   };
 
-  const handleExportarPDF = (plan: PlanAnual) => {
+  const handleExportarPDF = async (plan: PlanAnual) => {
+    try {
     toast.success('Generando PDF...', {
       description: 'El documento se descargará en unos segundos'
     });
     
-    // Simular generación de PDF
-    setTimeout(() => {
-      toast.success('PDF generado correctamente', {
-        description: `Plan_Anual_${plan.año}.pdf`
+      // Importar jspdf-autotable dinámicamente
+      const autoTableModule = await import('jspdf-autotable');
+      const autoTable = (autoTableModule as any).default || autoTableModule;
+
+      // Crear instancia de jsPDF
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
       });
-    }, 2000);
+
+      // Función helper para cargar imagen del logo
+      const loadLogoImage = async (): Promise<string | null> => {
+        try {
+          // Intentar cargar desde diferentes ubicaciones posibles
+          const possiblePaths = [
+            '/src/assets/esap-logo.png',
+            '/src/assets/esap-logo.jpg',
+            '/assets/esap-logo.png',
+            '/assets/esap-logo.jpg',
+            './assets/esap-logo.png',
+            './assets/esap-logo.jpg'
+          ];
+          
+          // Por ahora retornamos null para usar el logo dibujado
+          // Si tienes la imagen, puedes agregarla aquí
+          return null;
+        } catch (error) {
+          return null;
+        }
+      };
+
+      // Configuración de colores
+      const colorAzul = [0, 61, 165]; // #003DA5
+      const colorGris = [128, 128, 128];
+
+      // ============ HEADER ============
+      // Logo ESAP: Intentar cargar imagen, si no, dibujar manualmente
+      const logoX = 15;
+      const logoY = 10;
+      const logoWidth = 25;
+      const logoHeight = 15;
+      
+      const logoImage = await loadLogoImage();
+      
+      if (logoImage) {
+        // Si tenemos la imagen, usarla
+        doc.addImage(logoImage, 'PNG', logoX, logoY, logoWidth, logoHeight);
+      } else {
+        // Dibujar logo manualmente: Triángulo de 10 círculos (1, 2, 3, 4) con letras "esap" en la base
+        const circleRadius = 2.3;
+        
+        // Establecer color azul para todos los círculos
+        doc.setFillColor(...colorAzul);
+        doc.setDrawColor(...colorAzul);
+        
+        // Fila 1 (arriba): 1 círculo
+        doc.circle(logoX + 11, logoY + 2, circleRadius, 'FD');
+        
+        // Fila 2: 2 círculos
+        doc.circle(logoX + 8.5, logoY + 5.5, circleRadius, 'FD');
+        doc.circle(logoX + 13.5, logoY + 5.5, circleRadius, 'FD');
+        
+        // Fila 3: 3 círculos
+        doc.circle(logoX + 6, logoY + 9, circleRadius, 'FD');
+        doc.circle(logoX + 11, logoY + 9, circleRadius, 'FD');
+        doc.circle(logoX + 16, logoY + 9, circleRadius, 'FD');
+        
+        // Fila 4 (base): 4 círculos con letras "esap" en minúsculas en blanco
+        const baseY = logoY + 12.5;
+        const baseCircles = [
+          { x: logoX + 3.5, letter: 'e' },
+          { x: logoX + 9, letter: 's' },
+          { x: logoX + 14.5, letter: 'a' },
+          { x: logoX + 20, letter: 'p' }
+        ];
+        
+        baseCircles.forEach((circle) => {
+          // Asegurar que el círculo se dibuje completamente
+          doc.setFillColor(...colorAzul);
+          doc.setDrawColor(...colorAzul);
+          doc.circle(circle.x, baseY, circleRadius, 'FD');
+          
+          // Agregar letra en blanco dentro del círculo
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(6);
+          doc.setFont(undefined, 'bold');
+          doc.text(circle.letter, circle.x, baseY + 1.3, { align: 'center' });
+        });
+      }
+      
+      // Texto ESAP debajo del logo
+      const textY = logoY + 16.5;
+      doc.setFontSize(7);
+      doc.setTextColor(...colorAzul);
+      doc.setFont(undefined, 'bold');
+      doc.text('Escuela Superior de', logoX, textY);
+      doc.text('Administración Pública', logoX, textY + 3);
+      
+      // Título principal (centrado)
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text('PLAN DE AUDITORIA INTERNAS DEL SISTEMA DE GESTIÓN DE LA CALIDAD', 105, 20, { align: 'center', maxWidth: 140 });
+
+      // Metadata (Código, Versión, Fecha) - lado derecho
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'normal');
+      doc.text('Código: EM-FO-014', 160, 10);
+      doc.text('Versión: 1', 160, 14);
+      doc.text(`Fecha: ${new Date().toLocaleDateString('es-CO')}`, 160, 18);
+
+      let yPos = 35; // Más espacio después del header
+
+      // ============ SECCIÓN: PROCESO ============
+      yPos += 5; // Espacio antes de la sección
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(...colorAzul);
+      doc.text('PROCESO: EVALUACION, CONTROL Y MEJORA', 10, yPos);
+      yPos += 8; // Espacio después del título
+
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(0, 0, 0);
+      
+      // Campos del proceso
+      doc.setFont(undefined, 'bold');
+      doc.text('FECHA DEL PLAN:', 10, yPos);
+      doc.setFont(undefined, 'normal');
+      doc.text(new Date().toLocaleDateString('es-CO'), 50, yPos);
+      yPos += 10; // Espacio entre líneas
+
+      doc.setFont(undefined, 'bold');
+      const procesoLabel = 'PROCESO/DEPENDENCIA A AUDITAR:';
+      doc.text(procesoLabel, 10, yPos);
+      doc.setFont(undefined, 'normal');
+      // Calcular posición X para el valor: después del label + espacio
+      const procesoLabelWidth = doc.getTextWidth(procesoLabel);
+      doc.text('Control Interno - Plan Anual', 10 + procesoLabelWidth + 5, yPos);
+      yPos += 10; // Espacio vertical normal
+
+      doc.setFont(undefined, 'bold');
+      const responsableLabel = 'RESPONSABLE PROCESO/DEPENDENCIA A AUDITAR:';
+      doc.text(responsableLabel, 10, yPos);
+      doc.setFont(undefined, 'normal');
+      // Calcular posición X para el valor: después del label + espacio
+      const responsableLabelWidth = doc.getTextWidth(responsableLabel);
+      doc.text(plan.jefeOCI.nombre, 10 + responsableLabelWidth + 5, yPos);
+      yPos += 10; // Espacio después
+
+      doc.setFont(undefined, 'bold');
+      doc.text('AUDITOR LIDER:', 10, yPos);
+      doc.setFont(undefined, 'normal');
+      doc.text(plan.jefeOCI.nombre, 50, yPos);
+      yPos += 8;
+
+      doc.setFont(undefined, 'bold');
+      doc.text('EQUIPO AUDITOR:', 10, yPos);
+      doc.setFont(undefined, 'normal');
+      const equipoAuditores = plan.roles
+        .flatMap(rol => rol.actividades.map(act => act.responsableNombre))
+        .filter((nombre, index, arr) => arr.indexOf(nombre) === index)
+        .join(', ') || 'Por definir';
+      // Dividir texto largo en múltiples líneas
+      const equipoLines = doc.splitTextToSize(equipoAuditores, 140);
+      doc.text(equipoLines, 50, yPos);
+      yPos += equipoLines.length * 5 + 10; // Espacio dinámico según líneas
+
+      // ============ SECCIÓN: ASPECTOS A TENER EN CUENTA ============
+      yPos += 5; // Espacio antes de la sección
+      doc.setFillColor(...colorAzul);
+      doc.rect(10, yPos, 190, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.text('ASPECTOS A TENER EN CUENTA', 105, yPos + 6, { align: 'center' });
+      yPos += 10; // Espacio después del banner
+
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+
+      // Objetivo
+      doc.setFont(undefined, 'bold');
+      doc.text('OBJETIVO DE LA AUDITORIA:', 10, yPos);
+      doc.setFont(undefined, 'normal');
+      const objetivoText = doc.splitTextToSize('Verificar el cumplimiento del Plan Anual de Control Interno según Decreto 648/2017', 180);
+      doc.text(objetivoText, 10, yPos + 5);
+      yPos += objetivoText.length * 5 + 8; // Espacio dinámico
+
+      // Alcance
+      doc.setFont(undefined, 'bold');
+      doc.text('ALCANCE DE LA AUDITORIA:', 10, yPos);
+      doc.setFont(undefined, 'normal');
+      doc.text(`Plan Anual ${plan.año} - ${plan.roles.length} roles del Decreto 648/2017`, 10, yPos + 5);
+      yPos += 10;
+
+      // Criterios
+      doc.setFont(undefined, 'bold');
+      doc.text('CRITERIOS DE AUDITORÍA:', 10, yPos);
+      doc.setFont(undefined, 'normal');
+      doc.text('Decreto 648 de 2017 - Sistema de Control Interno', 10, yPos + 5);
+      yPos += 10;
+
+      // Método
+      doc.setFont(undefined, 'bold');
+      doc.text('METODO DE AUDITORIA:', 10, yPos);
+      doc.setFont(undefined, 'normal');
+      doc.text('Revisión documental y verificación de actividades', 10, yPos + 5);
+      yPos += 10;
+
+      // Recursos
+      doc.setFont(undefined, 'bold');
+      doc.text('RECURSOS:', 10, yPos);
+      yPos += 6; // Más espacio
+      doc.setFont(undefined, 'normal');
+      doc.text('FINANCIEROS', 10, yPos);
+      doc.text('LOGISTICOS', 50, yPos);
+      doc.text('TECNOLÓGICOS', 90, yPos);
+      doc.text('OTROS', 130, yPos);
+      yPos += 10; // Espacio antes de la tabla
+
+      // ============ TABLA: CRONOGRAMA Y EQUIPO AUDITOR ============
+      yPos += 5; // Espacio antes de la sección
+      doc.setFillColor(...colorAzul);
+      doc.rect(10, yPos, 190, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.text('CRONOGRAMA Y EQUIPO AUDITOR', 105, yPos + 6, { align: 'center' });
+      yPos += 10; // Espacio después del banner
+
+      // Preparar datos de la tabla
+      const tableData: any[] = [];
+      plan.roles.forEach(rol => {
+        rol.actividades.forEach(actividad => {
+          tableData.push([
+            `${rol.nombre}: ${actividad.nombre}`,
+            actividad.responsableNombre || 'Por asignar',
+            actividad.responsableNombre || 'Por asignar',
+            actividad.fechaInicio || 'Por definir',
+            'Por definir',
+            'Por definir'
+          ]);
+        });
+      });
+
+      // Si no hay actividades, agregar una fila vacía
+      if (tableData.length === 0) {
+        tableData.push(['No hay actividades registradas', '', '', '', '', '']);
+      }
+
+      // Generar tabla con autoTable
+      // Usar autoTable como función pasando doc como primer parámetro
+      autoTable(doc, {
+        startY: yPos,
+        head: [['ACTIVIDAD A DESARROLLAR', 'AUDITOR(ES)', 'PERSONA($) A AUDITAR', 'FECHA', 'HORA', 'LUGAR']],
+        body: tableData,
+        theme: 'grid',
+        headStyles: {
+          fillColor: colorAzul,
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 9
+        },
+        bodyStyles: {
+          fontSize: 8,
+          textColor: [0, 0, 0]
+        },
+        columnStyles: {
+          0: { cellWidth: 60 },
+          1: { cellWidth: 30 },
+          2: { cellWidth: 30 },
+          3: { cellWidth: 20 },
+          4: { cellWidth: 20 },
+          5: { cellWidth: 30 }
+        },
+        margin: { left: 10, right: 10 }
+      });
+      
+      const finalY = (doc as any).lastAutoTable?.finalY || yPos + 50;
+      yPos = finalY + 10; // Espacio después de la tabla
+
+      // ============ FOOTER: FIRMAS ============
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      yPos += 10; // Espacio antes de las firmas
+
+      // Firma Auditor Líder
+      doc.setFillColor(...colorAzul);
+      doc.rect(10, yPos, 90, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'bold');
+      doc.text('FIRMA DEL AUDITOR LÍDER', 55, yPos + 6, { align: 'center' });
+      yPos += 12; // Espacio entre banner y nombre
+      doc.setTextColor(0, 0, 0);
+      doc.setFont(undefined, 'normal');
+      doc.text(plan.jefeOCI.nombre, 55, yPos, { align: 'center' });
+
+      // Firma Jefe Oficina de Planeación
+      doc.setFillColor(...colorAzul);
+      doc.rect(110, yPos - 12, 90, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont(undefined, 'bold');
+      doc.text('FIRMA JEFE OFICINA DE PLANEACIÓN', 155, yPos - 6, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+      doc.setFont(undefined, 'normal');
+      doc.text('_________________________', 155, yPos + 2, { align: 'center' });
+
+      // Guardar PDF
+      const fileName = `Plan_Anual_${plan.año}_${new Date().getTime()}.pdf`;
+      doc.save(fileName);
+
+      toast.success('PDF generado correctamente', {
+        description: fileName
+      });
+    } catch (error: any) {
+      console.error('Error al generar PDF:', error);
+      toast.error('Error al generar PDF', {
+        description: error.message || 'No se pudo generar el documento'
+      });
+    }
+  };
+
+  const handleExportarExcel = async (plan: PlanAnual) => {
+    try {
+      toast.success('Generando Excel...', {
+        description: 'Cargando plantilla y aplicando datos...'
+      });
+
+      // Cargar la plantilla Excel existente
+      const response = await fetch('/plantilla_plan_auditoria.xlsx');
+      if (!response.ok) {
+        throw new Error(`No se pudo cargar la plantilla Excel. Status: ${response.status} ${response.statusText}`);
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      
+      // Verificar que el archivo no sea HTML (puede pasar si el servidor devuelve un error)
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const firstBytes = Array.from(uint8Array.slice(0, 8));
+      const isHTML = String.fromCharCode(...firstBytes.slice(0, 4)).toLowerCase() === '<htm';
+      
+      if (isHTML) {
+        throw new Error('El archivo recibido es HTML, no un archivo Excel válido. Verifica que la plantilla esté en la carpeta public.');
+      }
+      
+      // Leer la plantilla con XLSX
+      // Nota: XLSX puede leer .xls y .xlsx
+      let workbook;
+      try {
+        workbook = XLSX.read(arrayBuffer, { 
+          type: 'array',
+          cellStyles: true,
+          cellDates: true,
+          dense: false
+        });
+      } catch (error) {
+        // Si falla, intentar sin opciones de estilos
+        console.warn('Error al leer con estilos, intentando sin estilos:', error);
+        workbook = XLSX.read(arrayBuffer, { 
+          type: 'array'
+        });
+      }
+      
+      if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+        throw new Error('El archivo Excel no contiene hojas válidas');
+      }
+      
+      // Obtener la primera hoja
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      
+      if (!worksheet) {
+        throw new Error('No se encontró la hoja en la plantilla');
+      }
+
+      // Función auxiliar para escribir en una celda preservando el formato existente
+      const escribirCelda = (cellRef: string, valor: string | number) => {
+        if (!worksheet[cellRef]) {
+          // Si la celda no existe, crearla
+          worksheet[cellRef] = { v: valor, t: typeof valor === 'number' ? 'n' : 's' };
+        } else {
+          // Preservar todos los atributos existentes y solo actualizar el valor
+          const celdaExistente = worksheet[cellRef];
+          worksheet[cellRef] = {
+            ...celdaExistente,
+            v: valor,
+            t: typeof valor === 'number' ? 'n' : 's'
+          };
+        }
+      };
+
+      // Preparar datos
+      const equipoAuditores = plan.roles
+        .flatMap(rol => rol.actividades.map(act => act.responsableNombre))
+        .filter((nombre, index, arr) => arr.indexOf(nombre) === index)
+        .join(', ') || 'Por definir';
+
+      // ============ DATOS GENERALES ============
+      // D5: Fecha del plan
+      escribirCelda('D5', new Date().toLocaleDateString('es-CO'));
+      
+      // D6: PROCESO/DEPENDENCIA A AUDITAR
+      escribirCelda('D6', 'Control Interno - Plan Anual');
+      
+      // D7: RESPONSABLE PROCESO/DEPENDENCIA A AUDITAR
+      escribirCelda('D7', plan.jefeOCI.nombre);
+      
+      // D8: AUDITOR LIDER
+      escribirCelda('D8', plan.jefeOCI.nombre);
+      
+      // D9: EQUIPO AUDITOR
+      escribirCelda('D9', equipoAuditores);
+
+      // ============ DATOS GENERALES DE LA AUDITORÍA ============
+      // C4: Objetivo de la auditoría (celda combinada - escribir en celda superior izquierda)
+      escribirCelda('C4', 'Verificar el cumplimiento del Plan Anual de Control Interno según Decreto 648/2017');
+      
+      // C6: Alcance de la auditoría
+      escribirCelda('C6', `Plan Anual ${plan.año} - ${plan.roles.length} roles del Decreto 648/2017`);
+      
+      // C8: Criterios de auditoría
+      escribirCelda('C8', 'Decreto 648 de 2017 - Sistema de Control Interno');
+      
+      // C10: Método de auditoría
+      escribirCelda('C10', 'Revisión documental y verificación de actividades');
+
+      // ============ ASPECTOS A TENER EN CUENTA ============
+      // C13: Aspectos a tener en cuenta
+      const aspectos = [
+        'Riesgos identificados en el Plan Anual de Control Interno',
+        'Procesos críticos del Decreto 648/2017',
+        'Resultados de auditorías anteriores del sistema de control interno',
+        'Cambios recientes en procesos o normativa aplicable'
+      ].join(' • ');
+      escribirCelda('C13', aspectos);
+
+      // ============ RECURSOS ============
+      // C16: Financieros
+      escribirCelda('C16', 'Recursos asignados en el presupuesto anual');
+      
+      // E16: Logísticos
+      escribirCelda('E16', 'Espacios físicos y equipos necesarios para la auditoría');
+      
+      // G16: Tecnológicos
+      escribirCelda('G16', 'Sistemas de información y herramientas de auditoría');
+      
+      // I16: Otros
+      escribirCelda('I16', 'No aplica');
+
+      // ============ CRONOGRAMA Y EQUIPO AUDITOR ============
+      // Filas 19-30: Actividades
+      // Columnas: B (actividad), D (auditores), F (procesos), H (fecha), I (hora), J (lugar)
+      let filaActual = 19;
+      
+      plan.roles.forEach(rol => {
+        rol.actividades.forEach(actividad => {
+          if (filaActual <= 30) {
+            // B: Actividad a desarrollar
+            escribirCelda(`B${filaActual}`, `${rol.nombre}: ${actividad.nombre}`);
+            
+            // D: Auditor(es)
+            escribirCelda(`D${filaActual}`, actividad.responsableNombre || 'Por asignar');
+            
+            // F: Proceso(s) auditado(s)
+            escribirCelda(`F${filaActual}`, actividad.responsableNombre || 'Por asignar');
+            
+            // H: Fecha
+            escribirCelda(`H${filaActual}`, actividad.fechaInicio || 'Por definir');
+            
+            // I: Hora
+            escribirCelda(`I${filaActual}`, 'Por definir');
+            
+            // J: Lugar
+            escribirCelda(`J${filaActual}`, 'Por definir');
+            
+            filaActual++;
+          }
+        });
+      });
+
+      // Si no hay actividades, agregar mensaje
+      if (plan.roles.every(rol => rol.actividades.length === 0) && filaActual <= 30) {
+        escribirCelda(`B${filaActual}`, 'No hay actividades registradas');
+      }
+
+      // ============ FIRMAS ============
+      // B33: Nombre Auditor Líder
+      escribirCelda('B33', plan.jefeOCI.nombre);
+      
+      // B34: Cargo Auditor Líder
+      escribirCelda('B34', 'Jefe Oficina de Control Interno');
+      
+      // G33: Nombre Auditado
+      escribirCelda('G33', plan.jefeOCI.nombre);
+      
+      // G34: Cargo Auditado
+      escribirCelda('G34', 'Responsable del Proceso');
+
+      // Generar archivo en formato .xlsx (mejor preservación de estilos que .xls)
+      const fileName = `Plan_Anual_${plan.año}_${new Date().getTime()}.xlsx`;
+      
+      // Escribir el workbook manteniendo estilos
+      const wbout = XLSX.write(workbook, { 
+        bookType: 'xlsx', 
+        type: 'array',
+        cellStyles: true
+      });
+      
+      // Crear blob y descargar
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Excel generado correctamente', {
+        description: fileName
+      });
+    } catch (error: any) {
+      console.error('Error al generar Excel:', error);
+      toast.error('Error al generar Excel', {
+        description: error.message || 'No se pudo generar el documento'
+      });
+    }
   };
 
   return (
@@ -778,6 +1340,7 @@ export function PlanAnualModule() {
               onEditar={() => handleEditar(planActual)}
               onAprobar={() => handleAprobar(planActual)}
               onExportarPDF={() => handleExportarPDF(planActual)}
+              onExportarExcel={() => handleExportarExcel(planActual)}
             />
           </motion.div>
         )}
@@ -1038,20 +1601,72 @@ function CrearPlanAnual({ onVolver, onGuardar, planExistente }: CrearPlanAnualPr
 
     // Validar que todas las actividades tengan datos completos
     rol.actividades.forEach((act, idx) => {
-      if (!act.nombre.trim()) {
-        nuevosErrores[`actividad-${idx}-nombre`] = 'El nombre es obligatorio';
+      // Validar nombre
+      if (!act.nombre || !act.nombre.trim()) {
+        nuevosErrores[`actividad-${idx}-nombre`] = 'El nombre de la actividad es obligatorio';
+      } else if (act.nombre.trim().length < 5) {
+        nuevosErrores[`actividad-${idx}-nombre`] = 'El nombre debe tener al menos 5 caracteres';
       }
+
+      // Validar responsable
       if (!act.responsableId) {
-        nuevosErrores[`actividad-${idx}-responsable`] = 'Debes asignar un responsable';
+        nuevosErrores[`actividad-${idx}-responsable`] = 'Debes asignar un responsable a la actividad';
       }
+
+      // Validar fecha de inicio
       if (!act.fechaInicio) {
         nuevosErrores[`actividad-${idx}-inicio`] = 'La fecha de inicio es obligatoria';
+      } else {
+        const fechaInicio = new Date(act.fechaInicio);
+        if (isNaN(fechaInicio.getTime())) {
+          nuevosErrores[`actividad-${idx}-inicio`] = 'La fecha de inicio no es válida';
+        } else {
+          // Validar que la fecha de inicio no sea anterior al año del plan
+          const añoPlan = año || new Date().getFullYear();
+          if (fechaInicio.getFullYear() < añoPlan) {
+            nuevosErrores[`actividad-${idx}-inicio`] = `La fecha de inicio no puede ser anterior al año del plan (${añoPlan})`;
+          }
+        }
       }
+
+      // Validar fecha de fin
       if (!act.fechaFin) {
         nuevosErrores[`actividad-${idx}-fin`] = 'La fecha de fin es obligatoria';
+      } else {
+        const fechaFin = new Date(act.fechaFin);
+        if (isNaN(fechaFin.getTime())) {
+          nuevosErrores[`actividad-${idx}-fin`] = 'La fecha de fin no es válida';
+        } else {
+          // Validar que la fecha de fin sea del mismo año o posterior al año del plan
+          const añoPlan = año || new Date().getFullYear();
+          if (fechaFin.getFullYear() < añoPlan) {
+            nuevosErrores[`actividad-${idx}-fin`] = `La fecha de fin no puede ser anterior al año del plan (${añoPlan})`;
+          }
+        }
       }
-      if (act.fechaInicio && act.fechaFin && act.fechaFin <= act.fechaInicio) {
-        nuevosErrores[`actividad-${idx}-fechas`] = 'La fecha de fin debe ser posterior a la de inicio';
+
+      // Validar relación entre fechas (solo si ambas existen y son válidas)
+      if (act.fechaInicio && act.fechaFin) {
+        const fechaInicio = new Date(act.fechaInicio);
+        const fechaFin = new Date(act.fechaFin);
+        
+        if (!isNaN(fechaInicio.getTime()) && !isNaN(fechaFin.getTime())) {
+          // Comparar fechas correctamente
+          const tiempoInicio = fechaInicio.getTime();
+          const tiempoFin = fechaFin.getTime();
+          
+          if (tiempoFin <= tiempoInicio) {
+            const fechaInicioFormateada = fechaInicio.toLocaleDateString('es-CO');
+            const fechaFinFormateada = fechaFin.toLocaleDateString('es-CO');
+            nuevosErrores[`actividad-${idx}-fechas`] = `La fecha de fin (${fechaFinFormateada}) debe ser posterior a la fecha de inicio (${fechaInicioFormateada})`;
+          } else {
+            // Validar que la duración sea razonable (no más de 2 años)
+            const diferenciaDias = Math.floor((tiempoFin - tiempoInicio) / (1000 * 60 * 60 * 24));
+            if (diferenciaDias > 730) {
+              nuevosErrores[`actividad-${idx}-fechas`] = 'La duración de la actividad no puede exceder 2 años';
+            }
+          }
+        }
       }
     });
 
@@ -1070,8 +1685,14 @@ function CrearPlanAnual({ onVolver, onGuardar, planExistente }: CrearPlanAnualPr
       setPaso(2);
     } else if (paso === 2) {
       if (!validarPaso2()) {
+        const erroresCount = Object.keys(errores).length;
+        const mensaje = erroresCount === 1 
+          ? 'Hay 1 error que debe corregirse' 
+          : `Hay ${erroresCount} errores que deben corregirse`;
+        
         toast.error('Actividades incompletas', {
-          description: 'Completa todos los datos de las actividades del rol actual'
+          description: mensaje + '. Revisa los campos marcados en rojo.',
+          duration: 5000
         });
         return;
       }
@@ -1136,6 +1757,9 @@ function CrearPlanAnual({ onVolver, onGuardar, planExistente }: CrearPlanAnualPr
     campo: keyof Actividad,
     valor: any
   ) => {
+    // Primero, encontrar el índice ANTES de actualizar el estado
+    const actividadIdxActual = roles[rolActual].actividades.findIndex(a => a.id === actividadId);
+
     setRoles(prev => {
       const nuevosRoles = [...prev];
       const actividad = nuevosRoles[rolActual].actividades.find(a => a.id === actividadId);
@@ -1153,16 +1777,92 @@ function CrearPlanAnual({ onVolver, onGuardar, planExistente }: CrearPlanAnualPr
       return nuevosRoles;
     });
 
-    // Limpiar error de ese campo
-    setErrores(prev => {
-      const nuevosErrores = { ...prev };
-      delete nuevosErrores[`actividad-${actividadId}-${campo}`];
-      return nuevosErrores;
+    // Limpiar errores del campo cuando se actualiza usando el índice que ya calculamos
+    // La validación completa se hará al hacer clic en "Siguiente"
+    if (actividadIdxActual !== -1) {
+      setErrores(prev => {
+        const nuevosErrores = { ...prev };
+        // Limpiar errores específicos de este campo e índices relacionados
+        delete nuevosErrores[`actividad-${actividadIdxActual}-${campo}`];
+        if (campo === 'fechaInicio' || campo === 'fechaFin') {
+          delete nuevosErrores[`actividad-${actividadIdxActual}-inicio`];
+          delete nuevosErrores[`actividad-${actividadIdxActual}-fin`];
+          delete nuevosErrores[`actividad-${actividadIdxActual}-fechas`];
+        }
+        return nuevosErrores;
+      });
+    }
+  };
+
+  // Validar todo el plan antes de guardar
+  const validarPlanCompleto = (): { valido: boolean; mensaje?: string } => {
+    // Validar información general
+    if (!jefeOCI) {
+      return { valido: false, mensaje: 'Debes seleccionar el Jefe de OCI' };
+    }
+
+    if (!año || año < new Date().getFullYear()) {
+      return { valido: false, mensaje: 'El año del plan no es válido' };
+    }
+
+    // Validar que todos los roles obligatorios tengan al menos una actividad
+    const rolesIncompletos = roles.filter(rol => rol.obligatorio && rol.actividades.length === 0);
+    if (rolesIncompletos.length > 0) {
+      const nombresRoles = rolesIncompletos.map(r => r.nombre).join(', ');
+      return { 
+        valido: false, 
+        mensaje: `Los siguientes roles obligatorios deben tener al menos una actividad: ${nombresRoles}` 
+      };
+    }
+
+    // Validar todas las actividades de todos los roles
+    const erroresActividades: string[] = [];
+    roles.forEach((rol, rolIdx) => {
+      rol.actividades.forEach((act, actIdx) => {
+        if (!act.nombre || !act.nombre.trim()) {
+          erroresActividades.push(`Rol "${rol.nombre}": La actividad ${actIdx + 1} no tiene nombre`);
+        }
+        if (!act.responsableId) {
+          erroresActividades.push(`Rol "${rol.nombre}": La actividad "${act.nombre || actIdx + 1}" no tiene responsable`);
+        }
+        if (!act.fechaInicio) {
+          erroresActividades.push(`Rol "${rol.nombre}": La actividad "${act.nombre || actIdx + 1}" no tiene fecha de inicio`);
+        }
+        if (!act.fechaFin) {
+          erroresActividades.push(`Rol "${rol.nombre}": La actividad "${act.nombre || actIdx + 1}" no tiene fecha de fin`);
+        }
+        if (act.fechaInicio && act.fechaFin) {
+          const fechaInicio = new Date(act.fechaInicio);
+          const fechaFin = new Date(act.fechaFin);
+          if (!isNaN(fechaInicio.getTime()) && !isNaN(fechaFin.getTime())) {
+            if (fechaFin <= fechaInicio) {
+              erroresActividades.push(`Rol "${rol.nombre}": La actividad "${act.nombre}" tiene fechas inválidas (fin debe ser posterior a inicio)`);
+            }
+          }
+        }
+      });
     });
+
+    if (erroresActividades.length > 0) {
+      return { 
+        valido: false, 
+        mensaje: `Hay ${erroresActividades.length} error(es) en las actividades:\n${erroresActividades.slice(0, 3).join('\n')}${erroresActividades.length > 3 ? '...' : ''}` 
+      };
+    }
+
+    return { valido: true };
   };
 
   const handleGuardarBorrador = async () => {
     try {
+      // Validación básica (para borrador es más flexible)
+      if (!jefeOCI) {
+        toast.error('Datos incompletos', {
+          description: 'Debes seleccionar el Jefe de OCI'
+        });
+        return;
+      }
+
       const nuevoPlan: PlanAnual = {
         id: planExistente?.id || `plan-${Date.now()}`,
         año,
@@ -1178,13 +1878,30 @@ function CrearPlanAnual({ onVolver, onGuardar, planExistente }: CrearPlanAnualPr
       };
 
       await onGuardar(nuevoPlan);
+      
+      toast.success('Plan guardado como borrador', {
+        description: 'Puedes continuar editándolo más tarde'
+      });
     } catch (error) {
       console.error('Error al guardar borrador:', error);
+      toast.error('Error al guardar borrador', {
+        description: error instanceof Error ? error.message : 'No se pudo guardar el plan'
+      });
     }
   };
 
   const handleEnviarRevision = async () => {
     try {
+      // Validación completa antes de enviar a revisión
+      const validacion = validarPlanCompleto();
+      if (!validacion.valido) {
+        toast.error('Plan incompleto', {
+          description: validacion.mensaje || 'Completa todos los campos obligatorios antes de enviar a revisión',
+          duration: 6000
+        });
+        return;
+      }
+
       const nuevoPlan: PlanAnual = {
         id: planExistente?.id || `plan-${Date.now()}`,
         año,
@@ -1626,7 +2343,10 @@ function PasoConfigurarRol({
                         className={errores[`actividad-${idx}-nombre`] ? 'border-red-500' : ''}
                       />
                       {errores[`actividad-${idx}-nombre`] && (
-                        <p className="text-xs text-red-600 mt-1">{errores[`actividad-${idx}-nombre`]}</p>
+                        <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          {errores[`actividad-${idx}-nombre`]}
+                        </p>
                       )}
                     </div>
 
@@ -1665,7 +2385,10 @@ function PasoConfigurarRol({
                           ))}
                         </select>
                         {errores[`actividad-${idx}-responsable`] && (
-                          <p className="text-xs text-red-600 mt-1">{errores[`actividad-${idx}-responsable`]}</p>
+                          <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {errores[`actividad-${idx}-responsable`]}
+                          </p>
                         )}
                       </div>
 
@@ -1678,10 +2401,13 @@ function PasoConfigurarRol({
                           type="date"
                           value={actividad.fechaInicio}
                           onChange={(e) => onActualizarActividad(actividad.id, 'fechaInicio', e.target.value)}
-                          className={errores[`actividad-${idx}-inicio`] ? 'border-red-500' : ''}
+                          className={errores[`actividad-${idx}-inicio`] || errores[`actividad-${idx}-fechas`] ? 'border-red-500' : ''}
                         />
                         {errores[`actividad-${idx}-inicio`] && (
-                          <p className="text-xs text-red-600 mt-1">{errores[`actividad-${idx}-inicio`]}</p>
+                          <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {errores[`actividad-${idx}-inicio`]}
+                          </p>
                         )}
                       </div>
 
@@ -1694,13 +2420,24 @@ function PasoConfigurarRol({
                           type="date"
                           value={actividad.fechaFin}
                           onChange={(e) => onActualizarActividad(actividad.id, 'fechaFin', e.target.value)}
-                          className={errores[`actividad-${idx}-fin`] ? 'border-red-500' : ''}
+                          className={errores[`actividad-${idx}-fin`] || errores[`actividad-${idx}-fechas`] ? 'border-red-500' : ''}
                         />
                         {errores[`actividad-${idx}-fin`] && (
-                          <p className="text-xs text-red-600 mt-1">{errores[`actividad-${idx}-fin`]}</p>
+                          <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {errores[`actividad-${idx}-fin`]}
+                          </p>
                         )}
                       </div>
                     </div>
+                    
+                    {/* Mensaje de error de fechas (si existe) */}
+                    {errores[`actividad-${idx}-fechas`] && (
+                      <div className="mt-2 p-2.5 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-700 font-medium">{errores[`actividad-${idx}-fechas`]}</p>
+                      </div>
+                    )}
                   </div>
 
                   <Button
@@ -1834,9 +2571,27 @@ interface DetallePlanAnualProps {
   onEditar: () => void;
   onAprobar: () => void;
   onExportarPDF: () => void;
+  onExportarExcel: () => void;
 }
 
-function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF }: DetallePlanAnualProps) {
+function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, onExportarExcel }: DetallePlanAnualProps) {
+  // Obtener datos del usuario actual
+  const userData = localStorage.getItem('esap_user_data');
+  const currentUser = userData ? JSON.parse(userData) : null;
+  
+  // Verificar si el usuario actual es Jefe OCI o Admin
+  const puedeAprobar = currentUser?.roles?.some((role: any) => {
+    const roleCode = role.code || '';
+    const roleName = role.name || '';
+    return (
+      roleCode === 'Jefe OCI' || 
+      roleName.includes('Jefe OCI') ||
+      roleCode === 'ADMIN' ||
+      roleCode === 'admin' ||
+      roleCode === 'administrator'
+    );
+  }) || false;
+
   return (
     <div className="space-y-4 md:space-y-6">
       {/* ACCIONES */}
@@ -1846,13 +2601,18 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF }
           Volver
         </Button>
         <Button variant="outline" onClick={onExportarPDF} className="gap-2" size="sm">
-          <Download className="w-4 h-4" />
+          <FileText className="w-4 h-4" />
           PDF
+        </Button>
+        <Button variant="outline" onClick={onExportarExcel} className="gap-2" size="sm">
+          <FileSpreadsheet className="w-4 h-4" />
+          Excel
         </Button>
         <Button variant="outline" onClick={onEditar} className="gap-2" size="sm">
           <Edit className="w-4 h-4" />
           Editar
         </Button>
+        {puedeAprobar && (
         <Button
           variant="outline"
           onClick={onAprobar}
@@ -1863,6 +2623,7 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF }
           <Check className="w-4 h-4" />
           Aprobar
         </Button>
+        )}
       </div>
 
       {/* ESTADO Y JEFE OCI */}

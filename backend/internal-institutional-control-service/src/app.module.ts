@@ -4,11 +4,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { EsapModule } from './esap/esap.module';
+import { AuthModule } from './auth/auth.module';
 
 // Entidades ESAP
 import { PlanAnual5Roles } from './esap/plan-anual-5-roles/entities/plan-anual-5-roles.entity';
 import { RolPlanAnual5 } from './esap/plan-anual-5-roles/entities/rol-plan-anual-5.entity';
 import { ActividadPlanAnual5 } from './esap/plan-anual-5-roles/entities/actividad-plan-anual-5.entity';
+import { HistorialPlanAnual } from './esap/plan-anual-5-roles/entities/historial-plan-anual.entity';
 import { InformeLey } from './esap/informes-ley/entities/informe-ley.entity';
 import { EntregaInformeLey } from './esap/informes-ley/entities/entrega-informe-ley.entity';
 import { Auditoria } from './esap/auditorias/entities/auditoria.entity';
@@ -72,6 +74,7 @@ import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferen
             PlanAnual5Roles,
             RolPlanAnual5,
             ActividadPlanAnual5,
+            HistorialPlanAnual,
             InformeLey,
             EntregaInformeLey,
             Auditoria,
@@ -116,6 +119,9 @@ import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferen
         };
       },
     }),
+    
+    // Módulo de autenticación
+    AuthModule,
     
     // Módulos ESAP
     EsapModule,

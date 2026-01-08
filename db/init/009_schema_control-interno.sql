@@ -1012,7 +1012,7 @@ CREATE TABLE IF NOT EXISTS control_interno.plan_anual_5_roles (
     año INTEGER NOT NULL,
     fecha_creacion DATE NOT NULL DEFAULT CURRENT_DATE,
     responsable VARCHAR(255) NOT NULL,
-    estado VARCHAR(50) NOT NULL DEFAULT 'borrador' CHECK (estado IN ('borrador', 'aprobado', 'en-ejecucion', 'completado')),
+    estado VARCHAR(50) NOT NULL DEFAULT 'borrador' CHECK (estado IN ('borrador', 'en-revision', 'aprobado', 'en-ejecucion', 'completado')),
     porcentaje_cumplimiento_general INTEGER DEFAULT 0,
     total_actividades INTEGER DEFAULT 0,
     actividades_completadas INTEGER DEFAULT 0,

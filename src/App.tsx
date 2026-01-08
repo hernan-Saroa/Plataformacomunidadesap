@@ -14,8 +14,8 @@ import { LoginPage } from './components/portal/LoginPage';
 import { PortalDashboard } from './components/portal/PortalDashboard';
 import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
-import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
-import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
+// import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
+// import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
@@ -831,14 +831,14 @@ export default function App() {
           />
         );
       
-      case 'password-demo':
-        return <DemoPasswordStrength />;
+      // case 'password-demo':
+      //   return <DemoPasswordStrength />;
       
-      case 'procesos-coactivos-demo':
-        return <DemoProcesosCoactivos />;
+      // case 'procesos-coactivos-demo':
+      //   return <DemoProcesosCoactivos />;
       
-      case 'edicion-foto-perfil-demo':
-        return <DemoEdicionFotoPerfil />;
+      // case 'edicion-foto-perfil-demo':
+      //   return <DemoEdicionFotoPerfil />;
       
       default:
         return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;

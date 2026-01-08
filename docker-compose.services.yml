@@ -1,0 +1,118 @@
+services:
+  # ============ POSTGRES DATABASE ============
+  db:
+    image: postgres:16
+    container_name: esap-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: esap_db
+      POSTGRES_HOST_AUTH_METHOD: md5
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - esap-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============ PGADMIN (Interfaz de Administración) ============
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: esap-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@esap.edu.co
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - esap-net
+
+  # ============ AUTH SERVICE ============
+  auth-service:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    env_file:
+      - ./backend/auth-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: postgres
+      DB_NAME: esap_db
+      DB_SCHEMA: auth
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - esap-net
+    restart: unless-stopped
+
+  # ============ INTERNAL INSTITUTIONAL CONTROL SERVICE ============
+  internal-institutional-control-service:
+    build:
+      context: ./backend/internal-institutional-control-service
+      dockerfile: Dockerfile
+    container_name: internal-institutional-control-service
+    env_file:
+      - ./backend/internal-institutional-control-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3007
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: postgres
+      DB_NAME: esap_db
+      DB_SCHEMA: control_interno
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3007:3007"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - esap-net
+    restart: unless-stopped
+
+  # ============ REDIS (para cache y sesiones) ============
+  redis:
+    image: redis:7-alpine
+    container_name: esap-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - esap-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
