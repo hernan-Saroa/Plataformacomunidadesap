@@ -102,7 +102,7 @@ export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onArchive }:
       onArchive(riesgo);
     } else {
       toast.success('Riesgo archivado', {
-        description: `${riesgo?.id} ha sido archivado exitosamente`
+        description: `${riesgo?.codigo || riesgo?.id} ha sido archivado exitosamente`
       });
     }
     onClose();
@@ -110,7 +110,7 @@ export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onArchive }:
 
   const handleEliminar = () => {
     toast.error('Riesgo eliminado', {
-      description: `${riesgo.id} ha sido eliminado del sistema`
+      description: `${riesgo.codigo || riesgo.id} ha sido eliminado del sistema`
     });
     onClose();
   };
@@ -124,7 +124,7 @@ export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onArchive }:
 
 IDENTIFICACIÓN DEL RIESGO
 ═══════════════════════════════════════════════════════════════
-ID del Riesgo:        ${riesgo.id}
+ID del Riesgo:        ${riesgo.codigo || riesgo.id}
 Descripción:          ${riesgo.descripcion}
 Proceso:              ${riesgo.proceso}
 Tipo de Riesgo:       ${TIPO_RIESGO_MAP[riesgo.tipo]}
@@ -180,14 +180,14 @@ Metodología DAFP - MECI
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Riesgo_${riesgo.id}_${new Date().getTime()}.txt`;
+    link.download = `Riesgo_${riesgo.codigo || riesgo.id}_${new Date().getTime()}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
 
     toast.success('✅ Ficha de riesgo exportada', {
-      description: `Riesgo_${riesgo.id}.txt`,
+      description: `Riesgo_${riesgo.codigo || riesgo.id}.txt`,
       duration: 4000
     });
   };
@@ -196,15 +196,15 @@ Metodología DAFP - MECI
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl h-auto max-h-[80vh] flex flex-col p-0 overflow-hidden !top-[10vh] !translate-y-0">
         <DialogTitle className="sr-only">
-          Detalle del Riesgo {riesgo.id}
+          Detalle del Riesgo {riesgo.codigo || riesgo.id}
         </DialogTitle>
         <DialogDescription className="sr-only">
-          Vista completa del riesgo {riesgo.id} con evaluación, controles, tratamiento y seguimiento
+          Vista completa del riesgo {riesgo.codigo || riesgo.id} con evaluación, controles, tratamiento y seguimiento
         </DialogDescription>
 
         {/* Header ESAP 2025 - FIJO */}
         <ModalHeaderClean
-          titulo={riesgo.id}
+          titulo={riesgo.codigo || riesgo.id || 'Detalle del Riesgo'}
           subtitulo={riesgo.descripcion}
           icono={AlertTriangle}
           colorIcono="orange"

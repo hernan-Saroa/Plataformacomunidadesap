@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { getServiceUrl } from '../../../../config/environment';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { legalService } from '../../../../services/api/legal.service';
 import {
   FileQuestion, Scale, User, Calendar, Clock, AlertTriangle,
@@ -380,7 +380,18 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
         toast.error('No hay URL de archivo', { id: 'descargar-doc' });
         return;
       }
-      const fullUrl = url.startsWith('http') ? url : `${baseUrl}/legal/${url}`;
+
+      // Extraer solo el nombre del archivo
+      let filename = url;
+      if (url.includes('/files/')) {
+        filename = url.split('/files/').pop() || url;
+      } else if (url.includes('/')) {
+        filename = url.split('/').pop() || url;
+      }
+
+      // Construir URL: directo sin prefix, gateway con /legal/
+      const prefix = API_MODE === 'direct' ? '' : '/legal';
+      const fullUrl = url.startsWith('http') ? url : `${baseUrl}${prefix}/files/${filename}`;
 
       const response = await fetch(fullUrl);
       const blob = await response.blob();
@@ -417,9 +428,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
   };
 
-  // Función auxiliar para construir URL completa sin duplicar prefijos
-  // Función auxiliar para construir URL completa usando el patrón del gateway
-  // Gateway pattern: /legal/api/v1/files/:filename
+  // Función auxiliar para construir URL completa
+  // Direct mode: localhost:3008/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename
   const getFullUrl = (url: string) => {
     if (!url) return '';
     if (url.startsWith('http')) return url;
@@ -434,7 +445,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       filename = url.split('/').pop() || url;
     }
 
-    return `${baseUrl}/legal/api/v1/files/${filename}`;
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    return `${baseUrl}${prefix}/files/${filename}`;
   };
 
   /**

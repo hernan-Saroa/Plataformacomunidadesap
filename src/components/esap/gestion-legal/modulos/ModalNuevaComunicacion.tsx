@@ -1,27 +1,24 @@
 /**
- * ModalNuevaComunicacion - Modal para registrar nueva comunicación
+ * ModalNuevaComunicacion - Modal para ENVIAR correo electrónico
  * ✅ Diseño corporativo ESAP 2025
- * ✅ Formulario completo con clasificación automática
+ * ✅ Estilo Gmail/Outlook - Redactar correo
  */
 
 import { useState } from 'react';
 import { toast } from 'sonner@2.0.3';
-import { 
-  Mail, FileText, Gavel, Building2, User, Calendar, AlertTriangle,
-  Upload, X, Send, Paperclip, Sparkles
+import {
+  Mail, FileText, User, Calendar, AlertTriangle,
+  Upload, X, Send, Paperclip, Loader2
 } from 'lucide-react';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { ModalHeaderClean } from './ModalHeaderClean';
-
-type TipoComunicacion = 'JUDICIAL' | 'CORREO' | 'OFICIO';
+import { correosJuridicosService } from '../../../../services/api/legal.service';
 
 interface ModalNuevaComunicacionProps {
   isOpen: boolean;
@@ -30,96 +27,110 @@ interface ModalNuevaComunicacionProps {
 }
 
 export interface NuevaComunicacionData {
-  tipo: TipoComunicacion;
-  tipoProceso?: string;
+  para: string;
+  cc?: string;
   asunto: string;
-  descripcion: string;
-  remitente: string;
-  despachoOrigen?: string;
-  radicadoExterno?: string;
-  urgente: boolean;
-  documentosAdjuntos?: File[];
+  cuerpo: string;
+  archivos?: File[];
 }
 
 export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNuevaComunicacionProps) {
-  const [formData, setFormData] = useState<Partial<NuevaComunicacionData>>({
-    tipo: 'JUDICIAL',
-    urgente: false
-  });
+  const [formData, setFormData] = useState<Partial<NuevaComunicacionData>>({});
   const [enviando, setEnviando] = useState(false);
   const [archivos, setArchivos] = useState<File[]>([]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validaciones
+    if (!formData.para?.trim()) {
+      toast.error('⚠️ Error de validación', { description: 'Debe ingresar el destinatario (Para)' });
+      return;
+    }
+    // Validar formato email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.para.trim())) {
+      toast.error('⚠️ Error de validación', { description: 'El destinatario debe ser un email válido' });
+      return;
+    }
     if (!formData.asunto?.trim()) {
       toast.error('⚠️ Error de validación', { description: 'Debe ingresar el asunto' });
       return;
     }
-    if (!formData.remitente?.trim()) {
-      toast.error('⚠️ Error de validación', { description: 'Debe ingresar el remitente' });
-      return;
-    }
-    if (!formData.descripcion?.trim()) {
-      toast.error('⚠️ Error de validación', { description: 'Debe ingresar la descripción' });
+    if (!formData.cuerpo?.trim()) {
+      toast.error('⚠️ Error de validación', { description: 'Debe ingresar el cuerpo del mensaje' });
       return;
     }
 
     setEnviando(true);
-    
+
     try {
-      // Simulación de envío
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const nuevaComunicacion: NuevaComunicacionData = {
-        tipo: formData.tipo || 'JUDICIAL',
-        tipoProceso: formData.tipoProceso,
-        asunto: formData.asunto!,
-        descripcion: formData.descripcion!,
-        remitente: formData.remitente!,
-        despachoOrigen: formData.despachoOrigen,
-        radicadoExterno: formData.radicadoExterno,
-        urgente: formData.urgente || false,
-        documentosAdjuntos: archivos
-      };
+      // Preparar CC como array
+      const ccArray = formData.cc
+        ? formData.cc.split(',').map(e => e.trim()).filter(Boolean)
+        : undefined;
 
-      if (onSubmit) {
-        onSubmit(nuevaComunicacion);
-      }
+      // Convertir archivos a base64 para envío
+      const attachmentsBase64 = await Promise.all(
+        archivos.map(async (file) => {
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result as string;
+              // Remover el prefijo "data:...;base64,"
+              const base64Data = result.split(',')[1];
+              resolve(base64Data);
+            };
+            reader.readAsDataURL(file);
+          });
+          return {
+            name: file.name,
+            contentBytes: base64,
+            contentType: file.type || 'application/octet-stream'
+          };
+        })
+      );
 
-      const tipoLabel = {
-        JUDICIAL: 'JUD',
-        CORREO: 'COR',
-        OFICIO: 'OFI'
-      }[nuevaComunicacion.tipo];
-
-      const consecutivo = `${tipoLabel}-2025-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}`;
-      
-      toast.success('✅ Comunicación Registrada', {
-        description: `${consecutivo} - ${formData.asunto}`,
-        duration: 4000
+      // Llamar API real
+      const result = await correosJuridicosService.sendEmail({
+        to: formData.para.trim(),
+        subject: formData.asunto.trim(),
+        body: formData.cuerpo.trim(),
+        cc: ccArray,
+        attachments: attachmentsBase64.length > 0 ? attachmentsBase64 : undefined
       });
 
-      // Simulación de clasificación IA
-      setTimeout(() => {
-        toast.info('🤖 Clasificación Automática', {
-          description: 'IA ha clasificado la comunicación y sugiere derivarla al módulo correspondiente',
-          duration: 3000
+      // El API puede devolver { success: true } o simplemente no lanzar error
+      const isSuccess = result?.success !== false;
+
+      if (isSuccess) {
+        toast.success('✅ Correo enviado exitosamente', {
+          description: `Para: ${formData.para}${archivos.length > 0 ? ` (${archivos.length} adjuntos)` : ''}`,
+          duration: 4000
         });
-      }, 2000);
 
-      // Resetear formulario
-      setFormData({
-        tipo: 'JUDICIAL',
-        urgente: false
-      });
-      setArchivos([]);
-      
-      onClose();
+        // Callback opcional
+        if (onSubmit) {
+          onSubmit({
+            para: formData.para,
+            cc: formData.cc,
+            asunto: formData.asunto,
+            cuerpo: formData.cuerpo,
+            archivos
+          });
+        }
+
+        // Resetear formulario
+        setFormData({});
+        setArchivos([]);
+        onClose();
+      } else {
+        throw new Error('El servidor indicó que no pudo enviar el correo');
+      }
     } catch (error) {
-      toast.error('❌ Error al registrar comunicación', {
-        description: 'Por favor intente nuevamente'
+      console.error('Error enviando correo:', error);
+      toast.error('❌ Error al enviar el correo', {
+        description: 'Por favor intente nuevamente. Verifique que tiene permisos Mail.Send en Azure.'
       });
     } finally {
       setEnviando(false);
@@ -140,171 +151,72 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
   };
 
   const handleCancel = () => {
-    if (formData.asunto || formData.descripcion) {
+    if (formData.asunto || formData.cuerpo || formData.para) {
       if (!window.confirm('¿Está seguro que desea cancelar? Se perderán los datos ingresados.')) {
         return;
       }
     }
-    setFormData({
-      tipo: 'JUDICIAL',
-      urgente: false
-    });
+    setFormData({});
     setArchivos([]);
     onClose();
-  };
-
-  const getTipoIcon = () => {
-    switch (formData.tipo) {
-      case 'JUDICIAL': return Gavel;
-      case 'CORREO': return Mail;
-      case 'OFICIO': return FileText;
-      default: return Mail;
-    }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
-        <DialogTitle className="sr-only">Nueva Comunicación</DialogTitle>
+        <DialogTitle className="sr-only">Redactar Correo</DialogTitle>
         <DialogDescription className="sr-only">
-          Registrar nueva comunicación jurídica
+          Enviar correo electrónico desde la Oficina Jurídica
         </DialogDescription>
 
-        {/* HEADER - flex-shrink-0 (siempre visible) */}
+        {/* HEADER */}
         <ModalHeaderClean
-          icono={getTipoIcon()}
-          titulo="Nueva Comunicación"
-          subtitulo="Registrar comunicación jurídica entrante"
+          icono={Mail}
+          titulo="Redactar Correo"
+          subtitulo="Enviar correo electrónico desde la Oficina Jurídica"
           colorIcono="blue"
-          badges={[
-            { texto: 'Clasificación IA Habilitada', color: 'azul' },
-            ...(formData.urgente ? [{ texto: '🔴 Urgente', color: 'rojo' as const }] : [])
-          ]}
+          badges={[]}
           onClose={onClose}
         />
 
-        {/* CONTENIDO - flex-1 overflow-y-auto (solo esto hace scroll) */}
+        {/* CONTENIDO */}
         <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Tipo de Comunicación */}
-            <Card className="p-4 bg-blue-50 border-blue-200">
-              <div className="flex items-start gap-3 mb-4">
-                <Sparkles className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-bold text-gray-900">Tipo de Comunicación</h3>
-                  <p className="text-sm text-gray-600">Clasificación automática habilitada</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="tipo" className="text-sm font-bold text-gray-700">
-                    Tipo <span className="text-red-500">*</span>
-                  </Label>
-                  <Select
-                    value={formData.tipo}
-                    onValueChange={(value) => setFormData({ ...formData, tipo: value as TipoComunicacion })}
-                  >
-                    <SelectTrigger id="tipo" className="bg-white">
-                      <SelectValue placeholder="Seleccione tipo de comunicación" />
-                    </SelectTrigger>
-                    <SelectContent className="z-[100000]">
-                      <SelectItem value="JUDICIAL">⚖️ Judicial (Juzgados)</SelectItem>
-                      <SelectItem value="CORREO">📧 Correo Electrónico</SelectItem>
-                      <SelectItem value="OFICIO">📄 Oficio Interno</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {formData.tipo === 'JUDICIAL' && (
-                  <div className="space-y-2">
-                    <Label htmlFor="tipoProceso" className="text-sm font-bold text-gray-700">
-                      Tipo de Proceso
-                    </Label>
-                    <Select
-                      value={formData.tipoProceso}
-                      onValueChange={(value) => setFormData({ ...formData, tipoProceso: value })}
-                    >
-                      <SelectTrigger id="tipoProceso" className="bg-white">
-                        <SelectValue placeholder="Seleccione tipo de proceso..." />
-                      </SelectTrigger>
-                      <SelectContent className="z-[100000]">
-                        <SelectItem value="Acción Popular">⚖️ Acción Popular</SelectItem>
-                        <SelectItem value="NRD">📋 Nulidad y Restablecimiento del Derecho</SelectItem>
-                        <SelectItem value="Laboral">💼 Laboral</SelectItem>
-                        <SelectItem value="Tutela">🛡️ Tutela</SelectItem>
-                        <SelectItem value="Ejecutivo">💰 Ejecutivo</SelectItem>
-                        <SelectItem value="Penal">⚖️ Penal</SelectItem>
-                        <SelectItem value="Civil">📝 Civil</SelectItem>
-                        <SelectItem value="Otro">📂 Otro</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="urgente"
-                  checked={formData.urgente}
-                  onChange={(e) => setFormData({ ...formData, urgente: e.target.checked })}
-                  className="w-4 h-4"
-                />
-                <Label htmlFor="urgente" className="text-sm font-bold text-gray-700 cursor-pointer">
-                  🔴 Marcar como urgente
-                </Label>
-              </div>
-            </Card>
-
-            {/* Información del Remitente */}
+            {/* Destinatarios */}
             <Card className="p-4 bg-gray-50 border-gray-200">
               <div className="flex items-start gap-3 mb-4">
-                <Building2 className="w-5 h-5 text-gray-600 flex-shrink-0 mt-0.5" />
+                <User className="w-5 h-5 text-gray-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <h3 className="font-bold text-gray-900">Información del Remitente</h3>
-                  <p className="text-sm text-gray-600">Origen de la comunicación</p>
+                  <h3 className="font-bold text-gray-900">Destinatarios</h3>
+                  <p className="text-sm text-gray-600">Correo(s) de destino</p>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="remitente" className="text-sm font-bold text-gray-700">
-                    Remitente <span className="text-red-500">*</span>
+                  <Label htmlFor="para" className="text-sm font-bold text-gray-700">
+                    Para <span className="text-red-500">*</span>
                   </Label>
                   <Input
-                    id="remitente"
-                    placeholder="Ej: Juzgado 10 Administrativo de Bogotá"
-                    value={formData.remitente || ''}
-                    onChange={(e) => setFormData({ ...formData, remitente: e.target.value })}
+                    id="para"
+                    type="email"
+                    placeholder="destinatario@ejemplo.com"
+                    value={formData.para || ''}
+                    onChange={(e) => setFormData({ ...formData, para: e.target.value })}
                     required
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="despacho" className="text-sm font-bold text-gray-700">
-                      Despacho de Origen
-                    </Label>
-                    <Input
-                      id="despacho"
-                      placeholder="Ej: Juzgado 10 Admin. Bogotá"
-                      value={formData.despachoOrigen || ''}
-                      onChange={(e) => setFormData({ ...formData, despachoOrigen: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="radicado" className="text-sm font-bold text-gray-700">
-                      Radicado Externo
-                    </Label>
-                    <Input
-                      id="radicado"
-                      placeholder="Ej: 25000-33-10-001-2024-00234-00"
-                      value={formData.radicadoExterno || ''}
-                      onChange={(e) => setFormData({ ...formData, radicadoExterno: e.target.value })}
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cc" className="text-sm font-bold text-gray-700">
+                    CC <span className="text-gray-400 font-normal">(opcional, separar con comas)</span>
+                  </Label>
+                  <Input
+                    id="cc"
+                    placeholder="copia1@ejemplo.com, copia2@ejemplo.com"
+                    value={formData.cc || ''}
+                    onChange={(e) => setFormData({ ...formData, cc: e.target.value })}
+                  />
                 </div>
               </div>
             </Card>
@@ -314,8 +226,8 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
               <div className="flex items-start gap-3 mb-4">
                 <FileText className="w-5 h-5 text-gray-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <h3 className="font-bold text-gray-900">Contenido de la Comunicación</h3>
-                  <p className="text-sm text-gray-600">Asunto y descripción detallada</p>
+                  <h3 className="font-bold text-gray-900">Contenido del Correo</h3>
+                  <p className="text-sm text-gray-600">Asunto y mensaje</p>
                 </div>
               </div>
 
@@ -326,7 +238,7 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
                   </Label>
                   <Input
                     id="asunto"
-                    placeholder="Asunto de la comunicación"
+                    placeholder="Asunto del correo"
                     value={formData.asunto || ''}
                     onChange={(e) => setFormData({ ...formData, asunto: e.target.value })}
                     required
@@ -334,15 +246,15 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="descripcion" className="text-sm font-bold text-gray-700">
-                    Descripción <span className="text-red-500">*</span>
+                  <Label htmlFor="cuerpo" className="text-sm font-bold text-gray-700">
+                    Mensaje <span className="text-red-500">*</span>
                   </Label>
                   <Textarea
-                    id="descripcion"
-                    placeholder="Describa el contenido de la comunicación..."
-                    value={formData.descripcion || ''}
-                    onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                    rows={6}
+                    id="cuerpo"
+                    placeholder="Escriba aquí el contenido del correo..."
+                    value={formData.cuerpo || ''}
+                    onChange={(e) => setFormData({ ...formData, cuerpo: e.target.value })}
+                    rows={8}
                     required
                     className="resize-none"
                   />
@@ -355,8 +267,8 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
               <div className="flex items-start gap-3 mb-4">
                 <Paperclip className="w-5 h-5 text-gray-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <h3 className="font-bold text-gray-900">Documentos Adjuntos</h3>
-                  <p className="text-sm text-gray-600">Adjuntar archivos relacionados</p>
+                  <h3 className="font-bold text-gray-900">Archivos Adjuntos</h3>
+                  <p className="text-sm text-gray-600">Adjuntar documentos al correo (opcional)</p>
                 </div>
               </div>
 
@@ -374,7 +286,7 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
                   id="file-upload"
                   type="file"
                   multiple
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls"
                   onChange={handleArchivoChange}
                   className="hidden"
                 />
@@ -399,24 +311,22 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
               </div>
             </Card>
 
-            {/* Información */}
-            <Card className="p-4 bg-amber-50 border-amber-200">
+            {/* Nota informativa */}
+            <Card className="p-4 bg-blue-50 border-blue-200">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div className="space-y-2">
-                  <h4 className="font-bold text-amber-900">Clasificación Automática IA</h4>
-                  <ul className="text-sm text-amber-800 space-y-1 list-disc pl-5">
-                    <li>El sistema analizará el contenido y sugerirá el módulo destino</li>
-                    <li>Las comunicaciones urgentes se priorizan automáticamente</li>
-                    <li>Se notificará al responsable correspondiente</li>
-                  </ul>
+                <Mail className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="font-bold text-blue-900">Información</h4>
+                  <p className="text-sm text-blue-800">
+                    El correo se enviará desde la cuenta configurada de la Oficina Jurídica (Microsoft 365).
+                  </p>
                 </div>
               </div>
             </Card>
           </form>
         </div>
 
-        {/* FOOTER - flex-shrink-0 (siempre visible) */}
+        {/* FOOTER */}
         <div className="flex-shrink-0 px-6 py-4 bg-white border-t border-gray-200 flex items-center justify-between">
           <p className="text-xs text-gray-600">
             Los campos marcados con <span className="text-red-500 font-bold">*</span> son obligatorios
@@ -439,13 +349,13 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
             >
               {enviando ? (
                 <>
-                  <Calendar className="w-4 h-4 mr-2 animate-spin" />
-                  Registrando...
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Enviando...
                 </>
               ) : (
                 <>
                   <Send className="w-4 h-4 mr-2" />
-                  Registrar Comunicación
+                  Enviar Correo
                 </>
               )}
             </Button>
