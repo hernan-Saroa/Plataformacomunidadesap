@@ -87,6 +87,7 @@ export interface CertificadoGraduado {
   diplomaNumber?: string;
   actaNumber?: string;
   campus?: string;
+  seccionalName?: string;
   signerName: string;
   signerPosition: string;
   signatureUrl?: string;

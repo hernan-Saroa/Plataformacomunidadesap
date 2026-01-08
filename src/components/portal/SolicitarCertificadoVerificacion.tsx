@@ -1,7 +1,7 @@
 /**
  * SOLICITUD DE CERTIFICADO DE VERIFICACIÓN (PORTAL GRADUADOS)
  * - Permite a graduados o entidades solicitar certificado con QR único
- * - Si ya existe la combinación (graduado + entidad), reutiliza el QR
+ * - Cada solicitud genera un QR nuevo para el certificado
  * - Muestra historial de solicitudes y QR para descarga
  */
 
@@ -191,9 +191,6 @@ export function SolicitarCertificadoVerificacion({ onBack, userData }: Solicitar
                 </div>
                 <div className="text-right">
                   <span className="font-semibold">{selectedCertificado.requestCount}</span>
-                  {selectedCertificado.requestCount > 1 && (
-                    <p className="text-xs text-blue-600">QR reutilizado {selectedCertificado.requestCount - 1} veces</p>
-                  )}
                 </div>
               </div>
 
@@ -345,9 +342,9 @@ export function SolicitarCertificadoVerificacion({ onBack, userData }: Solicitar
                   <div className="text-sm text-amber-800">
                     <p className="font-semibold mb-1">Importante:</p>
                     <ul className="list-disc list-inside space-y-1">
-                      <li>Si ya existe un certificado con estos datos, se reutilizará el QR existente</li>
-                      <li>El QR es único e irrepetible para cada combinación graduado-entidad</li>
-                      <li>Podrás compartir el QR para validación pública</li>
+                      <li>Cada solicitud genera un QR nuevo para el certificado</li>
+                      <li>El QR es unico e irrepetible para cada solicitud</li>
+                      <li>Podras compartir el QR para validacion publica</li>
                     </ul>
                   </div>
                 </div>
