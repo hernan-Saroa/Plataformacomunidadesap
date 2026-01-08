@@ -136,6 +136,15 @@ export const buildServiceAssetUrl = (
   }
 
   const normalized = assetPath.startsWith('/') ? assetPath : `/${assetPath}`;
+
+  if (
+    API_MODE !== 'direct' &&
+    serviceName === 'certificados' &&
+    normalized.startsWith('/uploads/')
+  ) {
+    return `${getServiceUrl(serviceName)}/${serviceName}/api/v1${normalized}`;
+  }
+
   return `${baseService}${normalized}`;
 };
 

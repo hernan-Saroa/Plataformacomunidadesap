@@ -339,6 +339,8 @@ export class GraduationCertificatesService {
       diplomaNumber: graduate?.diplomaNumber,
       actaNumber: graduate?.actaNumber,
       campus: graduate?.campus,
+      seccionalName:
+        graduate?.seccionalName || (request as { seccionalName?: string })?.seccionalName,
       signerName: signer.fullName,
       signerPosition: signer.position,
       signatureUrl: signer.signatureUrl,
@@ -891,6 +893,9 @@ export class GraduationCertificatesService {
     if (payload.campus !== undefined) {
       update.campus = payload.campus;
     }
+    if (payload.seccionalName !== undefined) {
+      update.seccionalName = payload.seccionalName.trim();
+    }
     if (payload.status !== undefined) {
       update.status = payload.status;
     }
@@ -1018,6 +1023,10 @@ export class GraduationCertificatesService {
       request.graduationDate =
         this.parseDate(payload.graduationDate) ?? request.graduationDate;
     }
+    if (payload?.seccionalName) {
+      (request as { seccionalName?: string }).seccionalName =
+        payload.seccionalName.trim();
+    }
 
     const graduate =
       request.graduate ||
@@ -1026,6 +1035,28 @@ export class GraduationCertificatesService {
       }));
 
     if (graduate) {
+      const graduateUpdate: Partial<Graduate> = {};
+      if (payload?.fullName !== undefined) graduateUpdate.fullName = payload.fullName.trim();
+      if (payload?.idNumber !== undefined) graduateUpdate.idNumber = payload.idNumber.trim();
+      if (payload?.email !== undefined) graduateUpdate.email = payload.email;
+      if (payload?.phone !== undefined) graduateUpdate.phone = payload.phone;
+      if (payload?.programName !== undefined) graduateUpdate.programName = payload.programName;
+      if (payload?.programType !== undefined) graduateUpdate.programType = payload.programType;
+      if (payload?.degreeTitle !== undefined) graduateUpdate.degreeTitle = payload.degreeTitle;
+      if (payload?.graduationDate !== undefined) {
+        graduateUpdate.graduationDate =
+          this.parseDate(payload.graduationDate) ?? graduate.graduationDate;
+      }
+      if (payload?.campus !== undefined) graduateUpdate.campus = payload.campus;
+      if (payload?.seccionalName !== undefined) {
+        graduateUpdate.seccionalName = payload.seccionalName.trim();
+      }
+
+      if (Object.keys(graduateUpdate).length > 0) {
+        Object.assign(graduate, graduateUpdate);
+        await this.graduateRepository.save(graduate);
+      }
+
       request.graduate = graduate;
       request.graduateId = graduate.id;
     }
