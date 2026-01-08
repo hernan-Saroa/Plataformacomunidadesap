@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, Raw, Repository } from 'typeorm';
@@ -338,6 +339,8 @@ export class GraduationCertificatesService {
       diplomaNumber: graduate?.diplomaNumber,
       actaNumber: graduate?.actaNumber,
       campus: graduate?.campus,
+      seccionalName:
+        graduate?.seccionalName || (request as { seccionalName?: string })?.seccionalName,
       signerName: signer.fullName,
       signerPosition: signer.position,
       signatureUrl: signer.signatureUrl,
@@ -392,22 +395,37 @@ export class GraduationCertificatesService {
       throw new NotFoundException('Certificado no encontrado');
     }
 
-    if (certificate.pdfFilename) {
-      // Leer PDF del sistema de archivos si ya existe
-      const storagePath =
-        process.env.STORAGE_PATH || './uploads/graduation-certificates';
-      const pdfFilePath = path.join(storagePath, certificate.pdfFilename);
+    const pdfFilename =
+      certificate.pdfFilename ||
+      (certificate.pdfUrl ? path.basename(certificate.pdfUrl) : undefined);
 
-      if (fs.existsSync(pdfFilePath)) {
+    if (pdfFilename) {
+      // Leer PDF del sistema de archivos si ya existe
+      const pdfFilePath = this.resolveExistingPdfPath(pdfFilename);
+      if (pdfFilePath) {
         return fs.readFileSync(pdfFilePath);
       }
+
+      this.logger.warn(
+        `PDF no encontrado en disco para certificado ${certificate.id} (filename=${pdfFilename})`,
+      );
     }
 
     // Si no existe el PDF, generarlo en tiempo real
-    return await this.pdfGeneratorService.generateCertificatePDF(
-      certificate,
-      frontendBaseUrl,
-    );
+    try {
+      return await this.pdfGeneratorService.generateCertificatePDF(
+        certificate,
+        frontendBaseUrl,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error generando PDF en tiempo real para certificado ${certificate.id}`,
+        error instanceof Error ? error.stack : `${error}`,
+      );
+      throw new InternalServerErrorException(
+        'No se pudo generar el PDF del certificado',
+      );
+    }
   }
 
   /**
@@ -875,6 +893,9 @@ export class GraduationCertificatesService {
     if (payload.campus !== undefined) {
       update.campus = payload.campus;
     }
+    if (payload.seccionalName !== undefined) {
+      update.seccionalName = payload.seccionalName.trim();
+    }
     if (payload.status !== undefined) {
       update.status = payload.status;
     }
@@ -1002,6 +1023,10 @@ export class GraduationCertificatesService {
       request.graduationDate =
         this.parseDate(payload.graduationDate) ?? request.graduationDate;
     }
+    if (payload?.seccionalName) {
+      (request as { seccionalName?: string }).seccionalName =
+        payload.seccionalName.trim();
+    }
 
     const graduate =
       request.graduate ||
@@ -1010,6 +1035,28 @@ export class GraduationCertificatesService {
       }));
 
     if (graduate) {
+      const graduateUpdate: Partial<Graduate> = {};
+      if (payload?.fullName !== undefined) graduateUpdate.fullName = payload.fullName.trim();
+      if (payload?.idNumber !== undefined) graduateUpdate.idNumber = payload.idNumber.trim();
+      if (payload?.email !== undefined) graduateUpdate.email = payload.email;
+      if (payload?.phone !== undefined) graduateUpdate.phone = payload.phone;
+      if (payload?.programName !== undefined) graduateUpdate.programName = payload.programName;
+      if (payload?.programType !== undefined) graduateUpdate.programType = payload.programType;
+      if (payload?.degreeTitle !== undefined) graduateUpdate.degreeTitle = payload.degreeTitle;
+      if (payload?.graduationDate !== undefined) {
+        graduateUpdate.graduationDate =
+          this.parseDate(payload.graduationDate) ?? graduate.graduationDate;
+      }
+      if (payload?.campus !== undefined) graduateUpdate.campus = payload.campus;
+      if (payload?.seccionalName !== undefined) {
+        graduateUpdate.seccionalName = payload.seccionalName.trim();
+      }
+
+      if (Object.keys(graduateUpdate).length > 0) {
+        Object.assign(graduate, graduateUpdate);
+        await this.graduateRepository.save(graduate);
+      }
+
       request.graduate = graduate;
       request.graduateId = graduate.id;
     }
@@ -1165,6 +1212,38 @@ export class GraduationCertificatesService {
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 192 && b === 168) return true;
     return false;
+  }
+
+  private resolveExistingPdfPath(pdfFilename: string): string | null {
+    const storagePath = process.env.STORAGE_PATH;
+    const candidates = [
+      storagePath ? path.join(storagePath, pdfFilename) : null,
+      path.join(process.cwd(), 'uploads', 'graduation-certificates', pdfFilename),
+      path.join(
+        process.cwd(),
+        'backend',
+        'academic-registration-service',
+        'uploads',
+        'graduation-certificates',
+        pdfFilename,
+      ),
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        'uploads',
+        'graduation-certificates',
+        pdfFilename,
+      ),
+    ].filter((candidate): candidate is string => Boolean(candidate));
+
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 }
 

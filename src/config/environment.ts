@@ -139,6 +139,7 @@ export const buildServiceAssetUrl = (
   }
 
   const normalized = assetPath.startsWith('/') ? assetPath : `/${assetPath}`;
+
   return `${baseService}${normalized}`;
 };
 

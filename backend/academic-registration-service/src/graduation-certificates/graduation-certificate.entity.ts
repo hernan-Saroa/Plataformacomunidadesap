@@ -63,6 +63,9 @@ export class GraduationCertificate {
   @Column({ length: 100, nullable: true })
   campus: string;
 
+  @Column({ name: 'seccional_name', length: 150, nullable: true })
+  seccionalName: string;
+
   // Datos del firmante
   @Column({ name: 'signer_name', length: 255 })
   signerName: string;
