@@ -152,7 +152,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
     }
 
     // En modo directo, no agregar prefijo /legal/
-    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -283,7 +283,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
     try {
       const expedienteId = expediente.uuid || expediente.id;
       const baseUrl = getServiceUrl('legal');
-      const prefix = API_MODE === 'direct' ? '' : '/legal';
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/actas/expediente/${expedienteId}/download-zip`;
 
       const response = await fetch(url);

@@ -138,7 +138,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     try {
       const expedienteId = expediente.uuid || expediente.id;
       const baseUrl = getServiceUrl('legal');
-      const prefix = API_MODE === 'direct' ? '' : '/legal';
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/evidencias/expediente/${expedienteId}/download-zip`;
 
       const response = await fetch(url);
@@ -184,8 +184,8 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     }
 
     // En modo directo: localhost:3008/files/
-    // En modo gateway: localhost:3000/legal/files/
-    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    // En modo gateway: localhost:3000/legal/api/v1/files/
+    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 

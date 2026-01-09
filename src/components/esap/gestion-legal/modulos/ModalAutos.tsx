@@ -122,7 +122,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
     }
 
     // En modo directo, no agregar prefijo /legal/
-    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
