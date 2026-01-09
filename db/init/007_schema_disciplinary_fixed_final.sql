@@ -756,12 +756,12 @@ BEGIN
 
     -- Crear función del trigger si no existe
     CREATE OR REPLACE FUNCTION internal_disciplinary_control.update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW."updatedAt" = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+    RETURNS TRIGGER AS $$
+    BEGIN
+        NEW."updatedAt" = CURRENT_TIMESTAMP;
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
 
     -- Crear trigger si no existe
     IF NOT EXISTS (
