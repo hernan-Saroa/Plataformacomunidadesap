@@ -209,7 +209,8 @@ export class LegalService {
 
     getAutosDownloadUrl(radicado: string): string {
         const baseUrl = getServiceUrl('legal');
-        return `${baseUrl}/legal/autos/expediente/${radicado}/download-zip`;
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/autos/expediente/${radicado}/download-zip`;
     }
 
     // Documentos
@@ -330,12 +331,10 @@ export class LegalService {
 
     getDocumentosConsultaDownloadUrl(consultaId: string): string {
         const baseUrl = getServiceUrl('legal');
-        if (API_MODE === 'direct') {
-            // In direct mode, match backend controller: /legal/consultas-juridicas/...
-            return `${baseUrl}/legal/consultas-juridicas/${consultaId}/documentos/download-zip`;
-        }
-        // Gateway mode follows standard pattern
-        return `${baseUrl}${SERVICE_PREFIX}/consultas-juridicas/${consultaId}/documentos/download-zip`;
+        // Direct mode: localhost:3008/consultas-juridicas/...
+        // Gateway mode: localhost:3000/legal/consultas-juridicas/...
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/consultas-juridicas/${consultaId}/documentos/download-zip`;
     }
 
     // --- CONTROL DE TÉRMINOS E INFORMES ---
@@ -724,8 +723,10 @@ export interface CorreoFilters {
 
 export interface SendCorreoDto {
     to: string;
+    cc?: string[];
     subject: string;
     body: string;
+    attachments?: { name: string; contentBytes: string; contentType: string }[];
 }
 
 export class CorreosJuridicosService {

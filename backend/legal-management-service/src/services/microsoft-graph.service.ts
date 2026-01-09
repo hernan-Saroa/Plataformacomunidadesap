@@ -198,19 +198,50 @@ export class MicrosoftGraphService {
     }
 
     /**
-     * Send an email
+     * Send an email with optional CC and attachments
      * IMPORTANT: From address MUST be the configured email account
+     * Note: Microsoft/Exchange may add organizational signature after the content
      */
-    async sendEmail(to: string, subject: string, body: string): Promise<boolean> {
+    async sendEmail(
+        to: string,
+        subject: string,
+        body: string,
+        cc?: string[],
+        attachments?: { name: string; contentBytes: string; contentType: string }[]
+    ): Promise<boolean> {
         try {
             const client = this.getClient();
 
-            const message = {
+            // Build ccRecipients if provided
+            const ccRecipients = cc?.length
+                ? cc.map(email => ({ emailAddress: { address: email.trim() } }))
+                : [];
+
+            // Format body as HTML with clear separation
+            // This helps distinguish user content from any org-added signatures
+            const htmlBody = `
+                <div style="font-family: Arial, sans-serif; font-size: 14px;">
+                    ${body.replace(/\n/g, '<br/>')}
+                </div>
+                <br/><br/>
+                <hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;"/>
+                <!-- Cualquier firma organizacional aparecerá debajo de esta línea -->
+            `;
+
+            // Build attachments array for Graph API
+            const graphAttachments = attachments?.map(att => ({
+                '@odata.type': '#microsoft.graph.fileAttachment',
+                name: att.name,
+                contentBytes: att.contentBytes,
+                contentType: att.contentType
+            })) || [];
+
+            const message: any = {
                 message: {
                     subject,
                     body: {
                         contentType: 'HTML',
-                        content: body,
+                        content: htmlBody,
                     },
                     toRecipients: [
                         {
@@ -219,6 +250,8 @@ export class MicrosoftGraphService {
                             },
                         },
                     ],
+                    ...(ccRecipients.length > 0 && { ccRecipients }),
+                    ...(graphAttachments.length > 0 && { attachments: graphAttachments }),
                     from: {
                         emailAddress: {
                             address: this.emailAccount,
@@ -232,7 +265,7 @@ export class MicrosoftGraphService {
                 .api(`/users/${this.emailAccount}/sendMail`)
                 .post(message);
 
-            this.logger.log(`Email sent to ${to} with subject: ${subject}`);
+            this.logger.log(`Email sent to ${to}${cc?.length ? ` (CC: ${cc.join(', ')})` : ''}${attachments?.length ? ` with ${attachments.length} attachment(s)` : ''} - Subject: ${subject}`);
             return true;
         } catch (error) {
             this.logger.error(`Error sending email to ${to}:`, error);

@@ -16,8 +16,10 @@ import { CorreoJuridico } from '../entities/correo-juridico.entity';
 // DTO as class for decorator compatibility
 export class SendEmailDto {
     to: string;
+    cc?: string[];
     subject: string;
     body: string;
+    attachments?: { name: string; contentBytes: string; contentType: string }[];
 }
 
 @Controller('correos')

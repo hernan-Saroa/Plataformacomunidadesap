@@ -28,8 +28,11 @@ const VITE_CERTIFICADOS_URL = import.meta.env.VITE_CERTIFICADOS_URL as string | 
 const VITE_PUBLIC_FRONTEND_URL = import.meta.env.VITE_PUBLIC_FRONTEND_URL as string | undefined;
 
 // Modo de API: 'gateway' (usa API Gateway) o 'direct' (conexión directa a microservicios)
+// Auto-detectar: localhost = direct, producción = gateway
 const VITE_API_MODE = import.meta.env.VITE_API_MODE as string | undefined;
-export const API_MODE = VITE_API_MODE || 'gateway';
+const isLocalhost = typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+export const API_MODE = VITE_API_MODE || (isLocalhost ? 'direct' : 'gateway');
 
 // URLs base del API Gateway según el entorno
 const API_GATEWAY_URLS = {
@@ -147,26 +150,26 @@ export const config = {
 
   // Versión del API por defecto
   API_VERSION: 'v1',
-  
+
   // Timeout para requests (ms)
   API_TIMEOUT: 30000,
-  
+
   // Número de reintentos en caso de fallo
   API_RETRY_ATTEMPTS: 3,
-  
+
   // Delay entre reintentos (ms)
   API_RETRY_DELAY: 1000,
-  
+
   // WebSocket URL (para notificaciones en tiempo real)
   WS_URL: getEnvVar('VITE_WS_URL') || (ENV === 'dev' ? 'ws://4.156.71.181:3000' : 'ws://localhost:3000'),
-  
+
   // Configuración de paginación por defecto
   DEFAULT_PAGE_SIZE: 20,
   MAX_PAGE_SIZE: 100,
-  
+
   // Configuración de caché
   CACHE_DURATION: 5 * 60 * 1000, // 5 minutos
-  
+
   // Features flags
   FEATURES: {
     enableWebSockets: true,
@@ -174,7 +177,7 @@ export const config = {
     enableOfflineMode: false,
     enableAnalytics: ENV === 'production',
   },
-  
+
   // Keys para localStorage
   STORAGE_KEYS: {
     AUTH_TOKEN: 'esap_auth_token',
@@ -183,7 +186,7 @@ export const config = {
     PREFERENCES: 'esap_preferences',
     CACHE_PREFIX: 'esap_cache_',
   },
-  
+
   // Configuración de autenticación
   AUTH: {
     TOKEN_HEADER: 'Authorization',
@@ -334,14 +337,14 @@ export const getDefaultHeaders = (includeAuth = true): HeadersInit => {
     'X-Client-Version': '1.0.0',
     'X-Client-Platform': 'web',
   };
-  
+
   if (includeAuth) {
     const token = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
     if (token) {
       headers[config.AUTH.TOKEN_HEADER] = `${config.AUTH.TOKEN_PREFIX} ${token}`;
     }
   }
-  
+
   return headers;
 };
 
