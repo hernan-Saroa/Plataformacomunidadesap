@@ -266,7 +266,38 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setArchivosAdjuntos([...archivosAdjuntos, ...Array.from(e.target.files)]);
+      const files = Array.from(e.target.files);
+      const validFiles: File[] = [];
+      const maxSize = 10 * 1024 * 1024; // 10MB en bytes
+      const allowedExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'txt', 'rtf'];
+      
+      for (const file of files) {
+        // Validar tamaño
+        if (file.size > maxSize) {
+          toast.error(`El archivo ${file.name} excede el tamaño máximo permitido de 10MB`);
+          continue;
+        }
+        
+        // Validar tipo de archivo (no permitir .exe)
+        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+        if (fileExtension === 'exe') {
+          toast.error(`No se permiten archivos ejecutables (.exe). El archivo ${file.name} fue rechazado.`);
+          continue;
+        }
+        
+        // Validar extensiones permitidas
+        if (fileExtension && !allowedExtensions.includes(fileExtension)) {
+          toast.error(`El archivo ${file.name} tiene una extensión no permitida. Extensiones permitidas: ${allowedExtensions.join(', ')}`);
+          continue;
+        }
+        
+        validFiles.push(file);
+      }
+      
+      if (validFiles.length > 0) {
+        setArchivosAdjuntos([...archivosAdjuntos, ...validFiles]);
+        toast.success(`${validFiles.length} archivo(s) agregado(s) correctamente`);
+      }
     }
   };
 
@@ -332,6 +363,31 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
 
   const handleSave = () => {
     if (!validateStep4()) return;
+
+    // Validar archivos adjuntos antes de guardar
+    const maxSize = 10 * 1024 * 1024; // 10MB en bytes
+    const allowedExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'txt', 'rtf'];
+    
+    for (const file of archivosAdjuntos) {
+      // Validar tamaño
+      if (file.size > maxSize) {
+        toast.error(`No se puede guardar: El archivo ${file.name} excede el tamaño máximo permitido de 10MB`);
+        return;
+      }
+      
+      // Validar tipo de archivo (no permitir .exe)
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      if (fileExtension === 'exe') {
+        toast.error(`No se puede guardar: No se permiten archivos ejecutables (.exe). El archivo ${file.name} fue rechazado.`);
+        return;
+      }
+      
+      // Validar extensiones permitidas
+      if (fileExtension && !allowedExtensions.includes(fileExtension)) {
+        toast.error(`No se puede guardar: El archivo ${file.name} tiene una extensión no permitida. Extensiones permitidas: ${allowedExtensions.join(', ')}`);
+        return;
+      }
+    }
 
     // Si no usaron el botón "Agregar Denunciado", toma el denunciado del formulario principal
     const disciplinables = denunciados.length > 0

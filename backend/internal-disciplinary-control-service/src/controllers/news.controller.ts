@@ -10,6 +10,7 @@ import {
   UploadedFiles,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -23,6 +24,7 @@ import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto'
 import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { UpdateNewsKanbanDto } from '../dtos/update-news-kanban.dto';
 import { DisciplinaryNews } from '../entities/disciplinary-news.entity';
+import * as path from 'path';
 
 interface FileData {
   buffer: Buffer;
@@ -32,7 +34,7 @@ interface FileData {
 @ApiTags('Noticias Disciplinarias')
 @Controller('disciplinary-news')
 export class NewsController {
-  constructor(private newsService: NewsService) { }
+  constructor(private newsService: NewsService) {}
 
   /**
    * H1: Radicar una nueva noticia disciplinaria con soportes
@@ -55,6 +57,27 @@ export class NewsController {
     @Body() createNewsDto: CreateDisciplinaryNewsDto,
     @UploadedFiles() files?: FileData[],
   ): Promise<DisciplinaryNews> {
+    // Validaciones de archivos
+    if (files && files.length > 0) {
+      for (const file of files) {
+        // Validar tamaño máximo (10MB)
+        const maxSize = 10 * 1024 * 1024; // 10MB en bytes
+        if (file.buffer.length > maxSize) {
+          throw new BadRequestException(
+            `El archivo ${file.originalname} excede el tamaño máximo permitido de 10MB`,
+          );
+        }
+
+        // Validar tipo de archivo (no permitir .exe)
+        const fileExtension = path.extname(file.originalname).toLowerCase();
+        if (fileExtension === '.exe') {
+          throw new BadRequestException(
+            `No se permiten archivos ejecutables (.exe). El archivo ${file.originalname} fue rechazado.`,
+          );
+        }
+      }
+    }
+
     return await this.newsService.create(createNewsDto, files);
   }
 
@@ -187,6 +210,7 @@ export class NewsController {
   async delete(@Param('id') id: string): Promise<void> {
     await this.newsService.delete(id);
   }
+
   /**
    * Archivar noticia
    */
