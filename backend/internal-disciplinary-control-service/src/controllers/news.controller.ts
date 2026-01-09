@@ -60,11 +60,11 @@ export class NewsController {
     // Validaciones de archivos
     if (files && files.length > 0) {
       for (const file of files) {
-        // Validar tamaño máximo (10MB)
-        const maxSize = 10 * 1024 * 1024; // 10MB en bytes
+        // Validar tamaño máximo (200MB)
+        const maxSize = 200 * 1024 * 1024; // 200MB en bytes
         if (file.buffer.length > maxSize) {
           throw new BadRequestException(
-            `El archivo ${file.originalname} excede el tamaño máximo permitido de 10MB`,
+            `El archivo ${file.originalname} excede el tamaño máximo permitido de 200MB`,
           );
         }
 
