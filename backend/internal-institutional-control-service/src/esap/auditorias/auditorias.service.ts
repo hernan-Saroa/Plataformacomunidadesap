@@ -6,6 +6,9 @@ import { CreateAuditoriaDto } from './dto/create-auditoria.dto';
 import { UpdateAuditoriaDto } from './dto/update-auditoria.dto';
 import { CreateNotaDto } from './dto/create-nota.dto';
 import { UpdateNotaDto } from './dto/update-nota.dto';
+import { SolicitarAmpliacionPlazoDto } from './dto/solicitar-ampliacion-plazo.dto';
+import { AprobarAmpliacionPlazoDto } from './dto/aprobar-ampliacion-plazo.dto';
+import { RechazarAmpliacionPlazoDto } from './dto/rechazar-ampliacion-plazo.dto';
 import { ObjetivoAuditoria } from './entities/objetivo-auditoria.entity';
 import { EquipoAuditor } from './entities/equipo-auditor.entity';
 import { NotaAuditoria } from './entities/nota-auditoria.entity';
@@ -45,13 +48,18 @@ export class AuditoriasService {
   }
 
   /**
-   * Parsea una fecha string (YYYY-MM-DD) a Date sin conversión de zona horaria
+   * Parsea una fecha string (YYYY-MM-DD) o Date a Date sin conversión de zona horaria
    * Esto evita que las fechas se desplacen por diferencias de zona horaria
    */
-  private parseDateOnly(dateString: string): Date {
+  private parseDateOnly(dateInput: string | Date): Date {
+    // Si ya es un Date, retornarlo directamente
+    if (dateInput instanceof Date) {
+      return dateInput;
+    }
+    
     // Si la fecha viene en formato YYYY-MM-DD, parsearla manualmente
     // para evitar conversión de zona horaria
-    const parts = dateString.split('-');
+    const parts = dateInput.split('-');
     if (parts.length === 3) {
       const year = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1; // Los meses en JS son 0-indexed
@@ -60,7 +68,7 @@ export class AuditoriasService {
       return new Date(year, month, day);
     }
     // Fallback: usar new Date normal si el formato no es el esperado
-    return new Date(dateString);
+    return new Date(dateInput);
   }
 
   /**
@@ -139,15 +147,15 @@ export class AuditoriasService {
         : {},
     };
 
-    // Los IDs son UUIDs (strings), mantenerlos como strings
+    // Los IDs son números (BIGINT) que referencian auth.personas.id_tercero
     if (auditoria.auditorLiderId !== null && auditoria.auditorLiderId !== undefined) {
-      serialized.auditorLiderId = String(auditoria.auditorLiderId);
+      serialized.auditorLiderId = Number(auditoria.auditorLiderId);
     }
     if (auditoria.auditorAsignadoId !== null && auditoria.auditorAsignadoId !== undefined) {
-      serialized.auditorAsignadoId = String(auditoria.auditorAsignadoId);
+      serialized.auditorAsignadoId = Number(auditoria.auditorAsignadoId);
     }
     if (auditoria.supervisorAsignadoId !== null && auditoria.supervisorAsignadoId !== undefined) {
-      serialized.supervisorAsignadoId = String(auditoria.supervisorAsignadoId);
+      serialized.supervisorAsignadoId = Number(auditoria.supervisorAsignadoId);
     }
 
     // Serializar objetivos, criterios y equipoAuditores con IDs numéricos
@@ -315,36 +323,56 @@ export class AuditoriasService {
     }
     if (createDto.nivelRiesgo) auditoriaData.calificacionRiesgo = createDto.nivelRiesgo;
     if (createDto.calificacionRiesgo) auditoriaData.calificacionRiesgo = createDto.calificacionRiesgo;
-    // Validar y asignar UUIDs solo si son válidos (convertir números a null)
+    // Asignar IDs de auditores (son números BIGINT que referencian auth.personas.id_tercero)
+    console.log('[AuditoriasService.create] IDs recibidos:', {
+      auditorLiderId: createDto.auditorLiderId,
+      auditorAsignadoId: createDto.auditorAsignadoId,
+      supervisorAsignadoId: createDto.supervisorAsignadoId
+    });
     if (createDto.auditorLiderId !== undefined && createDto.auditorLiderId !== null) {
-      const auditorLiderIdStr = String(createDto.auditorLiderId);
-      if (this.isValidUUID(auditorLiderIdStr)) {
-        auditoriaData.auditorLiderId = auditorLiderIdStr;
+      // Convertir a número si viene como string
+      const auditorLiderIdNum = typeof createDto.auditorLiderId === 'string' 
+        ? parseInt(createDto.auditorLiderId, 10) 
+        : Number(createDto.auditorLiderId);
+      if (!isNaN(auditorLiderIdNum) && auditorLiderIdNum > 0) {
+        auditoriaData.auditorLiderId = auditorLiderIdNum;
+        console.log('[AuditoriasService.create] auditorLiderId asignado:', auditorLiderIdNum);
       } else {
-        // Si no es un UUID válido (ej. número), establecer como null
-        auditoriaData.auditorLiderId = null;
+        console.warn('[AuditoriasService.create] auditorLiderId inválido:', createDto.auditorLiderId);
       }
     }
     if (createDto.auditorAsignadoId !== undefined && createDto.auditorAsignadoId !== null) {
-      const auditorAsignadoIdStr = String(createDto.auditorAsignadoId);
-      if (this.isValidUUID(auditorAsignadoIdStr)) {
-        auditoriaData.auditorAsignadoId = auditorAsignadoIdStr;
+      const auditorAsignadoIdNum = typeof createDto.auditorAsignadoId === 'string' 
+        ? parseInt(createDto.auditorAsignadoId, 10) 
+        : Number(createDto.auditorAsignadoId);
+      if (!isNaN(auditorAsignadoIdNum) && auditorAsignadoIdNum > 0) {
+        auditoriaData.auditorAsignadoId = auditorAsignadoIdNum;
+        console.log('[AuditoriasService.create] auditorAsignadoId asignado:', auditorAsignadoIdNum);
       } else {
-        auditoriaData.auditorAsignadoId = null;
+        console.warn('[AuditoriasService.create] auditorAsignadoId inválido:', createDto.auditorAsignadoId);
       }
     }
     if (createDto.supervisorAsignadoId !== undefined && createDto.supervisorAsignadoId !== null) {
-      const supervisorAsignadoIdStr = String(createDto.supervisorAsignadoId);
-      if (this.isValidUUID(supervisorAsignadoIdStr)) {
-        auditoriaData.supervisorAsignadoId = supervisorAsignadoIdStr;
+      const supervisorAsignadoIdNum = typeof createDto.supervisorAsignadoId === 'string' 
+        ? parseInt(createDto.supervisorAsignadoId, 10) 
+        : Number(createDto.supervisorAsignadoId);
+      if (!isNaN(supervisorAsignadoIdNum) && supervisorAsignadoIdNum > 0) {
+        auditoriaData.supervisorAsignadoId = supervisorAsignadoIdNum;
+        console.log('[AuditoriasService.create] supervisorAsignadoId asignado:', supervisorAsignadoIdNum);
       } else {
-        auditoriaData.supervisorAsignadoId = null;
+        console.warn('[AuditoriasService.create] supervisorAsignadoId inválido:', createDto.supervisorAsignadoId);
       }
     }
+    console.log('[AuditoriasService.create] IDs finales en auditoriaData:', {
+      auditorLiderId: auditoriaData.auditorLiderId,
+      auditorAsignadoId: auditoriaData.auditorAsignadoId,
+      supervisorAsignadoId: auditoriaData.supervisorAsignadoId
+    });
     if (createDto.responsableAreaNombre) auditoriaData.responsableAreaNombre = createDto.responsableAreaNombre;
     if (createDto.responsableAreaCargo) auditoriaData.responsableAreaCargo = createDto.responsableAreaCargo;
     if (createDto.responsableAreaEmail) auditoriaData.responsableAreaEmail = createDto.responsableAreaEmail;
     if (createDto.observacionesAdicionales) auditoriaData.observacionesAdicionales = createDto.observacionesAdicionales;
+    if (createDto.programaAnualMetadata) auditoriaData.programaAnualMetadata = createDto.programaAnualMetadata;
 
     const auditoria = this.auditoriaRepository.create(auditoriaData);
 
@@ -503,12 +531,14 @@ export class AuditoriasService {
     if (updateDto.totalTareas !== undefined) auditoria.totalTareas = updateDto.totalTareas;
     if (updateDto.actividadesCompletas !== undefined) auditoria.actividadesCompletas = updateDto.actividadesCompletas;
     if (updateDto.actividadesPendientes !== undefined) auditoria.actividadesPendientes = updateDto.actividadesPendientes;
-    // Validar y asignar UUIDs solo si son válidos (convertir números a null)
+    // Asignar IDs de auditores (son números BIGINT que referencian auth.personas.id_tercero)
     if (updateDto.auditorLiderId !== undefined) {
       if (updateDto.auditorLiderId !== null) {
-        const auditorLiderIdStr = String(updateDto.auditorLiderId);
-        if (this.isValidUUID(auditorLiderIdStr)) {
-          auditoria.auditorLiderId = auditorLiderIdStr;
+        const auditorLiderIdNum = typeof updateDto.auditorLiderId === 'string' 
+          ? parseInt(updateDto.auditorLiderId, 10) 
+          : Number(updateDto.auditorLiderId);
+        if (!isNaN(auditorLiderIdNum) && auditorLiderIdNum > 0) {
+          auditoria.auditorLiderId = auditorLiderIdNum;
         } else {
           auditoria.auditorLiderId = null;
         }
@@ -518,9 +548,11 @@ export class AuditoriasService {
     }
     if (updateDto.auditorAsignadoId !== undefined) {
       if (updateDto.auditorAsignadoId !== null) {
-        const auditorAsignadoIdStr = String(updateDto.auditorAsignadoId);
-        if (this.isValidUUID(auditorAsignadoIdStr)) {
-          auditoria.auditorAsignadoId = auditorAsignadoIdStr;
+        const auditorAsignadoIdNum = typeof updateDto.auditorAsignadoId === 'string' 
+          ? parseInt(updateDto.auditorAsignadoId, 10) 
+          : Number(updateDto.auditorAsignadoId);
+        if (!isNaN(auditorAsignadoIdNum) && auditorAsignadoIdNum > 0) {
+          auditoria.auditorAsignadoId = auditorAsignadoIdNum;
         } else {
           auditoria.auditorAsignadoId = null;
         }
@@ -530,9 +562,11 @@ export class AuditoriasService {
     }
     if (updateDto.supervisorAsignadoId !== undefined) {
       if (updateDto.supervisorAsignadoId !== null) {
-        const supervisorAsignadoIdStr = String(updateDto.supervisorAsignadoId);
-        if (this.isValidUUID(supervisorAsignadoIdStr)) {
-          auditoria.supervisorAsignadoId = supervisorAsignadoIdStr;
+        const supervisorAsignadoIdNum = typeof updateDto.supervisorAsignadoId === 'string' 
+          ? parseInt(updateDto.supervisorAsignadoId, 10) 
+          : Number(updateDto.supervisorAsignadoId);
+        if (!isNaN(supervisorAsignadoIdNum) && supervisorAsignadoIdNum > 0) {
+          auditoria.supervisorAsignadoId = supervisorAsignadoIdNum;
         } else {
           auditoria.supervisorAsignadoId = null;
         }
@@ -1663,6 +1697,304 @@ export class AuditoriasService {
     await this.historialRepository.save(historial);
 
     return auditoria;
+  }
+
+  /**
+   * Solicita ampliación de plazo de una auditoría en curso
+   * Valida que no exceda 1 año desde fecha inicio
+   * Envía solicitud al Jefe OCI para aprobación
+   * Registra justificación, usuario, fecha en historial
+   */
+  async solicitarAmpliacionPlazo(
+    auditoriaId: string,
+    solicitarDto: SolicitarAmpliacionPlazoDto,
+    usuarioId?: number,
+  ): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+    });
+
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${auditoriaId} no encontrada`);
+    }
+
+    // Validar que la auditoría esté en curso
+    // Puede estar en curso según fase O según estadoKanban (para compatibilidad con Kanban)
+    const estaEnCurso = 
+      auditoria.fase === FaseAuditoria.EN_CURSO || 
+      auditoria.estadoKanban === EstadoKanban.EJECUCION;
+    
+    if (!estaEnCurso) {
+      throw new BadRequestException('Solo se pueden solicitar ampliaciones de plazo para auditorías en curso');
+    }
+
+    // Parsear fechas
+    const nuevaFechaFin = this.parseDateOnly(solicitarDto.nuevaFechaFin);
+    const fechaInicio = this.parseDateOnly(auditoria.fechaInicio);
+    const fechaFinActual = this.parseDateOnly(auditoria.fechaFin);
+
+    // Validar que la nueva fecha sea posterior a la actual
+    if (nuevaFechaFin <= fechaFinActual) {
+      throw new BadRequestException('La nueva fecha de finalización debe ser posterior a la fecha actual');
+    }
+
+    // Validar que no exceda 1 año (365 días) desde fecha inicio
+    const diferenciaDias = Math.floor((nuevaFechaFin.getTime() - fechaInicio.getTime()) / (1000 * 60 * 60 * 24));
+    if (diferenciaDias > 365) {
+      throw new BadRequestException('El plazo ampliado no puede exceder 1 año desde la fecha de inicio');
+    }
+
+    // Validar que no haya una solicitud pendiente
+    const solicitudPendiente = await this.historialRepository.findOne({
+      where: {
+        auditoriaId,
+        tipoEvento: TipoEvento.AMPLIACION_PLAZO,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (solicitudPendiente) {
+      // Verificar si la solicitud está pendiente (en observaciones se guarda el estado)
+      const estadoMatch = solicitudPendiente.observaciones?.match(/ESTADO:([^|]+)/);
+      const estadoSolicitud = estadoMatch ? estadoMatch[1] : '';
+      if (estadoSolicitud === 'pendiente') {
+        throw new BadRequestException('Ya existe una solicitud de ampliación de plazo pendiente para esta auditoría');
+      }
+    }
+
+    // Registrar en el historial como solicitud pendiente
+    const ahora = new Date();
+    const fecha = ahora.toISOString().split('T')[0];
+    const hora = ahora.toTimeString().slice(0, 5);
+
+    const historial = new HistorialAuditoria();
+    historial.auditoriaId = auditoriaId;
+    historial.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
+    historial.fecha = new Date(fecha);
+    historial.hora = hora;
+    historial.usuarioId = usuarioId || 1; // TODO: Obtener del contexto de autenticación
+    historial.accion = 'Solicitud de ampliación de plazo';
+    historial.descripcion = `Solicitud de ampliación de plazo para auditoría ${auditoria.codigo}`;
+    // Guardar estado y justificación en observaciones: "ESTADO:pendiente|JUSTIFICACION:..."
+    // Usar formato estructurado para facilitar el parseo
+    historial.observaciones = `ESTADO:pendiente|JUSTIFICACION:${solicitarDto.justificacion}`;
+    historial.estadoAnterior = auditoria.estadoKanban || undefined;
+    historial.estadoNuevo = auditoria.estadoKanban || undefined;
+    
+    // Guardar cambios en formato JSONB
+    historial.cambios = [{
+      campo: 'fechaFin',
+      valorAnterior: this.serializeDate(auditoria.fechaFin),
+      valorNuevo: this.serializeDate(nuevaFechaFin),
+    }];
+
+    await this.historialRepository.save(historial);
+
+    return this.serializeAuditoria(auditoria) as any;
+  }
+
+  /**
+   * Aprueba una solicitud de ampliación de plazo
+   * Actualiza la fecha fin de la auditoría
+   * Notifica al área auditada
+   * Registra en historial
+   */
+  async aprobarAmpliacionPlazo(
+    auditoriaId: string,
+    aprobarDto: AprobarAmpliacionPlazoDto,
+    usuarioId?: number,
+  ): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+    });
+
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${auditoriaId} no encontrada`);
+    }
+
+    // Buscar la solicitud pendiente más reciente
+    const solicitudPendiente = await this.historialRepository.findOne({
+      where: {
+        auditoriaId,
+        tipoEvento: TipoEvento.AMPLIACION_PLAZO,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!solicitudPendiente) {
+      throw new NotFoundException('No se encontró una solicitud de ampliación de plazo pendiente para esta auditoría');
+    }
+
+    // Verificar que esté pendiente
+    const estadoMatch = solicitudPendiente.observaciones?.match(/ESTADO:([^|]+)/);
+    const estadoSolicitud = estadoMatch ? estadoMatch[1] : '';
+    if (estadoSolicitud !== 'pendiente') {
+      throw new BadRequestException('La solicitud de ampliación ya fue procesada');
+    }
+
+    // Obtener la nueva fecha fin de los cambios
+    const cambioFechaFin = solicitudPendiente.cambios?.find(c => c.campo === 'fechaFin');
+    if (!cambioFechaFin) {
+      throw new BadRequestException('No se encontró información de la nueva fecha en la solicitud');
+    }
+
+    const nuevaFechaFin = this.parseDateOnly(cambioFechaFin.valorNuevo);
+    const fechaFinAnterior = auditoria.fechaFin;
+
+    // Actualizar la fecha fin de la auditoría
+    auditoria.fechaFin = nuevaFechaFin;
+
+    // Guardar cambios
+    await this.auditoriaRepository.save(auditoria);
+
+    // Actualizar el historial de la solicitud a aprobada
+    const ahora = new Date();
+    const fecha = ahora.toISOString().split('T')[0];
+    const hora = ahora.toTimeString().slice(0, 5);
+
+    // Crear nuevo registro de historial para la aprobación
+    const historialAprobacion = new HistorialAuditoria();
+    historialAprobacion.auditoriaId = auditoriaId;
+    historialAprobacion.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
+    historialAprobacion.fecha = new Date(fecha);
+    historialAprobacion.hora = hora;
+    historialAprobacion.usuarioId = usuarioId || 1; // TODO: Obtener del contexto de autenticación
+    historialAprobacion.accion = 'Aprobación de ampliación de plazo';
+    historialAprobacion.descripcion = `Ampliación de plazo aprobada para auditoría ${auditoria.codigo}`;
+    historialAprobacion.observaciones = `ESTADO:aprobada${aprobarDto.comentarios ? `|COMENTARIOS:${aprobarDto.comentarios}` : ''}`;
+    historialAprobacion.estadoAnterior = auditoria.estadoKanban || undefined;
+    historialAprobacion.estadoNuevo = auditoria.estadoKanban || undefined;
+    historialAprobacion.cambios = [{
+      campo: 'fechaFin',
+      valorAnterior: this.serializeDate(fechaFinAnterior),
+      valorNuevo: this.serializeDate(nuevaFechaFin),
+    }];
+
+    await this.historialRepository.save(historialAprobacion);
+
+    // TODO: Notificar al área auditada si se aprueba
+    // Esto se puede implementar con un servicio de notificaciones
+    // await this.notificacionesService.notificarAmpliacionAprobada(auditoria);
+
+    return this.serializeAuditoria(auditoria) as any;
+  }
+
+  /**
+   * Rechaza una solicitud de ampliación de plazo
+   * Registra justificación en historial
+   */
+  async rechazarAmpliacionPlazo(
+    auditoriaId: string,
+    rechazarDto: RechazarAmpliacionPlazoDto,
+    usuarioId?: number,
+  ): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+    });
+
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${auditoriaId} no encontrada`);
+    }
+
+    // Buscar la solicitud pendiente más reciente
+    const solicitudPendiente = await this.historialRepository.findOne({
+      where: {
+        auditoriaId,
+        tipoEvento: TipoEvento.AMPLIACION_PLAZO,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!solicitudPendiente) {
+      throw new NotFoundException('No se encontró una solicitud de ampliación de plazo pendiente para esta auditoría');
+    }
+
+    // Verificar que esté pendiente
+    const estadoMatch = solicitudPendiente.observaciones?.match(/ESTADO:([^|]+)/);
+    const estadoSolicitud = estadoMatch ? estadoMatch[1] : '';
+    if (estadoSolicitud !== 'pendiente') {
+      throw new BadRequestException('La solicitud de ampliación ya fue procesada');
+    }
+
+    // Registrar rechazo en historial
+    const ahora = new Date();
+    const fecha = ahora.toISOString().split('T')[0];
+    const hora = ahora.toTimeString().slice(0, 5);
+
+    const historialRechazo = new HistorialAuditoria();
+    historialRechazo.auditoriaId = auditoriaId;
+    historialRechazo.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
+    historialRechazo.fecha = new Date(fecha);
+    historialRechazo.hora = hora;
+    historialRechazo.usuarioId = usuarioId || 1; // TODO: Obtener del contexto de autenticación
+    historialRechazo.accion = 'Rechazo de ampliación de plazo';
+    historialRechazo.descripcion = `Ampliación de plazo rechazada para auditoría ${auditoria.codigo}`;
+    historialRechazo.observaciones = `ESTADO:rechazada|JUSTIFICACION:${rechazarDto.justificacion}`;
+    historialRechazo.estadoAnterior = auditoria.estadoKanban || undefined;
+    historialRechazo.estadoNuevo = auditoria.estadoKanban || undefined;
+    historialRechazo.cambios = solicitudPendiente.cambios || [];
+
+    await this.historialRepository.save(historialRechazo);
+
+    return this.serializeAuditoria(auditoria) as any;
+  }
+
+  /**
+   * Obtiene las solicitudes de ampliación de plazo pendientes
+   * Útil para que el Jefe OCI vea todas las solicitudes que requieren aprobación
+   */
+  async getSolicitudesAmpliacionPendientes(): Promise<Array<{
+    id: string;
+    auditoriaId: string;
+    auditoriaCodigo: string;
+    auditoriaNombre: string;
+    fechaSolicitud: string;
+    justificacion: string;
+    fechaFinAnterior: string;
+    fechaFinNueva: string;
+    solicitanteId: number;
+  }>> {
+    // Buscar todos los registros de ampliación con estado pendiente
+    const solicitudesPendientes = await this.historialRepository.find({
+      where: {
+        tipoEvento: TipoEvento.AMPLIACION_PLAZO,
+      },
+      order: { createdAt: 'DESC' },
+      relations: ['auditoria'],
+    });
+
+    // Filtrar solo las pendientes y mapear los datos
+    const solicitudes = solicitudesPendientes
+      .filter(hist => {
+        const estadoMatch = hist.observaciones?.match(/ESTADO:([^|]+)/);
+        const estado = estadoMatch ? estadoMatch[1] : '';
+        return estado === 'pendiente';
+      })
+      .map(hist => {
+        // Extraer estado de las observaciones
+        const estadoMatch = hist.observaciones?.match(/ESTADO:([^|]+)/);
+        const estado = estadoMatch ? estadoMatch[1] : '';
+        
+        // Extraer justificación de las observaciones
+        const justificacionMatch = hist.observaciones?.match(/JUSTIFICACION:(.+?)(?:\|ESTADO:|$)/s);
+        const justificacion = justificacionMatch ? justificacionMatch[1].trim() : '';
+        
+        const cambioFechaFin = hist.cambios?.find(c => c.campo === 'fechaFin');
+
+        return {
+          id: hist.id,
+          auditoriaId: hist.auditoriaId,
+          auditoriaCodigo: hist.auditoria?.codigo || 'N/A',
+          auditoriaNombre: hist.auditoria?.nombre || 'N/A',
+          fechaSolicitud: `${hist.fecha}T${hist.hora}`,
+          justificacion,
+          fechaFinAnterior: cambioFechaFin?.valorAnterior || '',
+          fechaFinNueva: cambioFechaFin?.valorNuevo || '',
+          solicitanteId: hist.usuarioId,
+        };
+      });
+
+    return solicitudes;
   }
 }
 

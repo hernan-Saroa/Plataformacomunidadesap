@@ -348,6 +348,66 @@ export const auditoriasApi = {
       }),
     });
   },
+
+  /**
+   * ==================== AMPLIACIÓN DE PLAZO ====================
+   */
+
+  /**
+   * Solicitar ampliación de plazo de una auditoría en curso
+   */
+  solicitarAmpliacionPlazo: async (
+    id: string,
+    data: { nuevaFechaFin: string; justificacion: string }
+  ): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${id}/ampliar-plazo/solicitar`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Aprueba una solicitud de ampliación de plazo (solo Jefe OCI)
+   */
+  aprobarAmpliacionPlazo: async (
+    id: string,
+    data: { comentarios?: string }
+  ): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${id}/ampliar-plazo/aprobar`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Rechaza una solicitud de ampliación de plazo (solo Jefe OCI)
+   */
+  rechazarAmpliacionPlazo: async (
+    id: string,
+    data: { justificacion: string }
+  ): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${id}/ampliar-plazo/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Obtiene todas las solicitudes de ampliación de plazo pendientes
+   */
+  getSolicitudesAmpliacionPendientes: async (): Promise<ApiResponse<Array<{
+    id: string;
+    auditoriaId: string;
+    auditoriaCodigo: string;
+    auditoriaNombre: string;
+    fechaSolicitud: string;
+    justificacion: string;
+    fechaFinAnterior: string;
+    fechaFinNueva: string;
+    solicitanteId: number;
+  }>>> => {
+    return apiRequest(`/auditorias/ampliar-plazo/pendientes`);
+  },
 };
 
 // ==================== UNIVERSO DE AUDITORÍAS ====================

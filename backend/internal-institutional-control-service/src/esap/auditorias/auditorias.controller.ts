@@ -17,6 +17,9 @@ import { CreateAuditoriaDto } from './dto/create-auditoria.dto';
 import { UpdateAuditoriaDto } from './dto/update-auditoria.dto';
 import { CreateNotaDto } from './dto/create-nota.dto';
 import { UpdateNotaDto } from './dto/update-nota.dto';
+import { SolicitarAmpliacionPlazoDto } from './dto/solicitar-ampliacion-plazo.dto';
+import { AprobarAmpliacionPlazoDto } from './dto/aprobar-ampliacion-plazo.dto';
+import { RechazarAmpliacionPlazoDto } from './dto/rechazar-ampliacion-plazo.dto';
 import { FaseAuditoria } from './entities/auditoria.entity';
 
 @Controller('auditorias')
@@ -270,6 +273,55 @@ export class AuditoriasController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.auditoriasService.delete(id);
+  }
+
+  /**
+   * POST /esap/auditorias/:id/ampliar-plazo/solicitar
+   * Solicita ampliación de plazo de una auditoría en curso
+   */
+  @Post(':id/ampliar-plazo/solicitar')
+  @HttpCode(HttpStatus.OK)
+  solicitarAmpliacionPlazo(
+    @Param('id') id: string,
+    @Body() solicitarDto: SolicitarAmpliacionPlazoDto,
+  ) {
+    return this.auditoriasService.solicitarAmpliacionPlazo(id, solicitarDto);
+  }
+
+  /**
+   * POST /esap/auditorias/:id/ampliar-plazo/aprobar
+   * Aprueba una solicitud de ampliación de plazo (solo Jefe OCI)
+   */
+  @Post(':id/ampliar-plazo/aprobar')
+  @HttpCode(HttpStatus.OK)
+  aprobarAmpliacionPlazo(
+    @Param('id') id: string,
+    @Body() aprobarDto: AprobarAmpliacionPlazoDto,
+  ) {
+    return this.auditoriasService.aprobarAmpliacionPlazo(id, aprobarDto);
+  }
+
+  /**
+   * POST /esap/auditorias/:id/ampliar-plazo/rechazar
+   * Rechaza una solicitud de ampliación de plazo (solo Jefe OCI)
+   */
+  @Post(':id/ampliar-plazo/rechazar')
+  @HttpCode(HttpStatus.OK)
+  rechazarAmpliacionPlazo(
+    @Param('id') id: string,
+    @Body() rechazarDto: RechazarAmpliacionPlazoDto,
+  ) {
+    return this.auditoriasService.rechazarAmpliacionPlazo(id, rechazarDto);
+  }
+
+  /**
+   * GET /esap/auditorias/ampliar-plazo/pendientes
+   * Obtiene todas las solicitudes de ampliación de plazo pendientes
+   * Útil para que el Jefe OCI vea todas las solicitudes que requieren aprobación
+   */
+  @Get('ampliar-plazo/pendientes')
+  getSolicitudesAmpliacionPendientes() {
+    return this.auditoriasService.getSolicitudesAmpliacionPendientes();
   }
 }
 

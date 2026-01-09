@@ -21,6 +21,7 @@ export enum TipoEvento {
   FINALIZACION = 'finalizacion',
   ELIMINACION = 'eliminacion',
   ARCHIVO = 'archivo',
+  AMPLIACION_PLAZO = 'ampliacion_plazo',
 }
 
 @Entity('historial_auditoria', { schema: 'control_interno' })

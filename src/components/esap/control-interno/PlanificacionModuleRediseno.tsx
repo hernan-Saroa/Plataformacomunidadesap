@@ -245,7 +245,6 @@ export function PlanificacionModuleRediseno() {
       if (data.responsableAreaEmail) auditoriaData.responsableAreaEmail = data.responsableAreaEmail;
       
       // Mapear IDs de auditores (convertir 'aud-001' a número si es necesario)
-      // Por ahora enviamos el string, el backend puede manejarlo
       if (data.auditorLider) {
         const liderId = data.auditorLider.startsWith('aud-') 
           ? parseInt(data.auditorLider.replace('aud-', ''), 10) 
@@ -310,6 +309,59 @@ export function PlanificacionModuleRediseno() {
         }
       }
 
+      // Periodicidad - guardar en programaAnualMetadata
+      if (data.periodicidad) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.periodicidad = data.periodicidad;
+      }
+
+      // Vinculación Plan Anual - guardar en programaAnualMetadata
+      if (data.vinculadaPlanAnual) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.vinculadaPlanAnual = data.vinculadaPlanAnual;
+        if (data.planAnualAño) {
+          auditoriaData.programaAnualMetadata.planAnualAño = data.planAnualAño;
+        }
+        if (data.planAnualId) {
+          auditoriaData.programaAnualMetadata.planAnualId = data.planAnualId;
+        }
+        if (data.rolDecretoAsociado) {
+          auditoriaData.programaAnualMetadata.rolDecretoAsociado = data.rolDecretoAsociado;
+        }
+      }
+
+      // Hitos - guardar en programaAnualMetadata
+      if (data.hitos && data.hitos.length > 0) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.hitos = data.hitos;
+      }
+
+      // Recursos - guardar en observaciones o en un campo JSON
+      if (data.recursos && data.recursos.length > 0) {
+        const recursosText = `Recursos requeridos:\n${data.recursos.map(r => 
+          `- ${r.tipo}: ${r.descripcion} (Cantidad: ${r.cantidad}${r.costo ? `, Costo: ${r.costo}` : ''})`
+        ).join('\n')}`;
+        auditoriaData.observacionesAdicionales = auditoriaData.observacionesAdicionales 
+          ? `${auditoriaData.observacionesAdicionales}\n\n${recursosText}`
+          : recursosText;
+      }
+
+      // Productos Esperados - guardar en observaciones
+      if (data.productosEsperados && data.productosEsperados.length > 0) {
+        const productosText = `Productos esperados:\n${data.productosEsperados.map(p => 
+          `- ${p.nombre}: ${p.descripcion} (Fecha entrega: ${p.fechaEntrega})`
+        ).join('\n')}`;
+        auditoriaData.observacionesAdicionales = auditoriaData.observacionesAdicionales 
+          ? `${auditoriaData.observacionesAdicionales}\n\n${productosText}`
+          : productosText;
+      }
+
       // Llamar a la API para crear la auditoría
       const response = await auditoriasApi.create(auditoriaData);
       
@@ -362,13 +414,22 @@ export function PlanificacionModuleRediseno() {
           }
 
           // Mapear datos al formato que espera el DTO del backend
+          // Construir descripción completa incluyendo causa y efecto si existen
+          let descripcionCompleta = hallazgoForm.descripcion;
+          if (hallazgoForm.causa) {
+            descripcionCompleta += `\n\nCAUSA:\n${hallazgoForm.causa}`;
+          }
+          if (hallazgoForm.efecto) {
+            descripcionCompleta += `\n\nEFECTO:\n${hallazgoForm.efecto}`;
+          }
+
           const hallazgoData: any = {
             // Campos requeridos
             categoria: 'borrador' as const, // HallazgoCategoria: 'critico' | 'controversia' | 'borrador'
             area: data.areaObjetivo || 'No especificada', // Campo requerido
             auditoria: auditoriaCreada.codigo || auditoriaCreada.nombre, // Campo requerido - código de la auditoría
             auditoriaId: auditoriaCreada.id, // Opcional pero recomendado
-            descripcion: hallazgoForm.descripcion, // Campo requerido
+            descripcion: descripcionCompleta, // Campo requerido - ahora incluye causa y efecto
             criterioIncumplido: hallazgoForm.criterio, // Campo requerido
             fechaDeteccion: hallazgoForm.fechaIdentificacion || new Date().toISOString().split('T')[0], // Campo requerido
             
@@ -379,6 +440,11 @@ export function PlanificacionModuleRediseno() {
             
             // Recomendaciones como array
             recomendaciones: hallazgoForm.recomendacion ? [hallazgoForm.recomendacion] : [],
+            
+            // Guardar causa y efecto en observaciones si existe el campo
+            observacionesControversia: (hallazgoForm.causa || hallazgoForm.efecto) 
+              ? `CAUSA: ${hallazgoForm.causa || 'No especificada'}\n\nEFECTO: ${hallazgoForm.efecto || 'No especificado'}`
+              : undefined,
           };
 
           console.log('[handleCrearAuditoria] Datos del hallazgo a enviar:', hallazgoData);

@@ -66,6 +66,8 @@ import { ModalExpedienteAuditoria } from './ModalExpedienteAuditoria';
 import { ModalNotasAuditoria } from './ModalNotasAuditoria';
 import { ModalHistorialAuditoria } from './ModalHistorialAuditoria';
 import { ModalAprobacionAuditoria } from './ModalAprobacionAuditoria';
+import { ModalSolicitarAmpliacionPlazo } from './ModalSolicitarAmpliacionPlazo';
+import { BandejaAmpliacionesPendientes } from './BandejaAmpliacionesPendientes';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
 import { ModalAsignarAuditorIndividual } from './ModalAsignarAuditorIndividual';
 import { ModalCambiarEstadoAuditoria } from './ModalCambiarEstadoAuditoria';
@@ -866,6 +868,7 @@ interface TarjetaAuditoriaProps {
   onEliminar: (aud: Auditoria) => void;
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO: Crear Plan de Mejoramiento
+  onSolicitarAmpliacion?: (aud: Auditoria) => void; // ← NUEVO: Solicitar ampliación de plazo
   colapsada?: boolean; // NUEVO: Estado de colapso
   onToggleColapso?: (id: string) => void; // NUEVO: Toggle colapso
 }
@@ -874,7 +877,8 @@ function TarjetaAuditoria({
   auditoria, 
   onVerDetalle, 
   onVerNotas, 
-  onVerHistorial, 
+  onVerHistorial,
+  onSolicitarAmpliacion, 
   onAprobar,
   onCambiarEstado,
   onAsignarAuditor,
@@ -1323,6 +1327,22 @@ function TarjetaAuditoria({
               </Button>
             )}
 
+            {/* Botón Solicitar Ampliación - Solo para auditorías en curso */}
+            {auditoria.estado === 'Ejecución' && onSolicitarAmpliacion && (
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSolicitarAmpliacion(auditoria);
+                }}
+                size="sm"
+                className="text-xs font-bold w-full mb-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+                variant="outline"
+              >
+                <Clock className="w-3 h-3 mr-1 flex-shrink-0" />
+                <span className="truncate">Solicitar Ampliación</span>
+              </Button>
+            )}
+
             {/* Menú de Acciones Horizontales - CONDICIONAL SEGÚN ESTADO */}
             <div className="flex items-center justify-between gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
               {/* Cambiar estado - DESHABILITADO en Finalizada */}
@@ -1544,6 +1564,7 @@ interface ColumnaKanbanProps {
   onEliminar: (aud: Auditoria) => void;
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO
+  onSolicitarAmpliacion?: (aud: Auditoria) => void; // ← NUEVO: Solicitar ampliación de plazo
   tarjetasColapsadas?: Set<string>; // ← NUEVO: Set de IDs de tarjetas colapsadas
   onToggleColapsoTarjeta?: (id: string) => void; // ← NUEVO: Toggle para tarjetas individuales
 }
@@ -1565,6 +1586,7 @@ function ColumnaKanban({
   onEliminar,
   onEditar,
   onCrearPlan,
+  onSolicitarAmpliacion,
   tarjetasColapsadas,
   onToggleColapsoTarjeta
 }: ColumnaKanbanProps) {
@@ -1736,6 +1758,7 @@ function ColumnaKanban({
               onCambiarEstado={onCambiarEstado}
               onAsignarAuditor={onAsignarAuditor}
               onEnviarAprobacion={onEnviarAprobacion}
+              onSolicitarAmpliacion={onSolicitarAmpliacion}
               onExportar={onExportar}
               onArchivar={onArchivar}
               onEliminar={onEliminar}
@@ -1782,6 +1805,8 @@ export function GestionAuditoriasKanbanSimple() {
   const [tipoAccionConfirmacion, setTipoAccionConfirmacion] = useState<'archivar' | 'eliminar'>('archivar');
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
+  const [modalSolicitarAmpliacionOpen, setModalSolicitarAmpliacionOpen] = useState(false);
+  const [bandejaAmpliacionesOpen, setBandejaAmpliacionesOpen] = useState(false);
 
   // Función para cargar auditorías desde la API
   const cargarAuditorias = async () => {
@@ -2034,8 +2059,33 @@ export function GestionAuditoriasKanbanSimple() {
     }
   };
 
+  // Handler para solicitar ampliación de plazo
+  const handleSolicitarAmpliacion = (auditoria: Auditoria) => {
+    // Validar que la auditoría esté en curso
+    if (auditoria.estado !== 'Ejecución') {
+      toast.error('Solo se pueden solicitar ampliaciones de plazo para auditorías en curso');
+      return;
+    }
+    setAuditoriaSeleccionada(auditoria);
+    setModalSolicitarAmpliacionOpen(true);
+  };
+
+  // Handler después de enviar solicitud de ampliación
+  const handleSolicitudAmpliacionEnviada = async () => {
+    await cargarAuditorias();
+  };
+
+  // Handler después de procesar solicitud (aprobar/rechazar)
+  const handleSolicitudAmpliacionProcesada = async () => {
+    await cargarAuditorias();
+  };
+
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
     console.log('Crear auditoría OCIG:', data);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2037',message:'handleCrearAuditoria called - recibiendo formData completo',data:{hasHitos:data.hitos?.length>0,hitosCount:data.hitos?.length||0,hitosData:JSON.stringify(data.hitos||[]),hasRecursos:data.recursos?.length>0,recursosCount:data.recursos?.length||0,recursosData:JSON.stringify(data.recursos||[]),hasProductosEsperados:data.productosEsperados?.length>0,productosCount:data.productosEsperados?.length||0,productosData:JSON.stringify(data.productosEsperados||[]),vinculadaPlanAnual:data.vinculadaPlanAnual,planAnualId:data.planAnualId,planAnualAño:data.planAnualAño,rolDecretoAsociado:data.rolDecretoAsociado,periodicidad:data.periodicidad,hallazgosCount:data.hallazgos?.length||0,hallazgosWithCausa:data.hallazgos?.filter(h=>h.causa).length||0,hallazgosWithEfecto:data.hallazgos?.filter(h=>h.efecto).length||0,auditorLider:data.auditorLider,auditorLiderType:typeof data.auditorLider,auditorAsignado:data.auditorAsignado,auditorAsignadoType:typeof data.auditorAsignado,supervisorAsignado:data.supervisorAsignado,supervisorAsignadoType:typeof data.supervisorAsignado,equipoAuditoresCount:data.equipoAuditores?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E,F'})}).catch(()=>{});
+    // #endregion
     
     try {
       // Validar fechas antes de enviar
@@ -2080,11 +2130,18 @@ export function GestionAuditoriasKanbanSimple() {
       if (data.nivelRiesgo) auditoriaData.nivelRiesgo = data.nivelRiesgo;
       
       // Mapear IDs de auditores
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2083',message:'Antes de mapear auditores - valores originales',data:{auditorLiderOriginal:data.auditorLider,auditorLiderType:typeof data.auditorLider,auditorAsignadoOriginal:data.auditorAsignado,auditorAsignadoType:typeof data.auditorAsignado,supervisorAsignadoOriginal:data.supervisorAsignado,supervisorAsignadoType:typeof data.supervisorAsignado},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      
       if (data.auditorLider) {
         const liderId = typeof data.auditorLider === 'string' && !isNaN(Number(data.auditorLider))
           ? parseInt(data.auditorLider, 10)
           : null;
         if (liderId && liderId > 0) auditoriaData.auditorLiderId = liderId;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2089',message:'Después de mapear auditorLider',data:{auditorLiderOriginal:data.auditorLider,liderIdParsed:liderId,auditorLiderIdAdded:!!auditoriaData.auditorLiderId,auditorLiderIdValue:auditoriaData.auditorLiderId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
       }
       
       if (data.auditorAsignado) {
@@ -2092,12 +2149,83 @@ export function GestionAuditoriasKanbanSimple() {
           ? parseInt(data.auditorAsignado, 10)
           : null;
         if (asignadoId && asignadoId > 0) auditoriaData.auditorAsignadoId = asignadoId;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2096',message:'Después de mapear auditorAsignado',data:{auditorAsignadoOriginal:data.auditorAsignado,asignadoIdParsed:asignadoId,auditorAsignadoIdAdded:!!auditoriaData.auditorAsignadoId,auditorAsignadoIdValue:auditoriaData.auditorAsignadoId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+      }
+
+      // Mapear Supervisor / Jefe OCI
+      if (data.supervisorAsignado) {
+        const supervisorId = typeof data.supervisorAsignado === 'string' && !isNaN(Number(data.supervisorAsignado))
+          ? parseInt(data.supervisorAsignado, 10)
+          : null;
+        if (supervisorId && supervisorId > 0) auditoriaData.supervisorAsignadoId = supervisorId;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2106',message:'Después de mapear supervisorAsignado',data:{supervisorAsignadoOriginal:data.supervisorAsignado,supervisorIdParsed:supervisorId,supervisorAsignadoIdAdded:!!auditoriaData.supervisorAsignadoId,supervisorAsignadoIdValue:auditoriaData.supervisorAsignadoId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
       }
 
       // Arrays - objetivos
       if (data.objetivos && data.objetivos.length > 0) {
         auditoriaData.objetivos = data.objetivos;
       }
+
+      // Periodicidad - guardar en programaAnualMetadata
+      if (data.periodicidad) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.periodicidad = data.periodicidad;
+      }
+
+      // Vinculación Plan Anual - guardar en programaAnualMetadata
+      if (data.vinculadaPlanAnual) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.vinculadaPlanAnual = data.vinculadaPlanAnual;
+        if (data.planAnualAño) {
+          auditoriaData.programaAnualMetadata.planAnualAño = data.planAnualAño;
+        }
+        if (data.planAnualId) {
+          auditoriaData.programaAnualMetadata.planAnualId = data.planAnualId;
+        }
+        if (data.rolDecretoAsociado) {
+          auditoriaData.programaAnualMetadata.rolDecretoAsociado = data.rolDecretoAsociado;
+        }
+      }
+
+      // Hitos - guardar en programaAnualMetadata
+      if (data.hitos && data.hitos.length > 0) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.hitos = data.hitos;
+      }
+
+      // Recursos - guardar en observaciones
+      if (data.recursos && data.recursos.length > 0) {
+        const recursosText = `Recursos requeridos:\n${data.recursos.map(r => 
+          `- ${r.tipo}: ${r.descripcion} (Cantidad: ${r.cantidad}${r.costo ? `, Costo: ${r.costo}` : ''})`
+        ).join('\n')}`;
+        auditoriaData.observacionesAdicionales = auditoriaData.observacionesAdicionales 
+          ? `${auditoriaData.observacionesAdicionales}\n\n${recursosText}`
+          : recursosText;
+      }
+
+      // Productos Esperados - guardar en observaciones
+      if (data.productosEsperados && data.productosEsperados.length > 0) {
+        const productosText = `Productos esperados:\n${data.productosEsperados.map(p => 
+          `- ${p.nombre}: ${p.descripcion} (Fecha entrega: ${p.fechaEntrega})`
+        ).join('\n')}`;
+        auditoriaData.observacionesAdicionales = auditoriaData.observacionesAdicionales 
+          ? `${auditoriaData.observacionesAdicionales}\n\n${productosText}`
+          : productosText;
+      }
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2159',message:'POST-FIX: Antes de enviar a API - auditoriaData mapeado',data:{auditoriaDataKeys:Object.keys(auditoriaData),hasProgramaAnualMetadata:!!auditoriaData.programaAnualMetadata,programaAnualMetadata:JSON.stringify(auditoriaData.programaAnualMetadata),hasPeriodicidad:!!auditoriaData.programaAnualMetadata?.periodicidad,periodicidadValue:auditoriaData.programaAnualMetadata?.periodicidad,hasVinculadaPlanAnual:!!auditoriaData.programaAnualMetadata?.vinculadaPlanAnual,vinculadaPlanAnualValue:auditoriaData.programaAnualMetadata?.vinculadaPlanAnual,hasPlanAnualAño:!!auditoriaData.programaAnualMetadata?.planAnualAño,planAnualAñoValue:auditoriaData.programaAnualMetadata?.planAnualAño,hasRolDecreto:!!auditoriaData.programaAnualMetadata?.rolDecretoAsociado,rolDecretoValue:auditoriaData.programaAnualMetadata?.rolDecretoAsociado,hasHitos:!!auditoriaData.programaAnualMetadata?.hitos,hitosCount:auditoriaData.programaAnualMetadata?.hitos?.length||0,hasRecursos:auditoriaData.observacionesAdicionales?.includes('Recursos requeridos'),hasProductosEsperados:auditoriaData.observacionesAdicionales?.includes('Productos esperados'),hasAuditorLiderId:!!auditoriaData.auditorLiderId,hasAuditorAsignadoId:!!auditoriaData.auditorAsignadoId,hasSupervisorAsignadoId:!!auditoriaData.supervisorAsignadoId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A,B,C,E,F'})}).catch(()=>{});
+      // #endregion
 
       console.log('[handleCrearAuditoria] Datos de auditoría a enviar:', auditoriaData);
 
@@ -2153,13 +2281,22 @@ export function GestionAuditoriasKanbanSimple() {
           }
 
           // Mapear datos al formato que espera el DTO del backend
+          // Construir descripción completa incluyendo causa y efecto si existen
+          let descripcionCompleta = hallazgoForm.descripcion;
+          if (hallazgoForm.causa) {
+            descripcionCompleta += `\n\nCAUSA:\n${hallazgoForm.causa}`;
+          }
+          if (hallazgoForm.efecto) {
+            descripcionCompleta += `\n\nEFECTO:\n${hallazgoForm.efecto}`;
+          }
+
           const hallazgoData: any = {
             // Campos requeridos
             categoria: 'borrador' as const, // HallazgoCategoria: 'critico' | 'controversia' | 'borrador'
             area: data.areaObjetivo || 'No especificada', // Campo requerido
             auditoria: auditoriaCreada.codigo || auditoriaCreada.nombre, // Campo requerido - código de la auditoría
             auditoriaId: auditoriaCreada.id, // Opcional pero recomendado
-            descripcion: hallazgoForm.descripcion, // Campo requerido
+            descripcion: descripcionCompleta, // Campo requerido - ahora incluye causa y efecto
             criterioIncumplido: hallazgoForm.criterio, // Campo requerido
             fechaDeteccion: hallazgoForm.fechaIdentificacion || new Date().toISOString().split('T')[0], // Campo requerido
             
@@ -2170,7 +2307,16 @@ export function GestionAuditoriasKanbanSimple() {
             
             // Recomendaciones como array
             recomendaciones: hallazgoForm.recomendacion ? [hallazgoForm.recomendacion] : [],
+            
+            // Guardar causa y efecto en observaciones si existe el campo
+            observacionesControversia: (hallazgoForm.causa || hallazgoForm.efecto) 
+              ? `CAUSA: ${hallazgoForm.causa || 'No especificada'}\n\nEFECTO: ${hallazgoForm.efecto || 'No especificado'}`
+              : undefined,
           };
+
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2168',message:'POST-FIX: Datos de hallazgo antes de enviar',data:{hasCausa:!!hallazgoForm.causa,causa:hallazgoForm.causa,hasEfecto:!!hallazgoForm.efecto,efecto:hallazgoForm.efecto,hasRecomendacion:!!hallazgoForm.recomendacion,descripcionIncludesCausa:hallazgoData.descripcion.includes('CAUSA:'),descripcionIncludesEfecto:hallazgoData.descripcion.includes('EFECTO:'),hasObservacionesControversia:!!hallazgoData.observacionesControversia,hallazgoDataKeys:Object.keys(hallazgoData)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
 
           console.log('[handleCrearAuditoria] Datos del hallazgo a enviar:', hallazgoData);
 
@@ -2818,8 +2964,19 @@ export function GestionAuditoriasKanbanSimple() {
             </p>
           </div>
 
-          {/* Botones de Vista + Tooltip */}
+          {/* Botones de Vista + Tooltip + Bandeja Ampliaciones */}
           <div className="flex items-center gap-2">
+            {/* Botón Bandeja de Ampliaciones Pendientes (solo para Jefe OCI) */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBandejaAmpliacionesOpen(true)}
+              className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+              title="Ver solicitudes de ampliación de plazo pendientes"
+            >
+              <Clock className="w-4 h-4" />
+              <span className="hidden sm:inline">Ampliaciones</span>
+            </Button>
             <TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['auditorias-kanban']} />
           </div>
         </div>
@@ -2958,6 +3115,7 @@ export function GestionAuditoriasKanbanSimple() {
                     onEliminar={handleEliminar}
                     onCrearPlan={handleCrearPlan}
                     onEditar={handleEditarAuditoria}
+                    onSolicitarAmpliacion={handleSolicitarAmpliacion}
                     tarjetasColapsadas={tarjetasColapsadas}
                     onToggleColapsoTarjeta={toggleTarjetaColapsada}
                   />
@@ -3362,6 +3520,19 @@ export function GestionAuditoriasKanbanSimple() {
                         <Edit className="w-4 h-4" />
                         Editar
                       </Button>
+                      {/* Botón Solicitar Ampliación - Solo para auditorías en curso */}
+                      {auditoria.estado === 'Ejecución' && (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="gap-2 text-orange-600 hover:text-orange-700 border-orange-300 hover:bg-orange-50" 
+                          onClick={() => handleSolicitarAmpliacion(auditoria)}
+                          title="Solicitar ampliación de plazo"
+                        >
+                          <Clock className="w-4 h-4" />
+                          Ampliar Plazo
+                        </Button>
+                      )}
                       <Button size="sm" variant="outline" className="gap-2" onClick={() => handleCambiarEstado(auditoria)} title="Cambiar estado">
                         <RefreshCw className="w-4 h-4" />
                       </Button>
@@ -3584,6 +3755,24 @@ export function GestionAuditoriasKanbanSimple() {
           auditoria={auditoriaSeleccionada}
           tipoAccion={tipoAccionConfirmacion}
           onConfirmar={handleConfirmarAccion}
+        />
+
+        {/* MODAL SOLICITAR AMPLIACIÓN DE PLAZO */}
+        <ModalSolicitarAmpliacionPlazo
+          auditoria={auditoriaSeleccionada}
+          open={modalSolicitarAmpliacionOpen}
+          onClose={() => {
+            setModalSolicitarAmpliacionOpen(false);
+            setAuditoriaSeleccionada(null);
+          }}
+          onSolicitudEnviada={handleSolicitudAmpliacionEnviada}
+        />
+
+        {/* BANDEJA DE AMPLIACIONES PENDIENTES */}
+        <BandejaAmpliacionesPendientes
+          open={bandejaAmpliacionesOpen}
+          onClose={() => setBandejaAmpliacionesOpen(false)}
+          onSolicitudProcesada={handleSolicitudAmpliacionProcesada}
         />
       </div>
     </DndProvider>

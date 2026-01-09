@@ -144,6 +144,10 @@ export class CreateAuditoriaDto {
   @IsString({ each: true })
   @IsOptional()
   equipoAuditores?: string[];
+
+  // Metadata del programa anual (periodicidad, vinculación, hitos, etc.)
+  @IsOptional()
+  programaAnualMetadata?: any;
 }
 
 

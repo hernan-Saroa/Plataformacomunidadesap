@@ -31,7 +31,10 @@ VALUES
   (18, '93345678', 'CC', 'Miguel Ángel Sánchez', 'Miguel Ángel', 'Sánchez', 'M', 'miguel.sanchez@esap.edu.co'),
   (19, '29456789', 'CC', 'Gloria Stella Morales', 'Gloria Stella', 'Morales', 'F', 'gloria.morales@esap.edu.co'),
   (20, '74567890', 'CC', 'Héctor Fabio Mejía', 'Héctor Fabio', 'Mejía', 'M', 'hector.mejia@esap.edu.co'),
-  (21, '38678901', 'CC', 'Carolina Jiménez Ospina', 'Carolina', 'Jiménez Ospina', 'F', 'carolina.jimenez@esap.edu.co')
+  (21, '38678901', 'CC', 'Carolina Jiménez Ospina', 'Carolina', 'Jiménez Ospina', 'F', 'carolina.jimenez@esap.edu.co'),
+  -- Usuarios de Control Interno
+  (22, '123456794', 'CC', 'Jefe Control Interno', 'Jefe', 'Control Interno', 'M', 'jefe.control@esap.edu.co'),
+  (23, '123456795', 'CC', 'Auditor Líder', 'Auditor', 'Líder', 'M', 'auditor.lider@esap.edu.co')
 ON CONFLICT (id_tercero) DO NOTHING;
 
 
@@ -219,7 +222,7 @@ FROM (VALUES
 ('aspirants.convert_to_student', 'Convertir a Estudiante', 'Matricular aspirante como estudiante', 'aspirants'),
 
 -- ==========================================================================
--- 10. CONTROL INTERNO (11 permisos)
+-- 10. CONTROL INTERNO (15 permisos)
 -- ==========================================================================
 ('control.view_audits', 'Ver Auditorías', 'Consultar auditorías registradas', 'control'),
 ('control.create_audit', 'Crear Auditoría', 'Registrar nueva auditoría', 'control'),
@@ -232,6 +235,10 @@ FROM (VALUES
 ('control.create_action_plan', 'Crear Plan de Acción', 'Generar nuevo plan de mejora', 'control'),
 ('control.export', 'Exportar Datos', 'Descargar reportes de control', 'control'),
 ('control.view_dashboard', 'Ver Dashboard', 'Consultar métricas de control interno', 'control'),
+('control.request_extension', 'Solicitar Ampliación de Plazo', 'Solicitar ampliación de plazo de auditoría en curso', 'control'),
+('control.approve_extension', 'Aprobar Ampliación de Plazo', 'Autorizar ampliación de plazo de auditoría (solo Jefe OCI o Admin)', 'control'),
+('control.view_extensions', 'Ver Solicitudes de Ampliación', 'Consultar solicitudes de ampliación de plazo', 'control'),
+('control.view_extension_history', 'Ver Historial de Ampliaciones', 'Consultar historial completo de ampliaciones de plazo', 'control'),
 
 -- ==========================================================================
 -- 11. DASHBOARD EJECUTIVO (25 permisos)
@@ -538,7 +545,10 @@ VALUES
   ('660e8400-e29b-41d4-a716-446655440007', 'COORDINADOR_REGIONAL',    'Coordinador Regional',               'Gestión de operaciones en sedes regionales',                     'directivo',      'Building2', '#0891b2'),
   ('660e8400-e29b-41d4-a716-446655440013', 'DIRECTIVO',               'Directivo',                          'Personal directivo de la institución',                           'directivo',      'Briefcase', '#f97316'),
   ('660e8400-e29b-41d4-a716-446655440014', 'DIR_TERRITORIAL',         'Director Territorial',               'Dirección de territoriales y sedes regionales',                  'directivo',      'Briefcase', '#f97316'),
-  ('660e8400-e29b-41d4-a716-446655440015', 'COORDINADOR_CERT_LABORAL','Coordinador Certificados Laborales', 'Gestión de certificados laborales',                              'directivo',      'Briefcase', '#f97316')
+  ('660e8400-e29b-41d4-a716-446655440015', 'COORDINADOR_CERT_LABORAL','Coordinador Certificados Laborales', 'Gestión de certificados laborales',                              'directivo',      'Briefcase', '#f97316'),
+  ('660e8400-e29b-41d4-a716-446655440016', 'JEFE_CONTROL_INTERNO',    'Jefe de Control Interno',            'Jefe de Oficina de Control Interno con autoridad para aprobar ampliaciones de plazo de auditorías', 'directivo', 'Shield', '#dc2626'),
+  -- Control Interno
+  ('660e8400-e29b-41d4-a716-446655440017', 'AUDITOR_LIDER',           'Auditor Líder',                      'Auditor líder responsable de ejecutar auditorías y solicitar ampliaciones de plazo', 'administrativo', 'FileCheck', '#f97316')
 ON CONFLICT (code) DO NOTHING;
 
 
@@ -568,7 +578,10 @@ VALUES
   ('88a31661-19ec-43a5-8312-62fd5d5a43f1', 'miguel.sanchez@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 18),
   ('ed905ae3-0dd9-4e28-acb1-81897416f59c', 'gloria.morales@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 19),
   ('c4cd6c30-e096-4d55-ac83-5bcda4b145f7', 'hector.mejia@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 20),
-  ('1d069f45-aae1-4176-ab03-55476e950a19', 'carolina.jimenez@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 21)
+  ('1d069f45-aae1-4176-ab03-55476e950a19', 'carolina.jimenez@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 21),
+  -- Usuarios de Control Interno
+  ('770e8400-e29b-41d4-a716-446655440007', 'jefe.control@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 22),
+  ('770e8400-e29b-41d4-a716-446655440008', 'auditor.lider@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 23)
 ON CONFLICT (id_user) DO NOTHING;
 
 -- ============================================
@@ -599,6 +612,45 @@ CROSS JOIN auth.permission p
 WHERE r.code = 'ADMIN'
 ON CONFLICT (id_rol, id_permission) DO NOTHING;
 
+-- ============================================
+-- ASIGNACIÓN DE PERMISOS A ROLES DE CONTROL INTERNO
+-- ============================================
+
+-- Asignar permisos al rol AUDITOR_LIDER
+INSERT INTO auth.role_permissions (id_rol, id_permission)
+SELECT r.id, p.id_permission
+FROM auth.role r
+JOIN auth.permission p ON p.code IN (
+  'control.view_audits',
+  'control.edit_audit',
+  'control.view_findings',
+  'control.create_finding',
+  'control.view_action_plans',
+  'control.request_extension',
+  'control.view_extensions',
+  'control.view_extension_history',
+  'control.view_dashboard',
+  'system.access_backoffice'
+)
+WHERE r.code = 'AUDITOR_LIDER'
+ON CONFLICT (id_rol, id_permission) DO NOTHING;
+
+-- Asignar TODOS los permisos de control interno al rol JEFE_CONTROL_INTERNO
+INSERT INTO auth.role_permissions (id_rol, id_permission)
+SELECT r.id, p.id_permission
+FROM auth.role r
+JOIN auth.permission p ON p.code LIKE 'control.%'
+WHERE r.code = 'JEFE_CONTROL_INTERNO'
+ON CONFLICT (id_rol, id_permission) DO NOTHING;
+
+-- Asignar también acceso al backoffice al JEFE_CONTROL_INTERNO
+INSERT INTO auth.role_permissions (id_rol, id_permission)
+SELECT r.id, p.id_permission
+FROM auth.role r
+JOIN auth.permission p ON p.code = 'system.access_backoffice'
+WHERE r.code = 'JEFE_CONTROL_INTERNO'
+ON CONFLICT (id_rol, id_permission) DO NOTHING;
+
 -- Asignar roles base a los usuarios principales
 INSERT INTO auth.user_roles (id_user, id_rol)
 SELECT u.id_user, r.id
@@ -610,5 +662,7 @@ JOIN auth.role r
     OR (u.username IN ('planta@esap.edu.co',
                        'catedra@esap.edu.co')   AND r.code = 'DOCENTE')
     OR (u.username = 'cerlaboral@esap.edu.co'   AND r.code = 'COORDINADOR_CERT_LABORAL')
+    OR (u.username = 'jefe.control@esap.edu.co' AND r.code = 'JEFE_CONTROL_INTERNO')
+    OR (u.username = 'auditor.lider@esap.edu.co' AND r.code = 'AUDITOR_LIDER')
   )
 ON CONFLICT (id_user, id_rol) DO NOTHING;

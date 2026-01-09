@@ -1248,10 +1248,11 @@ function VistaLista({
             {/* Info principal */}
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <Badge variant="default" size="sm">
+                <Badge key={`codigo-${aud.id}`} variant="default" size="sm">
                   {aud.codigo}
                 </Badge>
                 <Badge 
+                  key={`tipo-${aud.id}`}
                   variant={aud.tipo === 'Sede' ? 'info' : 'success'} 
                   size="sm"
                 >
@@ -1259,6 +1260,7 @@ function VistaLista({
                   <span className="ml-1">{aud.tipo}</span>
                 </Badge>
                 <Badge 
+                  key={`estado-${aud.id}`}
                   variant={
                     aud.estadoPrograma === 'Aprobado' ? 'success' :
                     aud.estadoPrograma === 'Pendiente Aprobación' ? 'warning' :
@@ -1305,13 +1307,13 @@ function VistaLista({
                 Inicio: {MESES[aud.mesInicio]} Semana {aud.semanaInicio}
               </div>
               <div className="flex items-center gap-2 text-xs">
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                <span key={`planeacion-${aud.id}`} className="px-2 py-1 bg-blue-100 text-blue-700 rounded">
                   P: {aud.fases.planeacion.duracionDias}d
                 </span>
-                <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
+                <span key={`ejecucion-${aud.id}`} className="px-2 py-1 bg-green-100 text-green-700 rounded">
                   E: {aud.fases.ejecucion.duracionDias}d
                 </span>
-                <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded">
+                <span key={`comunicacion-${aud.id}`} className="px-2 py-1 bg-purple-100 text-purple-700 rounded">
                   C: {aud.fases.comunicacion.duracionDias}d
                 </span>
               </div>

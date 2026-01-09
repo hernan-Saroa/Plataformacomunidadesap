@@ -190,15 +190,15 @@ export class Auditoria {
   @Column({ name: 'actividades_pendientes', type: 'integer', default: 0 })
   actividadesPendientes: number;
 
-  // Foreign Keys a auth.personas
-  @Column({ name: 'auditor_lider_id', type: 'uuid', nullable: true })
-  auditorLiderId?: string | null;
+  // Foreign Keys a auth.personas (ID_TERCERO es NUMERIC/BIGINT, no UUID)
+  @Column({ name: 'auditor_lider_id', type: 'bigint', nullable: true })
+  auditorLiderId?: number | null;
 
-  @Column({ name: 'auditor_asignado_id', type: 'uuid', nullable: true })
-  auditorAsignadoId?: string | null;
+  @Column({ name: 'auditor_asignado_id', type: 'bigint', nullable: true })
+  auditorAsignadoId?: number | null;
 
-  @Column({ name: 'supervisor_asignado_id', type: 'uuid', nullable: true })
-  supervisorAsignadoId?: string | null;
+  @Column({ name: 'supervisor_asignado_id', type: 'bigint', nullable: true })
+  supervisorAsignadoId?: number | null;
 
   // Campos adicionales del formulario
   @Column({ type: 'text', nullable: true })
