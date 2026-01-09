@@ -1697,9 +1697,9 @@ function ColumnaKanban({
 
   // Versión expandida normal
   return (
-    <div className="flex-shrink-0" style={{ width: '320px' }}>
+    <Card className="flex-shrink-0 flex flex-col" style={{ width: '320px', height: 'calc(100vh - 250px)' }}>
       {/* Header Columna - ESTILO DISCIPLINARIO EXACTO */}
-      <div className="p-4 border-b bg-gray-50 sticky top-0 z-10">
+      <div className="p-4 border-b bg-gray-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2 flex-1">
             <div className="p-2 rounded-lg bg-white border border-gray-200">
@@ -1739,10 +1739,10 @@ function ColumnaKanban({
       {/* Lista de Tarjetas */}
       <div
         ref={drop}
-        className={`p-3 space-y-3 overflow-y-auto ${isOver ? 'bg-blue-50' : ''}`}
+        className={`p-3 space-y-3 overflow-y-auto flex-1 ${isOver ? 'bg-blue-50' : ''}`}
         style={{ 
-          minHeight: 'calc(100vh - 280px)',
-          maxHeight: 'calc(100vh - 280px)'
+          minHeight: 0,
+          maxHeight: '100%'
         }}
       >
         <AnimatePresence>
@@ -1769,14 +1769,14 @@ function ColumnaKanban({
         </AnimatePresence>
 
         {auditorias.length === 0 && (
-          <Card className="p-6 border-dashed border-2 border-gray-200">
+          <div className="p-6 border-dashed border-2 border-gray-200 rounded-lg">
             <p className="text-sm text-gray-400 text-center">
               No hay auditorías en esta etapa
             </p>
-          </Card>
+          </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -1858,6 +1858,16 @@ export function GestionAuditoriasKanbanSimple() {
       // Mapear datos del backend al formato esperado por el frontend
       const añoActual = new Date().getFullYear();
       const auditoriasMapeadas: Auditoria[] = auditoriasData.map((aud: any) => {
+        // 📅 LOG: Ver fechas RAW del backend
+        console.log('📅 [GestionAuditoriasKanbanSimple] Auditoria del backend:', {
+          id: aud.id,
+          codigo: aud.codigo,
+          fechaInicio: aud.fechaInicio,
+          fechaFin: aud.fechaFin,
+          tipoFechaInicio: typeof aud.fechaInicio,
+          tipoFechaFin: typeof aud.fechaFin,
+        });
+        
         // #region agent log
         fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:1835',message:'Mapping auditoria from backend',data:{id:aud.id,codigo:aud.codigo,auditorLiderRaw:aud.auditorLider,auditorLiderId:aud.auditorLiderId,hasAuditorLider:!!aud.auditorLider,auditorLiderType:typeof aud.auditorLider,equipoAuditores:aud.equipoAuditores},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
@@ -3090,7 +3100,7 @@ export function GestionAuditoriasKanbanSimple() {
         {/* VISTA KANBAN */}
         {vistaActiva === 'kanban' && (
           <div className="overflow-x-auto pb-4">
-            <div className="flex gap-4 min-w-max">
+            <div className="flex gap-4 min-w-max" style={{ alignItems: 'flex-start' }}>
               {COLUMNAS_KANBAN.map((columna) => {
                 const auditoriasColumna = auditoriasFiltradas.filter(
                   (aud) => aud.estado === columna.id

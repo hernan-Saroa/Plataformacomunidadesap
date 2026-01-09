@@ -23,6 +23,7 @@ import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner@2.0.3';
 import { auditoriasApi } from './services/api';
+import { debugAuthToken } from './services/authDebug';
 
 // ============ TIPOS ============
 
@@ -69,163 +70,71 @@ export function ModalSolicitarAmpliacionPlazo({
 
   if (!auditoria) return null;
 
-  // Función helper para parsear fechas de diferentes formatos
-  // IMPORTANTE: Maneja correctamente las fechas para evitar problemas de zona horaria
-  const parsearFecha = (fecha: string | Date): Date | null => {
-    if (!fecha) return null;
+  // Función helper para parsear fechas ISO correctamente
+  // IMPORTANTE: Las fechas pueden venir en formato YYYY-MM-DD o DD/MM/YYYY
+  // Debemos parsearlas como fecha local, NO como UTC
+  const parsearFechaISO = (fechaStr: string): Date => {
     
-    // Si ya es un Date válido
-    if (fecha instanceof Date && !isNaN(fecha.getTime())) {
-      return fecha;
-    }
-    
-    // Si es string, intentar parsear
-    if (typeof fecha === 'string') {
-      // Primero intentar formato DD/MM/YYYY (formato común en Colombia)
-      const partesSlash = fecha.split('/');
-      if (partesSlash.length === 3) {
-        const dia = parseInt(partesSlash[0], 10);
-        const mes = parseInt(partesSlash[1], 10) - 1; // Mes es 0-indexed
-        const año = parseInt(partesSlash[2], 10);
-        
-        if (!isNaN(dia) && !isNaN(mes) && !isNaN(año) && mes >= 0 && mes <= 11) {
-          // Crear fecha en zona horaria local para evitar desfases
-          const date = new Date(año, mes, dia);
-          if (!isNaN(date.getTime())) {
-            return date;
-          }
-        }
-      }
+    // Manejar formato DD/MM/YYYY (usado por el backend colombiano)
+    if (fechaStr.includes('/')) {
+      const partes = fechaStr.split('/');
       
-      // Intentar formato ISO (YYYY-MM-DD) - IMPORTANTE: parsear como fecha local
-      if (fecha.includes('-')) {
-        const partesISO = fecha.split('-');
-        if (partesISO.length === 3) {
-          const año = parseInt(partesISO[0], 10);
-          const mes = parseInt(partesISO[1], 10) - 1; // Mes es 0-indexed
-          const dia = parseInt(partesISO[2], 10);
-          
-          if (!isNaN(año) && !isNaN(mes) && !isNaN(dia) && mes >= 0 && mes <= 11) {
-            // Crear fecha en zona horaria local para evitar desfases de UTC
-            const date = new Date(año, mes, dia);
-            if (!isNaN(date.getTime())) {
-              return date;
-            }
-          }
-        }
+      if (partes.length === 3) {
+        const dia = parseInt(partes[0], 10);
+        const mes = parseInt(partes[1], 10) - 1; // Mes es 0-indexed en JavaScript
+        const año = parseInt(partes[2], 10);
         
-        // Si no es formato YYYY-MM-DD simple, intentar parseo directo
-        const date = new Date(fecha);
-        if (!isNaN(date.getTime())) {
-          return date;
-        }
-      }
-      
-      // Como último recurso, intentar parseo directo
-      const date = new Date(fecha);
-      if (!isNaN(date.getTime())) {
-        return date;
+        // Crear fecha en zona horaria local (sin conversión UTC)
+        const fecha = new Date(año, mes, dia);
+        
+        return fecha;
       }
     }
     
-    return null;
+    // Manejar formato YYYY-MM-DD (formato ISO estándar)
+    if (fechaStr.includes('-')) {
+      const partes = fechaStr.split('T')[0].split('-'); // Tomar solo la parte de fecha si viene con tiempo
+      
+      if (partes.length === 3) {
+        const año = parseInt(partes[0], 10);
+        const mes = parseInt(partes[1], 10) - 1; // Mes es 0-indexed en JavaScript
+        const dia = parseInt(partes[2], 10);
+        
+        // Crear fecha en zona horaria local (sin conversión UTC)
+        const fecha = new Date(año, mes, dia);
+        
+        return fecha;
+      }
+    }
+    
+    console.error('❌ [parsearFechaISO] Formato no reconocido:', fechaStr);
+    return new Date(NaN); // Fecha inválida
   };
 
-  // Calcular fechas límite con validación
-  const fechaFinActualParsed = parsearFecha(auditoria.fechaFin);
-  const fechaInicioParsed = parsearFecha(auditoria.fechaInicio);
-  
-  // Si las fechas no son válidas, mostrar error
-  if (!fechaFinActualParsed || !fechaInicioParsed) {
-    return (
-      <AnimatePresence>
-        {open && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-[110]"
-              onClick={onClose}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-[111] flex items-center justify-center p-4"
-            >
-              <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md">
-                <div className="flex items-center gap-3 mb-4">
-                  <AlertTriangle className="w-6 h-6 text-red-600" />
-                  <h3 className="text-lg font-bold text-gray-900">Error de Fechas</h3>
-                </div>
-                <p className="text-sm text-gray-600 mb-4">
-                  No se pudieron cargar las fechas de la auditoría. Por favor, verifique que la auditoría tenga fechas válidas.
-                </p>
-                <Button onClick={onClose} className="w-full">
-                  Cerrar
-                </Button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    );
-  }
-  
-  const fechaFinActual = fechaFinActualParsed;
-  const fechaInicio = fechaInicioParsed;
-  
-  // Validar que fecha fin sea posterior a fecha inicio
-  if (fechaFinActual < fechaInicio) {
-    return (
-      <AnimatePresence>
-        {open && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-[110]"
-              onClick={onClose}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-[111] flex items-center justify-center p-4"
-            >
-              <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md">
-                <div className="flex items-center gap-3 mb-4">
-                  <AlertTriangle className="w-6 h-6 text-red-600" />
-                  <h3 className="text-lg font-bold text-gray-900">Error en Fechas de la Auditoría</h3>
-                </div>
-                <p className="text-sm text-gray-600 mb-2">
-                  La fecha de finalización ({fechaFinActual.toLocaleDateString('es-CO')}) es anterior a la fecha de inicio ({fechaInicio.toLocaleDateString('es-CO')}).
-                </p>
-                <p className="text-sm text-gray-600 mb-4">
-                  Por favor, corrija las fechas de la auditoría antes de solicitar una ampliación de plazo.
-                </p>
-                <Button onClick={onClose} className="w-full">
-                  Cerrar
-                </Button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    );
-  }
+  // Función helper para formatear Date a string YYYY-MM-DD SIN conversión UTC
+  const formatearFechaLocal = (fecha: Date): string => {
+    const año = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    return `${año}-${mes}-${dia}`;
+  };
+
+  // Parsear fechas de la auditoría
+  const fechaInicio = parsearFechaISO(auditoria.fechaInicio);
+  const fechaFinActual = parsearFechaISO(auditoria.fechaFin);
   
   // Fecha mínima: día siguiente a fecha fin actual
   const fechaMinima = new Date(fechaFinActual);
   fechaMinima.setDate(fechaMinima.getDate() + 1);
-  const fechaMinimaStr = fechaMinima.toISOString().split('T')[0];
+  const fechaMinimaStr = formatearFechaLocal(fechaMinima);
   
   // Fecha máxima: 1 año desde fecha inicio
   const fechaMaxima = new Date(fechaInicio);
   fechaMaxima.setFullYear(fechaMaxima.getFullYear() + 1);
-  const fechaMaximaStr = fechaMaxima.toISOString().split('T')[0];
+  const fechaMaximaStr = formatearFechaLocal(fechaMaxima);
+  
+  // ⚠️ VALIDACIÓN: Verificar que haya rango válido de fechas
+  const rangoValido = fechaMinima <= fechaMaxima;
 
   // Validar formulario
   const validarFormulario = (): boolean => {
@@ -271,6 +180,18 @@ export function ModalSolicitarAmpliacionPlazo({
 
     setEnviando(true);
     try {
+      // Verificar que existe token de autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      
+      if (!token) {
+        toast.error('❌ Error de autenticación', {
+          description: 'No se encontró token de autenticación. Por favor, inicia sesión nuevamente.'
+        });
+        setEnviando(false);
+        return;
+      }
+
+
       const response = await auditoriasApi.solicitarAmpliacionPlazo(auditoria.id, {
         nuevaFechaFin,
         justificacion: justificacion.trim()
@@ -281,11 +202,24 @@ export function ModalSolicitarAmpliacionPlazo({
         onSolicitudEnviada();
         handleClose();
       } else {
-        throw new Error(response.error || 'Error al enviar la solicitud');
+        // Mostrar el mensaje de error específico del backend
+        const errorMsg = response.error || 'Error al enviar la solicitud';
+        
+        // Si es error de autenticación, sugerir reiniciar sesión
+        if ((response as any).statusCode === 401) {
+          toast.error('❌ Sesión expirada', {
+            description: errorMsg + ' Recarga la página para iniciar sesión nuevamente.',
+            duration: 5000
+          });
+        } else {
+          toast.error('❌ Error al enviar solicitud', {
+            description: errorMsg
+          });
+        }
       }
     } catch (error) {
       console.error('Error al solicitar ampliación de plazo:', error);
-      toast.error('Error al enviar solicitud', {
+      toast.error('❌ Error al enviar solicitud', {
         description: error instanceof Error ? error.message : 'No se pudo enviar la solicitud de ampliación'
       });
     } finally {
@@ -391,16 +325,36 @@ export function ModalSolicitarAmpliacionPlazo({
                 </div>
 
                 {/* Alerta de validación */}
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <div className={`border rounded-lg p-4 ${
+                  rangoValido 
+                    ? 'bg-amber-50 border-amber-200' 
+                    : 'bg-red-50 border-red-200'
+                }`}>
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1 text-sm text-amber-900">
-                      <p className="font-semibold mb-1">Restricciones de ampliación:</p>
-                      <ul className="list-disc list-inside space-y-1 text-amber-800">
-                        <li>La nueva fecha debe ser posterior a la fecha actual de finalización</li>
-                        <li>El plazo ampliado no puede exceder 1 año desde la fecha de inicio</li>
-                        <li>La justificación debe tener al menos 20 caracteres</li>
-                      </ul>
+                    <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                      rangoValido ? 'text-amber-600' : 'text-red-600'
+                    }`} />
+                    <div className="flex-1 text-sm">
+                      {rangoValido ? (
+                        <>
+                          <p className="font-semibold mb-1 text-amber-900">Restricciones de ampliación:</p>
+                          <ul className="list-disc list-inside space-y-1 text-amber-800">
+                            <li>La nueva fecha debe ser posterior a la fecha actual de finalización</li>
+                            <li>El plazo ampliado no puede exceder 1 año desde la fecha de inicio</li>
+                            <li>La justificación debe tener al menos 20 caracteres</li>
+                          </ul>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-semibold mb-1 text-red-900">⚠️ No es posible solicitar ampliación</p>
+                          <p className="text-red-800">
+                            Esta auditoría ya ha alcanzado el plazo máximo permitido (1 año desde la fecha de inicio). 
+                            La fecha fin actual ({fechaFinActual.toLocaleDateString('es-CO')}) está a solo{' '}
+                            {Math.max(0, Math.floor((fechaMaxima.getTime() - fechaFinActual.getTime()) / (1000 * 60 * 60 * 24)))}{' '}
+                            día(s) del límite máximo ({fechaMaxima.toLocaleDateString('es-CO')}).
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -412,23 +366,26 @@ export function ModalSolicitarAmpliacionPlazo({
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Nueva Fecha de Finalización <span className="text-red-500">*</span>
                     </label>
-                    <div className="relative">
-                      <input
-                        type="date"
-                        value={nuevaFechaFin}
-                        onChange={(e) => {
-                          setNuevaFechaFin(e.target.value);
-                          setErrores(prev => ({ ...prev, nuevaFechaFin: undefined }));
-                        }}
-                        min={fechaMinimaStr}
-                        max={fechaMaximaStr}
-                        disabled={enviando}
-                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${
-                          errores.nuevaFechaFin ? 'border-red-500' : 'border-gray-300'
-                        } disabled:bg-gray-100 disabled:cursor-not-allowed`}
-                      />
-                      <Calendar className="absolute right-3 top-2.5 w-5 h-5 text-gray-400 pointer-events-none" />
-                    </div>
+                    <input
+                      type="date"
+                      value={nuevaFechaFin}
+                      onChange={(e) => {
+                        setNuevaFechaFin(e.target.value);
+                        setErrores(prev => ({ ...prev, nuevaFechaFin: undefined }));
+                      }}
+                      min={fechaMinimaStr}
+                      max={fechaMaximaStr}
+                      disabled={enviando || !rangoValido}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${
+                        errores.nuevaFechaFin ? 'border-red-500' : 'border-gray-300'
+                      } disabled:bg-gray-100 disabled:cursor-not-allowed`}
+                    />
+                    {!rangoValido && (
+                      <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        No se puede seleccionar ninguna fecha. El plazo máximo ya fue alcanzado.
+                      </p>
+                    )}
                     {errores.nuevaFechaFin && (
                       <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                         <AlertCircle className="w-3 h-3" />
@@ -441,13 +398,15 @@ export function ModalSolicitarAmpliacionPlazo({
                         Ampliación de {diasAmpliacion} día{diasAmpliacion !== 1 ? 's' : ''}
                       </p>
                     )}
-                    <p className="text-xs text-gray-500 mt-1">
-                      Fecha límite máxima: {new Date(fechaMaximaStr).toLocaleDateString('es-CO', {
-                        day: '2-digit',
-                        month: 'long',
-                        year: 'numeric'
-                      })}
-                    </p>
+                    {rangoValido && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Fecha límite máxima: {fechaMaxima.toLocaleDateString('es-CO', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric'
+                        })}
+                      </p>
+                    )}
                   </div>
 
                   {/* Justificación */}

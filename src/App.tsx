@@ -194,7 +194,10 @@ export default function App() {
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
         : [];
       const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
+                            roles.includes('CONTROL_DISCIPLINARIO') ||
+                            roles.includes('JEFE_CONTROL_INTERNO') ||
+                            roles.includes('AUDITOR_LIDER');
       const emailLower = userEmail.toLowerCase();
 
       let nextView: Vista = 'portal';
@@ -212,8 +215,17 @@ export default function App() {
         nextView = 'backoffice';
         nextCurrentView = 'backoffice';
         nextUserType = 'administrativo';
-        module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' : 'control-interno';
-        portalRoles.push('Coordinador de Certificados Laborales');
+        
+        // Determinar módulo específico según el rol
+        if (roles.includes('COORDINADOR_CERT_LABORAL')) {
+          module = 'certificados-laborales';
+        } else if (roles.includes('CONTROL_DISCIPLINARIO')) {
+          module = 'control-disciplinario';
+        } else if (roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER')) {
+          module = 'control-interno';
+        }
+        
+        portalRoles.push('Administrativo');
       } else {
         if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           portalRoles.push('Docente');
@@ -425,7 +437,10 @@ export default function App() {
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
       const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
+                            roles.includes('CONTROL_DISCIPLINARIO') ||
+                            roles.includes('JEFE_CONTROL_INTERNO') ||
+                            roles.includes('AUDITOR_LIDER');
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -466,7 +481,17 @@ export default function App() {
           userType = 'administrativo';
           currentView = 'backoffice'
           vistaActualCurrent = 'backoffice';
-          const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' : 'control-interno';
+          
+          // Determinar módulo específico según el rol
+          let module = 'certificados-laborales'; // Por defecto
+          if (roles.includes('COORDINADOR_CERT_LABORAL')) {
+            module = 'certificados-laborales';
+          } else if (roles.includes('CONTROL_DISCIPLINARIO')) {
+            module = 'control-disciplinario';
+          } else if (roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER')) {
+            module = 'control-interno';
+          }
+          
           setUserData({ 
             name: userName, 
             email: userEmail, 
@@ -474,7 +499,7 @@ export default function App() {
             roles,
             module: module // Módulo específico de acceso
           });
-          portalRoles.push('Coordinador de Certificados Laborales');
+          portalRoles.push('Administrativo');
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           userType = 'docente';
           portalRoles.push('Docente');

@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, ILike } from 'typeorm';
+import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, ILike, DataSource } from 'typeorm';
 import { Auditoria, TipoAuditoria, FaseAuditoria, PrioridadAuditoria, RiesgoKanban, EstadoKanban } from './entities/auditoria.entity';
 import { CreateAuditoriaDto } from './dto/create-auditoria.dto';
 import { UpdateAuditoriaDto } from './dto/update-auditoria.dto';
@@ -17,6 +17,7 @@ import { AuditoriaTerritorialInfo } from './entities/auditoria-territorial-info.
 import { AuditoriaEspecialInfo } from './entities/auditoria-especial-info.entity';
 import { CriterioAuditoria } from './entities/criterio-auditoria.entity';
 import { AuditoriaKanbanDto, PersonaDto, ObjetivoDto } from './dto/auditoria-kanban.dto';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 @Injectable()
 export class AuditoriasService {
@@ -37,6 +38,8 @@ export class AuditoriasService {
     private readonly especialInfoRepository: Repository<AuditoriaEspecialInfo>,
     @InjectRepository(CriterioAuditoria)
     private readonly criterioRepository: Repository<CriterioAuditoria>,
+    private readonly dataSource: DataSource,
+    private readonly notificacionesService: NotificacionesService,
   ) {}
 
   /**
@@ -95,13 +98,38 @@ export class AuditoriasService {
   }
 
   /**
+   * Obtiene el id_tercero (bigint) desde el UUID del usuario
+   * El UUID está en auth.user.id_user y la referencia directa está en auth.user.id_tercero
+   */
+  private async getUserIdTerceroFromUUID(userUUID: string): Promise<number | null> {
+    try {
+      // auth.user tiene el UUID (columna 'id_user') e 'id_tercero' que referencia a auth.personas.id_tercero
+      const result = await this.dataSource.query(
+        'SELECT id_tercero FROM auth."user" WHERE id_user = $1',
+        [userUUID]
+      );
+      
+      if (result && result.length > 0) {
+        return Number(result[0].id_tercero);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error al obtener id_tercero desde UUID:', error);
+      return null;
+    }
+  }
+
+  /**
    * Serializa una fecha Date o string a string YYYY-MM-DD para evitar problemas de zona horaria
    */
   private serializeDate(date: Date | string): string {
+    
     // Si ya es un string en formato YYYY-MM-DD, devolverlo directamente
     if (typeof date === 'string') {
       // Si viene como ISO string (ej: "2024-12-29T00:00:00.000Z"), extraer solo la fecha
       const dateOnly = date.split('T')[0];
+      
       // Validar formato YYYY-MM-DD
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
         return dateOnly;
@@ -1704,18 +1732,60 @@ export class AuditoriasService {
    * Valida que no exceda 1 año desde fecha inicio
    * Envía solicitud al Jefe OCI para aprobación
    * Registra justificación, usuario, fecha en historial
+   * RN-031.2: Solo pueden solicitar auditores con rol "Auditor Líder" asignado a esa auditoría
    */
   async solicitarAmpliacionPlazo(
     auditoriaId: string,
     solicitarDto: SolicitarAmpliacionPlazoDto,
-    usuarioId?: number,
+    usuarioIdOrUUID?: number | string,
+    userRoles?: string[],
   ): Promise<Auditoria> {
+    // Convertir UUID a id_tercero si es necesario
+    let usuarioIdTercero: number | null = null;
+    
+    if (typeof usuarioIdOrUUID === 'string') {
+      // Es un UUID, convertir a id_tercero
+      usuarioIdTercero = await this.getUserIdTerceroFromUUID(usuarioIdOrUUID);
+      if (!usuarioIdTercero) {
+        throw new NotFoundException(`Usuario con UUID ${usuarioIdOrUUID} no encontrado en auth.personas`);
+      }
+    } else if (typeof usuarioIdOrUUID === 'number') {
+      // Ya es un id_tercero
+      usuarioIdTercero = usuarioIdOrUUID;
+    } else {
+      usuarioIdTercero = 1; // Fallback
+    }
+    
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id: auditoriaId },
     });
 
     if (!auditoria) {
       throw new NotFoundException(`Auditoría con ID ${auditoriaId} no encontrada`);
+    }
+
+    // RN-031.2: Validar que el usuario tenga rol AUDITOR_LIDER, ADMIN o SUPER_ADMIN
+    // Los roles pueden venir como strings o como objetos con propiedad 'code'
+    const extractRoleCodes = (roles?: any[]): string[] => {
+      if (!roles) return [];
+      return roles.map(r => typeof r === 'string' ? r : r?.code).filter(Boolean);
+    };
+    
+    const roleCodes = extractRoleCodes(userRoles);
+    const esAuditorLider = roleCodes.includes('AUDITOR_LIDER');
+    const esAdmin = roleCodes.includes('ADMIN');
+    const esSuperAdmin = roleCodes.includes('SUPER_ADMIN');
+    
+    // SUPER_ADMIN y ADMIN tienen acceso total sin restricciones
+    if (!esSuperAdmin && !esAdmin) {
+      if (!esAuditorLider) {
+        throw new ForbiddenException('Solo los usuarios con rol "Auditor Líder", "Administrador" o "Super Administrador" pueden solicitar ampliación de plazo');
+      }
+      
+      // Verificar que el auditor líder esté asignado a esta auditoría
+      if (auditoria.auditorLiderId !== usuarioIdTercero) {
+        throw new ForbiddenException('Solo el Auditor Líder asignado a esta auditoría puede solicitar ampliación de plazo');
+      }
     }
 
     // Validar que la auditoría esté en curso
@@ -1767,12 +1837,16 @@ export class AuditoriasService {
     const fecha = ahora.toISOString().split('T')[0];
     const hora = ahora.toTimeString().slice(0, 5);
 
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auditorias.service.ts:1770',message:'Creating historial entry for ampliacion_plazo',data:{tipoEventoValue:TipoEvento.AMPLIACION_PLAZO,tipoEventoEnum:TipoEvento,auditoriaId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
     const historial = new HistorialAuditoria();
     historial.auditoriaId = auditoriaId;
     historial.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = usuarioId || 1; // TODO: Obtener del contexto de autenticación
+    historial.usuarioId = usuarioIdTercero || 1;
     historial.accion = 'Solicitud de ampliación de plazo';
     historial.descripcion = `Solicitud de ampliación de plazo para auditoría ${auditoria.codigo}`;
     // Guardar estado y justificación en observaciones: "ESTADO:pendiente|JUSTIFICACION:..."
@@ -1788,7 +1862,44 @@ export class AuditoriasService {
       valorNuevo: this.serializeDate(nuevaFechaFin),
     }];
 
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auditorias.service.ts:1791',message:'About to save historial entry',data:{historialData:{tipoEvento:historial.tipoEvento,auditoriaId:historial.auditoriaId,accion:historial.accion}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
+    // #region agent log
+    try {
+      const constraintQuery = await this.dataSource.query(`
+        SELECT 
+          con.conname as constraint_name,
+          pg_get_constraintdef(con.oid) as constraint_definition
+        FROM pg_constraint con
+        INNER JOIN pg_class rel ON rel.oid = con.conrelid
+        INNER JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        WHERE nsp.nspname = 'control_interno'
+          AND rel.relname = 'historial_auditoria'
+          AND con.conname = 'historial_auditoria_tipo_evento_check'
+      `);
+      fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auditorias.service.ts:1813',message:'Queried constraint definition',data:{constraintQuery:JSON.stringify(constraintQuery)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    } catch (err: any) {
+      fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auditorias.service.ts:1815',message:'Failed to query constraint',data:{error:err?.message || String(err)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    }
+    // #endregion
+
     await this.historialRepository.save(historial);
+
+    // Enviar notificación a Jefes de Control Interno
+    try {
+      await this.notificacionesService.notificarSolicitudAmpliacionPlazo(
+        auditoriaId,
+        auditoria.codigo,
+        auditoria.nombre,
+        `Usuario ${usuarioIdTercero}`,
+        solicitarDto.justificacion,
+      );
+    } catch (error) {
+      console.error('Error al enviar notificación de solicitud de ampliación:', error);
+      // No fallar la operación por error en notificación
+    }
 
     return this.serializeAuditoria(auditoria) as any;
   }
@@ -1798,12 +1909,47 @@ export class AuditoriasService {
    * Actualiza la fecha fin de la auditoría
    * Notifica al área auditada
    * Registra en historial
+   * RN-031.3: Solo roles "Administrador" o "Jefe de Control Interno" pueden aprobar
    */
   async aprobarAmpliacionPlazo(
     auditoriaId: string,
     aprobarDto: AprobarAmpliacionPlazoDto,
-    usuarioId?: number,
+    usuarioIdOrUUID?: number | string,
+    userRoles?: string[],
   ): Promise<Auditoria> {
+    // Convertir UUID a id_tercero numérico si es necesario
+    let usuarioIdTercero: number;
+    if (typeof usuarioIdOrUUID === 'string') {
+      // Es un UUID, buscar el id_tercero usando el método existente
+      const idTercero = await this.getUserIdTerceroFromUUID(usuarioIdOrUUID);
+      
+      if (idTercero) {
+        usuarioIdTercero = idTercero;
+      } else {
+        console.warn(`Usuario con UUID ${usuarioIdOrUUID} no encontrado, usando fallback`);
+        usuarioIdTercero = 1; // Fallback
+      }
+    } else if (typeof usuarioIdOrUUID === 'number') {
+      // Ya es un id_tercero
+      usuarioIdTercero = usuarioIdOrUUID;
+    } else {
+      usuarioIdTercero = 1; // Fallback
+    }
+    
+    // RN-031.3: Validar que el usuario tenga rol SUPER_ADMIN o JEFE_CONTROL_INTERNO
+    // Los roles pueden venir como strings o como objetos con propiedad 'code'
+    const extractRoleCodes = (roles?: any[]): string[] => {
+      if (!roles) return [];
+      return roles.map(r => typeof r === 'string' ? r : r?.code).filter(Boolean);
+    };
+    
+    const roleCodes = extractRoleCodes(userRoles);
+    const puedeAprobar = roleCodes.includes('SUPER_ADMIN') || roleCodes.includes('JEFE_CONTROL_INTERNO');
+    
+    if (!puedeAprobar) {
+      throw new ForbiddenException('Solo el Jefe de Control Interno o Administradores pueden aprobar ampliaciones de plazo');
+    }
+
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id: auditoriaId },
     });
@@ -1847,6 +1993,13 @@ export class AuditoriasService {
     // Guardar cambios
     await this.auditoriaRepository.save(auditoria);
 
+    // Actualizar el registro de solicitud pendiente a aprobada
+    solicitudPendiente.observaciones = solicitudPendiente.observaciones?.replace(
+      /ESTADO:pendiente/,
+      'ESTADO:aprobada'
+    );
+    await this.historialRepository.save(solicitudPendiente);
+
     // Actualizar el historial de la solicitud a aprobada
     const ahora = new Date();
     const fecha = ahora.toISOString().split('T')[0];
@@ -1858,7 +2011,7 @@ export class AuditoriasService {
     historialAprobacion.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
     historialAprobacion.fecha = new Date(fecha);
     historialAprobacion.hora = hora;
-    historialAprobacion.usuarioId = usuarioId || 1; // TODO: Obtener del contexto de autenticación
+    historialAprobacion.usuarioId = usuarioIdTercero;
     historialAprobacion.accion = 'Aprobación de ampliación de plazo';
     historialAprobacion.descripcion = `Ampliación de plazo aprobada para auditoría ${auditoria.codigo}`;
     historialAprobacion.observaciones = `ESTADO:aprobada${aprobarDto.comentarios ? `|COMENTARIOS:${aprobarDto.comentarios}` : ''}`;
@@ -1872,9 +2025,22 @@ export class AuditoriasService {
 
     await this.historialRepository.save(historialAprobacion);
 
-    // TODO: Notificar al área auditada si se aprueba
-    // Esto se puede implementar con un servicio de notificaciones
-    // await this.notificacionesService.notificarAmpliacionAprobada(auditoria);
+    // Notificar al auditor líder y área auditada
+    try {
+      if (auditoria.auditorLiderId) {
+        await this.notificacionesService.notificarAmpliacionAprobada(
+          auditoriaId,
+          auditoria.codigo,
+          auditoria.nombre,
+          auditoria.auditorLiderId,
+          this.serializeDate(nuevaFechaFin),
+          aprobarDto.comentarios,
+        );
+      }
+    } catch (error) {
+      console.error('Error al enviar notificación de aprobación:', error);
+      // No fallar la operación por error en notificación
+    }
 
     return this.serializeAuditoria(auditoria) as any;
   }
@@ -1882,12 +2048,47 @@ export class AuditoriasService {
   /**
    * Rechaza una solicitud de ampliación de plazo
    * Registra justificación en historial
+   * RN-031.3: Solo roles "Administrador" o "Jefe de Control Interno" pueden rechazar
    */
   async rechazarAmpliacionPlazo(
     auditoriaId: string,
     rechazarDto: RechazarAmpliacionPlazoDto,
-    usuarioId?: number,
+    usuarioIdOrUUID?: number | string,
+    userRoles?: string[],
   ): Promise<Auditoria> {
+    // Convertir UUID a id_tercero numérico si es necesario
+    let usuarioIdTercero: number;
+    if (typeof usuarioIdOrUUID === 'string') {
+      // Es un UUID, buscar el id_tercero usando el método existente
+      const idTercero = await this.getUserIdTerceroFromUUID(usuarioIdOrUUID);
+      
+      if (idTercero) {
+        usuarioIdTercero = idTercero;
+      } else {
+        console.warn(`Usuario con UUID ${usuarioIdOrUUID} no encontrado, usando fallback`);
+        usuarioIdTercero = 1; // Fallback
+      }
+    } else if (typeof usuarioIdOrUUID === 'number') {
+      // Ya es un id_tercero
+      usuarioIdTercero = usuarioIdOrUUID;
+    } else {
+      usuarioIdTercero = 1; // Fallback
+    }
+    
+    // RN-031.3: Validar que el usuario tenga rol SUPER_ADMIN o JEFE_CONTROL_INTERNO
+    // Los roles pueden venir como strings o como objetos con propiedad 'code'
+    const extractRoleCodes = (roles?: any[]): string[] => {
+      if (!roles) return [];
+      return roles.map(r => typeof r === 'string' ? r : r?.code).filter(Boolean);
+    };
+    
+    const roleCodes = extractRoleCodes(userRoles);
+    const puedeRechazar = roleCodes.includes('SUPER_ADMIN') || roleCodes.includes('JEFE_CONTROL_INTERNO');
+    
+    if (!puedeRechazar) {
+      throw new ForbiddenException('Solo el Jefe de Control Interno o Administradores pueden rechazar ampliaciones de plazo');
+    }
+
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id: auditoriaId },
     });
@@ -1916,6 +2117,13 @@ export class AuditoriasService {
       throw new BadRequestException('La solicitud de ampliación ya fue procesada');
     }
 
+    // Actualizar el registro de solicitud pendiente a rechazada
+    solicitudPendiente.observaciones = solicitudPendiente.observaciones?.replace(
+      /ESTADO:pendiente/,
+      'ESTADO:rechazada'
+    );
+    await this.historialRepository.save(solicitudPendiente);
+
     // Registrar rechazo en historial
     const ahora = new Date();
     const fecha = ahora.toISOString().split('T')[0];
@@ -1926,7 +2134,7 @@ export class AuditoriasService {
     historialRechazo.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
     historialRechazo.fecha = new Date(fecha);
     historialRechazo.hora = hora;
-    historialRechazo.usuarioId = usuarioId || 1; // TODO: Obtener del contexto de autenticación
+    historialRechazo.usuarioId = usuarioIdTercero;
     historialRechazo.accion = 'Rechazo de ampliación de plazo';
     historialRechazo.descripcion = `Ampliación de plazo rechazada para auditoría ${auditoria.codigo}`;
     historialRechazo.observaciones = `ESTADO:rechazada|JUSTIFICACION:${rechazarDto.justificacion}`;
@@ -1935,6 +2143,22 @@ export class AuditoriasService {
     historialRechazo.cambios = solicitudPendiente.cambios || [];
 
     await this.historialRepository.save(historialRechazo);
+
+    // Notificar al auditor líder del rechazo
+    try {
+      if (auditoria.auditorLiderId) {
+        await this.notificacionesService.notificarAmpliacionRechazada(
+          auditoriaId,
+          auditoria.codigo,
+          auditoria.nombre,
+          auditoria.auditorLiderId,
+          rechazarDto.justificacion,
+        );
+      }
+    } catch (error) {
+      console.error('Error al enviar notificación de rechazo:', error);
+      // No fallar la operación por error en notificación
+    }
 
     return this.serializeAuditoria(auditoria) as any;
   }
@@ -1995,6 +2219,60 @@ export class AuditoriasService {
       });
 
     return solicitudes;
+  }
+
+  /**
+   * Obtiene el historial completo de cambios de una auditoría
+   */
+  async getHistorialAuditoria(auditoriaId: string): Promise<any[]> {
+    const historial = await this.historialRepository.find({
+      where: { auditoriaId },
+      order: { createdAt: 'DESC' },
+    });
+
+    // Enriquecer con datos de personas
+    const historialEnriquecido = await Promise.all(
+      historial.map(async (evento) => {
+        let nombreUsuario = 'Usuario desconocido';
+        let cargoUsuario = '';
+
+        if (evento.usuarioId) {
+          try {
+            const personaResult = await this.dataSource.query(
+              'SELECT nom_largo FROM auth.personas WHERE id_tercero = $1',
+              [evento.usuarioId]
+            );
+            
+            if (personaResult && personaResult.length > 0) {
+              nombreUsuario = personaResult[0].nom_largo || nombreUsuario;
+            }
+          } catch (error) {
+            console.error('Error obteniendo datos de persona:', error);
+          }
+        }
+
+        return {
+          id: evento.id,
+          auditoriaId: evento.auditoriaId,
+          tipo: evento.tipoEvento,
+          fecha: this.serializeDate(evento.fecha),
+          hora: evento.hora,
+          usuario: nombreUsuario,
+          cargoUsuario,
+          accion: evento.accion,
+          descripcion: evento.descripcion,
+          cambios: evento.cambios || [],
+          documentoAdjunto: evento.documentoAdjunto,
+          observaciones: evento.observaciones,
+          ipAddress: evento.ipAddress,
+          estadoAnterior: evento.estadoAnterior,
+          estadoNuevo: evento.estadoNuevo,
+          createdAt: evento.createdAt,
+        };
+      })
+    );
+
+    return historialEnriquecido;
   }
 }
 

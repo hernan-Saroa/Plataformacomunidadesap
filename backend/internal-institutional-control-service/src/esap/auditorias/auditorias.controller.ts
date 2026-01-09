@@ -10,6 +10,8 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
 import { AuditoriasService } from './auditorias.service';
 import { HallazgosService } from '../hallazgos/hallazgos.service';
@@ -21,6 +23,9 @@ import { SolicitarAmpliacionPlazoDto } from './dto/solicitar-ampliacion-plazo.dt
 import { AprobarAmpliacionPlazoDto } from './dto/aprobar-ampliacion-plazo.dto';
 import { RechazarAmpliacionPlazoDto } from './dto/rechazar-ampliacion-plazo.dto';
 import { FaseAuditoria } from './entities/auditoria.entity';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @Controller('auditorias')
 export class AuditoriasController {
@@ -278,40 +283,70 @@ export class AuditoriasController {
   /**
    * POST /esap/auditorias/:id/ampliar-plazo/solicitar
    * Solicita ampliación de plazo de una auditoría en curso
+   * RN-031.2: Solo Auditor Líder asignado a la auditoría puede solicitar
    */
   @Post(':id/ampliar-plazo/solicitar')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('AUDITOR_LIDER', 'SUPER_ADMIN', 'ADMIN')
   @HttpCode(HttpStatus.OK)
   solicitarAmpliacionPlazo(
     @Param('id') id: string,
     @Body() solicitarDto: SolicitarAmpliacionPlazoDto,
+    @Req() req: any,
   ) {
-    return this.auditoriasService.solicitarAmpliacionPlazo(id, solicitarDto);
+    const user = req.user;
+    return this.auditoriasService.solicitarAmpliacionPlazo(
+      id, 
+      solicitarDto, 
+      user.userId,
+      user.roles || [user.role]
+    );
   }
 
   /**
    * POST /esap/auditorias/:id/ampliar-plazo/aprobar
-   * Aprueba una solicitud de ampliación de plazo (solo Jefe OCI)
+   * Aprueba una solicitud de ampliación de plazo
+   * RN-031.3: Solo Jefe de Control Interno o Administrador pueden aprobar
    */
   @Post(':id/ampliar-plazo/aprobar')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('JEFE_CONTROL_INTERNO', 'SUPER_ADMIN')
   @HttpCode(HttpStatus.OK)
   aprobarAmpliacionPlazo(
     @Param('id') id: string,
     @Body() aprobarDto: AprobarAmpliacionPlazoDto,
+    @Req() req: any,
   ) {
-    return this.auditoriasService.aprobarAmpliacionPlazo(id, aprobarDto);
+    const user = req.user;
+    return this.auditoriasService.aprobarAmpliacionPlazo(
+      id, 
+      aprobarDto, 
+      user.userId,
+      user.roles || [user.role]
+    );
   }
 
   /**
    * POST /esap/auditorias/:id/ampliar-plazo/rechazar
-   * Rechaza una solicitud de ampliación de plazo (solo Jefe OCI)
+   * Rechaza una solicitud de ampliación de plazo
+   * RN-031.3: Solo Jefe de Control Interno o Administrador pueden rechazar
    */
   @Post(':id/ampliar-plazo/rechazar')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('JEFE_CONTROL_INTERNO', 'SUPER_ADMIN')
   @HttpCode(HttpStatus.OK)
   rechazarAmpliacionPlazo(
     @Param('id') id: string,
     @Body() rechazarDto: RechazarAmpliacionPlazoDto,
+    @Req() req: any,
   ) {
-    return this.auditoriasService.rechazarAmpliacionPlazo(id, rechazarDto);
+    const user = req.user;
+    return this.auditoriasService.rechazarAmpliacionPlazo(
+      id, 
+      rechazarDto, 
+      user.userId,
+      user.roles || [user.role]
+    );
   }
 
   /**
@@ -322,6 +357,15 @@ export class AuditoriasController {
   @Get('ampliar-plazo/pendientes')
   getSolicitudesAmpliacionPendientes() {
     return this.auditoriasService.getSolicitudesAmpliacionPendientes();
+  }
+
+  /**
+   * GET /esap/auditorias/:id/historial
+   * Obtiene el historial completo de cambios de una auditoría
+   */
+  @Get(':id/historial')
+  getHistorialAuditoria(@Param('id') id: string) {
+    return this.auditoriasService.getHistorialAuditoria(id);
   }
 }
 

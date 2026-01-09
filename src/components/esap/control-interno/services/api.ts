@@ -119,9 +119,21 @@ async function apiRequest<T>(
     }
 
     if (!response.ok) {
+      // NestJS devuelve errores en formato: { statusCode, message, error }
+      // Extraer el mensaje descriptivo si existe
+      console.log('❌ Error en respuesta:', { 
+        status: response.status, 
+        data,
+        message: data?.message,
+        error: data?.error 
+      });
+      
+      const errorMessage = data?.message || data?.error || `Error HTTP ${response.status}`;
+      
       return {
         success: false,
-        error: data?.error || data?.message || `Error HTTP ${response.status}`,
+        error: typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage),
+        statusCode: response.status
       };
     }
 
@@ -887,6 +899,83 @@ export const informesLeyApi = {
   },
 };
 
+// ==================== NOTIFICACIONES ====================
+
+export const notificacionesApi = {
+  /**
+   * Obtener todas las notificaciones de un usuario
+   */
+  obtenerPorUsuario: (usuarioId: number | string, filtros?: {
+    estado?: string;
+    tipo?: string;
+    leida?: boolean;
+    prioridad?: string;
+  }) => {
+    const params = new URLSearchParams();
+    if (filtros?.estado) params.append('estado', filtros.estado);
+    if (filtros?.tipo) params.append('tipo', filtros.tipo);
+    if (filtros?.leida !== undefined) params.append('leida', String(filtros.leida));
+    if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
+    
+    const queryString = params.toString();
+    return apiRequest<any[]>(
+      `/notificaciones/usuario/${usuarioId}${queryString ? `?${queryString}` : ''}`
+    );
+  },
+
+  /**
+   * Obtener notificaciones no leídas
+   */
+  obtenerNoLeidas: (usuarioId: number | string) => {
+    return apiRequest<any[]>(`/notificaciones/usuario/${usuarioId}/no-leidas`);
+  },
+
+  /**
+   * Obtener conteo de notificaciones no leídas
+   */
+  obtenerConteoNoLeidas: (usuarioId: number | string) => {
+    return apiRequest<{ count: number }>(`/notificaciones/usuario/${usuarioId}/conteo`);
+  },
+
+  /**
+   * Marcar notificación como leída
+   */
+  marcarLeida: (id: string, usuarioId: number | string) => {
+    return apiRequest<any>(`/notificaciones/${id}/leida`, {
+      method: 'PUT',
+      body: JSON.stringify({ usuarioId: String(usuarioId) }),
+    });
+  },
+
+  /**
+   * Marcar todas las notificaciones como leídas
+   */
+  marcarTodasLeidas: (usuarioId: number | string) => {
+    return apiRequest<any>(`/notificaciones/usuario/${usuarioId}/todas-leidas`, {
+      method: 'PUT',
+    });
+  },
+
+  /**
+   * Archivar notificación
+   */
+  archivar: (id: string, usuarioId: number | string) => {
+    return apiRequest<any>(`/notificaciones/${id}/archivar`, {
+      method: 'PUT',
+      body: JSON.stringify({ usuarioId: String(usuarioId) }),
+    });
+  },
+
+  /**
+   * Eliminar notificación
+   */
+  eliminar: (id: string) => {
+    return apiRequest<void>(`/notificaciones/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 // Exportar todo
 export const controlInternoApi = {
   auditorias: auditoriasApi,
@@ -897,4 +986,5 @@ export const controlInternoApi = {
   planAnual5Roles: planAnual5RolesApi,
   listasChequeo: listasChequeoApi,
   informesLey: informesLeyApi,
+  notificaciones: notificacionesApi,
 };

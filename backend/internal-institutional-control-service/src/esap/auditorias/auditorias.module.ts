@@ -12,6 +12,8 @@ import { AuditoriaEspecialInfo } from './entities/auditoria-especial-info.entity
 import { AuditorPerfil } from './entities/auditor-perfil.entity';
 import { CriterioAuditoria } from './entities/criterio-auditoria.entity';
 import { HallazgosModule } from '../hallazgos/hallazgos.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 
 @Module({
   imports: [
@@ -27,9 +29,10 @@ import { HallazgosModule } from '../hallazgos/hallazgos.module';
       CriterioAuditoria,
     ]),
     HallazgosModule,
+    NotificacionesModule,
   ],
   controllers: [AuditoriasController],
-  providers: [AuditoriasService],
+  providers: [AuditoriasService, RolesGuard],
   exports: [AuditoriasService, TypeOrmModule],
 })
 export class AuditoriasModule {}
