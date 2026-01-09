@@ -833,7 +833,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                         </div>
                       </div>
 
-                      {/* Botón Continuar */}
+                      {/* Botón Solicitar Certificado */}
                       <Button
                         onClick={handleBuscarEmpleado}
                         disabled={buscandoEmpleado}
@@ -847,7 +847,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                         ) : (
                           <>
                             <Send className="w-5 h-5 mr-2" />
-                            Continuar
+                            Solicitar Certificado
                           </>
                         )}
                       </Button>
