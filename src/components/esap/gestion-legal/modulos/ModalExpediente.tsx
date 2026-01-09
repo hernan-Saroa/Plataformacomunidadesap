@@ -275,7 +275,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
 
     // En modo directo, no agregar prefijo /legal/
-    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -397,7 +397,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     try {
       const expedienteId = expediente.uuid || expediente.id;
       const baseUrl = getServiceUrl('legal');
-      const prefix = API_MODE === 'direct' ? '' : '/legal';
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/documentos/expediente/${expedienteId}/download-zip`;
 
       const response = await fetch(url);

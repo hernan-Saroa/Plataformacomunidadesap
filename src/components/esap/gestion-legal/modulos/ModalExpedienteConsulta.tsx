@@ -389,8 +389,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
         filename = url.split('/').pop() || url;
       }
 
-      // Construir URL: directo sin prefix, gateway con /legal/
-      const prefix = API_MODE === 'direct' ? '' : '/legal';
+      // Construir URL: directo sin prefix, gateway con /legal/api/v1/
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const fullUrl = url.startsWith('http') ? url : `${baseUrl}${prefix}/files/${filename}`;
 
       const response = await fetch(fullUrl);
@@ -445,7 +445,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       filename = url.split('/').pop() || url;
     }
 
-    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
