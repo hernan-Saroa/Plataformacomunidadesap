@@ -623,8 +623,10 @@ export class CertificatesService {
    */
   async verificarDocumentoPorSolicitud(documento: string) {
     // Buscar la solicitud por numero de documento
+    const documentoTrim = (documento || '').trim();
     const solicitud = await this.requestRepo.findOne({
-      where: { id_number: documento },
+      where: { id_number: documentoTrim },
+      order: { request_date: 'DESC', created_at: 'DESC' },
     });
 
     if (!solicitud) {
@@ -714,22 +716,21 @@ export class CertificatesService {
    * Validar codigo y generar certificado
    */
   async validarCodigoYGenerarCertificado(documento: string, codigo: string) {
-    // Buscar la solicitud
+    const documentoTrim = (documento || '').trim();
+    const codigoTrim = (codigo || '').trim();
+    // Buscar la solicitud por documento + codigo para evitar conflictos con multiples solicitudes
     const solicitud = await this.requestRepo.findOne({
-      where: { id_number: documento },
+      where: { id_number: documentoTrim, validation_code: codigoTrim },
+      order: { validation_expires_at: 'DESC', updated_at: 'DESC' },
     });
 
     if (!solicitud) {
-      throw new NotFoundException('Solicitud no encontrada');
-    }
-
-    // Validar codigo y vigencia
-    if (!solicitud.validation_code || !solicitud.validation_expires_at) {
-      throw new BadRequestException('No se ha generado un codigo de validacion para esta solicitud');
-    }
-
-    if (solicitud.validation_code !== codigo) {
       throw new BadRequestException('Codigo de validacion incorrecto');
+    }
+
+    // Validar vigencia
+    if (!solicitud.validation_expires_at) {
+      throw new BadRequestException('No se ha generado un codigo de validacion para esta solicitud');
     }
 
     if (new Date(solicitud.validation_expires_at) < new Date()) {
