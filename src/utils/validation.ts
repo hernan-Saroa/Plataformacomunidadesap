@@ -339,7 +339,7 @@ export function validateUnique<T>(
 
 export interface AuditoriaFormData {
   codigo?: string;
-  tipoAuditoria?: 'regular' | 'territorial' | 'especial';
+  tipo?: 'Gestión' | 'Cumplimiento' | 'Desempeño' | 'Sistemas' | 'Financiera' | 'Seguimiento';
   titulo: string;
   descripcion: string;
   territorial: string;
@@ -373,6 +373,10 @@ export const validateAuditoriaForm = (
     );
     if (uniqueError) errors.push(uniqueError);
   }
+  
+  // Tipo de auditoría
+  const tipoError = validateRequired(data.tipo, 'Tipo de auditoría');
+  if (tipoError) errors.push(tipoError);
   
   // Título
   const tituloRequiredError = validateRequired(data.titulo, 'Título');

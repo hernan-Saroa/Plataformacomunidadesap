@@ -2112,20 +2112,28 @@ export function GestionAuditoriasKanbanSimple() {
 
       // Mapear tipo de auditoría del formulario al formato del backend
       const mapTipoAuditoria = (tipo: string): string => {
+        // Si ya viene con el tipo correcto, devolverlo directamente
+        const tiposValidos = ['Gestión', 'Cumplimiento', 'Desempeño', 'Sistemas', 'Financiera', 'Seguimiento'];
+        if (tiposValidos.includes(tipo)) {
+          return tipo;
+        }
+        
+        // Mapeo para valores antiguos (por retrocompatibilidad)
         const mapping: Record<string, string> = {
           'regular': 'Gestión',
           'territorial': 'Gestión',
           'especial': 'Gestión',
-          'seguimiento': 'Gestión'
+          'seguimiento': 'Seguimiento'
         };
         return mapping[tipo] || 'Gestión';
       };
 
       // Mapear datos del formulario al formato del backend
+      const tipoAuditoriaValue = (data as any).tipo || (data as any).tipoAuditoria || 'Gestión';
       const auditoriaData: any = {
         nombre: data.titulo,
         descripcion: data.descripcion || undefined,
-        tipo: mapTipoAuditoria(data.tipoAuditoria),
+        tipo: mapTipoAuditoria(tipoAuditoriaValue),
         territorial: data.territorial,
         sede: data.territorial || 'Sede Principal',
         responsable: data.auditorLider || data.auditorAsignado || 'No asignado',
@@ -2392,14 +2400,15 @@ export function GestionAuditoriasKanbanSimple() {
       };
 
       // Mapear tipo de auditoría - usar el valor directamente si es uno de los tipos válidos
-      // Los tipos válidos son: 'Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional'
-      if (data.tipoAuditoria) {
-        const tiposValidos = ['Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional'];
+      // Los tipos válidos son: 'Gestión', 'Cumplimiento', 'Desempeño', 'Sistemas', 'Financiera', 'Seguimiento'
+      const tipoAuditoriaValue = (data as any).tipo || (data as any).tipoAuditoria;
+      if (tipoAuditoriaValue) {
+        const tiposValidos = ['Gestión', 'Cumplimiento', 'Desempeño', 'Sistemas', 'Financiera', 'Seguimiento', 'Control Interno', 'Académica', 'RRHH', 'TI', 'Operacional'];
         // Si el tipo es válido, usarlo directamente; si no, usar 'Gestión' como default
-        if (tiposValidos.includes(data.tipoAuditoria)) {
-          updateData.tipo = data.tipoAuditoria;
+        if (tiposValidos.includes(tipoAuditoriaValue)) {
+          updateData.tipo = tipoAuditoriaValue;
         } else {
-          // Si viene como 'regular', 'territorial', 'especial', usar 'Gestión' como default
+          // Si viene con un valor no reconocido, usar 'Gestión' como default
           updateData.tipo = 'Gestión';
         }
       } else {
@@ -2456,6 +2465,7 @@ export function GestionAuditoriasKanbanSimple() {
 
       // Log para depuración
       console.log('[handleActualizarAuditoria] Datos a enviar:', updateData);
+      console.log('[handleActualizarAuditoria] Tipo de auditoría:', updateData.tipo);
       console.log('[handleActualizarAuditoria] Alcance:', updateData.alcance);
       console.log('[handleActualizarAuditoria] RiesgoKanban:', updateData.riesgoKanban);
       
@@ -3763,7 +3773,7 @@ export function GestionAuditoriasKanbanSimple() {
               // Pasar numeroIdentificacion para que el modal busque el ID
               auditorLider: auditorLiderIdStr || auditoriaParaEditar.auditorLider?.numeroIdentificacion || '',
               auditorAsignado: auditorAsignadoIdStr || auditoriaParaEditar.auditorAsignado?.numeroIdentificacion || '',
-              tipoAuditoria: (auditoriaParaEditar as any).tipo || 'Gestión',
+              tipo: (auditoriaParaEditar as any).tipo || 'Gestión',
               alcance: auditoriaParaEditar.alcance || (auditoriaParaEditar as any).alcance || ''
             }}
           />

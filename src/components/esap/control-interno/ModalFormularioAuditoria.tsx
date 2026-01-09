@@ -185,7 +185,7 @@ export function ModalFormularioAuditoria({
 
   // Estado del formulario
   const [formData, setFormData] = useState<AuditoriaFormData>({
-    tipoAuditoria: initialData?.tipoAuditoria || 'regular',
+    tipo: initialData?.tipo || 'Gestión',
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
@@ -311,7 +311,7 @@ export function ModalFormularioAuditoria({
       
       const newFormData = {
         codigo: initialData.codigo || '',
-        tipoAuditoria: initialData.tipoAuditoria || 'regular',
+        tipo: initialData.tipo || 'Gestión',
         titulo: initialData.titulo || '',
         descripcion: initialData.descripcion || '',
         territorial: initialData.territorial || '',
@@ -552,34 +552,36 @@ export function ModalFormularioAuditoria({
                       {/* Tipo de Auditoría */}
                       <FieldWrapper
                         label="Tipo de Auditoría"
-                        error={touched.tipoAuditoria ? getFieldError(errors, 'Tipo de auditoría') : null}
+                        error={touched.tipo ? getFieldError(errors, 'Tipo de auditoría') : null}
                         required
                         helpText="Seleccione el tipo de auditoría según su naturaleza"
                       >
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                           {[
-                            { value: 'regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
-                            { value: 'territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
-                            { value: 'especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> },
-                            { value: 'seguimiento', label: 'Seguimiento', icono: <Clock className="w-5 h-5" /> }
+                            { value: 'Gestión', label: 'Gestión', icono: <Shield className="w-5 h-5" /> },
+                            { value: 'Cumplimiento', label: 'Cumplimiento', icono: <CheckCircle className="w-5 h-5" /> },
+                            { value: 'Desempeño', label: 'Desempeño', icono: <Target className="w-5 h-5" /> },
+                            { value: 'Sistemas', label: 'Sistemas', icono: <Zap className="w-5 h-5" /> },
+                            { value: 'Financiera', label: 'Financiera', icono: <FileText className="w-5 h-5" /> },
+                            { value: 'Seguimiento', label: 'Seguimiento', icono: <Clock className="w-5 h-5" /> }
                           ].map(tipo => (
                             <button
                               key={tipo.value}
                               type="button"
                               onClick={() => {
-                                handleChange('tipoAuditoria', tipo.value);
-                                handleBlur('tipoAuditoria');
+                                handleChange('tipo', tipo.value);
+                                handleBlur('tipo');
                               }}
                               className={`
                                 px-4 py-3 rounded-lg border-2 transition-all duration-200
                                 flex flex-col items-center justify-center gap-2 font-medium
                                 ${
-                                  formData.tipoAuditoria === tipo.value
+                                  formData.tipo === tipo.value
                                     ? 'border-blue-600 bg-blue-50 text-blue-700'
                                     : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
                                 }
                                 ${
-                                  hasFieldError(errors, 'Tipo de auditoría') && touched.tipoAuditoria
+                                  hasFieldError(errors, 'Tipo de auditoría') && touched.tipo
                                     ? 'border-red-500'
                                     : ''
                                 }
@@ -591,14 +593,14 @@ export function ModalFormularioAuditoria({
                           ))}
                         </div>
                         {/* Información contextual según tipo */}
-                        {formData.tipoAuditoria === 'especial' && (
+                        {formData.tipo === 'Sistemas' && (
                           <div className="mt-3 p-4 bg-amber-50 rounded-lg border border-amber-200">
                             <div className="flex items-start gap-3">
                               <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                               <div className="text-sm">
-                                <p className="font-bold text-amber-900 mb-1">Auditoría Especial</p>
+                                <p className="font-bold text-amber-900 mb-1">Auditoría de Sistemas</p>
                                 <p className="text-amber-700">
-                                  Las auditorías especiales se realizan por solicitudes específicas, denuncias o necesidades urgentes no contempladas en el Plan Anual. Requieren justificación detallada.
+                                  Evaluación de controles, seguridad y eficiencia de los sistemas de información institucionales.
                                 </p>
                               </div>
                             </div>
