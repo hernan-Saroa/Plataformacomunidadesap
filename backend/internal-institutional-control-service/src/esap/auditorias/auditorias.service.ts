@@ -2274,6 +2274,76 @@ export class AuditoriasService {
 
     return historialEnriquecido;
   }
+
+  /**
+   * Busca una persona en auth.personas por número de identificación
+   * Retorna el ID_TERCERO (BIGINT) que se usa como FK en las tablas
+   */
+  async buscarPersonaPorNumeroIdentificacion(numeroIdentificacion: string): Promise<{ id_tercero: number; nombre: string; } | null> {
+    try {
+      const resultado = await this.auditoriaRepository.query(
+        `SELECT id_tercero, nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+         FROM auth.personas 
+         WHERE num_identificacion = $1 
+         LIMIT 1`,
+        [numeroIdentificacion]
+      );
+
+      if (resultado && resultado.length > 0) {
+        return {
+          id_tercero: Number(resultado[0].id_tercero),
+          nombre: resultado[0].nom_largo || 'Usuario Desconocido'
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error(`Error al buscar persona con identificación ${numeroIdentificacion}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Obtiene todas las personas de auth.personas que pueden ser auditores
+   * Retorna la lista completa para usar en selectores
+   */
+  async obtenerPersonasDisponibles(): Promise<any[]> {
+    try {
+      const personas = await this.auditoriaRepository.query(
+        `SELECT 
+          id_tercero,
+          num_identificacion,
+          tip_identificacion,
+          nom_largo,
+          sig_tercero,
+          nom_tercero,
+          pri_apellido,
+          seg_apellido,
+          seg_nombre,
+          dir_email
+         FROM auth.personas 
+         WHERE id_tercero IS NOT NULL
+         ORDER BY nom_largo ASC`
+      );
+
+      return personas.map((p: any) => ({
+        id: String(p.id_tercero),
+        idPersona: Number(p.id_tercero),
+        nombre: p.nom_largo || 'Usuario Sin Nombre',
+        iniciales: p.sig_tercero || this.getIniciales(p.nom_largo || 'US'),
+        tipoIdentificacion: p.tip_identificacion || 'CC',
+        numeroIdentificacion: p.num_identificacion || '',
+        email: p.dir_email || '',
+        cargo: 'Auditor', // Por defecto, se puede ajustar según rol
+        especialidad: 'General',
+        auditoriasConducto: 0, // Se puede calcular en el futuro
+        disponibilidad: 'Disponible'
+      }));
+    } catch (error) {
+      console.error('Error al obtener personas disponibles:', error);
+      return [];
+    }
+  }
 }
 
 

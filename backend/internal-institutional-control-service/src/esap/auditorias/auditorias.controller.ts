@@ -175,6 +175,35 @@ export class AuditoriasController {
   }
 
   /**
+   * GET /esap/auditorias/personas/buscar
+   * Busca una persona por número de identificación
+   * Retorna el ID_TERCERO que se usa como FK
+   */
+  @Get('personas/buscar')
+  async buscarPersona(@Query('numeroIdentificacion') numeroIdentificacion: string) {
+    if (!numeroIdentificacion) {
+      throw new BadRequestException('El número de identificación es requerido');
+    }
+    
+    const persona = await this.auditoriasService.buscarPersonaPorNumeroIdentificacion(numeroIdentificacion);
+    
+    if (!persona) {
+      throw new BadRequestException(`No se encontró una persona con el número de identificación: ${numeroIdentificacion}`);
+    }
+    
+    return persona;
+  }
+
+  /**
+   * GET /esap/auditorias/personas/disponibles
+   * Obtiene todas las personas disponibles para ser auditores
+   */
+  @Get('personas/disponibles')
+  async obtenerPersonasDisponibles() {
+    return this.auditoriasService.obtenerPersonasDisponibles();
+  }
+
+  /**
    * GET /esap/auditorias/codigo/:codigo
    * Busca una auditoría por código
    */

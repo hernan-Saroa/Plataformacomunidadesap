@@ -49,6 +49,37 @@ ALTER TABLE control_interno.auditoria ADD COLUMN IF NOT EXISTS observaciones_adi
 ALTER TABLE control_interno.auditoria ADD COLUMN IF NOT EXISTS checklist_completados JSONB;
 ALTER TABLE control_interno.auditoria ADD COLUMN IF NOT EXISTS programa_anual_metadata JSONB;
 
+-- Corregir tipo de checklist_completados si existe como INTEGER
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'control_interno' 
+        AND table_name = 'auditoria' 
+        AND column_name = 'checklist_completados'
+        AND data_type IN ('integer', 'bigint', 'smallint')
+    ) THEN
+        -- Quitar DEFAULT si existe
+        ALTER TABLE control_interno.auditoria 
+        ALTER COLUMN checklist_completados DROP DEFAULT;
+        
+        -- Cambiar tipo a JSONB
+        ALTER TABLE control_interno.auditoria 
+        ALTER COLUMN checklist_completados TYPE jsonb 
+        USING CASE 
+            WHEN checklist_completados = 0 THEN '{}'::jsonb
+            WHEN checklist_completados IS NULL THEN NULL
+            ELSE '{}'::jsonb
+        END;
+        
+        -- Poner nuevo DEFAULT
+        ALTER TABLE control_interno.auditoria 
+        ALTER COLUMN checklist_completados SET DEFAULT '{}'::jsonb;
+        
+        RAISE NOTICE 'Columna checklist_completados convertida de INTEGER a JSONB';
+    END IF;
+END $$;
+
 -- Soft delete / Archivo
 ALTER TABLE control_interno.auditoria ADD COLUMN IF NOT EXISTS archivada BOOLEAN DEFAULT false;
 ALTER TABLE control_interno.auditoria ADD COLUMN IF NOT EXISTS fecha_archivo TIMESTAMP;

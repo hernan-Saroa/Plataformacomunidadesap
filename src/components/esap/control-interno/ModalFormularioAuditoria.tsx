@@ -180,15 +180,6 @@ export function ModalFormularioAuditoria({
     if (typeof value === 'string' && !isNaN(Number(value))) {
       return value;
     }
-    // Si viene como nombre (string no numérico), buscar el ID en los auditores mock
-    if (typeof value === 'string' && value) {
-      const auditorEncontrado = AUDITORES_MOCK.find(a => 
-        a.nombre === value || a.nombre.includes(value)
-      );
-      if (auditorEncontrado) {
-        return auditorEncontrado.id;
-      }
-    }
     return '';
   };
 
@@ -212,6 +203,101 @@ export function ModalFormularioAuditoria({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [objetivoTemporal, setObjetivoTemporal] = useState('');
+  const [auditoresDisponibles, setAuditoresDisponibles] = useState<Persona[]>([]);
+  const [cargandoAuditores, setCargandoAuditores] = useState(false);
+
+  // Cargar auditores disponibles desde la API
+  useEffect(() => {
+    const cargarAuditores = async () => {
+      console.log('[ModalFormularioAuditoria] Iniciando carga de auditores...');
+      setCargandoAuditores(true);
+      try {
+        const response = await fetch('http://localhost:3007/auditorias/personas/disponibles');
+        console.log('[ModalFormularioAuditoria] Response status:', response.status);
+        
+        if (response.ok) {
+          const personas = await response.json();
+          console.log('[ModalFormularioAuditoria] Personas recibidas:', personas.length, personas);
+          console.log('[ModalFormularioAuditoria] Primera persona:', personas[0]);
+          
+          // Convertir personas a formato de auditores
+          // El backend ya transformó y devuelve id, idPersona en lugar de id_tercero
+          const auditores = personas
+            .filter((persona: any) => {
+              const personaId = persona.idPersona || persona.id_tercero || persona.id;
+              if (!personaId) {
+                console.warn('[ModalFormularioAuditoria] Persona sin ID:', persona);
+                return false;
+              }
+              return true;
+            })
+            .map((persona: any) => {
+              const personaId = persona.idPersona || persona.id_tercero || persona.id;
+              return {
+                id: String(personaId),
+                nombre: persona.nombre || persona.nom_largo || 'Sin nombre',
+                cargo: 'Auditor',
+                tipoIdentificacion: persona.tipoIdentificacion || persona.tip_identificacion || 'CC',
+                numeroIdentificacion: persona.numeroIdentificacion || persona.num_identificacion || 'Sin identificación'
+              };
+            });
+          
+          console.log('[ModalFormularioAuditoria] Auditores mapeados:', auditores.length, auditores);
+          setAuditoresDisponibles(auditores);
+          console.log('[ModalFormularioAuditoria] Estado auditoresDisponibles actualizado');
+          
+          // Después de cargar auditores, verificar si initialData tiene numeroIdentificacion
+          if (initialData) {
+            const auditorLiderValue = initialData.auditorLider;
+            const auditorAsignadoValue = initialData.auditorAsignado;
+            
+            // Si auditorLider no existe como ID en la lista, buscar por numeroIdentificacion
+            if (auditorLiderValue) {
+              const existeComoId = auditores.some(a => a.id === auditorLiderValue);
+              
+              if (!existeComoId) {
+                const auditorEncontrado = auditores.find(a => a.numeroIdentificacion === auditorLiderValue);
+                if (auditorEncontrado) {
+                  console.log('[ModalFormularioAuditoria] Auditor Líder encontrado por numeroIdentificacion:', auditorEncontrado.id, auditorEncontrado.nombre);
+                  setFormData(prev => ({ ...prev, auditorLider: auditorEncontrado.id }));
+                } else {
+                  console.warn('[ModalFormularioAuditoria] No se encontró auditor líder con numeroIdentificacion:', auditorLiderValue);
+                }
+              }
+            }
+            
+            // Si auditorAsignado no existe como ID en la lista, buscar por numeroIdentificacion
+            if (auditorAsignadoValue) {
+              const existeComoId = auditores.some(a => a.id === auditorAsignadoValue);
+              
+              if (!existeComoId) {
+                const auditorEncontrado = auditores.find(a => a.numeroIdentificacion === auditorAsignadoValue);
+                if (auditorEncontrado) {
+                  console.log('[ModalFormularioAuditoria] Auditor Asignado encontrado por numeroIdentificacion:', auditorEncontrado.id, auditorEncontrado.nombre);
+                  setFormData(prev => ({ ...prev, auditorAsignado: auditorEncontrado.id }));
+                } else {
+                  console.warn('[ModalFormularioAuditoria] No se encontró auditor asignado con numeroIdentificacion:', auditorAsignadoValue);
+                }
+              }
+            }
+          }
+        } else {
+          console.warn('[ModalFormularioAuditoria] Response no OK:', response.status);
+          setAuditoresDisponibles([]);
+        }
+      } catch (error) {
+        console.error('[ModalFormularioAuditoria] Error al cargar auditores:', error);
+        setAuditoresDisponibles([]);
+      } finally {
+        setCargandoAuditores(false);
+        console.log('[ModalFormularioAuditoria] Carga finalizada. Total auditores:', auditoresDisponibles.length);
+      }
+    };
+
+    if (open) {
+      cargarAuditores();
+    }
+  }, [open, initialData]);
 
   // Actualizar formulario cuando cambian los datos iniciales
   useEffect(() => {
@@ -223,7 +309,7 @@ export function ModalFormularioAuditoria({
           )
         : [];
       
-      setFormData({
+      const newFormData = {
         codigo: initialData.codigo || '',
         tipoAuditoria: initialData.tipoAuditoria || 'regular',
         titulo: initialData.titulo || '',
@@ -236,7 +322,16 @@ export function ModalFormularioAuditoria({
         objetivos: normalizedObjetivos,
         alcance: initialData.alcance || '',
         riesgo: initialData.riesgo || 'Medio'
+      };
+      
+      console.log('[ModalFormularioAuditoria] Actualizando formData con initialData:', {
+        auditorLider: newFormData.auditorLider,
+        auditorAsignado: newFormData.auditorAsignado,
+        initialData_auditorLider: initialData.auditorLider,
+        initialData_auditorAsignado: initialData.auditorAsignado
       });
+      
+      setFormData(newFormData);
       setTouched({});
       setErrors([]);
       setHasChanges(false);
@@ -356,6 +451,9 @@ export function ModalFormularioAuditoria({
     return value && value !== '';
   }).length;
   const progresoCompletado = Math.round((camposCompletados / camposRequeridos.length) * 100);
+
+  console.log('[ModalFormularioAuditoria] RENDER - auditoresDisponibles:', auditoresDisponibles.length, 'open:', open, 'cargando:', cargandoAuditores);
+  console.log('[ModalFormularioAuditoria] RENDER - formData.auditorLider:', formData.auditorLider, 'formData.auditorAsignado:', formData.auditorAsignado);
 
   return (
     <AnimatePresence>
@@ -597,17 +695,18 @@ export function ModalFormularioAuditoria({
                         required
                       >
                         <select
-                          value={formData.auditorLider}
+                          value={formData.auditorLider || ''}
                           onChange={(e) => handleChange('auditorLider', e.target.value)}
                           onBlur={() => handleBlur('auditorLider')}
+                          disabled={cargandoAuditores}
                           className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
                             hasFieldError(errors, 'Auditor Líder') && touched.auditorLider
                               ? 'border-red-500 focus:ring-red-500'
                               : 'border-gray-300'
                           }`}
                         >
-                          <option value="">Seleccione un auditor...</option>
-                          {AUDITORES_MOCK.map(auditor => (
+                          <option value="">{cargandoAuditores ? 'Cargando auditores...' : 'Seleccione un auditor...'}</option>
+                          {auditoresDisponibles.map(auditor => (
                             <option key={auditor.id} value={auditor.id}>
                               {auditor.nombre} - {auditor.cargo}
                             </option>
@@ -622,17 +721,18 @@ export function ModalFormularioAuditoria({
                         required
                       >
                         <select
-                          value={formData.auditorAsignado}
+                          value={formData.auditorAsignado || ''}
                           onChange={(e) => handleChange('auditorAsignado', e.target.value)}
                           onBlur={() => handleBlur('auditorAsignado')}
+                          disabled={cargandoAuditores}
                           className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
                             hasFieldError(errors, 'Auditor Asignado') && touched.auditorAsignado
                               ? 'border-red-500 focus:ring-red-500'
                               : 'border-gray-300'
                           }`}
                         >
-                          <option value="">Seleccione un auditor...</option>
-                          {AUDITORES_MOCK.filter(a => a.id !== formData.auditorLider).map(auditor => (
+                          <option value="">{cargandoAuditores ? 'Cargando auditores...' : 'Seleccione un auditor...'}</option>
+                          {auditoresDisponibles.filter(a => a.id !== formData.auditorLider).map(auditor => (
                             <option key={auditor.id} value={auditor.id}>
                               {auditor.nombre} - {auditor.cargo}
                             </option>
