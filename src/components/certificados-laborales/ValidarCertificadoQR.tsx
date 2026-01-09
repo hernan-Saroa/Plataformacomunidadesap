@@ -77,6 +77,21 @@ export function ValidarCertificadoQR() {
       const response = await certificadosService.validacion.verificarCertificadoLaboral(codigoNormalizado);
       console.log('Respuesta verificación certificado:', response);
 
+      if (
+        response?.statusCode >= 400 ||
+        response?.error ||
+        (typeof response?.message === 'string' &&
+          response.message.toLowerCase().includes('no encontrado'))
+      ) {
+        const message =
+          response?.message || 'Codigo QR invalido o certificado no encontrado';
+        setValidationResult({ isValid: false, error: message });
+        toast.error('Certificado no valido', {
+          description: 'El codigo ingresado no existe o no es valido'
+        });
+        return;
+      }
+
       const expiracion = response?.expiration_date ? new Date(response.expiration_date) : null;
       const ahora = new Date();
       const estadoCalculado = response?.status
@@ -100,11 +115,21 @@ export function ValidarCertificadoQR() {
         || response?.createdAt
       );
 
+      const consecutivo = getVal(response?.certificate_number, response?.certificateNumber, response?.consecutivo);
+      const nombreEmpleado = getVal(response?.full_name, response?.nombreCompleto, response?.fullName);
+      if (consecutivo === 'No disponible' && nombreEmpleado === 'No disponible') {
+        setValidationResult({ isValid: false, error: 'Certificado no encontrado' });
+        toast.error('Certificado no valido', {
+          description: 'El codigo ingresado no existe o no es valido'
+        });
+        return;
+      }
+
       const certificado = {
-        consecutivo: getVal(response?.certificate_number, response?.certificateNumber, response?.consecutivo),
+        consecutivo,
         codigoQR: response?.verification_code || codigoNormalizado,
         empleado: {
-          nombre: getVal(response?.full_name, response?.nombreCompleto, response?.fullName),
+          nombre: nombreEmpleado,
           documento: getVal(response?.id_number, response?.documento, response?.idNumber),
           cargo: getVal(response?.position_category, response?.cargo, response?.positionCategory),
           dependencia: getVal(response?.department, response?.dependencia, response?.departmentName, response?.position_location, response?.positionLocation)

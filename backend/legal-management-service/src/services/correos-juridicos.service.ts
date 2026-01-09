@@ -22,8 +22,10 @@ export interface EmailClassification {
 
 export interface SendEmailDto {
     to: string;
+    cc?: string[];
     subject: string;
     body: string;
+    attachments?: { name: string; contentBytes: string; contentType: string }[];
 }
 
 @Injectable()
@@ -290,7 +292,7 @@ export class CorreosJuridicosService {
      * Send an email via Graph API
      */
     async sendEmail(dto: SendEmailDto): Promise<boolean> {
-        return this.graphService.sendEmail(dto.to, dto.subject, dto.body);
+        return this.graphService.sendEmail(dto.to, dto.subject, dto.body, dto.cc, dto.attachments);
     }
 
     /**

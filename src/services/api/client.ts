@@ -102,7 +102,13 @@ class APIClient {
         const serviceUrl = serviceUrlMap[serviceName];
 
         if (serviceUrl) {
-          const cleanPath = (restPath || '/').replace(/^\/api\/v\d+/, '');
+          let cleanPath = (restPath || '/').replace(/^\/api\/v\d+/, '');
+
+          if (serviceName === 'registro-academico') {
+            if (/^\/graduates(\/|$)/.test(cleanPath)) {
+              cleanPath = `/academic-registration/api/v1${cleanPath}`;
+            }
+          }
           fullUrl = `${serviceUrl}${cleanPath}`;
 
           console.log('🔗 API Client [DIRECT MODE - versioned]:', {

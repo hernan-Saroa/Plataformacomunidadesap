@@ -8,6 +8,7 @@ export interface UpdateCertificateDto {
   diplomaNumber?: string;
   actaNumber?: string;
   campus?: string;
+  seccionalName?: string;
   issueDate?: string | Date;
   expiryDate?: string | Date;
   status?: string;

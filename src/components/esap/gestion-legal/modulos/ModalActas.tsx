@@ -23,7 +23,7 @@ import type { ExpedienteJudicial } from '../core/types';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
-import { getServiceUrl } from '../../../../config/environment';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { ModalHeaderClean } from './ModalHeaderClean';
@@ -136,35 +136,24 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
   };
 
   // Helper para construir URL correcta de archivo
+  // Direct mode: localhost:3008/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
     const baseUrl = getServiceUrl('legal');
 
-    // Si es URL absoluta con /api/, corregirla
-    if (archivoUrl.startsWith('http') && archivoUrl.includes('/api/legal/api/v1/files/')) {
-      return archivoUrl.replace('/api/legal/api/v1/files/', '/legal/api/v1/files/');
-    }
-    // Si es URL absoluta correcta, devolverla
-    if (archivoUrl.startsWith('http')) {
-      return archivoUrl;
+    // Extraer solo el nombre del archivo de cualquier ruta
+    let filename = archivoUrl;
+    if (archivoUrl.includes('/files/')) {
+      filename = archivoUrl.split('/files/').pop() || archivoUrl;
+    } else if (archivoUrl.includes('/')) {
+      filename = archivoUrl.split('/').pop() || archivoUrl;
     }
 
-    // Rutas relativas
-    if (archivoUrl.startsWith('/api/legal/api/v1/files/')) {
-      return `${baseUrl}${archivoUrl.replace('/api', '')}`;
-    }
-    if (archivoUrl.startsWith('files/')) {
-      return `${baseUrl}/legal/${archivoUrl}`;
-    }
-    if (archivoUrl.includes('/legal/api/v1/files/') && !archivoUrl.includes('/api/')) {
-      return `${baseUrl}${archivoUrl}`;
-    }
-    if (archivoUrl.includes('/files/')) {
-      const filename = archivoUrl.split('/files/').pop();
-      return `${baseUrl}/legal/api/v1/files/${filename}`;
-    }
-    return `${baseUrl}/legal/api/v1/files/${archivoUrl}`;
+    // En modo directo, no agregar prefijo /legal/
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    return `${baseUrl}${prefix}/files/${filename}`;
   };
 
   const handleDescargarActa = async (acta: any) => {
@@ -294,7 +283,8 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
     try {
       const expedienteId = expediente.uuid || expediente.id;
       const baseUrl = getServiceUrl('legal');
-      const url = `${baseUrl}/legal/api/v1/actas/expediente/${expedienteId}/download-zip`;
+      const prefix = API_MODE === 'direct' ? '' : '/legal';
+      const url = `${baseUrl}${prefix}/actas/expediente/${expedienteId}/download-zip`;
 
       const response = await fetch(url);
 

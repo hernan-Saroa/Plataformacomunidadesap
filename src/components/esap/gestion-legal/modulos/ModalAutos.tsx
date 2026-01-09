@@ -22,7 +22,7 @@ import type { ExpedienteJudicial } from '../core/types';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
-import { getServiceUrl } from '../../../../config/environment';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { VisorPDFModal } from './VisorPDFModal';
 import { ModalNuevoAuto } from './ModalNuevoAuto';
 import { ModalHeaderClean } from './ModalHeaderClean';
@@ -101,7 +101,8 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
   }, [isOpen, expediente.id]);
 
   // Helper para construir URL correcta de archivo
-  // Gateway pattern: /legal/api/v1/files/:filename -> backend /files/:filename
+  // Direct mode: localhost:3008/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
@@ -120,8 +121,9 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
 
-    // Construir URL usando el patrón del gateway: /legal/api/v1/files/
-    return `${baseUrl}/legal/api/v1/files/${filename}`;
+    // En modo directo, no agregar prefijo /legal/
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    return `${baseUrl}${prefix}/files/${filename}`;
   };
 
   const handleDescargarAuto = async (auto: Auto) => {
