@@ -89,6 +89,13 @@ export function ModuloAsesoriaJuridicaV3() {
     try {
       setLoading(true);
       const data = await legalService.getConsultasJuridicas();
+
+      if (!Array.isArray(data)) {
+        console.error('Error: La respuesta no es un array', data);
+        setConsultas([]);
+        return;
+      }
+
       // Map backend data to frontend format
       const mapped = data.map((c: any) => ({
         id: c.numeroRadicado,
