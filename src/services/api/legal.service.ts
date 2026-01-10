@@ -90,6 +90,27 @@ export class LegalService {
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`, data);
     }
 
+    // ===== EXCEPCIONES PROCESALES (Juzgamiento) =====
+    async getJuzgamientoExcepciones(radicado: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`);
+    }
+
+    async createJuzgamientoExcepcion(radicado: string, data: {
+        tipo: 'NULIDAD' | 'RECUSACION' | 'PRESCRIPCION' | 'IMPEDIMENTO' | 'OTRA';
+        descripcion: string;
+        fundamento?: string;
+        presentadoPor?: string;
+    }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`, data);
+    }
+
+    async resolverExcepcion(excepcionId: string, data: {
+        estado: 'RESUELTA' | 'RECHAZADA';
+        resolucion: string;
+    }): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/excepciones/${excepcionId}/resolver`, data);
+    }
+
     async updateJuzgamientoProceso(radicado: string, data: any): Promise<any> {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}`, data);
     }

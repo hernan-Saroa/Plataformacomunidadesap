@@ -5,6 +5,7 @@ import { Expediente } from '../entities/expediente.entity';
 import { Actuacion } from '../entities/actuacion.entity';
 import { Documento } from '../entities/documento.entity';
 import { DecisionDisciplinaria } from '../entities/decision-disciplinaria.entity';
+import { ExcepcionProcesal, TipoExcepcion, EstadoExcepcion } from '../entities/excepcion-procesal.entity';
 
 @Injectable()
 export class ExpedienteService {
@@ -12,10 +13,11 @@ export class ExpedienteService {
         @InjectRepository(Expediente)
         private expedienteRepository: Repository<Expediente>,
         @InjectRepository(Actuacion)
-        @InjectRepository(Actuacion)
         private actuacionRepository: Repository<Actuacion>,
         @InjectRepository(DecisionDisciplinaria)
-        private decisionRepository: Repository<DecisionDisciplinaria>
+        private decisionRepository: Repository<DecisionDisciplinaria>,
+        @InjectRepository(ExcepcionProcesal)
+        private excepcionRepository: Repository<ExcepcionProcesal>
     ) { }
 
     // ... (existing methods like crearExpediente)
@@ -186,5 +188,47 @@ export class ExpedienteService {
                 }
             }
         });
+    }
+
+    // ==================== EXCEPCIONES PROCESALES ====================
+
+    async getExcepciones(expedienteId: string): Promise<ExcepcionProcesal[]> {
+        return this.excepcionRepository.find({
+            where: { expedienteId },
+            order: { fechaPresentacion: 'DESC' }
+        });
+    }
+
+    async createExcepcion(expedienteId: string, data: {
+        tipo: TipoExcepcion;
+        descripcion: string;
+        fundamento?: string;
+        presentadoPor?: string;
+    }): Promise<ExcepcionProcesal> {
+        const expediente = await this.findOne(expedienteId);
+        if (!expediente) throw new NotFoundException('Expediente no encontrado');
+
+        const nuevaExcepcion = this.excepcionRepository.create({
+            ...data,
+            expedienteId: expediente.id,
+            estado: 'PENDIENTE',
+            fechaPresentacion: new Date().toISOString().split('T')[0]
+        });
+
+        return this.excepcionRepository.save(nuevaExcepcion);
+    }
+
+    async resolverExcepcion(excepcionId: string, data: {
+        estado: EstadoExcepcion;
+        resolucion: string;
+    }): Promise<ExcepcionProcesal> {
+        const excepcion = await this.excepcionRepository.findOne({ where: { id: excepcionId } });
+        if (!excepcion) throw new NotFoundException('Excepción no encontrada');
+
+        excepcion.estado = data.estado;
+        excepcion.resolucion = data.resolucion;
+        excepcion.fechaResolucion = new Date().toISOString().split('T')[0];
+
+        return this.excepcionRepository.save(excepcion);
     }
 }
