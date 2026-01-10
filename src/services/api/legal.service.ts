@@ -768,7 +768,7 @@ export class CorreosJuridicosService {
      * Trigger manual sync from Microsoft Graph
      */
     async syncCorreos(): Promise<{ synced: number; errors: number }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`);
+        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, {});
     }
 
     /**
