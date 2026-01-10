@@ -62,6 +62,7 @@ import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
+import jsPDF from 'jspdf';
 import { ModalExpedienteAuditoria } from './ModalExpedienteAuditoria';
 import { ModalNotasAuditoria } from './ModalNotasAuditoria';
 import { ModalHistorialAuditoria } from './ModalHistorialAuditoria';
@@ -1701,7 +1702,7 @@ function ColumnaKanban({
 
   // Versión expandida normal
   return (
-    <Card className="flex-shrink-0 flex flex-col" style={{ width: '320px', height: 'calc(100vh - 250px)' }}>
+    <Card className="flex-shrink-0 flex flex-col" style={{ width: '320px', height: 'calc(100vh - 320px)' }}>
       {/* Header Columna - ESTILO DISCIPLINARIO EXACTO */}
       <div className="p-4 border-b bg-gray-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
@@ -1745,8 +1746,7 @@ function ColumnaKanban({
         ref={drop}
         className={`p-3 space-y-3 overflow-y-auto flex-1 ${isOver ? 'bg-blue-50' : ''}`}
         style={{ 
-          minHeight: 0,
-          maxHeight: '100%'
+          minHeight: 0
         }}
       >
         <AnimatePresence>
@@ -2830,29 +2830,232 @@ export function GestionAuditoriasKanbanSimple() {
     setModalAprobacionOpen(true);
   };
 
-  // Exportar individual
+  // Exportar individual - GENERA PDF REAL
   const handleExportar = (auditoria: Auditoria) => {
-    // Simular exportación a PDF
-    toast.success(`Exportando ${auditoria.codigo}...`, {
-      description: 'Generando informe PDF completo',
-      duration: 3000
+    // Crear toast de carga con ID para poder cerrarlo
+    const toastId = toast.loading('Generando PDF...', {
+      description: 'Por favor espera un momento'
     });
-    
-    // En producción, esto haría una llamada al backend para generar el PDF
-    setTimeout(() => {
-      toast.success(`${auditoria.codigo} exportado`, {
-        description: 'El archivo PDF está listo para descargar'
+
+    try {
+      // Crear documento PDF
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'letter'
       });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+      const maxWidth = pageWidth - (margin * 2);
+      let yPos = margin;
+
+      // ============ ENCABEZADO ============
+      doc.setFillColor(0, 61, 165);
+      doc.rect(0, 0, pageWidth, 25, 'F');
       
-      // Simular descarga
-      const blob = new Blob(['Informe de Auditoría'], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${auditoria.codigo}_Informe.pdf`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    }, 2000);
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA', pageWidth / 2, 10, { align: 'center' });
+      doc.setFontSize(12);
+      doc.text('Oficina de Control Interno - Informe de Auditoría', pageWidth / 2, 18, { align: 'center' });
+      
+      yPos = 35;
+
+      // ============ INFORMACIÓN GENERAL ============
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('INFORMACIÓN GENERAL DE LA AUDITORÍA', margin, yPos);
+      yPos += 10;
+
+      // Tabla de información
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      
+      const infoData = [
+        ['Código:', auditoria.codigo],
+        ['Título:', auditoria.titulo],
+        ['Estado:', auditoria.estado],
+        ['Territorial:', auditoria.territorial],
+        ['Riesgo:', auditoria.riesgo],
+        ['Fecha Inicio:', auditoria.fechaInicio],
+        ['Fecha Fin:', auditoria.fechaFin],
+        ['Progreso:', `${auditoria.progreso}%`]
+      ];
+
+      infoData.forEach(([label, value]) => {
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        const textLines = doc.splitTextToSize(value || 'N/A', maxWidth - 40);
+        doc.text(textLines, margin + 35, yPos);
+        yPos += Math.max(6, textLines.length * 5);
+      });
+
+      yPos += 5;
+
+      // ============ DESCRIPCIÓN ============
+      if (auditoria.descripcion) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DESCRIPCIÓN', margin, yPos);
+        yPos += 8;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        const descripcionLines = doc.splitTextToSize(auditoria.descripcion, maxWidth);
+        descripcionLines.forEach((line: string) => {
+          if (yPos > pageHeight - 30) {
+            doc.addPage();
+            yPos = margin;
+          }
+          doc.text(line, margin, yPos);
+          yPos += 5;
+        });
+        yPos += 5;
+      }
+
+      // ============ OBJETIVOS ============
+      if (auditoria.objetivos && auditoria.objetivos.length > 0) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('OBJETIVOS DE LA AUDITORÍA', margin, yPos);
+        yPos += 8;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        auditoria.objetivos.forEach((obj, idx) => {
+          if (yPos > pageHeight - 30) {
+            doc.addPage();
+            yPos = margin;
+          }
+          const objetivoLines = doc.splitTextToSize(`${idx + 1}. ${obj.descripcion}`, maxWidth);
+          objetivoLines.forEach((line: string) => {
+            doc.text(line, margin, yPos);
+            yPos += 5;
+          });
+          yPos += 2;
+        });
+        yPos += 5;
+      }
+
+      // ============ EQUIPO AUDITOR ============
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('EQUIPO AUDITOR', margin, yPos);
+      yPos += 8;
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Auditor Líder:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(auditoria.auditorLider?.nombre || 'No asignado', margin + 35, yPos);
+      yPos += 6;
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Cargo:', margin + 5, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(auditoria.auditorLider?.cargo || 'N/A', margin + 35, yPos);
+      yPos += 8;
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Auditor Asignado:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(auditoria.auditorAsignado?.nombre || 'No asignado', margin + 35, yPos);
+      yPos += 6;
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Cargo:', margin + 5, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(auditoria.auditorAsignado?.cargo || 'N/A', margin + 35, yPos);
+      yPos += 10;
+
+      // ============ MÉTRICAS ============
+      if (yPos > pageHeight - 50) {
+        doc.addPage();
+        yPos = margin;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('MÉTRICAS Y ESTADÍSTICAS', margin, yPos);
+      yPos += 8;
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      
+      const metricas = [
+        ['Hallazgos Identificados:', `${auditoria.hallazgos}`],
+        ['Documentos Cargados:', `${auditoria.documentos}`],
+        ['Informes Generados:', `${auditoria.informes}`],
+        ['Días Restantes:', `${auditoria.diasRestantes} días`],
+        ['Porcentaje de Tiempo:', `${auditoria.porcentajeTiempo}%`]
+      ];
+
+      metricas.forEach(([label, value]) => {
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(value, margin + 50, yPos);
+        yPos += 6;
+      });
+
+      // ============ FOOTER EN TODAS LAS PÁGINAS ============
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        
+        // Línea separadora
+        doc.setDrawColor(200, 200, 200);
+        doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
+        
+        // Texto del footer
+        doc.setFontSize(8);
+        doc.setTextColor(128, 128, 128);
+        doc.setFont('helvetica', 'normal');
+        doc.text(
+          `Página ${i} de ${totalPages}`,
+          pageWidth / 2,
+          pageHeight - 10,
+          { align: 'center' }
+        );
+        doc.text(
+          `Generado: ${new Date().toLocaleString('es-CO')}`,
+          margin,
+          pageHeight - 10
+        );
+        doc.text(
+          'ESAP - Control Interno',
+          pageWidth - margin,
+          pageHeight - 10,
+          { align: 'right' }
+        );
+      }
+
+      // Generar nombre de archivo
+      const nombreArchivo = `${auditoria.codigo}_Informe_Auditoria.pdf`;
+      
+      // Descargar PDF
+      doc.save(nombreArchivo);
+      
+      // Cerrar toast de carga y mostrar éxito
+      toast.dismiss(toastId);
+      toast.success('PDF descargado exitosamente', {
+        description: `Archivo: ${nombreArchivo}`,
+        duration: 4000
+      });
+    } catch (error) {
+      console.error('Error al generar PDF:', error);
+      // Cerrar toast de carga y mostrar error
+      toast.dismiss(toastId);
+      toast.error('Error al generar el PDF', {
+        description: error instanceof Error ? error.message : 'Error desconocido',
+        duration: 4000
+      });
+    }
   };
 
   // Archivar individual - ACTUALIZADO
@@ -3213,8 +3416,8 @@ export function GestionAuditoriasKanbanSimple() {
 
         {/* VISTA KANBAN */}
         {vistaActiva === 'kanban' && (
-          <div className="overflow-x-auto pb-4">
-            <div className="flex gap-4 min-w-max" style={{ alignItems: 'flex-start' }}>
+          <div className="overflow-x-auto pb-4 -mx-6 px-6">
+            <div className="flex gap-4 min-w-max" style={{ alignItems: 'flex-start', minWidth: '1600px' }}>
               {COLUMNAS_KANBAN.map((columna) => {
                 const auditoriasColumna = auditoriasFiltradas.filter(
                   (aud) => aud.estado === columna.id
