@@ -8,6 +8,7 @@ import {
     Body,
     HttpCode,
     HttpStatus,
+    Res,
 } from '@nestjs/common';
 import { CorreosJuridicosService } from '../services/correos-juridicos.service';
 import type { EmailFilters } from '../services/correos-juridicos.service';
@@ -97,6 +98,35 @@ export class CorreosJuridicosController {
     async sendEmail(@Body() dto: SendEmailDto): Promise<{ success: boolean }> {
         const success = await this.correosService.sendEmail(dto);
         return { success };
+    }
+
+    /**
+     * Get attachments for an email
+     */
+    @Get(':id/adjuntos')
+    async getAttachments(@Param('id') id: string) {
+        return this.correosService.getAttachments(id);
+    }
+
+    /**
+     * Download a specific attachment
+     * Returns the file as binary data
+     */
+    @Get('adjuntos/:adjuntoId/download')
+    async downloadAttachment(
+        @Param('adjuntoId') adjuntoId: string,
+        @Res() res: any,
+    ) {
+        const attachment = await this.correosService.downloadAttachment(adjuntoId);
+
+        // Set headers for file download
+        res.setHeader('Content-Type', attachment.contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${attachment.name}"`);
+        res.setHeader('Content-Length', attachment.size);
+
+        // Convert base64 to buffer and send
+        const buffer = Buffer.from(attachment.contentBytes, 'base64');
+        res.send(buffer);
     }
 }
 

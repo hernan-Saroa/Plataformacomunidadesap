@@ -62,179 +62,6 @@ interface ComunicacionUnificada {
   };
 }
 
-// DATOS MOCK (Fallback cuando no hay conexión con el backend)
-const comunicacionesMock: ComunicacionUnificada[] = [
-  // ============= JUDICIALES (Notificaciones oficiales) =============
-  {
-    id: 'JUD-2025-001',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Acción Popular',
-    asunto: 'Nueva demanda radicada - Acción Popular',
-    descripcion: 'Se ha radicado nueva demanda por acción popular contra ESAP',
-    remitente: 'Juzgado 10 Administrativo Bogotá',
-    despachoOrigen: 'Juzgado 10 Admin. Bogotá',
-    radicadoExterno: '25000-33-10-001-2024-00234-00',
-    fechaRadicacion: new Date('2024-12-24'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['demanda.pdf', 'anexos.pdf']
-  },
-  {
-    id: 'JUD-2025-002',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Laboral',
-    asunto: 'Término cercano - Contestación demanda DJ-2024-089',
-    descripcion: 'Quedan 3 días para contestar demanda DJ-2024-089',
-    remitente: 'Juzgado 3 Laboral Circuito Bogotá',
-    despachoOrigen: 'Juzgado 3 Laboral Bogotá',
-    radicadoExterno: '11001-31-03-002-2024-00567-00',
-    fechaRadicacion: new Date('2024-12-24'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['notificacion.pdf']
-  },
-  {
-    id: 'JUD-2024-156',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'NRD',
-    asunto: 'Audiencia programada - Proceso DJ-2024-045',
-    descripcion: 'Audiencia de conciliación el 15 de enero de 2025',
-    remitente: 'Tribunal Administrativo de Cundinamarca',
-    despachoOrigen: 'Tribunal Admin. Cundinamarca',
-    radicadoExterno: '25000-23-42-000-2024-01234-01',
-    fechaRadicacion: new Date('2024-12-23'),
-    urgente: false,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['citacion_audiencia.pdf']
-  },
-  {
-    id: 'JUD-2024-155',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Laboral',
-    asunto: 'Auto admisorio notificado - DJ-2024-102',
-    descripcion: 'Se notificó auto admisorio de demanda laboral',
-    remitente: 'Juzgado 5 Laboral Circuito Bogotá',
-    despachoOrigen: 'Juzgado 5 Laboral Bogotá',
-    radicadoExterno: '11001-31-05-001-2024-00789-00',
-    fechaRadicacion: new Date('2024-12-22'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['auto_admisorio.pdf']
-  },
-
-  // ============= CORREOS (Emails con clasificación IA) =============
-  {
-    id: 'EMAIL-2025-001',
-    tipo: 'CORREO',
-    asunto: 'Consulta urgente sobre licitación pública - Requiere concepto jurídico',
-    descripcion: 'Dirección de Contratación solicita concepto sobre posible inhabilidad de proponente',
-    remitente: 'contratacion@esap.edu.co',
-    fechaRadicacion: new Date('2024-12-24'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['documentos_licitacion.pdf', 'anexo_tecnico.xlsx'],
-    clasificacionIA: {
-      tipoDetectado: 'Consulta Jurídica Interna',
-      moduloSugerido: 'MOD-03: Asesoría Jurídica',
-      confianza: 98
-    }
-  },
-  {
-    id: 'EMAIL-2025-002',
-    tipo: 'CORREO',
-    asunto: 'Notificación Contraloría - Solicitud de información proceso DJ-2024-023',
-    descripcion: 'Contraloría General solicita información sobre proceso de defensa judicial',
-    remitente: 'notificaciones@contraloria.gov.co',
-    fechaRadicacion: new Date('2024-12-23'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['oficio_contraloria.pdf'],
-    clasificacionIA: {
-      tipoDetectado: 'Órgano de Control',
-      moduloSugerido: 'MOD-07: Órganos de Control',
-      confianza: 99
-    }
-  },
-  {
-    id: 'EMAIL-2024-234',
-    tipo: 'CORREO',
-    asunto: 'Solicitud de concepto - Modificación estatutaria',
-    descripcion: 'Secretaría General solicita concepto jurídico sobre reforma de estatutos',
-    remitente: 'secretariageneral@esap.edu.co',
-    fechaRadicacion: new Date('2024-12-22'),
-    urgente: false,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['proyecto_reforma.docx'],
-    clasificacionIA: {
-      tipoDetectado: 'Consulta Jurídica Interna',
-      moduloSugerido: 'MOD-03: Asesoría Jurídica',
-      confianza: 97
-    }
-  },
-  {
-    id: 'EMAIL-2024-233',
-    tipo: 'CORREO',
-    asunto: 'PQRS ciudadana - Solicitud información procesos judiciales',
-    descripcion: 'Ciudadano solicita información sobre estado de demanda contra ESAP',
-    remitente: 'juan.perez@example.com',
-    fechaRadicacion: new Date('2024-12-21'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['solicitud_pqrs.pdf'],
-    clasificacionIA: {
-      tipoDetectado: 'PQRS Externa',
-      moduloSugerido: 'MOD-04: Gestión PQRS',
-      confianza: 96
-    }
-  },
-
-  // ============= OFICIOS (Documentos internos) =============
-  {
-    id: 'OFIC-2025-001',
-    tipo: 'OFICIO',
-    asunto: 'Oficio 001-2025 - Instrucciones para contestación de tutelas',
-    descripcion: 'Rectoría emite instrucciones para contestación oportuna de acciones de tutela',
-    remitente: 'Rectoría Nacional',
-    fechaRadicacion: new Date('2024-12-23'),
-    urgente: false,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['oficio_001_2025.pdf']
-  },
-  {
-    id: 'OFIC-2024-089',
-    tipo: 'OFICIO',
-    asunto: 'Circular Jurídica - Actualización normativa Ley 2294 de 2023',
-    descripcion: 'Circular sobre aplicación de nueva ley anticorrupción en contratación',
-    remitente: 'Oficina Asesora Jurídica',
-    fechaRadicacion: new Date('2024-12-20'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['circular_juridica_089.pdf', 'ley_2294.pdf']
-  },
-  {
-    id: 'OFIC-2024-088',
-    tipo: 'OFICIO',
-    asunto: 'Memorando - Socialización de nuevo sistema SIGL',
-    descripcion: 'Invitación a capacitación sobre el Sistema Integral de Gestión Legal (SIGL)',
-    remitente: 'Dirección TI',
-    fechaRadicacion: new Date('2024-12-18'),
-    urgente: false,
-    leida: true,
-    estado: 'ARCHIVADA',
-    documentosAdjuntos: ['invitacion_capacitacion.pdf']
-  }
-];
-
 type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'urgentes' | 'archivadas';
 type VistaModulo = 'inbox' | 'lista';
 
@@ -249,7 +76,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   const [tipoVista, setTipoVista] = useState<VistaModulo>('inbox');
 
   // Estado reactivo para las comunicaciones
-  const [comunicaciones, setComunicaciones] = useState<ComunicacionUnificada[]>(comunicacionesMock);
+  const [comunicaciones, setComunicaciones] = useState<ComunicacionUnificada[]>([]);
 
   // Estados para modales
   const [modalNuevaComunicacionOpen, setModalNuevaComunicacionOpen] = useState(false);
@@ -290,13 +117,13 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         setApiConnected(true);
         console.log('✅ Correos cargados desde API:', correos.length);
       } else {
-        // Usar mock si no hay datos
-        setComunicaciones(comunicacionesMock);
-        console.log('⚠️ Sin datos de API, usando mock');
+        // No hay correos en la API
+        setComunicaciones([]);
+        console.log('⚠️ Sin datos de API');
       }
     } catch (error) {
       console.error('❌ Error cargando correos:', error);
-      setComunicaciones(comunicacionesMock);
+      setComunicaciones([]);
       setApiConnected(false);
     } finally {
       setLoading(false);
@@ -735,15 +562,17 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       />
 
       {/* Modal Expediente Comunicación */}
-      <ModalExpedienteComunicacion
-        isOpen={modalExpedienteOpen && comunicacionParaExpediente !== null}
-        onClose={() => {
-          console.log('🚪 Cerrando modal expediente');
-          setModalExpedienteOpen(false);
-          setComunicacionParaExpediente(null);
-        }}
-        comunicacion={comunicacionParaExpediente || comunicacionesFiltradas[0] || comunicacionesUnificadas[0]}
-      />
+      {comunicacionParaExpediente && (
+        <ModalExpedienteComunicacion
+          isOpen={modalExpedienteOpen}
+          onClose={() => {
+            console.log('🚪 Cerrando modal expediente');
+            setModalExpedienteOpen(false);
+            setComunicacionParaExpediente(null);
+          }}
+          comunicacion={comunicacionParaExpediente}
+        />
+      )}
     </div>
   );
 }

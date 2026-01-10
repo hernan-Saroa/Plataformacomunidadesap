@@ -4,13 +4,13 @@
  * ✅ Vista detallada con tabs funcionales
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
-import { 
+import {
   Mail, Gavel, FileText, User, Calendar, Clock, AlertTriangle,
   Download, Eye, Paperclip, CheckCircle, Share, Send,
   Building2, Activity, MessageSquare, History, Archive,
-  ExternalLink, Target, Flag
+  ExternalLink, Target, Flag, Loader2
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -23,6 +23,7 @@ import { Textarea } from '../../../ui/textarea';
 
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalCompartir } from './ModalCompartir';
+import { correosJuridicosService, AdjuntoCorreo } from '../../../../services/api/legal.service';
 
 interface ComunicacionUnificada {
   id: string;
@@ -53,18 +54,41 @@ interface ModalExpedienteComunicacionProps {
   onArchivar?: (id: string) => void;
 }
 
-export function ModalExpedienteComunicacion({ 
-  isOpen, 
-  onClose, 
+export function ModalExpedienteComunicacion({
+  isOpen,
+  onClose,
   comunicacion,
   onMarcarLeida,
   onArchivar
 }: ModalExpedienteComunicacionProps) {
   const [tabActivo, setTabActivo] = useState('general');
   const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
+  const [adjuntos, setAdjuntos] = useState<AdjuntoCorreo[]>([]);
+  const [loadingAdjuntos, setLoadingAdjuntos] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  // Cargar adjuntos reales desde la API
+  useEffect(() => {
+    const loadAdjuntos = async () => {
+      if (!isOpen || !comunicacion?.id) return;
+
+      setLoadingAdjuntos(true);
+      try {
+        const data = await correosJuridicosService.getAdjuntos(comunicacion.id);
+        setAdjuntos(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Error loading adjuntos:', error);
+        setAdjuntos([]);
+      } finally {
+        setLoadingAdjuntos(false);
+      }
+    };
+
+    loadAdjuntos();
+  }, [isOpen, comunicacion?.id]);
 
   // ==================== DATOS MOCK ====================
-  
+
   const timeline = [
     {
       id: 'TL-001',
@@ -103,11 +127,40 @@ export function ModalExpedienteComunicacion({
   ];
 
   // ==================== HANDLERS ====================
-  
-  const handleDescargarDocumento = (doc: string) => {
-    toast.success('✅ Descarga iniciada', {
-      description: doc
-    });
+
+  const handleDescargarAdjunto = async (adjunto: AdjuntoCorreo) => {
+    setDownloadingId(adjunto.id);
+    try {
+      const blobUrl = await correosJuridicosService.downloadAdjunto(adjunto.id);
+
+      // Create temporary link to trigger download
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = adjunto.nombre;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Cleanup blob URL
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 100);
+
+      toast.success('✅ Descarga completada', {
+        description: adjunto.nombre
+      });
+    } catch (error) {
+      console.error('Error downloading adjunto:', error);
+      toast.error('Error al descargar el archivo');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
   const handleDescargarPDF = () => {
@@ -156,7 +209,7 @@ export function ModalExpedienteComunicacion({
   };
 
   // ==================== RENDER ====================
-  
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -240,7 +293,7 @@ export function ModalExpedienteComunicacion({
                   </TabsTrigger>
                   <TabsTrigger value="documentos" className="gap-2">
                     <Paperclip className="w-4 h-4" />
-                    Documentos ({comunicacion.documentosAdjuntos.length})
+                    Documentos ({loadingAdjuntos ? '...' : adjuntos.length})
                   </TabsTrigger>
                   <TabsTrigger value="clasificacion" className="gap-2">
                     <Activity className="w-4 h-4" />
@@ -339,43 +392,55 @@ export function ModalExpedienteComunicacion({
 
                 {/* TAB: DOCUMENTOS */}
                 <TabsContent value="documentos" className="space-y-4 mt-0">
-                  <div className="space-y-2">
-                    {comunicacion.documentosAdjuntos.map((doc, index) => (
-                      <Card key={index} className="p-4 hover:shadow-md transition-shadow">
-                        <div className="flex items-center gap-4">
-                          <div className="p-3 rounded-lg bg-blue-50">
-                            <FileText className="w-6 h-6 text-blue-600" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-bold text-gray-900 truncate">{doc}</h4>
-                            <div className="flex items-center gap-4 text-xs text-gray-600 mt-1">
-                              <span>PDF</span>
-                              <span>2.3 MB</span>
-                              <span>{new Date(comunicacion.fechaRadicacion).toLocaleDateString('es-CO')}</span>
+                  {loadingAdjuntos ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                      <span className="ml-3 text-gray-600">Cargando adjuntos...</span>
+                    </div>
+                  ) : adjuntos.length === 0 ? (
+                    <Card className="p-8 bg-gray-50 border-gray-200 text-center">
+                      <Paperclip className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                      <p className="text-gray-500 font-medium">No hay documentos adjuntos</p>
+                      <p className="text-sm text-gray-400 mt-1">
+                        Este correo no tiene archivos adjuntos
+                      </p>
+                    </Card>
+                  ) : (
+                    <div className="space-y-2">
+                      {adjuntos.map((adjunto) => (
+                        <Card key={adjunto.id} className="p-4 hover:shadow-md transition-shadow">
+                          <div className="flex items-center gap-4">
+                            <div className="p-3 rounded-lg bg-blue-50">
+                              <FileText className="w-6 h-6 text-blue-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-bold text-gray-900 truncate">{adjunto.nombre}</h4>
+                              <div className="flex items-center gap-4 text-xs text-gray-600 mt-1">
+                                <span>{adjunto.contentType || 'Archivo'}</span>
+                                <span>{formatFileSize(adjunto.tamanio)}</span>
+                                <span>{new Date(adjunto.createdAt).toLocaleDateString('es-CO')}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={downloadingId === adjunto.id}
+                                onClick={() => handleDescargarAdjunto(adjunto)}
+                              >
+                                {downloadingId === adjunto.id ? (
+                                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                ) : (
+                                  <Download className="w-4 h-4 mr-1" />
+                                )}
+                                Descargar
+                              </Button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => toast.info('Abriendo visor...', { description: doc })}
-                            >
-                              <Eye className="w-4 h-4 mr-1" />
-                              Ver
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDescargarDocumento(doc)}
-                            >
-                              <Download className="w-4 h-4 mr-1" />
-                              Descargar
-                            </Button>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
                 </TabsContent>
 
                 {/* TAB: CLASIFICACIÓN IA */}
@@ -406,7 +471,7 @@ export function ModalExpedienteComunicacion({
                           <p className="text-xs text-gray-600 mb-2">Nivel de Confianza</p>
                           <div className="flex items-center gap-3">
                             <div className="flex-1 bg-gray-200 rounded-full h-2">
-                              <div 
+                              <div
                                 className="bg-purple-600 h-2 rounded-full transition-all"
                                 style={{ width: `${comunicacion.clasificacionIA.confianza}%` }}
                               />
@@ -438,7 +503,7 @@ export function ModalExpedienteComunicacion({
                     {timeline.map((evento) => (
                       <Card key={evento.id} className="p-4">
                         <div className="flex items-start gap-4">
-                          <div 
+                          <div
                             className="p-2 rounded-lg flex-shrink-0"
                             style={{ background: `${evento.color}20` }}
                           >

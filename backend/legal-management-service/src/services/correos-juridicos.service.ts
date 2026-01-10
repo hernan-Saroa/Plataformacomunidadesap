@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { CorreoJuridico } from '../entities/correo-juridico.entity';
+import { AdjuntoCorreo } from '../entities/adjunto-correo.entity';
 import { MicrosoftGraphService, GraphEmail } from './microsoft-graph.service';
 
 export interface EmailFilters {
@@ -35,6 +36,8 @@ export class CorreosJuridicosService {
     constructor(
         @InjectRepository(CorreoJuridico)
         private readonly correoRepo: Repository<CorreoJuridico>,
+        @InjectRepository(AdjuntoCorreo)
+        private readonly adjuntoRepo: Repository<AdjuntoCorreo>,
         private readonly graphService: MicrosoftGraphService,
     ) { }
 
@@ -146,6 +149,37 @@ export class CorreosJuridicosService {
                             existing.leido = email.isRead;
                             await this.correoRepo.save(existing);
                         }
+
+                        // Sync attachments for existing emails that have them but haven't synced yet
+                        if (existing.tieneAdjuntos) {
+                            const existingAttachments = await this.adjuntoRepo.count({
+                                where: { correoId: existing.id }
+                            });
+
+                            if (existingAttachments === 0) {
+                                try {
+                                    const attachments = await this.graphService.getAttachments(email.id);
+                                    for (const att of attachments) {
+                                        const adjunto = this.adjuntoRepo.create({
+                                            correoId: existing.id,
+                                            graphMessageId: email.id,
+                                            graphAttachmentId: att.id,
+                                            nombre: att.name,
+                                            contentType: att.contentType,
+                                            tamanio: att.size,
+                                            descargado: false,
+                                        });
+                                        await this.adjuntoRepo.save(adjunto);
+                                    }
+                                    if (attachments.length > 0) {
+                                        this.logger.log(`  -> Synced ${attachments.length} attachment(s) for existing email`);
+                                        synced++; // Count as synced since we added attachments
+                                    }
+                                } catch (attError) {
+                                    this.logger.error(`Error syncing attachments for existing email ${email.id}:`, attError);
+                                }
+                            }
+                        }
                         continue;
                     }
 
@@ -171,7 +205,30 @@ export class CorreosJuridicosService {
                         confianzaClasificacion: classification.confianza,
                     });
 
-                    await this.correoRepo.save(newCorreo);
+                    const savedCorreo = await this.correoRepo.save(newCorreo);
+
+                    // Sync attachments if email has any
+                    if (email.hasAttachments) {
+                        try {
+                            const attachments = await this.graphService.getAttachments(email.id);
+                            for (const att of attachments) {
+                                const adjunto = this.adjuntoRepo.create({
+                                    correoId: savedCorreo.id,
+                                    graphMessageId: email.id,
+                                    graphAttachmentId: att.id,
+                                    nombre: att.name,
+                                    contentType: att.contentType,
+                                    tamanio: att.size,
+                                    descargado: false,
+                                });
+                                await this.adjuntoRepo.save(adjunto);
+                            }
+                            this.logger.log(`  -> Synced ${attachments.length} attachment(s)`);
+                        } catch (attError) {
+                            this.logger.error(`Error syncing attachments for email ${email.id}:`, attError);
+                        }
+                    }
+
                     synced++;
                     this.logger.log(`Synced: ${email.subject?.substring(0, 50)}...`);
                 } catch (emailError) {
@@ -300,5 +357,40 @@ export class CorreosJuridicosService {
      */
     async testConnection(): Promise<{ success: boolean; message: string }> {
         return this.graphService.testConnection();
+    }
+
+    /**
+     * Get attachments for a specific email
+     */
+    async getAttachments(correoId: string): Promise<AdjuntoCorreo[]> {
+        return this.adjuntoRepo.find({
+            where: { correoId },
+            order: { nombre: 'ASC' },
+        });
+    }
+
+    /**
+     * Download attachment from Graph API
+     * Returns the attachment data (base64)
+     */
+    async downloadAttachment(adjuntoId: string): Promise<{
+        name: string;
+        contentType: string;
+        contentBytes: string;
+        size: number;
+    }> {
+        const adjunto = await this.adjuntoRepo.findOne({ where: { id: adjuntoId } });
+
+        if (!adjunto) {
+            throw new NotFoundException(`Adjunto ${adjuntoId} not found`);
+        }
+
+        // Download from Graph API
+        const attachment = await this.graphService.downloadAttachment(
+            adjunto.graphMessageId,
+            adjunto.graphAttachmentId
+        );
+
+        return attachment;
     }
 }

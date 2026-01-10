@@ -31,6 +31,7 @@ import { Riesgo } from './entities/riesgo.entity';
 import { DocumentoConsulta } from './entities/documento-consulta.entity';
 import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 import { CorreoJuridico } from './entities/correo-juridico.entity';
+import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -123,7 +124,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Decisiones
       DecisionDisciplinaria,
       // Correos Jurídicos (Microsoft Graph)
-      CorreoJuridico
+      CorreoJuridico,
+      AdjuntoCorreo,
     ]),
     PeiModule,
     PlanesMejoramientoModule

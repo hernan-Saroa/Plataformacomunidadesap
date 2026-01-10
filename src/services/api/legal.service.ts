@@ -729,6 +729,19 @@ export interface SendCorreoDto {
     attachments?: { name: string; contentBytes: string; contentType: string }[];
 }
 
+export interface AdjuntoCorreo {
+    id: string;
+    correoId: string;
+    graphMessageId: string;
+    graphAttachmentId: string;
+    nombre: string;
+    contentType: string | null;
+    tamanio: number;
+    archivoLocalUrl: string | null;
+    descargado: boolean;
+    createdAt: string;
+}
+
 export class CorreosJuridicosService {
     /**
      * Trigger manual sync from Microsoft Graph
@@ -784,6 +797,28 @@ export class CorreosJuridicosService {
      */
     async sendEmail(dto: SendCorreoDto): Promise<{ success: boolean }> {
         return apiClient.post(`${SERVICE_PREFIX}/correos/send`, dto);
+    }
+
+    /**
+     * Get attachments for an email
+     */
+    async getAdjuntos(correoId: string): Promise<AdjuntoCorreo[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/${correoId}/adjuntos`);
+    }
+
+    /**
+     * Download an attachment - returns a blob URL for download
+     */
+    async downloadAdjunto(adjuntoId: string): Promise<string> {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = '/legal/api/v1';
+        const url = `${baseUrl}${prefix}/correos/adjuntos/${adjuntoId}/download`;
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Error downloading attachment');
+
+        const blob = await response.blob();
+        return window.URL.createObjectURL(blob);
     }
 }
 
