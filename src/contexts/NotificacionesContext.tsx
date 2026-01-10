@@ -9,17 +9,18 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 
 // ============ TIPOS ============
 
-export type TipoNotificacion = 
-  | 'info' 
-  | 'warning' 
-  | 'error' 
-  | 'success' 
+export type TipoNotificacion =
+  | 'info'
+  | 'warning'
+  | 'error'
+  | 'success'
   | 'critical';
 
 export type CategoriaNotificacion =
   | 'control-interno'
   | 'gestion-personas'
   | 'gestion-academica'
+  | 'gestion-legal'
   | 'sistema'
   | 'general';
 
