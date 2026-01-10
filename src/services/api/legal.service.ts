@@ -1,6 +1,6 @@
 // import { ApiClient } from './apiClient';
 import { apiClient } from './client';
-import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environment';
+import { API_MODE, MICROSERVICE_URLS, getServiceUrl, buildApiUrl } from '../../config/environment';
 
 // Prefijo del servicio legal en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
@@ -808,11 +808,21 @@ export class CorreosJuridicosService {
 
     /**
      * Download an attachment - returns a blob URL for download
+     * Handles both gateway and direct modes:
+     * - Gateway mode: http://gateway:3000/legal/api/v1/correos/adjuntos/{id}/download
+     * - Direct mode: http://localhost:3008/correos/adjuntos/{id}/download
      */
     async downloadAdjunto(adjuntoId: string): Promise<string> {
-        const baseUrl = getServiceUrl('legal');
-        const prefix = '/legal/api/v1';
-        const url = `${baseUrl}${prefix}/correos/adjuntos/${adjuntoId}/download`;
+        let url: string;
+
+        if (API_MODE === 'direct') {
+            // Direct mode: go straight to microservice without /legal/api/v1 prefix
+            url = `${MICROSERVICE_URLS.legal}/correos/adjuntos/${adjuntoId}/download`;
+        } else {
+            // Gateway mode: use SERVICE_PREFIX which includes /legal/api/v1
+            const baseUrl = getServiceUrl('legal');
+            url = `${baseUrl}${SERVICE_PREFIX}/correos/adjuntos/${adjuntoId}/download`;
+        }
 
         const response = await fetch(url);
         if (!response.ok) throw new Error('Error downloading attachment');

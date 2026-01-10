@@ -19,7 +19,7 @@ import {
   Mail, MailOpen, Inbox, Archive, AlertTriangle, CheckCircle,
   Eye, Plus, Search, XCircle, Send, FileText, Download,
   Circle, Check, Sparkles, User, Building, Clock, List, Columns3,
-  Filter, Star, Gavel, Scale, Briefcase
+  Filter, Star, Gavel, Scale, Briefcase, Paperclip
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -152,29 +152,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     loadCorreosFromAPI();
   }, []);
 
-  // Debug: Monitorear cambios en el estado del modal
-  useEffect(() => {
-    console.log('📊 Estado modalExpedienteOpen:', modalExpedienteOpen);
-    console.log('📊 Estado comunicacionParaExpediente:', comunicacionParaExpediente);
-  }, [modalExpedienteOpen, comunicacionParaExpediente]);
 
-  // TEST: Detectar clicks en toda la página
-  useEffect(() => {
-    const handleGlobalClick = (e: MouseEvent) => {
-      console.log('🖱️ CLICK GLOBAL DETECTADO:', {
-        x: e.clientX,
-        y: e.clientY,
-        target: (e.target as HTMLElement).tagName,
-        className: (e.target as HTMLElement).className
-      });
-    };
-
-    document.addEventListener('click', handleGlobalClick, true);
-
-    return () => {
-      document.removeEventListener('click', handleGlobalClick, true);
-    };
-  }, []);
 
   const comunicacionesFiltradas = useMemo(() => {
     let resultado = [...comunicaciones];
@@ -566,7 +544,6 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         <ModalExpedienteComunicacion
           isOpen={modalExpedienteOpen}
           onClose={() => {
-            console.log('🚪 Cerrando modal expediente');
             setModalExpedienteOpen(false);
             setComunicacionParaExpediente(null);
           }}
@@ -907,20 +884,15 @@ function VistaPreviaComunicacion({
         </div>
       )}
 
-      {/* Documentos adjuntos */}
+      {/* Documentos adjuntos - Solo indicador, ver detalles en el modal */}
       {comunicacion.documentosAdjuntos.length > 0 && (
         <div className="mb-4">
-          <p className="text-xs text-gray-500 mb-2">Documentos Adjuntos:</p>
-          <div className="space-y-2">
-            {comunicacion.documentosAdjuntos.map((doc, idx) => (
-              <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded border border-gray-200">
-                <FileText className="w-4 h-4 text-gray-600" />
-                <span className="text-sm text-gray-700 flex-1">{doc}</span>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                  <Download className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            ))}
+          <div className="flex items-center gap-2 p-2 bg-blue-50 rounded border border-blue-200">
+            <Paperclip className="w-4 h-4 text-blue-600" />
+            <span className="text-sm text-blue-700 font-medium">
+              Tiene archivos adjuntos
+            </span>
+            <span className="text-xs text-blue-500 ml-auto">Ver en expediente completo</span>
           </div>
         </div>
       )}
