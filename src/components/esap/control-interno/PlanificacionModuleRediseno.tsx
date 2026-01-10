@@ -98,7 +98,6 @@ export function PlanificacionModuleRediseno() {
   const cargarEstadisticas = async () => {
     try {
       setLoadingEstadisticas(true);
-      console.log('[Dashboard] Cargando estadísticas desde BD...');
       
       // Cargar datos en paralelo
       const [procesosResponse, planesResponse, auditoriasResponse] = await Promise.all([
@@ -106,12 +105,6 @@ export function PlanificacionModuleRediseno() {
         planAnual5RolesApi.findAll(),
         auditoriasApi.getAllKanban()
       ]);
-
-      console.log('[Dashboard] Respuestas recibidas:', {
-        procesos: procesosResponse,
-        planes: planesResponse,
-        auditorias: auditoriasResponse
-      });
 
       // Calcular estadísticas
       const procesos = procesosResponse.success && procesosResponse.data ? procesosResponse.data : [];
@@ -179,7 +172,6 @@ export function PlanificacionModuleRediseno() {
         auditoresAsignados: auditoresUnicos.size
       };
 
-      console.log('[Dashboard] Estadísticas calculadas:', nuevasEstadisticas);
       setEstadisticas(nuevasEstadisticas);
     } catch (error) {
       console.error('[Dashboard] Error al cargar estadísticas:', error);
@@ -529,11 +521,11 @@ export function PlanificacionModuleRediseno() {
   const tabActual = tabs.find(t => t.id === tabActiva);
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="flex flex-col bg-gray-50">
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* HEADER PREMIUM CON HEADERMODULOCIG */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200">
+      <div className="shrink-0 bg-white border-b border-gray-200">
         <div className="px-6 py-4">
           <HeaderModuloCIG
             titulo="Planificación de Auditorías"
@@ -661,14 +653,14 @@ export function PlanificacionModuleRediseno() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* TABS NAVEGACIÓN */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200">
+      <div className="shrink-0 bg-white border-b border-gray-200">
         <div className="px-4 sm:px-6">
           <div className="flex gap-1 overflow-x-auto scroll-smooth -mx-4 px-4 sm:mx-0 sm:px-0" style={{ scrollbarWidth: 'thin' }}>
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setTabActiva(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-medium flex-shrink-0 ${ 
+                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-medium shrink-0 ${ 
                   tabActiva === tab.id
                     ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50'
                     : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -692,9 +684,9 @@ export function PlanificacionModuleRediseno() {
 
       {/* Banner de Ayuda Contextual */}
       {tabActual && (
-        <div className="flex-shrink-0 bg-blue-50 border-b border-blue-100 px-6 py-3">
+        <div className="shrink-0 bg-blue-50 border-b border-blue-100 px-6 py-3">
           <div className="flex items-start gap-3">
-            <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+            <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
             <p className="text-sm text-blue-900">
               <span className="font-medium">{tabActual.label}:</span> {tabActual.descripcion}
             </p>
@@ -705,7 +697,7 @@ export function PlanificacionModuleRediseno() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* CONTENIDO TABS */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-1 overflow-auto">
+      <div className="p-6">
         <AnimatePresence mode="wait">
           <motion.div
             key={tabActiva}
@@ -713,7 +705,7 @@ export function PlanificacionModuleRediseno() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.2 }}
-            className="h-full"
+            className="min-h-full"
           >
             {tabActiva === 'plan-anual' && <PlanAnualModule onPlanChange={cargarEstadisticas} />}
             {tabActiva === 'universo' && <UniversoAuditorias />}
@@ -725,7 +717,7 @@ export function PlanificacionModuleRediseno() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* FOOTER CON INDICADORES */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-shrink-0 bg-white border-t border-gray-200 px-6 py-3">
+      <div className="shrink-0 bg-white border-t border-gray-200 px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-4 text-gray-600">
             <div className="flex items-center gap-2">

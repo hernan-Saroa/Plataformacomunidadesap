@@ -1009,7 +1009,7 @@ CREATE INDEX idx_doc_aprobacion ON control_interno.documento_aprobacion(aprobaci
 -- ============================================
 CREATE TABLE IF NOT EXISTS control_interno.plan_anual_5_roles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    año INTEGER NOT NULL,
+    ano INTEGER NOT NULL,
     fecha_creacion DATE NOT NULL DEFAULT CURRENT_DATE,
     responsable VARCHAR(255) NOT NULL,
     estado VARCHAR(50) NOT NULL DEFAULT 'borrador' CHECK (estado IN ('borrador', 'en-revision', 'aprobado', 'en-ejecucion', 'completado')),
@@ -1019,10 +1019,10 @@ CREATE TABLE IF NOT EXISTS control_interno.plan_anual_5_roles (
     actividades_en_progreso INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(año)
+    UNIQUE(ano)
 );
 
-CREATE INDEX idx_plan_anual_5_roles_año ON control_interno.plan_anual_5_roles(año);
+CREATE INDEX idx_plan_anual_5_roles_ano ON control_interno.plan_anual_5_roles(ano);
 CREATE INDEX idx_plan_anual_5_roles_estado ON control_interno.plan_anual_5_roles(estado);
 
 -- ============================================

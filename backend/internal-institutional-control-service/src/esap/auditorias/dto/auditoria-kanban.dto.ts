@@ -60,6 +60,8 @@ export interface AuditoriaKanbanDto {
   actividadesCompletas: boolean;
   actividadesPendientes: number;
   alcance?: string; // Alcance de la auditoría
+  observacionesAdicionales?: string; // ✅ Observaciones adicionales de la auditoría
+  programaAnualMetadata?: any; // Metadata del programa anual (mesInicio, semanaInicio, duraciones)
 }
 
 

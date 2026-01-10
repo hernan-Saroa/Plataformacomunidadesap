@@ -1311,24 +1311,29 @@ function TarjetaAuditoria({
                 className="text-xs font-bold truncate"
                 disabled={auditoria.estado === 'Finalizada'}
               >
-                <Edit className="w-3 h-3 mr-1 flex-shrink-0" />
+                <Edit className="w-3 h-3 mr-1 shrink-0" />
                 <span className="truncate">Editar</span>
               </Button>
             </div>
 
-            {/* NUEVO: Botón Crear Plan de Mejoramiento - SOLO si está Finalizada con hallazgos */}
-            {auditoria.estado === 'Finalizada' && auditoria.hallazgos > 0 && onCrearPlan && (
+            {/* Botón Crear Plan de Mejoramiento - Aparece siempre en auditorías Finalizadas */}
+            {auditoria.estado === 'Finalizada' && onCrearPlan && (
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
                   onCrearPlan(auditoria);
                 }}
                 size="sm"
-                className="text-xs font-bold w-full mb-2"
+                className="text-xs font-bold w-full mb-2 flex items-center justify-center gap-1.5"
                 style={{ background: '#DC2626', color: '#FFFFFF' }}
               >
-                <Target className="w-3 h-3 mr-1 flex-shrink-0" />
+                <Target className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate">Crear Plan de Mejoramiento</span>
+                {auditoria.hallazgos > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs font-bold">
+                    {auditoria.hallazgos}
+                  </span>
+                )}
               </Button>
             )}
 
@@ -1826,7 +1831,6 @@ export function GestionAuditoriasKanbanSimple() {
         if (response.success && response.data && Array.isArray(response.data)) {
           auditoriasData = response.data as Auditoria[];
         } else {
-          console.warn('[cargarAuditorias] Respuesta de archivadas no válida:', response);
           auditoriasData = [];
         }
       } else {
@@ -1835,7 +1839,6 @@ export function GestionAuditoriasKanbanSimple() {
         if (response.success && response.data && Array.isArray(response.data)) {
           auditoriasData = response.data as Auditoria[];
         } else {
-          console.warn('[cargarAuditorias] Respuesta de activas no válida:', response);
           // Si hay error pero la respuesta tiene data, intentar usarla
           if (response.data && Array.isArray(response.data)) {
             auditoriasData = response.data as Auditoria[];
@@ -1843,20 +1846,6 @@ export function GestionAuditoriasKanbanSimple() {
             auditoriasData = [];
           }
         }
-      }
-      
-      console.log('[cargarAuditorias] Datos recibidos del backend:', auditoriasData);
-      console.log('[cargarAuditorias] Total auditorías:', auditoriasData.length);
-      
-      // Verificar que los datos incluyan alcance y riesgoKanban
-      if (auditoriasData && auditoriasData.length > 0) {
-        console.log('[cargarAuditorias] Primera auditoría:', {
-          codigo: auditoriasData[0].codigo,
-          titulo: auditoriasData[0].titulo,
-          estado: auditoriasData[0].estado,
-          alcance: (auditoriasData[0] as any).alcance,
-          riesgo: auditoriasData[0].riesgo,
-        });
       }
       
       // Mapear datos del backend al formato esperado por el frontend
@@ -1885,17 +1874,6 @@ export function GestionAuditoriasKanbanSimple() {
       };
       
       const auditoriasMapeadas: Auditoria[] = auditoriasData.map((aud: any) => {
-        // 📅 LOG: Ver fechas RAW del backend
-        console.log('📅 [GestionAuditoriasKanbanSimple] Auditoria del backend:', {
-          id: aud.id,
-          codigo: aud.codigo,
-          fechaInicio: aud.fechaInicio,
-          fechaFin: aud.fechaFin,
-          tipoFechaInicio: typeof aud.fechaInicio,
-          tipoFechaFin: typeof aud.fechaFin,
-        });
-        
-
         // Generar código automático si no existe
         const codigoAuditoria = aud.codigo || `AUD-${añoActual}-${aud.id.substring(0, 6).toUpperCase()}`;
 
@@ -1944,6 +1922,7 @@ export function GestionAuditoriasKanbanSimple() {
           auditorLiderId: aud.auditorLiderId,
           auditorAsignadoId: aud.auditorAsignadoId,
         };
+        
         return auditoriaMapeada as Auditoria;
       });
       
@@ -1958,7 +1937,6 @@ export function GestionAuditoriasKanbanSimple() {
         });
       }
     } catch (err: any) {
-      console.error('Error al cargar auditorías:', err);
       setError(err.message || 'Error al cargar las auditorías');
       toast.error('Error al cargar auditorías', {
         description: err.message || 'No se pudieron cargar las auditorías desde el servidor'
@@ -2048,7 +2026,6 @@ export function GestionAuditoriasKanbanSimple() {
         throw new Error(response.error || 'Error al aprobar la auditoría');
       }
     } catch (error) {
-      console.error('Error al aprobar auditoría:', error);
       toast.error('Error al aprobar auditoría', {
         description: error instanceof Error ? error.message : 'No se pudo aprobar la auditoría',
       });
@@ -2067,7 +2044,6 @@ export function GestionAuditoriasKanbanSimple() {
         throw new Error(response.error || 'Error al rechazar la auditoría');
       }
     } catch (error) {
-      console.error('Error al rechazar auditoría:', error);
       toast.error('Error al rechazar auditoría', {
         description: error instanceof Error ? error.message : 'No se pudo rechazar la auditoría',
       });
@@ -2086,7 +2062,6 @@ export function GestionAuditoriasKanbanSimple() {
         throw new Error(response.error || 'Error al solicitar modificación');
       }
     } catch (error) {
-      console.error('Error al solicitar modificación:', error);
       toast.error('Error al solicitar modificación', {
         description: error instanceof Error ? error.message : 'No se pudo solicitar la modificación',
       });
@@ -2115,8 +2090,6 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
-    console.log('Crear auditoría OCIG:', data);
-    
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2037',message:'handleCrearAuditoria called - recibiendo formData completo',data:{hasHitos:data.hitos?.length>0,hitosCount:data.hitos?.length||0,hitosData:JSON.stringify(data.hitos||[]),hasRecursos:data.recursos?.length>0,recursosCount:data.recursos?.length||0,recursosData:JSON.stringify(data.recursos||[]),hasProductosEsperados:data.productosEsperados?.length>0,productosCount:data.productosEsperados?.length||0,productosData:JSON.stringify(data.productosEsperados||[]),vinculadaPlanAnual:data.vinculadaPlanAnual,planAnualId:data.planAnualId,planAnualAño:data.planAnualAño,rolDecretoAsociado:data.rolDecretoAsociado,periodicidad:data.periodicidad,hallazgosCount:data.hallazgos?.length||0,hallazgosWithCausa:data.hallazgos?.filter(h=>h.causa).length||0,hallazgosWithEfecto:data.hallazgos?.filter(h=>h.efecto).length||0,auditorLider:data.auditorLider,auditorLiderType:typeof data.auditorLider,auditorAsignado:data.auditorAsignado,auditorAsignadoType:typeof data.auditorAsignado,supervisorAsignado:data.supervisorAsignado,supervisorAsignadoType:typeof data.supervisorAsignado,equipoAuditoresCount:data.equipoAuditores?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E,F'})}).catch(()=>{});
     // #endregion
@@ -2274,8 +2247,6 @@ export function GestionAuditoriasKanbanSimple() {
       fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2159',message:'POST-FIX: Antes de enviar a API - auditoriaData mapeado',data:{auditoriaDataKeys:Object.keys(auditoriaData),hasProgramaAnualMetadata:!!auditoriaData.programaAnualMetadata,programaAnualMetadata:JSON.stringify(auditoriaData.programaAnualMetadata),hasPeriodicidad:!!auditoriaData.programaAnualMetadata?.periodicidad,periodicidadValue:auditoriaData.programaAnualMetadata?.periodicidad,hasVinculadaPlanAnual:!!auditoriaData.programaAnualMetadata?.vinculadaPlanAnual,vinculadaPlanAnualValue:auditoriaData.programaAnualMetadata?.vinculadaPlanAnual,hasPlanAnualAño:!!auditoriaData.programaAnualMetadata?.planAnualAño,planAnualAñoValue:auditoriaData.programaAnualMetadata?.planAnualAño,hasRolDecreto:!!auditoriaData.programaAnualMetadata?.rolDecretoAsociado,rolDecretoValue:auditoriaData.programaAnualMetadata?.rolDecretoAsociado,hasHitos:!!auditoriaData.programaAnualMetadata?.hitos,hitosCount:auditoriaData.programaAnualMetadata?.hitos?.length||0,hasRecursos:auditoriaData.observacionesAdicionales?.includes('Recursos requeridos'),hasProductosEsperados:auditoriaData.observacionesAdicionales?.includes('Productos esperados'),hasAuditorLiderId:!!auditoriaData.auditorLiderId,hasAuditorAsignadoId:!!auditoriaData.auditorAsignadoId,hasSupervisorAsignadoId:!!auditoriaData.supervisorAsignadoId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A,B,C,E,F'})}).catch(()=>{});
       // #endregion
 
-      console.log('[handleCrearAuditoria] Datos de auditoría a enviar:', auditoriaData);
-
       // Crear la auditoría
       const response = await auditoriasApi.create(auditoriaData);
       
@@ -2284,11 +2255,9 @@ export function GestionAuditoriasKanbanSimple() {
       }
 
       const auditoriaCreada = response.data;
-      console.log('[handleCrearAuditoria] Auditoría creada:', auditoriaCreada);
 
       // Crear los hallazgos si hay alguno
       if (data.hallazgos && data.hallazgos.length > 0) {
-        console.log(`[handleCrearAuditoria] Creando ${data.hallazgos.length} hallazgos...`);
         
         // Mapear tipo del formulario al tipo opcional del backend (no-conformidad, observacion, oportunidad-mejora)
         const mapTipoHallazgo = (tipo: string): 'no-conformidad' | 'observacion' | 'oportunidad-mejora' => {
@@ -2318,12 +2287,10 @@ export function GestionAuditoriasKanbanSimple() {
         for (const hallazgoForm of data.hallazgos) {
           // Validar que el hallazgo tenga datos mínimos requeridos
           if (!hallazgoForm.descripcion || hallazgoForm.descripcion.trim().length < 10) {
-            console.warn('[handleCrearAuditoria] Hallazgo sin descripción válida, omitiendo:', hallazgoForm);
             continue;
           }
 
           if (!hallazgoForm.criterio || hallazgoForm.criterio.trim().length < 5) {
-            console.warn('[handleCrearAuditoria] Hallazgo sin criterio válido, omitiendo:', hallazgoForm);
             continue;
           }
 
@@ -2365,25 +2332,15 @@ export function GestionAuditoriasKanbanSimple() {
           fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2168',message:'POST-FIX: Datos de hallazgo antes de enviar',data:{hasCausa:!!hallazgoForm.causa,causa:hallazgoForm.causa,hasEfecto:!!hallazgoForm.efecto,efecto:hallazgoForm.efecto,hasRecomendacion:!!hallazgoForm.recomendacion,descripcionIncludesCausa:hallazgoData.descripcion.includes('CAUSA:'),descripcionIncludesEfecto:hallazgoData.descripcion.includes('EFECTO:'),hasObservacionesControversia:!!hallazgoData.observacionesControversia,hallazgoDataKeys:Object.keys(hallazgoData)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
           // #endregion
 
-          console.log('[handleCrearAuditoria] Datos del hallazgo a enviar:', hallazgoData);
-
           try {
             const hallazgoResponse = await hallazgosApi.create(hallazgoData);
             if (hallazgoResponse.success) {
               hallazgosCreados++;
-              console.log('[handleCrearAuditoria] Hallazgo creado exitosamente:', hallazgoResponse.data);
-            } else {
-              console.error('[handleCrearAuditoria] Error al crear hallazgo:', hallazgoResponse.message);
-              console.error('[handleCrearAuditoria] Respuesta completa:', hallazgoResponse);
             }
           } catch (error: any) {
-            console.error('[handleCrearAuditoria] Error al crear hallazgo:', error);
-            console.error('[handleCrearAuditoria] Datos enviados:', hallazgoData);
             // Continuar con los demás hallazgos aunque falle uno
           }
         }
-
-        console.log(`[handleCrearAuditoria] ${hallazgosCreados} de ${data.hallazgos.length} hallazgos creados`);
       }
 
       // Recargar auditorías desde la BD
@@ -2395,7 +2352,6 @@ export function GestionAuditoriasKanbanSimple() {
       
       setModalFormularioOpen(false);
     } catch (error: any) {
-      console.error('Error al crear auditoría:', error);
       toast.error('Error al crear auditoría', {
         description: error.message || 'No se pudo guardar la auditoría. Por favor, intente nuevamente.'
       });
@@ -2479,20 +2435,11 @@ export function GestionAuditoriasKanbanSimple() {
         
         if (auditorAsignadoId && auditorAsignadoId > 0) {
           updateData.auditorAsignadoId = auditorAsignadoId;
-          console.log('[handleActualizarAuditoria] Auditor Asignado ID:', auditorAsignadoId);
-        } else {
-          console.warn('[handleActualizarAuditoria] Auditor Asignado ID inválido:', data.auditorAsignado);
         }
       } else {
         // Si viene vacío, establecer como null para limpiar el campo
         updateData.auditorAsignadoId = null;
       }
-
-      // Log para depuración
-      console.log('[handleActualizarAuditoria] Datos a enviar:', updateData);
-      console.log('[handleActualizarAuditoria] Tipo de auditoría:', updateData.tipo);
-      console.log('[handleActualizarAuditoria] Alcance:', updateData.alcance);
-      console.log('[handleActualizarAuditoria] RiesgoKanban:', updateData.riesgoKanban);
       
       // Actualizar en el backend usando TypeORM
       await controlInternoService.updateAuditoria(auditoriaParaEditar.id, updateData);
@@ -3077,6 +3024,10 @@ export function GestionAuditoriasKanbanSimple() {
   const { agregarAuditoriaConHallazgos, seleccionarAuditoria } = useIntegracionAuditoriaPlanes();
   
   const handleCrearPlan = (auditoria: Auditoria) => {
+    console.log('🎯 Crear Plan de Mejoramiento para:', auditoria.codigo, {
+      hallazgos: auditoria.hallazgos
+    });
+    
     // 1. Convertir datos de auditoría del Kanban al formato AuditoriaParaPlan
     const auditoriaParaPlan: AuditoriaParaPlan = {
       id: auditoria.id,
@@ -3099,10 +3050,17 @@ export function GestionAuditoriasKanbanSimple() {
     seleccionarAuditoria(auditoriaParaPlan);
     
     // 4. Notificación
-    toast.success(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
-      description: `${auditoria.hallazgos} hallazgos detectados. Ahora puede formular acciones correctivas.`,
-      duration: 5000
-    });
+    if (auditoria.hallazgos > 0) {
+      toast.success(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
+        description: `${auditoria.hallazgos} hallazgos detectados. Ahora puede formular acciones correctivas.`,
+        duration: 5000
+      });
+    } else {
+      toast.info(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
+        description: 'No hay hallazgos registrados. Podrá agregarlos en el formulario.',
+        duration: 5000
+      });
+    }
     
     // Nota: La navegación al módulo de Planes se hace desde ControlInternoFull
     // cuando detecta que hay una auditoría seleccionada
@@ -3830,16 +3788,32 @@ export function GestionAuditoriasKanbanSimple() {
                         Proceso de Auditoría
                       </Button>
                       
-                      {/* NUEVO: Botón Crear Plan de Mejoramiento - SOLO si está Finalizada con hallazgos */}
-                      {auditoria.estado === 'Finalizada' && auditoria.hallazgos > 0 && (
+                      {/* Botón Crear Plan de Mejoramiento - Aparece siempre en auditorías Finalizadas */}
+                      {auditoria.estado === 'Finalizada' && (
                         <Button 
                           size="sm" 
                           className="gap-2 flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white" 
-                          onClick={() => handleCrearPlan(auditoria)}
-                          title="Crear Plan de Mejoramiento para los hallazgos identificados"
+                          onClick={() => {
+                            if (auditoria.hallazgos === 0) {
+                              toast.warning(`Plan de Mejoramiento: ${auditoria.codigo}`, {
+                                description: 'Esta auditoría no tiene hallazgos registrados. Podrá agregarlos en el formulario de plan de mejoramiento.',
+                                duration: 6000
+                              });
+                            }
+                            handleCrearPlan(auditoria);
+                          }}
+                          title={auditoria.hallazgos > 0 
+                            ? `Crear Plan de Mejoramiento para ${auditoria.hallazgos} hallazgos identificados`
+                            : 'Crear Plan de Mejoramiento (sin hallazgos registrados)'
+                          }
                         >
                           <Target className="w-4 h-4" />
                           Crear Plan de Mejoramiento
+                          {auditoria.hallazgos > 0 && (
+                            <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs font-bold">
+                              {auditoria.hallazgos}
+                            </span>
+                          )}
                         </Button>
                       )}
                       

@@ -596,24 +596,15 @@ export function PlanesMejoramientoModuleRediseno() {
   useEffect(() => {
     const cargarAuditoriasConHallazgos = async () => {
       try {
-        console.log('[PlanesMejoramiento] 🚀 Iniciando carga de auditorías desde BD...');
-        console.log('[PlanesMejoramiento] Estado actual del contexto:', auditoriasConHallazgos.length, 'auditorías');
-        
         // Limpiar datos mock primero
-        console.log('[PlanesMejoramiento] Limpiando datos mock del contexto...');
         limpiarAuditoriasConHallazgos();
         
         // Usar getAllKanban() que devuelve las auditorías en el formato del frontend
-        // Esto es lo mismo que usa el módulo de Auditorías OCIG
-        console.log('[PlanesMejoramiento] Obteniendo auditorías desde Kanban API...');
         const responseKanban = await auditoriasApi.getAllKanban();
         
         if (!responseKanban.success || !responseKanban.data) {
-          console.error('[PlanesMejoramiento] Error al obtener auditorías:', responseKanban.error);
           return;
         }
-        
-        console.log(`[PlanesMejoramiento] Total auditorías en Kanban: ${responseKanban.data.length}`);
         
         // Filtrar auditorías finalizadas con el mismo criterio que el botón en Auditorías OCIG
         // auditoria.estado === 'Finalizada' && auditoria.hallazgos > 0

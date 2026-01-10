@@ -64,7 +64,7 @@ export class PlanAnual5RolesService {
     });
   }
 
-  async create(createDto: CreatePlanAnual5RolesDto, usuarioId?: number): Promise<PlanAnual5Roles> {
+  async create(createDto: CreatePlanAnual5RolesDto, usuarioId?: string): Promise<PlanAnual5Roles> {
     // Verificar si ya existe un plan para ese año
     const existing = await this.findByYear(createDto.año);
     if (existing) {
@@ -122,7 +122,7 @@ export class PlanAnual5RolesService {
   /**
    * Actualiza un plan anual existente
    */
-  async update(id: string, updateDto: Partial<CreatePlanAnual5RolesDto>, usuarioId?: number): Promise<PlanAnual5Roles> {
+  async update(id: string, updateDto: Partial<CreatePlanAnual5RolesDto>, usuarioId?: string): Promise<PlanAnual5Roles> {
     const plan = await this.findOne(id);
     const estadoAnterior = plan.estado;
     const cambios: Array<{ campo: string; valorAnterior: string; valorNuevo: string }> = [];
@@ -187,7 +187,7 @@ export class PlanAnual5RolesService {
     }));
   }
 
-  async addActividad(rolId: string, createDto: CreateActividadDto, usuarioId?: number): Promise<ActividadPlanAnual5> {
+  async addActividad(rolId: string, createDto: CreateActividadDto, usuarioId?: string): Promise<ActividadPlanAnual5> {
     const rol = await this.rolRepository.findOne({
       where: { id: rolId },
       relations: ['plan'],
@@ -253,7 +253,7 @@ export class PlanAnual5RolesService {
   async updateActividad(
     actividadId: string,
     updateDto: Partial<CreateActividadDto>,
-    usuarioId?: number,
+    usuarioId?: string,
   ): Promise<ActividadPlanAnual5> {
     const actividad = await this.actividadRepository.findOne({
       where: { id: actividadId },
@@ -372,7 +372,7 @@ export class PlanAnual5RolesService {
     }) as Promise<ActividadPlanAnual5>;
   }
 
-  async deleteActividad(actividadId: string, usuarioId?: number): Promise<void> {
+  async deleteActividad(actividadId: string, usuarioId?: string): Promise<void> {
     const actividad = await this.actividadRepository.findOne({
       where: { id: actividadId },
       relations: ['rol', 'plan'],
@@ -469,7 +469,7 @@ export class PlanAnual5RolesService {
     tipoEvento: TipoEventoPlanAnual,
     accion: string,
     descripcion: string,
-    usuarioId?: number,
+    usuarioId?: string,
     estadoAnterior?: string,
     estadoNuevo?: string,
     cambios?: Array<{ campo: string; valorAnterior: string; valorNuevo: string }>
@@ -484,7 +484,7 @@ export class PlanAnual5RolesService {
       historial.tipoEvento = tipoEvento;
       historial.fecha = new Date(fecha);
       historial.hora = hora;
-      historial.usuarioId = usuarioId || 1; // TODO: Obtener del contexto de autenticación
+      historial.usuarioId = usuarioId; // Usuario desde contexto de autenticación
       historial.accion = accion;
       historial.descripcion = descripcion;
       historial.estadoAnterior = estadoAnterior;

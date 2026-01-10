@@ -357,27 +357,22 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
     const cargarPlanes = async () => {
       try {
         setLoading(true);
-        console.log('[PlanAnual] Cargando planes desde BD...');
         const añoActual = new Date().getFullYear();
         
         // Primero intentar cargar todos los planes
         const allResponse = await planAnual5RolesApi.findAll();
-        console.log('[PlanAnual] Respuesta findAll:', allResponse);
         
         if (allResponse.success && allResponse.data && allResponse.data.length > 0) {
-          console.log('[PlanAnual] Planes encontrados:', allResponse.data.length);
           const planesMapeados = allResponse.data.map(mapearPlanAnualDesdeBD);
           setPlanes(planesMapeados);
         } else {
           // Si no hay planes, intentar buscar por año actual
           const response = await planAnual5RolesApi.getByYear(añoActual);
-          console.log('[PlanAnual] Respuesta getByYear:', response);
           
           if (response.success && response.data) {
             const planMapeado = mapearPlanAnualDesdeBD(response.data);
             setPlanes([planMapeado]);
           } else {
-            console.log('[PlanAnual] No se encontraron planes en la BD');
             setPlanes([]);
             toast.info('No hay planes anuales en la base de datos', {
               description: 'Puedes crear un nuevo plan desde el botón "Crear Plan Anual"'
@@ -385,7 +380,6 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
           }
         }
       } catch (error) {
-        console.error('[PlanAnual] Error al cargar planes:', error);
         toast.error('Error al cargar planes anuales', {
           description: error instanceof Error ? error.message : 'No se pudieron obtener los datos desde el servidor'
         });
@@ -447,11 +441,6 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
       }
 
       if (response.success && response.data) {
-        console.log('[PlanAnual] Guardando actividades...', {
-          planRoles: plan.roles.map(r => ({ id: r.id, nombre: r.nombre, actividades: r.actividades.length })),
-          bdRoles: response.data.roles?.map((r: any) => ({ id: r.id, nombre: r.nombre }))
-        });
-
         // Guardar actividades para cada rol
         // Buscar roles por nombre en lugar de por índice para evitar problemas de orden
         for (const rol of plan.roles) {
@@ -544,7 +533,6 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
         throw new Error(response.error || 'Error al guardar el plan');
       }
     } catch (error: any) {
-      console.error('Error al guardar plan:', error);
       toast.error('Error al guardar plan', {
         description: error.message || 'No se pudo guardar el plan en el servidor'
       });
@@ -572,11 +560,6 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
       const response = await planAnual5RolesApi.update(planActualizado.id, planData);
 
       if (response.success && response.data) {
-        console.log('[PlanAnual] Actualizando actividades del plan...', {
-          planRoles: planActualizado.roles.map(r => ({ id: r.id, nombre: r.nombre, actividades: r.actividades.length })),
-          bdRoles: response.data.roles?.map((r: any) => ({ id: r.id, nombre: r.nombre }))
-        });
-
         // Guardar actividades para cada rol (igual que en handleGuardarPlan)
         for (const rol of planActualizado.roles) {
           // Buscar el rol correspondiente en la BD por rol_numero o nombre
@@ -587,18 +570,15 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
           );
           
           if (!rolBD) {
-            console.warn(`[PlanAnual] No se encontró rol BD para: ${rol.nombre} (id: ${rol.id})`);
             continue;
           }
 
           if (rol.actividades.length > 0) {
-            console.log(`[PlanAnual] Guardando ${rol.actividades.length} actividades para rol: ${rol.nombre} (BD ID: ${rolBD.id})`);
             
             for (const actividad of rol.actividades) {
               try {
                 // Validar que la actividad tenga los campos mínimos
                 if (!actividad.nombre || !actividad.responsableNombre || !actividad.fechaInicio || !actividad.fechaFin) {
-                  console.warn('[PlanAnual] Actividad incompleta, omitiendo:', actividad);
                   continue;
                 }
 
@@ -620,30 +600,21 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
 
                 if (!actividad.id || actividad.id.startsWith('act-')) {
                   // Nueva actividad - usar rolBD.id como parámetro en la URL
-                  console.log('[PlanAnual] Creando nueva actividad:', actividadData);
                   const actividadResponse = await planAnual5RolesApi.addActividad(rolBD.id, actividadData as any);
                   if (!actividadResponse.success) {
-                    console.error('[PlanAnual] Error al crear actividad:', actividadResponse.error);
                     throw new Error(`Error al crear actividad: ${actividadResponse.error}`);
                   }
-                  console.log('[PlanAnual] Actividad creada exitosamente');
                 } else {
                   // Actualizar actividad existente
-                  console.log('[PlanAnual] Actualizando actividad existente:', actividad.id, actividadData);
                   const actividadResponse = await planAnual5RolesApi.updateActividad(actividad.id, actividadData as any);
                   if (!actividadResponse.success) {
-                    console.error('[PlanAnual] Error al actualizar actividad:', actividadResponse.error);
                     throw new Error(`Error al actualizar actividad: ${actividadResponse.error}`);
                   }
-                  console.log('[PlanAnual] Actividad actualizada exitosamente');
                 }
               } catch (error: any) {
-                console.error('[PlanAnual] Error al guardar actividad:', error);
                 throw new Error(`Error al guardar actividad "${actividad.nombre}": ${error.message}`);
               }
             }
-          } else {
-            console.log(`[PlanAnual] Rol ${rol.nombre} no tiene actividades para guardar`);
           }
         }
 
@@ -672,7 +643,6 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
         throw new Error(response.error || 'Error al actualizar el plan');
       }
     } catch (error: any) {
-      console.error('Error al actualizar plan:', error);
       toast.error('Error al actualizar plan', {
         description: error.message || 'No se pudo actualizar el plan en el servidor'
       });
@@ -1266,7 +1236,7 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-8">
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="text-center">

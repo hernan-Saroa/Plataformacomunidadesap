@@ -1080,6 +1080,8 @@ export class AuditoriasService {
               actividadesCompletas: auditoria.actividadesCompletas ?? false,
               actividadesPendientes: auditoria.actividadesPendientes ?? 0,
               alcance: auditoria.alcance || '',
+              observacionesAdicionales: auditoria.observacionesAdicionales || '', // ✅ CAMPO AGREGADO
+              programaAnualMetadata: auditoria.programaAnualMetadata || undefined, // Incluir metadata del programa anual
             };
           } catch (error) {
             console.error(`Error al procesar auditoría ${auditoria.id}:`, error);
@@ -1118,6 +1120,7 @@ export class AuditoriasService {
               actividadesCompletas: false,
               actividadesPendientes: 0,
               alcance: '',
+              observacionesAdicionales: auditoria.observacionesAdicionales || '', // ✅ CAMPO AGREGADO EN FALLBACK
             };
           }
         })
@@ -1315,6 +1318,15 @@ export class AuditoriasService {
    * Helper: Formatea fecha a DD/MM/YYYY
    */
   private formatDateDDMMYYYY(date: Date | string): string {
+    if (!date) return '';
+    
+    // Si es string en formato YYYY-MM-DD, parsearlo directamente sin timezone
+    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const [year, month, day] = date.split('-');
+      return `${day}/${month}/${year}`;
+    }
+    
+    // Si es Date o string en otro formato
     const d = typeof date === 'string' ? new Date(date) : date;
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');

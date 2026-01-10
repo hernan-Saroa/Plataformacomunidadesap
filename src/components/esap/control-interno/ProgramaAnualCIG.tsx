@@ -36,7 +36,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 21 Diciembre 2025
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar, Plus, Filter, Search, Users, MapPin,
@@ -368,32 +368,48 @@ export function ProgramaAnualCIG() {
     else if (aud.estado === 'cerrada' || aud.estadoKanban === 'cerrada') estadoPrograma = 'Finalizado';
     else if (aud.estado === 'pendiente-aprobacion' || aud.estadoKanban === 'pendiente-aprobacion') estadoPrograma = 'Pendiente Aprobación';
 
-    // Mapear auditor líder
-    const auditorLider = aud.auditorLiderId ? {
+    // Mapear auditor líder - manejar objeto completo o solo ID
+    const auditorLider = aud.auditorLider ? {
+      id: aud.auditorLider.id || aud.auditorLiderId || 'sin-asignar',
+      nombre: aud.auditorLider.nombre || 'Sin asignar',
+      iniciales: aud.auditorLider.iniciales || 'SA'
+    } : aud.auditorLiderId ? {
       id: aud.auditorLiderId,
-      nombre: aud.auditorLider?.nombre || aud.auditorLiderNombre || 'Sin asignar',
-      iniciales: aud.auditorLider?.iniciales || aud.auditorLiderIniciales || 'SA'
+      nombre: aud.auditorLiderNombre || 'Sin asignar',
+      iniciales: aud.auditorLiderIniciales || 'SA'
     } : {
       id: 'sin-asignar',
       nombre: 'Sin asignar',
       iniciales: 'SA'
     };
 
-    // Mapear equipo de auditores
-    const equipoAuditores = (aud.equipoAuditores || aud.equipoAuditor || []).map((eq: any) => ({
-      id: eq.personaId || eq.id || eq.auditorId,
-      nombre: eq.persona?.nombre || eq.nombre || 'Sin nombre',
-      iniciales: eq.persona?.iniciales || eq.iniciales || 'SN'
-    }));
+    // Mapear equipo de auditores - manejar strings directos o objetos
+    const equipoAuditores = (aud.equipoAuditores || aud.equipoAuditor || []).map((eq: any) => {
+      // Si es un string directo (nombre del auditor)
+      if (typeof eq === 'string') {
+        const initials = eq.split(' ').map(word => word[0]).join('').substring(0, 2).toUpperCase();
+        return {
+          id: eq,
+          nombre: eq,
+          iniciales: initials
+        };
+      }
+      // Si es un objeto
+      return {
+        id: eq.personaId || eq.id || eq.auditorId,
+        nombre: eq.persona?.nombre || eq.nombre || 'Sin nombre',
+        iniciales: eq.persona?.iniciales || eq.iniciales || 'SN'
+      };
+    });
 
-    return {
+    const auditoriaPrograma: AuditoriaPrograma = {
       id: aud.id,
       codigo: aud.codigo || `AUD-${añoActual}-${aud.id.substring(0, 3).toUpperCase()}`,
       nombre: aud.nombre || aud.titulo || 'Sin nombre',
       tipo,
-      areaAuditable: aud.procesoAuditableId || aud.areaAuditableId || '',
+      areaAuditable: aud.areaObjetivo || aud.procesoAuditableId || aud.areaAuditableId || '',
       procesoId: aud.procesoAuditableId || '',
-      procesoNombre: aud.procesoNombre || aud.procesoAuditable?.nombre || 'Sin proceso',
+      procesoNombre: aud.areaObjetivo || aud.procesoNombre || aud.procesoAuditable?.nombre || aud.alcance || 'Sin proceso',
       auditorLider,
       equipoAuditores,
       mesInicio,
@@ -404,8 +420,10 @@ export function ProgramaAnualCIG() {
         comunicacion: { duracionDias: duracionComunicacion, color: '#8B5CF6' }
       },
       estadoPrograma,
-      observaciones: aud.observaciones || aud.descripcion
+      observaciones: aud.observacionesAdicionales || aud.observaciones || aud.descripcion || ''
     };
+    
+    return auditoriaPrograma;
   };
 
   // Función para recargar auditorías (reutilizable)
@@ -460,31 +478,17 @@ export function ProgramaAnualCIG() {
     const cargarAuditorias = async () => {
       try {
         setLoading(true);
-        console.log('[ProgramaAnualCIG] Cargando auditorías desde BD...');
         const response = await auditoriasApi.getAllKanban();
         
-        console.log('[ProgramaAnualCIG] Respuesta recibida:', response);
-        
         if (response.success && response.data) {
-          console.log('[ProgramaAnualCIG] Total auditorías recibidas:', response.data.length);
           
           // TODAS las auditorías activas del kanban deben mostrarse
           // No filtrar por fecha ni año, todas son válidas para el programa anual
           // (el backend ya filtra por activa: true)
           const todasLasAuditorias = response.data;
-          
-          console.log('[ProgramaAnualCIG] Auditorías a mostrar:', todasLasAuditorias.length);
-          console.log('[ProgramaAnualCIG] Detalle auditorías:', todasLasAuditorias.map((a: any) => ({ 
-            id: a.id, 
-            codigo: a.codigo, 
-            fechaInicio: a.fechaInicio,
-            tieneMetadata: !!a.programaAnualMetadata,
-            mesInicio: a.programaAnualMetadata?.mesInicio
-          })));
 
           // Mapear a formato de programa
           const auditoriasMapeadas = todasLasAuditorias.map(mapearAuditoriaAPrograma);
-          console.log('[ProgramaAnualCIG] Auditorías mapeadas:', auditoriasMapeadas.length);
           setAuditoriasPrograma(auditoriasMapeadas);
           
           if (auditoriasMapeadas.length === 0) {
@@ -747,6 +751,7 @@ export function ProgramaAnualCIG() {
           }}
           onGuardar={async (auditoriaActualizada) => {
             try {
+              
               // Obtener el año de la auditoría original para mantenerla en el mismo año
               // Primero obtener la auditoría actual desde la BD para saber su año
               const audOriginalResponse = await auditoriasApi.getById(auditoriaActualizada.id);
@@ -760,20 +765,12 @@ export function ProgramaAnualCIG() {
                   // Validar que el año obtenido sea un número válido
                   if (!isNaN(añoObtenido) && añoObtenido > 2000 && añoObtenido < 2100) {
                     añoAuditoria = añoObtenido;
-                    console.log('[ProgramaAnualCIG] Año de la auditoría original:', añoAuditoria);
-                  } else {
-                    console.warn('[ProgramaAnualCIG] Año obtenido inválido:', añoObtenido, 'usando año actual:', añoAuditoria);
                   }
-                } else {
-                  console.warn('[ProgramaAnualCIG] Fecha original inválida:', audOriginalResponse.data.fechaInicio, 'usando año actual:', añoAuditoria);
                 }
-              } else {
-                console.log('[ProgramaAnualCIG] No se pudo obtener el año original, usando año actual:', añoAuditoria);
               }
 
               // Validar que añoAuditoria sea válido antes de usarlo
               if (isNaN(añoAuditoria) || añoAuditoria < 2000 || añoAuditoria > 2100) {
-                console.error('[ProgramaAnualCIG] ⚠️ Año inválido detectado:', añoAuditoria, 'usando año actual como fallback');
                 añoAuditoria = añoActual;
               }
 
@@ -788,10 +785,30 @@ export function ProgramaAnualCIG() {
                 throw new Error(`Fecha de inicio inválida calculada: año=${añoAuditoria}, mes=${auditoriaActualizada.mesInicio}, semana=${auditoriaActualizada.semanaInicio}`);
               }
 
+              // Validar duraciones antes de calcular (máximo razonable: 365 días por fase, 730 total)
+              const duracionPlaneacion = auditoriaActualizada.fases.planeacion.duracionDias;
+              const duracionEjecucion = auditoriaActualizada.fases.ejecucion.duracionDias;
+              const duracionComunicacion = auditoriaActualizada.fases.comunicacion.duracionDias;
+              
+              // Validaciones individuales de cada fase
+              if (duracionPlaneacion < 1 || duracionPlaneacion > 365) {
+                throw new Error(`⚠️ Duración de Planeación inválida: ${duracionPlaneacion} días. Debe estar entre 1 y 365 días.`);
+              }
+              if (duracionEjecucion < 1 || duracionEjecucion > 365) {
+                throw new Error(`⚠️ Duración de Ejecución inválida: ${duracionEjecucion} días. Debe estar entre 1 y 365 días.`);
+              }
+              if (duracionComunicacion < 1 || duracionComunicacion > 365) {
+                throw new Error(`⚠️ Duración de Comunicación inválida: ${duracionComunicacion} días. Debe estar entre 1 y 365 días.`);
+              }
+
               // Calcular fechaFin sumando todas las duraciones
-              const duracionTotal = auditoriaActualizada.fases.planeacion.duracionDias + 
-                                   auditoriaActualizada.fases.ejecucion.duracionDias + 
-                                   auditoriaActualizada.fases.comunicacion.duracionDias;
+              const duracionTotal = duracionPlaneacion + duracionEjecucion + duracionComunicacion;
+              
+              // Validar duración total (máximo 2 años = 730 días)
+              if (duracionTotal > 730) {
+                throw new Error(`⚠️ Duración total demasiado larga: ${duracionTotal} días. El máximo permitido es 730 días (2 años). Reduzca las duraciones de las fases.`);
+              }
+              
               const fechaFin = new Date(fechaInicio);
               fechaFin.setDate(fechaFin.getDate() + duracionTotal - 1);
 
@@ -825,35 +842,13 @@ export function ProgramaAnualCIG() {
                 }
               };
 
-              console.log('[ProgramaAnualCIG] Actualizando auditoría:', {
-                id: auditoriaActualizada.id,
-                codigo: auditoriaActualizada.codigo,
-                añoAuditoria,
-                mesInicio: auditoriaActualizada.mesInicio,
-                semanaInicio: auditoriaActualizada.semanaInicio,
-                fechaInicio: updateData.fechaInicio,
-                fechaFin: updateData.fechaFin,
-                duracionTotal,
-                programaAnualMetadata: updateData.programaAnualMetadata
-              });
-              
-              console.log('[ProgramaAnualCIG] updateData completo:', JSON.stringify(updateData, null, 2));
-
               // Llamar al API para actualizar
               const response = await auditoriasApi.update(auditoriaActualizada.id, updateData);
 
               if (response.success && response.data) {
-                console.log('[ProgramaAnualCIG] Auditoría actualizada exitosamente en BD:', {
-                  id: response.data.id,
-                  codigo: response.data.codigo,
-                  fechaInicio: response.data.fechaInicio,
-                  fechaFin: response.data.fechaFin
-                });
-                
                 // Recargar auditorías desde la BD
                 const allResponse = await auditoriasApi.getAllKanban();
                 if (allResponse.success && allResponse.data) {
-                  console.log('[ProgramaAnualCIG] Total auditorías recibidas después de actualizar:', allResponse.data.length);
                   
                   // Filtrar solo las del año actual
                   const auditoriasAnoActual = allResponse.data.filter((aud: any) => {
@@ -861,13 +856,11 @@ export function ProgramaAnualCIG() {
                     if (aud.programaAnualMetadata?.mesInicio !== undefined) {
                       // Si tiene metadata, asumir que es del año actual si no hay fechaInicio
                       if (!aud.fechaInicio) {
-                        console.log('[ProgramaAnualCIG] Auditoría sin fechaInicio pero con metadata, incluyendo:', aud.id, aud.codigo);
                         return true;
                       }
                     }
                     
                     if (!aud.fechaInicio) {
-                      console.log('[ProgramaAnualCIG] Auditoría sin fechaInicio (filtrada):', aud.id, aud.codigo);
                       return false;
                     }
                     
@@ -896,13 +889,7 @@ export function ProgramaAnualCIG() {
                       return false;
                     }
                     
-                    const esDelAño = añoAud === añoActual;
-                    if (!esDelAño) {
-                      console.log('[ProgramaAnualCIG] Auditoría fuera del año actual (filtrada):', aud.id, aud.codigo, 'año:', añoAud, 'esperado:', añoActual);
-                    } else {
-                      console.log('[ProgramaAnualCIG] Auditoría incluida:', aud.id, aud.codigo, 'fechaInicio:', aud.fechaInicio);
-                    }
-                    return esDelAño;
+                    return añoAud === añoActual;
                   });
                   
                   // Verificar si la auditoría actualizada está en el año actual
@@ -1677,9 +1664,13 @@ function ModalEditarAuditoria({ auditoria, isOpen, onClose, onGuardar }: ModalEd
     observaciones: auditoria.observaciones || ''
   });
   const [guardando, setGuardando] = useState(false);
+  const guardandoRef = useRef(false); // Ref para rastrear estado de guardado de forma síncrona
 
   useEffect(() => {
     if (isOpen) {
+      // Resetear estados cuando se abre el modal
+      setGuardando(false);
+      guardandoRef.current = false;
       setFormData({
         nombre: auditoria.nombre,
         mesInicio: auditoria.mesInicio,
@@ -1693,8 +1684,34 @@ function ModalEditarAuditoria({ auditoria, isOpen, onClose, onGuardar }: ModalEd
   }, [isOpen, auditoria]);
 
   const handleGuardar = async () => {
+    // Evitar múltiples llamadas simultáneas usando ref (más confiable que state)
+    if (guardandoRef.current || guardando) {
+      return;
+    }
+    
+    // ✅ VALIDACIÓN PREVIA antes de intentar guardar
+    const duracionTotal = formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion;
+    
+    if (duracionTotal > 730) {
+      toast.error('⚠️ Duración total excedida', {
+        description: `La duración total es de ${duracionTotal} días, pero el máximo permitido es 730 días (2 años). Por favor, ajuste las duraciones.`
+      });
+      return;
+    }
+    
+    if (formData.duracionPlaneacion < 1 || formData.duracionPlaneacion > 365 ||
+        formData.duracionEjecucion < 1 || formData.duracionEjecucion > 365 ||
+        formData.duracionComunicacion < 1 || formData.duracionComunicacion > 365) {
+      toast.error('⚠️ Duraciones inválidas', {
+        description: 'Cada fase debe tener una duración entre 1 y 365 días.'
+      });
+      return;
+    }
+    
     try {
+      guardandoRef.current = true; // Bloquear inmediatamente
       setGuardando(true);
+      
       const auditoriaActualizada: AuditoriaPrograma = {
         ...auditoria,
         nombre: formData.nombre,
@@ -1716,11 +1733,12 @@ function ModalEditarAuditoria({ auditoria, isOpen, onClose, onGuardar }: ModalEd
         },
         observaciones: formData.observaciones
       };
+      
       await onGuardar(auditoriaActualizada);
+      onClose(); // Cerrar el modal después de guardar exitosamente
     } catch (error) {
-      console.error('[ModalEditarAuditoria] Error al guardar:', error);
-    } finally {
       setGuardando(false);
+      guardandoRef.current = false; // Resetear en caso de error para permitir reintentar
     }
   };
 
@@ -1812,39 +1830,127 @@ function ModalEditarAuditoria({ auditoria, isOpen, onClose, onGuardar }: ModalEd
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Planeación
+                  <span className="text-xs text-gray-500 ml-2">(1-365 días)</span>
                 </label>
                 <input
                   type="number"
                   min="1"
+                  max="365"
                   value={formData.duracionPlaneacion}
-                  onChange={(e) => setFormData({ ...formData, duracionPlaneacion: parseInt(e.target.value) || 1 })}
+                  onChange={(e) => {
+                    const valor = parseInt(e.target.value) || 1;
+                    const valorLimitado = Math.min(Math.max(valor, 1), 365);
+                    setFormData({ ...formData, duracionPlaneacion: valorLimitado });
+                  }}
+                  onBlur={(e) => {
+                    const valor = parseInt(e.target.value) || 1;
+                    if (valor > 365) {
+                      toast.error('Duración inválida', { description: 'La duración máxima por fase es de 365 días' });
+                      setFormData({ ...formData, duracionPlaneacion: 365 });
+                    }
+                  }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Ej: 30"
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Ejecución
+                  <span className="text-xs text-gray-500 ml-2">(1-365 días)</span>
                 </label>
                 <input
                   type="number"
                   min="1"
+                  max="365"
                   value={formData.duracionEjecucion}
-                  onChange={(e) => setFormData({ ...formData, duracionEjecucion: parseInt(e.target.value) || 1 })}
+                  onChange={(e) => {
+                    const valor = parseInt(e.target.value) || 1;
+                    const valorLimitado = Math.min(Math.max(valor, 1), 365);
+                    setFormData({ ...formData, duracionEjecucion: valorLimitado });
+                  }}
+                  onBlur={(e) => {
+                    const valor = parseInt(e.target.value) || 1;
+                    if (valor > 365) {
+                      toast.error('Duración inválida', { description: 'La duración máxima por fase es de 365 días' });
+                      setFormData({ ...formData, duracionEjecucion: 365 });
+                    }
+                  }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Ej: 60"
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Comunicación
+                  <span className="text-xs text-gray-500 ml-2">(1-365 días)</span>
                 </label>
                 <input
                   type="number"
                   min="1"
+                  max="365"
                   value={formData.duracionComunicacion}
-                  onChange={(e) => setFormData({ ...formData, duracionComunicacion: parseInt(e.target.value) || 1 })}
+                  onChange={(e) => {
+                    const valor = parseInt(e.target.value) || 1;
+                    const valorLimitado = Math.min(Math.max(valor, 1), 365);
+                    setFormData({ ...formData, duracionComunicacion: valorLimitado });
+                  }}
+                  onBlur={(e) => {
+                    const valor = parseInt(e.target.value) || 1;
+                    if (valor > 365) {
+                      toast.error('Duración inválida', { description: 'La duración máxima por fase es de 365 días' });
+                      setFormData({ ...formData, duracionComunicacion: 365 });
+                    }
+                  }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Ej: 15"
                 />
               </div>
+            </div>
+            
+            {/* Indicador de Duración Total */}
+            <div className={`mt-4 p-3 rounded-lg border-2 ${
+              (formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion) > 730
+                ? 'bg-red-50 border-red-300'
+                : (formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion) > 365
+                  ? 'bg-yellow-50 border-yellow-300'
+                  : 'bg-green-50 border-green-300'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-semibold ${
+                  (formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion) > 730
+                    ? 'text-red-700'
+                    : (formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion) > 365
+                      ? 'text-yellow-700'
+                      : 'text-green-700'
+                }`}>
+                  Duración Total:
+                </span>
+                <span className={`text-lg font-bold ${
+                  (formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion) > 730
+                    ? 'text-red-700'
+                    : (formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion) > 365
+                      ? 'text-yellow-700'
+                      : 'text-green-700'
+                }`}>
+                  {formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion} días
+                </span>
+              </div>
+              {(formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion) > 730 && (
+                <p className="text-xs text-red-600 mt-1">
+                  ⚠️ La duración excede el máximo permitido de 730 días (2 años). Ajuste las duraciones.
+                </p>
+              )}
+              {(formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion) > 365 && 
+               (formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion) <= 730 && (
+                <p className="text-xs text-yellow-600 mt-1">
+                  ⚡ Auditoría de larga duración (más de 1 año)
+                </p>
+              )}
+              {(formData.duracionPlaneacion + formData.duracionEjecucion + formData.duracionComunicacion) <= 365 && (
+                <p className="text-xs text-green-600 mt-1">
+                  ✓ Duración dentro del rango normal
+                </p>
+              )}
             </div>
           </div>
 
@@ -1865,12 +1971,12 @@ function ModalEditarAuditoria({ auditoria, isOpen, onClose, onGuardar }: ModalEd
 
         {/* Footer */}
         <div className="border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
-          <ButtonSIGL variant="secondary" onClick={onClose}>
+          <ButtonSIGL variant="secondary" onClick={onClose} disabled={guardando}>
             Cancelar
           </ButtonSIGL>
-          <ButtonSIGL variant="primary" onClick={handleGuardar}>
+          <ButtonSIGL variant="primary" onClick={handleGuardar} disabled={guardando}>
             <Save className="w-4 h-4 mr-2" />
-            Guardar Cambios
+            {guardando ? 'Guardando...' : 'Guardar Cambios'}
           </ButtonSIGL>
         </div>
       </motion.div>

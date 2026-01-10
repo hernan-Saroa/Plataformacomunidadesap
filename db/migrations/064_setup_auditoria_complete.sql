@@ -133,22 +133,26 @@ CREATE INDEX IF NOT EXISTS idx_proceso_auditable_tipo ON control_interno.proceso
 CREATE INDEX IF NOT EXISTS idx_proceso_auditable_macroproceso ON control_interno.proceso_auditable(macroproceso);
 
 -- Crear tabla plan_anual_5_roles (para migración 066)
-CREATE TABLE IF NOT EXISTS control_interno.plan_anual_5_roles (
+-- Si existe con esquema incorrecto, la eliminamos y recreamos
+DROP TABLE IF EXISTS control_interno.plan_anual_5_roles CASCADE;
+
+CREATE TABLE control_interno.plan_anual_5_roles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     ano INTEGER NOT NULL,
-    nombre VARCHAR(255) NOT NULL,
-    descripcion TEXT,
-    estado VARCHAR(50) DEFAULT 'borrador',
-    fecha_inicio DATE,
-    fecha_fin DATE,
+    fecha_creacion DATE NOT NULL DEFAULT CURRENT_DATE,
+    responsable VARCHAR(255) NOT NULL,
+    estado VARCHAR(50) NOT NULL DEFAULT 'borrador' CHECK (estado IN ('borrador', 'en-revision', 'aprobado', 'en-ejecucion', 'completado')),
+    porcentaje_cumplimiento_general INTEGER DEFAULT 0,
+    total_actividades INTEGER DEFAULT 0,
+    actividades_completadas INTEGER DEFAULT 0,
+    actividades_en_progreso INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_by BIGINT,
-    updated_by BIGINT
+    CONSTRAINT unique_plan_anual_ano UNIQUE(ano)
 );
 
-CREATE INDEX IF NOT EXISTS idx_plan_anual_5_roles_ano ON control_interno.plan_anual_5_roles(ano);
-CREATE INDEX IF NOT EXISTS idx_plan_anual_5_roles_estado ON control_interno.plan_anual_5_roles(estado);
+CREATE INDEX idx_plan_anual_5_roles_ano ON control_interno.plan_anual_5_roles(ano);
+CREATE INDEX idx_plan_anual_5_roles_estado ON control_interno.plan_anual_5_roles(estado);
 
 -- ===========================================
 -- SECCIÓN 1: TABLA PRINCIPAL AUDITORIA

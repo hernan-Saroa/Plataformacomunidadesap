@@ -608,22 +608,14 @@ export function UniversoAuditorias() {
     const cargarProcesos = async () => {
       try {
         setLoading(true);
-        console.log('[UniversoAuditorias] Cargando procesos desde BD...');
         const response = await universoAuditoriasApi.getAllProcesos();
         
-        console.log('[UniversoAuditorias] Respuesta recibida:', response);
-        
         if (response.success && response.data) {
-          console.log('[UniversoAuditorias] Datos recibidos:', response.data.length, 'procesos');
-          console.log('[UniversoAuditorias] Primer proceso ejemplo:', response.data[0]);
           const areasMapeadas = response.data.map(mapearProcesoAArea);
-          console.log('[UniversoAuditorias] Áreas mapeadas:', areasMapeadas.length);
-          console.log('[UniversoAuditorias] Primer área mapeada:', areasMapeadas[0]);
           setAreas(areasMapeadas);
           
           if (areasMapeadas.length === 0) {
             // Si la BD está vacía, usar mock como fallback
-            console.log('[UniversoAuditorias] BD vacía, usando datos mock como fallback');
             setAreas(AREAS_AUDITABLES_MOCK);
             toast.info('No hay procesos en la BD, mostrando datos de demostración', {
               description: 'Puedes crear nuevos procesos desde el botón "Nueva Área"'
@@ -634,9 +626,7 @@ export function UniversoAuditorias() {
             });
           }
         } else {
-          console.warn('[UniversoAuditorias] No se recibieron datos válidos. Response:', response);
           // Si no hay datos en BD, usar mock como fallback (útil para desarrollo/demo)
-          console.log('[UniversoAuditorias] No hay datos en BD, usando datos mock como fallback');
           setAreas(AREAS_AUDITABLES_MOCK);
           if (!response.success) {
             toast.warning('Error al cargar desde BD, usando datos de demostración', {
@@ -649,9 +639,7 @@ export function UniversoAuditorias() {
           }
         }
       } catch (error) {
-        console.error('[UniversoAuditorias] Error al cargar procesos:', error);
         // En caso de error, usar mock como fallback
-        console.log('[UniversoAuditorias] Error al conectar con BD, usando datos mock como fallback');
         setAreas(AREAS_AUDITABLES_MOCK);
         toast.warning('Error al conectar con el servidor, usando datos de demostración', {
           description: error instanceof Error ? error.message : 'No se pudieron obtener los datos desde el servidor'
