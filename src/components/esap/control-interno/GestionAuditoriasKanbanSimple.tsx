@@ -1861,6 +1861,29 @@ export function GestionAuditoriasKanbanSimple() {
       
       // Mapear datos del backend al formato esperado por el frontend
       const añoActual = new Date().getFullYear();
+      
+      // Función auxiliar para mapear tipos antiguos a nuevos
+      const normalizarTipo = (tipo: string | undefined): string => {
+        if (!tipo) return 'Regular';
+        const tiposValidos = ['Regular', 'Territorial', 'Especial'];
+        if (tiposValidos.includes(tipo)) return tipo;
+        // Mapeo de tipos antiguos
+        const mapping: Record<string, string> = {
+          'gestión': 'Regular',
+          'cumplimiento': 'Regular',
+          'desempeño': 'Regular',
+          'sistemas': 'Regular',
+          'financiera': 'Regular',
+          'seguimiento': 'Regular',
+          'control interno': 'Regular',
+          'académica': 'Regular',
+          'rrhh': 'Regular',
+          'ti': 'Regular',
+          'operacional': 'Regular'
+        };
+        return mapping[tipo.toLowerCase()] || 'Regular';
+      };
+      
       const auditoriasMapeadas: Auditoria[] = auditoriasData.map((aud: any) => {
         // 📅 LOG: Ver fechas RAW del backend
         console.log('📅 [GestionAuditoriasKanbanSimple] Auditoria del backend:', {
@@ -1872,15 +1895,12 @@ export function GestionAuditoriasKanbanSimple() {
           tipoFechaFin: typeof aud.fechaFin,
         });
         
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:1835',message:'Mapping auditoria from backend',data:{id:aud.id,codigo:aud.codigo,auditorLiderRaw:aud.auditorLider,auditorLiderId:aud.auditorLiderId,hasAuditorLider:!!aud.auditorLider,auditorLiderType:typeof aud.auditorLider,equipoAuditores:aud.equipoAuditores},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
+
         // Generar código automático si no existe
         const codigoAuditoria = aud.codigo || `AUD-${añoActual}-${aud.id.substring(0, 6).toUpperCase()}`;
-        // #region agent log
+
         const auditorLiderMapped = aud.auditorLider || {nombre: 'Sin asignar', cargo: 'Auditor Líder', iniciales: 'SA', tipoIdentificacion: 'CC', numeroIdentificacion: ''};
-        fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:1847',message:'After mapping auditorLider',data:{codigo:codigoAuditoria,auditorLiderMapped,auditorLiderMappedNombre:auditorLiderMapped.nombre},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
+   
         const auditoriaMapeada: any = {
           id: aud.id,
           codigo: codigoAuditoria,
@@ -1910,7 +1930,7 @@ export function GestionAuditoriasKanbanSimple() {
           documentos: aud.documentos ?? 0,
           informes: aud.informes ?? 0,
           tareas: aud.tareas ?? 0,
-          tipo: aud.tipoKanban || aud.tipo || 'regular',
+          tipo: normalizarTipo(aud.tipo),
           prioridad: aud.prioridad || 'media',
           areaObjetivo: aud.areaObjetivo,
           permiteCambiarObjetivos: aud.permiteCambiarObjetivos ?? true,
@@ -2113,23 +2133,28 @@ export function GestionAuditoriasKanbanSimple() {
       // Mapear tipo de auditoría del formulario al formato del backend
       const mapTipoAuditoria = (tipo: string): string => {
         // Si ya viene con el tipo correcto, devolverlo directamente
-        const tiposValidos = ['Gestión', 'Cumplimiento', 'Desempeño', 'Sistemas', 'Financiera', 'Seguimiento'];
+        const tiposValidos = ['Regular', 'Territorial', 'Especial'];
         if (tiposValidos.includes(tipo)) {
           return tipo;
         }
         
         // Mapeo para valores antiguos (por retrocompatibilidad)
         const mapping: Record<string, string> = {
-          'regular': 'Gestión',
-          'territorial': 'Gestión',
-          'especial': 'Gestión',
-          'seguimiento': 'Seguimiento'
+          'regular': 'Regular',
+          'territorial': 'Territorial',
+          'especial': 'Especial',
+          'gestión': 'Regular',
+          'cumplimiento': 'Regular',
+          'desempeño': 'Regular',
+          'sistemas': 'Regular',
+          'financiera': 'Regular',
+          'seguimiento': 'Regular'
         };
-        return mapping[tipo] || 'Gestión';
+        return mapping[tipo.toLowerCase()] || 'Regular';
       };
 
       // Mapear datos del formulario al formato del backend
-      const tipoAuditoriaValue = (data as any).tipo || (data as any).tipoAuditoria || 'Gestión';
+      const tipoAuditoriaValue = (data as any).tipo || (data as any).tipoAuditoria || 'Regular';
       const auditoriaData: any = {
         nombre: data.titulo,
         descripcion: data.descripcion || undefined,
@@ -2400,20 +2425,20 @@ export function GestionAuditoriasKanbanSimple() {
       };
 
       // Mapear tipo de auditoría - usar el valor directamente si es uno de los tipos válidos
-      // Los tipos válidos son: 'Gestión', 'Cumplimiento', 'Desempeño', 'Sistemas', 'Financiera', 'Seguimiento'
+      // Los tipos válidos son: 'Regular', 'Territorial', 'Especial'
       const tipoAuditoriaValue = (data as any).tipo || (data as any).tipoAuditoria;
       if (tipoAuditoriaValue) {
-        const tiposValidos = ['Gestión', 'Cumplimiento', 'Desempeño', 'Sistemas', 'Financiera', 'Seguimiento', 'Control Interno', 'Académica', 'RRHH', 'TI', 'Operacional'];
-        // Si el tipo es válido, usarlo directamente; si no, usar 'Gestión' como default
+        const tiposValidos = ['Regular', 'Territorial', 'Especial'];
+        // Si el tipo es válido, usarlo directamente; si no, usar 'Regular' como default
         if (tiposValidos.includes(tipoAuditoriaValue)) {
           updateData.tipo = tipoAuditoriaValue;
         } else {
-          // Si viene con un valor no reconocido, usar 'Gestión' como default
-          updateData.tipo = 'Gestión';
+          // Si viene con un valor no reconocido, usar 'Regular' como default
+          updateData.tipo = 'Regular';
         }
       } else {
-        // Si no hay tipo, usar 'Gestión' como default
-        updateData.tipo = 'Gestión';
+        // Si no hay tipo, usar 'Regular' como default
+        updateData.tipo = 'Regular';
       }
 
       // Convertir fechas a formato ISO 8601 (YYYY-MM-DD)
@@ -3782,9 +3807,6 @@ export function GestionAuditoriasKanbanSimple() {
 
         {/* MODAL INICIO DE AUDITORÍA - RF004 */}
         {modalInicioAuditoriaOpen && auditoriaSeleccionada && (() => {
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:3493',message:'Opening InicioAuditoriaWizard',data:{auditoriaId:auditoriaSeleccionada.id,codigo:auditoriaSeleccionada.codigo,auditorLider:auditoriaSeleccionada.auditorLider,hasAuditorLider:!!auditoriaSeleccionada.auditorLider,auditorLiderNombre:auditoriaSeleccionada.auditorLider?.nombre},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
           // Convertir fecha formato DD/MM/YYYY a Date object
           const [dia, mes, anio] = auditoriaSeleccionada.fechaInicio.split('/');
           const fechaInicioDate = new Date(parseInt(anio), parseInt(mes) - 1, parseInt(dia));

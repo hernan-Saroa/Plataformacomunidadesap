@@ -1,6 +1,36 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 
 @Injectable()
-export class JwtAuthGuard extends AuthGuard('jwt') {}
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  canActivate(context: ExecutionContext) {
+    const request = context.switchToHttp().getRequest();
+    const authHeader = request.headers.authorization;
+    
+    console.log('🔒 [JwtAuthGuard] Request to:', request.url);
+    console.log('🔒 [JwtAuthGuard] Authorization header:', authHeader ? authHeader.substring(0, 20) + '...' : 'NOT PRESENT');
+    
+    if (!authHeader) {
+      console.log('❌ [JwtAuthGuard] No authorization header found');
+      throw new UnauthorizedException('No authorization header');
+    }
+    
+    return super.canActivate(context);
+  }
+
+  handleRequest(err: any, user: any, info: any) {
+    console.log('🔒 [JwtAuthGuard] handleRequest called');
+    console.log('🔒 [JwtAuthGuard] Error:', err);
+    console.log('🔒 [JwtAuthGuard] User:', user);
+    console.log('🔒 [JwtAuthGuard] Info:', info);
+    
+    if (err || !user) {
+      console.log('❌ [JwtAuthGuard] Authentication failed:', info?.message || err?.message || 'Unknown error');
+      throw err || new UnauthorizedException(info?.message || 'Unauthorized');
+    }
+    
+    console.log('✅ [JwtAuthGuard] Authentication successful');
+    return user;
+  }
+}
 

@@ -254,10 +254,35 @@ export function FormularioAuditoriaUnificado({
   initialData,
   mode
 }: FormularioAuditoriaUnificadoProps) {
+  // Función auxiliar para normalizar tipo de auditoría
+  const normalizarTipo = (tipo: any): string => {
+    if (!tipo) return 'Regular';
+    const tiposValidos = ['Regular', 'Territorial', 'Especial'];
+    if (tiposValidos.includes(tipo)) return tipo;
+    // Mapeo de tipos antiguos
+    const mapping: Record<string, string> = {
+      'gestión': 'Regular',
+      'cumplimiento': 'Regular',
+      'desempeño': 'Regular',
+      'sistemas': 'Regular',
+      'financiera': 'Regular',
+      'seguimiento': 'Regular',
+      'control interno': 'Regular',
+      'académica': 'Regular',
+      'rrhh': 'Regular',
+      'ti': 'Regular',
+      'operacional': 'Regular',
+      'regular': 'Regular',
+      'territorial': 'Territorial',
+      'especial': 'Especial'
+    };
+    return mapping[tipo.toString().toLowerCase()] || 'Regular';
+  };
+
   const [pasoActual, setPasoActual] = useState(1);
   const [formData, setFormData] = useState<AuditoriaUnificadaFormData>({
     codigo: initialData?.codigo || '',
-    tipoAuditoria: initialData?.tipoAuditoria || 'regular',
+    tipoAuditoria: normalizarTipo(initialData?.tipoAuditoria),
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
@@ -753,12 +778,11 @@ function Paso1InformacionBasica({ formData, onChange }: PasoProps) {
             required
             helpText="Seleccione el tipo de auditoría según su naturaleza"
           >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {[
-                { value: 'regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
-                { value: 'territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
-                { value: 'especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> },
-                { value: 'seguimiento', label: 'Seguimiento', icono: <Clock className="w-5 h-5" /> }
+                { value: 'Regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
+                { value: 'Territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
+                { value: 'Especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> }
               ].map(tipo => (
                 <button
                   key={tipo.value}
@@ -782,7 +806,7 @@ function Paso1InformacionBasica({ formData, onChange }: PasoProps) {
           </FieldWrapper>
 
           {/* Información contextual según tipo */}
-          {formData.tipoAuditoria === 'especial' && (
+          {formData.tipoAuditoria === 'Especial' && (
             <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -790,6 +814,20 @@ function Paso1InformacionBasica({ formData, onChange }: PasoProps) {
                   <p className="font-bold text-amber-900 mb-1">Auditoría Especial</p>
                   <p className="text-amber-700">
                     Las auditorías especiales se realizan por solicitudes específicas, denuncias o necesidades urgentes no contempladas en el Plan Anual. Requieren justificación detallada.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {formData.tipoAuditoria === 'Territorial' && (
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-start gap-3">
+                <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-bold text-blue-900 mb-1">Auditoría Territorial</p>
+                  <p className="text-blue-700">
+                    Auditoría realizada a sedes territoriales de la ESAP en diferentes regiones del país.
                   </p>
                 </div>
               </div>

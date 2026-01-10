@@ -1837,10 +1837,6 @@ export class AuditoriasService {
     const fecha = ahora.toISOString().split('T')[0];
     const hora = ahora.toTimeString().slice(0, 5);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auditorias.service.ts:1770',message:'Creating historial entry for ampliacion_plazo',data:{tipoEventoValue:TipoEvento.AMPLIACION_PLAZO,tipoEventoEnum:TipoEvento,auditoriaId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-
     const historial = new HistorialAuditoria();
     historial.auditoriaId = auditoriaId;
     historial.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
@@ -1862,28 +1858,12 @@ export class AuditoriasService {
       valorNuevo: this.serializeDate(nuevaFechaFin),
     }];
 
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auditorias.service.ts:1791',message:'About to save historial entry',data:{historialData:{tipoEvento:historial.tipoEvento,auditoriaId:historial.auditoriaId,accion:historial.accion}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-
-    // #region agent log
+    // Save historial
     try {
-      const constraintQuery = await this.dataSource.query(`
-        SELECT 
-          con.conname as constraint_name,
-          pg_get_constraintdef(con.oid) as constraint_definition
-        FROM pg_constraint con
-        INNER JOIN pg_class rel ON rel.oid = con.conrelid
-        INNER JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-        WHERE nsp.nspname = 'control_interno'
-          AND rel.relname = 'historial_auditoria'
-          AND con.conname = 'historial_auditoria_tipo_evento_check'
-      `);
-      fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auditorias.service.ts:1813',message:'Queried constraint definition',data:{constraintQuery:JSON.stringify(constraintQuery)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // Skip constraint validation - TypeORM will handle it
     } catch (err: any) {
-      fetch('http://127.0.0.1:7243/ingest/1bbc02a8-f5b9-41b1-9add-a1401ff18b0a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auditorias.service.ts:1815',message:'Failed to query constraint',data:{error:err?.message || String(err)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // Skip validation errors - continue with save
     }
-    // #endregion
 
     await this.historialRepository.save(historial);
 

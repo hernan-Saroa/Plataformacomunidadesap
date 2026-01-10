@@ -12,13 +12,18 @@ export class RolesGuard implements CanActivate {
       context.getClass(),
     ]);
 
+    console.log('🛡️ [RolesGuard] Required roles:', requiredRoles);
+
     if (!requiredRoles) {
+      console.log('✅ [RolesGuard] No roles required, access granted');
       return true;
     }
 
     const { user } = context.switchToHttp().getRequest();
+    console.log('🛡️ [RolesGuard] User from request:', JSON.stringify(user, null, 2));
     
     if (!user) {
+      console.log('❌ [RolesGuard] No user in request');
       throw new ForbiddenException('Usuario no autenticado');
     }
 
@@ -45,6 +50,8 @@ export class RolesGuard implements CanActivate {
       }
       return false;
     });
+
+    console.log(hasRole ? '✅ [RolesGuard] Access GRANTED' : '❌ [RolesGuard] Access DENIED');
 
     if (!hasRole) {
       throw new ForbiddenException(

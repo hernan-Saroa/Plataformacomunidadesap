@@ -272,7 +272,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Antioquia',
     'Territorial Antioquia',
-    'Territorial Antioquia',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 3,
         'impacto', 2,
@@ -296,7 +296,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Atlántico',
     'Territorial Atlántico-Cesar',
-    'Territorial Atlántico-Cesar',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 3,
         'impacto', 2,
@@ -320,7 +320,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Bolívar',
     'Territorial Bolívar-Córdoba',
-    'Territorial Bolívar-Córdoba',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 2,
         'impacto', 2,
@@ -344,7 +344,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Caldas',
     'Territorial Caldas',
-    'Territorial Caldas',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 2,
         'impacto', 2,
@@ -368,7 +368,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Cundinamarca',
     'Territorial Cundinamarca',
-    'Territorial Cundinamarca',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 3,
         'impacto', 3,
@@ -392,7 +392,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Nariño',
     'Territorial Nariño-Putumayo',
-    'Territorial Nariño-Putumayo',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 2,
         'impacto', 2,
@@ -416,7 +416,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Huila',
     'Territorial Huila',
-    'Territorial Huila',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 2,
         'impacto', 2,
@@ -440,7 +440,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Meta',
     'Territorial Meta',
-    'Territorial Meta',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 2,
         'impacto', 2,
@@ -464,7 +464,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Cauca',
     'Territorial Cauca',
-    'Territorial Cauca',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 2,
         'impacto', 2,
@@ -488,7 +488,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Amazonas',
     'Territorial Amazonas',
-    'Territorial Amazonas',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 1,  -- 1 -> 1
         'impacto', 1,       -- 1 -> 1
@@ -512,7 +512,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Boyacá',
     'Territorial Boyacá',
-    'Territorial Boyacá',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 2,
         'impacto', 2,
@@ -536,7 +536,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Casanare',
     'Territorial Casanare',
-    'Territorial Casanare',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 2,  -- 3 -> 2
         'impacto', 1,      -- 1 -> 1
@@ -560,7 +560,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Guaviare',
     'Territorial Guaviare',
-    'Territorial Guaviare',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 1,
         'impacto', 1,
@@ -584,7 +584,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Putumayo',
     'Territorial Putumayo',
-    'Territorial Putumayo',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 2,
         'impacto', 1,
@@ -608,7 +608,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial San Andrés',
     'Territorial Archipiélago San Andrés',
-    'Territorial Archipiélago San Andrés',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 1,
         'impacto', 1,
@@ -632,7 +632,7 @@ INSERT INTO control_interno.proceso_auditable (
     'Procesos Territoriales',
     'Director Territorial Vichada',
     'Territorial Vichada',
-    'Territorial Vichada',
+    TRUE,
     jsonb_build_object(
         'probabilidad', 1,
         'impacto', 1,
@@ -689,4 +689,6 @@ BEGIN
         RAISE WARNING '⚠️  Se esperaban 25 procesos, se encontraron %', total_procesos;
     END IF;
 END $$;
+
+
 

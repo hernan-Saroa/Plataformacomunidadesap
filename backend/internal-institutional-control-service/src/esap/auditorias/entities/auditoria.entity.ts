@@ -17,14 +17,9 @@ import { AuditoriaEspecialInfo } from './auditoria-especial-info.entity';
 import { CriterioAuditoria } from './criterio-auditoria.entity';
 
 export enum TipoAuditoria {
-  GESTION = 'Gestión',
-  CONTROL_INTERNO = 'Control Interno',
-  ACADEMICA = 'Académica',
-  RRHH = 'RRHH',
-  FINANCIERA = 'Financiera',
-  TI = 'TI',
-  CUMPLIMIENTO = 'Cumplimiento',
-  OPERACIONAL = 'Operacional',
+  REGULAR = 'Regular',
+  TERRITORIAL = 'Territorial',
+  ESPECIAL = 'Especial',
 }
 
 export enum FaseAuditoria {

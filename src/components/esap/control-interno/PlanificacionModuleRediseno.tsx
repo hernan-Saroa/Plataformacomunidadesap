@@ -198,12 +198,17 @@ export function PlanificacionModuleRediseno() {
   // Función auxiliar para mapear tipoAuditoria del formulario al enum del backend
   const mapTipoAuditoria = (tipoAuditoria: string): string => {
     const mapping: Record<string, string> = {
-      'regular': 'Gestión',
-      'territorial': 'Gestión',
-      'especial': 'Control Interno',
-      'seguimiento': 'Cumplimiento'
+      'regular': 'Regular',
+      'territorial': 'Territorial',
+      'especial': 'Especial',
+      'gestión': 'Regular',
+      'cumplimiento': 'Regular',
+      'desempeño': 'Regular',
+      'sistemas': 'Regular',
+      'financiera': 'Regular',
+      'seguimiento': 'Regular'
     };
-    return mapping[tipoAuditoria] || 'Gestión';
+    return mapping[tipoAuditoria.toLowerCase()] || 'Regular';
   };
 
   // Handler para crear auditoría

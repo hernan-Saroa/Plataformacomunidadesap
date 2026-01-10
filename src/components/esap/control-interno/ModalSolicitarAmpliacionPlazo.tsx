@@ -144,10 +144,15 @@ export function ModalSolicitarAmpliacionPlazo({
     if (!nuevaFechaFin) {
       nuevosErrores.nuevaFechaFin = 'La nueva fecha de finalización es obligatoria';
     } else {
-      const fechaNueva = new Date(nuevaFechaFin);
-      const fechaFin = new Date(auditoria.fechaFin);
+      // Parsear la fecha ingresada correctamente (YYYY-MM-DD del input)
+      const fechaNueva = parsearFechaISO(nuevaFechaFin);
       
-      if (fechaNueva <= fechaFin) {
+      // Comparar solo con fechaFinActual ya parseada, ignorando la hora
+      fechaNueva.setHours(0, 0, 0, 0);
+      const fechaFinComparar = new Date(fechaFinActual);
+      fechaFinComparar.setHours(0, 0, 0, 0);
+      
+      if (fechaNueva <= fechaFinComparar) {
         nuevosErrores.nuevaFechaFin = 'La nueva fecha debe ser posterior a la fecha actual de finalización';
       } else {
         // Validar que no exceda 1 año desde fecha inicio

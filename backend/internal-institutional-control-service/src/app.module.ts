@@ -102,7 +102,7 @@ import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferen
           ],
           synchronize: false, // Deshabilitado - usar migraciones manuales
           // synchronize: process.env.NODE_ENV !== 'production', // Solo en desarrollo
-          logging: process.env.NODE_ENV === 'development',
+          logging: false,
           ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
           // Configuración correcta para PostgreSQL
           extra: {

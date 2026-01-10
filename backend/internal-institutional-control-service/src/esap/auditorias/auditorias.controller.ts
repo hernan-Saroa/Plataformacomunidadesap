@@ -323,6 +323,10 @@ export class AuditoriasController {
     @Body() solicitarDto: SolicitarAmpliacionPlazoDto,
     @Req() req: any,
   ) {
+    console.log('📝 [Controller] Solicitar ampliación plazo - ID:', id);
+    console.log('📝 [Controller] Request user:', JSON.stringify(req.user, null, 2));
+    console.log('📝 [Controller] Request body:', JSON.stringify(solicitarDto, null, 2));
+    
     const user = req.user;
     return this.auditoriasService.solicitarAmpliacionPlazo(
       id, 

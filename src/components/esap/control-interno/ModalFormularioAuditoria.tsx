@@ -183,9 +183,31 @@ export function ModalFormularioAuditoria({
     return '';
   };
 
+  // Función auxiliar para normalizar tipo de auditoría
+  const normalizarTipo = (tipo: any): string => {
+    if (!tipo) return 'Regular';
+    const tiposValidos = ['Regular', 'Territorial', 'Especial'];
+    if (tiposValidos.includes(tipo)) return tipo;
+    // Mapeo de tipos antiguos
+    const mapping: Record<string, string> = {
+      'gestión': 'Regular',
+      'cumplimiento': 'Regular',
+      'desempeño': 'Regular',
+      'sistemas': 'Regular',
+      'financiera': 'Regular',
+      'seguimiento': 'Regular',
+      'control interno': 'Regular',
+      'académica': 'Regular',
+      'rrhh': 'Regular',
+      'ti': 'Regular',
+      'operacional': 'Regular'
+    };
+    return mapping[tipo.toString().toLowerCase()] || 'Regular';
+  };
+
   // Estado del formulario
   const [formData, setFormData] = useState<AuditoriaFormData>({
-    tipo: initialData?.tipo || 'Gestión',
+    tipo: normalizarTipo(initialData?.tipo),
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
@@ -558,12 +580,9 @@ export function ModalFormularioAuditoria({
                       >
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                           {[
-                            { value: 'Gestión', label: 'Gestión', icono: <Shield className="w-5 h-5" /> },
-                            { value: 'Cumplimiento', label: 'Cumplimiento', icono: <CheckCircle className="w-5 h-5" /> },
-                            { value: 'Desempeño', label: 'Desempeño', icono: <Target className="w-5 h-5" /> },
-                            { value: 'Sistemas', label: 'Sistemas', icono: <Zap className="w-5 h-5" /> },
-                            { value: 'Financiera', label: 'Financiera', icono: <FileText className="w-5 h-5" /> },
-                            { value: 'Seguimiento', label: 'Seguimiento', icono: <Clock className="w-5 h-5" /> }
+                            { value: 'Regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
+                            { value: 'Territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
+                            { value: 'Especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> }
                           ].map(tipo => (
                             <button
                               key={tipo.value}
@@ -593,14 +612,27 @@ export function ModalFormularioAuditoria({
                           ))}
                         </div>
                         {/* Información contextual según tipo */}
-                        {formData.tipo === 'Sistemas' && (
+                        {formData.tipo === 'Especial' && (
                           <div className="mt-3 p-4 bg-amber-50 rounded-lg border border-amber-200">
                             <div className="flex items-start gap-3">
                               <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                               <div className="text-sm">
-                                <p className="font-bold text-amber-900 mb-1">Auditoría de Sistemas</p>
+                                <p className="font-bold text-amber-900 mb-1">Auditoría Especial</p>
                                 <p className="text-amber-700">
-                                  Evaluación de controles, seguridad y eficiencia de los sistemas de información institucionales.
+                                  Las auditorías especiales se realizan por solicitudes específicas, denuncias o necesidades urgentes no contempladas en el Plan Anual.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {formData.tipo === 'Territorial' && (
+                          <div className="mt-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                            <div className="flex items-start gap-3">
+                              <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                              <div className="text-sm">
+                                <p className="font-bold text-blue-900 mb-1">Auditoría Territorial</p>
+                                <p className="text-blue-700">
+                                  Auditoría realizada a sedes territoriales de la ESAP en diferentes regiones del país.
                                 </p>
                               </div>
                             </div>

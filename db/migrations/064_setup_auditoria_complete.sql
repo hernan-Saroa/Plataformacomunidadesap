@@ -8,6 +8,149 @@
 -- ============================================
 
 -- ===========================================
+-- SECCIÓN 0: CREAR SCHEMA Y TABLA BASE
+-- ===========================================
+
+-- Crear schema si no existe
+CREATE SCHEMA IF NOT EXISTS control_interno;
+
+-- Crear tabla auditoria si no existe (estructura base)
+CREATE TABLE IF NOT EXISTS control_interno.auditoria (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    codigo VARCHAR(50) UNIQUE NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    tipo VARCHAR(50),
+    estado VARCHAR(50),
+    territorial BOOLEAN DEFAULT false,
+    fecha_inicio DATE,
+    fecha_fin DATE,
+    progreso INTEGER DEFAULT 0,
+    hallazgos INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Crear índice básico
+CREATE INDEX IF NOT EXISTS idx_auditoria_codigo ON control_interno.auditoria(codigo);
+
+-- Crear tabla historial_auditoria si no existe (estructura base)
+CREATE TABLE IF NOT EXISTS control_interno.historial_auditoria (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    auditoria_id UUID NOT NULL,
+    tipo_evento VARCHAR(50) NOT NULL,
+    fecha DATE NOT NULL,
+    hora TIME NOT NULL,
+    accion VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    observaciones TEXT,
+    documento_adjunto VARCHAR(500),
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    cambios JSONB DEFAULT '[]'::jsonb,
+    estado_anterior VARCHAR(50),
+    estado_nuevo VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_historial_auditoria FOREIGN KEY (auditoria_id) 
+        REFERENCES control_interno.auditoria(id) ON DELETE CASCADE
+);
+
+-- Crear índices básicos para historial
+CREATE INDEX IF NOT EXISTS idx_historial_auditoria ON control_interno.historial_auditoria(auditoria_id);
+CREATE INDEX IF NOT EXISTS idx_historial_tipo ON control_interno.historial_auditoria(tipo_evento);
+CREATE INDEX IF NOT EXISTS idx_historial_fecha ON control_interno.historial_auditoria(fecha DESC, hora DESC);
+
+-- Crear tabla notificacion si no existe (estructura completa)
+CREATE TABLE IF NOT EXISTS control_interno.notificacion (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    usuario_id VARCHAR(255) NOT NULL,
+    tipo_notificacion VARCHAR(100) NOT NULL CHECK (tipo_notificacion IN (
+        'anuncio_auditoria', 'recordatorio_plazo', 'alerta_vencimiento',
+        'hallazgo_identificado', 'solicitud_evidencia', 'recepcion_documento',
+        'aprobacion_plan', 'rechazo_plan', 'controversia_hallazgo',
+        'validacion_evidencia', 'solicitud_ampliacion_plazo', 
+        'ampliacion_plazo_aprobada', 'ampliacion_plazo_rechazada', 'otro'
+    )),
+    titulo VARCHAR(255) NOT NULL,
+    mensaje TEXT NOT NULL,
+    estado VARCHAR(50) DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'enviada', 'leida', 'archivada')),
+    canal VARCHAR(50) DEFAULT 'sistema' CHECK (canal IN ('email', 'sistema', 'ambos')),
+    leida BOOLEAN DEFAULT FALSE,
+    fecha_lectura TIMESTAMP,
+    enviada_email BOOLEAN DEFAULT FALSE,
+    fecha_envio_email TIMESTAMP,
+    metadata JSONB,
+    accion_url VARCHAR(500),
+    prioridad VARCHAR(20) DEFAULT 'normal' CHECK (prioridad IN ('baja', 'normal', 'alta', 'critica')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Crear índices para notificacion
+CREATE INDEX IF NOT EXISTS idx_notificacion_usuario ON control_interno.notificacion(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_notificacion_estado ON control_interno.notificacion(estado);
+CREATE INDEX IF NOT EXISTS idx_notificacion_created ON control_interno.notificacion(created_at);
+CREATE INDEX IF NOT EXISTS idx_notificacion_tipo ON control_interno.notificacion(tipo_notificacion);
+
+-- Crear tabla preferencia_notificacion si no existe (estructura completa)
+CREATE TABLE IF NOT EXISTS control_interno.preferencia_notificacion (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    usuario_id VARCHAR(255) UNIQUE NOT NULL,
+    notificaciones_email BOOLEAN DEFAULT TRUE,
+    notificaciones_sistema BOOLEAN DEFAULT TRUE,
+    frecuencia_recordatorios VARCHAR(50),
+    tipos_notificacion JSONB,
+    horario_preferido VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Crear índice para preferencia_notificacion
+CREATE INDEX IF NOT EXISTS idx_preferencia_usuario ON control_interno.preferencia_notificacion(usuario_id);
+
+-- Crear tabla proceso_auditable (para migración 065)
+CREATE TABLE IF NOT EXISTS control_interno.proceso_auditable (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    codigo VARCHAR(50) UNIQUE NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    tipo VARCHAR(50),
+    macroproceso VARCHAR(255),
+    responsable VARCHAR(255),
+    dependencia VARCHAR(255),
+    territorial BOOLEAN DEFAULT false,
+    evaluacion_riesgo JSONB,
+    frecuencia_auditoria VARCHAR(50),
+    ultima_auditoria DATE,
+    proxima_auditoria DATE,
+    prioridad INTEGER,
+    priorizacion_anos INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_proceso_auditable_codigo ON control_interno.proceso_auditable(codigo);
+CREATE INDEX IF NOT EXISTS idx_proceso_auditable_tipo ON control_interno.proceso_auditable(tipo);
+CREATE INDEX IF NOT EXISTS idx_proceso_auditable_macroproceso ON control_interno.proceso_auditable(macroproceso);
+
+-- Crear tabla plan_anual_5_roles (para migración 066)
+CREATE TABLE IF NOT EXISTS control_interno.plan_anual_5_roles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ano INTEGER NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    estado VARCHAR(50) DEFAULT 'borrador',
+    fecha_inicio DATE,
+    fecha_fin DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE INDEX IF NOT EXISTS idx_plan_anual_5_roles_ano ON control_interno.plan_anual_5_roles(ano);
+CREATE INDEX IF NOT EXISTS idx_plan_anual_5_roles_estado ON control_interno.plan_anual_5_roles(estado);
+
+-- ===========================================
 -- SECCIÓN 1: TABLA PRINCIPAL AUDITORIA
 -- ===========================================
 
@@ -436,8 +579,7 @@ CHECK (tipo_notificacion IN (
 -- SECCIÓN 8: PREFERENCIAS DE NOTIFICACIÓN
 -- ===========================================
 
-ALTER TABLE control_interno.preferencia_notificacion 
-ADD COLUMN IF NOT EXISTS horario_preferido VARCHAR(50);
+-- Las columnas ya están creadas en la sección 0, solo se mantiene esta sección por compatibilidad
 
 -- ===========================================
 -- SECCIÓN 9: TRIGGER AUTOMÁTICO DE AUDITORÍA
