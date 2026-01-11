@@ -128,6 +128,19 @@ export class CorreosJuridicosController {
         const buffer = Buffer.from(attachment.contentBytes, 'base64');
         res.send(buffer);
     }
+
+    /**
+     * Export email to ZIP
+     */
+    @Get(':id/export/zip')
+    async exportZip(@Param('id') id: string, @Res() res: any) {
+        const archive = await this.correosService.exportCorreoToZip(id);
+        res.set({
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="correo_${id}.zip"`,
+        });
+        archive.pipe(res);
+    }
 }
 
 

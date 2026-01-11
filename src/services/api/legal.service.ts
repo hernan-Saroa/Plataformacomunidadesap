@@ -851,6 +851,14 @@ export class CorreosJuridicosService {
         const blob = await response.blob();
         return window.URL.createObjectURL(blob);
     }
+
+    /**
+     * Export email to ZIP
+     */
+    async exportCorreoZip(id: string): Promise<string> {
+        const blob = await apiClient.getBlob(`${SERVICE_PREFIX}/correos/${id}/export/zip`);
+        return window.URL.createObjectURL(blob);
+    }
 }
 
 export const legalService = new LegalService();
