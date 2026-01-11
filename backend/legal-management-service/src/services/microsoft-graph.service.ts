@@ -43,8 +43,9 @@ export class MicrosoftGraphService {
             return this.graphClient;
         }
 
-        if (!this.tenantId || !this.clientId || !this.clientSecret) {
-            throw new Error('Azure credentials not configured. Check AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET in .env');
+        if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
+            this.logger.warn('Azure credentials not configured or disabled for development. Microsoft Graph features will be unavailable.');
+            throw new Error('Microsoft Graph is disabled in development mode');
         }
 
         const credential = new ClientSecretCredential(
