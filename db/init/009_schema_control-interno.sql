@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS control_interno.auditoria (
     codigo VARCHAR(255) UNIQUE NOT NULL,
     nombre VARCHAR(500) NOT NULL,
     descripcion TEXT,
-    tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional')),
+    tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional', 'Regular', 'Territorial', 'Especial')),
     fase VARCHAR(50) NOT NULL CHECK (fase IN ('planeacion', 'en-curso', 'revision', 'completada')) DEFAULT 'planeacion',
     territorial VARCHAR(255) NOT NULL,
     sede VARCHAR(255) NOT NULL,

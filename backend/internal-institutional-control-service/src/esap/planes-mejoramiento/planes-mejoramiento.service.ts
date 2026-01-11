@@ -723,6 +723,7 @@ export class PlanesMejoramientoService {
 
     const accion = this.accionRepository.create({
       planId: plan.id,
+      hallazgoId: createDto.hallazgoId || null,
       descripcion: createDto.descripcion,
       tipo: createDto.tipo || AccionCorrectivaTipo.CORRECTIVA,
       responsable: createDto.responsable,
@@ -759,6 +760,7 @@ export class PlanesMejoramientoService {
       throw new NotFoundException(`Acción con ID ${accionId} no encontrada en el plan`);
     }
 
+    if (updateDto.hallazgoId !== undefined) accion.hallazgoId = updateDto.hallazgoId || null;
     if (updateDto.descripcion !== undefined) accion.descripcion = updateDto.descripcion;
     if (updateDto.tipo !== undefined) accion.tipo = updateDto.tipo;
     if (updateDto.responsable !== undefined) accion.responsable = updateDto.responsable;

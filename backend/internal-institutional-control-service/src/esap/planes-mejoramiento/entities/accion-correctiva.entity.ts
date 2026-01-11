@@ -37,6 +37,9 @@ export class AccionCorrectiva {
   @JoinColumn({ name: 'plan_id' })
   plan: PlanMejoramiento;
 
+  @Column({ name: 'hallazgo_id', type: 'uuid', nullable: true })
+  hallazgoId?: string | null;
+
   @Column({ type: 'text' })
   descripcion: string;
 

@@ -583,7 +583,9 @@ CHECK (tipo_notificacion IN (
 -- SECCIÓN 8: PREFERENCIAS DE NOTIFICACIÓN
 -- ===========================================
 
--- Las columnas ya están creadas en la sección 0, solo se mantiene esta sección por compatibilidad
+-- Agregar columna horario_preferido si no existe (para BDs existentes)
+ALTER TABLE control_interno.preferencia_notificacion 
+ADD COLUMN IF NOT EXISTS horario_preferido VARCHAR(50);
 
 -- ===========================================
 -- SECCIÓN 9: TRIGGER AUTOMÁTICO DE AUDITORÍA
@@ -651,3 +653,15 @@ COMMENT ON COLUMN control_interno.auditoria.calificacion_riesgo IS 'Calificació
 COMMENT ON COLUMN control_interno.preferencia_notificacion.horario_preferido IS 'Horario preferido del usuario para recibir notificaciones';
 COMMENT ON COLUMN control_interno.historial_auditoria.usuario_id IS 'ID del usuario que realizó la acción (FK a auth.personas.id_tercero)';
 COMMENT ON TABLE control_interno.criterio_auditoria IS 'Criterios de auditoría (normas, políticas, estándares aplicables)';
+
+-- ===========================================
+-- SECCIÓN 11: ACTUALIZACIÓN DE CONSTRAINTS
+-- ===========================================
+
+-- Actualizar constraint de tipo en tabla auditoria para incluir 'Regular', 'Territorial', 'Especial'
+ALTER TABLE control_interno.auditoria 
+DROP CONSTRAINT IF EXISTS auditoria_tipo_check;
+
+ALTER TABLE control_interno.auditoria 
+ADD CONSTRAINT auditoria_tipo_check 
+CHECK (tipo IN ('Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional', 'Regular', 'Territorial', 'Especial'));

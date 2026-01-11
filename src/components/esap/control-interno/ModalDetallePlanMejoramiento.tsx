@@ -409,8 +409,15 @@ async function mapearPlanDetalleDesdeBD(
   // Mapear acciones - pueden venir como AccionCorrectiva del backend o AccionMejoramiento del tipo
   const accionesMapeadas: AccionCorrectiva[] = (planBD.acciones || []).map((accion: any) => {
     console.log('[ModalDetallePlan] Mapeando accion:', accion);
-    // Calcular si está vencida
+    // Calcular estado real basado en el progreso
     let estado = mapearEstadoAccionBD(accion.estado);
+    
+    // Si el progreso es menor a 100%, NO puede estar completada
+    if (estado === 'COMPLETADA' && accion.porcentajeAvance < 100) {
+      estado = accion.porcentajeAvance > 0 ? 'EN_EJECUCION' : 'PENDIENTE';
+    }
+    
+    // Verificar si está vencida
     if (estado === 'PENDIENTE' || estado === 'EN_EJECUCION') {
       const hoy = new Date();
       const fechaFin = new Date(accion.fechaFin);
@@ -430,13 +437,12 @@ async function mapearPlanDetalleDesdeBD(
       ? fechaFinStr.split('T')[0] 
       : fechaFinStr;
 
-    // El backend tiene planId, no hallazgoId directamente en las acciones
-    // Si hay un hallazgo en el plan, usar su ID
-    const hallazgoIdPlan = planBD.hallazgoId || planBD.hallazgo?.id || '';
+    // Usar el hallazgoId de la acción si existe, sino usar el del plan como fallback
+    const hallazgoIdAccion = accion.hallazgoId || planBD.hallazgoId || planBD.hallazgo?.id || '';
 
     return {
       id: accion.id,
-      hallazgoId: hallazgoIdPlan, // Las acciones del backend pertenecen al plan, que tiene un hallazgo
+      hallazgoId: hallazgoIdAccion, // Usar el hallazgoId específico de la acción
       descripcion: accion.descripcion || '',
       responsable: accion.responsable || '',
       fechaInicio: fechaInicio || new Date().toISOString().split('T')[0],
@@ -528,8 +534,185 @@ async function mapearPlanDetalleDesdeBD(
     });
   }
 
+  // Agregar eventos desde las acciones
+  if (planBD.acciones && Array.isArray(planBD.acciones)) {
+    planBD.acciones.forEach((accion: any) => {
+      const descripcionCorta = `${accion.descripcion.substring(0, 40)}${accion.descripcion.length > 40 ? '...' : ''}`;
+      
+      // Evento de creación de acción
+      if (accion.createdAt) {
+        timeline.push({
+          id: `timeline-accion-creada-${accion.id}`,
+          tipo: 'CREACION',
+          descripcion: `Acción "${descripcionCorta}" creada`,
+          usuario: 'Usuario',
+          fecha: new Date(accion.createdAt).toLocaleDateString('es-ES', { 
+            day: '2-digit', 
+            month: 'short', 
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        });
+      }
+
+      // Si hay diferencia entre createdAt y updatedAt, significa que hubo actualización
+      const fueActualizada = accion.updatedAt && accion.createdAt && 
+        new Date(accion.updatedAt).getTime() !== new Date(accion.createdAt).getTime();
+
+      if (fueActualizada) {
+        // Generar evento por el progreso ACTUAL (no solo milestones)
+        if (accion.porcentajeAvance > 0 && accion.porcentajeAvance < 100) {
+          timeline.push({
+            id: `timeline-progreso-actual-${accion.id}`,
+            tipo: 'ACTUALIZACION',
+            descripcion: `Actualizado progreso de "${descripcionCorta}" al ${accion.porcentajeAvance}%`,
+            usuario: accion.responsable || 'Usuario',
+            fecha: new Date(accion.updatedAt).toLocaleDateString('es-ES', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          });
+        }
+
+        // Evento si pasó por milestones anteriores (inferir historial)
+        if (accion.porcentajeAvance >= 25) {
+          const milestones = [25, 50, 75];
+          milestones.forEach(milestone => {
+            if (accion.porcentajeAvance > milestone || (accion.porcentajeAvance === milestone && accion.porcentajeAvance < 100)) {
+              // Calcular fecha aproximada (restar minutos según el milestone)
+              const fechaBase = new Date(accion.updatedAt);
+              const minutosAtras = (100 - milestone) * 0.5; // Aproximación
+              const fechaMilestone = new Date(fechaBase.getTime() - minutosAtras * 60000);
+              
+              timeline.push({
+                id: `timeline-milestone-${accion.id}-${milestone}`,
+                tipo: 'ACTUALIZACION',
+                descripcion: `Actualizado progreso de "${descripcionCorta}" al ${milestone}%`,
+                usuario: accion.responsable || 'Usuario',
+                fecha: fechaMilestone.toLocaleDateString('es-ES', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
+              });
+            }
+          });
+        }
+
+        // Evento de cambio de estado
+        if (accion.estado !== 'programada') {
+          const estadosTexto: any = {
+            'programada': 'Pendiente',
+            'en-progreso': 'En Ejecución',
+            'completada': 'Completada',
+            'vencida': 'Vencida'
+          };
+          timeline.push({
+            id: `timeline-estado-${accion.id}`,
+            tipo: 'ACTUALIZACION',
+            descripcion: `Estado de "${descripcionCorta}" cambiado a ${estadosTexto[accion.estado] || accion.estado}`,
+            usuario: accion.responsable || 'Usuario',
+            fecha: new Date(accion.updatedAt).toLocaleDateString('es-ES', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          });
+        }
+      }
+
+      // Evento de completación de acción (100%)
+      if (accion.estado === 'completada' || accion.porcentajeAvance === 100) {
+        timeline.push({
+          id: `timeline-accion-completada-${accion.id}`,
+          tipo: 'COMPLETADA',
+          descripcion: `Acción "${descripcionCorta}" completada al 100%`,
+          usuario: accion.responsable || 'Usuario',
+          fecha: new Date(accion.updatedAt || accion.createdAt).toLocaleDateString('es-ES', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        });
+      }
+
+      // Eventos de evidencias cargadas
+      if (accion.evidencias && Array.isArray(accion.evidencias) && accion.evidencias.length > 0) {
+        accion.evidencias.forEach((evidencia: any, index: number) => {
+          timeline.push({
+            id: `timeline-evidencia-${accion.id}-${index}`,
+            tipo: 'EVIDENCIA',
+            descripcion: `Cargada evidencia "${evidencia.nombre || `Evidencia ${index + 1}`}" para acción "${descripcionCorta}"`,
+            usuario: evidencia.validadoPor || accion.responsable || 'Usuario',
+            fecha: new Date(evidencia.fecha || accion.updatedAt).toLocaleDateString('es-ES', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          });
+        });
+      }
+    });
+  }
+
+  // Agregar eventos de completación de hallazgos
+  if (hallazgosCargados && hallazgosCargados.length > 0) {
+    hallazgosCargados.forEach((hallazgo: HallazgoBD) => {
+      // Calcular si el hallazgo está completo basándose en sus acciones
+      const accionesDelHallazgo = accionesMapeadas.filter(a => a.hallazgoId === hallazgo.id);
+      const todasCompletadas = accionesDelHallazgo.length > 0 && 
+        accionesDelHallazgo.every(a => a.estado === 'COMPLETADA' || a.progreso === 100);
+      
+      if (todasCompletadas) {
+        // Usar la fecha de la última acción completada
+        const ultimaAccion = accionesDelHallazgo
+          .map(a => planBD.acciones?.find((acc: any) => acc.id === a.id))
+          .filter(Boolean)
+          .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+        
+        timeline.push({
+          id: `timeline-hallazgo-completado-${hallazgo.id}`,
+          tipo: 'COMPLETADA',
+          descripcion: `Hallazgo ${hallazgo.codigo} "${hallazgo.titulo || hallazgo.descripcion.substring(0, 40)}..." completado al 100%`,
+          usuario: 'Sistema',
+          fecha: ultimaAccion 
+            ? new Date(ultimaAccion.updatedAt).toLocaleDateString('es-ES', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })
+            : new Date().toLocaleDateString('es-ES')
+        });
+      }
+    });
+  }
+
   // Ordenar timeline por fecha (más reciente primero)
-  timeline.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+  timeline.sort((a, b) => {
+    const fechaA = new Date(a.fecha.replace(/(\d+)\s(\w+)\s(\d+),?\s*(\d+:\d+)?/, (_, day, month, year, time) => {
+      const months: any = { ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5, jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11 };
+      return `${year}-${(months[month.toLowerCase()] + 1).toString().padStart(2, '0')}-${day.padStart(2, '0')}${time ? ' ' + time : ''}`;
+    }));
+    const fechaB = new Date(b.fecha.replace(/(\d+)\s(\w+)\s(\d+),?\s*(\d+:\d+)?/, (_, day, month, year, time) => {
+      const months: any = { ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5, jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11 };
+      return `${year}-${(months[month.toLowerCase()] + 1).toString().padStart(2, '0')}-${day.padStart(2, '0')}${time ? ' ' + time : ''}`;
+    }));
+    return fechaB.getTime() - fechaA.getTime();
+  });
 
   // El backend puede tener 'titulo' en lugar de 'nombre', 'fechaLimite' en lugar de 'fechaElaboracion'
   const nombrePlan = planBD.nombre || planBD.titulo || planBD.codigo || 'Plan sin nombre';
@@ -2118,6 +2301,7 @@ interface ModalCrearAccionProps {
 
 function ModalCrearAccion({ planId, plan, onClose, onAccionCreada }: ModalCrearAccionProps) {
   const [datosAccion, setDatosAccion] = useState({
+    hallazgoId: plan.hallazgos.length > 0 ? plan.hallazgos[0].id : '', // Seleccionar primer hallazgo por defecto
     descripcion: '',
     responsable: plan.responsableGeneral || '',
     fechaInicio: new Date().toISOString().split('T')[0],
@@ -2127,6 +2311,11 @@ function ModalCrearAccion({ planId, plan, onClose, onAccionCreada }: ModalCrearA
 
   const handleGuardar = async () => {
     // Validaciones
+    if (!datosAccion.hallazgoId) {
+      toast.error('Debe seleccionar un hallazgo');
+      return;
+    }
+
     if (!datosAccion.descripcion.trim()) {
       toast.error('La descripción es obligatoria');
       return;
@@ -2138,8 +2327,9 @@ function ModalCrearAccion({ planId, plan, onClose, onAccionCreada }: ModalCrearA
     }
 
     try {
-      // Crear acción en el backend
+      // Crear acción en el backend con hallazgoId
       const response = await planesMejoramientoApi.addAccion(planId, {
+        hallazgoId: datosAccion.hallazgoId, // ✅ VINCULAR AL HALLAZGO
         descripcion: datosAccion.descripcion,
         responsable: datosAccion.responsable,
         fechaInicio: datosAccion.fechaInicio,
@@ -2151,7 +2341,7 @@ function ModalCrearAccion({ planId, plan, onClose, onAccionCreada }: ModalCrearA
 
       if (response.success) {
         toast.success('Acción Creada', {
-          description: 'La acción correctiva ha sido creada exitosamente',
+          description: 'La acción correctiva ha sido vinculada al hallazgo exitosamente',
           duration: 3000,
         });
         onAccionCreada();
@@ -2190,6 +2380,34 @@ function ModalCrearAccion({ planId, plan, onClose, onAccionCreada }: ModalCrearA
         {/* Contenido */}
         <div className="flex-1 overflow-auto px-6 py-6">
           <div className="space-y-4">
+            {/* Selección de Hallazgo */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Hallazgo a Corregir <span className="text-red-500">*</span>
+              </label>
+              {plan.hallazgos.length === 0 ? (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">⚠️ Este plan no tiene hallazgos asociados</p>
+                </div>
+              ) : (
+                <select
+                  value={datosAccion.hallazgoId}
+                  onChange={(e) => setDatosAccion({ ...datosAccion, hallazgoId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                >
+                  <option value="">Seleccionar hallazgo...</option>
+                  {plan.hallazgos.map((hallazgo) => (
+                    <option key={hallazgo.id} value={hallazgo.id}>
+                      {hallazgo.codigo} - {hallazgo.titulo}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                La acción correctiva se vinculará a este hallazgo específico
+              </p>
+            </div>
+
             {/* Descripción */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2304,6 +2522,28 @@ function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: Mod
     progreso: accion.progreso,
     observaciones: accion.observaciones || ''
   });
+
+  // Actualizar estado automáticamente cuando cambia el progreso
+  const handleProgresoChange = (nuevoProgreso: number) => {
+    let nuevoEstado = datosEdicion.estado;
+    
+    if (nuevoProgreso === 100) {
+      nuevoEstado = 'COMPLETADA';
+    } else if (nuevoProgreso > 0 && nuevoProgreso < 100) {
+      // Si estaba completada y ahora es menor a 100%, cambiar a EN_EJECUCION
+      if (datosEdicion.estado === 'COMPLETADA') {
+        nuevoEstado = 'EN_EJECUCION';
+      }
+    } else if (nuevoProgreso === 0) {
+      nuevoEstado = 'PENDIENTE';
+    }
+    
+    setDatosEdicion({
+      ...datosEdicion,
+      progreso: nuevoProgreso,
+      estado: nuevoEstado
+    });
+  };
 
   const handleGuardar = async () => {
     // Validaciones
@@ -2458,7 +2698,8 @@ function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: Mod
             {/* Progreso */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Progreso: {datosEdicion.progreso}%
+                Progreso: {datosEdicion.progreso}% 
+                <span className="text-xs text-gray-500 ml-2">(Estado se ajusta automáticamente)</span>
               </label>
               <input
                 type="range"
@@ -2466,7 +2707,7 @@ function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: Mod
                 max="100"
                 step="5"
                 value={datosEdicion.progreso}
-                onChange={(e) => setDatosEdicion({ ...datosEdicion, progreso: parseInt(e.target.value) })}
+                onChange={(e) => handleProgresoChange(parseInt(e.target.value))}
                 className="w-full"
               />
               <div className="flex justify-between text-xs text-gray-600 mt-1">

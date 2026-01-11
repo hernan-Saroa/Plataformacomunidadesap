@@ -54,7 +54,7 @@ import {
   Filter, Search, ChevronDown, TrendingUp, Target, Shield,
   Download, Columns3, ClipboardCheck, CheckSquare,
   Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2, Edit,
-  ChevronsDown, ChevronsUp
+  ChevronsDown, ChevronsUp, Building2
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
@@ -143,6 +143,10 @@ interface Auditoria {
   areaObjetivo: string;
   permiteCambiarObjetivos: boolean;
   equipoAuditores: string[];
+  
+  // Responsable del área auditada
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
   
   // Información territorial (si aplica)
   territorialInfo?: {
@@ -977,6 +981,22 @@ function TarjetaAuditoria({
               )}
             </div>
 
+            {/* Área y Responsable */}
+            {auditoria.areaObjetivo && (
+              <div className="mb-2 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 flex-shrink-0 text-gray-500" />
+                  <span className="text-[10px] text-gray-900 font-medium truncate">{auditoria.areaObjetivo}</span>
+                </div>
+                {auditoria.responsableAreaNombre && (
+                  <div className="flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 flex-shrink-0 text-gray-500" />
+                    <span className="text-[10px] text-gray-700 truncate">{auditoria.responsableAreaNombre}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-between text-[10px] text-gray-500 mb-2">
               <span className="truncate">{auditoria.auditorLider.iniciales}</span>
               <span>{auditoria.hallazgos} hallazgos</span>
@@ -1221,6 +1241,17 @@ function TarjetaAuditoria({
             <p className="text-xs text-gray-500 mb-0.5">🏢 Área Objetivo:</p>
             <p className="text-xs font-bold text-gray-900">{auditoria.areaObjetivo}</p>
           </div>
+
+          {/* Responsable del Área Auditada */}
+          {auditoria.responsableAreaNombre && (
+            <div className="mb-1.5 pb-1.5 border-b border-gray-200">
+              <p className="text-xs text-gray-500 mb-0.5">👤 Responsable:</p>
+              <p className="text-xs font-bold text-gray-900">{auditoria.responsableAreaNombre}</p>
+              {auditoria.responsableAreaCargo && (
+                <p className="text-xs text-gray-600">{auditoria.responsableAreaCargo}</p>
+              )}
+            </div>
+          )}
 
           {/* Última Actuación */}
           <div className="mb-1.5">

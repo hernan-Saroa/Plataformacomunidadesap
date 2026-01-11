@@ -258,13 +258,18 @@ function mapearPlanDesdeBD(planBD: PlanMejoramientoBD): PlanMejoramiento {
   const fechaActualizacionValida = crearFechaValida(planBD.fechaActualizacion || planBD.fechaCreacion || planBD.fechaElaboracion);
   const fechaActualizacionISO = fechaActualizacionValida.toISOString().split('T')[0];
   
+  // Extraer area y responsable del plan o de la auditoría anidada
+  const areaResponsable = (planBD as any).areaResponsable || (planBD.auditoria as any)?.areaObjetivo || '';
+  const responsableArea = (planBD.auditoria as any)?.responsableAreaNombre || planBD.responsable || (planBD as any).responsableImplementacion || '';
+  const cargoResponsable = (planBD.auditoria as any)?.responsableAreaCargo || '';
+
   return {
     id: planBD.id,
     codigo: planBD.codigo,
     auditoria: planBD.auditoriaCodigo || planBD.nombre || 'Auditoría sin código',
-    area: '', // No viene en BD, se puede obtener de la auditoría
-    responsable: planBD.responsable || '',
-    cargoResponsable: '', // No viene en BD
+    area: areaResponsable,
+    responsable: responsableArea,
+    cargoResponsable: cargoResponsable,
     fechaCreacion: fechaCreacionISO,
     fechaAprobacion: fechaAprobacionISO,
     fechaInicio: fechaAprobacionISO, // Usar fechaAprobacion como inicio
@@ -708,8 +713,8 @@ export function PlanesMejoramientoModuleRediseno() {
                 codigo: auditoria.codigo || '',
                 nombre: aud.titulo || auditoria.nombre || '',
                 areaResponsable: aud.areaObjetivo || auditoria.territorial || auditoria.sede || '',
-                responsable: auditorLiderObj?.nombre || auditorLiderStr || '',
-                cargo: auditorLiderObj?.cargo || 'Responsable de Auditoría',
+                responsable: aud.responsableAreaNombre || auditorLiderObj?.nombre || auditorLiderStr || 'Sin responsable asignado',
+                cargo: aud.responsableAreaCargo || auditorLiderObj?.cargo || 'Responsable de Área',
                 fechaFinalizacion: auditoria.fechaFin || new Date().toISOString().split('T')[0],
                 estadoPlan: 'SIN_PLAN' as const,
                 fechaLimitePlan: calcularFechaLimitePlan(auditoria.fechaFin),

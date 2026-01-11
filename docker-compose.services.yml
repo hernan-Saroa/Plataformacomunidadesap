@@ -41,3 +41,10 @@ services:
         condition: service_healthy
     networks:
       - esap-net
+
+networks:
+  esap-net:
+
+volumes:
+  pgdata:
+  pgadmin-data:
