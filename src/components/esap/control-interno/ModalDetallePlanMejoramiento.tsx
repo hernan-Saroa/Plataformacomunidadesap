@@ -24,7 +24,7 @@ import {
   X, Calendar, User, Clock, AlertTriangle, CheckCircle2, FileText,
   TrendingUp, Activity, Target, Flag, Plus, Upload, Download,
   Edit2, Trash2, Eye, MessageSquare, Paperclip, History,
-  BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, ChevronDown
+  BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, ChevronDown, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { planesMejoramientoApi, hallazgosApi } from './services/api';
@@ -403,12 +403,9 @@ async function mapearPlanDetalleDesdeBD(
   planBD: any, // Usar any temporalmente para manejar diferentes estructuras del backend
   hallazgosCargados: HallazgoBD[] = []
 ): Promise<PlanMejoramientoDetalle> {
-  console.log('[ModalDetallePlan] Mapeando planBD:', planBD);
-  console.log('[ModalDetallePlan] Acciones recibidas:', planBD.acciones);
   
   // Mapear acciones - pueden venir como AccionCorrectiva del backend o AccionMejoramiento del tipo
   const accionesMapeadas: AccionCorrectiva[] = (planBD.acciones || []).map((accion: any) => {
-    console.log('[ModalDetallePlan] Mapeando accion:', accion);
     // Calcular estado real basado en el progreso
     let estado = mapearEstadoAccionBD(accion.estado);
     
@@ -453,8 +450,6 @@ async function mapearPlanDetalleDesdeBD(
       observaciones: accion.observaciones || ''
     };
   });
-  
-  console.log('[ModalDetallePlan] Acciones mapeadas:', accionesMapeadas);
 
   // Mapear hallazgos
   const hallazgosMapeados: Hallazgo[] = hallazgosCargados.map((h: HallazgoBD) => {
@@ -501,218 +496,32 @@ async function mapearPlanDetalleDesdeBD(
     }
   }
 
-  // Crear timeline básico desde las fechas disponibles
-  const timeline: ActividadTimeline[] = [];
+  // ✅ CARGAR EVENTOS REALES DEL BACKEND
+  let timeline: ActividadTimeline[] = [];
   
-  if (planBD.fechaCreacion) {
-    timeline.push({
-      id: 'timeline-creacion',
-      tipo: 'CREACION',
-      descripcion: `Plan ${planBD.codigo} creado`,
-      usuario: planBD.creadoPor || 'Sistema',
-      fecha: new Date(planBD.fechaCreacion).toLocaleDateString('es-ES')
-    });
+  try {
+    const eventosResponse = await planesMejoramientoApi.getEventosTimeline(planBD.id);
+    
+    if (eventosResponse.success && eventosResponse.data?.eventos) {
+      // Mapear eventos desde el backend al formato del frontend
+      timeline = eventosResponse.data.eventos.map((evento: any) => ({
+        id: evento.id,
+        tipo: evento.tipo as ActividadTimeline['tipo'],
+        descripcion: evento.descripcion,
+        usuario: evento.usuarioNombre || 'Sistema',
+        fecha: new Date(evento.fecha).toLocaleDateString('es-ES', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      }));
+    }
+  } catch (error) {
+    console.warn('[ModalDetallePlan] Error al cargar eventos del timeline:', error);
+    // Si falla, el timeline quedará vacío
   }
-
-  if (planBD.fechaAprobacion) {
-    timeline.push({
-      id: 'timeline-aprobacion',
-      tipo: 'ACTUALIZACION',
-      descripcion: `Plan ${planBD.codigo} aprobado`,
-      usuario: planBD.actualizadoPor || 'Sistema',
-      fecha: new Date(planBD.fechaAprobacion).toLocaleDateString('es-ES')
-    });
-  }
-
-  if (planBD.fechaActualizacion) {
-    timeline.push({
-      id: 'timeline-actualizacion',
-      tipo: 'ACTUALIZACION',
-      descripcion: `Plan ${planBD.codigo} actualizado`,
-      usuario: planBD.actualizadoPor || 'Sistema',
-      fecha: new Date(planBD.fechaActualizacion).toLocaleDateString('es-ES')
-    });
-  }
-
-  // Agregar eventos desde las acciones
-  if (planBD.acciones && Array.isArray(planBD.acciones)) {
-    planBD.acciones.forEach((accion: any) => {
-      const descripcionCorta = `${accion.descripcion.substring(0, 40)}${accion.descripcion.length > 40 ? '...' : ''}`;
-      
-      // Evento de creación de acción
-      if (accion.createdAt) {
-        timeline.push({
-          id: `timeline-accion-creada-${accion.id}`,
-          tipo: 'CREACION',
-          descripcion: `Acción "${descripcionCorta}" creada`,
-          usuario: 'Usuario',
-          fecha: new Date(accion.createdAt).toLocaleDateString('es-ES', { 
-            day: '2-digit', 
-            month: 'short', 
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })
-        });
-      }
-
-      // Si hay diferencia entre createdAt y updatedAt, significa que hubo actualización
-      const fueActualizada = accion.updatedAt && accion.createdAt && 
-        new Date(accion.updatedAt).getTime() !== new Date(accion.createdAt).getTime();
-
-      if (fueActualizada) {
-        // Generar evento por el progreso ACTUAL (no solo milestones)
-        if (accion.porcentajeAvance > 0 && accion.porcentajeAvance < 100) {
-          timeline.push({
-            id: `timeline-progreso-actual-${accion.id}`,
-            tipo: 'ACTUALIZACION',
-            descripcion: `Actualizado progreso de "${descripcionCorta}" al ${accion.porcentajeAvance}%`,
-            usuario: accion.responsable || 'Usuario',
-            fecha: new Date(accion.updatedAt).toLocaleDateString('es-ES', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          });
-        }
-
-        // Evento si pasó por milestones anteriores (inferir historial)
-        if (accion.porcentajeAvance >= 25) {
-          const milestones = [25, 50, 75];
-          milestones.forEach(milestone => {
-            if (accion.porcentajeAvance > milestone || (accion.porcentajeAvance === milestone && accion.porcentajeAvance < 100)) {
-              // Calcular fecha aproximada (restar minutos según el milestone)
-              const fechaBase = new Date(accion.updatedAt);
-              const minutosAtras = (100 - milestone) * 0.5; // Aproximación
-              const fechaMilestone = new Date(fechaBase.getTime() - minutosAtras * 60000);
-              
-              timeline.push({
-                id: `timeline-milestone-${accion.id}-${milestone}`,
-                tipo: 'ACTUALIZACION',
-                descripcion: `Actualizado progreso de "${descripcionCorta}" al ${milestone}%`,
-                usuario: accion.responsable || 'Usuario',
-                fecha: fechaMilestone.toLocaleDateString('es-ES', {
-                  day: '2-digit',
-                  month: 'short',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })
-              });
-            }
-          });
-        }
-
-        // Evento de cambio de estado
-        if (accion.estado !== 'programada') {
-          const estadosTexto: any = {
-            'programada': 'Pendiente',
-            'en-progreso': 'En Ejecución',
-            'completada': 'Completada',
-            'vencida': 'Vencida'
-          };
-          timeline.push({
-            id: `timeline-estado-${accion.id}`,
-            tipo: 'ACTUALIZACION',
-            descripcion: `Estado de "${descripcionCorta}" cambiado a ${estadosTexto[accion.estado] || accion.estado}`,
-            usuario: accion.responsable || 'Usuario',
-            fecha: new Date(accion.updatedAt).toLocaleDateString('es-ES', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          });
-        }
-      }
-
-      // Evento de completación de acción (100%)
-      if (accion.estado === 'completada' || accion.porcentajeAvance === 100) {
-        timeline.push({
-          id: `timeline-accion-completada-${accion.id}`,
-          tipo: 'COMPLETADA',
-          descripcion: `Acción "${descripcionCorta}" completada al 100%`,
-          usuario: accion.responsable || 'Usuario',
-          fecha: new Date(accion.updatedAt || accion.createdAt).toLocaleDateString('es-ES', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })
-        });
-      }
-
-      // Eventos de evidencias cargadas
-      if (accion.evidencias && Array.isArray(accion.evidencias) && accion.evidencias.length > 0) {
-        accion.evidencias.forEach((evidencia: any, index: number) => {
-          timeline.push({
-            id: `timeline-evidencia-${accion.id}-${index}`,
-            tipo: 'EVIDENCIA',
-            descripcion: `Cargada evidencia "${evidencia.nombre || `Evidencia ${index + 1}`}" para acción "${descripcionCorta}"`,
-            usuario: evidencia.validadoPor || accion.responsable || 'Usuario',
-            fecha: new Date(evidencia.fecha || accion.updatedAt).toLocaleDateString('es-ES', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          });
-        });
-      }
-    });
-  }
-
-  // Agregar eventos de completación de hallazgos
-  if (hallazgosCargados && hallazgosCargados.length > 0) {
-    hallazgosCargados.forEach((hallazgo: HallazgoBD) => {
-      // Calcular si el hallazgo está completo basándose en sus acciones
-      const accionesDelHallazgo = accionesMapeadas.filter(a => a.hallazgoId === hallazgo.id);
-      const todasCompletadas = accionesDelHallazgo.length > 0 && 
-        accionesDelHallazgo.every(a => a.estado === 'COMPLETADA' || a.progreso === 100);
-      
-      if (todasCompletadas) {
-        // Usar la fecha de la última acción completada
-        const ultimaAccion = accionesDelHallazgo
-          .map(a => planBD.acciones?.find((acc: any) => acc.id === a.id))
-          .filter(Boolean)
-          .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
-        
-        timeline.push({
-          id: `timeline-hallazgo-completado-${hallazgo.id}`,
-          tipo: 'COMPLETADA',
-          descripcion: `Hallazgo ${hallazgo.codigo} "${hallazgo.titulo || hallazgo.descripcion.substring(0, 40)}..." completado al 100%`,
-          usuario: 'Sistema',
-          fecha: ultimaAccion 
-            ? new Date(ultimaAccion.updatedAt).toLocaleDateString('es-ES', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })
-            : new Date().toLocaleDateString('es-ES')
-        });
-      }
-    });
-  }
-
-  // Ordenar timeline por fecha (más reciente primero)
-  timeline.sort((a, b) => {
-    const fechaA = new Date(a.fecha.replace(/(\d+)\s(\w+)\s(\d+),?\s*(\d+:\d+)?/, (_, day, month, year, time) => {
-      const months: any = { ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5, jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11 };
-      return `${year}-${(months[month.toLowerCase()] + 1).toString().padStart(2, '0')}-${day.padStart(2, '0')}${time ? ' ' + time : ''}`;
-    }));
-    const fechaB = new Date(b.fecha.replace(/(\d+)\s(\w+)\s(\d+),?\s*(\d+:\d+)?/, (_, day, month, year, time) => {
-      const months: any = { ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5, jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11 };
-      return `${year}-${(months[month.toLowerCase()] + 1).toString().padStart(2, '0')}-${day.padStart(2, '0')}${time ? ' ' + time : ''}`;
-    }));
-    return fechaB.getTime() - fechaA.getTime();
-  });
 
   // El backend puede tener 'titulo' en lugar de 'nombre', 'fechaLimite' en lugar de 'fechaElaboracion'
   const nombrePlan = planBD.nombre || planBD.titulo || planBD.codigo || 'Plan sin nombre';
@@ -722,8 +531,6 @@ async function mapearPlanDetalleDesdeBD(
   const auditoriaCodigo = planBD.auditoriaCodigo || planBD.auditoria?.codigo || '';
   // Obtener responsableAreaNombre de la auditoría
   const responsableAreaNombre = (planBD.auditoria as any)?.responsableAreaNombre || '';
-  
-  console.log('[ModalDetallePlan] Plan final mapeado - Hallazgos:', hallazgosMapeados.length, 'Acciones:', accionesMapeadas.length);
 
   return {
     id: planBD.id,
@@ -779,22 +586,15 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
 
         const planBD = response.data;
 
-        console.log('[ModalDetallePlan] Plan cargado desde BD:', planBD);
-        console.log('[ModalDetallePlan] Hallazgo:', planBD.hallazgo);
-        console.log('[ModalDetallePlan] HallazgosIds:', planBD.hallazgosIds);
-        console.log('[ModalDetallePlan] Acciones:', planBD.acciones);
-
         // Cargar TODOS los hallazgos de la auditoría, no solo el asociado al plan
         let hallazgosCargados: HallazgoBD[] = [];
         
         // Si el plan tiene auditoriaId, cargar todos los hallazgos de esa auditoría
         if (planBD.auditoriaId) {
           try {
-            console.log('[ModalDetallePlan] Cargando hallazgos de la auditoría:', planBD.auditoriaId);
             const hallazgosResponse = await hallazgosApi.getByAuditoria(planBD.auditoriaId);
             if (hallazgosResponse.success && hallazgosResponse.data) {
               hallazgosCargados = hallazgosResponse.data;
-              console.log('[ModalDetallePlan] Hallazgos cargados de la auditoría:', hallazgosCargados.length);
             }
           } catch (errorHallazgos) {
             console.warn('[ModalDetallePlan] Error al cargar hallazgos de la auditoría:', errorHallazgos);
@@ -834,11 +634,8 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
           }
         }
 
-        console.log('[ModalDetallePlan] Total de hallazgos cargados:', hallazgosCargados.length);
-
         // Mapear plan a formato del modal
         const planMapeado = await mapearPlanDetalleDesdeBD(planBD, hallazgosCargados);
-        console.log('[ModalDetallePlan] Plan mapeado:', planMapeado);
         setPlan(planMapeado);
       } catch (err: any) {
         console.error('[ModalDetallePlan] Error al cargar plan:', err);
@@ -2196,12 +1993,16 @@ function TimelineItem({ actividad, isLast }: { actividad: ActividadTimeline; isL
   const tipoConfig = {
     CREACION: { bg: 'bg-blue-100', text: 'text-blue-700', icon: Plus },
     ACTUALIZACION: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: Edit2 },
+    APROBACION: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: CheckCircle2 },
     COMPLETADA: { bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2 },
     EVIDENCIA: { bg: 'bg-purple-100', text: 'text-purple-700', icon: Paperclip },
-    COMENTARIO: { bg: 'bg-gray-100', text: 'text-gray-700', icon: MessageSquare }
+    COMENTARIO: { bg: 'bg-gray-100', text: 'text-gray-700', icon: MessageSquare },
+    PROGRESO: { bg: 'bg-blue-100', text: 'text-blue-700', icon: TrendingUp },
+    ESTADO: { bg: 'bg-orange-100', text: 'text-orange-700', icon: RefreshCw },
+    HALLAZGO_COMPLETADO: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: CheckCircle2 }
   };
 
-  const config = tipoConfig[actividad.tipo];
+  const config = tipoConfig[actividad.tipo] || tipoConfig.ACTUALIZACION; // fallback si el tipo no existe
   const Icon = config.icon;
 
   return (

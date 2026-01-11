@@ -489,3 +489,37 @@ export interface PlanMejoramientoFilters {
   fechaHasta?: string;
   search?: string;
 }
+
+// ==================== EVENTOS DEL TIMELINE ====================
+
+export type TipoEventoTimeline = 
+  | 'CREACION'
+  | 'ACTUALIZACION'
+  | 'APROBACION'
+  | 'COMPLETADA'
+  | 'EVIDENCIA'
+  | 'COMENTARIO'
+  | 'PROGRESO'
+  | 'ESTADO'
+  | 'HALLAZGO_COMPLETADO';
+
+export interface EventoTimeline {
+  id: string;
+  planMejoramientoId: string;
+  tipo: TipoEventoTimeline;
+  descripcion: string;
+  usuarioId?: string;
+  usuarioNombre?: string;
+  fecha: Date | string;
+  metadata?: {
+    accionId?: string;
+    hallazgoId?: string;
+    archivoId?: string;
+    progresoAnterior?: number;
+    progresoNuevo?: number;
+    estadoAnterior?: string;
+    estadoNuevo?: string;
+    [key: string]: any;
+  };
+  createdAt?: Date | string;
+}

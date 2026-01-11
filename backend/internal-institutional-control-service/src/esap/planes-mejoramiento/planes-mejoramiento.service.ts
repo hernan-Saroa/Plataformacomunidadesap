@@ -12,12 +12,14 @@ import {
 } from './entities/accion-correctiva.entity';
 import { SeguimientoTrimestral } from './entities/seguimiento-trimestral.entity';
 import { RegistroSeguimiento } from './entities/registro-seguimiento.entity';
+import { EventoTimeline, TipoEventoTimeline } from './entities/evento-timeline.entity';
 import { CreatePlanMejoramientoDto } from './dto/create-plan-mejoramiento.dto';
 import { UpdatePlanMejoramientoDto } from './dto/update-plan-mejoramiento.dto';
 import { CreateAccionDto } from './dto/create-accion.dto';
 import { UpdateAccionDto } from './dto/update-accion.dto';
 import { RegistrarAvanceDto } from './dto/registrar-avance.dto';
 import { CreateRegistroSeguimientoDto } from './dto/create-registro-seguimiento.dto';
+import { CreateEventoTimelineDto } from './dto/create-evento-timeline.dto';
 import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { Aprobacion, AprobacionTipo, AprobacionEstado, AprobacionPrioridad } from '../aprobaciones/entities/aprobacion.entity';
@@ -33,6 +35,8 @@ export class PlanesMejoramientoService {
     private readonly seguimientoRepository: Repository<SeguimientoTrimestral>,
     @InjectRepository(RegistroSeguimiento)
     private readonly registroRepository: Repository<RegistroSeguimiento>,
+    @InjectRepository(EventoTimeline)
+    private readonly eventoTimelineRepository: Repository<EventoTimeline>,
     @InjectRepository(Hallazgo)
     private readonly hallazgoRepository: Repository<Hallazgo>,
     @InjectRepository(Auditoria)
@@ -1044,6 +1048,115 @@ export class PlanesMejoramientoService {
     }
 
     return { fechaInicio, fechaFin };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MÉTODOS PARA EVENTOS DEL TIMELINE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Obtiene todos los eventos del timeline de un plan
+   */
+  async getEventosTimeline(planId: string): Promise<EventoTimeline[]> {
+    const plan = await this.planRepository.findOne({ where: { id: planId } });
+    if (!plan) {
+      throw new NotFoundException(`Plan de mejoramiento con ID ${planId} no encontrado`);
+    }
+
+    const eventos = await this.eventoTimelineRepository.find({
+      where: { planMejoramientoId: planId },
+      order: { fecha: 'DESC' },
+    });
+
+    return eventos;
+  }
+
+  /**
+   * Crea un nuevo evento en el timeline
+   */
+  async createEventoTimeline(
+    planId: string,
+    createDto: CreateEventoTimelineDto,
+  ): Promise<EventoTimeline> {
+    const plan = await this.planRepository.findOne({ where: { id: planId } });
+    if (!plan) {
+      throw new NotFoundException(`Plan de mejoramiento con ID ${planId} no encontrado`);
+    }
+
+    const evento = this.eventoTimelineRepository.create({
+      planMejoramientoId: planId,
+      ...createDto,
+      fecha: new Date(),
+    });
+
+    return await this.eventoTimelineRepository.save(evento);
+  }
+
+  /**
+   * Registra un evento de forma programática (usado internamente)
+   */
+  async registrarEvento(
+    planId: string,
+    tipo: TipoEventoTimeline,
+    descripcion: string,
+    usuarioId?: string,
+    usuarioNombre?: string,
+    metadata?: any,
+  ): Promise<EventoTimeline> {
+    const evento = this.eventoTimelineRepository.create({
+      planMejoramientoId: planId,
+      tipo,
+      descripcion,
+      usuarioId,
+      usuarioNombre,
+      metadata,
+      fecha: new Date(),
+    });
+
+    return await this.eventoTimelineRepository.save(evento);
+  }
+
+  /**
+   * Registra un evento de evidencia cargada
+   */
+  async registrarEventoEvidencia(
+    planId: string,
+    accionId: string,
+    nombreArchivo: string,
+    usuarioId?: string,
+    usuarioNombre?: string,
+  ): Promise<EventoTimeline> {
+    return this.registrarEvento(
+      planId,
+      TipoEventoTimeline.EVIDENCIA,
+      `Cargada evidencia "${nombreArchivo}"`,
+      usuarioId,
+      usuarioNombre,
+      { accionId, nombreArchivo },
+    );
+  }
+
+  /**
+   * Registra un evento de comentario agregado
+   */
+  async registrarEventoComentario(
+    planId: string,
+    comentario: string,
+    usuarioId?: string,
+    usuarioNombre?: string,
+  ): Promise<EventoTimeline> {
+    const descripcionCorta = comentario.length > 100 
+      ? comentario.substring(0, 100) + '...' 
+      : comentario;
+    
+    return this.registrarEvento(
+      planId,
+      TipoEventoTimeline.COMENTARIO,
+      `Nuevo comentario: "${descripcionCorta}"`,
+      usuarioId,
+      usuarioNombre,
+      { comentarioCompleto: comentario },
+    );
   }
 }
 

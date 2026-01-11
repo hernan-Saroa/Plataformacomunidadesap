@@ -27,6 +27,7 @@ import { PlanMejoramiento } from './esap/planes-mejoramiento/entities/plan-mejor
 import { AccionCorrectiva } from './esap/planes-mejoramiento/entities/accion-correctiva.entity';
 import { SeguimientoTrimestral } from './esap/planes-mejoramiento/entities/seguimiento-trimestral.entity';
 import { RegistroSeguimiento } from './esap/planes-mejoramiento/entities/registro-seguimiento.entity';
+import { EventoTimeline } from './esap/planes-mejoramiento/entities/evento-timeline.entity';
 import { Aprobacion } from './esap/aprobaciones/entities/aprobacion.entity';
 import { ProcesoAuditable } from './esap/universo-auditorias/entities/proceso-auditable.entity';
 import { Documento } from './esap/documentos/entities/documento.entity';
@@ -91,6 +92,7 @@ import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferen
             AccionCorrectiva,
             SeguimientoTrimestral,
             RegistroSeguimiento,
+            EventoTimeline,
             Aprobacion,
             ProcesoAuditable,
             Documento,

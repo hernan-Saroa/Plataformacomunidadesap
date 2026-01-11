@@ -12,6 +12,7 @@ import {
   Hallazgo,
   PlanMejoramiento,
   AccionMejoramiento,
+  EventoTimeline,
   PlanAnual5Roles,
   Actividad,
   ListaChequeo,
@@ -750,6 +751,29 @@ export const planesMejoramientoApi = {
     return apiRequest<AccionMejoramiento>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias`, {
       method: 'POST',
       body: JSON.stringify(evidencia),
+    });
+  },
+
+  /**
+   * Obtener eventos del timeline de un plan
+   */
+  getEventosTimeline: async (planId: string): Promise<ApiResponse<EventoTimeline[]>> => {
+    return apiRequest<EventoTimeline[]>(`/planes-mejoramiento/${planId}/eventos`);
+  },
+
+  /**
+   * Crear un evento en el timeline
+   */
+  createEventoTimeline: async (planId: string, evento: {
+    tipo: string;
+    descripcion: string;
+    usuarioId?: string;
+    usuarioNombre?: string;
+    metadata?: any;
+  }): Promise<ApiResponse<EventoTimeline>> => {
+    return apiRequest<EventoTimeline>(`/planes-mejoramiento/${planId}/eventos`, {
+      method: 'POST',
+      body: JSON.stringify(evento),
     });
   },
 };

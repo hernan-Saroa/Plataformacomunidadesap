@@ -6,6 +6,7 @@ import { PlanMejoramiento } from './entities/plan-mejoramiento.entity';
 import { AccionCorrectiva } from './entities/accion-correctiva.entity';
 import { SeguimientoTrimestral } from './entities/seguimiento-trimestral.entity';
 import { RegistroSeguimiento } from './entities/registro-seguimiento.entity';
+import { EventoTimeline } from './entities/evento-timeline.entity';
 import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { Aprobacion } from '../aprobaciones/entities/aprobacion.entity';
@@ -17,6 +18,7 @@ import { Aprobacion } from '../aprobaciones/entities/aprobacion.entity';
       AccionCorrectiva,
       SeguimientoTrimestral,
       RegistroSeguimiento,
+      EventoTimeline,
       Hallazgo,
       Auditoria,
       Aprobacion,
