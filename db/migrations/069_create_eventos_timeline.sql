@@ -138,12 +138,12 @@ BEGIN
         NEW.id,
         'CREACION'::control_interno.tipo_evento_timeline,
         'Plan de mejoramiento creado',
-        NEW.responsable_id,
-        NEW.responsable_nombre,
+        NULL,  -- responsable_id no existe en plan_mejoramiento
+        NEW.responsable_implementacion,  -- usar responsable_implementacion
         jsonb_build_object(
             'estado_inicial', NEW.estado,
-            'fecha_inicio', NEW.fecha_inicio,
-            'fecha_fin', NEW.fecha_fin
+            'fecha_limite', NEW.fecha_limite,
+            'area_responsable', NEW.area_responsable
         )
     );
     
@@ -170,15 +170,15 @@ BEGIN
         PERFORM control_interno.registrar_evento_timeline(
             NEW.id,
             CASE 
-                WHEN NEW.estado = 'APROBADO' THEN 'APROBACION'::control_interno.tipo_evento_timeline
+                WHEN NEW.estado = 'aprobado' THEN 'APROBACION'::control_interno.tipo_evento_timeline
                 ELSE 'ESTADO'::control_interno.tipo_evento_timeline
             END,
             CASE 
-                WHEN NEW.estado = 'APROBADO' THEN 'Plan de mejoramiento aprobado'
+                WHEN NEW.estado = 'aprobado' THEN 'Plan de mejoramiento aprobado'
                 ELSE 'Estado del plan actualizado: ' || OLD.estado || ' → ' || NEW.estado
             END,
-            NEW.responsable_id,
-            NEW.responsable_nombre,
+            NULL,  -- responsable_id no existe en plan_mejoramiento
+            COALESCE(NEW.aprobado_por, NEW.responsable_implementacion),  -- usar aprobado_por si es aprobación, sino responsable_implementacion
             jsonb_build_object(
                 'estado_anterior', OLD.estado,
                 'estado_nuevo', NEW.estado,
