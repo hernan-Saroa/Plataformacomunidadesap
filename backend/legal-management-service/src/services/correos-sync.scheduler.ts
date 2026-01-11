@@ -14,6 +14,12 @@ export class CorreosSyncScheduler {
      */
     @Cron(CronExpression.EVERY_5_MINUTES)
     async handleCron() {
+        // Skip sync in development mode or when Microsoft Graph is disabled
+        if (process.env.NODE_ENV === 'development' || process.env.AZURE_TENANT_ID === 'development-disabled') {
+            this.logger.log('Skipping scheduled sync in development mode');
+            return;
+        }
+
         // Prevent overlapping runs
         if (this.isRunning) {
             this.logger.warn('Sync already in progress, skipping...');
