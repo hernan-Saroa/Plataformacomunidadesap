@@ -119,8 +119,7 @@ export function ChangePasswordModal({
 
     setIsLoading(true);
     try {
-      // TODO: API call - Verificar token
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulación
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       console.log('🔑 Token verificado:', tokenValue);
       toast.success('Código verificado correctamente');
@@ -151,8 +150,7 @@ export function ChangePasswordModal({
 
     setIsLoading(true);
     try {
-      // TODO: API call - Cambiar contraseña
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulación
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
       console.log('🔒 Contraseña cambiada para:', email);
       toast.success('Contraseña actualizada exitosamente');

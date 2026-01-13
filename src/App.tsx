@@ -15,6 +15,7 @@ import { PortalDashboard } from './components/portal/PortalDashboard';
 import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
 import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
+import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
@@ -53,6 +54,7 @@ import { VisualizadorPTAAjustes } from './components/gestion-profesoral/Visualiz
  * - Vista 'pta-demo': Visualizador de PTA con Ajustes Solicitados
  * - Vista 'password-demo': Demo de Validación de Contraseñas
  * - Vista 'procesos-coactivos-demo': Demo de Procesos Coactivos
+ * - Vista 'edicion-foto-perfil-demo': Demo de Edición de Foto de Perfil
  * 
  * Features:
  * - Persistencia de sesión en localStorage
@@ -75,7 +77,8 @@ type AppView =
 
 type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | null;
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales' | 'password-demo' | 'procesos-coactivos-demo';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
+// type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
 
 interface Usuario {
   id: string;
@@ -170,7 +173,12 @@ export default function App() {
   const [userType, setUserType] = useState<'portal' | 'administrativo'>('portal');
   const [activeRole, setActiveRole] = useState<string>('Estudiante');
 
-  const [vistaActual, setVistaActual] = useState<Vista>('landing');
+  // const [vistaActual, setVistaActual] = useState<Vista>('landing');
+  // Leer parámetro de vista desde URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const viewParam = urlParams.get('view') as Vista | null;
+  
+  const [vistaActual, setVistaActual] = useState<Vista>(viewParam || 'landing');
   const [usuarioActual, setUsuarioActual] = useState<Usuario | null>(null);
   const [mostrarAlertaInactividad, setMostrarAlertaInactividad] = useState(false);
 
@@ -793,7 +801,7 @@ export default function App() {
 
       case 'backoffice':
         // Determinar si el usuario tiene acceso restringido a un módulo específico
-        // const userData1 = usuarioActual?.email === 'OCIG@esap.edu.co' || usuarioActual?.email === 'ocig@esap.edu.co'
+        // const userData = usuarioActual?.email === 'OCIG@esap.edu.co' || usuarioActual?.email === 'ocig@esap.edu.co'
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ci-001', restrictedAccess: true, module: 'control-interno' }
         //   : usuarioActual?.email === 'c.disciplinario@esap.edu.co'
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cd-001', restrictedAccess: true, module: 'control-disciplinario' }
@@ -809,6 +817,8 @@ export default function App() {
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gp-001', restrictedAccess: true, module: 'gestion-profesoral' }
         //   : usuarioActual?.email === 'funcionario@esap.edu.co'
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'func-001', restrictedAccess: true, module: 'procesos' }
+        //   : usuarioActual?.email === 'superuser@esap.edu.co'
+        //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'super-001', hasBothSystemsAccess: true } // ✅ Acceso dual Backoffice + Portal
         //   : undefined;
 
         return (
@@ -816,7 +826,12 @@ export default function App() {
             // usuario={usuarioActual!}
             onLogout={handleLogout}
             onBackToSystemSelector={handleBackToSystemSelector}
-            onSystemChange={handleSystemChange}
+            onSystemChange={(system) => {
+              if (system === 'portal') {
+                setVistaActual('portal');
+                toast.success('Cambiado al Portal Transaccional');
+              }
+            }}
             userData={userData}
             userRoles={userRoles}
           />
@@ -835,7 +850,10 @@ export default function App() {
 
       case 'procesos-coactivos-demo':
         return <DemoProcesosCoactivos />;
-
+      
+      case 'edicion-foto-perfil-demo':
+        return <DemoEdicionFotoPerfil />;
+      
       default:
         return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;
     }

@@ -14,7 +14,7 @@ import {
 // ============================================================================
 // IMPORTAR DATOS DESDE TODOS LOS MÓDULOS
 // ============================================================================
-import { expedientesJudicialesMock } from '../data/datosExpedientesJudiciales';
+import { expedientesJudicialesMock } from '../data/datosExpedientesJudicialesExpandido';
 import { procesoDisciplinariosMock } from '../data/datosProcesoDisciplinarios';
 import { consultasJuridicasMock } from '../data/datosConsultasJuridicas';
 // Nota: Cuando se implementen OrganosControl, ProcesosCoactivos, CentroComunicaciones,
