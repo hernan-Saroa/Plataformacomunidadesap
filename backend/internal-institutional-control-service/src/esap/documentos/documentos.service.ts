@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
 import { Documento, TipoDocumento, EtapaDocumento } from './entities/documento.entity';
+import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { CreateDocumentoDto } from './dto/create-documento.dto';
 import { UpdateDocumentoDto } from './dto/update-documento.dto';
 import * as crypto from 'crypto';
@@ -15,6 +16,8 @@ export class DocumentosService {
   constructor(
     @InjectRepository(Documento)
     private readonly documentoRepository: Repository<Documento>,
+    @InjectRepository(Auditoria)
+    private readonly auditoriaRepository: Repository<Auditoria>,
   ) {
     // Crear directorio de uploads si no existe
     if (!fs.existsSync(this.uploadPath)) {
@@ -129,6 +132,44 @@ export class DocumentosService {
   }
 
   /**
+   * Actualiza los contadores de documentos e informes en la auditoría
+   */
+  private async actualizarContadoresAuditoria(auditoriaId: string | null | undefined): Promise<void> {
+    if (!auditoriaId) return;
+
+    try {
+      // Contar documentos totales (solo versiones originales, no versiones anteriores)
+      const totalDocumentos = await this.documentoRepository
+        .createQueryBuilder('documento')
+        .where('documento.auditoriaId = :auditoriaId', { auditoriaId })
+        .andWhere('documento.versionAnteriorId IS NULL')
+        .getCount();
+
+      // Contar informes totales (solo versiones originales)
+      const totalInformes = await this.documentoRepository
+        .createQueryBuilder('documento')
+        .where('documento.auditoriaId = :auditoriaId', { auditoriaId })
+        .andWhere('documento.versionAnteriorId IS NULL')
+        .andWhere('documento.tipoDocumento IN (:...tipos)', {
+          tipos: ['informe_preliminar', 'informe_final', 'informe_ejecutivo'],
+        })
+        .getCount();
+
+      // Actualizar la auditoría
+      await this.auditoriaRepository.update(
+        { id: auditoriaId },
+        {
+          totalDocumentos,
+          totalInformes,
+        },
+      );
+    } catch (error) {
+      console.error(`Error al actualizar contadores de auditoría ${auditoriaId}:`, error);
+      // No lanzar error para no interrumpir el flujo principal
+    }
+  }
+
+  /**
    * Crea un nuevo documento (después de subir el archivo)
    */
   async create(createDto: CreateDocumentoDto, filePath: string): Promise<Documento> {
@@ -139,6 +180,8 @@ export class DocumentosService {
     const existente = await this.documentoRepository.findOne({
       where: { hashArchivo },
     });
+
+    let documentoGuardado: Documento;
 
     if (existente) {
       // Si existe, crear nueva versión
@@ -152,20 +195,28 @@ export class DocumentosService {
         sincronizadoServidorG: false,
       });
 
-      return this.documentoRepository.save(nuevaVersion);
+      documentoGuardado = await this.documentoRepository.save(nuevaVersion);
+    } else {
+      // Crear nuevo documento
+      const documento = this.documentoRepository.create({
+        ...createDto,
+        rutaArchivo: filePath,
+        hashArchivo,
+        version: 1,
+        comprimido: false,
+        sincronizadoServidorG: false,
+      });
+
+      documentoGuardado = await this.documentoRepository.save(documento);
     }
 
-    // Crear nuevo documento
-    const documento = this.documentoRepository.create({
-      ...createDto,
-      rutaArchivo: filePath,
-      hashArchivo,
-      version: 1,
-      comprimido: false,
-      sincronizadoServidorG: false,
-    });
+    // Actualizar contadores de la auditoría si el documento está asociado a una
+    // Solo actualizar si es un documento original (no una versión)
+    if (documentoGuardado.auditoriaId && !documentoGuardado.versionAnteriorId) {
+      await this.actualizarContadoresAuditoria(documentoGuardado.auditoriaId);
+    }
 
-    return this.documentoRepository.save(documento);
+    return documentoGuardado;
   }
 
   /**
@@ -173,6 +224,7 @@ export class DocumentosService {
    */
   async update(id: string, updateDto: UpdateDocumentoDto): Promise<Documento> {
     const documento = await this.findOne(id);
+    const auditoriaIdAnterior = documento.auditoriaId;
 
     if (updateDto.nombre) documento.nombre = updateDto.nombre;
     if (updateDto.descripcion !== undefined) documento.descripcion = updateDto.descripcion;
@@ -182,7 +234,22 @@ export class DocumentosService {
     if (updateDto.hallazgoId !== undefined) documento.hallazgoId = updateDto.hallazgoId;
     if (updateDto.planMejoramientoId !== undefined) documento.planMejoramientoId = updateDto.planMejoramientoId;
 
-    return this.documentoRepository.save(documento);
+    const documentoActualizado = await this.documentoRepository.save(documento);
+
+    // Actualizar contadores si cambió la auditoría asociada o el tipo de documento
+    // Solo actualizar si es un documento original (no una versión)
+    if (!documento.versionAnteriorId) {
+      if (auditoriaIdAnterior && auditoriaIdAnterior !== documentoActualizado.auditoriaId) {
+        // Actualizar la auditoría anterior
+        await this.actualizarContadoresAuditoria(auditoriaIdAnterior);
+      }
+      if (documentoActualizado.auditoriaId) {
+        // Actualizar la auditoría actual (o nueva)
+        await this.actualizarContadoresAuditoria(documentoActualizado.auditoriaId);
+      }
+    }
+
+    return documentoActualizado;
   }
 
   /**
@@ -190,6 +257,7 @@ export class DocumentosService {
    */
   async delete(id: string): Promise<void> {
     const documento = await this.findOne(id);
+    const auditoriaId = documento.auditoriaId;
 
     // Eliminar archivo físico si existe
     if (fs.existsSync(documento.rutaArchivo)) {
@@ -201,6 +269,12 @@ export class DocumentosService {
     }
 
     await this.documentoRepository.remove(documento);
+
+    // Actualizar contadores de la auditoría si el documento estaba asociado a una
+    // Solo actualizar si era un documento original (no una versión)
+    if (auditoriaId && !documento.versionAnteriorId) {
+      await this.actualizarContadoresAuditoria(auditoriaId);
+    }
   }
 
   /**

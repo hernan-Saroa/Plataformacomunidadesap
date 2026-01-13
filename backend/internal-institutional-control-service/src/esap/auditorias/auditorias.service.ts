@@ -16,6 +16,7 @@ import { HistorialAuditoria, TipoEvento } from './entities/historial-auditoria.e
 import { AuditoriaTerritorialInfo } from './entities/auditoria-territorial-info.entity';
 import { AuditoriaEspecialInfo } from './entities/auditoria-especial-info.entity';
 import { CriterioAuditoria } from './entities/criterio-auditoria.entity';
+import { Documento } from '../documentos/entities/documento.entity';
 import { AuditoriaKanbanDto, PersonaDto, ObjetivoDto } from './dto/auditoria-kanban.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
@@ -38,6 +39,8 @@ export class AuditoriasService {
     private readonly especialInfoRepository: Repository<AuditoriaEspecialInfo>,
     @InjectRepository(CriterioAuditoria)
     private readonly criterioRepository: Repository<CriterioAuditoria>,
+    @InjectRepository(Documento)
+    private readonly documentoRepository: Repository<Documento>,
     private readonly dataSource: DataSource,
     private readonly notificacionesService: NotificacionesService,
   ) {}
@@ -1373,6 +1376,38 @@ export class AuditoriasService {
     if (total <= 0) return 100;
     const porcentaje = Math.round((transcurrido / total) * 100);
     return Math.max(0, Math.min(100, porcentaje));
+  }
+
+  /**
+   * Calcula dinámicamente los contadores de documentos e informes para una auditoría
+   */
+  private async calcularContadoresDocumentos(auditoriaId: string): Promise<{ documentos: number; informes: number }> {
+    try {
+      // Contar documentos totales (solo versiones originales, no versiones anteriores)
+      const totalDocumentos = await this.documentoRepository
+        .createQueryBuilder('documento')
+        .where('documento.auditoriaId = :auditoriaId', { auditoriaId })
+        .andWhere('documento.versionAnteriorId IS NULL')
+        .getCount();
+
+      // Contar informes totales (solo versiones originales)
+      const totalInformes = await this.documentoRepository
+        .createQueryBuilder('documento')
+        .where('documento.auditoriaId = :auditoriaId', { auditoriaId })
+        .andWhere('documento.versionAnteriorId IS NULL')
+        .andWhere('documento.tipoDocumento IN (:...tipos)', {
+          tipos: ['informe_preliminar', 'informe_final', 'informe_ejecutivo'],
+        })
+        .getCount();
+
+      return {
+        documentos: totalDocumentos,
+        informes: totalInformes,
+      };
+    } catch (error) {
+      console.error(`Error al calcular contadores para auditoría ${auditoriaId}:`, error);
+      return { documentos: 0, informes: 0 };
+    }
   }
 
   // ============ MÉTODOS PARA NOTAS ============

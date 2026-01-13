@@ -103,8 +103,10 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
     }
   };
 
-  const handleClickSeleccionar = () => {
-    if (fileInputRef.current) {
+  const handleClickSeleccionar = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (fileInputRef.current && !cargando) {
       fileInputRef.current.click();
     }
   };
@@ -267,10 +269,6 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
       >
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
@@ -306,13 +304,23 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
               accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
               className="hidden"
               disabled={cargando}
+              id="file-input-documento"
             />
             <div
-              onClick={handleClickSeleccionar}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragEnter={handleDragEnter}
               onDragLeave={handleDragLeave}
+              onClick={(e) => {
+                // Si no hay archivo seleccionado y no está cargando, activar el input
+                if (!archivoSeleccionado && !cargando) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (fileInputRef.current) {
+                    fileInputRef.current.click();
+                  }
+                }
+              }}
               className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
                 cargando
                   ? 'opacity-50 cursor-not-allowed border-gray-300 bg-gray-50'
@@ -334,14 +342,16 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
                   </p>
                   {!cargando && (
                     <button
+                      type="button"
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
                         setArchivoSeleccionado(null);
                         if (fileInputRef.current) {
                           fileInputRef.current.value = '';
                         }
                       }}
-                      className="text-xs text-blue-600 hover:text-blue-700"
+                      className="text-xs text-blue-600 hover:text-blue-700 mt-2"
                     >
                       Cambiar archivo
                     </button>

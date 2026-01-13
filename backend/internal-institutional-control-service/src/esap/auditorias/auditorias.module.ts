@@ -11,6 +11,7 @@ import { AuditoriaTerritorialInfo } from './entities/auditoria-territorial-info.
 import { AuditoriaEspecialInfo } from './entities/auditoria-especial-info.entity';
 import { AuditorPerfil } from './entities/auditor-perfil.entity';
 import { CriterioAuditoria } from './entities/criterio-auditoria.entity';
+import { Documento } from '../documentos/entities/documento.entity';
 import { HallazgosModule } from '../hallazgos/hallazgos.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -27,6 +28,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
       AuditoriaEspecialInfo,
       AuditorPerfil,
       CriterioAuditoria,
+      Documento,
     ]),
     HallazgosModule,
     NotificacionesModule,
