@@ -536,7 +536,16 @@ const getEstadoInfo = (estado: EstadoSeleccion) => {
 
 // ============ COMPONENTE PRINCIPAL ============
 
-export function UniversoAuditorias() {
+interface UniversoAuditoriasProps {
+  filtros?: {
+    año: number;
+    estado: string;
+    area: string;
+    busqueda: string;
+  };
+}
+
+export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as UniversoAuditoriasProps) {
   const [areas, setAreas] = useState<AreaAuditable[]>([]);
   const [loading, setLoading] = useState(true);
   const [vistaActiva, setVistaActiva] = useState<'dashboard' | 'lista' | 'crear'>('dashboard');
@@ -569,9 +578,14 @@ export function UniversoAuditorias() {
     else if (proceso.prioridad === 3) estado = 'no-aplica';
 
     // Mapear criticidad y exposición desde evaluacionRiesgo
-    const criticidad = evaluacionRiesgo.impacto === 5 ? 5 : evaluacionRiesgo.impacto === 3 ? 3 : 1;
-    const exposicion = evaluacionRiesgo.probabilidad === 5 ? 5 : evaluacionRiesgo.probabilidad === 3 ? 3 : 1;
-    const mitigantes = evaluacionRiesgo.nivelControl || 1;
+    // Backend usa escala 1-3, Frontend usa escala 1,3,5
+    // Backend: 1=Baja, 2=Media, 3=Alta
+    // Frontend: 1=Baja, 3=Media, 5=Alta
+    const criticidad = evaluacionRiesgo.impacto === 3 ? 5 : evaluacionRiesgo.impacto === 2 ? 3 : 1;
+    const exposicion = evaluacionRiesgo.probabilidad === 3 ? 5 : evaluacionRiesgo.probabilidad === 2 ? 3 : 1;
+    // Backend nivelControl: 1-3, Frontend mitigantes: 1-10
+    // Mapeo inverso: 1->1, 2->5, 3->10 (valores medios para mejor UX)
+    const mitigantes = evaluacionRiesgo.nivelControl === 1 ? 1 : evaluacionRiesgo.nivelControl === 2 ? 5 : 10;
 
     const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
 

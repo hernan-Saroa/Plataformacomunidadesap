@@ -253,9 +253,15 @@ const PLANES_MOCK: PlanAnual[] = [
 
 interface PlanAnualModuleProps {
   onPlanChange?: () => void; // Callback para notificar cambios en los planes
+  filtros?: {
+    año: number;
+    estado: string;
+    area: string;
+    busqueda: string;
+  };
 }
 
-export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as PlanAnualModuleProps) {
+export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps = {} as PlanAnualModuleProps) {
   const [vistaActiva, setVistaActiva] = useState<'lista' | 'crear' | 'detalle' | 'editar'>('lista');
   const [planes, setPlanes] = useState<PlanAnual[]>([]);
   const [loading, setLoading] = useState(true);

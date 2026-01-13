@@ -334,6 +334,8 @@ export class AuditoriasService {
       progreso: createDto.progreso ?? 0,
       hallazgos: 0,
       activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
+      // Establecer estadoKanban inicial a 'Planeación' por defecto
+      estadoKanban: EstadoKanban.PLANEACION,
     };
 
     // Incluir campos opcionales si tienen valor
@@ -665,11 +667,13 @@ export class AuditoriasService {
       auditorLiderId: updateDto.auditorLiderId,
       auditorAsignadoId: updateDto.auditorAsignadoId,
     });
-    console.log('[AuditoriasService.update] Valores antes de guardar:', {
-      alcance: auditoria.alcance,
-      riesgoKanban: auditoria.riesgoKanban,
-      auditorLiderId: auditoria.auditorLiderId,
-      auditorAsignadoId: auditoria.auditorAsignadoId,
+    // Serializar para los logs (TypeORM puede devolver BIGINT como strings)
+    const auditoriaSerialized = this.serializeAuditoria(auditoria);
+    console.log('[AuditoriasService.update] Valores antes de guardar (serializados):', {
+      alcance: auditoriaSerialized.alcance,
+      riesgoKanban: auditoriaSerialized.riesgoKanban,
+      auditorLiderId: auditoriaSerialized.auditorLiderId,
+      auditorAsignadoId: auditoriaSerialized.auditorAsignadoId,
     });
 
     // Guardar cambios en la auditoría
@@ -678,12 +682,14 @@ export class AuditoriasService {
     
     const saved = await this.auditoriaRepository.save(auditoria);
     
-    console.log('[AuditoriasService.update] Valores después de guardar:', {
-      alcance: saved.alcance,
-      programaAnualMetadata: saved.programaAnualMetadata,
-      riesgoKanban: saved.riesgoKanban,
-      auditorLiderId: saved.auditorLiderId,
-      auditorAsignadoId: saved.auditorAsignadoId,
+    // Serializar para los logs (TypeORM devuelve BIGINT como strings)
+    const savedSerialized = this.serializeAuditoria(saved);
+    console.log('[AuditoriasService.update] Valores después de guardar (serializados):', {
+      alcance: savedSerialized.alcance,
+      programaAnualMetadata: savedSerialized.programaAnualMetadata,
+      riesgoKanban: savedSerialized.riesgoKanban,
+      auditorLiderId: savedSerialized.auditorLiderId,
+      auditorAsignadoId: savedSerialized.auditorAsignadoId,
     });
 
     // Actualizar objetivos si se proporcionan

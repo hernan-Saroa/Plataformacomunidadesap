@@ -265,12 +265,26 @@ const AUDITORIAS_PROGRAMADAS_MOCK: AuditoriaPrograma[] = [
 
 // ============ COMPONENTE PRINCIPAL ============
 
-export function ProgramaAnualCIG() {
-  const [añoActual] = useState(new Date().getFullYear());
+interface ProgramaAnualCIGProps {
+  filtros?: {
+    año: number;
+    estado: string;
+    area: string;
+    busqueda: string;
+  };
+}
+
+export function ProgramaAnualCIG({ filtros: filtrosExternos }: ProgramaAnualCIGProps = {} as ProgramaAnualCIGProps) {
+  // Usar el año del filtro externo o el año actual por defecto
+  const añoActual = filtrosExternos?.año || new Date().getFullYear();
   const [vistaActiva, setVistaActiva] = useState<'calendario' | 'lista' | 'auditores'>('calendario');
   const [filtroTipo, setFiltroTipo] = useState<'Todos' | 'Sede' | 'Territorial'>('Todos');
-  const [filtroEstado, setFiltroEstado] = useState<'Todos' | EstadoPrograma>('Todos');
-  const [busqueda, setBusqueda] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState<'Todos' | EstadoPrograma>(
+    filtrosExternos?.estado && filtrosExternos.estado !== 'TODOS' 
+      ? filtrosExternos.estado as EstadoPrograma 
+      : 'Todos'
+  );
+  const [busqueda, setBusqueda] = useState(filtrosExternos?.busqueda || '');
   const [mesSeleccionado, setMesSeleccionado] = useState<MesAño | null>(null);
   const [mostrarModalNueva, setMostrarModalNueva] = useState(false);
   const [auditoriasPrograma, setAuditoriasPrograma] = useState<AuditoriaPrograma[]>([]);
@@ -310,7 +324,44 @@ export function ProgramaAnualCIG() {
     return null;
   };
 
-  const mapearAuditoriaAPrograma = (aud: any): AuditoriaPrograma => {
+  const mapearAuditoriaAPrograma = (aud: any): AuditoriaPrograma | null => {
+    // Filtrar por año si hay filtro externo
+    if (filtrosExternos?.año) {
+      const añoFiltro = filtrosExternos.año;
+      // Intentar obtener el año de la auditoría desde fechaInicio
+      if (aud.fechaInicio) {
+        const fecha = parsearFecha(aud.fechaInicio);
+        if (fecha && !isNaN(fecha.getTime())) {
+          const añoAuditoria = fecha.getFullYear();
+          // Si el año no coincide, retornar null para filtrar
+          if (añoAuditoria !== añoFiltro) {
+            return null;
+          }
+        } else if (aud.programaAnualMetadata?.mesInicio !== undefined) {
+          // Si no hay fecha válida pero tiene metadata, verificar el año del código
+          const codigoMatch = aud.codigo?.match(/AUD-(\d{4})-/);
+          if (codigoMatch) {
+            const añoCodigo = parseInt(codigoMatch[1]);
+            if (añoCodigo !== añoFiltro) {
+              return null;
+            }
+          }
+        }
+      } else {
+        // Si no hay fechaInicio, verificar el año del código
+        const codigoMatch = aud.codigo?.match(/AUD-(\d{4})-/);
+        if (codigoMatch) {
+          const añoCodigo = parseInt(codigoMatch[1]);
+          if (añoCodigo !== añoFiltro) {
+            return null;
+          }
+        } else {
+          // Si no hay código ni fecha, excluir
+          return null;
+        }
+      }
+    }
+
     // Determinar mes de inicio (0-11 para MesAño)
     // Priorizar metadata guardada, si no existe, calcular desde fechaInicio
     let mesInicio: MesAño = 0;
@@ -448,7 +499,9 @@ export function ProgramaAnualCIG() {
           mesInicio: a.programaAnualMetadata?.mesInicio
         })));
 
-        const auditoriasMapeadas = todasLasAuditorias.map(mapearAuditoriaAPrograma);
+        const auditoriasMapeadas = todasLasAuditorias
+          .map(mapearAuditoriaAPrograma)
+          .filter((aud): aud is AuditoriaPrograma => aud !== null);
         console.log('[ProgramaAnualCIG] Auditorías mapeadas después de recargar:', auditoriasMapeadas.length);
         setAuditoriasPrograma(auditoriasMapeadas);
         
@@ -488,8 +541,11 @@ export function ProgramaAnualCIG() {
           const todasLasAuditorias = response.data;
 
           // Mapear a formato de programa
-          const auditoriasMapeadas = todasLasAuditorias.map(mapearAuditoriaAPrograma);
-          setAuditoriasPrograma(auditoriasMapeadas);
+        // Mapear y filtrar nulls (auditorías que no coinciden con el año)
+        const auditoriasMapeadas = todasLasAuditorias
+          .map(mapearAuditoriaAPrograma)
+          .filter((aud): aud is AuditoriaPrograma => aud !== null);
+        setAuditoriasPrograma(auditoriasMapeadas);
           
           if (auditoriasMapeadas.length === 0) {
             toast.info('No hay auditorías activas', {
@@ -519,7 +575,7 @@ export function ProgramaAnualCIG() {
     };
 
     cargarAuditorias();
-  }, []); // Remover dependencia de añoActual, cargar siempre todas las activas
+  }, [filtrosExternos?.año]); // Recargar cuando cambie el año del filtro
 
   // Métricas calculadas desde datos reales
   const metricas = useMemo(() => {
@@ -533,19 +589,57 @@ export function ProgramaAnualCIG() {
     return { total, sede, territoriales, aprobadas, pendientes, borradores };
   }, [auditoriasPrograma]);
 
-  // Filtrado de auditorías
+  // Sincronizar filtros externos con estados locales
+  useEffect(() => {
+    if (filtrosExternos) {
+      if (filtrosExternos.busqueda !== undefined && filtrosExternos.busqueda !== busqueda) {
+        setBusqueda(filtrosExternos.busqueda);
+      }
+      if (filtrosExternos.estado && filtrosExternos.estado !== 'TODOS' && filtrosExternos.estado !== filtroEstado) {
+        setFiltroEstado(filtrosExternos.estado as EstadoPrograma);
+      } else if (filtrosExternos.estado === 'TODOS' && filtroEstado !== 'Todos') {
+        setFiltroEstado('Todos');
+      }
+    }
+  }, [filtrosExternos]);
+
+  // Filtrado de auditorías (incluye filtros externos)
   const auditoriasFiltradas = useMemo(() => {
     return auditoriasPrograma.filter(aud => {
+      // Filtro por tipo
       const matchTipo = filtroTipo === 'Todos' || aud.tipo === filtroTipo;
-      const matchEstado = filtroEstado === 'Todos' || aud.estadoPrograma === filtroEstado;
-      const matchBusqueda = busqueda === '' || 
-        aud.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-        aud.codigo.toLowerCase().includes(busqueda.toLowerCase()) ||
-        aud.procesoNombre.toLowerCase().includes(busqueda.toLowerCase());
       
-      return matchTipo && matchEstado && matchBusqueda;
+      // Filtro por estado (usa filtro externo si está disponible)
+      const estadoFiltro = filtrosExternos?.estado && filtrosExternos.estado !== 'TODOS' 
+        ? filtrosExternos.estado 
+        : filtroEstado;
+      const matchEstado = estadoFiltro === 'Todos' || aud.estadoPrograma === estadoFiltro;
+      
+      // Filtro por búsqueda (usa filtro externo si está disponible)
+      const busquedaFiltro = filtrosExternos?.busqueda || busqueda;
+      const matchBusqueda = busquedaFiltro === '' || 
+        aud.nombre.toLowerCase().includes(busquedaFiltro.toLowerCase()) ||
+        aud.codigo.toLowerCase().includes(busquedaFiltro.toLowerCase()) ||
+        aud.procesoNombre.toLowerCase().includes(busquedaFiltro.toLowerCase());
+      
+      // Filtro por año ya se aplica en mapearAuditoriaAPrograma, pero verificamos también aquí por seguridad
+      // Las auditorías ya vienen filtradas por año, así que este filtro es redundante pero seguro
+      let matchAño = true;
+      if (filtrosExternos?.año) {
+        // Verificar el año desde el código de la auditoría
+        const codigoMatch = aud.codigo?.match(/AUD-(\d{4})-/);
+        if (codigoMatch) {
+          const añoCodigo = parseInt(codigoMatch[1]);
+          matchAño = añoCodigo === filtrosExternos.año;
+        } else {
+          // Si no hay código, incluir (ya debería estar filtrado en el mapeo)
+          matchAño = true;
+        }
+      }
+      
+      return matchTipo && matchEstado && matchBusqueda && matchAño;
     });
-  }, [auditoriasPrograma, filtroTipo, filtroEstado, busqueda]);
+  }, [auditoriasPrograma, filtroTipo, filtroEstado, busqueda, filtrosExternos]);
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -716,7 +810,9 @@ export function ProgramaAnualCIG() {
                   const fechaInicio = new Date(aud.fechaInicio);
                   return fechaInicio.getFullYear() === añoActual;
                 });
-                const auditoriasMapeadas = auditoriasAnoActual.map(mapearAuditoriaAPrograma);
+                const auditoriasMapeadas = auditoriasAnoActual
+                  .map(mapearAuditoriaAPrograma)
+                  .filter((aud): aud is AuditoriaPrograma => aud !== null);
                 setAuditoriasPrograma(auditoriasMapeadas);
               }
             } catch (error) {
@@ -926,7 +1022,9 @@ export function ProgramaAnualCIG() {
                   
                   console.log('[ProgramaAnualCIG] Auditorías del año actual después de actualizar:', auditoriasAnoActual.length);
                   
-                  const auditoriasMapeadas = auditoriasAnoActual.map(mapearAuditoriaAPrograma);
+                  const auditoriasMapeadas = auditoriasAnoActual
+                    .map(mapearAuditoriaAPrograma)
+                    .filter((aud): aud is AuditoriaPrograma => aud !== null);
                   console.log('[ProgramaAnualCIG] Auditorías mapeadas después de actualizar:', auditoriasMapeadas.length);
                   
                   setAuditoriasPrograma(auditoriasMapeadas);

@@ -594,9 +594,16 @@ ADD COLUMN IF NOT EXISTS horario_preferido VARCHAR(50);
 -- Función para registrar cambios de estado automáticamente en auditorías
 CREATE OR REPLACE FUNCTION control_interno.fn_registrar_cambio_estado_auditoria()
 RETURNS TRIGGER AS $$
+DECLARE
+    estado_anterior_text TEXT;
+    estado_nuevo_text TEXT;
 BEGIN
     -- Solo registrar si cambió el estado_kanban
     IF (TG_OP = 'UPDATE' AND OLD.estado_kanban IS DISTINCT FROM NEW.estado_kanban) THEN
+        -- Manejar NULL: si estado_anterior es NULL, mostrar "Planeación" (estado inicial por defecto)
+        estado_anterior_text := COALESCE(OLD.estado_kanban, 'Planeación');
+        estado_nuevo_text := COALESCE(NEW.estado_kanban, '');
+        
         INSERT INTO control_interno.historial_auditoria (
             auditoria_id,
             tipo_evento,
@@ -615,14 +622,14 @@ BEGIN
             CURRENT_TIME,
             1, -- Usuario sistema (ajustar si tienes campo updated_by en auditoria)
             'Cambio de estado automático',
-            format('Estado cambiado de "%s" a "%s"', OLD.estado_kanban, NEW.estado_kanban),
-            OLD.estado_kanban,
-            NEW.estado_kanban,
+            format('Estado cambiado de "%s" a "%s"', estado_anterior_text, estado_nuevo_text),
+            estado_anterior_text,
+            estado_nuevo_text,
             jsonb_build_array(
                 jsonb_build_object(
                     'campo', 'estado_kanban',
-                    'valorAnterior', OLD.estado_kanban,
-                    'valorNuevo', NEW.estado_kanban
+                    'valorAnterior', estado_anterior_text,
+                    'valorNuevo', estado_nuevo_text
                 )
             )
         );

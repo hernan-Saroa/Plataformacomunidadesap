@@ -2449,7 +2449,6 @@ export function GestionAuditoriasKanbanSimple() {
         
         if (auditorLiderId && auditorLiderId > 0) {
           updateData.auditorLiderId = auditorLiderId;
-          console.log('[handleActualizarAuditoria] Auditor Líder ID:', auditorLiderId);
         } else {
           console.warn('[handleActualizarAuditoria] Auditor Líder ID inválido:', data.auditorLider);
         }
@@ -2606,7 +2605,6 @@ export function GestionAuditoriasKanbanSimple() {
         estadoNuevo: nuevoEstado
       };
       
-      console.log('📋 Trazabilidad - Movimiento de tarjeta:', eventoTrazabilidad);
 
       toast.success(`${item.codigo} movido a ${nuevoEstado}`, {
         description: `Estado actualizado en la base de datos`
@@ -2621,7 +2619,6 @@ export function GestionAuditoriasKanbanSimple() {
         )
       );
 
-      console.error('Error al actualizar estado:', error);
       toast.error('Error al actualizar el estado', {
         description: error instanceof Error ? error.message : 'No se pudo guardar el cambio en la base de datos'
       });
@@ -2672,8 +2669,6 @@ export function GestionAuditoriasKanbanSimple() {
         estadoNuevo: nuevoEstado
       };
 
-      console.log('📋 Trazabilidad - Cambio manual de estado:', eventoTrazabilidad);
-
       toast.success(`${auditoriaActual.codigo} cambió a ${nuevoEstado}`, {
         description: `Estado actualizado en la base de datos`,
         duration: 4000
@@ -2707,11 +2702,6 @@ export function GestionAuditoriasKanbanSimple() {
   // Guardar asignación de auditores
   const handleGuardarAsignacionAuditores = async (auditoriaId: string, auditorLider: Persona, auditorAsignado: Persona) => {
     try {
-      console.log('[handleGuardarAsignacionAuditores] Iniciando guardado:', {
-        auditoriaId,
-        auditorLider,
-        auditorAsignado
-      });
 
       const baseURL = 'http://localhost:3007';
       const auditoriaActual = auditorias.find(a => a.id === auditoriaId);
@@ -2728,7 +2718,6 @@ export function GestionAuditoriasKanbanSimple() {
         if (response.ok) {
           const persona = await response.json();
           auditorLiderId = persona.id_tercero;
-          console.log('[handleGuardarAsignacionAuditores] Auditor Líder encontrado:', persona);
         }
       } catch (error) {
         console.warn('[handleGuardarAsignacionAuditores] Error al buscar auditor líder:', error);
@@ -2751,7 +2740,6 @@ export function GestionAuditoriasKanbanSimple() {
         if (response.ok) {
           const persona = await response.json();
           auditorAsignadoId = persona.id_tercero;
-          console.log('[handleGuardarAsignacionAuditores] Auditor Asignado encontrado:', persona);
         }
       } catch (error) {
         console.warn('[handleGuardarAsignacionAuditores] Error al buscar auditor asignado:', error);
@@ -2761,11 +2749,6 @@ export function GestionAuditoriasKanbanSimple() {
       if (!auditorAsignadoId && auditoriaActual?.auditorAsignadoId) {
         auditorAsignadoId = auditoriaActual.auditorAsignadoId;
       }
-
-      console.log('[handleGuardarAsignacionAuditores] IDs a enviar:', {
-        auditorLiderId,
-        auditorAsignadoId
-      });
 
       // Validar que tengamos al menos uno de los IDs
       if (!auditorLiderId && !auditorAsignadoId) {
@@ -2778,12 +2761,8 @@ export function GestionAuditoriasKanbanSimple() {
         auditorAsignadoId: auditorAsignadoId
       };
 
-      console.log('[handleGuardarAsignacionAuditores] Payload final:', payload);
-
       // Actualizar en el backend
       const response = await controlInternoService.updateAuditoria(auditoriaId, payload);
-
-      console.log('[handleGuardarAsignacionAuditores] Respuesta del backend:', response);
 
       toast.success('Auditores asignados correctamente', {
         description: `${auditoriaActual?.codigo} - Líder: ${auditorLider.nombre}, Asignado: ${auditorAsignado.nombre}`
@@ -3055,10 +3034,6 @@ export function GestionAuditoriasKanbanSimple() {
   const { agregarAuditoriaConHallazgos, seleccionarAuditoria } = useIntegracionAuditoriaPlanes();
   
   const handleCrearPlan = (auditoria: Auditoria) => {
-    console.log('🎯 Crear Plan de Mejoramiento para:', auditoria.codigo, {
-      hallazgos: auditoria.hallazgos
-    });
-    
     // 1. Convertir datos de auditoría del Kanban al formato AuditoriaParaPlan
     const auditoriaParaPlan: AuditoriaParaPlan = {
       id: auditoria.id,
@@ -3182,12 +3157,6 @@ export function GestionAuditoriasKanbanSimple() {
             duration: 4000
           });
 
-          console.log('📦 Auditoría archivada:', {
-            auditoria: auditoria,
-            comentario: comentario,
-            fecha: new Date(),
-            usuario: 'Usuario Actual'
-          });
         } else {
           throw new Error(response.error || 'Error al archivar la auditoría');
         }
@@ -3205,12 +3174,6 @@ export function GestionAuditoriasKanbanSimple() {
         duration: 5000
       });
 
-      console.log('🗑️ Auditoría eliminada:', {
-        auditoria: auditoria,
-        comentario: comentario,
-        fecha: new Date(),
-        usuario: 'Usuario Actual'
-      });
     }
 
     setModalConfirmacionOpen(false);
@@ -3964,26 +3927,17 @@ export function GestionAuditoriasKanbanSimple() {
 
         {/* MODAL DE FORMULARIO - EDITAR */}
         {auditoriaParaEditar && (() => {
-          console.log('[GestionAuditoriasKanbanSimple] auditoriaParaEditar completa:', auditoriaParaEditar);
-          console.log('[GestionAuditoriasKanbanSimple] auditorLiderId:', auditoriaParaEditar.auditorLiderId);
-          console.log('[GestionAuditoriasKanbanSimple] auditorAsignadoId:', auditoriaParaEditar.auditorAsignadoId);
-          
           // Si no hay auditorLiderId, intentar buscar por numeroIdentificacion del objeto auditorLider
           let auditorLiderIdStr = '';
           let auditorAsignadoIdStr = '';
           
           if (auditoriaParaEditar.auditorLiderId) {
             auditorLiderIdStr = String(auditoriaParaEditar.auditorLiderId);
-          } else if (auditoriaParaEditar.auditorLider?.numeroIdentificacion) {
-            // Buscar en la lista de personas cargadas por numeroIdentificacion
-            console.log('[GestionAuditoriasKanbanSimple] Buscando auditorLider por numeroIdentificacion:', auditoriaParaEditar.auditorLider.numeroIdentificacion);
           }
           
           if (auditoriaParaEditar.auditorAsignadoId) {
             auditorAsignadoIdStr = String(auditoriaParaEditar.auditorAsignadoId);
-          } else if (auditoriaParaEditar.auditorAsignado?.numeroIdentificacion) {
-            console.log('[GestionAuditoriasKanbanSimple] Buscando auditorAsignado por numeroIdentificacion:', auditoriaParaEditar.auditorAsignado.numeroIdentificacion);
-          }
+          } 
           
           return (
           <ModalFormularioAuditoria

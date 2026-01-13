@@ -59,6 +59,7 @@ interface EstadisticasGlobales {
   cumplimientoPrograma: number;
   areasInvolucradas: number;
   auditoresAsignados: number;
+  ultimaActualizacion?: Date; // Fecha de última actualización
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -88,11 +89,21 @@ export function PlanificacionModuleRediseno() {
   const [estadisticas, setEstadisticas] = useState<EstadisticasGlobales>(ESTADISTICAS_MOCK);
   const [loadingEstadisticas, setLoadingEstadisticas] = useState(true);
   const [filtros, setFiltros] = useState<FiltrosAvanzados>({
-    año: 2025,
+    año: new Date().getFullYear(), // Siempre inicializar con el año actual
     estado: 'TODOS',
     area: 'TODAS',
     busqueda: ''
   });
+
+  // Generar años disponibles para el selector (año actual ± 2 años)
+  const añosDisponibles = useMemo(() => {
+    const añoActual = new Date().getFullYear();
+    const años = [];
+    for (let i = añoActual - 2; i <= añoActual + 2; i++) {
+      años.push(i);
+    }
+    return años;
+  }, []);
 
   // Función para cargar estadísticas (extraída para reutilización)
   const cargarEstadisticas = async () => {
@@ -114,9 +125,23 @@ export function PlanificacionModuleRediseno() {
       // Filtrar auditorías del año actual
       const añoActual = filtros.año;
       const auditoriasAnoActual = auditorias.filter((aud: any) => {
-        if (!aud.fechaInicio) return false;
-        const fechaInicio = new Date(aud.fechaInicio);
-        return fechaInicio.getFullYear() === añoActual;
+        // Primero intentar obtener el año desde fechaInicio
+        if (aud.fechaInicio) {
+          const fechaInicio = new Date(aud.fechaInicio);
+          if (!isNaN(fechaInicio.getTime())) {
+            return fechaInicio.getFullYear() === añoActual;
+          }
+        }
+        // Si no hay fecha válida, intentar obtener el año desde el código (ej: AUD-2025-001)
+        if (aud.codigo) {
+          const codigoMatch = aud.codigo.match(/AUD-(\d{4})-/);
+          if (codigoMatch) {
+            const añoCodigo = parseInt(codigoMatch[1]);
+            return añoCodigo === añoActual;
+          }
+        }
+        // Si no hay fecha ni código válido, excluir
+        return false;
       });
 
       // Procesos seleccionados (prioridad = 1)
@@ -127,10 +152,9 @@ export function PlanificacionModuleRediseno() {
         aud.estado === 'aprobado' || aud.estado === 'en-ejecucion' || aud.estadoKanban
       );
 
-      // Auditorías calendarizadas = todas las auditorías activas del kanban
-      // (vienen filtradas por activa: true desde el backend)
-      // Todas son calendarizables para el programa anual
-      const auditoriasCalendarizadas = auditorias.length;
+      // Auditorías calendarizadas = auditorías del año filtrado
+      // (filtradas por año y activas desde el backend)
+      const auditoriasCalendarizadas = auditoriasAnoActual.length;
 
       // Calcular áreas involucradas (procesos únicos)
       const areasInvolucradas = new Set(procesosSeleccionados.map((p: any) => p.dependencia || p.territorial || 'Sede')).size;
@@ -169,7 +193,8 @@ export function PlanificacionModuleRediseno() {
         auditoriasCalendarizadas: auditoriasCalendarizadas, // Ya es un número (auditorias.length)
         cumplimientoPrograma,
         areasInvolucradas,
-        auditoresAsignados: auditoresUnicos.size
+        auditoresAsignados: auditoresUnicos.size,
+        ultimaActualizacion: new Date() // Guardar fecha de última actualización
       };
 
       setEstadisticas(nuevasEstadisticas);
@@ -543,9 +568,9 @@ export function PlanificacionModuleRediseno() {
                 onChange={(e) => setFiltros({ ...filtros, año: parseInt(e.target.value) })}
                 className="w-full sm:w-auto px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
               >
-                <option value={2024}>2024</option>
-                <option value={2025}>2025</option>
-                <option value={2026}>2026</option>
+                {añosDisponibles.map(año => (
+                  <option key={año} value={año}>{año}</option>
+                ))}
               </select>
 
               <select
@@ -707,9 +732,22 @@ export function PlanificacionModuleRediseno() {
             transition={{ duration: 0.2 }}
             className="min-h-full"
           >
-            {tabActiva === 'plan-anual' && <PlanAnualModule onPlanChange={cargarEstadisticas} />}
-            {tabActiva === 'universo' && <UniversoAuditorias />}
-            {tabActiva === 'programa' && <ProgramaAnualCIG />}
+            {tabActiva === 'plan-anual' && (
+              <PlanAnualModule 
+                onPlanChange={cargarEstadisticas}
+                filtros={filtros}
+              />
+            )}
+            {tabActiva === 'universo' && (
+              <UniversoAuditorias 
+                filtros={filtros}
+              />
+            )}
+            {tabActiva === 'programa' && (
+              <ProgramaAnualCIG 
+                filtros={filtros}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -736,7 +774,38 @@ export function PlanificacionModuleRediseno() {
 
           <div className="flex items-center gap-2 text-gray-500">
             <BarChart3 className="w-3 h-3" />
-            <span>Última actualización: Hoy 14:30</span>
+            <span>
+              Última actualización: {
+                estadisticas.ultimaActualizacion
+                  ? (() => {
+                      const ahora = new Date();
+                      const actualizacion = estadisticas.ultimaActualizacion;
+                      const diffMs = ahora.getTime() - actualizacion.getTime();
+                      const diffMins = Math.floor(diffMs / 60000);
+                      const diffHours = Math.floor(diffMs / 3600000);
+                      const diffDays = Math.floor(diffMs / 86400000);
+                      
+                      // Formatear según el tiempo transcurrido
+                      if (diffMins < 1) return 'Hace un momento';
+                      if (diffMins < 60) return `Hace ${diffMins} min`;
+                      if (diffHours < 24) {
+                        const hora = actualizacion.getHours().toString().padStart(2, '0');
+                        const minuto = actualizacion.getMinutes().toString().padStart(2, '0');
+                        return `Hoy ${hora}:${minuto}`;
+                      }
+                      if (diffDays === 1) return 'Ayer';
+                      if (diffDays < 7) return `Hace ${diffDays} días`;
+                      // Si es más de una semana, mostrar fecha completa
+                      return actualizacion.toLocaleDateString('es-CO', {
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      });
+                    })()
+                  : 'Cargando...'
+              }
+            </span>
           </div>
         </div>
       </div>
