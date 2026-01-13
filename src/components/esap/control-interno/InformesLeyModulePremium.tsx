@@ -75,69 +75,70 @@ export function InformesLeyModulePremium() {
   const [informesLey, setInformesLey] = useState<InformeLey[]>([]);
   const [cargandoInformes, setCargandoInformes] = useState(true);
 
+  // Función para cargar informes (reutilizable)
+  const cargarInformes = async () => {
+    try {
+      setCargandoInformes(true);
+      const response = await controlInternoApi.informesLey.getAll();
+      
+      if (response.success && response.data) {
+        // Guardar todos los informes de ley
+        setInformesLey(response.data);
+        
+        // Extraer todas las entregas de todos los informes
+        const todasLasEntregas: InformeGenerado[] = [];
+        
+        response.data.forEach((informe: InformeLey) => {
+          if (informe.entregas && informe.entregas.length > 0) {
+            informe.entregas.forEach((entrega: EntregaInforme) => {
+              // Mapear estado de EntregaInforme a InformeGenerado
+              let estado: 'BORRADOR' | 'GENERADO' | 'ENVIADO' | 'ATRASADO' = 'BORRADOR';
+              if (entrega.estado === 'entregado') {
+                estado = 'ENVIADO';
+              } else if (entrega.estado === 'vencido') {
+                estado = 'ATRASADO';
+              } else if (entrega.archivoUrl) {
+                estado = 'GENERADO';
+              } else {
+                estado = 'BORRADOR';
+              }
+
+              todasLasEntregas.push({
+                id: entrega.id,
+                informeLeyId: informe.id,
+                informeNombre: informe.nombre,
+                periodo: entrega.periodo,
+                fechaGeneracion: entrega.fechaCreacion || new Date().toISOString(),
+                fechaVencimiento: entrega.fechaVencimiento,
+                estado,
+                generadoPor: entrega.creadoPor || 'Usuario',
+                archivoUrl: entrega.archivoUrl,
+                observaciones: entrega.observaciones,
+                destinatarios: []
+              });
+            });
+          }
+        });
+
+        // Ordenar por fecha de generación (más recientes primero)
+        todasLasEntregas.sort((a, b) => 
+          new Date(b.fechaGeneracion).getTime() - new Date(a.fechaGeneracion).getTime()
+        );
+
+        setInformesGenerados(todasLasEntregas);
+      }
+    } catch (error) {
+      console.error('Error cargando informes:', error);
+      toast.error('Error al cargar informes', {
+        description: 'No se pudieron cargar los informes'
+      });
+    } finally {
+      setCargandoInformes(false);
+    }
+  };
+
   // Cargar informes desde la base de datos
   useEffect(() => {
-    const cargarInformes = async () => {
-      try {
-        setCargandoInformes(true);
-        const response = await controlInternoApi.informesLey.getAll();
-        
-        if (response.success && response.data) {
-          // Guardar todos los informes de ley
-          setInformesLey(response.data);
-          
-          // Extraer todas las entregas de todos los informes
-          const todasLasEntregas: InformeGenerado[] = [];
-          
-          response.data.forEach((informe: InformeLey) => {
-            if (informe.entregas && informe.entregas.length > 0) {
-              informe.entregas.forEach((entrega: EntregaInforme) => {
-                // Mapear estado de EntregaInforme a InformeGenerado
-                let estado: 'BORRADOR' | 'GENERADO' | 'ENVIADO' | 'ATRASADO' = 'BORRADOR';
-                if (entrega.estado === 'entregado') {
-                  estado = 'ENVIADO';
-                } else if (entrega.estado === 'vencido') {
-                  estado = 'ATRASADO';
-                } else if (entrega.archivoUrl) {
-                  estado = 'GENERADO';
-                } else {
-                  estado = 'BORRADOR';
-                }
-
-                todasLasEntregas.push({
-                  id: entrega.id,
-                  informeLeyId: informe.id,
-                  informeNombre: informe.nombre,
-                  periodo: entrega.periodo,
-                  fechaGeneracion: entrega.fechaCreacion || new Date().toISOString(),
-                  fechaVencimiento: entrega.fechaVencimiento,
-                  estado,
-                  generadoPor: entrega.creadoPor || 'Usuario',
-                  archivoUrl: entrega.archivoUrl,
-                  observaciones: entrega.observaciones,
-                  destinatarios: []
-                });
-              });
-            }
-          });
-
-          // Ordenar por fecha de generación (más recientes primero)
-          todasLasEntregas.sort((a, b) => 
-            new Date(b.fechaGeneracion).getTime() - new Date(a.fechaGeneracion).getTime()
-          );
-
-          setInformesGenerados(todasLasEntregas);
-        }
-      } catch (error) {
-        console.error('Error cargando informes:', error);
-        toast.error('Error al cargar informes', {
-          description: 'No se pudieron cargar los informes'
-        });
-      } finally {
-        setCargandoInformes(false);
-      }
-    };
-
     cargarInformes();
   }, []);
 
@@ -185,9 +186,9 @@ export function InformesLeyModulePremium() {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {vistaActiva === 'catalogo' && <VistaCatalogo />}
+          {vistaActiva === 'catalogo' && <VistaCatalogo onInformeGenerado={cargarInformes} />}
           {vistaActiva === 'generados' && <VistaGenerados informes={informesGenerados} cargandoInformes={cargandoInformes} />}
-          {vistaActiva === 'proximos' && <VistaProximos informesLey={informesLey} cargandoInformes={cargandoInformes} />}
+          {vistaActiva === 'proximos' && <VistaProximos informesLey={informesLey} cargandoInformes={cargandoInformes} onInformeGenerado={cargarInformes} />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -235,10 +236,15 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
 // VISTA: CATÁLOGO NORMATIVO
 // ════════════════════════════════════════════════════════════════════════════
 
-function VistaCatalogo() {
+interface VistaCatalogoProps {
+  onInformeGenerado?: () => void;
+}
+
+function VistaCatalogo({ onInformeGenerado }: VistaCatalogoProps) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroPeriodicidad, setFiltroPeriodicidad] = useState<PeriodicidadInforme | 'TODOS'>('TODOS');
   const [informeSeleccionado, setInformeSeleccionado] = useState<InformeLeyNormativo | null>(null);
+  const [informeParaGenerar, setInformeParaGenerar] = useState<InformeLeyNormativo | null>(null);
 
   const informesFiltrados = useMemo(() => {
     let resultado = CATALOGO_INFORMES_LEY.filter(i => i.activo);
@@ -340,6 +346,7 @@ function VistaCatalogo() {
               key={informe.id}
               informe={informe}
               onVerDetalle={() => setInformeSeleccionado(informe)}
+              onGenerarInforme={() => setInformeParaGenerar(informe)}
             />
           ))
         )}
@@ -350,6 +357,21 @@ function VistaCatalogo() {
         <ModalDetalleInforme
           informe={informeSeleccionado}
           onClose={() => setInformeSeleccionado(null)}
+        />
+      )}
+
+      {/* Modal Generar Informe */}
+      {informeParaGenerar && (
+        <ModalGenerarInforme 
+          informe={informeParaGenerar} 
+          onClose={() => setInformeParaGenerar(null)}
+          onGenerar={async () => {
+            setInformeParaGenerar(null);
+            // Recargar informes después de generar
+            if (onInformeGenerado) {
+              await onInformeGenerado();
+            }
+          }}
         />
       )}
     </div>
@@ -363,14 +385,33 @@ function VistaCatalogo() {
 interface CardInformeProps {
   informe: InformeLeyNormativo;
   onVerDetalle: () => void;
+  onGenerarInforme: () => void;
 }
 
-function CardInforme({ informe, onVerDetalle }: CardInformeProps) {
-  const colorPeriodicidad = {
-    MENSUAL: 'bg-cyan-100 text-cyan-700 border-cyan-300',
-    TRIMESTRAL: 'bg-orange-100 text-orange-700 border-orange-300',
-    SEMESTRAL: 'bg-purple-100 text-purple-700 border-purple-300',
-    ANUAL: 'bg-green-100 text-green-700 border-green-300'
+function CardInforme({ informe, onVerDetalle, onGenerarInforme }: CardInformeProps) {
+  const colorPeriodicidad: Record<string, string> = {
+    mensual: 'bg-cyan-100 text-cyan-700 border-cyan-300',
+    trimestral: 'bg-orange-100 text-orange-700 border-orange-300',
+    semestral: 'bg-purple-100 text-purple-700 border-purple-300',
+    anual: 'bg-green-100 text-green-700 border-green-300',
+    bimestral: 'bg-yellow-100 text-yellow-700 border-yellow-300',
+    cuatrimestral: 'bg-pink-100 text-pink-700 border-pink-300'
+  };
+
+  // Función para convertir números de mes a nombres de meses
+  const obtenerNombresMeses = (mesGeneracion: number | number[]): string => {
+    const nombresMeses = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+
+    if (Array.isArray(mesGeneracion)) {
+      return mesGeneracion
+        .map(mes => nombresMeses[mes - 1])
+        .join(', ');
+    } else {
+      return nombresMeses[mesGeneracion - 1];
+    }
   };
 
   return (
@@ -406,14 +447,14 @@ function CardInforme({ informe, onVerDetalle }: CardInformeProps) {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5" />
-                    {informe.mesesGeneracion?.join(', ')}
+                    {informe.mesGeneracion ? obtenerNombresMeses(informe.mesGeneracion) : 'No especificado'}
                   </span>
                 </div>
               </div>
             </div>
 
             {/* Descripción */}
-            <p className="text-sm text-gray-600 mb-4 line-clamp-2">{informe.descripcion}</p>
+            <p className="text-sm text-gray-600 mb-4 line-clamp-2">{informe.observaciones || 'Sin descripción disponible'}</p>
 
             {/* Footer */}
             <div className="flex items-center justify-between pt-4 border-t border-gray-200">
@@ -421,13 +462,22 @@ function CardInforme({ informe, onVerDetalle }: CardInformeProps) {
                 <Send className="w-3.5 h-3.5" />
                 {informe.destinatarios?.join(', ') || 'No especificado'}
               </div>
-              <button
-                onClick={onVerDetalle}
-                className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
-              >
-                <Eye className="w-4 h-4" />
-                Ver Detalle
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={onVerDetalle}
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  Ver Detalle
+                </button>
+                <button
+                  onClick={onGenerarInforme}
+                  className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Generar Informe
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -652,9 +702,10 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
 interface VistaProximosProps {
   informesLey: InformeLey[];
   cargandoInformes: boolean;
+  onInformeGenerado?: () => void;
 }
 
-function VistaProximos({ informesLey, cargandoInformes }: VistaProximosProps) {
+function VistaProximos({ informesLey, cargandoInformes, onInformeGenerado }: VistaProximosProps) {
   const [informeSeleccionado, setInformeSeleccionado] = useState<InformeLeyNormativo | null>(null);
   
   // Calcular entregas próximas a vencer (dentro de 60 días)
@@ -831,9 +882,12 @@ function VistaProximos({ informesLey, cargandoInformes }: VistaProximosProps) {
         <ModalGenerarInforme 
           informe={informeSeleccionado} 
           onClose={() => setInformeSeleccionado(null)}
-          onGenerar={() => {
+          onGenerar={async () => {
             setInformeSeleccionado(null);
-            toast.success('Informe generado y agregado al historial');
+            // Recargar informes después de generar
+            if (onInformeGenerado) {
+              await onInformeGenerado();
+            }
           }}
         />
       )}
@@ -851,75 +905,66 @@ interface ModalDetalleInformeProps {
 }
 
 function ModalDetalleInforme({ informe, onClose }: ModalDetalleInformeProps) {
-  const [modalGenerar, setModalGenerar] = useState(false);
+  // Función para convertir números de mes a nombres de meses
+  const obtenerNombresMeses = (mesGeneracion: number | number[]): string => {
+    const nombresMeses = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
 
-  const handleGenerarInforme = () => {
-    setModalGenerar(true);
+    if (Array.isArray(mesGeneracion)) {
+      return mesGeneracion
+        .map(mes => nombresMeses[mes - 1])
+        .join(', ');
+    } else {
+      return nombresMeses[mesGeneracion - 1];
+    }
   };
 
   return (
-    <>
-      <ModalSIGL isOpen={true} onClose={onClose} title="" size="large">
-        <div className="p-8">
-          <div className="mb-6">
-            <h2 className="text-2xl text-gray-900 mb-2">{informe.nombreCorto}</h2>
-            <p className="text-sm text-gray-600">{informe.nombre}</p>
-          </div>
+    <ModalSIGL isOpen={true} onClose={onClose} title="" size="large">
+      <div className="p-8">
+        <div className="mb-6">
+          <h2 className="text-2xl text-gray-900 mb-2">{informe.nombreCorto}</h2>
+          <p className="text-sm text-gray-600">{informe.nombre}</p>
+        </div>
 
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-xs text-gray-600 mb-1">Base Normativa</div>
-              <div className="text-sm text-gray-900">{informe.baseNormativa}</div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-xs text-gray-600 mb-1">Periodicidad</div>
-              <div className="text-sm text-gray-900">{informe.periodicidad}</div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-xs text-gray-600 mb-1">Meses de Generación</div>
-              <div className="text-sm text-gray-900">{informe.mesesGeneracion?.join(', ')}</div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-xs text-gray-600 mb-1">Destinatarios</div>
-              <div className="text-sm text-gray-900">{informe.destinatarios?.join(', ')}</div>
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="text-xs text-gray-600 mb-1">Base Normativa</div>
+            <div className="text-sm text-gray-900">{informe.baseNormativa}</div>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="text-xs text-gray-600 mb-1">Periodicidad</div>
+            <div className="text-sm text-gray-900">{informe.periodicidad}</div>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="text-xs text-gray-600 mb-1">Meses de Generación</div>
+            <div className="text-sm text-gray-900">
+              {informe.mesGeneracion ? obtenerNombresMeses(informe.mesGeneracion) : 'No especificado'}
             </div>
           </div>
-
-          <div className="bg-blue-50 rounded-lg p-4 mb-6">
-            <h3 className="text-sm text-gray-900 font-medium mb-2">Descripción</h3>
-            <p className="text-sm text-gray-700">{informe.descripcion}</p>
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={onClose}
-              className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cerrar
-            </button>
-            <button 
-              onClick={handleGenerarInforme}
-              className="px-6 py-2.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Generar Informe
-            </button>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="text-xs text-gray-600 mb-1">Destinatarios</div>
+            <div className="text-sm text-gray-900">{informe.destinatarios?.join(', ') || 'No especificado'}</div>
           </div>
         </div>
-      </ModalSIGL>
 
-      {/* Modal Generar Informe */}
-      {modalGenerar && (
-        <ModalGenerarInforme 
-          informe={informe} 
-          onClose={() => setModalGenerar(false)}
-          onGenerar={() => {
-            setModalGenerar(false);
-            onClose();
-          }}
-        />
-      )}
-    </>
+        <div className="bg-blue-50 rounded-lg p-4 mb-6">
+          <h3 className="text-sm text-gray-900 font-medium mb-2">Descripción</h3>
+          <p className="text-sm text-gray-700">{informe.observaciones || 'Sin descripción disponible'}</p>
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </ModalSIGL>
   );
 }
 
@@ -1027,42 +1072,203 @@ interface ModalGenerarInformeProps {
 function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInformeProps) {
   const [periodo, setPeriodo] = useState('');
   const [descripcion, setDescripcion] = useState('');
+  const [generando, setGenerando] = useState(false);
+  const [previewDatos, setPreviewDatos] = useState<any>(null);
+  const [mostrarPreview, setMostrarPreview] = useState(false);
 
-  const handleGenerar = () => {
+  // Buscar el informe en la base de datos para obtener el ID real
+  const [informeLeyId, setInformeLeyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const buscarInformeLey = async () => {
+      try {
+        const response = await controlInternoApi.informesLey.getAll();
+        if (response.success && response.data) {
+          // Verificar si hay informes en la BD
+          if (response.data.length === 0) {
+            console.log('⚠️ No hay informes registrados en la base de datos. El informe se creará automáticamente al generar.');
+            return;
+          }
+          
+          // Buscar por código o nombre
+          const informeEncontrado = response.data.find(
+            (inf: InformeLey) => 
+              inf.codigo === informe.codigo || 
+              inf.nombre === informe.nombre ||
+              inf.nombre.toLowerCase().includes(informe.nombreCorto.toLowerCase())
+          );
+          if (informeEncontrado) {
+            setInformeLeyId(informeEncontrado.id);
+            console.log('✅ Informe encontrado en BD:', informeEncontrado.codigo);
+          } else {
+            console.log('ℹ️ Informe no encontrado en BD. Se creará automáticamente al generar.');
+          }
+        } else {
+          console.warn('⚠️ Error al obtener informes de la BD:', response.error);
+        }
+      } catch (error) {
+        console.error('❌ Error buscando informe:', error);
+      }
+    };
+    buscarInformeLey();
+  }, [informe]);
+
+  const handlePreview = async () => {
+    if (!periodo.trim()) {
+      toast.error('Ingresa un periodo para ver el preview');
+      return;
+    }
+
+    try {
+      setMostrarPreview(true);
+      // Mostrar preview de datos automáticos
+      toast.info('Preview de datos automáticos', {
+        description: 'Los datos se poblarán automáticamente al generar el informe',
+      });
+    } catch (error) {
+      console.error('Error en preview:', error);
+      toast.error('Error al mostrar preview');
+    }
+  };
+
+  const handleGenerar = async () => {
     // Validaciones
     if (!periodo.trim()) {
       toast.error('El periodo es obligatorio');
       return;
     }
 
-    // Simular generación del informe
-    toast.success('Informe Generado Exitosamente', {
-      description: `${informe.nombreCorto} - Periodo ${periodo}`,
-      duration: 4000,
-    });
+    // Si no se encuentra el informe en la BD, intentar buscarlo de nuevo o crearlo
+    let idParaGenerar = informeLeyId;
+    
+    if (!idParaGenerar) {
+      // Intentar buscar de nuevo
+      try {
+        const response = await controlInternoApi.informesLey.getAll();
+        if (response.success && response.data) {
+          const informeEncontrado = response.data.find(
+            (inf: InformeLey) => 
+              inf.codigo === informe.codigo || 
+              inf.nombre === informe.nombre ||
+              inf.nombre.toLowerCase().includes(informe.nombreCorto.toLowerCase())
+          );
+          if (informeEncontrado) {
+            idParaGenerar = informeEncontrado.id;
+            setInformeLeyId(informeEncontrado.id);
+          }
+        }
+      } catch (error) {
+        console.error('Error buscando informe:', error);
+      }
+    }
 
-    console.log('📄 Generando informe:', {
-      informeId: informe.id,
-      nombre: informe.nombreCorto,
-      nombreCompleto: informe.nombre,
-      periodo,
-      descripcion,
-      baseNormativa: informe.baseNormativa,
-      periodicidad: informe.periodicidad,
-      destinatarios: informe.destinatarios,
-      usuario: 'Fernando Ávila',
-      timestamp: new Date().toISOString()
-    });
+    // Si aún no se encuentra, crear el informe automáticamente
+    if (!idParaGenerar) {
+      try {
+        toast.info('Creando informe en la base de datos...', {
+          description: 'El informe no estaba registrado, se creará automáticamente',
+        });
 
-    // En producción: llamar al backend para generar el informe
-    // POST /api/informes-ley/generar
-    // {
-    //   informeLeyId: informe.id,
-    //   periodo,
-    //   descripcion
-    // }
+        // Mapear datos del catálogo al formato de la BD
+        // Mapear categoría desde vinculacionRol
+        const mapeoCategoria: Record<string, 'financiero' | 'administrativo' | 'contractual' | 'talento-humano' | 'transparencia' | 'control'> = {
+          'enfoque-prevencion': 'control',
+          'evaluacion-gestion': 'administrativo',
+          'seguimiento': 'administrativo',
+          'relacion-control-externo': 'control',
+          'gestion-conocimiento': 'administrativo',
+        };
+        
+        const categoria = mapeoCategoria[informe.vinculacionRol || ''] || 'control';
+        
+        // Calcular diaPresentacion basado en los meses de generación
+        // Para informes semestrales (febrero y agosto), usar día 28 (últimos días del mes)
+        // Para informes anuales en febrero, usar día 28
+        // Para otros casos, usar día 15 por defecto
+        const mesesGeneracion = Array.isArray(informe.mesGeneracion) 
+          ? informe.mesGeneracion 
+          : [informe.mesGeneracion];
+        
+        let diaPresentacion = 15; // Día por defecto
+        if (mesesGeneracion.length > 0) {
+          const primerMes = mesesGeneracion[0];
+          // Si es febrero (2) o agosto (8), usar día 28 (últimos días hábiles)
+          if (primerMes === 2 || primerMes === 8) {
+            diaPresentacion = 28;
+          } else if (primerMes === 1 || primerMes === 12) {
+            // Enero o diciembre, usar día 31
+            diaPresentacion = 31;
+          } else {
+            // Otros meses, usar día 15
+            diaPresentacion = 15;
+          }
+        }
+        
+        const informeParaCrear: Partial<InformeLey> = {
+          codigo: informe.codigo,
+          nombre: informe.nombre,
+          descripcion: informe.observaciones || informe.nombre,
+          normativa: informe.baseNormativa,
+          categoria: categoria,
+          periodicidad: informe.periodicidad,
+          diaPresentacion: diaPresentacion,
+          entidadDestino: informe.destinatarios?.join(', ') || undefined,
+          responsable: informe.responsableRol || 'Jefe OCI',
+          area: 'Control Interno', // Área por defecto para informes de control interno
+          areaResponsable: informe.responsableRol || 'Jefe OCI',
+          diasAnticipacionAlerta: informe.diasAnticipacion || 15,
+          activo: true,
+        };
 
-    onGenerar();
+        const createResponse = await controlInternoApi.informesLey.create(informeParaCrear);
+        
+        if (createResponse.success && createResponse.data) {
+          idParaGenerar = createResponse.data.id;
+          setInformeLeyId(createResponse.data.id);
+          toast.success('Informe creado exitosamente', {
+            description: 'Ahora se procederá a generar el informe',
+            duration: 2000,
+          });
+        } else {
+          throw new Error(createResponse.error || 'Error al crear el informe');
+        }
+      } catch (error) {
+        console.error('Error creando informe:', error);
+        toast.error('Error al crear el informe', {
+          description: error instanceof Error ? error.message : 'No se pudo crear el informe en la base de datos',
+        });
+        return;
+      }
+    }
+
+    setGenerando(true);
+
+    try {
+      const response = await controlInternoApi.informesLey.generar(idParaGenerar, {
+        periodo: periodo.trim(),
+        datosAdicionales: descripcion ? { observaciones: descripcion } : undefined,
+      });
+
+      if (response.success && response.data) {
+        toast.success('Informe Generado Exitosamente', {
+          description: `${informe.nombreCorto} - Periodo ${periodo}`,
+          duration: 4000,
+        });
+
+        // Cerrar modal y recargar
+        onGenerar();
+        onClose();
+      } else {
+        throw new Error(response.error || 'Error al generar el informe');
+      }
+    } catch (error) {
+      console.error('Error generando informe:', error);
+      toast.error('Error al generar el informe', {
+        description: error instanceof Error ? error.message : 'Ocurrió un error inesperado',
+      });
+    } finally {
+      setGenerando(false);
+    }
   };
 
   return (
@@ -1085,6 +1291,16 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
         {/* Contenido */}
         <div className="px-6 py-6">
           <div className="space-y-4">
+            {/* Información del informe */}
+            {informe.datosAutomaticos && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="flex items-center gap-2 text-sm text-blue-800">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Este informe se generará con datos automáticos del sistema</span>
+                </div>
+              </div>
+            )}
+
             {/* Periodo */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1095,7 +1311,8 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
                 value={periodo}
                 onChange={(e) => setPeriodo(e.target.value)}
                 placeholder={informe.periodicidad === 'SEMESTRAL' ? 'Ej: 2025-S1' : 'Ej: 2024'}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                disabled={generando}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <p className="text-xs text-gray-600 mt-1">
                 {informe.periodicidad === 'SEMESTRAL' 
@@ -1112,35 +1329,72 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
             {/* Descripción */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Descripción
+                Observaciones (opcional)
               </label>
               <textarea
                 value={descripcion}
                 onChange={(e) => setDescripcion(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
-                placeholder="Descripción o notas adicionales sobre este informe (opcional)"
+                rows={3}
+                disabled={generando}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                placeholder="Observaciones o notas adicionales sobre este informe"
               />
             </div>
+
+            {/* Preview de datos automáticos */}
+            {mostrarPreview && informe.datosAutomaticos && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-gray-900 mb-2">Datos que se incluirán automáticamente:</h4>
+                <ul className="text-xs text-gray-600 space-y-1">
+                  <li>• Total de auditorías programadas y completadas</li>
+                  <li>• Hallazgos identificados y críticos</li>
+                  <li>• Planes de mejoramiento activos</li>
+                  <li>• Indicadores de cumplimiento</li>
+                </ul>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Footer */}
         <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
-            >
-              Cerrar
-            </button>
-            <button
-              onClick={handleGenerar}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Generar Informe
-            </button>
+          <div className="flex justify-between items-center">
+            {informe.datosAutomaticos && (
+              <button
+                onClick={handlePreview}
+                disabled={generando || !periodo?.trim()}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Eye className="w-4 h-4" />
+                Ver Preview
+              </button>
+            )}
+            <div className="flex gap-3 ml-auto">
+              <button
+                onClick={onClose}
+                disabled={generando}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleGenerar}
+                disabled={generando || !periodo?.trim()}
+                className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {generando ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin" />
+                    Generando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    Generar Informe
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

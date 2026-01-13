@@ -921,6 +921,41 @@ export const informesLeyApi = {
       body: JSON.stringify(data),
     });
   },
+
+  /**
+   * Generar informe automático
+   */
+  generar: async (
+    informeId: string,
+    data: {
+      periodo: string;
+      datosAdicionales?: Record<string, any>;
+    }
+  ): Promise<ApiResponse<{
+    entregaId: string;
+    archivoUrl: string;
+    fechaGeneracion: string;
+    datosAutomaticosPoblados: boolean;
+  }>> => {
+    return apiRequest(`/informes-ley/${informeId}/generar`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Obtener todas las plantillas disponibles
+   */
+  getPlantillas: async (): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>('/informes-ley/plantillas/all');
+  },
+
+  /**
+   * Obtener plantilla por código
+   */
+  getPlantilla: async (codigo: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/informes-ley/plantillas/${codigo}`);
+  },
 };
 
 // ==================== NOTIFICACIONES ====================

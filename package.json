@@ -40,6 +40,7 @@
         "embla-carousel-react": "^8.6.0",
         "exceljs": "^4.4.0",
         "framer-motion": "*",
+        "handlebars": "^4.7.8",
         "input-otp": "^1.4.2",
         "jspdf": "*",
         "jspdf-autotable": "*",
@@ -47,6 +48,7 @@
         "lucide-react": "^0.487.0",
         "motion": "*",
         "pdfjs-dist": "3.11.174",
+        "puppeteer": "^24.35.0",
         "qrcode.react": "*",
         "react": "^18.3.1",
         "react-day-picker": "^8.10.1",
@@ -61,6 +63,7 @@
         "recharts": "^2.15.2",
         "sonner": "^2.0.3",
         "tailwind-merge": "*",
+        "uuid": "^13.0.0",
         "vaul": "^1.1.2",
         "xlsx": "*"
     },
@@ -69,6 +72,7 @@
         "@types/node": "^20.10.0",
         "@types/react": "^19.2.7",
         "@types/react-dom": "^19.2.3",
+        "@types/uuid": "^10.0.0",
         "@vitejs/plugin-react-swc": "^3.10.2",
         "vite": "6.3.5"
     },

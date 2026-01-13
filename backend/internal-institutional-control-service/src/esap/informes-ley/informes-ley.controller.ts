@@ -9,16 +9,24 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { InformesLeyService } from './informes-ley.service';
+import { InformeGeneratorService } from './services/informe-generator.service';
+import { PlantillasService } from './services/plantillas.service';
 import { CreateInformeLeyDto } from './dto/create-informe-ley.dto';
 import { UpdateInformeLeyDto } from './dto/update-informe-ley.dto';
 import { CreateEntregaDto } from './dto/create-entrega.dto';
 import { UpdateEntregaDto } from './dto/update-entrega.dto';
+import { GenerarInformeDto } from './dto/generar-informe.dto';
 
 @Controller('informes-ley')
 export class InformesLeyController {
-  constructor(private readonly informesLeyService: InformesLeyService) {}
+  constructor(
+    private readonly informesLeyService: InformesLeyService,
+    private readonly informeGeneratorService: InformeGeneratorService,
+    private readonly plantillasService: PlantillasService,
+  ) {}
 
   // ==================== CRUD INFORMES ====================
 
@@ -143,6 +151,42 @@ export class InformesLeyController {
   @Post('actualizar-estados-vencidos')
   actualizarEstadosVencidos() {
     return this.informesLeyService.actualizarEstadosVencidos();
+  }
+
+  // ==================== GENERACIÓN AUTOMÁTICA (US-022) ====================
+
+  /**
+   * POST /informes-ley/:id/generar
+   * Generar informe automático con datos del sistema
+   */
+  @Post(':id/generar')
+  async generarInforme(
+    @Param('id') id: string,
+    @Body() body: GenerarInformeDto,
+    @Req() req: any,
+  ) {
+    const usuarioId = req.user?.id || req.user?.sub;
+    const usuarioNombre = req.user?.name || req.user?.nombre || 'Sistema';
+
+    return this.informeGeneratorService.generarInformeAutomatico(
+      id,
+      body.periodo,
+      body.datosAdicionales,
+      usuarioId,
+      usuarioNombre,
+    );
+  }
+
+  // ==================== PLANTILLAS ====================
+
+  @Get('plantillas/all')
+  async obtenerPlantillas() {
+    return this.plantillasService.findAll();
+  }
+
+  @Get('plantillas/:codigo')
+  async obtenerPlantillaPorCodigo(@Param('codigo') codigo: string) {
+    return this.plantillasService.findByCodigo(codigo);
   }
 }
 
