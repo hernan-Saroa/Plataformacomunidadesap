@@ -1,0 +1,1563 @@
+FORMATO DE HISTORIA DE USUARIO CONTROL INTERNO DE GESTIÓN
+
+ID US-001
+Título Crear Plan Anual basado en roles Decreto 648
+Como Jefe OTIC
+Quiero definir actividades
+Para cumplir normatividad
+RF/Módulo RF001
+Prioridad Alta
+Story Points 8
+Etapa1_Req(hrs) 6,2
+Etapa2_AnalisisDiseño(hrs) 9,4
+Etapa3_Desarrollo(hrs) 28,1
+Etapa4_QA(hrs) 4,4
+Etapa5_ImplProd(hrs) 3,1
+Etapa6_DocSoporte(hrs) 3,1
+Etapa7_Artefactos(hrs) 1,2
+Etapa8_Admin(hrs) 1,2
+Etapa9_Cierre(hrs) 0,6
+Total_Horas 57,3
+Criterios Detallados
+
+Dado que el usuario requiere 'Crear Plan Anual basado en roles
+Decreto 648',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 1
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+ID US-002
+Título Registrar actividades por rol
+Como Jefe OTIC
+Quiero crear actividades
+Para control del plan
+RF/Módulo RF001
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Registrar actividades por rol',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 1
+
+ID US-003
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Título Cálculo automático de indicadores del Plan
+Como Sistema
+Quiero calcular indicadores
+Para monitoreo eficaz
+RF/Módulo RF001
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Cálculo automático de
+indicadores del Plan',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 1
+
+ID US-004
+Título Automatizar Universo de Auditorías DAF
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Como Auditor
+Quiero diligenciar preguntas DAF
+Para calcular riesgo
+RF/Módulo RF002
+Prioridad Alta
+Story Points 8
+Etapa1_Req(hrs) 6,2
+Etapa2_AnalisisDiseño(hrs) 9,4
+Etapa3_Desarrollo(hrs) 28,1
+Etapa4_QA(hrs) 4,4
+Etapa5_ImplProd(hrs) 3,1
+Etapa6_DocSoporte(hrs) 3,1
+Etapa7_Artefactos(hrs) 1,2
+Etapa8_Admin(hrs) 1,2
+Etapa9_Cierre(hrs) 0,6
+Total_Horas 57,3
+Criterios Detallados
+
+Dado que el usuario requiere 'Automatizar Universo de
+Auditorías DAF',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 2
+
+ID US-005
+Título Priorización automática de auditorías
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Como Sistema
+Quiero ordenar auditorías
+Para plan anual eficiente
+RF/Módulo RF002
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Priorización automática de
+auditorías',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 2
+
+ID US-006
+Título Generar Programa Anual con asignaciones
+Como Auditor Líder
+Quiero asignar equipos
+Para planificación clara
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+RF/Módulo RF003
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Generar Programa Anual con
+asignaciones',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 2
+
+ID US-007
+Título Calendario visual del Programa
+Como Auditor Líder
+Quiero ver cronograma
+Para mayor control
+RF/Módulo RF003
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Prioridad Media
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Calendario visual del Programa',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 3
+
+ID US-008
+Título Crear Plan Individual de Auditoría
+Como Auditor
+Quiero definir alcance
+Para ejecución correcta
+RF/Módulo RF004
+Prioridad Alta
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Crear Plan Individual de
+Auditoría',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 3
+
+ID US-009
+Título Oficio anuncio auditoría automático
+Como Sistema
+Quiero generar anuncio
+Para cumplir proceso
+RF/Módulo RF005
+Prioridad Alta
+Story Points 5
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Oficio anuncio auditoría
+automático',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 3
+
+ID US-010
+Título Solicitud de información al área
+Como Auditor
+Quiero pedir documentos
+Para planeación completa
+RF/Módulo RF005
+Prioridad Media
+Story Points 3
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Etapa1_Req(hrs) 1,6
+Etapa2_AnalisisDiseño(hrs) 2,4
+Etapa3_Desarrollo(hrs) 7,3
+Etapa4_QA(hrs) 2,4
+Etapa5_ImplProd(hrs) 0,8
+Etapa6_DocSoporte(hrs) 0,8
+Etapa7_Artefactos(hrs) 0,3
+Etapa8_Admin(hrs) 0,3
+Etapa9_Cierre(hrs) 0,2
+Total_Horas 16,1
+Criterios Detallados
+
+Dado que el usuario requiere 'Solicitud de información al área',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 3
+
+ID US-011
+Título Listas de chequeo por tipo de proceso
+Como Auditor
+Quiero ejecutar evaluación
+Para estandarización
+RF/Módulo RF006
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Listas de chequeo por tipo de
+proceso',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 4
+
+ID US-012
+Título Registro de hallazgos preliminares
+Como Auditor
+Quiero crear hallazgos
+Para control documental
+RF/Módulo RF006
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Registro de hallazgos
+preliminares',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 4
+
+ID US-013
+Título Biblioteca de listas estandarizadas
+Como Admin
+Quiero crear listas
+Para uniformidad
+RF/Módulo RF007
+Prioridad Media
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Biblioteca de listas
+estandarizadas',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 4
+
+ID US-014
+Título Clasificación de hallazgos por gravedad
+Como Sistema
+Quiero clasificar
+Para priorizar acciones
+RF/Módulo RF008
+Prioridad Alta
+Story Points 3
+Etapa1_Req(hrs) 1,6
+Etapa2_AnalisisDiseño(hrs) 2,4
+Etapa3_Desarrollo(hrs) 7,3
+Etapa4_QA(hrs) 2,4
+Etapa5_ImplProd(hrs) 0,8
+Etapa6_DocSoporte(hrs) 0,8
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Etapa7_Artefactos(hrs) 0,3
+Etapa8_Admin(hrs) 0,3
+Etapa9_Cierre(hrs) 0,2
+Total_Horas 16,1
+Criterios Detallados
+
+Dado que el usuario requiere 'Clasificación de hallazgos por
+gravedad',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 4
+
+ID US-015
+Título Vinculación de evidencias a hallazgos
+Como Auditor
+Quiero cargar evidencias
+Para soporte auditoría
+RF/Módulo RF008
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Vinculación de evidencias a
+hallazgos',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 5
+
+ID US-016
+Título Generar informe preliminar
+Como Sistema
+Quiero crear informe
+Para comunicación formal
+RF/Módulo RF009
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Generar informe preliminar',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 5
+
+ID US-017
+Título Proceso de controversia
+Como Área Auditada
+Quiero responder
+Para debida defensa
+RF/Módulo RF009
+Prioridad Media
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Proceso de controversia',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 5
+
+ID US-018
+Título Formular Plan de Mejoramiento
+Como Área Auditada
+Quiero crear acciones
+Para mejora continua
+RF/Módulo RF010
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Total_Horas 32,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Formular Plan de Mejoramiento',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 5
+
+ID US-019
+Título Workflow aprobación Plan
+Como Jefe OTIC
+Quiero aprobar plan
+Para garantizar calidad
+RF/Módulo RF010
+Prioridad Media
+Story Points 3
+Etapa1_Req(hrs) 1,6
+Etapa2_AnalisisDiseño(hrs) 2,4
+Etapa3_Desarrollo(hrs) 7,3
+Etapa4_QA(hrs) 2,4
+Etapa5_ImplProd(hrs) 0,8
+Etapa6_DocSoporte(hrs) 0,8
+Etapa7_Artefactos(hrs) 0,3
+Etapa8_Admin(hrs) 0,3
+Etapa9_Cierre(hrs) 0,2
+Total_Horas 16,1
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+Dado que el usuario requiere 'Workflow aprobación Plan',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 6
+
+ID US-020
+Título Seguimiento trimestral automático
+Como Sistema
+Quiero enviar alertas
+Para cumplimiento
+RF/Módulo RF011
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 15,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 29,5
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+Dado que el usuario requiere 'Seguimiento trimestral
+automático',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 6
+
+ID US-021
+Título Semáforo de avance
+Como Sistema
+Quiero mostrar colores
+Para control visual
+RF/Módulo RF011
+Prioridad Media
+Story Points 3
+Etapa1_Req(hrs) 1,6
+Etapa2_AnalisisDiseño(hrs) 2,4
+Etapa3_Desarrollo(hrs) 7,3
+Etapa4_QA(hrs) 2,4
+Etapa5_ImplProd(hrs) 0,8
+Etapa6_DocSoporte(hrs) 0,8
+Etapa7_Artefactos(hrs) 0,3
+Etapa8_Admin(hrs) 0,3
+Etapa9_Cierre(hrs) 0,2
+Total_Horas 16,1
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+Dado que el usuario requiere 'Semáforo de avance',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 6
+
+ID US-022
+Título Generar Informes de Ley automáticos
+Como Sistema
+Quiero crear informes
+Para cumplir normativa
+RF/Módulo RF012
+Prioridad Alta
+Story Points 8
+Etapa1_Req(hrs) 6,2
+Etapa2_AnalisisDiseño(hrs) 9,4
+Etapa3_Desarrollo(hrs) 28,1
+Etapa4_QA(hrs) 4,4
+Etapa5_ImplProd(hrs) 3,1
+Etapa6_DocSoporte(hrs) 3,1
+Etapa7_Artefactos(hrs) 1,2
+Etapa8_Admin(hrs) 1,2
+Etapa9_Cierre(hrs) 0,6
+Total_Horas 57,3
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+Dado que el usuario requiere 'Generar Informes de Ley
+automáticos',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 6
+
+ID US-023
+Título Repositorio documental por auditoría
+Como Auditor
+Quiero gestionar documentos
+Para centralizar
+RF/Módulo RF013
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 15,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 29,5
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+Dado que el usuario requiere 'Repositorio documental por
+auditoría',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 7
+
+ID US-024
+Título Notificaciones automáticas por hitos
+Como Sistema
+Quiero enviar emails
+Para alertar usuarios
+RF/Módulo RF014
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 15,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 29,5
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+Dado que el usuario requiere 'Notificaciones automáticas por
+hitos',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 7
+
+ID US-025
+Título Gestión de Roles y permisos RBAC
+Como Admin
+Quiero asignar permisos
+Para seguridad
+RF/Módulo RF015
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 18,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 32,5
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+Dado que el usuario requiere 'Gestión de Roles y permisos
+RBAC',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 7
+
+ID US-026
+Título Reportes ejecutivos integrados
+Como Jefe OTIC
+Quiero ver tableros
+Para decisiones
+RF/Módulo RF016
+Prioridad Alta
+Story Points 8
+Etapa1_Req(hrs) 6,2
+Etapa2_AnalisisDiseño(hrs) 9,4
+Etapa3_Desarrollo(hrs) 28,1
+Etapa4_QA(hrs) 4,4
+Etapa5_ImplProd(hrs) 3,1
+Etapa6_DocSoporte(hrs) 3,1
+Etapa7_Artefactos(hrs) 1,2
+Etapa8_Admin(hrs) 1,2
+Etapa9_Cierre(hrs) 0,6
+Total_Horas 57,3
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+Dado que el usuario requiere 'Reportes ejecutivos integrados',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 8
+
+ID US-027
+Título Integración con Power BI
+Como Sistema
+Quiero exponer API
+Para visualización
+RF/Módulo RF017
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 15,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 29,5
+Criterios Detallados
+
+Dado que el usuario requiere 'Integración con Power BI',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 8
+ID US-028
+Título Gestión de Auditorías Territoriales
+Como Auditor
+Quiero administrar territoriales
+Para control nacional
+RF/Módulo RF018
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 15,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 29,5
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+Dado que el usuario requiere 'Gestión de Auditorías
+Territoriales',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 8
+
+ID US-029
+Título Crear Auditorías Especiales
+Como Jefe OTIC
+Quiero crear auditorías
+Para responder necesidades
+RF/Módulo RF019
+Prioridad Media
+Story Points 5
+Etapa1_Req(hrs) 3
+Etapa2_AnalisisDiseño(hrs) 4,5
+Etapa3_Desarrollo(hrs) 15,5
+Etapa4_QA(hrs) 2
+Etapa5_ImplProd(hrs) 1,5
+Etapa6_DocSoporte(hrs) 1,5
+Etapa7_Artefactos(hrs) 0,6
+Etapa8_Admin(hrs) 0,6
+Etapa9_Cierre(hrs) 0,3
+Total_Horas 29,5
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+Dado que el usuario requiere 'Crear Auditorías Especiales',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 9
+
+ID US-030
+Título Configurar parámetros delsistema
+Como Admin
+Quiero editar roles y periodicidades
+Para flexibilidad
+RF/Módulo RF020
+Prioridad Media
+Story Points 3
+Etapa1_Req(hrs) 1,6
+Etapa2_AnalisisDiseño(hrs) 2,4
+Etapa3_Desarrollo(hrs) 7,3
+Etapa4_QA(hrs) 2,4
+Etapa5_ImplProd(hrs) 0,8
+Etapa6_DocSoporte(hrs) 0,8
+Etapa7_Artefactos(hrs) 0,3
+Etapa8_Admin(hrs) 0,3
+Etapa9_Cierre(hrs) 0,2
+Total_Horas 16,1
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+Dado que el usuario requiere 'Configurar parámetros del
+sistema',
+- Dado que tengo permisos adecuados
+- Cuando ejecuto la acción principal
+Entonces el sistema debe:
+• Validar datos obligatorios
+• Registrar auditoría completa
+• Aplicar reglas del proceso de auditoría
+• Emitir mensajes claros
+• Cumplir Decreto 648, DAF y normas de auditoría
+• Actualizar reportes e indicadores
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 9
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+ID US-031
+Título Gestión de ampliación de plazos de auditoría
+Como Auditor Líder
+Quiero solicitar ampliación de plazo de una auditoría en curso
+Para Ajustar cronograma como surgen imprevistos
+RF/Módulo RF003
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 1,6
+Etapa2_AnalisisDiseño(hrs) 2,4
+Etapa3_Desarrollo(hrs) 7,3
+Etapa4_QA(hrs) 2,4
+Etapa5_ImplProd(hrs) 0,8
+Etapa6_DocSoporte(hrs) 0,8
+Etapa7_Artefactos(hrs) 0,3
+Etapa8_Admin(hrs) 0,3
+Etapa9_Cierre(hrs) 0,2
+Total_Horas 16,1
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+- Dado que una auditoría está en curso
+- Cuando el auditor solicita ampliación con justificación
+- Entonces el sistema debe:
+ Validar que no exceda 1 año desde fecha inicio
+ Enviar solicitud al Jefe OCI para aprobación
+ Registrar justificación, usuario, fecha
+ Mantener historial completo de cambios
+ Notificar al área auditada si se aprueba
+ Actualizar la visualización tipo cronograma y calendario
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 2
+
+ID US-032
+Título Validación de evidencias de planes de mejoramiento
+Como Auditor
+Quiero Revisar y calificar evidencias cargadas por áreas auditarías
+Para garantizar cumplimiento efectivo de acciones correctivas
+RF/Módulo RF011
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 1,6
+Etapa2_AnalisisDiseño(hrs) 2,4
+Etapa3_Desarrollo(hrs) 7,3
+Etapa4_QA(hrs) 2,4
+Etapa5_ImplProd(hrs) 0,8
+Etapa6_DocSoporte(hrs) 0,8
+Etapa7_Artefactos(hrs) 0,3
+Etapa8_Admin(hrs) 0,3
+Etapa9_Cierre(hrs) 0,2
+Total_Horas 16,1
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+- Dado que un área auditada cargó evidencias
+- Cuando el auditor las revisa
+- Entonces el sistema debe:
+ Permitir calificar como "Aceptado" o "Con
+Observaciones"
+ Registrar fecha, hora y usuario de la calificación
+ Si hay observaciones, permitir agregar comentarios
+específicos
+ Permitir solicitar nueva evidencia o aclaraciones
+ Notificar al área auditada sobre el resultado
+ Mostrar trazabilidad completa a ambas partes
+ Auditar todo el proceso de validación
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 6
+
+ID US-033
+Título Carga manual y workflow de aprobación de informes de ley
+Como Auditor/Funcionario OCI
+Quiero Completar y enviar informes de ley para aprobación
+Para Cumplir obligaciones normativas
+RF/Módulo RF012
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 1,6
+Etapa2_AnalisisDiseño(hrs) 2,4
+Etapa3_Desarrollo(hrs) 7,3
+Etapa4_QA(hrs) 2,4
+Etapa5_ImplProd(hrs) 0,8
+Etapa6_DocSoporte(hrs) 0,8
+Etapa7_Artefactos(hrs) 0,3
+Etapa8_Admin(hrs) 0,3
+Etapa9_Cierre(hrs) 0,2
+Total_Horas 16,1
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+- Dado que el sistema generó formato estándar con
+datos integrados
+- Cuando el auditor completa información adicional
+manual
+- Entonces el sistema debe:
+ Permitir carga de información desde Excel
+(formato DAF)
+ Validar completitud de información obligatoria
+ Iniciar workflow de revisión al Jefe OCI
+ Permitir al Jefe OCI aprobar o rechazar con
+comentarios
+ Si se rechaza, notificar al auditor para
+correcciones
+ Al aprobar, almacenar y vincular a "Enfoque a la
+prevención"
+ Registrar auditoría completa del proceso
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
+
+Sprint Sprint 6
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+ID US-034
+Título Configuración de cronogramas diferenciados por tipo de
+
+auditoría
+Como Administrador
+Quiero Configurar duraciones específicas de etapas según tipo de
+
+auditoría
+
+Para Que territoriales tengan cronogramas más cortos (4 días
+
+ejecución)
+RF/Módulo RF018
+Prioridad Alta
+Story Points 5
+Etapa1_Req(hrs) 1,6
+Etapa2_AnalisisDiseño(hrs) 2,4
+Etapa3_Desarrollo(hrs) 7,3
+Etapa4_QA(hrs) 2,4
+Etapa5_ImplProd(hrs) 0,8
+Etapa6_DocSoporte(hrs) 0,8
+Etapa7_Artefactos(hrs) 0,3
+Etapa8_Admin(hrs) 0,3
+Etapa9_Cierre(hrs) 0,2
+Total_Horas 16,1
+
+Escuela Superior de
+Administración Pública
+
+VERSIÓN: 1.1
+
+FORMATO: Historia de Usuario
+
+Criterios Detallados
+
+- Dado que existen auditorías territoriales y regulares
+- Cuando el admin configura duraciones de etapas
+- Entonces el sistema debe:
+• Permitir definir duración por tipo y etapa
+• Territoriales: ejecución máx 4 días (1 semana)
+• Regulares: ejecución hasta 30 días (1 mes)
+• Validar que auditorías respeten tiempos configurados
+• Generar alertas si se exceden límites por tipo
+• Aplicar configuración automáticamente al crear auditoría
+• Permitir excepciones con justificación
+
+DoD OWASP mitigado, pruebassuperadas, logs completos, AD
+
+integrado, documentación actualizada.
