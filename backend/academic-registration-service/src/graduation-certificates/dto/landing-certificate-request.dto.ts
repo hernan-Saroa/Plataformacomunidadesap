@@ -7,7 +7,7 @@ export class LandingCertificateRequestDto {
   /**
    * Fecha de expedición del documento de identidad (en formato dd/mm/aaaa o yyyy-mm-dd)
    */
-  idIssueDate: string;
+  idIssueDate?: string;
 
   /**
    * Tipo de solicitante: GRADUATE o COMPANY

@@ -212,7 +212,7 @@ BEGIN
     NEW."updatedAt" = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 -- Trigger para actualizar automáticamente updatedAt en stage_configuration
 DO $$
@@ -414,8 +414,8 @@ SELECT * FROM (VALUES
 ) AS v(fecha, descripcion, tipo, territorio, activo, creado_por_id)
 WHERE NOT EXISTS (
     SELECT 1 FROM internal_disciplinary_control.dias_festivos df
-    WHERE df.fecha = v.fecha 
-    AND df.tipo = v.tipo 
+    WHERE df.fecha = v.fecha::DATE
+    AND df.tipo = v.tipo::internal_disciplinary_control.tipo_festivo_enum
     AND COALESCE(df.territorio, '') = COALESCE(v.territorio, '')
 );
 
@@ -439,22 +439,24 @@ DO $$
 DECLARE
     table_name_found TEXT;
 BEGIN
+    -- ==============================
+    -- disciplinary_processes
+    -- ==============================
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'internal_disciplinary_control'
-        AND table_name = 'disciplinary_processes'
-        AND column_name = 'pruebas'
+          AND table_name = 'disciplinary_processes'
+          AND column_name = 'pruebas'
     ) THEN
         ALTER TABLE internal_disciplinary_control.disciplinary_processes
         ADD COLUMN pruebas TEXT[];
     END IF;
 
-    -- Agregar columnas de estadísticas si no existen
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'internal_disciplinary_control'
-        AND table_name = 'disciplinary_processes'
-        AND column_name = 'drafts_count'
+          AND table_name = 'disciplinary_processes'
+          AND column_name = 'drafts_count'
     ) THEN
         ALTER TABLE internal_disciplinary_control.disciplinary_processes
         ADD COLUMN drafts_count INTEGER DEFAULT 0 NOT NULL;
@@ -463,8 +465,8 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'internal_disciplinary_control'
-        AND table_name = 'disciplinary_processes'
-        AND column_name = 'documents_count'
+          AND table_name = 'disciplinary_processes'
+          AND column_name = 'documents_count'
     ) THEN
         ALTER TABLE internal_disciplinary_control.disciplinary_processes
         ADD COLUMN documents_count INTEGER DEFAULT 0 NOT NULL;
@@ -473,19 +475,21 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'internal_disciplinary_control'
-        AND table_name = 'disciplinary_processes'
-        AND column_name = 'time_percentage'
+          AND table_name = 'disciplinary_processes'
+          AND column_name = 'time_percentage'
     ) THEN
         ALTER TABLE internal_disciplinary_control.disciplinary_processes
         ADD COLUMN time_percentage DECIMAL(5,2) DEFAULT 0.00 NOT NULL;
     END IF;
 
-    -- Agregar columnas a disciplinary_news si no existen
+    -- ==============================
+    -- disciplinary_news
+    -- ==============================
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'internal_disciplinary_control'
-        AND table_name = 'disciplinary_news'
-        AND column_name = 'fechaQueja'
+          AND table_name = 'disciplinary_news'
+          AND column_name = 'fechaQueja'
     ) THEN
         ALTER TABLE internal_disciplinary_control.disciplinary_news
         ADD COLUMN "fechaQueja" TIMESTAMP;
@@ -494,8 +498,8 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'internal_disciplinary_control'
-        AND table_name = 'disciplinary_news'
-        AND column_name = 'conductas'
+          AND table_name = 'disciplinary_news'
+          AND column_name = 'conductas'
     ) THEN
         ALTER TABLE internal_disciplinary_control.disciplinary_news
         ADD COLUMN conductas TEXT[] DEFAULT ARRAY[]::TEXT[];
@@ -504,8 +508,8 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'internal_disciplinary_control'
-        AND table_name = 'disciplinary_news'
-        AND column_name = 'kanbanStage'
+          AND table_name = 'disciplinary_news'
+          AND column_name = 'kanbanStage'
     ) THEN
         ALTER TABLE internal_disciplinary_control.disciplinary_news
         ADD COLUMN "kanbanStage" VARCHAR(50) DEFAULT 'RECEPCION';
@@ -514,98 +518,42 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'internal_disciplinary_control'
-        AND table_name = 'disciplinary_news'
-        AND column_name = 'historialAuditoria'
+          AND table_name = 'disciplinary_news'
+          AND column_name = 'historialAuditoria'
     ) THEN
         ALTER TABLE internal_disciplinary_control.disciplinary_news
         ADD COLUMN "historialAuditoria" JSONB DEFAULT '[]'::jsonb;
     END IF;
 
-    -- Verificar y agregar columna observaciones a tabla de relación si existe
-    -- (TypeORM puede crear tablas de relación automáticamente)
-    -- Buscar directamente en el catálogo de PostgreSQL usando pg_class
-    BEGIN
-        -- Buscar la tabla usando pg_class (más confiable que pg_tables para nombres con comillas)
-        SELECT c.relname INTO table_name_found
-        FROM pg_class c
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'internal_disciplinary_control'
-        AND c.relkind = 'r'
-        AND (
-            c.relname = 'DisciplinaryProcess__DisciplinaryProcess_news'
-            OR c.relname = 'disciplinaryprocess__disciplinaryprocess_news'
-            OR c.relname = 'disciplinary_process__disciplinary_process_news'
-            OR c.relname ILIKE '%disciplinaryprocess%news%'
-        )
-        LIMIT 1;
+    -- ==============================
+    -- tabla relación TypeORM (observaciones)
+    -- ==============================
+    SELECT c.relname
+    INTO table_name_found
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'internal_disciplinary_control'
+      AND c.relkind = 'r'
+      AND c.relname ILIKE '%disciplinary%news%'
+    LIMIT 1;
 
-        -- Si se encontró la tabla, agregar la columna si no existe
-        IF table_name_found IS NOT NULL THEN
-            -- Verificar si la columna ya existe
-            IF NOT EXISTS (
-                SELECT 1 
-                FROM pg_attribute a
-                JOIN pg_class c ON a.attrelid = c.oid
-                JOIN pg_namespace n ON c.relnamespace = n.oid
-                WHERE n.nspname = 'internal_disciplinary_control'
-                AND c.relname = table_name_found
-                AND a.attname = 'observaciones'
-                AND a.attnum > 0
-                AND NOT a.attisdropped
-            ) THEN
-                -- Agregar la columna usando el nombre exacto encontrado
-                EXECUTE format('ALTER TABLE internal_disciplinary_control.%I ADD COLUMN observaciones TEXT', table_name_found);
-            END IF;
+    IF table_name_found IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_attribute a
+            JOIN pg_class c ON a.attrelid = c.oid
+            JOIN pg_namespace n ON c.relnamespace = n.oid
+            WHERE n.nspname = 'internal_disciplinary_control'
+              AND c.relname = table_name_found
+              AND a.attname = 'observaciones'
+              AND NOT a.attisdropped
+        ) THEN
+            EXECUTE format(
+                'ALTER TABLE internal_disciplinary_control.%I ADD COLUMN observaciones TEXT',
+                table_name_found
+            );
         END IF;
-    EXCEPTION
-        WHEN OTHERS THEN
-            -- Si hay algún error en la búsqueda, intentar agregar directamente con el nombre del error
-            BEGIN
-                -- Verificar si la tabla existe con el nombre exacto del error
-                IF EXISTS (
-                    SELECT 1 
-                    FROM pg_class c
-                    JOIN pg_namespace n ON n.oid = c.relnamespace
-                    WHERE n.nspname = 'internal_disciplinary_control'
-                    AND c.relname = 'DisciplinaryProcess__DisciplinaryProcess_news'
-                    AND c.relkind = 'r'
-                ) THEN
-                    -- Verificar si la columna no existe
-                    IF NOT EXISTS (
-                        SELECT 1 
-                        FROM pg_attribute a
-                        JOIN pg_class c ON a.attrelid = c.oid
-                        JOIN pg_namespace n ON c.relnamespace = n.oid
-                        WHERE n.nspname = 'internal_disciplinary_control'
-                        AND c.relname = 'DisciplinaryProcess__DisciplinaryProcess_news'
-                        AND a.attname = 'observaciones'
-                        AND a.attnum > 0
-                        AND NOT a.attisdropped
-                    ) THEN
-                        EXECUTE 'ALTER TABLE internal_disciplinary_control."DisciplinaryProcess__DisciplinaryProcess_news" ADD COLUMN observaciones TEXT';
-                    END IF;
-                END IF;
-            EXCEPTION
-                WHEN OTHERS THEN
-                    NULL;
-            END;
-    END;
-
-    -- Verificación adicional: intentar agregar la columna directamente
-    -- (por si la búsqueda anterior no funcionó)
-    BEGIN
-        EXECUTE 'ALTER TABLE internal_disciplinary_control."DisciplinaryProcess__DisciplinaryProcess_news" ADD COLUMN observaciones TEXT';
-    EXCEPTION
-        WHEN duplicate_column THEN
-            -- La columna ya existe, perfecto
-            NULL;
-        WHEN undefined_table THEN
-            -- La tabla no existe, no hacer nada
-            NULL;
-        WHEN OTHERS THEN
-            -- Cualquier otro error, ignorar
-            NULL;
-    END;
+    END IF;
 END $$;
 
 -- ============================================
@@ -808,12 +756,12 @@ BEGIN
 
     -- Crear función del trigger si no existe
     CREATE OR REPLACE FUNCTION internal_disciplinary_control.update_updated_at_column()
-    RETURNS TRIGGER AS $$
-    BEGIN
-        NEW."updatedAt" = CURRENT_TIMESTAMP;
-        RETURN NEW;
-    END;
-    $$ language 'plpgsql';
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW."updatedAt" = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
     -- Crear trigger si no existe
     IF NOT EXISTS (

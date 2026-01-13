@@ -20,7 +20,8 @@ import {
   RefreshCw,
   Briefcase,
   Settings,
-  Mail
+  Mail,
+  History
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
@@ -30,6 +31,7 @@ import { PaginationPremium } from '../shared/PaginationPremium';
 import { CertificadoDetalleModal } from './CertificadoDetalleModal';
 import { GenerarCertificadoModal } from './GenerarCertificadoModal';
 import { CertificadoDetallePanel } from './CertificadoDetallePanel';
+import { ModalHistorialCertificados } from './ModalHistorialCertificados';
 import React from 'react';
 import { EMPLEADOS_ELEGIBLES, DATOS_LABORALES } from '../../data/empleadosElegiblesCertificados';
 import { certificadosService } from '../../services/api/certificados.service';
@@ -82,11 +84,19 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   const [tipoVinculacionFilter, setTipoVinculacionFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const [totalItems, setTotalItems] = useState(0);
+  const [stats, setStats] = useState<Stats>({
+    certificadosEmitidos: 0,
+    certificadosActivos: 0,
+    escaneosQR: 0,
+    solicitudesHoy: 0,
+  });
 
   // Estados para modales
   const [selectedCertificado, setSelectedCertificado] = useState<CertificadoLaboral | null>(null);
   const [isDetalleOpen, setIsDetalleOpen] = useState(false);
   const [isGenerarOpen, setIsGenerarOpen] = useState(false);
+  const [isHistorialOpen, setIsHistorialOpen] = useState(false);
   const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
 
   // Estado para certificados y loading
@@ -106,11 +116,31 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       setError(null);
 
       console.log('🔄 Cargando certificados desde el backend...');
-      const data = await certificadosService.laborales.listar();
-      console.log(`✅ Se cargaron ${data.length} certificados`);
+      const params: Record<string, any> = {
+        page: currentPage,
+        limit: itemsPerPage,
+      };
+      if (searchQuery.trim()) {
+        params.search = searchQuery.trim();
+      }
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      if (cargoFilter !== 'all') {
+        params.cargo = cargoFilter;
+      }
+      if (tipoVinculacionFilter !== 'all') {
+        params.tipoVinculacion = tipoVinculacionFilter;
+      }
+
+      const response = await certificadosService.laborales.listar(params);
+      const items = Array.isArray(response) ? response : (response.items || []);
+      const total = Array.isArray(response) ? items.length : (response.total || 0);
+      const serverStats = Array.isArray(response) ? null : response.stats;
+      console.log(`✅ Se cargaron ${items.length} certificados`);
 
       // Transformar datos del backend al formato del componente
-      const certificadosTransformados: CertificadoLaboral[] = data.map((cert: any) => ({
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => ({
         id: cert.id,
         consecutivo: cert.certificate_number,
         certificateHash: cert.verification_code,
@@ -146,6 +176,13 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       );
 
       setCertificados(certificadosTransformados);
+      setTotalItems(total);
+      setStats({
+        certificadosEmitidos: serverStats?.totalEmitidos ?? total,
+        certificadosActivos: serverStats?.certificadosActivos ?? certificadosTransformados.filter(cert => cert.estado === 'activo').length,
+        escaneosQR: serverStats?.escaneosQR ?? certificadosTransformados.reduce((sum, cert) => sum + cert.cantidadEscaneos, 0),
+        solicitudesHoy: serverStats?.solicitudesHoy ?? 1,
+      });
 
       if (showRefreshToast) {
         toast.success('Datos actualizados', {
@@ -162,39 +199,17 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     }
   };
 
-  // Cargar certificados al montar el componente
+  // Cargar certificados al cambiar filtros/paginacion
   useEffect(() => {
     fetchCertificados();
-  }, []);
+  }, [currentPage, searchQuery, statusFilter, cargoFilter, tipoVinculacionFilter]);
 
-  const stats: Stats = {
-    certificadosEmitidos: certificados.length,
-    certificadosActivos: certificados.filter(cert => cert.estado === 'activo').length,
-    escaneosQR: certificados.reduce((total, cert) => total + cert.cantidadEscaneos, 0),
-    solicitudesHoy: 1
-  };
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, cargoFilter, tipoVinculacionFilter]);
 
-  // Filtros
-  const filteredCertificados = certificados.filter(cert => {
-    const matchesSearch = 
-      cert.empleado.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cert.empleado.documento.includes(searchQuery) ||
-      cert.consecutivo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cert.empleado.cargo.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || cert.estado === statusFilter;
-    const matchesCargo = cargoFilter === 'all' || cert.empleado.cargo === cargoFilter;
-    const matchesTipoVinculacion = tipoVinculacionFilter === 'all' || cert.empleado.tipoVinculacion === tipoVinculacionFilter;
-    
-    return matchesSearch && matchesStatus && matchesCargo && matchesTipoVinculacion;
-  });
-
-  // Paginación
-  const totalPages = Math.ceil(filteredCertificados.length / itemsPerPage);
-  const paginatedCertificados = filteredCertificados.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const paginatedCertificados = certificados;
 
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || cargoFilter !== 'all' || tipoVinculacionFilter !== 'all';
   const puedeConfigurarPlantilla = Boolean(canManageTemplates);
@@ -230,7 +245,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -273,17 +288,17 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => onNavigate?.('validar-qr')}
-            className="inline-flex items-center justify-center gap-2 transition-all"
+            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
             style={{
               background: '#FFFFFF',
               color: '#6B7280',
               border: '2px solid #E5E7EB',
               borderRadius: '8px',
-              padding: '12px 20px',
-              fontSize: '14px',
+              padding: '10px 16px',
+              fontSize: '13px',
               fontWeight: 500,
               cursor: 'pointer'
             }}
@@ -306,14 +321,14 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
           <button
             onClick={() => onNavigate?.('configuracion-plantilla')}
-            className="inline-flex items-center justify-center gap-2 transition-all"
+            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
             style={{
               background: '#FFFFFF',
               color: puedeConfigurarPlantilla ? '#6B7280' : '#9CA3AF',
               border: '2px solid #E5E7EB',
               borderRadius: '8px',
-              padding: '12px 20px',
-              fontSize: '14px',
+              padding: '10px 16px',
+              fontSize: '13px',
               fontWeight: 500,
               cursor: 'pointer',
               opacity: puedeConfigurarPlantilla ? 1 : 0.9
@@ -338,14 +353,14 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           <button
             onClick={() => fetchCertificados(true)}
             disabled={isRefreshing}
-            className="inline-flex items-center justify-center gap-2 transition-all"
+            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
             style={{
               background: '#FFFFFF',
               color: '#10B981',
               border: '2px solid #10B981',
               borderRadius: '8px',
-              padding: '12px 20px',
-              fontSize: '14px',
+              padding: '10px 16px',
+              fontSize: '13px',
               fontWeight: 500,
               cursor: isRefreshing ? 'not-allowed' : 'pointer',
               opacity: isRefreshing ? 0.6 : 1
@@ -372,14 +387,14 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
           <button
             onClick={() => setIsGenerarOpen(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
+            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
             style={{
               background: '#FFFFFF',
               color: '#003DA5',
               border: '2px solid #003DA5',
               borderRadius: '8px',
-              padding: '12px 20px',
-              fontSize: '14px',
+              padding: '10px 16px',
+              fontSize: '13px',
               fontWeight: 500,
               cursor: 'pointer'
             }}
@@ -394,6 +409,32 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           >
             <Download className="w-5 h-5" strokeWidth={2} />
             <span>Exportar</span>
+          </button>
+
+          <button
+            onClick={() => setIsHistorialOpen(true)}
+            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
+            style={{
+              background: '#FFFFFF',
+              color: '#F97316',
+              border: '2px solid #F97316',
+              borderRadius: '8px',
+              padding: '10px 16px',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#FFF7ED';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#FFFFFF';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            <History className="w-5 h-5" strokeWidth={2} />
+            <span>Ver historial</span>
           </button>
         </div>
       </motion.div>
@@ -850,7 +891,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                   totalPages={totalPages}
                   onPageChange={setCurrentPage}
                   itemsPerPage={itemsPerPage}
-                  totalItems={filteredCertificados.length}
+                  totalItems={totalItems}
                 />
               </div>
             )}
@@ -898,6 +939,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           setIsGenerarOpen(false);
         }}
         certificados={certificados}
+      />
+
+      <ModalHistorialCertificados
+        isOpen={isHistorialOpen}
+        onClose={() => setIsHistorialOpen(false)}
       />
     </div>
   );

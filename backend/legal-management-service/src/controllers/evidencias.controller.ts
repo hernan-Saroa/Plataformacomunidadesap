@@ -5,7 +5,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { EvidenciasService } from '../services/evidencias.service';
 
-@Controller('legal/evidencias')
+@Controller('evidencias')
 export class EvidenciasController {
     constructor(private readonly evidenciasService: EvidenciasService) { }
 
@@ -44,19 +44,43 @@ export class EvidenciasController {
             archive.pipe(res);
 
             for (const ev of evidencias) {
+                console.log(`[ZIP] Procesando evidencia ID: ${ev.id}`);
+                console.log(`[ZIP] archivoUrl: "${ev.archivoUrl}"`);
+                console.log(`[ZIP] archivoNombre: "${ev.archivoNombre}"`);
+
                 if (ev.archivoUrl) {
-                    let filePath: string;
-                    if (ev.archivoUrl.includes('/legal/files/')) {
-                        const filename = ev.archivoUrl.split('/legal/files/').pop();
-                        filePath = path.join(process.cwd(), 'uploads', filename);
+                    let filename: string;
+
+                    // Extraer el nombre del archivo de diferentes formatos de URL
+                    if (ev.archivoUrl.includes('/files/')) {
+                        filename = ev.archivoUrl.split('/files/').pop() || '';
+                    } else if (ev.archivoUrl.startsWith('files/')) {
+                        filename = ev.archivoUrl.replace('files/', '');
                     } else {
-                        filePath = path.join(process.cwd(), 'uploads', ev.archivoUrl);
+                        filename = path.basename(ev.archivoUrl);
                     }
 
+                    console.log(`[ZIP] Filename extraído: "${filename}"`);
+
+                    const filePath = path.join(process.cwd(), 'uploads', filename);
+                    console.log(`[ZIP] Path completo: "${filePath}"`);
+
                     if (fs.existsSync(filePath)) {
-                        const fileName = ev.archivoNombre || path.basename(filePath);
-                        archive.file(filePath, { name: fileName });
+                        // Obtener la extensión del archivo real
+                        const fileExt = path.extname(filename);
+                        // Usar el nombre personalizado pero asegurar que tenga la extensión correcta
+                        let displayName = ev.archivoNombre || filename;
+                        // Si displayName no tiene extensión, agregar la del archivo real
+                        if (!path.extname(displayName)) {
+                            displayName = displayName + fileExt;
+                        }
+                        archive.file(filePath, { name: displayName });
+                        console.log(`[ZIP] ✅ Añadiendo archivo: ${filePath} como "${displayName}"`);
+                    } else {
+                        console.log(`[ZIP] ❌ Archivo NO encontrado: ${filePath}`);
                     }
+                } else {
+                    console.log(`[ZIP] ⚠️ Evidencia sin archivoUrl`);
                 }
             }
 
@@ -110,4 +134,6 @@ export class EvidenciasController {
         return this.evidenciasService.delete(id);
     }
 }
+
+
 

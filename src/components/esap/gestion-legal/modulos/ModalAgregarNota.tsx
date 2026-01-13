@@ -321,3 +321,4 @@ export function ModalAgregarNota({ isOpen, onClose, expediente }: ModalAgregarNo
     </Dialog>
   );
 }
+

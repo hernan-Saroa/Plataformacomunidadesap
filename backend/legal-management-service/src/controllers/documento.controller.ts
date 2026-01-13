@@ -5,7 +5,7 @@ import * as multer from 'multer';
 import { extname } from 'path';
 import { DocumentoService, CreateDocumentoDto, UpdateDocumentoDto } from '../services/documento.service';
 
-@Controller('legal/documentos')
+@Controller('documentos')
 export class DocumentoController {
     constructor(private readonly documentoService: DocumentoService) { }
 
@@ -112,7 +112,10 @@ export class DocumentoController {
                 const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
                 return cb(null, `${randomName}${extname(file.originalname)}`);
             }
-        })
+        }),
+        limits: {
+            fileSize: 50 * 1024 * 1024, // 50MB
+        }
     }))
     async crear(@Body() dto: CreateDocumentoDto, @UploadedFile() file: Express.Multer.File) {
         try {
@@ -159,3 +162,5 @@ export class DocumentoController {
         }
     }
 }
+
+

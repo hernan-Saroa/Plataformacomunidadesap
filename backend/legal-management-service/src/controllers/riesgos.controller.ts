@@ -3,7 +3,7 @@ import { RiesgosService } from '../services/riesgos.service';
 import { Riesgo } from '../entities/riesgo.entity';
 import type { EtapaRiesgo, ZonaRiesgo } from '../entities/riesgo.entity';
 
-@Controller('legal/riesgos')
+@Controller('riesgos')
 export class RiesgosController {
     constructor(private readonly riesgosService: RiesgosService) { }
 
@@ -69,4 +69,6 @@ export class RiesgosController {
         return this.riesgosService.findByZona(zona as ZonaRiesgo);
     }
 }
+
+
 

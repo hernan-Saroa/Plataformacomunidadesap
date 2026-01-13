@@ -1,11 +1,11 @@
 // import { ApiClient } from './apiClient';
 import { apiClient } from './client';
-import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
+import { API_MODE, MICROSERVICE_URLS, getServiceUrl, buildApiUrl } from '../../config/environment';
 
-// Prefijo del servicio legal a través del gateway
-// Nueva estructura: /legal/api/v1/legal/{path}
-// Esto es necesario porque el backend espera prefijo 'legal/' y el gateway consume 'api/v1'
-const SERVICE_PREFIX = '/legal/api/v1/legal';
+// Prefijo del servicio legal en el API Gateway
+// Nueva estructura: /{service}/api/v{version}/{path}
+// URL: /legal/api/v1/* -> legal-management-service:3008/*
+const SERVICE_PREFIX = '/legal/api/v1';
 
 export interface Expediente {
     id: string;
@@ -82,8 +82,33 @@ export class LegalService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`);
     }
 
+    async getJuzgamientoActuaciones(radicado: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`);
+    }
+
     async createJuzgamientoDecision(radicado: string, data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`, data);
+    }
+
+    // ===== EXCEPCIONES PROCESALES (Juzgamiento) =====
+    async getJuzgamientoExcepciones(radicado: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`);
+    }
+
+    async createJuzgamientoExcepcion(radicado: string, data: {
+        tipo: 'NULIDAD' | 'RECUSACION' | 'PRESCRIPCION' | 'IMPEDIMENTO' | 'OTRA';
+        descripcion: string;
+        fundamento?: string;
+        presentadoPor?: string;
+    }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`, data);
+    }
+
+    async resolverExcepcion(excepcionId: string, data: {
+        estado: 'RESUELTA' | 'RECHAZADA';
+        resolucion: string;
+    }): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/excepciones/${excepcionId}/resolver`, data);
     }
 
     async updateJuzgamientoProceso(radicado: string, data: any): Promise<any> {
@@ -95,13 +120,45 @@ export class LegalService {
         return apiClient.get<Expediente>(`${SERVICE_PREFIX}/expedientes/${id}`);
     }
 
-    async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
-        return apiClient.post<Expediente>(`${SERVICE_PREFIX}/expedientes`, data);
-    }
-
     async updateExpediente(id: string, data: Partial<Expediente>): Promise<Expediente> {
         return apiClient.put<Expediente>(`${SERVICE_PREFIX}/expedientes/${id}`, data);
     }
+
+    async createExpediente(data: Partial<Expediente>): Promise<Expediente> {
+        return apiClient.post<Expediente>(`${SERVICE_PREFIX}/expedientes`, data);
+    }
+
+    // Alias en español para mantener compatibilidad
+    async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
+        return this.createExpediente(data);
+    }
+
+    // ==================== CONSULTAS JURÍDICAS ====================
+    async getConsultasJuridicas(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas`);
+    }
+
+    async getConsultaJuridica(id: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`);
+    }
+
+    async getDashboardEjecutivo(): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/dashboard/ejecutivo`);
+    }
+
+    async createConsultaJuridica(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/consultas-juridicas`, data);
+    }
+
+    async updateConsultaJuridica(id: string, data: any): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`, data);
+    }
+
+    async getAbogados(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
+    }
+
+    // ==================== ABOGADOS ====================
 
     // Actuaciones
     async getActuaciones(expedienteId: string): Promise<Actuacion[]> {
@@ -122,6 +179,11 @@ export class LegalService {
 
     async getStatsGeneral(): Promise<any> {
         return apiClient.get<any>(`${SERVICE_PREFIX}/stats/general`);
+    }
+
+    // Dashboard Ejecutivo SIGL
+    async getDashboardEjecutivo(): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/dashboard/ejecutivo`);
     }
 
     async createAbogado(data: any): Promise<any> {
@@ -167,8 +229,9 @@ export class LegalService {
     }
 
     getAutosDownloadUrl(radicado: string): string {
-        const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
-        return `${baseUrl}${SERVICE_PREFIX}${`/autos/expediente/${radicado}/download-zip`}`;
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/autos/expediente/${radicado}/download-zip`;
     }
 
     // Documentos
@@ -288,8 +351,11 @@ export class LegalService {
     }
 
     getDocumentosConsultaDownloadUrl(consultaId: string): string {
-        const baseUrl = API_MODE === 'direct' ? MICROSERVICE_URLS.legal : 'http://localhost:3008';
-        return `${baseUrl}${`${SERVICE_PREFIX}/consultas-juridicas/${consultaId}/documentos/download-zip`}`;
+        const baseUrl = getServiceUrl('legal');
+        // Direct mode: localhost:3008/consultas-juridicas/...
+        // Gateway mode: localhost:3000/legal/consultas-juridicas/...
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/consultas-juridicas/${consultaId}/documentos/download-zip`;
     }
 
     // --- CONTROL DE TÉRMINOS E INFORMES ---
@@ -596,10 +662,14 @@ export interface CreateRiesgoData {
     descripcion: string;
     proceso: string;
     tipoRiesgo: 'GESTION' | 'CORRUPCION' | 'SEGURIDAD_DIGITAL' | 'FISCAL';
+    etapa?: 'IDENTIFICADO' | 'ANALIZADO' | 'VALORADO' | 'TRATAMIENTO' | 'MONITOREO' | 'CERRADO' | 'MATERIALIZADO';
     probabilidadInherente: number;
     impactoInherente: number;
+    probabilidadResidual?: number;
+    impactoResidual?: number;
     causas?: string[];
     consecuencias?: string[];
+    controlesExistentes?: { id: string; descripcion: string; efectividad: number }[];
     responsable: string;
 }
 
@@ -642,6 +712,157 @@ class RiesgosService {
     }
 }
 
+// ==================== CORREOS JURIDICOS SERVICE ====================
+export interface CorreoJuridico {
+    id: string;
+    graphMessageId: string;
+    asunto: string;
+    remitenteEmail: string;
+    remitenteNombre: string | null;
+    fechaRecepcion: string;
+    cuerpoHtml: string | null;
+    cuerpoTexto: string | null;
+    tieneAdjuntos: boolean;
+    leido: boolean;
+    archivado: boolean;
+    urgente: boolean;
+    tipo: 'JUDICIAL' | 'CORREO' | 'OFICIO';
+    categoria: string | null;
+    moduloSugerido: string | null;
+    confianzaClasificacion: number | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CorreoFilters {
+    tipo?: string;
+    leido?: boolean;
+    urgente?: boolean;
+    archivado?: boolean;
+    search?: string;
+}
+
+export interface SendCorreoDto {
+    to: string;
+    cc?: string[];
+    subject: string;
+    body: string;
+    attachments?: { name: string; contentBytes: string; contentType: string }[];
+}
+
+export interface AdjuntoCorreo {
+    id: string;
+    correoId: string;
+    graphMessageId: string;
+    graphAttachmentId: string;
+    nombre: string;
+    contentType: string | null;
+    tamanio: number;
+    archivoLocalUrl: string | null;
+    descargado: boolean;
+    createdAt: string;
+}
+
+export class CorreosJuridicosService {
+    /**
+     * Trigger manual sync from Microsoft Graph
+     */
+    async syncCorreos(): Promise<{ synced: number; errors: number }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, {});
+    }
+
+    /**
+     * Test Microsoft Graph connection
+     */
+    async testConnection(): Promise<{ success: boolean; message: string }> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/test-connection`);
+    }
+
+    /**
+     * Get all emails with optional filters
+     */
+    async getCorreos(filters?: CorreoFilters): Promise<CorreoJuridico[]> {
+        const params: Record<string, string> = {};
+        if (filters?.tipo) params.tipo = filters.tipo;
+        if (filters?.leido !== undefined) params.leido = String(filters.leido);
+        if (filters?.urgente !== undefined) params.urgente = String(filters.urgente);
+        if (filters?.archivado !== undefined) params.archivado = String(filters.archivado);
+        if (filters?.search) params.search = filters.search;
+
+        return apiClient.get(`${SERVICE_PREFIX}/correos`, { params });
+    }
+
+    /**
+     * Get single email with full body
+     */
+    async getCorreo(id: string): Promise<CorreoJuridico> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/${id}`);
+    }
+
+    /**
+     * Mark email as read
+     */
+    async markAsRead(id: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/read`);
+    }
+
+    /**
+     * Archive email
+     */
+    async archive(id: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/archive`);
+    }
+
+    /**
+     * Send email via Microsoft Graph
+     */
+    async sendEmail(dto: SendCorreoDto): Promise<{ success: boolean }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/send`, dto);
+    }
+
+    /**
+     * Get attachments for an email
+     */
+    async getAdjuntos(correoId: string): Promise<AdjuntoCorreo[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/${correoId}/adjuntos`);
+    }
+
+    /**
+     * Download an attachment - returns a blob URL for download
+     * Handles both gateway and direct modes:
+     * - Gateway mode: http://gateway:3000/legal/api/v1/correos/adjuntos/{id}/download
+     * - Direct mode: http://localhost:3008/correos/adjuntos/{id}/download
+     */
+    async downloadAdjunto(adjuntoId: string): Promise<string> {
+        let url: string;
+
+        if (API_MODE === 'direct') {
+            // Direct mode: go straight to microservice without /legal/api/v1 prefix
+            url = `${MICROSERVICE_URLS.legal}/correos/adjuntos/${adjuntoId}/download`;
+        } else {
+            // Gateway mode: use SERVICE_PREFIX which includes /legal/api/v1
+            const baseUrl = getServiceUrl('legal');
+            url = `${baseUrl}${SERVICE_PREFIX}/correos/adjuntos/${adjuntoId}/download`;
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Error downloading attachment');
+
+        const blob = await response.blob();
+        return window.URL.createObjectURL(blob);
+    }
+
+    /**
+     * Export email to ZIP
+     */
+    async exportCorreoZip(id: string): Promise<string> {
+        const blob = await apiClient.getBlob(`${SERVICE_PREFIX}/correos/${id}/export/zip`);
+        return window.URL.createObjectURL(blob);
+    }
+}
+
 export const legalService = new LegalService();
 export const ocService = new OCService();
 export const riesgosService = new RiesgosService();
+export const correosJuridicosService = new CorreosJuridicosService();
+

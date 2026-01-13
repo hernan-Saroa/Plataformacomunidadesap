@@ -9,8 +9,8 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
-import { 
-  X, Download, Printer, ZoomIn, ZoomOut, FileText, 
+import {
+  X, Download, Printer, ZoomIn, ZoomOut, FileText,
   Eye, AlertCircle, ChevronLeft, ChevronRight, Maximize2
 } from 'lucide-react';
 import { useState } from 'react';
@@ -25,12 +25,12 @@ interface VisorDocumentoModalProps {
   asunto?: string;
 }
 
-export function VisorDocumentoModal({ 
-  isOpen, 
-  onClose, 
-  archivo, 
-  numero, 
-  asunto 
+export function VisorDocumentoModal({
+  isOpen,
+  onClose,
+  archivo,
+  numero,
+  asunto
 }: VisorDocumentoModalProps) {
   const [zoomLevel, setZoomLevel] = useState(100);
   const [currentPage, setCurrentPage] = useState(1);
@@ -43,156 +43,46 @@ export function VisorDocumentoModal({
   /**
    * ✅ FUNCIONALIDAD REAL: Descargar documento
    */
-  const handleDescargar = () => {
-    toast.loading('⏳ Generando documento...', { 
-      duration: 1500,
-      id: 'descarga-doc' 
-    });
-    
-    setTimeout(() => {
-      // Generar contenido HTML del documento
-      const contenidoHTML = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>${numero}</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 40px;
-              line-height: 1.6;
-            }
-            .header { 
-              text-align: center; 
-              border-bottom: 3px solid #1976D2; 
-              padding-bottom: 20px; 
-              margin-bottom: 30px; 
-            }
-            .header h1 { 
-              color: #1976D2; 
-              margin: 0 0 10px 0;
-              font-size: 24px;
-            }
-            .header p { 
-              margin: 5px 0; 
-              color: #666;
-            }
-            .metadata { 
-              margin: 30px 0; 
-              padding: 20px; 
-              background: #f5f5f5;
-              border-left: 4px solid #1976D2;
-            }
-            .metadata-item { 
-              margin: 10px 0; 
-            }
-            .metadata-label { 
-              font-weight: bold; 
-              color: #1976D2;
-              display: inline-block;
-              width: 150px;
-            }
-            .content { 
-              margin: 30px 0;
-              text-align: justify;
-            }
-            .footer { 
-              margin-top: 50px; 
-              padding-top: 20px; 
-              border-top: 2px solid #ddd;
-              text-align: center;
-              color: #666;
-              font-size: 12px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</h1>
-            <p>ESAP - República de Colombia</p>
-            <p>Oficina Jurídica</p>
-          </div>
-          
-          <div class="metadata">
-            <div class="metadata-item">
-              <span class="metadata-label">OFICIO No:</span>
-              <span>${numero}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">ASUNTO:</span>
-              <span>${asunto || 'Comunicación Oficial'}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">FECHA:</span>
-              <span>${new Date().toLocaleDateString('es-CO', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">ARCHIVO:</span>
-              <span>${archivo}</span>
-            </div>
-          </div>
-          
-          <div class="content">
-            <p><strong>Respetado(a) Doctor(a),</strong></p>
-            
-            <p>Por medio del presente oficio nos permitimos comunicar lo siguiente:</p>
-            
-            <p>Este es el contenido del oficio oficial número ${numero}. El documento ha sido generado 
-            por el Sistema de Gestión Legal de la ESAP y contiene información relevante para el proceso 
-            judicial en curso.</p>
-            
-            <p>El presente documento ha sido revisado y aprobado por la Oficina Jurídica de la entidad, 
-            cumpliendo con todos los requisitos legales y formales establecidos en la normatividad vigente.</p>
-            
-            <p>Quedamos atentos a cualquier requerimiento adicional y nos permitimos manifestar nuestra 
-            disposición para atender cualquier solicitud de su Despacho.</p>
-            
-            <p><strong>Cordialmente,</strong></p>
-            
-            <p style="margin-top: 40px;">
-              <strong>Oficina Jurídica ESAP</strong><br>
-              Escuela Superior de Administración Pública<br>
-              República de Colombia
-            </p>
-          </div>
-          
-          <div class="footer">
-            <p>Este es un documento oficial generado por el Sistema de Gestión Legal ESAP</p>
-            <p>Generado el: ${new Date().toLocaleString('es-CO')}</p>
-          </div>
-        </body>
-        </html>
-      `;
-      
-      // Crear blob y descargar
-      const blob = new Blob([contenidoHTML], { type: 'text/html' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = archivo.replace('.pdf', '.html');
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      
+  /**
+   * ✅ FUNCIONALIDAD REAL: Descargar documento
+   */
+  const handleDescargar = async () => {
+    if (!archivo) return;
+
+    try {
+      toast.loading('⏳ Iniciando descarga...', {
+        duration: 1500,
+        id: 'descarga-doc'
+      });
+
+      // Si es una URL absoluta o relativa válida
+      if (archivo.startsWith('http') || archivo.startsWith('/') || archivo.startsWith('blob:')) {
+        const response = await fetch(archivo);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = numero || 'documento_descargado.pdf';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        // Fallback si no es URL (ej: nombre de archivo sin path)
+        toast.error('No se encontró la URL del documento');
+        return;
+      }
+
       toast.success('✅ Documento descargado', {
         id: 'descarga-doc',
-        description: `${archivo} guardado en Descargas`,
+        description: `${numero} guardado en Descargas`,
         duration: 4000
       });
-      
-      // Log para analytics
-      console.log('📊 Documento descargado:', {
-        numero,
-        archivo,
-        timestamp: new Date().toISOString()
-      });
-    }, 1500);
+
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Error al descargar el documento', { id: 'descarga-doc' });
+    }
   };
 
   /**
@@ -200,14 +90,14 @@ export function VisorDocumentoModal({
    */
   const handleImprimir = () => {
     toast.loading('🖨️ Preparando impresión...', { id: 'print' });
-    
+
     setTimeout(() => {
       toast.success('✅ Diálogo de impresión abierto', {
         id: 'print',
         description: 'Selecciona tu impresora',
         duration: 2000
       });
-      
+
       // Simular apertura de diálogo de impresión
       window.print();
     }, 1000);
@@ -256,8 +146,8 @@ export function VisorDocumentoModal({
         </DialogDescription>
 
         {/* ==================== HEADER ==================== */}
-        <div 
-          className="px-6 py-4 flex items-center justify-between border-b" 
+        <div
+          className="px-6 py-4 flex items-center justify-between border-b"
           style={{ background: 'linear-gradient(135deg, #1976D2 0%, #1565C0 100%)' }}
         >
           <div className="flex items-center gap-3">
@@ -269,9 +159,9 @@ export function VisorDocumentoModal({
               <p className="text-xs text-blue-100">{asunto || 'Comunicación Oficial'}</p>
             </div>
           </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onClose}
             className="text-white hover:bg-white/20"
           >
@@ -356,9 +246,9 @@ export function VisorDocumentoModal({
 
         {/* ==================== CONTENIDO DEL DOCUMENTO ==================== */}
         <div className="flex-1 overflow-y-auto p-6 bg-gray-100">
-          <Card 
-            className="max-w-4xl mx-auto bg-white shadow-xl" 
-            style={{ 
+          <Card
+            className="max-w-4xl mx-auto bg-white shadow-xl"
+            style={{
               transform: `scale(${zoomLevel / 100})`,
               transformOrigin: 'top center',
               transition: 'transform 0.2s'
@@ -386,10 +276,10 @@ export function VisorDocumentoModal({
                 <div>
                   <p className="text-gray-600 font-bold">FECHA:</p>
                   <p className="text-gray-900 font-black">
-                    {new Date().toLocaleDateString('es-CO', { 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
+                    {new Date().toLocaleDateString('es-CO', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
                     })}
                   </p>
                 </div>
@@ -406,28 +296,28 @@ export function VisorDocumentoModal({
               {/* Cuerpo del documento */}
               <div className="text-sm leading-relaxed space-y-4 text-justify">
                 <p><strong>Respetado(a) Doctor(a),</strong></p>
-                
+
                 <p>
                   Por medio del presente oficio nos permitimos comunicar lo siguiente:
                 </p>
-                
+
                 <p>
-                  Este es el contenido del oficio oficial número <strong>{numero}</strong>. 
-                  El documento ha sido generado por el Sistema de Gestión Legal de la ESAP y 
+                  Este es el contenido del oficio oficial número <strong>{numero}</strong>.
+                  El documento ha sido generado por el Sistema de Gestión Legal de la ESAP y
                   contiene información relevante para el proceso judicial en curso.
                 </p>
-                
+
                 <p>
-                  El presente documento ha sido revisado y aprobado por la Oficina Jurídica de 
-                  la entidad, cumpliendo con todos los requisitos legales y formales establecidos 
+                  El presente documento ha sido revisado y aprobado por la Oficina Jurídica de
+                  la entidad, cumpliendo con todos los requisitos legales y formales establecidos
                   en la normatividad vigente.
                 </p>
-                
+
                 <p>
-                  Quedamos atentos a cualquier requerimiento adicional y nos permitimos manifestar 
+                  Quedamos atentos a cualquier requerimiento adicional y nos permitimos manifestar
                   nuestra disposición para atender cualquier solicitud de su Despacho.
                 </p>
-                
+
                 <p><strong>Cordialmente,</strong></p>
               </div>
 

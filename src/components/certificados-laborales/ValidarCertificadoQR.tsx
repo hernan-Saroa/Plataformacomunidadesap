@@ -77,6 +77,21 @@ export function ValidarCertificadoQR() {
       const response = await certificadosService.validacion.verificarCertificadoLaboral(codigoNormalizado);
       console.log('Respuesta verificación certificado:', response);
 
+      if (
+        response?.statusCode >= 400 ||
+        response?.error ||
+        (typeof response?.message === 'string' &&
+          response.message.toLowerCase().includes('no encontrado'))
+      ) {
+        const message =
+          response?.message || 'Codigo QR invalido o certificado no encontrado';
+        setValidationResult({ isValid: false, error: message });
+        toast.error('Certificado no valido', {
+          description: 'El codigo ingresado no existe o no es valido'
+        });
+        return;
+      }
+
       const expiracion = response?.expiration_date ? new Date(response.expiration_date) : null;
       const ahora = new Date();
       const estadoCalculado = response?.status
@@ -100,11 +115,21 @@ export function ValidarCertificadoQR() {
         || response?.createdAt
       );
 
+      const consecutivo = getVal(response?.certificate_number, response?.certificateNumber, response?.consecutivo);
+      const nombreEmpleado = getVal(response?.full_name, response?.nombreCompleto, response?.fullName);
+      if (consecutivo === 'No disponible' && nombreEmpleado === 'No disponible') {
+        setValidationResult({ isValid: false, error: 'Certificado no encontrado' });
+        toast.error('Certificado no valido', {
+          description: 'El codigo ingresado no existe o no es valido'
+        });
+        return;
+      }
+
       const certificado = {
-        consecutivo: getVal(response?.certificate_number, response?.certificateNumber, response?.consecutivo),
+        consecutivo,
         codigoQR: response?.verification_code || codigoNormalizado,
         empleado: {
-          nombre: getVal(response?.full_name, response?.nombreCompleto, response?.fullName),
+          nombre: nombreEmpleado,
           documento: getVal(response?.id_number, response?.documento, response?.idNumber),
           cargo: getVal(response?.position_category, response?.cargo, response?.positionCategory),
           dependencia: getVal(response?.department, response?.dependencia, response?.departmentName, response?.position_location, response?.positionLocation)
@@ -183,7 +208,7 @@ export function ValidarCertificadoQR() {
               color: '#6B7280'
             }}
           >
-            Verifica la autenticidad de un certificado laboral emitido por la ESAP ingresando el código QR
+            Verifica la autenticidad de un certificado laboral emitido por la ESAP ingresando el codigo QR o el consecutivo
           </p>
         </motion.div>
 
@@ -207,7 +232,7 @@ export function ValidarCertificadoQR() {
                       color: '#1F2937'
                     }}
                   >
-                    Código QR del Certificado
+                    Codigo QR o consecutivo del certificado
                   </label>
                   <div className="relative">
                     <QrCode 
@@ -217,7 +242,7 @@ export function ValidarCertificadoQR() {
                     <Input
                       id="codigoQR"
                       type="text"
-                      placeholder="Ej: ESAP-CERT-2025-ABC123XYZ"
+                      placeholder="Ej: QR-CERT-2025-ABC123XYZ o 12_620_700_20_CD 010"
                       value={codigoQR}
                       onChange={(e) => setCodigoQR(e.target.value.toUpperCase())}
                       className="pl-12 pr-14 py-6 text-base border-2"
@@ -237,7 +262,7 @@ export function ValidarCertificadoQR() {
                     className="mt-2 text-sm"
                     style={{ color: '#6B7280' }}
                   >
-                    El código QR se encuentra impreso en la parte inferior del certificado
+                    Puedes usar el codigo QR o el consecutivo que aparece en el certificado
                   </p>
                 </div>
 
@@ -253,13 +278,13 @@ export function ValidarCertificadoQR() {
                           color: '#1F2937'
                         }}
                       >
-                        Sistema de Verificación Seguro
+                        Sistema de verificacion seguro
                       </h4>
                       <p 
                         className="text-sm"
                         style={{ color: '#6B7280' }}
                       >
-                        Todos los certificados laborales emitidos por la ESAP incluyen un código QR único que permite verificar su autenticidad en tiempo real. Este sistema garantiza la integridad y validez del documento.
+                        Todos los certificados laborales emitidos por la ESAP incluyen un codigo QR unico y un consecutivo que permiten verificar su autenticidad en tiempo real. Este sistema garantiza la integridad y validez del documento.
                       </p>
                     </div>
                   </div>

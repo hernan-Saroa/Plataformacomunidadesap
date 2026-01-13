@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '../../utils/clipboard';
+import { getPublicBaseUrl } from '../../config/environment';
+import { QRCodeCanvas } from 'qrcode.react';
 
 interface ModalCodigoQRProps {
   isOpen: boolean;

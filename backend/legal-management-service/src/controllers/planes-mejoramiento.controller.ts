@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Param, NotFoundException } from '@nestjs/common';
 import { PlanesMejoramientoService } from '../services/planes-mejoramiento.service';
 
-@Controller('legal/planes-mejoramiento')
+@Controller('planes-mejoramiento')
 export class PlanesMejoramientoController {
     constructor(private readonly planesService: PlanesMejoramientoService) { }
 
@@ -48,3 +48,5 @@ export class PlanesMejoramientoController {
         return this.planesService.update(id, body);
     }
 }
+
+

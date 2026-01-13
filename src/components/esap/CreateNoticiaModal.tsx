@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import {
   X,
   AlertCircle,
@@ -120,6 +121,7 @@ const CONDUCTAS_INDISCIPLINARIAS = [
 
 export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps) {
   const [currentStep, setCurrentStep] = useState(1);
+  const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
     origen: '',
     fechaQueja: new Date().toISOString().split('T')[0], // Fecha actual por defecto
@@ -173,6 +175,11 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
     if (errors[field]) {
       setErrors({ ...errors, [field]: '' });
     }
+  };
+
+  // Función para validar que solo se ingresen números
+  const handleNumericInput = (value: string): string => {
+    return value.replace(/[^0-9]/g, '');
   };
 
   const setFechaQuejaMode = (usarAuto: boolean) => {
@@ -266,7 +273,38 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setArchivosAdjuntos([...archivosAdjuntos, ...Array.from(e.target.files)]);
+      const files = Array.from(e.target.files);
+      const validFiles: File[] = [];
+      const maxSize = 200 * 1024 * 1024; // 200MB en bytes
+      const allowedExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'txt', 'rtf'];
+      
+      for (const file of files) {
+        // Validar tamaño
+        if (file.size > maxSize) {
+          toast.error(`El archivo ${file.name} excede el tamaño máximo permitido de 10MB`);
+          continue;
+        }
+        
+        // Validar tipo de archivo (no permitir .exe)
+        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+        if (fileExtension === 'exe') {
+          toast.error(`No se permiten archivos ejecutables (.exe). El archivo ${file.name} fue rechazado.`);
+          continue;
+        }
+        
+        // Validar extensiones permitidas
+        if (fileExtension && !allowedExtensions.includes(fileExtension)) {
+          toast.error(`El archivo ${file.name} tiene una extensión no permitida. Extensiones permitidas: ${allowedExtensions.join(', ')}`);
+          continue;
+        }
+        
+        validFiles.push(file);
+      }
+      
+      if (validFiles.length > 0) {
+        setArchivosAdjuntos([...archivosAdjuntos, ...validFiles]);
+        toast.success(`${validFiles.length} archivo(s) agregado(s) correctamente`);
+      }
     }
   };
 
@@ -330,8 +368,35 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validateStep4()) return;
+
+    setIsSaving(true);
+    try {
+      // Validar archivos adjuntos antes de guardar
+    const maxSize = 200 * 1024 * 1024; // 200MB en bytes
+    const allowedExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'txt', 'rtf'];
+    
+    for (const file of archivosAdjuntos) {
+      // Validar tamaño
+      if (file.size > maxSize) {
+        toast.error(`No se puede guardar: El archivo ${file.name} excede el tamaño máximo permitido de 10MB`);
+        return;
+      }
+      
+      // Validar tipo de archivo (no permitir .exe)
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      if (fileExtension === 'exe') {
+        toast.error(`No se puede guardar: No se permiten archivos ejecutables (.exe). El archivo ${file.name} fue rechazado.`);
+        return;
+      }
+      
+      // Validar extensiones permitidas
+      if (fileExtension && !allowedExtensions.includes(fileExtension)) {
+        toast.error(`No se puede guardar: El archivo ${file.name} tiene una extensión no permitida. Extensiones permitidas: ${allowedExtensions.join(', ')}`);
+        return;
+      }
+    }
 
     // Si no usaron el botón "Agregar Denunciado", toma el denunciado del formulario principal
     const disciplinables = denunciados.length > 0
@@ -351,6 +416,9 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
     };
 
     onSave(dataToSave);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -552,7 +620,7 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                     <input
                       type="text"
                       value={formData.denunciado.identificacion}
-                      onChange={(e) => handleChange('denunciado.identificacion', e.target.value)}
+                      onChange={(e) => handleChange('denunciado.identificacion', handleNumericInput(e.target.value))}
                       placeholder="Número de cédula"
                       className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors['denunciado.identificacion'] ? 'border-red-500' : 'border-gray-300'
                         }`}
@@ -675,7 +743,7 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                     <input
                       type="text"
                       value={currentDenunciante.identificacion}
-                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, identificacion: e.target.value })}
+                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, identificacion: handleNumericInput(e.target.value) })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -697,7 +765,7 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
                     <input
                       type="text"
                       value={currentDenunciante.telefono}
-                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, telefono: e.target.value })}
+                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, telefono: handleNumericInput(e.target.value) })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -898,9 +966,17 @@ export function CreateNoticiaModal({ onClose, onSave }: CreateNoticiaModalProps)
           ) : (
             <Button
               onClick={handleSave}
+              disabled={isSaving}
               style={{ background: '#10B981', color: '#FFFFFF' }}
             >
-              Guardar Noticia
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Registrando...
+                </>
+              ) : (
+                'Registrar Noticia'
+              )}
             </Button>
           )}
         </div>

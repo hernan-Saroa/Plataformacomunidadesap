@@ -1,8 +1,7 @@
 /**
  * MÓDULO: CERTIFICADOS CON QR ÚNICO PARA VALIDACIÓN
- * - Cada combinación única (graduado + datos + entidad) genera UN certificado con QR único
- * - Si la MISMA combinación vuelve a solicitar → se REUTILIZA el QR existente (no se genera nuevo)
- * - Solo se crea QR nuevo si cambia: graduado, datos o entidad solicitante
+ * - Cada solicitud genera un certificado con QR único
+ * - Los certificados previos se mantienen para trazabilidad, pero no se reutilizan
  * - Estado "Activo" = QR habilitado para validación pública
  * - Al escanear QR: muestra si está activo + datos completos del certificado
  * - Trazabilidad completa:
@@ -11,7 +10,7 @@
  *   • Cada validación registra: IP, ubicación, dispositivo, fecha/hora
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -58,7 +57,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import React from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import { PROGRAMAS_ESAP } from '../../data/oferta-academica-esap';
 import graduadosService, {
   CertificadoGraduado,
@@ -68,19 +67,20 @@ import graduadosService, {
 } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 
-// Tipo de certificado con QR único (reutilizable por misma combinación)
+// Tipo de certificado con QR único (uno por solicitud)
 interface CertificateRequest {
   id: string;
   graduateId?: string;
   certificateNumber: string;
   certificateHash: string;
-  qrCode: string; // QR único para la combinación graduado+datos+entidad
+  qrCode: string; // QR único por solicitud
   graduate: {
     fullName: string;
     document: string;
     program: string;
     graduationDate: string;
     campus?: string;
+    seccionalName?: string;
   };
   programType?: string;
   degreeTitle?: string;
@@ -98,7 +98,7 @@ interface CertificateRequest {
   lastRequestedAt: string; // Última solicitud
   generatedAt: string; // Fecha de generación del certificado
   generatedBy: string;
-  requestCount: number; // Número de veces que se ha solicitado este mismo certificado
+  requestCount: number; // Numero de solicitudes asociadas al certificado
   qrScanCount: number; // Número de veces que se ha escaneado el QR
   viewCount: number;
   downloadCount: number;
@@ -139,6 +139,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [selectedCertificate, setSelectedCertificate] = useState<CertificateRecord | null>(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
+  const qrCanvasRef = useRef<HTMLDivElement>(null);
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
@@ -147,6 +148,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [isSavingGraduate, setIsSavingGraduate] = useState(false);
   const [isLoadingGraduate, setIsLoadingGraduate] = useState(false);
   const [isExistingGraduate, setIsExistingGraduate] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
   const [editCertificateForm, setEditCertificateForm] = useState({
     fullName: '',
     idNumber: '',
@@ -195,11 +200,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     const day = String(stamp.getDate()).padStart(2, '0');
     const suffix = Math.floor(1000 + Math.random() * 9000);
     return `ACTA-${year}${month}${day}-${suffix}`;
-  };
-
-  const buildRequestKey = (request: SolicitudCertificadoGraduado) => {
-    const dateKey = request.graduationDate?.slice(0, 10) || '';
-    return `${request.idNumber}|${request.programName}|${dateKey}`;
   };
 
   const ensureArray = <T,>(value: T[] | { data?: T[] } | undefined | null): T[] => {
@@ -257,14 +257,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       const validationsData = ensureArray<ValidacionCertificado>(validationsResponse);
       const downloadsData = ensureArray<DescargaCertificado>(downloadsResponse);
 
-      const requestsByKey = new Map<string, SolicitudCertificadoGraduado[]>();
       const requestsById = new Map<string, SolicitudCertificadoGraduado>();
       requestsData.forEach((request) => {
-        const key = buildRequestKey(request);
-        if (!requestsByKey.has(key)) {
-          requestsByKey.set(key, []);
-        }
-        requestsByKey.get(key)!.push(request);
         requestsById.set(request.id, request);
       });
 
@@ -285,27 +279,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       });
 
       const mappedCertificates = certificatesData.map((certificate) => {
-          const requestKey = `${certificate.idNumber}|${certificate.programName}|${certificate.graduationDate?.slice(0, 10) || ''}`;
-          const relatedRequests = requestsByKey.get(requestKey) || [];
-          const landingRequests = relatedRequests.filter((request) =>
-            request.observations?.toLowerCase().includes('landing')
-          );
-          const effectiveRequests =
-            landingRequests.length > 0 ? landingRequests : relatedRequests;
-          const mainRequest = requestsById.get(certificate.requestId) || relatedRequests[0];
+          const mainRequest = requestsById.get(certificate.requestId);
+          const requestDate = mainRequest?.requestDate;
+          const normalizedRequestDate = requestDate ? normalizeDate(requestDate) : '';
+          const fallbackIssueDate = normalizeDate(certificate.issueDate);
 
-          const requestDates = effectiveRequests
-            .map((req) => req.requestDate)
-            .filter(Boolean)
-            .map((date) => new Date(normalizeDate(date)).getTime())
-            .filter((time) => !Number.isNaN(time));
-
-          const firstRequestedAt = requestDates.length
-            ? new Date(Math.min(...requestDates)).toISOString()
-            : normalizeDate(certificate.issueDate);
-          const lastRequestedAt = requestDates.length
-            ? new Date(Math.max(...requestDates)).toISOString()
-            : normalizeDate(certificate.issueDate);
+          const firstRequestedAt = normalizedRequestDate || fallbackIssueDate;
+          const lastRequestedAt = normalizedRequestDate || fallbackIssueDate;
 
           const scanHistory = (validationsByCertificate.get(certificate.id) || []).map((validation) => ({
             id: validation.id,
@@ -341,7 +321,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               document: certificate.idNumber,
               program: certificate.programName,
               graduationDate: certificate.graduationDate,
-              campus: certificate.campus || '',
+              campus: certificate.campus || (certificate as any)?.graduate?.campus || '',
+              seccionalName:
+                (certificate as any)?.seccionalName ||
+                (certificate as any)?.graduate?.seccionalName ||
+                '',
             },
             programType: certificate.programType,
             degreeTitle: certificate.degreeTitle,
@@ -358,96 +342,26 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             lastRequestedAt,
             generatedAt: normalizeDate(certificate.issueDate),
             generatedBy: certificate.signerName || 'Registro Academico',
-            requestCount: effectiveRequests.length || 1,
+            requestCount: 1,
             qrScanCount: scanHistory.length,
-            viewCount: effectiveRequests.length || 1,
+            viewCount: 1,
             downloadCount,
             lastActivity,
-            requestHistory: effectiveRequests.map((request) => ({
-              id: request.id,
-              requestedAt: normalizeDate(request.requestDate),
-              requestedBy: request.requesterName || request.fullName,
-              ipAddress: 'N/A',
-            })),
+            requestHistory: mainRequest
+              ? [
+                  {
+                    id: mainRequest.id,
+                    requestedAt: normalizeDate(mainRequest.requestDate),
+                    requestedBy: mainRequest.requesterName || mainRequest.fullName,
+                    ipAddress: 'N/A',
+                  },
+                ]
+              : [],
             scanHistory,
           } as CertificateRecord;
         });
 
-        const normalizeTime = (value?: string) => {
-          if (!value) return 0;
-          const date = new Date(value);
-          return Number.isNaN(date.getTime()) ? 0 : date.getTime();
-        };
-
-        const statusPriority = (status: CertificateRecord['status']) => {
-          if (status === 'active') return 3;
-          if (status === 'revoked') return 2;
-          return 1;
-        };
-
-        const groupedCertificates = new Map<string, CertificateRecord>();
-        mappedCertificates.forEach((cert) => {
-          const groupKey = `${cert.graduate.document}|${cert.graduate.program}|${cert.graduate.graduationDate}`;
-          const existing = groupedCertificates.get(groupKey);
-          if (!existing) {
-            groupedCertificates.set(groupKey, cert);
-            return;
-          }
-
-          const mergedRequestHistory = [...existing.requestHistory, ...cert.requestHistory].reduce(
-            (acc, item) => {
-              acc.set(item.id, item);
-              return acc;
-            },
-            new Map<string, CertificateRecord['requestHistory'][number]>()
-          );
-          const mergedScanHistory = [...existing.scanHistory, ...cert.scanHistory].reduce(
-            (acc, item) => {
-              acc.set(item.id, item);
-              return acc;
-            },
-            new Map<string, CertificateRecord['scanHistory'][number]>()
-          );
-          const mergedRequests = Array.from(mergedRequestHistory.values());
-          const mergedScans = Array.from(mergedScanHistory.values());
-
-          const latestCandidate =
-            normalizeTime(cert.generatedAt) > normalizeTime(existing.generatedAt) ? cert : existing;
-
-          groupedCertificates.set(groupKey, {
-            ...latestCandidate,
-            requestCount: mergedRequests.length || 1,
-            qrScanCount: mergedScans.length,
-            viewCount: mergedRequests.length || 1,
-            downloadCount: existing.downloadCount + cert.downloadCount,
-            requestHistory: mergedRequests,
-            scanHistory: mergedScans,
-            firstRequestedAt:
-              normalizeTime(existing.firstRequestedAt) === 0
-                ? cert.firstRequestedAt
-                : normalizeTime(cert.firstRequestedAt) === 0
-                ? existing.firstRequestedAt
-                : normalizeTime(cert.firstRequestedAt) < normalizeTime(existing.firstRequestedAt)
-                ? cert.firstRequestedAt
-                : existing.firstRequestedAt,
-            lastRequestedAt:
-              normalizeTime(cert.lastRequestedAt) > normalizeTime(existing.lastRequestedAt)
-                ? cert.lastRequestedAt
-                : existing.lastRequestedAt,
-            lastActivity:
-              normalizeTime(cert.lastActivity) > normalizeTime(existing.lastActivity)
-                ? cert.lastActivity
-                : existing.lastActivity,
-            status:
-              statusPriority(cert.status) > statusPriority(existing.status)
-                ? cert.status
-                : existing.status,
-          });
-        });
-
-      const uniqueCertificates = Array.from(groupedCertificates.values());
-
-      setCertificates(uniqueCertificates);
+      setCertificates(mappedCertificates);
     } catch (error) {
       console.error('Error cargando certificados:', error);
       toast.error('No se pudieron cargar los certificados', {
@@ -487,13 +401,21 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       diplomaNumber: cert.diplomaNumber || '',
       actaNumber: cert.actaNumber || '',
       campus: cert.campus || cert.graduate.campus || '',
-      seccionalName: '',
+      seccionalName:
+        (cert as any)?.seccionalName ||
+        cert.graduate.seccionalName ||
+        '',
     });
     setIsEditGraduateModalOpen(true);
     setIsLoadingGraduate(true);
 
     try {
-      if (!cert.graduateId) {
+      const isValidGraduateId =
+        typeof cert.graduateId === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cert.graduateId) &&
+        !/^([0-9a-f])\1{7}-\1{4}-\1{4}-\1{4}-\1{12}$/i.test(cert.graduateId);
+
+      if (!isValidGraduateId || cert.requester.type !== 'graduado') {
         setIsLoadingGraduate(false);
         return;
       }
@@ -517,9 +439,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       const status = error?.response?.status;
       if (status === 404) {
         setIsExistingGraduate(false);
-        toast.info('Graduado no encontrado', {
-          description: 'Este certificado no tiene graduado asociado; puedes completar los datos aquí.',
-        });
       } else {
         console.error('Error cargando graduado:', error);
         toast.error('No se pudo cargar el graduado', {
@@ -561,6 +480,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             programType: nextForm.programType,
             degreeTitle: nextForm.degreeTitle,
             campus: nextForm.campus,
+            seccionalName: nextForm.seccionalName,
             diplomaNumber,
             actaNumber,
           }
@@ -574,6 +494,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             diplomaNumber,
             actaNumber,
             campus: nextForm.campus,
+            seccionalName: nextForm.seccionalName,
           };
 
       await graduadosService.certificados.actualizar(
@@ -581,7 +502,17 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         certificatePayload
       );
 
-      if (selectedCertificate.graduateId) {
+      const canUpdateGraduate =
+        isExistingGraduate &&
+        selectedCertificate.graduateId &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          selectedCertificate.graduateId,
+        ) &&
+        !/^([0-9a-f])\1{7}-\1{4}-\1{4}-\1{4}-\1{12}$/i.test(
+          selectedCertificate.graduateId,
+        );
+
+      if (canUpdateGraduate) {
         const graduatePayload: Partial<GraduadoData> = isExistingGraduate
           ? {
               fullName: nextForm.fullName,
@@ -610,7 +541,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
         await graduadosService.graduados.actualizar(
           selectedCertificate.graduateId,
-          graduatePayload
+          graduatePayload,
         );
       }
 
@@ -626,6 +557,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   program: nextForm.programName,
                   graduationDate: nextForm.graduationDate,
                   campus: nextForm.campus,
+                  seccionalName: nextForm.seccionalName,
                 },
                 programType: nextForm.programType,
                 degreeTitle: nextForm.degreeTitle,
@@ -857,141 +789,237 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     return `${window.location.origin}/verificar-certificado/${qrCode}`;
   };
 
-  const handleDownloadQR = () => {
-    if (!qrPreviewCertificate) return;
-
+  const buildExportRows = (items: CertificateRecord[]) => {
+    return items.map((cert) => ({
+      certificado: cert.certificateNumber,
+      estado: cert.status,
+      codigo_qr: cert.qrCode,
+      url_verificacion: getPublicValidationUrl(cert.qrCode),
+      graduado: cert.graduate.fullName,
+      documento: cert.graduate.document,
+      programa: cert.graduate.program,
+      fecha_grado: cert.graduate.graduationDate || '',
+      solicitante: cert.requester.name,
+      email_solicitante: cert.requester.email,
+      tipo_solicitante: cert.requester.type,
+      solicitudes: cert.requestCount,
+      escaneos: cert.qrScanCount,
+      fecha_generacion: cert.generatedAt,
+      ultima_solicitud: cert.lastRequestedAt,
+    }));
+  };
+  
+  const descargarCSV = (rows: Array<Record<string, string | number>>) => {
+    if (!rows.length) return;
+    const delimiter = ';';
+    const headers = Object.keys(rows[0]);
+    const csvHeaders = headers.join(delimiter);
+    const csvRows = rows.map((row) =>
+      headers
+        .map((header) => {
+          const value = row[header];
+          const text = value === undefined || value === null ? '' : String(value);
+          return `"${text.replace(/"/g, '""')}"`;
+        })
+        .join(delimiter),
+    );
+    const csv = `\uFEFF${[csvHeaders, ...csvRows].join('\n')}`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `verificacion-titulos-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+  
+  const handleExportCertificates = () => {
+    if (!filteredCertificates.length) {
+      toast.info('No hay registros para exportar');
+      return;
+    }
+  
+    const start = exportStartDate ? new Date(`${exportStartDate}T00:00:00`) : null;
+    const end = exportEndDate ? new Date(`${exportEndDate}T23:59:59.999`) : null;
+  
+    if (start && Number.isNaN(start.getTime())) {
+      toast.error('Fecha inicial invalida');
+      return;
+    }
+  
+    if (end && Number.isNaN(end.getTime())) {
+      toast.error('Fecha final invalida');
+      return;
+    }
+  
+    if (start && end && start > end) {
+      toast.error('La fecha inicial debe ser menor o igual a la fecha final');
+      return;
+    }
+  
+    const filteredByDate = filteredCertificates.filter((cert) => {
+      if (!start && !end) return true;
+      const candidate = cert.generatedAt ? new Date(cert.generatedAt) : null;
+      if (!candidate || Number.isNaN(candidate.getTime())) return false;
+      const afterStart = !start || candidate >= start;
+      const beforeEnd = !end || candidate <= end;
+      return afterStart && beforeEnd;
+    });
+  
+    if (!filteredByDate.length) {
+      toast.info('No hay registros en el rango seleccionado');
+      return;
+    }
+  
+    setIsExporting(true);
     try {
-      // Crear un canvas para generar la imagen del QR
+      const rows = buildExportRows(filteredByDate);
+      descargarCSV(rows);
+      toast.success('Exportacion completada', {
+        description: `${rows.length} registros exportados`,
+      });
+      setIsExportModalOpen(false);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  const handleDownloadQR = async () => {
+    if (!qrPreviewCertificate) return;
+  
+    try {
+      const url = getPublicValidationUrl(qrPreviewCertificate.qrCode);
+      const qrCanvas = qrCanvasRef.current?.querySelector('canvas');
+      const qrDataUrl = qrCanvas?.toDataURL('image/png');
+  
+      if (!qrDataUrl) {
+        toast.error('No se pudo generar el QR');
+        return;
+      }
+  
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-
-      // Tamaño del canvas
+  
       const width = 800;
       const height = 1000;
       canvas.width = width;
       canvas.height = height;
-
-      // Fondo blanco
+  
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, width, height);
-
-      // Header con gradiente ESAP
+  
       const gradient = ctx.createLinearGradient(0, 0, width, 0);
       gradient.addColorStop(0, '#003DA5');
       gradient.addColorStop(1, '#0052D9');
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, 180);
-
-      // Logo ESAP (texto)
+  
       ctx.fillStyle = '#FFFFFF';
       ctx.font = 'bold 48px Arial';
       ctx.textAlign = 'center';
       ctx.fillText('ESAP', width / 2, 70);
-      
+  
       ctx.font = '20px Arial';
-      ctx.fillText('Escuela Superior de Administración Pública', width / 2, 110);
-      
+      ctx.fillText('Escuela Superior de Administracion Publica', width / 2, 110);
+  
       ctx.font = 'bold 24px Arial';
-      ctx.fillText('Código QR de Validación', width / 2, 150);
-
-      // Área del QR (simulado)
+      ctx.fillText('Codigo QR de Validacion', width / 2, 150);
+  
       const qrSize = 400;
       const qrX = (width - qrSize) / 2;
       const qrY = 220;
-
-      // Fondo del QR
+  
       ctx.fillStyle = '#F9FAFB';
       ctx.fillRect(qrX - 20, qrY - 20, qrSize + 40, qrSize + 40);
-
-      // Border del QR
+  
       ctx.strokeStyle = qrPreviewCertificate.status === 'active' ? '#10B981' : '#9CA3AF';
       ctx.lineWidth = 4;
       ctx.strokeRect(qrX - 20, qrY - 20, qrSize + 40, qrSize + 40);
-
-      // Simulación del QR (patrón de cuadrícula)
-      const cellSize = 10;
-      const cells = qrSize / cellSize;
-      ctx.fillStyle = '#000000';
-
-      // Patrón pseudo-aleatorio basado en el código QR
-      const seed = qrPreviewCertificate.qrCode.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      for (let i = 0; i < cells; i++) {
-        for (let j = 0; j < cells; j++) {
-          if ((i * j + seed) % 3 === 0) {
-            ctx.fillRect(qrX + i * cellSize, qrY + j * cellSize, cellSize - 1, cellSize - 1);
-          }
-        }
-      }
-
-      // Código QR en texto
+  
+      const qrImage = new Image();
+      const qrLoaded = new Promise((resolve, reject) => {
+        qrImage.onload = () => resolve(undefined);
+        qrImage.onerror = () => reject(new Error('No se pudo cargar el QR'));
+      });
+      qrImage.src = qrDataUrl;
+      await qrLoaded;
+      ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+  
       ctx.fillStyle = '#1F2937';
       ctx.font = 'bold 18px monospace';
       ctx.textAlign = 'center';
       ctx.fillText(qrPreviewCertificate.qrCode, width / 2, qrY + qrSize + 60);
-
-      // Información del certificado
+  
       const infoY = qrY + qrSize + 110;
       ctx.font = '16px Arial';
       ctx.textAlign = 'left';
       ctx.fillStyle = '#4B5563';
-
+  
       const leftMargin = 80;
       ctx.fillText(`Graduado: ${qrPreviewCertificate.graduate.fullName}`, leftMargin, infoY);
       ctx.fillText(`Documento: ${qrPreviewCertificate.graduate.document}`, leftMargin, infoY + 30);
       ctx.fillText(`Programa: ${qrPreviewCertificate.graduate.program}`, leftMargin, infoY + 60);
-      ctx.fillText(`N° Certificado: ${qrPreviewCertificate.certificateNumber}`, leftMargin, infoY + 90);
-
-      // Estado
+      ctx.fillText(`N? Certificado: ${qrPreviewCertificate.certificateNumber}`, leftMargin, infoY + 90);
+  
       const statusY = infoY + 140;
       ctx.font = 'bold 18px Arial';
       if (qrPreviewCertificate.status === 'active') {
         ctx.fillStyle = '#10B981';
-        ctx.fillText('✓ CERTIFICADO ACTIVO Y VÁLIDO', leftMargin, statusY);
+        ctx.fillText('CERTIFICADO ACTIVO Y VALIDO', leftMargin, statusY);
       } else {
         ctx.fillStyle = '#EF4444';
-        ctx.fillText('✗ CERTIFICADO REVOCADO', leftMargin, statusY);
+        ctx.fillText('CERTIFICADO REVOCADO', leftMargin, statusY);
       }
-
-      // URL de validación
+  
       ctx.font = '14px Arial';
       ctx.fillStyle = '#6B7280';
       ctx.textAlign = 'center';
-      const url = getPublicValidationUrl(qrPreviewCertificate.qrCode);
       ctx.fillText('Valida este certificado en:', width / 2, height - 80);
       ctx.fillStyle = '#003DA5';
       ctx.font = 'bold 16px monospace';
       ctx.fillText(url, width / 2, height - 50);
-
-      // Footer
+  
       ctx.fillStyle = '#9CA3AF';
       ctx.font = '12px Arial';
-      ctx.fillText(`Generado el ${new Date().toLocaleDateString('es-CO', { 
-        year: 'numeric', 
-        month: 'long', 
+      ctx.fillText(`Generado el ${new Date().toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
       })}`, width / 2, height - 20);
-
-      // Convertir canvas a blob y descargar
+  
       canvas.toBlob((blob) => {
         if (!blob) return;
-        
-        const url = URL.createObjectURL(blob);
+
+        const downloadUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = url;
+        link.href = downloadUrl;
         link.download = `QR-${qrPreviewCertificate.certificateNumber}-${qrPreviewCertificate.graduate.document}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(downloadUrl);
+
+        setQrPreviewCertificate((prev) =>
+          prev ? { ...prev, downloadCount: prev.downloadCount + 1 } : prev
+        );
+        setCertificates((prev) =>
+          prev.map((item) =>
+            item.id === qrPreviewCertificate.id
+              ? { ...item, downloadCount: item.downloadCount + 1 }
+              : item
+          )
+        );
 
         toast.success('QR descargado exitosamente', {
-          description: `El código QR del certificado ${qrPreviewCertificate.certificateNumber} se ha descargado.`
+          description: `El codigo QR del certificado ${qrPreviewCertificate.certificateNumber} se ha descargado.`
         });
       }, 'image/png');
-
+  
     } catch (error) {
       console.error('Error al generar el QR:', error);
       toast.error('Error al descargar el QR', {
@@ -999,7 +1027,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       });
     }
   };
-
   const clearAllFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
@@ -1027,14 +1054,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               color: '#1F2937'
             }}
           >
-            Cada combinación única genera <strong>UN certificado con QR único</strong>. Si la misma persona y entidad vuelve a solicitarlo, se <strong>reutiliza el QR existente</strong> (no se genera nuevo).
+            Cada solicitud genera <strong>un certificado con QR unico</strong>. Los certificados previos se mantienen como historial, pero no se reutilizan.
           </p>
         </div>
       </motion.div>
 
           <div className="flex justify-end">
             <button
-              onClick={() => toast.info('Exportar solicitudes de certificados')}
+              onClick={() => setIsExportModalOpen(true)}
               className="inline-flex items-center justify-center gap-2 transition-all"
               style={{
                 background: '#FFFFFF',
@@ -1073,13 +1100,12 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           </div>
           <div className="flex-1">
             <h3 className="font-semibold text-sm text-gray-900 mb-1">
-              🔄 Lógica de QR Único (Reutilizable)
+              Logica de QR unico
             </h3>
             <p className="text-sm text-gray-700">
-              <strong>1)</strong> Se solicita certificado (graduado + entidad) → 
-              <strong> 2)</strong> Sistema verifica si YA existe esa combinación → 
-              <strong> 3a)</strong> Si NO existe: genera certificado + QR nuevo · 
-              <strong> 3b)</strong> Si SÍ existe: reutiliza QR existente (no genera nuevo)
+              <strong>1)</strong> Se solicita certificado (graduado + entidad) {'->'}
+              <strong> 2)</strong> El sistema genera un certificado con QR nuevo {'->'}
+              <strong> 3)</strong> El historial conserva certificados anteriores para trazabilidad
             </p>
           </div>
         </div>
@@ -1332,11 +1358,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           title="Ver código QR único"
                         >
                           <QrCode className="w-5 h-5" style={{ color: cert.status === 'active' ? '#F59E0B' : '#9CA3AF' }} />
-                          {cert.requestCount > 1 && (
-                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                              {cert.requestCount}
-                            </div>
-                          )}
                         </button>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 mb-0.5">
@@ -1350,11 +1371,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           <p className="text-xs truncate font-mono" style={{ color: '#6B7280' }}>
                             {cert.qrCode}
                           </p>
-                          {cert.requestCount > 1 && (
-                            <p className="text-xs font-semibold" style={{ color: '#3B82F6' }}>
-                              Solicitado {cert.requestCount} veces
-                            </p>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -1490,6 +1506,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 </div>
                               </div>
                               <div className="flex items-start gap-2">
+                                <MapPin className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                <div>
+                                  <p className="text-xs text-gray-600">Seccional</p>
+                                  <p className="font-semibold text-gray-900">
+                                    {cert.graduate.seccionalName || 'Sin asignar'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-2">
                                 <Calendar className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Graduación</p>
@@ -1539,7 +1564,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Solicitud</p>
                                   <p className="font-semibold text-gray-900">
-                                    {new Date(cert.generatedAt).toLocaleString('es-CO')}
+                                    {formatDateTime(cert.lastRequestedAt || cert.generatedAt, {
+                                      timeZone: 'America/Bogota',
+                                    })}
                                   </p>
                                 </div>
                               </div>
@@ -1775,7 +1802,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
             {/* Modal: Editar Certificado */}
       <Dialog open={isEditGraduateModalOpen} onOpenChange={setIsEditGraduateModalOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="w-[92vw] max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit className="w-5 h-5" style={{ color: '#003DA5' }} />
@@ -2074,9 +2101,72 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         </DialogContent>
       </Dialog>
 
+      {/* Modal: Exportar Certificados */}
+      <Dialog open={isExportModalOpen} onOpenChange={setIsExportModalOpen}>
+        <DialogContent className="w-[92vw] max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="w-5 h-5" style={{ color: '#003DA5' }} />
+              Exportar Verificaciones de Titulos
+            </DialogTitle>
+            <DialogDescription>
+              Filtra por fecha de generacion del certificado y descarga el CSV.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="export-start">Fecha inicial</Label>
+              <Input
+                id="export-start"
+                type="date"
+                value={exportStartDate}
+                onChange={(e) => setExportStartDate(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="export-end">Fecha final</Label>
+              <Input
+                id="export-end"
+                type="date"
+                value={exportEndDate}
+                onChange={(e) => setExportEndDate(e.target.value)}
+              />
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-700">
+                Se exportan los registros que cumplan con los filtros actuales y el rango de fechas.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <button
+              onClick={() => setIsExportModalOpen(false)}
+              className="px-4 py-2 text-sm font-medium rounded-lg border-2"
+              style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+              disabled={isExporting}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleExportCertificates}
+              className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+              disabled={isExporting}
+            >
+              <Download className="w-4 h-4" />
+              {isExporting ? 'Exportando...' : 'Exportar'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal: Ver Código QR Único */}
       <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[92vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <QrCode className="w-5 h-5 text-amber-600" />
@@ -2102,7 +2192,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   <div className="text-center p-2">
                     {qrPreviewCertificate?.qrCode ? (
                       <QRCodeSVG
-                        value={qrPreviewCertificate.qrCode}
+                        value={getPublicValidationUrl(qrPreviewCertificate.qrCode)}
                         size={160}
                         level="M"
                         includeMargin
@@ -2115,6 +2205,17 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     </p>
                   </div>
                 </div>
+
+                {qrPreviewCertificate?.qrCode && (
+                  <div ref={qrCanvasRef} className="sr-only">
+                    <QRCodeCanvas
+                      value={getPublicValidationUrl(qrPreviewCertificate.qrCode)}
+                      size={400}
+                      level="M"
+                      includeMargin
+                    />
+                  </div>
+                )}
 
                 {/* Badge de Estado */}
                 {qrPreviewCertificate?.status === 'active' ? (
@@ -2170,55 +2271,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   <span className="ml-2 text-xs text-gray-500">({qrPreviewCertificate?.requester.type === 'graduado' ? 'Graduado' : 'Entidad'})</span>
                 </div>
                 <div>
-                  <span className="text-gray-600">Veces solicitado:</span>
-                  <span className="ml-2 font-semibold text-gray-900">{qrPreviewCertificate?.requestCount}</span>
-                  {qrPreviewCertificate && qrPreviewCertificate.requestCount > 1 && (
-                    <span className="ml-2 text-xs font-semibold text-blue-600">
-                      (QR reutilizado {qrPreviewCertificate.requestCount - 1} {qrPreviewCertificate.requestCount - 1 === 1 ? 'vez' : 'veces'})
-                    </span>
-                  )}
-                </div>
-                <div>
                   <span className="text-gray-600">Veces escaneado:</span>
                   <span className="ml-2 font-semibold text-gray-900">{qrPreviewCertificate?.qrScanCount}</span>
                 </div>
               </div>
             </div>
-
-            {/* Historial de Solicitudes (si hay múltiples) */}
-            {qrPreviewCertificate && qrPreviewCertificate.requestCount > 1 && (
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4 text-purple-600" />
-                  Historial de Solicitudes (QR Reutilizado)
-                </h4>
-                <div className="space-y-3">
-                  {qrPreviewCertificate.requestHistory.map((req, index) => (
-                    <div key={req.id} className="flex items-start gap-3 text-sm bg-white rounded-lg p-3 border border-purple-100">
-                      <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold flex-shrink-0">
-                        {index + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 mb-1">{req.requestedBy}</p>
-                        <p className="text-gray-600 mb-1">
-                          📅 {formatDateTime(req.requestedAt, {
-                            year: 'numeric',
-                            month: 'short',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                        <p className="text-gray-500 font-mono text-xs">🌐 IP: {req.ipAddress}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-purple-700 mt-3 font-medium">
-                  💡 Este QR NO se generó nuevamente. Se reutilizó el existente para la misma combinación.
-                </p>
-              </div>
-            )}
 
             {/* Historial de Validaciones (Escaneos del QR) */}
             {qrPreviewCertificate && qrPreviewCertificate.scanHistory.length > 0 && (
@@ -2305,9 +2362,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   <Copy className="w-4 h-4 text-gray-600" />
                 </button>
               </div>
-              <p className="text-xs text-gray-600 mt-2">
-                🔒 Este QR es <strong>único e irrepetible</strong> para esta combinación de graduado + entidad
-              </p>
             </div>
 
             {/* Explicación de Funcionamiento */}

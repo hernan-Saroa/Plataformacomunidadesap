@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Req, HttpCode, HttpStatus, Res, StreamableFile } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Req, Query, HttpCode, HttpStatus, Res, StreamableFile } from '@nestjs/common';
 import type { Response } from 'express';
 import { CertificatesService } from './certificates.service';
 import { CertificateRequest } from './certificate-request.entity';
@@ -45,7 +45,30 @@ export class CertificatesController {
   // ============================================
 
   @Get('certificados')
-  async getAllCertificados() {
+  async getAllCertificados(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('cargo') cargo?: string,
+    @Query('tipoVinculacion') tipoVinculacion?: string,
+  ) {
+    const parsedPage = page ? Number.parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
+    const hasFilters = Boolean(search || status || cargo || tipoVinculacion);
+    const hasPagination = Number.isFinite(parsedPage) || Number.isFinite(parsedLimit) || hasFilters;
+
+    if (hasPagination) {
+      return await this.certificatesService.findCertificadosPaginados({
+        page: Number.isFinite(parsedPage) ? parsedPage as number : 1,
+        limit: Number.isFinite(parsedLimit) ? parsedLimit as number : 10,
+        search,
+        status,
+        cargo,
+        tipoVinculacion,
+      });
+    }
+
     return await this.certificatesService.findAllCertificados();
   }
 

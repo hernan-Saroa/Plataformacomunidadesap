@@ -26,6 +26,8 @@ export const serviceMap = {
 
   // Legal Management Service - Puerto 3008
   legal: USE_LOCALHOST ? 'http://localhost:3008' : 'http://legal-management-service:3008',
+  'legal-management': USE_LOCALHOST ? 'http://localhost:3008' : 'http://legal-management-service:3008',
+  'legal-management-service': USE_LOCALHOST ? 'http://localhost:3008' : 'http://legal-management-service:3008',
 
   // Notifications Service - Puerto 3009
   notificaciones: USE_LOCALHOST ? 'http://localhost:3009' : 'http://notifications-service:3009',

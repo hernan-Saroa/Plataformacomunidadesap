@@ -15,7 +15,6 @@ interface ModalSeguimientoProps {
     onSuccess: () => void;
 }
 
-// const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
 const API_URL = buildApiUrl('legal', '/planes-mejoramiento');
 
 export function ModalSeguimiento({ open, onClose, plan, onSuccess }: ModalSeguimientoProps) {
@@ -103,3 +102,4 @@ export function ModalSeguimiento({ open, onClose, plan, onSuccess }: ModalSeguim
         </Dialog>
     );
 }
+

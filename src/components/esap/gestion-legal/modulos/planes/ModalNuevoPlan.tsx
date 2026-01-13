@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from '../../../../ui/textarea';
 import { toast } from 'sonner';
 import { legalService } from '../../../../../services/api/legal.service';
+import { FileText, Calendar, Building, User, Info, Target } from 'lucide-react';
 
 interface ModalNuevoPlanProps {
     open: boolean;
@@ -16,49 +17,57 @@ interface ModalNuevoPlanProps {
 
 export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps) {
     const [loading, setLoading] = useState(false);
-    const [origen, setOrigen] = useState<string>('RIESGO');
-    const [riesgos, setRiesgos] = useState<any[]>([]);
-    const [abogados, setAbogados] = useState<any[]>([]);
 
+    // Data Sources
+    const [abogados, setAbogados] = useState<any[]>([]);
+    const [riesgos, setRiesgos] = useState<any[]>([]);
+
+    // Form State
     const [formData, setFormData] = useState({
+        // Info Básica
         titulo: '',
-        descripcion: '',
-        origen: 'RIESGO',
-        origenId: '',
+        origen: '', // Ente de Control
+        documentoOrigen: '',
+        origenId: '', // ID Riesgo si aplica
+        severidad: '', // ADDED
+
+        // Responsabilidad
+        areaResponsable: '',
         responsableId: '',
+
+        // Cronograma
+        fechaRecepcion: '',
+        fechaRespuesta: '',
         fechaInicio: '',
         fechaFinEstimada: '',
-        presupuesto: 0
+
+        // Estado / Otros
+        estado: 'ABIERTO',
+        presupuesto: 0,
+        descripcion: ''
     });
 
     useEffect(() => {
-        const loadInitialData = async () => {
-            try {
-                const data = await legalService.getAbogadosDashboard();
-                setAbogados(data);
-            } catch (error) {
-                console.error('Error fetching abogados', error);
-                toast.error('Error cargando lista de abogados');
-            }
-        };
-
         if (open) {
             loadInitialData();
         }
+    }, [open]);
 
-        if (open && origen === 'RIESGO') {
-            fetchRiesgos();
-        }
-    }, [open, origen]);
-
-    const fetchRiesgos = async () => {
+    const loadInitialData = async () => {
         try {
-            const data = await legalService.getRiesgosDisponibles();
-            setRiesgos(data);
+            const data = await legalService.getAbogadosDashboard();
+            setAbogados(data);
+
+            // Cargar riesgos por si el origen es Riesgo
+            const riskData = await legalService.getRiesgosDisponibles();
+            setRiesgos(riskData);
         } catch (error) {
-            console.error('Error fetching risks', error);
-            toast.error('Error cargando riesgos disponibles');
+            console.error('Error loading data', error);
         }
+    };
+
+    const handleChange = (field: string, value: any) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -67,7 +76,6 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
         try {
             await legalService.createPlanMejoramiento({
                 ...formData,
-                origen,
                 presupuesto: Number(formData.presupuesto)
             });
             toast.success('Plan creado exitosamente');
@@ -83,133 +91,219 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>Nuevo Plan de Mejoramiento</DialogTitle>
+            <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto p-0 gap-0">
+                <DialogHeader className="p-6 pb-2 border-b bg-gray-50/50 sticky top-0 z-10 backdrop-blur-sm">
+                    <DialogTitle className="text-xl text-[#003DA5] flex items-center gap-2">
+                        <FileText className="w-5 h-5" />
+                        Crear Nuevo Plan de Mejoramiento
+                    </DialogTitle>
+                    <p className="text-sm text-gray-500">Registra un nuevo plan derivado de auditoría, hallazgo o riesgo.</p>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit} className="space-y-4 py-4">
-                    <div className="grid gap-2">
-                        <Label>Título del Plan</Label>
-                        <Input
-                            required
-                            placeholder="Ej: Implementación de ISO 27001"
-                            value={formData.titulo}
-                            onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
-                        />
-                    </div>
+                <form onSubmit={handleSubmit} className="p-6 space-y-6">
 
-                    <div className="grid gap-2">
-                        <Label>Origen</Label>
-                        <Select
-                            value={origen}
-                            onValueChange={(val: string) => {
-                                setOrigen(val);
-                                setFormData({ ...formData, origen: val, origenId: '' });
-                            }}
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Seleccione origen" />
-                            </SelectTrigger>
-                            <SelectContent className="z-[10000] w-[var(--radix-select-trigger-width)]">
-                                <SelectItem value="RIESGO">Riesgo Materializado (Obligatorio)</SelectItem>
-                                <SelectItem value="AUDITORIA_INTERNA">Auditoría Interna</SelectItem>
-                                <SelectItem value="AUDITORIA_EXTERNA">Auditoría Externa</SelectItem>
-                                <SelectItem value="CONTROL_INTERNO">Control Interno</SelectItem>
-                                <SelectItem value="ORGANO_CONTROL">Órgano de Control</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    {/* SECCIÓN 1: INFORMACIÓN BÁSICA */}
+                    <div className="space-y-4">
+                        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 border-b pb-1">
+                            <Info className="w-4 h-4 text-blue-600" />
+                            Información Básica del Plan
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Ente de Control / Origen <span className="text-red-500">*</span></Label>
+                                <Select
+                                    value={formData.origen}
+                                    onValueChange={(val) => handleChange('origen', val)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Seleccionar ente..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="CONTRALORIA_GENERAL">🏛️ Contraloría General</SelectItem>
+                                        <SelectItem value="PROCURADURIA_GENERAL">⚖️ Procuraduría General</SelectItem>
+                                        <SelectItem value="CONTROL_INTERNO">🔍 Oficina Control Interno</SelectItem>
+                                        <SelectItem value="AUDITORIA_EXTERNA">📋 Auditoría Externa</SelectItem>
+                                        <SelectItem value="RIESGO">⚠️ Riesgo Materializado</SelectItem>
+                                        <SelectItem value="AUTOEVALUACION">🔄 Autoevaluación</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
 
-                    {origen === 'RIESGO' && (
-                        <div className="grid gap-2">
-                            <Label>Riesgo Asociado</Label>
-                            <Select
-                                value={formData.origenId}
-                                onValueChange={(val: string) => setFormData({ ...formData, origenId: val })}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccione Riesgo" />
-                                </SelectTrigger>
-                                <SelectContent className="z-[10000] max-h-[300px] w-[var(--radix-select-trigger-width)]">
-                                    {riesgos.map((r) => (
-                                        <SelectItem key={r.id} value={r.id} className="whitespace-normal h-auto py-2">
-                                            {r.nombre} ({r.zonaInherente || 'N/A'})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
+                            {formData.origen === 'RIESGO' ? (
+                                <div className="space-y-2">
+                                    <Label>Riesgo Asociado <span className="text-red-500">*</span></Label>
+                                    <Select
+                                        value={formData.origenId}
+                                        onValueChange={(val) => handleChange('origenId', val)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccione riesgo..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {riesgos.map(r => (
+                                                <SelectItem key={r.id} value={r.id}>{r.nombre}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <Label>Documento de Origen <span className="text-red-500">*</span></Label>
+                                    <Input
+                                        placeholder="Ej: Informe de Auditoría CGR No. 075-2025"
+                                        value={formData.documentoOrigen}
+                                        onChange={(e) => handleChange('documentoOrigen', e.target.value)}
+                                        required={formData.origen !== 'RIESGO'}
+                                    />
+                                </div>
+                            )}
 
-                    <div className="grid gap-2">
-                        <Label>Descripción / Hallazgo</Label>
-                        <Textarea
-                            placeholder="Detalle el hallazgo o la justificación del plan..."
-                            value={formData.descripcion}
-                            onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                        />
-                    </div>
+                            {/* SEVERIDAD ADDED */}
+                            <div className="space-y-2">
+                                <Label>Severidad del Hallazgo</Label>
+                                <Select
+                                    value={formData.severidad}
+                                    onValueChange={(val) => handleChange('severidad', val)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Seleccione..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="CRITICO">🔴 Crítico</SelectItem>
+                                        <SelectItem value="ALTO">🟠 Alto</SelectItem>
+                                        <SelectItem value="MEDIO">🟡 Medio</SelectItem>
+                                        <SelectItem value="BAJO">🟢 Bajo</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                            <Label>Fecha Inicio</Label>
-                            <div className="relative">
+                            <div className="space-y-2">
+                                <Label>Nombre del Plan <span className="text-red-500">*</span></Label>
                                 <Input
-                                    type="date"
+                                    placeholder="Ej: Plan de Mejoramiento Auditoría Regular Vigencia 2024"
+                                    value={formData.titulo}
+                                    onChange={(e) => handleChange('titulo', e.target.value)}
                                     required
-                                    value={formData.fechaInicio}
-                                    onChange={(e) => setFormData({ ...formData, fechaInicio: e.target.value })}
                                 />
                             </div>
                         </div>
-                        <div className="grid gap-2">
-                            <Label>Fecha Fin Estimada</Label>
-                            <Input
-                                type="date"
-                                required
-                                value={formData.fechaFinEstimada}
-                                onChange={(e) => setFormData({ ...formData, fechaFinEstimada: e.target.value })}
-                            />
+                    </div>
+
+                    {/* SECCIÓN 2: RESPONSABILIDAD */}
+                    <div className="space-y-4">
+                        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 border-b pb-1">
+                            <Building className="w-4 h-4 text-blue-600" />
+                            Responsabilidad y Área
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Área Responsable <span className="text-red-500">*</span></Label>
+                                <Input
+                                    placeholder="Ej: Dirección Administrativa y Financiera"
+                                    value={formData.areaResponsable}
+                                    onChange={(e) => handleChange('areaResponsable', e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Responsable del Plan (Abogado) <span className="text-red-500">*</span></Label>
+                                <Select
+                                    value={formData.responsableId}
+                                    onValueChange={(val) => handleChange('responsableId', val)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Seleccione responsable..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {abogados.map(a => (
+                                            <SelectItem key={a.id} value={a.id}>{a.nombreCompleto}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                            <Label>Presupuesto Estimado</Label>
-                            <Input
-                                type="number"
-                                min="0"
-                                value={formData.presupuesto}
-                                onChange={(e) => setFormData({ ...formData, presupuesto: Number(e.target.value) })}
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>Responsable (Abogado)</Label>
-                            <Select
-                                value={formData.responsableId}
-                                onValueChange={(val: string) => setFormData({ ...formData, responsableId: val })}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccione Abogado" />
-                                </SelectTrigger>
-                                <SelectContent className="z-[10000] max-h-[200px]">
-                                    {abogados.map((abogado) => (
-                                        <SelectItem key={abogado.id} value={abogado.id}>
-                                            {abogado.nombreCompleto}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                    {/* SECCIÓN 3: CRONOGRAMA */}
+                    <div className="space-y-4">
+                        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 border-b pb-1">
+                            <Calendar className="w-4 h-4 text-blue-600" />
+                            Cronograma del Plan
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Fecha de Recepción del Hallazgo</Label>
+                                <Input
+                                    type="date"
+                                    value={formData.fechaRecepcion}
+                                    onChange={(e) => handleChange('fechaRecepcion', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Fecha Límite de Respuesta</Label>
+                                <Input
+                                    type="date"
+                                    value={formData.fechaRespuesta}
+                                    onChange={(e) => handleChange('fechaRespuesta', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Fecha de Inicio <span className="text-red-500">*</span></Label>
+                                <Input
+                                    type="date"
+                                    value={formData.fechaInicio}
+                                    onChange={(e) => handleChange('fechaInicio', e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Fecha de Finalización Estimada <span className="text-red-500">*</span></Label>
+                                <Input
+                                    type="date"
+                                    value={formData.fechaFinEstimada}
+                                    onChange={(e) => handleChange('fechaFinEstimada', e.target.value)}
+                                    required
+                                />
+                            </div>
                         </div>
                     </div>
 
-                    <DialogFooter className="mt-6">
-                        <Button type="button" variant="outline" onClick={onClose}>
-                            Cancelar
-                        </Button>
-                        <Button type="submit" disabled={loading} className="bg-[#003DA5] text-white hover:bg-[#002d7a]">
-                            {loading ? 'Creando...' : 'Crear Plan'}
+                    {/* SECCIÓN 4: ESTADO DEL PLAN */}
+                    <div className="space-y-4">
+                        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 border-b pb-1">
+                            <Target className="w-4 h-4 text-blue-600" />
+                            Estado del Plan
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Estado Inicial <span className="text-red-500">*</span></Label>
+                                <Select disabled value="ABIERTO">
+                                    <SelectTrigger className="bg-gray-100">
+                                        <SelectValue placeholder="Estado..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="ABIERTO">📂 En Formulación / Abierto</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* OBSERVACIONES */}
+                    <div className="space-y-2">
+                        <Label>Descripción del Plan / Observaciones</Label>
+                        <Textarea
+                            placeholder="Descripción detallada del plan de mejoramiento, contexto del hallazgo y alcance esperado..."
+                            className="min-h-[100px]"
+                            value={formData.descripcion}
+                            onChange={(e) => handleChange('descripcion', e.target.value)}
+                        />
+                    </div>
+
+                    <DialogFooter className="pt-4 border-t sticky bottom-0 bg-white z-10">
+                        <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+                        <Button type="submit" className="bg-[#003DA5] hover:bg-[#002d7a]" disabled={loading}>
+                            {loading ? 'Guardando...' : 'Crear Plan'}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -217,3 +311,4 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
         </Dialog>
     );
 }
+

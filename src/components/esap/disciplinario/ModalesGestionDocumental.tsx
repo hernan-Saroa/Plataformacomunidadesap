@@ -7,12 +7,67 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/environment';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+
+// Funciones utilitarias globales - disponibles para todos los componentes
+const isUuidLike = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+const formatFileSize = (size?: number) => {
+  if (!size && size !== 0) return '';
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+  }
+  return `${Math.max(1, Math.round(size / 1024))} KB`;
+};
+
+const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
+  const suffix = view ? '?view=true' : '';
+  const basePath = `/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
+  if (API_MODE === 'direct') {
+    return `${MICROSERVICE_URLS['control-disciplinario']}${basePath}`;
+  }
+  return buildApiUrl('control-disciplinario', `/api/v1${basePath}`);
+};
+
+const descargarArchivo = async (url: string, nombre: string) => {
+  try {
+    const token = localStorage.getItem('esap_access_token');
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error('No se pudo descargar el archivo');
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = nombre;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(objectUrl);
+  } catch (error) {
+    console.error('Error descargando archivo', error);
+    toast.error('No se pudo descargar el archivo');
+  }
+};
 import {
   X, Scale, Archive, Mail, Bell, FileCheck, History, Upload, Download,
   Eye, Edit2, Trash2, Plus, Calendar, User, FileText, CheckCircle,
   AlertCircle, Clock, ExternalLink, Link as LinkIcon, Filter, Search,
   FileSignature, Send, Save, Package, Tag,
-  Paperclip, MessageSquare, UserCheck, AlertTriangle, Info, Users, ArrowLeft
+  Paperclip, MessageSquare, UserCheck, AlertTriangle, Info, Users, ArrowLeft,
+  Gavel
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -50,16 +105,17 @@ interface ModalAutosProps {
   proceso: Proceso | null;
   onClose: () => void;
   onCrearAuto: () => void;
+  initialView?: 'lista' | 'crear';
 }
 
-export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosProps) {
-  console.log('ðŸš€ ModalGestionAutos abierto con proceso:', {
+export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView = 'lista' }: ModalAutosProps) {
+  console.log('🚀 ModalGestionAutos abierto con proceso:', {
     id: proceso?.id,
     numeroProceso: proceso?.numeroProceso,
     esUUID: proceso?.id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(proceso.id) : false
   });
 
-  const [vistaActual, setVistaActual] = useState<'lista' | 'crear'>('lista');
+  const [vistaActual, setVistaActual] = useState<'lista' | 'crear'>(initialView);
   const [visorDocumento, setVisorDocumento] = useState<{ show: boolean; documento: any | null }>({ show: false, documento: null });
   const [autos, setAutos] = useState<any[]>([]);
   const [processId, setProcessId] = useState('');
@@ -76,58 +132,6 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const [archivoError, setArchivoError] = useState<string | null>(null);
   const [creandoAuto, setCreandoAuto] = useState(false);
 
-  const isUuidLike = (value: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-
-  const formatFileSize = (size?: number) => {
-    if (!size && size !== 0) return '';
-    if (size >= 1024 * 1024) {
-      return `${(size / (1024 * 1024)).toFixed(2)} MB`;
-    }
-    return `${Math.max(1, Math.round(size / 1024))} KB`;
-  };
-
-  const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
-    const suffix = view ? '?view=true' : '';
-    const basePath = `/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
-    if (API_MODE === 'direct') {
-      return `${MICROSERVICE_URLS['control-disciplinario']}${basePath}`;
-    }
-    return buildApiUrl('control-disciplinario', `/api/v1${basePath}`);
-  };
-
-  const descargarArchivo = async (url: string, nombre: string) => {
-    try {
-      const token = localStorage.getItem('esap_access_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers,
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        throw new Error('No se pudo descargar el archivo');
-      }
-
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = nombre;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      console.error('Error descargando archivo', error);
-      toast.error('No se pudo descargar el archivo');
-    }
-  };
 
   const buildAutoDocumentUrl = (relativeUrl: string) => {
     if (!relativeUrl) return '';
@@ -877,46 +881,6 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
   const [eliminandoEvidencia, setEliminandoEvidencia] = useState(false);
   const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB para evidencias
 
-  const isUuidLike = (value: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-
-  const formatFileSize = (size?: number) => {
-    if (!size && size !== 0) return '';
-    if (size >= 1024 * 1024) {
-      return `${(size / (1024 * 1024)).toFixed(2)} MB`;
-    }
-    return `${Math.max(1, Math.round(size / 1024))} KB`;
-  };
-
-  const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
-    // Backend returns full URL if possible, otherwise construct it
-    // For now assume our service returns full URL or relative to gateway
-    // Just return empty here, rely on what backend sends or existing logic
-    // But we are using the new service which returns Evidencia object with archivoUrl
-    return '';
-  };
-
-  // Helper to get real download URL
-  const getUrl = (doc: any) => {
-    return doc.archivoUrl || '';
-  }
-
-  const descargarArchivo = async (url: string, nombre: string) => {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Error descarga');
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = nombre;
-      link.click();
-      URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      console.error('Error descargando archivo', error);
-      toast.error('No se pudo descargar el archivo');
-    }
-  };
 
   const cargarEvidencias = async (procId: string) => {
     if (!procId) return;
@@ -1357,44 +1321,6 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
   const [eliminandoOficio, setEliminandoOficio] = useState(false);
   const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-  const isUuidLike = (value: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-
-  const formatFileSize = (size?: number) => {
-    if (!size && size !== 0) return '';
-    if (size >= 1024 * 1024) {
-      return `${(size / (1024 * 1024)).toFixed(2)} MB`;
-    }
-    return `${Math.max(1, Math.round(size / 1024))} KB`;
-  };
-
-  const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
-    const suffix = view ? '?view=true' : '';
-    const basePath = `/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
-    if (API_MODE === 'direct') {
-      return `${MICROSERVICE_URLS['control-disciplinario']}${basePath}`;
-    }
-    return buildApiUrl('control-disciplinario', `/api/v1${basePath}`);
-  };
-
-  const descargarArchivo = async (url: string, nombre: string) => {
-    try {
-      const response = await fetch(url, { credentials: 'include' });
-      if (!response.ok) {
-        throw new Error('No se pudo descargar el archivo');
-      }
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = nombre;
-      link.click();
-      URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      console.error('Error descargando archivo', error);
-      toast.error('No se pudo descargar el archivo');
-    }
-  };
 
   const mapOficio = (doc: any, procId: string) => {
     const fileSizeLabel = doc['tamano'] || doc['tamano'] || formatFileSize(doc.fileSize);
