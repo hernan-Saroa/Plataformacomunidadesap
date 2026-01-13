@@ -15,7 +15,7 @@ import { PortalDashboard } from './components/portal/PortalDashboard';
 import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
 import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
-import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
+// import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
@@ -201,7 +201,7 @@ export default function App() {
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
         : [];
       const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL');
       const emailLower = userEmail.toLowerCase();
 
       let nextView: Vista = 'portal';
@@ -219,8 +219,13 @@ export default function App() {
         nextView = 'backoffice';
         nextCurrentView = 'backoffice';
         nextUserType = 'administrativo';
-        module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' : 'control-interno';
-        portalRoles.push('Coordinador de Certificados Laborales');
+        module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
+        : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+        : 'control-interno';
+        const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
+        : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+        : 'Control Interno';
+        portalRoles.push(rolStr);
       } else {
         if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           portalRoles.push('Docente');
@@ -432,7 +437,7 @@ export default function App() {
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
       const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -473,7 +478,9 @@ export default function App() {
           userType = 'administrativo';
           currentView = 'backoffice'
           vistaActualCurrent = 'backoffice';
-          const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' : 'control-interno';
+          const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
+          : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+          : 'control-interno';
           setUserData({
             name: userName,
             email: userEmail,
@@ -481,7 +488,10 @@ export default function App() {
             roles,
             module: module // Módulo específico de acceso
           });
-          portalRoles.push('Coordinador de Certificados Laborales');
+          const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
+          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+          : 'Control Interno';
+          portalRoles.push(rolStr);
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           userType = 'docente';
           portalRoles.push('Docente');
@@ -851,8 +861,8 @@ export default function App() {
       case 'procesos-coactivos-demo':
         return <DemoProcesosCoactivos />;
       
-      case 'edicion-foto-perfil-demo':
-        return <DemoEdicionFotoPerfil />;
+      // case 'edicion-foto-perfil-demo':
+      //   return <DemoEdicionFotoPerfil />;
       
       default:
         return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;

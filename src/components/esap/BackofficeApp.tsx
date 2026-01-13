@@ -176,6 +176,12 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     return (mappings[sidebarModule] as ModuleView) || 'dashboard';
   };
 
+  const currentUser = userData || {
+    name: 'Administrador ESAP',
+    email: 'admin@esap.edu.co',
+    personId: 'admin-001'
+  };
+
   // Extraer nombre del usuario, priorizando userData.name, luego usuario.nombre
   const userName = currentUser.name || 'Administrador ESAP';
 

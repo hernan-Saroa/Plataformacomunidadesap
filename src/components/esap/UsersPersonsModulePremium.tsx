@@ -743,11 +743,11 @@ export function UsersPersonsModulePremium() {
     setLocationFilter("all");
   };
 
-  const hasActiveFilters =
-    searchQuery ||
-    statusFilter !== "all" ||
-    roleFilter !== "all" ||
-    locationFilter !== "all";
+  // const hasActiveFilters =
+  //   searchQuery ||
+  //   statusFilter !== "all" ||
+  //   roleFilter !== "all" ||
+  //   locationFilter !== "all";
 
   // ✅ FILTROS RÁPIDOS POR ROL - Contadores de usuarios por rol
   const quickFiltersData = [
