@@ -28,8 +28,8 @@ export class CertificateValidation {
   @Column({ name: 'user_agent', type: 'text', nullable: true })
   userAgent: string;
 
-  @Column({ length: 255, nullable: true })
-  location: string;
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  location: string | null;
 
   // Resultado de la validación
   @Column({ length: 50 })

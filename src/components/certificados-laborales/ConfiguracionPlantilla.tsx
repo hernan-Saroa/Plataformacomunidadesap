@@ -468,6 +468,10 @@ interface LogCambio {
 
 
 
+  metadata?: Record<string, any>;
+
+
+
 }
 
 
@@ -705,6 +709,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   const [isLoadingHistorial, setIsLoadingHistorial] = useState(false);
   const [historialPage, setHistorialPage] = useState(1);
   const [revertingChangeId, setRevertingChangeId] = useState<string | null>(null);
+  const [historialDirty, setHistorialDirty] = useState(false);
 
   const [activeTab, setActiveTab] = useState<string>(canEdit ? 'Modificacion' : 'historial');
 
@@ -895,11 +900,33 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+  const convertirHtmlATextoPlano = (html: string) => {
+    if (!html) return '';
+    const normalized = html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<\/div>/gi, '\n');
+    if (typeof document === 'undefined') {
+      return normalized.replace(/<[^>]+>/g, '').replace(/\u00a0/g, ' ');
+    }
+    const container = document.createElement('div');
+    container.innerHTML = normalized;
+    return (container.textContent || container.innerText || '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\r\n/g, '\n');
+  };
+
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
   const generarDiffResaltado = (oldHtml: string, newHtml: string) => {
 
 
 
-    const clean = (v: string) => (v || '').replace(/<\/-span[^>]*>/g, '');
+    const clean = (v: string) => convertirHtmlATextoPlano(v || '');
 
 
 
@@ -1039,11 +1066,15 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          if (keep.has(idx) || isSpace) return t;
+          const safeToken = escapeHtml(t);
 
 
 
-          return `<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;">${t}</span>`;
+          if (keep.has(idx) || isSpace) return safeToken;
+
+
+
+          return `<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;">${safeToken}</span>`;
 
 
 
@@ -1083,7 +1114,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-  const limpiarResaltado = (html: string) => (html || '').replace(/<\/-span[^>]*>/g, '');
+  const limpiarResaltado = (html: string) => (html || '').replace(/<\/?span[^>]*>/g, '');
 
 
 
@@ -1678,7 +1709,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       id: cambio.id.toString(),
       fecha: cambio.changedAt,
       usuario: cambio.changedBy || 'Usuario',
-      accion: getAccionTexto(cambio.changeType),
+      accion: getAccionTexto(cambio.changeType, cambio.metadata),
       cambios: [formatearCambio(cambio)],
       versionAnterior: '1.0.0',
       versionNueva: '1.0.0',
@@ -1687,10 +1718,12 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       oldValue: cambio.oldValue,
       newValue: cambio.newValue,
       fieldName: cambio.fieldName,
+      metadata: cambio.metadata,
     }));
 
   const cargarHistorial = async (page: number) => {
     try {
+      if (activeTab !== 'historial') return;
       setIsLoadingHistorial(true);
       const safePage = Math.max(1, page);
       const offset = (safePage - 1) * HISTORIAL_POR_PAGINA;
@@ -1713,8 +1746,19 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   useEffect(() => {
     setHistorialTotal(0);
     setHistorialPage(1);
-    cargarHistorial(1);
+    setLogCambios([]);
+    if (activeTab === 'historial') {
+      cargarHistorial(1);
+    }
   }, [templateType]);
+
+  useEffect(() => {
+    if (activeTab !== 'historial') return;
+    if (isLoadingHistorial) return;
+    if (historialDirty || (logCambios.length === 0 && historialTotal === 0)) {
+      cargarHistorial(historialPage);
+    }
+  }, [activeTab, historialDirty]);
 
 
 
@@ -1726,7 +1770,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-  const getAccionTexto = (changeType: string): string => {
+  const getAccionTexto = (changeType: string, metadata?: Record<string, any>): string => {
 
 
 
@@ -1742,7 +1786,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      'nombre': 'Cambio de Nombre del Firmante',
+      'nombre': metadata?.reset
+        ? 'Restablecimiento del Nombre del Firmante'
+        : 'Cambio de Nombre del Firmante',
 
 
 
@@ -1799,6 +1845,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
       'firma_digital_url': 'Firma digital',
+      'signature_url': 'Firma digital',
+      'signatureUrl': 'Firma digital',
 
 
 
@@ -1877,6 +1925,36 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+
+    if (cambio.changeType === 'logo') {
+      const teniaLogo = Boolean(cambio.oldValue && cambio.oldValue !== 'Sin logo');
+      const tieneLogo = Boolean(cambio.newValue && cambio.newValue !== 'Sin logo');
+
+      if (!teniaLogo && tieneLogo) {
+        return 'Logo institucional: se cargo un nuevo logo';
+      }
+
+      if (teniaLogo && !tieneLogo) {
+        return 'Logo institucional: se elimino el logo';
+      }
+
+      return 'Logo institucional: se actualizo el logo';
+    }
+
+    if (cambio.changeType === 'firma') {
+      const teniaFirma = Boolean(cambio.oldValue && cambio.oldValue !== 'Sin firma');
+      const tieneFirma = Boolean(cambio.newValue && cambio.newValue !== 'Sin firma');
+
+      if (!teniaFirma && tieneFirma) {
+        return 'Firma digital: se cargo una nueva firma';
+      }
+
+      if (teniaFirma && !tieneFirma) {
+        return 'Firma digital: se elimino la firma';
+      }
+
+      return 'Firma digital: se actualizo la firma';
+    }
 
     return `${nombreCampo}: "${valorAnterior}" - "${valorNuevo}"`;
 
@@ -2174,7 +2252,12 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      await recargarHistorial();
+      setHistorialDirty(true);
+
+
+
+
+      await recargarHistorial(true);
 
 
 
@@ -2378,7 +2461,12 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      await recargarHistorial();
+      setHistorialDirty(true);
+
+
+
+
+      await recargarHistorial(true);
 
 
 
@@ -2743,9 +2831,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-  const recargarHistorial = async () => {
+  const recargarHistorial = async (force = false) => {
     try {
+      if (!force && activeTab !== 'historial') return;
       await cargarHistorial(historialPage);
+      setHistorialDirty(false);
     } catch (error) {
       console.error('Error al recargar historial:', error);
     }
@@ -2807,6 +2897,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   const handlePageChange = (page: number) => {
     if (isLoadingHistorial) return;
+    if (activeTab !== 'historial') return;
     if (page === historialPage) return;
     if (page < 1 || page > totalPages) return;
     cargarHistorial(page);
@@ -3037,7 +3128,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      await recargarHistorial();
+      setHistorialDirty(true);
+
+
+
+      await recargarHistorial(true);
 
 
 
@@ -3229,39 +3324,83 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      const contentChanges: any = {
+      const contentChanges: any = {};
 
 
 
-        typographyFont: borrador.tipografia.fuente,
+      let hasContentChanges = false;
 
 
 
-        cargoTitle: borrador.tituloCargo.texto,
+      if (borrador.tipografia.fuente !== plantilla.tipografia.fuente) {
 
 
 
-        certificateContentHtml: borrador.contenidoCertificado.texto,
+        contentChanges.typographyFont = borrador.tipografia.fuente;
 
 
 
-        updatedBy: publishingActor,
+        hasContentChanges = true;
 
 
 
-        status: 'published'
+      }
 
 
 
-      };
+      if (borrador.tituloCargo.texto !== plantilla.tituloCargo.texto) {
 
 
 
+        contentChanges.cargoTitle = borrador.tituloCargo.texto;
 
 
 
+        hasContentChanges = true;
 
-      await certificadosService.plantilla.actualizarContenidoPlantilla(contentChanges, templateType);
+
+
+      }
+
+
+
+      const contenidoNormalizado = normalizarVariables(borrador.contenidoCertificado.texto || '');
+
+
+
+      const contenidoActualNormalizado = normalizarVariables(plantilla.contenidoCertificado.texto || '');
+
+
+
+      if (contenidoNormalizado !== contenidoActualNormalizado) {
+
+
+
+        contentChanges.certificateContentHtml = contenidoNormalizado;
+
+
+
+        hasContentChanges = true;
+
+
+
+      }
+
+
+
+      if (hasContentChanges) {
+
+
+
+        contentChanges.updatedBy = publishingActor;
+
+
+
+        await certificadosService.plantilla.actualizarContenidoPlantilla(contentChanges, templateType);
+
+
+
+      }
 
 
 
@@ -3321,7 +3460,12 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      await recargarHistorial();
+      setHistorialDirty(true);
+
+
+
+
+      await recargarHistorial(true);
 
 
 
@@ -6946,6 +7090,29 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+                          {log.changeType === 'titulo_cargo' && (
+
+                            <div className="relative">
+
+                              <div className="p-3 rounded-xl border-2 border-sky-300 bg-gradient-to-br from-sky-50 to-sky-100 shadow-sm">
+
+                                <Type className="w-6 h-6 text-sky-600" strokeWidth={2.5} />
+
+                              </div>
+
+                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-sky-500 rounded-full flex items-center justify-center">
+
+                                <span className="text-[8px] font-bold text-white">TC</span>
+
+                              </div>
+
+                            </div>
+
+                          )}
+
+
+
+
                           {log.changeType === 'contenido' && (
 
 
@@ -7668,6 +7835,60 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+                              {log.changeType === 'titulo_cargo' && log.oldValue && log.newValue && (
+
+                                <div className="mb-3 p-3 bg-white rounded-md border border-sky-100">
+
+                                  <div className="flex flex-col gap-3">
+
+                                    <div className="flex items-center gap-2">
+
+                                      <div className="w-20 text-xs font-semibold text-gray-600">Anterior:</div>
+
+                                      <div className="flex-1 p-3 bg-gray-50 rounded-md border border-gray-200">
+
+                                        <p className="text-xs text-gray-800 whitespace-pre-wrap leading-6">
+
+                                          {log.oldValue}
+
+                                        </p>
+
+                                      </div>
+
+                                    </div>
+
+                                    <div className="flex items-center justify-center">
+
+                                      <svg className="w-5 h-5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+
+                                      </svg>
+
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+
+                                      <div className="w-20 text-xs font-semibold text-sky-700">Nuevo:</div>
+
+                                      <div className="flex-1 p-3 bg-sky-50 rounded-md border border-sky-200">
+
+                                        <p className="text-xs text-sky-900 whitespace-pre-wrap leading-6">
+
+                                          {log.newValue}
+
+                                        </p>
+
+                                      </div>
+
+                                    </div>
+
+                                  </div>
+
+                                </div>
+
+                              )}
+
                               {log.changeType === 'contenido' && (
 
 
@@ -7893,34 +8114,14 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
                                         <div
-
-
-
                                           className="text-xs text-teal-900 whitespace-pre-wrap"
-
-
-
-                                          dangerouslySetInnerHTML={{ __html: log.newValue }}
-
-
-
                                           style={{
-
-
-
                                             wordBreak: 'break-word',
-
-
-
                                             lineHeight: '1.6'
-
-
-
                                           }}
-
-
-
-                                        />
+                                        >
+                                          {convertirHtmlATextoPlano(log.newValue)}
+                                        </div>
 
 
 
@@ -7952,7 +8153,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                              {log.changeType !== 'contenido' && (
+                              {log.changeType !== 'contenido' && log.changeType !== 'titulo_cargo' && log.changeType !== 'nombre' && (
 
 
 

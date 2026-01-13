@@ -15,7 +15,6 @@ interface ModalComentariosProps {
     onSuccess: () => void;
 }
 
-// const API_URL = 'http://localhost:3008/api/planes-mejoramiento';
 const API_URL = buildApiUrl('legal', '/planes-mejoramiento');
 
 export function ModalComentarios({ open, onClose, plan, onSuccess }: ModalComentariosProps) {
@@ -103,3 +102,4 @@ export function ModalComentarios({ open, onClose, plan, onSuccess }: ModalComent
         </Dialog>
     );
 }
+

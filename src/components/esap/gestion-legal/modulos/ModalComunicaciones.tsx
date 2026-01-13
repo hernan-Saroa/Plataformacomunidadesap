@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface ModalComunicacionesProps {
   isOpen: boolean;
@@ -37,7 +37,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
     }
 
     const nuevaComunicacion = {
-      id: comunicaciones.length + 1,
+      id: Date.now(),
       usuario: expediente.abogadoAsignado,
       rol: 'Abogado Defensor',
       mensaje: responderA

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { databaseConfig } from './database.config';
@@ -29,6 +30,9 @@ import { DocumentoOC } from './entities/documento-oc.entity';
 import { Riesgo } from './entities/riesgo.entity';
 import { DocumentoConsulta } from './entities/documento-consulta.entity';
 import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
+import { CorreoJuridico } from './entities/correo-juridico.entity';
+import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
+import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -52,6 +56,7 @@ import { RiesgosController } from './controllers/riesgos.controller';
 import { PlanesMejoramientoController } from './controllers/planes-mejoramiento.controller';
 import { DashboardController } from './controllers/dashboard.controller';
 import { DocumentosConsultaController } from './controllers/documentos-consulta.controller';
+import { CorreosJuridicosController } from './controllers/correos-juridicos.controller';
 
 // Services
 import { ExpedienteService } from './services/expediente.service';
@@ -75,6 +80,9 @@ import { DocumentosConsultaService } from './services/documentos-consulta.servic
 import { ComentariosConsultaService } from './services/comentarios-consulta.service';
 import { ComentarioConsulta } from './entities/comentario-consulta.entity';
 import { ComentariosConsultaController } from './controllers/comentarios-consulta.controller';
+import { MicrosoftGraphService } from './services/microsoft-graph.service';
+import { CorreosJuridicosService } from './services/correos-juridicos.service';
+import { CorreosSyncScheduler } from './services/correos-sync.scheduler';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -83,6 +91,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forFeature([
       Expediente,
       Actuacion,
@@ -114,7 +123,12 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       DocumentoConsulta,
       ComentarioConsulta,
       // Decisiones
-      DecisionDisciplinaria
+      DecisionDisciplinaria,
+      // Correos Jurídicos (Microsoft Graph)
+      CorreoJuridico,
+      AdjuntoCorreo,
+      // Excepciones Procesales
+      ExcepcionProcesal,
     ]),
     PeiModule,
     PlanesMejoramientoModule
@@ -142,7 +156,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     ComentariosDocumentosOCController,
     RiesgosController,
     DocumentosConsultaController,
-    ComentariosConsultaController
+    ComentariosConsultaController,
+    // Correos Jurídicos
+    CorreosJuridicosController
     // PlanesMejoramientoController is usually inside PlanesMejoramientoModule, 
     // but if it was here in HEAD, I should check. 
     // HEAD didn't have it in controllers array explicitly (it had PlanesMejoramientoModule in imports).
@@ -168,7 +184,11 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     ComentariosDocumentosOCService,
     RiesgosService,
     DocumentosConsultaService,
-    ComentariosConsultaService
+    ComentariosConsultaService,
+    // Microsoft Graph / Correos
+    MicrosoftGraphService,
+    CorreosJuridicosService,
+    CorreosSyncScheduler
   ],
 })
 export class AppModule { }

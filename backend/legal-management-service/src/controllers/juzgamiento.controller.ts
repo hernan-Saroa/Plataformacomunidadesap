@@ -5,7 +5,7 @@ import { extname } from 'path';
 import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
 
-@Controller('legal/juzgamiento')
+@Controller('juzgamiento')
 export class JuzgamientoController {
     constructor(private readonly expedienteService: ExpedienteService) { }
 
@@ -105,6 +105,14 @@ export class JuzgamientoController {
         });
     }
 
+    @Get(':radicado/actuaciones')
+    async getActuaciones(@Param('radicado') radicado: string) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        // Return sorted actuations
+        return expediente.actuaciones || [];
+    }
+
     @Get(':radicado/decisiones')
     async getDecisiones(@Param('radicado') radicado: string) {
         const expediente = await this.expedienteService.findOneByRadicado(radicado);
@@ -118,4 +126,26 @@ export class JuzgamientoController {
         if (!expediente) throw new BadRequestException('Expediente no encontrado');
         return this.expedienteService.createDecision(expediente.id, data);
     }
+
+    // ==================== EXCEPCIONES PROCESALES ====================
+
+    @Get(':radicado/excepciones')
+    async getExcepciones(@Param('radicado') radicado: string) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.expedienteService.getExcepciones(expediente.id);
+    }
+
+    @Post(':radicado/excepciones')
+    async createExcepcion(@Param('radicado') radicado: string, @Body() data: any) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.expedienteService.createExcepcion(expediente.id, data);
+    }
+
+    @Patch('excepciones/:id/resolver')
+    async resolverExcepcion(@Param('id') id: string, @Body() data: any) {
+        return this.expedienteService.resolverExcepcion(id, data);
+    }
 }
+

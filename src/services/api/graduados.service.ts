@@ -87,6 +87,7 @@ export interface CertificadoGraduado {
   diplomaNumber?: string;
   actaNumber?: string;
   campus?: string;
+  seccionalName?: string;
   signerName: string;
   signerPosition: string;
   signatureUrl?: string;
@@ -197,13 +198,13 @@ const graduadosService = {
      */
     verificarGraduado: async (
       idNumber: string,
-      idIssueDate: string
+      idIssueDate?: string
     ): Promise<VerificacionDocumentoResponse> => {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/autoservicio/verificar-graduado`,
         {
           idNumber,
-          idIssueDate,
+          ...(idIssueDate ? { idIssueDate } : {}),
         }
       );
       return response;
@@ -216,13 +217,13 @@ const graduadosService = {
      */
     generarCodigoValidacion: async (
       idNumber: string,
-      idIssueDate: string
+      idIssueDate?: string
     ): Promise<GenerarCodigoResponse> => {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/autoservicio/generar-codigo`,
         {
           idNumber,
-          idIssueDate,
+          ...(idIssueDate ? { idIssueDate } : {}),
         }
       );
       return response;
@@ -236,14 +237,14 @@ const graduadosService = {
      */
     validarCodigoYGenerarCertificado: async (
       idNumber: string,
-      idIssueDate: string,
+      idIssueDate: string | undefined,
       codigo: string
     ): Promise<ValidarCodigoResponse> => {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/autoservicio/validar-codigo`,
         {
           idNumber,
-          idIssueDate,
+          ...(idIssueDate ? { idIssueDate } : {}),
           codigo,
         }
       );
@@ -255,7 +256,7 @@ const graduadosService = {
      */
     solicitarCertificado: async (payload: {
       idNumber: string;
-      idIssueDate: string;
+      idIssueDate?: string;
       requesterType: 'GRADUATE' | 'COMPANY';
       requesterName: string;
       requesterEmail: string;
@@ -480,13 +481,7 @@ const graduadosService = {
      * Obtener PDF de certificado
      */
     descargarPDF: async (id: string): Promise<Blob> => {
-      const response = await apiClient.get(
-        `${SERVICE_PREFIX}/certificates/${id}/pdf`,
-        {
-          responseType: 'blob',
-        }
-      );
-      return response;
+      return apiClient.getBlob(`${SERVICE_PREFIX}/certificates/${id}/pdf`);
     },
   },
 

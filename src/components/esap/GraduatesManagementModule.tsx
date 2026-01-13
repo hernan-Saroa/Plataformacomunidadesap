@@ -528,6 +528,15 @@ export function GraduatesManagementModule() {
     setIsEditModalOpen(true);
   };
 
+  const handleLocationChange = (value: string) => {
+    const mappedTerritorial = territorialBySede.get(normalizeKey(value));
+    setEditForm((prev) => ({
+      ...prev,
+      location: value,
+      territorial: mappedTerritorial || prev.territorial || '',
+    }));
+  };
+
   const handleDelete = (user: GraduateRow) => {
     setSelectedUser(user);
     setIsDeleteModalOpen(true);
@@ -573,6 +582,11 @@ export function GraduatesManagementModule() {
     setIsSaving(true);
     try {
       const fullName = `${editForm.firstName} ${editForm.lastName}`.trim();
+      const effectiveTerritorial =
+        editForm.territorial ||
+        (editForm.location
+          ? territorialBySede.get(normalizeKey(editForm.location))
+          : undefined);
       const payload: Partial<GraduadoData> = {
         fullName,
         email: editForm.email,
@@ -580,7 +594,7 @@ export function GraduatesManagementModule() {
         idNumber: editForm.document,
         programName: editForm.program || selectedUser.program || '',
         campus: editForm.location || undefined,
-        seccionalName: editForm.territorial || undefined,
+        seccionalName: effectiveTerritorial || undefined,
       };
 
       await graduadosService.graduados.actualizar(selectedUser.id, payload);
@@ -1269,6 +1283,18 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            Correo
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <Mail className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                              {user.email || 'Sin correo'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Teléfono
                           </p>
                           <div className="flex items-center gap-1.5">
@@ -1402,7 +1428,7 @@ export function GraduatesManagementModule() {
 
       {/* Modal: Exportar Graduados */}
       <Dialog open={isExportModalOpen} onOpenChange={setIsExportModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[92vw] max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Download className="w-5 h-5" style={{ color: '#003DA5' }} />
@@ -1465,7 +1491,7 @@ export function GraduatesManagementModule() {
 
       {/* Modal: Editar Graduado */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[92vw] max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit className="w-5 h-5" style={{ color: '#003DA5' }} />
@@ -1549,7 +1575,7 @@ export function GraduatesManagementModule() {
               <select
                 id="edit-location"
                 value={editForm.location}
-                onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                onChange={(e) => handleLocationChange(e.target.value)}
                 className="w-full border-2 rounded-lg px-3 py-2 text-sm"
                 style={{ borderColor: '#D1D5DB' }}
               >

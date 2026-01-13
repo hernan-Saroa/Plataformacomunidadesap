@@ -366,38 +366,6 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         return;
       }
 
-      // Primero, bloquear si ya tiene certificado activo
-      const tieneCertificadoActivo = Boolean(verificacion.tieneCertificado || verificacion.certificado);
-      if (tieneCertificadoActivo && verificacion.certificado) {
-        const certificado = mapCertificadoExistente(verificacion.certificado);
-        const templateType = resolverTemplateType(verificacion.certificado);
-
-        const empleado: EmpleadoData = {
-          tipo_documento: tipoDocumento || 'CC',
-          numero_documento: numeroDocumento,
-          nombre_completo: verificacion.certificado.full_name || 'Empleado ESAP',
-          tipo_vinculacion: verificacion.certificado.position_category || 'Administrativo',
-          cargo: verificacion.certificado.career_category || 'N/A',
-          dependencia: verificacion.certificado.department || 'N/A',
-          fecha_vinculacion: verificacion.certificado.hiring_date || new Date().toISOString(),
-          estado: 'Activo',
-          correo_institucional: verificacion.certificado.email || 'N/A',
-          correo_personal: '',
-          salario_actual: verificacion.certificado.monthly_salary || 0,
-          templateType,
-        };
-
-        setEmpleadoEncontrado(empleado);
-        registrarCertificado(certificado);
-        setCertificadoExistente(true);
-        setPasoActual('certificado-generado');
-        setBuscandoEmpleado(false);
-        toast.info('Ya tienes un certificado generado', {
-          description: 'Puedes visualizarlo, descargarlo o imprimirlo.',
-        });
-        return;
-      }
-
       // Llamar al backend para verificar documento y generar código
       const response = await certificadosService.autoservicio.generarCodigoValidacion(numeroDocumento);
 
@@ -865,7 +833,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                         </div>
                       </div>
 
-                      {/* Botón Continuar */}
+                      {/* Botón Solicitar Certificado */}
                       <Button
                         onClick={handleBuscarEmpleado}
                         disabled={buscandoEmpleado}
@@ -879,7 +847,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                         ) : (
                           <>
                             <Send className="w-5 h-5 mr-2" />
-                            Continuar
+                            Solicitar Certificado
                           </>
                         )}
                       </Button>

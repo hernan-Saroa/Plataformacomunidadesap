@@ -21,6 +21,7 @@ import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { authService } from './services/api/authService';
 import { config } from './config/environment';
+import { NotificacionesProvider } from './contexts/NotificacionesContext';
 
 // Importar Demo de Control Disciplinario
 import { ControlDisciplinarioDemo } from './components/esap/ControlDisciplinarioDemo';
@@ -76,7 +77,7 @@ type AppView =
 
 type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | null;
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales'| 'password-demo' | 'procesos-coactivos-demo';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales' | 'password-demo' | 'procesos-coactivos-demo';
 
 interface Usuario {
   id: string;
@@ -273,7 +274,7 @@ export default function App() {
         const sesionParsed = JSON.parse(sesionGuardada);
         if (sesionParsed?.usuario && sesionParsed?.vista && sesionParsed?.timestamp) {
           const sesion: SesionGuardada = sesionParsed;
-        
+
           const tiempoTranscurrido = Date.now() - sesion.timestamp;
 
           if (tiempoTranscurrido < TIMEOUT_INACTIVIDAD) {
@@ -385,12 +386,12 @@ export default function App() {
       description: 'Has estado inactivo durante 15 minutos',
       duration: 5000,
     });
-    
+
     setUsuarioActual(null);
     setVistaActual('landing');
     handleLogout();
     setMostrarAlertaInactividad(false);
-    
+
     console.log('⏰ Sesión cerrada por inactividad');
   };
 
@@ -638,7 +639,7 @@ export default function App() {
 
   // Handler para cambio directo de sistema (sin pasar por selector)
   const handleSystemChange = (system: 'backoffice' | 'portal') => {
-    console.log('🔄 System change requested:', system); 
+    console.log('🔄 System change requested:', system);
     if (system === 'backoffice') {
       setCurrentView('backoffice');
       setUserType('administrativo');
@@ -747,10 +748,10 @@ export default function App() {
     switch (vistaActual) {
       case 'landing':
         return renderViewLanding();
-      
+
       case 'solicitar-certificados-laborales':
         return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
-      
+
       case 'login':
         return (
           <LoginPage
@@ -758,39 +759,39 @@ export default function App() {
             onBackToHome={handleBackToHome}
           />
         );
-      
+
       case 'portal':
         // Determinar roles según el email del usuario
-        const portalRoles = usuarioActual?.email === 'gestion.profesoral@esap.edu.co' 
+        const portalRoles = usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
           ? ['Docente']
           : usuarioActual?.email === 'estudiantes@esap.edu.co'
-          ? ['Estudiante']
-          : usuarioActual?.email === 'funcionario@esap.edu.co'
-          ? ['Administrativo']
-          : ['Estudiante']; // Default
+            ? ['Estudiante']
+            : usuarioActual?.email === 'funcionario@esap.edu.co'
+              ? ['Administrativo']
+              : ['Estudiante']; // Default
 
         const teacherData = usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
           ? {
-              tipo_vinculacion: 'Carrera',
-              dedicacion: 'Tiempo Completo',
-              area: 'Administración Pública',
-              codigo_docente: 'DOC-GP-001',
-              clases_asignadas: 5,
-              estudiantes_totales: 120,
-              nivel_educativo: 'Doctorado',
-              anos_experiencia: 12,
-            }
+            tipo_vinculacion: 'Carrera',
+            dedicacion: 'Tiempo Completo',
+            area: 'Administración Pública',
+            codigo_docente: 'DOC-GP-001',
+            clases_asignadas: 5,
+            estudiantes_totales: 120,
+            nivel_educativo: 'Doctorado',
+            anos_experiencia: 12,
+          }
           : undefined;
 
         const adminData = usuarioActual?.email === 'funcionario@esap.edu.co'
           ? {
-              area: 'Planeación',
-              cargo: 'Funcionario Administrativo',
-              dependencia: 'Oficina de Control Interno',
-              codigo_empleado: 'FUNC-001',
-              solicitudes_pendientes: 5,
-              reportes_generados: 12
-            }
+            area: 'Planeación',
+            cargo: 'Funcionario Administrativo',
+            dependencia: 'Oficina de Control Interno',
+            codigo_empleado: 'FUNC-001',
+            solicitudes_pendientes: 5,
+            reportes_generados: 12
+          }
           : undefined;
 
         console.log('📊 Datos para Portal Dashboard:', {
@@ -816,7 +817,7 @@ export default function App() {
             onLogout={handleLogout}
           />
         );
-      
+
       case 'backoffice':
         // Determinar si el usuario tiene acceso restringido a un módulo específico
         // const userData1 = usuarioActual?.email === 'OCIG@esap.edu.co' || usuarioActual?.email === 'ocig@esap.edu.co'
@@ -847,7 +848,7 @@ export default function App() {
             userRoles={userRoles}
           />
         );
-      
+
       case 'pta-demo':
         return (
           <GestionProfesoralApp
@@ -896,8 +897,9 @@ export default function App() {
   };
 
   return (
-    <ErrorBoundary>
-      <style>{`
+    <NotificacionesProvider>
+      <ErrorBoundary>
+        <style>{`
         [data-sonner-toaster] { 
           position: fixed !important; 
           top: 20px !important; 
@@ -929,72 +931,73 @@ export default function App() {
         [data-title] { font-weight: 600 !important; color: #111827 !important; font-size: 14px !important; }
         [data-description] { color: #6b7280 !important; font-size: 13px !important; margin-top: 4px !important; }
       `}</style>
-      
-      <Routes>
-        <Route
-          path="/verificar-certificado-graduado"
-          element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
-        />
-        <Route
-          path="/verificar-certificado/:codigo"
-          element={<VerificarCertificadoPublico />}
-        />
-        <Route path="*" element={renderVista()} />
-      </Routes>
-      
-      {/* Modal de Alerta de Inactividad */}
-      {mostrarAlertaInactividad && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000] animate-in fade-in duration-300">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-in zoom-in-95 duration-300">
-            {/* Header */}
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-6 h-6 text-orange-600" />
+
+        <Routes>
+          <Route
+            path="/verificar-certificado-graduado"
+            element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
+          />
+          <Route
+            path="/verificar-certificado/:codigo"
+            element={<VerificarCertificadoPublico />}
+          />
+          <Route path="*" element={renderVista()} />
+        </Routes>
+
+        {/* Modal de Alerta de Inactividad */}
+        {mostrarAlertaInactividad && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000] animate-in fade-in duration-300">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-in zoom-in-95 duration-300">
+              {/* Header */}
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-6 h-6 text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    ⚠️ Inactividad Detectada
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Tu sesión está por expirar
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">
-                  ⚠️ Inactividad Detectada
-                </h3>
+
+              {/* Contenido */}
+              <div className="mb-6">
+                <div className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-xl mb-4">
+                  <Clock className="w-5 h-5 text-orange-600 flex-shrink-0" />
+                  <p className="text-sm text-gray-700">
+                    Has estado <strong>inactivo durante 14 minutos</strong>. Tu sesión se cerrará automáticamente en <strong className="text-orange-600">1 minuto</strong> por seguridad.
+                  </p>
+                </div>
                 <p className="text-sm text-gray-600">
-                  Tu sesión está por expirar
+                  ¿Deseas continuar con tu sesión activa?
                 </p>
               </div>
-            </div>
 
-            {/* Contenido */}
-            <div className="mb-6">
-              <div className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-xl mb-4">
-                <Clock className="w-5 h-5 text-orange-600 flex-shrink-0" />
-                <p className="text-sm text-gray-700">
-                  Has estado <strong>inactivo durante 14 minutos</strong>. Tu sesión se cerrará automáticamente en <strong className="text-orange-600">1 minuto</strong> por seguridad.
-                </p>
+              {/* Botones */}
+              <div className="flex gap-3">
+                <button
+                  onClick={handleLogout}
+                  className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-medium"
+                >
+                  Cerrar Sesión
+                </button>
+                <button
+                  onClick={handleContinuarSesion}
+                  className="flex-1 px-4 py-3 bg-[#003DA5] text-white rounded-xl hover:bg-[#002870] transition-all font-medium shadow-lg"
+                >
+                  Continuar Sesión
+                </button>
               </div>
-              <p className="text-sm text-gray-600">
-                ¿Deseas continuar con tu sesión activa?
-              </p>
-            </div>
-
-            {/* Botones */}
-            <div className="flex gap-3">
-              <button
-                onClick={handleLogout}
-                className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-medium"
-              >
-                Cerrar Sesión
-              </button>
-              <button
-                onClick={handleContinuarSesion}
-                className="flex-1 px-4 py-3 bg-[#003DA5] text-white rounded-xl hover:bg-[#002870] transition-all font-medium shadow-lg"
-              >
-                Continuar Sesión
-              </button>
             </div>
           </div>
-        </div>
-      )}
-      
-      <Toaster position="top-right" richColors expand={true} />
-    </ErrorBoundary>
+        )}
+
+        <Toaster position="top-right" richColors expand={true} />
+      </ErrorBoundary>
+    </NotificacionesProvider>
   );
 
 }

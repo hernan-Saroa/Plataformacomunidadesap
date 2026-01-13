@@ -42,6 +42,13 @@ import { PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario } from
 import { DocumentoConsulta } from './entities/documento-consulta.entity';
 import { ComentarioConsulta } from './entities/comentario-consulta.entity';
 
+// Correos Jurídicos (Microsoft Graph)
+import { CorreoJuridico } from './entities/correo-juridico.entity';
+import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
+
+// Excepciones Procesales
+import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
+
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
@@ -71,8 +78,13 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Planes de Mejoramiento
         PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario,
         // Documentos de Consultas Jurídicas
-        DocumentoConsulta, ComentarioConsulta
+        DocumentoConsulta, ComentarioConsulta,
+        // Correos Jurídicos
+        CorreoJuridico, AdjuntoCorreo,
+        // Excepciones Procesales
+        ExcepcionProcesal
     ],
     synchronize: false, // ⚠️ Cambiado a false para usar migraciones en producción
     logging: ['error'], // Solo mostrar errores, no queries
 };
+

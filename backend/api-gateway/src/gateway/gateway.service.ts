@@ -6,7 +6,7 @@ import { lastValueFrom } from 'rxjs';
 
 @Injectable()
 export class GatewayService {
-  constructor(private readonly http: HttpService) {}
+  constructor(private readonly http: HttpService) { }
 
   /**
    * Reenvía la petición al microservicio correspondiente.
@@ -80,13 +80,21 @@ export class GatewayService {
           headers: isMultipart ? forwardHeaders : forwardHeaders,
           ...(isMultipart
             ? {
-                maxContentLength: Infinity,
-                maxBodyLength: Infinity,
-              }
+              maxContentLength: Infinity,
+              maxBodyLength: Infinity,
+            }
             : {}),
           validateStatus: () => true,
+          responseType: 'arraybuffer', // Important for binary files (PDFs, images)
         }),
       );
+
+      // Forward response headers (especially Content-Type for files)
+      Object.entries(response.headers || {}).forEach(([key, value]) => {
+        if (value && key.toLowerCase() !== 'transfer-encoding') {
+          res.setHeader(key, value as any);
+        }
+      });
 
       return res.status(response.status).send(response.data);
     } catch (error) {

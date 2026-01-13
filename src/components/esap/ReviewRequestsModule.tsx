@@ -450,10 +450,10 @@ export function ReviewRequestsModule() {
         : '';
 
       let nextForm: ApprovalForm = {
-        fullName: detail.fullName || '',
+        fullName: '',
         idNumber: detail.idNumber || request.graduateDocumentNumber,
-        email: detail.requesterEmail || request.requester.email || '',
-        phone: detail.requesterPhone || '',
+        email: '',
+        phone: '',
         programName: detail.programName || '',
         programType: '',
         degreeTitle: '',
@@ -502,6 +502,14 @@ export function ReviewRequestsModule() {
     if (reviewAction === 'approve') {
       if (!approvalForm.fullName.trim()) {
         toast.error('El nombre del graduado es obligatorio');
+        return;
+      }
+      if (!approvalForm.email.trim()) {
+        toast.error('El email es obligatorio');
+        return;
+      }
+      if (!approvalForm.phone.trim()) {
+        toast.error('El telefono es obligatorio');
         return;
       }
       if (!approvalForm.programName) {
@@ -1274,8 +1282,10 @@ export function ReviewRequestsModule() {
 
       {/* Modal: Revisar Solicitud */}
       <Dialog open={showReviewModal} onOpenChange={setShowReviewModal}>
-        <DialogContent className="max-w-3xl w-[92vw] my-8 max-h-[90vh] overflow-y-auto p-0">
-          <DialogHeader className="px-6 pt-6">
+        <DialogContent
+          className={`w-[92vw] my-10 max-h-[88vh] overflow-y-auto p-0 pb-8 ${reviewAction === 'reject' ? 'max-w-3xl' : 'max-w-3xl'}`}
+        >
+          <DialogHeader className="px-6 pt-4 pb-2">
             <DialogTitle className="flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-600" />
               {reviewActionLabel} Solicitud
@@ -1285,7 +1295,7 @@ export function ReviewRequestsModule() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="px-6 py-4 space-y-4">
+          <div className="px-6 pt-2 pb-8 space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <FileText className="w-5 h-5 mt-0.5 text-blue-600" />
@@ -1343,7 +1353,7 @@ export function ReviewRequestsModule() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Email</label>
+                    <label className="text-xs font-medium text-gray-700">Email *</label>
                     <input
                       type="email"
                       value={approvalForm.email}
@@ -1351,16 +1361,19 @@ export function ReviewRequestsModule() {
                       className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="correo@ejemplo.com"
                       disabled={isLoadingApprovalData}
+                      required
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Telefono</label>
+                    <label className="text-xs font-medium text-gray-700">Telefono *</label>
                     <input
+                      type="tel"
                       value={approvalForm.phone}
                       onChange={(e) => setApprovalForm({ ...approvalForm, phone: e.target.value })}
                       className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="3001234567"
                       disabled={isLoadingApprovalData}
+                      required
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -1474,7 +1487,7 @@ export function ReviewRequestsModule() {
             </div>
           </div>
 
-          <DialogFooter className="px-6 pb-6 pt-4">
+          <DialogFooter className="px-6 pb-10 pt-4">
             <button
               onClick={() => setShowReviewModal(false)}
               className="px-4 py-2 text-sm font-medium rounded-lg border-2"
@@ -1505,7 +1518,7 @@ export function ReviewRequestsModule() {
           }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[92vw] max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-amber-600" />

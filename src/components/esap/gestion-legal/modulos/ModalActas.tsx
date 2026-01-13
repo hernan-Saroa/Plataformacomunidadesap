@@ -21,8 +21,9 @@ import {
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState, useEffect } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { ModalHeaderClean } from './ModalHeaderClean';
@@ -134,10 +135,25 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
     return 'orange';
   };
 
-  const getFullUrl = (url: string) => {
-    if (!url) return '';
-    if (url.startsWith('http')) return url;
-    return `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+  // Helper para construir URL correcta de archivo
+  // Direct mode: localhost:3008/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename
+  const getFileUrl = (archivoUrl: string): string => {
+    if (!archivoUrl) return '';
+
+    const baseUrl = getServiceUrl('legal');
+
+    // Extraer solo el nombre del archivo de cualquier ruta
+    let filename = archivoUrl;
+    if (archivoUrl.includes('/files/')) {
+      filename = archivoUrl.split('/files/').pop() || archivoUrl;
+    } else if (archivoUrl.includes('/')) {
+      filename = archivoUrl.split('/').pop() || archivoUrl;
+    }
+
+    // En modo directo, no agregar prefijo /legal/
+    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    return `${baseUrl}${prefix}/files/${filename}`;
   };
 
   const handleDescargarActa = async (acta: any) => {
@@ -147,7 +163,8 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
     }
     try {
       toast.info('Iniciando descarga...');
-      const response = await fetch(getFullUrl(acta.archivoUrl));
+      const fileUrl = getFileUrl(acta.archivoUrl);
+      const response = await fetch(fileUrl);
       if (!response.ok) throw new Error('Error al descargar');
 
       const blob = await response.blob();
@@ -170,7 +187,8 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
       toast.warning('Esta acta aún no ha sido firmada y digitalizada');
       return;
     }
-    window.open(getFullUrl(acta.archivoUrl), '_blank');
+    const fileUrl = getFileUrl(acta.archivoUrl);
+    window.open(fileUrl, '_blank');
   };
 
   const handleCargarActa = () => {
@@ -264,8 +282,9 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
     try {
       const expedienteId = expediente.uuid || expediente.id;
-      const baseUrl = 'http://localhost:3008';
-      const url = `${baseUrl}/api/legal/actas/expediente/${expedienteId}/download-zip`;
+      const baseUrl = getServiceUrl('legal');
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      const url = `${baseUrl}${prefix}/actas/expediente/${expedienteId}/download-zip`;
 
       const response = await fetch(url);
 

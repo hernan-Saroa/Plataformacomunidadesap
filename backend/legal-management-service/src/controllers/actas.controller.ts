@@ -5,7 +5,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ActasService } from '../services/actas.service';
 
-@Controller('legal/actas')
+@Controller('actas')
 export class ActasController {
     constructor(private readonly actasService: ActasService) { }
 
@@ -48,17 +48,34 @@ export class ActasController {
 
             for (const acta of actasConArchivo) {
                 if (acta.archivoUrl) {
-                    let filePath: string;
-                    if (acta.archivoUrl.includes('/legal/files/')) {
-                        const filename = acta.archivoUrl.split('/legal/files/').pop();
-                        filePath = path.join(process.cwd(), 'uploads', filename);
+                    let filename: string;
+
+                    // Extraer el nombre del archivo de diferentes formatos de URL
+                    if (acta.archivoUrl.includes('/files/')) {
+                        filename = acta.archivoUrl.split('/files/').pop() || '';
+                    } else if (acta.archivoUrl.startsWith('files/')) {
+                        filename = acta.archivoUrl.replace('files/', '');
                     } else {
-                        filePath = path.join(process.cwd(), 'uploads', acta.archivoUrl);
+                        filename = path.basename(acta.archivoUrl);
                     }
 
+                    const filePath = path.join(process.cwd(), 'uploads', filename);
+
                     if (fs.existsSync(filePath)) {
-                        const fileName = acta.archivoNombre || `acta_${acta.numeroActa || acta.id}.pdf`;
-                        archive.file(filePath, { name: fileName });
+                        // Obtener la extensión del archivo real
+                        const fileExt = path.extname(filename);
+                        // Usar el nombre personalizado pero asegurar que tenga la extensión correcta
+                        let displayName = acta.archivoNombre || `acta_${acta.numeroActa || acta.id}${fileExt}`;
+
+                        // Si displayName no tiene extensión, agregar la del archivo real
+                        if (!path.extname(displayName)) {
+                            displayName = displayName + fileExt;
+                        }
+
+                        archive.file(filePath, { name: displayName });
+                        console.log(`[ZIP-Actas] Añadiendo: ${filePath} como ${displayName}`);
+                    } else {
+                        console.log(`[ZIP-Actas] Archivo no encontrado: ${filePath}`);
                     }
                 }
             }
@@ -132,3 +149,5 @@ export class ActasController {
         return this.actasService.delete(id);
     }
 }
+
+

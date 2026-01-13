@@ -17,6 +17,7 @@ import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
+import { getServiceUrl } from '../../../../config/environment';
 
 type Jurisdiccion = 'CONTENCIOSO' | 'ORDINARIA' | 'LABORAL' | 'CONSTITUCIONAL';
 
@@ -344,7 +345,9 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
         });
       }
 
-      const response = await fetch('http://localhost:3008/api/legal/expedientes', {
+
+      const baseUrl = getServiceUrl('legal');
+      const response = await fetch(`${baseUrl}/legal/expedientes`, {
         method: 'POST',
         // No Content-Type header needed for FormData, browser sets it with boundary
         body: formDataToSend,

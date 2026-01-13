@@ -683,3 +683,4 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
     </div>
   );
 }
+

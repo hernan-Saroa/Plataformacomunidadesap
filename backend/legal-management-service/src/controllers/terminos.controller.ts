@@ -2,7 +2,7 @@
 import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { TerminosService } from '../services/terminos.service';
 
-@Controller('legal/terminos')
+@Controller('terminos')
 export class TerminosController {
     constructor(private readonly terminosService: TerminosService) { }
 
@@ -55,3 +55,5 @@ export class TerminosController {
         return [];
     }
 }
+
+

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, Raw, Repository } from 'typeorm';
@@ -18,6 +19,7 @@ import { ApproveRequestDto } from './dto/approve-request.dto';
 import { UpdateGraduateDto } from './dto/update-graduate.dto';
 import { UpdateCertificateDto } from './dto/update-certificate.dto';
 import * as nodemailer from 'nodemailer';
+import * as geoip from 'geoip-lite';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
@@ -46,24 +48,36 @@ export class GraduationCertificatesService {
   /**
    * AUTOSERVICIO: Verificar si un graduado existe en la base de datos
    */
-  async verificarGraduado(idNumber: string, idIssueDate: string) {
-    const issueDate = this.normalizeDateString(idIssueDate);
-    if (!issueDate) {
-      throw new BadRequestException('Fecha de expedición inválida');
+  async verificarGraduado(idNumber: string, idIssueDate?: string) {
+    const normalizedIdNumber = (idNumber || '').replace(/\D+/g, '');
+    const issueDate = idIssueDate ? this.normalizeDateString(idIssueDate) : null;
+    if (idIssueDate && !issueDate) {
+      throw new BadRequestException('Fecha de expedici?n inv?lida');
     }
 
-    const graduate = await this.graduateRepository.findOne({
-      where: {
-        idNumber: idNumber.trim(),
-        idIssueDate: Raw((alias) => `${alias} = :issueDate`, { issueDate }),
-        status: 'ACTIVE',
-      },
-    });
+    const where: any = {
+      status: 'ACTIVE',
+    };
+
+    if (normalizedIdNumber) {
+      where.idNumber = Raw(
+        (alias) => `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+        { idNumber: normalizedIdNumber },
+      );
+    } else {
+      where.idNumber = idNumber.trim();
+    }
+
+    if (issueDate) {
+      where.idIssueDate = Raw((alias) => `${alias} = :issueDate`, { issueDate });
+    }
+
+    const graduate = await this.graduateRepository.findOne({ where });
 
     if (!graduate) {
       return {
         existe: false,
-        mensaje: 'No se encontró un graduado con esos datos',
+        mensaje: 'No se encontr? un graduado con esos datos',
       };
     }
 
@@ -77,7 +91,7 @@ export class GraduationCertificatesService {
   /**
    * AUTOSERVICIO: Generar código de validación
    */
-  async generarCodigoValidacion(idNumber: string, idIssueDate: string) {
+  async generarCodigoValidacion(idNumber: string, idIssueDate?: string) {
     // Verificar que el graduado existe
     const verificacion = await this.verificarGraduado(idNumber, idIssueDate);
     if (!verificacion.existe) {
@@ -139,33 +153,45 @@ export class GraduationCertificatesService {
    * AUTOSERVICIO: Procesar la solicitud enviada desde la landing
    */
   async solicitarCertificadoLanding(dto: LandingCertificateRequestDto) {
-    const issueDate = this.normalizeDateString(dto.idIssueDate);
+    const normalizedIdNumber = (dto.idNumber || '').replace(/\D+/g, '');
+    const issueDate = dto.idIssueDate ? this.normalizeDateString(dto.idIssueDate) : null;
 
-    if (!issueDate) {
-      throw new BadRequestException('Fecha de expedición inválida');
+    if (dto.idIssueDate && !issueDate) {
+      throw new BadRequestException('Fecha de expedici?n inv?lida');
     }
 
     this.logger.debug(
-      `Solicitud landing: idNumber=${dto.idNumber?.trim()} idIssueDate=${dto.idIssueDate} normalizada=${issueDate}`,
+      `Solicitud landing: idNumber=${dto.idNumber?.trim()} idIssueDate=${dto.idIssueDate || 'N/A'} normalizada=${issueDate || 'N/A'}`,
     );
 
-    const graduate = await this.graduateRepository.findOne({
-      where: {
-        idNumber: dto.idNumber.trim(),
-        idIssueDate: Raw((alias) => `${alias} = :issueDate`, { issueDate }),
-        status: 'ACTIVE',
-      },
-    });
+    const where: any = {
+      status: 'ACTIVE',
+    };
+
+    if (normalizedIdNumber) {
+      where.idNumber = Raw(
+        (alias) => `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+        { idNumber: normalizedIdNumber },
+      );
+    } else {
+      where.idNumber = dto.idNumber.trim();
+    }
+
+    if (issueDate) {
+      where.idIssueDate = Raw((alias) => `${alias} = :issueDate`, { issueDate });
+    }
+
+    const graduate = await this.graduateRepository.findOne({ where });
 
     if (!graduate) {
       this.logger.warn(
-        `Graduado no encontrado para idNumber=${dto.idNumber?.trim()} idIssueDate=${issueDate}`,
+        `Graduado no encontrado para idNumber=${dto.idNumber?.trim()} idIssueDate=${issueDate || 'N/A'}`,
       );
     }
 
     const requestNumber = await this.generateRequestNumber();
-    const idIssueDate =
-      graduate?.idIssueDate ?? this.parseDate(dto.idIssueDate) ?? undefined;
+    const parsedIssueDate = dto.idIssueDate ? this.parseDate(dto.idIssueDate) : undefined;
+    const idIssueDate = graduate?.idIssueDate ?? parsedIssueDate ?? undefined;
 
     const requestPayload: DeepPartial<GraduationCertificateRequest> = {
       requestNumber,
@@ -233,7 +259,7 @@ export class GraduationCertificatesService {
    */
   async validarCodigoYGenerarCertificado(
     idNumber: string,
-    idIssueDate: string,
+    idIssueDate: string | undefined,
     codigo: string,
   ) {
     // Buscar solicitud pendiente
@@ -313,6 +339,8 @@ export class GraduationCertificatesService {
       diplomaNumber: graduate?.diplomaNumber,
       actaNumber: graduate?.actaNumber,
       campus: graduate?.campus,
+      seccionalName:
+        graduate?.seccionalName || (request as { seccionalName?: string })?.seccionalName,
       signerName: signer.fullName,
       signerPosition: signer.position,
       signatureUrl: signer.signatureUrl,
@@ -358,7 +386,7 @@ export class GraduationCertificatesService {
   /**
    * Obtener PDF de un certificado
    */
-  async getCertificatePDF(id: string): Promise<Buffer> {
+  async getCertificatePDF(id: string, frontendBaseUrl?: string): Promise<Buffer> {
     const certificate = await this.certificateRepository.findOne({
       where: { id },
     });
@@ -367,21 +395,37 @@ export class GraduationCertificatesService {
       throw new NotFoundException('Certificado no encontrado');
     }
 
-    if (certificate.pdfFilename) {
-      // Leer PDF del sistema de archivos
-      const storagePath =
-        process.env.STORAGE_PATH || './uploads/graduation-certificates';
-      const fs = require('fs');
-      const path = require('path');
-      const pdfFilePath = path.join(storagePath, certificate.pdfFilename);
+    const pdfFilename =
+      certificate.pdfFilename ||
+      (certificate.pdfUrl ? path.basename(certificate.pdfUrl) : undefined);
 
-      if (fs.existsSync(pdfFilePath)) {
+    if (pdfFilename) {
+      // Leer PDF del sistema de archivos si ya existe
+      const pdfFilePath = this.resolveExistingPdfPath(pdfFilename);
+      if (pdfFilePath) {
         return fs.readFileSync(pdfFilePath);
       }
+
+      this.logger.warn(
+        `PDF no encontrado en disco para certificado ${certificate.id} (filename=${pdfFilename})`,
+      );
     }
 
     // Si no existe el PDF, generarlo en tiempo real
-    return await this.pdfGeneratorService.generateCertificatePDF(certificate);
+    try {
+      return await this.pdfGeneratorService.generateCertificatePDF(
+        certificate,
+        frontendBaseUrl,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error generando PDF en tiempo real para certificado ${certificate.id}`,
+        error instanceof Error ? error.stack : `${error}`,
+      );
+      throw new InternalServerErrorException(
+        'No se pudo generar el PDF del certificado',
+      );
+    }
   }
 
   /**
@@ -412,10 +456,12 @@ export class GraduationCertificatesService {
 
     // Registrar validación
     if (certificate) {
+      const location = this.resolveLocation(ipAddress) ?? undefined;
       const validation = this.validationRepository.create({
         certificateId: certificate.id,
         ipAddress,
         userAgent,
+        location,
         result,
       });
       await this.validationRepository.save(validation);
@@ -457,10 +503,12 @@ export class GraduationCertificatesService {
 
     // Registrar validación
     if (certificate) {
+      const location = this.resolveLocation(ipAddress) ?? undefined;
       const validation = this.validationRepository.create({
         certificateId: certificate.id,
         ipAddress,
         userAgent,
+        location,
         result,
       });
       await this.validationRepository.save(validation);
@@ -845,6 +893,9 @@ export class GraduationCertificatesService {
     if (payload.campus !== undefined) {
       update.campus = payload.campus;
     }
+    if (payload.seccionalName !== undefined) {
+      update.seccionalName = payload.seccionalName.trim();
+    }
     if (payload.status !== undefined) {
       update.status = payload.status;
     }
@@ -972,42 +1023,40 @@ export class GraduationCertificatesService {
       request.graduationDate =
         this.parseDate(payload.graduationDate) ?? request.graduationDate;
     }
+    if (payload?.seccionalName) {
+      (request as { seccionalName?: string }).seccionalName =
+        payload.seccionalName.trim();
+    }
 
-    let graduate =
+    const graduate =
       request.graduate ||
       (await this.graduateRepository.findOne({
         where: { idNumber: request.idNumber, status: 'ACTIVE' },
       }));
 
-    if (!graduate) {
-      const diplomaNumber = await this.generateDiplomaNumber();
-      const actaNumber = await this.generateActaNumber();
-
-      graduate = this.graduateRepository.create({
-        personId: randomUUID(),
-        fullName: request.fullName,
-        idNumber: request.idNumber,
-        idIssueDate: request.idIssueDate,
-        email: payload?.email || request.requesterEmail,
-        phone: payload?.phone || request.requesterPhone,
-        programId: randomUUID(),
-        programName: request.programName,
-        programType: payload?.programType || 'Pregrado',
-        graduationDate: request.graduationDate,
-        degreeTitle: payload?.degreeTitle || request.programName,
-        diplomaNumber,
-        actaNumber,
-        campus: payload?.campus,
-        seccionalName: payload?.seccionalName,
-        status: 'ACTIVE',
-        isVerified: true,
-        createdBy: 'SYSTEM',
-      });
-
-      graduate = await this.graduateRepository.save(graduate);
-    }
-
     if (graduate) {
+      const graduateUpdate: Partial<Graduate> = {};
+      if (payload?.fullName !== undefined) graduateUpdate.fullName = payload.fullName.trim();
+      if (payload?.idNumber !== undefined) graduateUpdate.idNumber = payload.idNumber.trim();
+      if (payload?.email !== undefined) graduateUpdate.email = payload.email;
+      if (payload?.phone !== undefined) graduateUpdate.phone = payload.phone;
+      if (payload?.programName !== undefined) graduateUpdate.programName = payload.programName;
+      if (payload?.programType !== undefined) graduateUpdate.programType = payload.programType;
+      if (payload?.degreeTitle !== undefined) graduateUpdate.degreeTitle = payload.degreeTitle;
+      if (payload?.graduationDate !== undefined) {
+        graduateUpdate.graduationDate =
+          this.parseDate(payload.graduationDate) ?? graduate.graduationDate;
+      }
+      if (payload?.campus !== undefined) graduateUpdate.campus = payload.campus;
+      if (payload?.seccionalName !== undefined) {
+        graduateUpdate.seccionalName = payload.seccionalName.trim();
+      }
+
+      if (Object.keys(graduateUpdate).length > 0) {
+        Object.assign(graduate, graduateUpdate);
+        await this.graduateRepository.save(graduate);
+      }
+
       request.graduate = graduate;
       request.graduateId = graduate.id;
     }
@@ -1127,4 +1176,75 @@ export class GraduationCertificatesService {
 
     return { mensaje: 'Descarga registrada' };
   }
+
+  private resolveLocation(ipAddress?: string): string | null {
+    if (!ipAddress) {
+      return null;
+    }
+
+    const trimmed = ipAddress.trim().replace(/^::ffff:/, '');
+
+    if (!trimmed || trimmed === '::1' || trimmed === '127.0.0.1') {
+      return 'Localhost';
+    }
+
+    if (this.isPrivateIpv4(trimmed)) {
+      return 'Red privada';
+    }
+
+    const geo = geoip.lookup(trimmed);
+    if (!geo) {
+      return null;
+    }
+
+    const parts = [geo.city, geo.region, geo.country].filter(Boolean);
+    return parts.length ? parts.join(', ') : null;
+  }
+
+  private isPrivateIpv4(ip: string): boolean {
+    const octets = ip.split('.').map((part) => Number(part));
+    if (octets.length !== 4 || octets.some((value) => Number.isNaN(value))) {
+      return false;
+    }
+
+    const [a, b] = octets;
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    return false;
+  }
+
+  private resolveExistingPdfPath(pdfFilename: string): string | null {
+    const storagePath = process.env.STORAGE_PATH;
+    const candidates = [
+      storagePath ? path.join(storagePath, pdfFilename) : null,
+      path.join(process.cwd(), 'uploads', 'graduation-certificates', pdfFilename),
+      path.join(
+        process.cwd(),
+        'backend',
+        'academic-registration-service',
+        'uploads',
+        'graduation-certificates',
+        pdfFilename,
+      ),
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        'uploads',
+        'graduation-certificates',
+        pdfFilename,
+      ),
+    ].filter((candidate): candidate is string => Boolean(candidate));
+
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
 }
+
+

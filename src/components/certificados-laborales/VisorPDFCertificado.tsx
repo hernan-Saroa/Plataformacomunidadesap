@@ -159,8 +159,11 @@ export function VisorPDFCertificado({
         : (grado || ubicacion);
 
     const salarioEnLetras = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
-    const fechaSolicitud = new Date(certificado.fechaSolicitud);
-    const fechaExpedicionCompleta = formatearFecha(certificado.fechaSolicitud);
+    const fechaExpedicionSource =
+      certificado.fechaGeneracion ||
+      certificado.fechaSolicitud ||
+      new Date().toISOString();
+    const fechaExpedicionCompleta = formatearFecha(fechaExpedicionSource);
 
     const reemplazos: Record<string, string> = {
       '[DATO1]': certificado.empleado.nombre || '',
