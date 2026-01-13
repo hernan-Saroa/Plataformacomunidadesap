@@ -41,7 +41,8 @@ import {
   Building2, MapPin, Clock, Target, FileCheck, Mail, Shield, Settings,
   Edit, Upload, Save
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import jsPDF from 'jspdf';
 
 // Componentes del design system
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
@@ -136,6 +137,156 @@ const AUDITORIA_MOCK: AuditoriaProgramada = {
     comunicacion: 12
   }
 };
+
+// ============ FUNCIÓN HELPER PARA DESCARGAR PDF ============
+
+/**
+ * Genera y descarga un PDF a partir del contenido de un documento
+ */
+function descargarDocumentoPDF(documento: DocumentoGenerado): void {
+  try {
+    toast.loading('Generando PDF...', { id: 'generar-pdf' });
+    
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const maxWidth = pageWidth - 2 * margin;
+    let yPos = margin;
+
+    // Encabezado con color
+    doc.setFillColor(59, 130, 246); // Azul #3B82F6
+    doc.rect(0, 0, pageWidth, 40, 'F');
+    
+    // Título del documento en el encabezado
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    const tituloLines = doc.splitTextToSize(documento.titulo, maxWidth);
+    doc.text(tituloLines, pageWidth / 2, 20, { align: 'center' });
+    
+    // Información adicional en el encabezado
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const fechaGeneracion = documento.generadoEn.toLocaleDateString('es-CO', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    doc.text(`Generado el: ${fechaGeneracion}`, pageWidth / 2, 32, { align: 'center' });
+
+    // Contenido del documento
+    yPos = 50;
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+
+    // Procesar el contenido línea por línea
+    const lineas = documento.contenido.split('\n');
+    
+    for (let i = 0; i < lineas.length; i++) {
+      let linea = lineas[i];
+      
+      // Limpiar caracteres especiales de formato markdown y tablas
+      linea = linea
+        .replace(/\*\*/g, '') // Eliminar **
+        .replace(/═+/g, '') // Eliminar líneas de tabla
+        .replace(/╔|╗|╠|╣|╚|╝|║/g, '') // Eliminar bordes de tabla
+        .replace(/^[-*•]\s*/, '') // Eliminar viñetas
+        .trim();
+      
+      // Si la línea está vacía, agregar espacio
+      if (linea === '') {
+        yPos += 5;
+        continue;
+      }
+
+      // Detectar títulos (líneas que son cortas y están en mayúsculas o tienen formato especial)
+      const esTitulo = (linea.length < 60 && /^[A-ZÁÉÍÓÚÑ0-9]/.test(linea) && !linea.includes(':')) ||
+                      /^\d+\.\s+[A-Z]/.test(linea) || // Números seguidos de mayúscula
+                      linea === linea.toUpperCase() && linea.length < 80;
+
+      if (esTitulo && linea.length > 0) {
+        // Si hay poco espacio, crear nueva página
+        if (yPos > pageHeight - 30) {
+          doc.addPage();
+          yPos = margin;
+        }
+        
+        // Formatear título
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        const tituloLines = doc.splitTextToSize(linea, maxWidth);
+        doc.text(tituloLines, margin, yPos);
+        yPos += tituloLines.length * 7 + 3;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+      } else {
+        // Texto normal
+        if (yPos > pageHeight - 20) {
+          doc.addPage();
+          yPos = margin;
+        }
+        
+        // Procesar texto normal, manejando listas
+        let textoFinal = linea;
+        if (linea.startsWith('□')) {
+          textoFinal = '☐ ' + linea.substring(1).trim();
+        }
+        
+        const textoLines = doc.splitTextToSize(textoFinal, maxWidth);
+        doc.text(textoLines, margin, yPos);
+        yPos += textoLines.length * 5 + 2;
+      }
+    }
+
+    // Pie de página
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(128, 128, 128);
+      doc.text(
+        `Página ${i} de ${totalPages} - ESAP - Oficina de Control Interno`,
+        pageWidth / 2,
+        pageHeight - 10,
+        { align: 'center' }
+      );
+    }
+
+    // Generar nombre del archivo
+    const nombreArchivo = `${documento.titulo.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+    
+    // Generar blob y descargar manualmente
+    const pdfBlob = doc.output('blob');
+    const url = window.URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = nombreArchivo;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    
+    toast.success('PDF descargado exitosamente', { 
+      id: 'generar-pdf',
+      description: nombreArchivo
+    });
+  } catch (error) {
+    console.error('Error al generar PDF:', error);
+    toast.error('Error al generar el PDF', {
+      id: 'generar-pdf',
+      description: error instanceof Error ? error.message : 'Error desconocido'
+    });
+  }
+}
 
 // ============ GENERADORES DE DOCUMENTOS ============
 
@@ -657,6 +808,15 @@ export function InicioAuditoriaWizard({
                   documentos={documentosGenerados}
                   loading={loading}
                   onPreview={setDocumentoVistaPrevia}
+                  onUpdateDocumento={(tipo, contenido) => {
+                    setDocumentosGenerados(prev => 
+                      prev.map(doc => 
+                        doc.tipo === tipo 
+                          ? { ...doc, contenido, generadoEn: new Date() }
+                          : doc
+                      )
+                    );
+                  }}
                 />
               )}
               {pasoActual === 4 && (
@@ -672,7 +832,7 @@ export function InicioAuditoriaWizard({
           {/* Footer - Botones */}
           <div className="p-3 sm:p-6 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-3">
             <ButtonSIGL
-              variant="outline"
+              variant="secondary"
               icon={<ChevronLeft className="w-4 h-4" />}
               onClick={pasoActual === 1 ? onClose : retrocederPaso}
               className="w-full sm:w-auto"
@@ -997,11 +1157,13 @@ function Paso2Configuracion({
 function Paso3Documentos({ 
   documentos, 
   loading,
-  onPreview 
+  onPreview,
+  onUpdateDocumento
 }: { 
   documentos: DocumentoGenerado[];
   loading: boolean;
   onPreview: (doc: DocumentoGenerado) => void;
+  onUpdateDocumento: (tipo: TipoDocumento, contenido: string) => void;
 }) {
   const [documentoEditar, setDocumentoEditar] = useState<DocumentoGenerado | null>(null);
   const [documentoCargar, setDocumentoCargar] = useState<TipoDocumento | null>(null);
@@ -1051,7 +1213,7 @@ function Paso3Documentos({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
             >
-              <CardSIGL hover className="p-3 sm:p-4">
+              <CardSIGL hoverable className="p-3 sm:p-4">
                 <div className="flex items-start gap-3 sm:gap-4">
                   <div 
                     className="p-2 sm:p-3 rounded-lg flex-shrink-0"
@@ -1072,7 +1234,7 @@ function Paso3Documentos({
                     </div>
                     <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
                       <ButtonSIGL
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         icon={<Eye className="w-3 h-3" />}
                         onClick={() => onPreview(doc)}
@@ -1081,7 +1243,7 @@ function Paso3Documentos({
                         Ver
                       </ButtonSIGL>
                       <ButtonSIGL
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         icon={<Edit className="w-3 h-3" />}
                         onClick={() => setDocumentoEditar(doc)}
@@ -1089,7 +1251,7 @@ function Paso3Documentos({
                         Editar
                       </ButtonSIGL>
                       <ButtonSIGL
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         icon={<Upload className="w-3 h-3" />}
                         onClick={() => setDocumentoCargar(doc.tipo)}
@@ -1125,7 +1287,7 @@ function Paso3Documentos({
           documento={documentoEditar}
           onClose={() => setDocumentoEditar(null)}
           onSave={(contenido) => {
-            // Actualizar el contenido del documento
+            onUpdateDocumento(documentoEditar.tipo, contenido);
             toast.success(`✅ ${documentoEditar.titulo} actualizado`);
             setDocumentoEditar(null);
           }}
@@ -1137,8 +1299,9 @@ function Paso3Documentos({
         <ModalCargarDocumento
           tipo={documentoCargar}
           onClose={() => setDocumentoCargar(null)}
-          onUpload={(file) => {
-            toast.success(`✅ Archivo cargado: ${file.name}`);
+          onUpload={(contenido) => {
+            onUpdateDocumento(documentoCargar, contenido);
+            toast.success(`✅ Archivo cargado y documento actualizado`);
             setDocumentoCargar(null);
           }}
         />
@@ -1294,9 +1457,9 @@ function ModalVistaPrevia({
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-2">
           <ButtonSIGL
-            variant="outline"
+            variant="secondary"
             icon={<Download className="w-4 h-4" />}
-            onClick={() => toast.success('Descargando documento...')}
+            onClick={() => descargarDocumentoPDF(documento)}
           >
             Descargar PDF
           </ButtonSIGL>
@@ -1360,22 +1523,34 @@ function ModalEditarDocumento({
         {/* Contenido */}
         <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
           <div className="bg-white rounded-lg shadow-sm p-8 max-w-3xl mx-auto">
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Contenido del documento
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                Edite el contenido del documento. Los cambios se guardarán cuando presione "Guardar Cambios".
+              </p>
+            </div>
             <textarea
               value={contenido}
               onChange={(e) => setContenido(e.target.value)}
-              rows={15}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              rows={20}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm font-mono resize-y min-h-[400px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Edite el contenido del documento..."
             />
+            <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+              <span>{contenido.length} caracteres</span>
+              <span>{contenido.split('\n').length} líneas</span>
+            </div>
           </div>
         </div>
 
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-2">
           <ButtonSIGL
-            variant="outline"
+            variant="secondary"
             icon={<Download className="w-4 h-4" />}
-            onClick={() => toast.success('Descargando documento...')}
+            onClick={() => descargarDocumentoPDF({ ...documento, contenido })}
           >
             Descargar PDF
           </ButtonSIGL>
@@ -1386,7 +1561,7 @@ function ModalEditarDocumento({
             Guardar Cambios
           </ButtonSIGL>
           <ButtonSIGL
-            variant="outline"
+            variant="secondary"
             onClick={onClose}
           >
             Cancelar
@@ -1406,9 +1581,10 @@ function ModalCargarDocumento({
 }: { 
   tipo: TipoDocumento;
   onClose: () => void;
-  onUpload: (file: File) => void;
+  onUpload: (contenido: string) => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -1416,9 +1592,25 @@ function ModalCargarDocumento({
     }
   };
 
-  const handleUpload = () => {
-    if (file) {
-      onUpload(file);
+  const handleUpload = async () => {
+    if (!file) return;
+    
+    setLoading(true);
+    try {
+      // Solo leer archivos de texto
+      if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+        const contenido = await file.text();
+        onUpload(contenido);
+      } else {
+        // Para otros tipos de archivo, mostrar mensaje y permitir edición
+        toast.error('Solo se pueden cargar archivos de texto (.txt). Para otros formatos, use la opción de editar.');
+        setLoading(false);
+        return;
+      }
+    } catch (error) {
+      console.error('Error al leer el archivo:', error);
+      toast.error('Error al leer el archivo. Por favor, intente nuevamente.');
+      setLoading(false);
     }
   };
   
@@ -1469,12 +1661,18 @@ function ModalCargarDocumento({
               </div>
             </div>
             <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Seleccionar archivo de texto
+              </label>
               <input
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".txt,text/plain"
                 onChange={handleFileChange}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              <p className="text-xs text-gray-500 mt-2">
+                Solo se aceptan archivos de texto (.txt). El contenido del archivo reemplazará el documento actual.
+              </p>
             </div>
           </div>
         </div>
@@ -1482,22 +1680,16 @@ function ModalCargarDocumento({
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-2">
           <ButtonSIGL
-            variant="outline"
-            icon={<Download className="w-4 h-4" />}
-            onClick={() => toast.success('Descargando documento...')}
-          >
-            Descargar PDF
-          </ButtonSIGL>
-          <ButtonSIGL
             variant="primary"
             onClick={handleUpload}
-            disabled={!file}
+            disabled={!file || loading}
           >
-            Cargar Archivo
+            {loading ? 'Cargando...' : 'Cargar Archivo'}
           </ButtonSIGL>
           <ButtonSIGL
-            variant="outline"
+            variant="secondary"
             onClick={onClose}
+            disabled={loading}
           >
             Cancelar
           </ButtonSIGL>
