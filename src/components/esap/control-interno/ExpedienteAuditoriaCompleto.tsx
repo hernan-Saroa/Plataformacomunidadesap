@@ -195,6 +195,7 @@ interface DocumentoExpediente {
   url?: string;
   version?: number;
   descripcion?: string;
+  tipoMime?: string; // Tipo MIME del archivo para determinar si es previsualizable
 }
 
 interface EventoHistorial {
@@ -585,6 +586,7 @@ export function ExpedienteAuditoriaCompleto({
           cargadoPor: doc.subidoPor || '',
           size: doc.tamanioBytes ? `${(doc.tamanioBytes / 1024).toFixed(0)} KB` : '0 KB',
           version: doc.version || 1,
+          tipoMime: doc.tipoMime, // Incluir tipo MIME para determinar si es previsualizable
         }));
         
         setDocumentos(documentosMapeados);
@@ -753,6 +755,7 @@ export function ExpedienteAuditoriaCompleto({
         cargadoPor: doc.subidoPor || '',
         size: doc.tamanioBytes ? `${(doc.tamanioBytes / 1024).toFixed(0)} KB` : '0 KB',
         version: doc.version || 1,
+        tipoMime: doc.tipoMime, // Incluir tipo MIME para determinar si es previsualizable
       }));
       setDocumentos(documentosMapeados);
       
@@ -1061,6 +1064,30 @@ export function ExpedienteAuditoriaCompleto({
                     onGuardar={handleGuardarDocumento}
                     loading={loadingDocumentos}
                     auditoriaId={auditoriaId}
+                    onRefreshDocumentos={async () => {
+                      if (!auditoriaId) return;
+                      setLoadingDocumentos(true);
+                      try {
+                        const docs = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
+                        const documentosMapeados: DocumentoExpediente[] = docs.map((doc: any) => ({
+                          id: doc.id,
+                          nombre: doc.nombre || doc.nombreArchivo,
+                          tipo: doc.tipoDocumento || 'otro',
+                          fase: (doc.etapa || 'planeacion') as 'planeacion' | 'ejecucion' | 'comunicacion',
+                          fechaCarga: doc.createdAt ? new Date(doc.createdAt) : new Date(),
+                          cargadoPor: doc.subidoPor || '',
+                          size: doc.tamanioBytes ? `${(doc.tamanioBytes / 1024).toFixed(0)} KB` : '0 KB',
+                          version: doc.version || 1,
+                          tipoMime: doc.tipoMime, // Incluir tipo MIME para determinar si es previsualizable
+                        }));
+                        setDocumentos(documentosMapeados);
+                      } catch (error) {
+                        console.error('Error al recargar documentos:', error);
+                        toast.error('Error al recargar documentos');
+                      } finally {
+                        setLoadingDocumentos(false);
+                      }
+                    }}
                   />
                 </TabsContent>
 
@@ -1523,6 +1550,7 @@ function TabDocumentacion({
   onGuardar,
   loading,
   auditoriaId,
+  onRefreshDocumentos,
 }: {
   documentos: DocumentoExpediente[];
   filtro: string;
@@ -1530,8 +1558,185 @@ function TabDocumentacion({
   onGuardar?: (documento: any) => void;
   loading?: boolean;
   auditoriaId?: string;
+  onRefreshDocumentos?: () => Promise<void>;
 }) {
   const [modalCargarDocumento, setModalCargarDocumento] = useState(false);
+
+  // Construir URL base de la API (usando la misma lógica que el servicio)
+  const getApiBaseUrl = () => {
+    // Usar la misma configuración que controlInternoService
+    const API_MODE = import.meta.env.VITE_API_MODE || 'gateway';
+    let baseUrl: string;
+    
+    if (API_MODE === 'gateway') {
+      baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      return `${baseUrl}/control-institucional/api/v1`;
+    } else {
+      baseUrl = 'http://localhost:3007';
+      return baseUrl;
+    }
+  };
+
+  // Handler para ver documento
+  const handleVerDocumento = async (doc: DocumentoExpediente) => {
+    try {
+      // Verificar si es previsualizable usando el tipoMime del documento
+      const tipoMime = doc.tipoMime?.toLowerCase() || '';
+      const esPrevisualizable = tipoMime.startsWith('image/') || 
+                                tipoMime === 'application/pdf' || 
+                                tipoMime.includes('pdf');
+      
+      if (esPrevisualizable) {
+        // Abrir preview para imágenes y PDFs
+        const apiBaseUrl = getApiBaseUrl();
+        const token = localStorage.getItem('esap_access_token') || localStorage.getItem('esap_auth_token');
+        const url = `${apiBaseUrl}/documentos/${doc.id}/preview`;
+        
+        if (token) {
+          window.open(`${url}?token=${token}`, '_blank');
+        } else {
+          window.open(url, '_blank');
+        }
+        
+        toast.success('Abriendo documento', {
+          description: doc.nombre
+        });
+      } else {
+        // Para Word, Excel, etc., descargar directamente
+        toast.info('Descargando archivo', {
+          description: 'Este tipo de archivo se descarga directamente. Solo se pueden previsualizar imágenes y PDFs.'
+        });
+        await handleDescargarDocumento(doc);
+      }
+    } catch (error: any) {
+      console.error('Error al abrir documento:', error);
+      
+      // Si el error es específico de que no se puede previsualizar, descargar automáticamente
+      if (error.message?.includes('no se puede previsualizar') || 
+          error.response?.data?.message?.includes('no se puede previsualizar')) {
+        toast.info('Descargando archivo', {
+          description: 'Este tipo de archivo se descarga directamente'
+        });
+        await handleDescargarDocumento(doc);
+      } else {
+        // Si no tenemos tipoMime, intentar obtenerlo del documento
+        if (!doc.tipoMime) {
+          try {
+            const documentoCompleto = await controlInternoService.getDocumentoById(doc.id);
+            const tipoMimeCompleto = documentoCompleto.tipoMime?.toLowerCase() || '';
+            const esPrevisualizable = tipoMimeCompleto.startsWith('image/') || 
+                                      tipoMimeCompleto === 'application/pdf' || 
+                                      tipoMimeCompleto.includes('pdf');
+            
+            if (esPrevisualizable) {
+              const apiBaseUrl = getApiBaseUrl();
+              const token = localStorage.getItem('esap_access_token') || localStorage.getItem('esap_auth_token');
+              const url = `${apiBaseUrl}/documentos/${doc.id}/preview`;
+              
+              if (token) {
+                window.open(`${url}?token=${token}`, '_blank');
+              } else {
+                window.open(url, '_blank');
+              }
+              return;
+            }
+          } catch (err) {
+            // Si falla, continuar con la descarga
+          }
+        }
+        
+        // Si no se puede previsualizar, descargar
+        toast.info('Descargando archivo', {
+          description: 'Este tipo de archivo se descarga directamente'
+        });
+        await handleDescargarDocumento(doc);
+      }
+    }
+  };
+
+  // Handler para descargar documento
+  const handleDescargarDocumento = async (doc: DocumentoExpediente) => {
+    try {
+      const apiBaseUrl = getApiBaseUrl();
+      const token = localStorage.getItem('esap_access_token') || localStorage.getItem('esap_auth_token');
+      const url = `${apiBaseUrl}/documentos/${doc.id}/download`;
+      
+      toast.loading('Descargando documento...', { id: `download-${doc.id}` });
+      
+      // Crear un enlace temporal para descargar
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = doc.nombre;
+      
+      // Agregar token si existe
+      if (token) {
+        link.href = `${url}?token=${token}`;
+      }
+      
+      // Agregar headers con fetch para manejar la descarga
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(url, { headers });
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      link.href = blobUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+      
+      toast.success('Descarga completada', {
+        id: `download-${doc.id}`,
+        description: doc.nombre
+      });
+    } catch (error: any) {
+      console.error('Error al descargar documento:', error);
+      toast.error('Error al descargar', {
+        id: `download-${doc.id}`,
+        description: error.message || 'No se pudo descargar el documento'
+      });
+    }
+  };
+
+  // Handler para eliminar documento
+  const handleEliminarDocumento = async (doc: DocumentoExpediente) => {
+    // Confirmar eliminación
+    const confirmar = window.confirm(
+      `¿Está seguro de que desea eliminar el documento "${doc.nombre}"?\n\nEsta acción no se puede deshacer.`
+    );
+    
+    if (!confirmar) return;
+    
+    try {
+      toast.loading('Eliminando documento...', { id: `delete-${doc.id}` });
+      
+      await controlInternoService.deleteDocumento(doc.id);
+      
+      toast.success('Documento eliminado', {
+        id: `delete-${doc.id}`,
+        description: `${doc.nombre} ha sido eliminado`
+      });
+      
+      // Recargar documentos
+      if (onRefreshDocumentos) {
+        await onRefreshDocumentos();
+      }
+    } catch (error: any) {
+      console.error('Error al eliminar documento:', error);
+      toast.error('Error al eliminar', {
+        id: `delete-${doc.id}`,
+        description: error.message || 'No se pudo eliminar el documento'
+      });
+    }
+  };
 
   return (
     <>
@@ -1597,14 +1802,26 @@ function TabDocumentacion({
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                  <button 
+                    onClick={() => handleVerDocumento(doc)}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Ver documento"
+                  >
                     <Eye className="w-4 h-4 text-gray-600" />
                   </button>
-                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                  <button 
+                    onClick={() => handleDescargarDocumento(doc)}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Descargar documento"
+                  >
                     <Download className="w-4 h-4 text-gray-600" />
                   </button>
-                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                    <Trash2 className="w-4 h-4 text-gray-600" />
+                  <button 
+                    onClick={() => handleEliminarDocumento(doc)}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors hover:bg-red-50"
+                    title="Eliminar documento"
+                  >
+                    <Trash2 className="w-4 h-4 text-gray-600 hover:text-red-600" />
                   </button>
                 </div>
               </div>
