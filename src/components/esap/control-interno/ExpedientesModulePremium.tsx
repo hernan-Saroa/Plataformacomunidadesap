@@ -672,6 +672,11 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
       timestamp: new Date().toISOString()
     });
 
+    // En producción: iniciar descarga real del documento
+    // const link = document.createElement('a');
+    // link.href = `/api/expedientes/documentos/${doc.id}/download`;
+    // link.download = doc.nombre;
+    // link.click();
   };
 
   return (

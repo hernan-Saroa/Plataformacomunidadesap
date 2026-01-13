@@ -55,7 +55,6 @@ interface SidebarProps {
   onToggleCollapse?: () => void;
   forceCollapse?: boolean; // Auto-colapsar cuando modal de perfil esté abierto
   userRole?: string; // Rol del usuario para permisos
-  userEmail?: string; // Email del usuario para restricciones específicas
   certificatesPendingCount?: number; // Número de solicitudes pendientes en Certificados
   restrictedMode?: 'certificados-laborales' | 'arquitectura-empresarial' | 'control-interno' | 'control-disciplinario' | 'registro-academico' | 'gestion-legal'; // Modo restringido para usuarios especiales
 }
@@ -76,7 +75,7 @@ const contentTransition = {
   ease: [0.4, 0, 0.2, 1] // easing personalizado
 };
 
-export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode }: SidebarProps) {
+export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, certificatesPendingCount = 0, restrictedMode }: SidebarProps) {
   // Determinar si el sidebar debe estar colapsado (manual o forzado)
   const effectiveCollapsed = isCollapsed || forceCollapse;
   
@@ -685,89 +684,8 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
           {/* Navigation */}
           <nav className={`p-3 ${effectiveCollapsed ? 'px-2' : 'px-4'}`}>
-            {/* ✅ FILTRO ESPECIAL: Si es admin@esap.edu.co, solo mostrar Gestión Personas */}
-            {userEmail === 'admin@esap.edu.co' ? (
-              <>
-                {/* SOLO MÓDULO DE GESTIÓN PERSONAS */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && renderSectionHeader('estructura-org', <Building2 className="w-3 h-3" />, 'GESTIÓN PERSONAS', 6)}
-                  </AnimatePresence>
-                  
-                  <AnimatePresence>
-                    {(effectiveCollapsed || expandedSections['estructura-org']) && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                        className="overflow-hidden"
-                      >
-                        {/* Usuarios - Gestión Simplificada CON SUBMENÚ */}
-                        {renderMenuWithSubmenu(
-                          'users-management-menu',
-                          'users-management',
-                          <Users className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Personas',
-                          '2 submódulos',
-                          [
-                            {
-                              module: 'users-management',
-                              icon: <Users className="w-4 h-4" />,
-                              label: 'Administración de Perfiles',
-                              subtitle: 'Gestión de usuarios'
-                            },
-                            {
-                              module: 'carpeta-digital',
-                              icon: <FolderOpen className="w-4 h-4" />,
-                              label: 'Carpeta Digital',
-                              subtitle: 'Documentos del usuario'
-                            }
-                          ]
-                        )}
-
-                        {/* Estructura Organizacional - NUEVO MÓDULO */}
-                        {renderMenuItem(
-                          'estructura-organizacional',
-                          <Building2 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Estructura Organizacional',
-                          'Sedes y territoriales'
-                        )}
-
-                        {/* Programas Académicos - NUEVO MÓDULO */}
-                        {renderMenuItem(
-                          'programas-academicos',
-                          <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Programas Académicos',
-                          'Gestión de programas'
-                        )}
-
-                        {/* Roles y Permisos - Administración completa con QR */}
-                        {renderMenuItem(
-                          'roles-administration',
-                          <Shield className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Roles y Permisos',
-                          'Gestión de roles del sistema y generación de QR'
-                        )}
-
-                        {renderMenuItem(
-                          'audit',
-                          <Activity className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Auditoría'
-                        )}
-
-                        {renderMenuItem(
-                          'reports',
-                          <BarChart3 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Reportes',
-                          'Analytics avanzado'
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </>
-            ) : restrictedMode === 'certificados-laborales' ? (
+            {/* Si es modo restringido (cerlaboral@esap.edu.co), solo mostrar Dashboard y Certificados Laborales */}
+            {restrictedMode === 'certificados-laborales' ? (
               <>
                 {/* Dashboard Ejecutivo - Solo estadísticas de certificados */}
                 <div className="mb-8">

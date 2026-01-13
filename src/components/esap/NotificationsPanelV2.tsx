@@ -47,7 +47,6 @@ interface Notification {
   url_accion?: string;
   email_enviado: boolean;
   email_abierto: boolean;
-  datos_adicionales?: any;
 }
 
 interface NotificationsPanelV2Props {
@@ -57,22 +56,22 @@ interface NotificationsPanelV2Props {
   compact?: boolean;
 }
 
-export function NotificationsPanelV2({
-  userId,
-  isOpen,
+export function NotificationsPanelV2({ 
+  userId, 
+  isOpen, 
   onClose,
-  compact = false
+  compact = false 
 }: NotificationsPanelV2Props) {
   const [filter, setFilter] = useState<'all' | 'unread' | 'important'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   // Usar el contexto global de notificaciones
-  const {
-    notifications,
-    markAsRead,
-    markAllAsRead,
+  const { 
+    notifications, 
+    markAsRead, 
+    markAllAsRead, 
     archiveNotification,
-    unreadCount
+    unreadCount 
   } = useNotifications();
 
   const getIconComponent = (iconName: string) => {
@@ -113,25 +112,9 @@ export function NotificationsPanelV2({
 
   const categories = Array.from(new Set(notifications.map(n => n.categoria)));
 
-  const handleAction = (notif: Notification) => {
-    // Mark as read first
-    markAsRead(notif.id_notificacion);
-
-    // Get the URL
-    const url = notif.url_accion || '';
-
-    if (url) {
-      // Store the highlighted item ID in sessionStorage for visual highlighting
-      if (notif.datos_adicionales?.terminoId) {
-        sessionStorage.setItem('highlightTerminoId', notif.datos_adicionales.terminoId);
-      }
-
-      // Navigate to the URL
-      window.location.href = url;
-
-      // Close the panel
-      onClose();
-    }
+  const handleAction = (url: string) => {
+    // Navegación aquí
+    toast.info('Redirigiendo...');
   };
 
   const formatTimeAgo = (date: string) => {
@@ -258,10 +241,11 @@ export function NotificationsPanelV2({
               <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                 <button
                   onClick={() => setCategoryFilter('all')}
-                  className={`px-3 py-1 rounded-full text-xs whitespace-nowrap transition-colors ${categoryFilter === 'all'
-                    ? 'bg-[#1e5da8] text-white'
-                    : 'bg-white border hover:bg-gray-50'
-                    }`}
+                  className={`px-3 py-1 rounded-full text-xs whitespace-nowrap transition-colors ${
+                    categoryFilter === 'all'
+                      ? 'bg-[#1e5da8] text-white'
+                      : 'bg-white border hover:bg-gray-50'
+                  }`}
                 >
                   Todas
                 </button>
@@ -269,10 +253,11 @@ export function NotificationsPanelV2({
                   <button
                     key={cat}
                     onClick={() => setCategoryFilter(cat)}
-                    className={`px-3 py-1 rounded-full text-xs capitalize whitespace-nowrap transition-colors ${categoryFilter === cat
-                      ? 'bg-[#1e5da8] text-white'
-                      : 'bg-white border hover:bg-gray-50'
-                      }`}
+                    className={`px-3 py-1 rounded-full text-xs capitalize whitespace-nowrap transition-colors ${
+                      categoryFilter === cat
+                        ? 'bg-[#1e5da8] text-white'
+                        : 'bg-white border hover:bg-gray-50'
+                    }`}
                   >
                     {cat}
                   </button>
@@ -297,8 +282,9 @@ export function NotificationsPanelV2({
                         transition={{ delay: index * 0.05 }}
                         className={`group relative ${!notif.leida ? 'bg-blue-50/50' : ''}`}
                       >
-                        <Card className={`p-4 hover:shadow-md transition-all ${!notif.leida ? 'border-l-4 border-l-[#1e5da8]' : ''
-                          }`}>
+                        <Card className={`p-4 hover:shadow-md transition-all ${
+                          !notif.leida ? 'border-l-4 border-l-[#1e5da8]' : ''
+                        }`}>
                           {/* Unread indicator */}
                           {!notif.leida && (
                             <div className="absolute top-4 right-4">
@@ -308,12 +294,12 @@ export function NotificationsPanelV2({
 
                           <div className="flex gap-3">
                             {/* Icon */}
-                            <div
+                            <div 
                               className="p-2 rounded-xl flex-shrink-0"
                               style={{ backgroundColor: `${notif.color}15` }}
                             >
-                              <Icon
-                                className="w-5 h-5"
+                              <Icon 
+                                className="w-5 h-5" 
                                 style={{ color: notif.color }}
                               />
                             </div>
@@ -322,7 +308,7 @@ export function NotificationsPanelV2({
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-2 mb-1">
                                 <h4 className="font-medium text-sm">{notif.titulo}</h4>
-                                <Badge
+                                <Badge 
                                   variant="outline"
                                   className={`text-xs ${priorityConfig.bg} ${priorityConfig.text} ${priorityConfig.border}`}
                                 >
@@ -358,23 +344,20 @@ export function NotificationsPanelV2({
                                       <Check className="w-4 h-4 text-gray-600" />
                                     </button>
                                   )}
-                                  {/* Hide archive button for term notifications */}
-                                  {!notif.tipo_notificacion.startsWith('termino_') && (
-                                    <button
-                                      onClick={() => archiveNotification(notif.id_notificacion)}
-                                      className="p-1 hover:bg-gray-100 rounded transition-colors"
-                                      title="Archivar"
-                                    >
-                                      <Archive className="w-4 h-4 text-gray-600" />
-                                    </button>
-                                  )}
+                                  <button
+                                    onClick={() => archiveNotification(notif.id_notificacion)}
+                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                                    title="Archivar"
+                                  >
+                                    <Archive className="w-4 h-4 text-gray-600" />
+                                  </button>
                                 </div>
                               </div>
 
                               {/* Action Button */}
                               {notif.tiene_accion && (
                                 <button
-                                  onClick={() => handleAction(notif)}
+                                  onClick={() => handleAction(notif.url_accion || '')}
                                   className="mt-3 w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm transition-colors group/btn"
                                 >
                                   <span className="font-medium text-[#1e5da8]">
@@ -398,7 +381,7 @@ export function NotificationsPanelV2({
                     </div>
                     <h3 className="font-medium mb-1">No hay notificaciones</h3>
                     <p className="text-sm text-gray-600">
-                      {filter === 'unread'
+                      {filter === 'unread' 
                         ? 'Has leído todas tus notificaciones'
                         : 'No tienes notificaciones en esta categoría'
                       }
@@ -410,8 +393,8 @@ export function NotificationsPanelV2({
 
             {/* Footer - Compacto */}
             <div className="px-4 py-3 border-t bg-gray-50/80 backdrop-blur-sm">
-              <Button
-                variant="outline"
+              <Button 
+                variant="outline" 
                 className="w-full hover:bg-[#1e5da8] hover:text-white hover:border-[#1e5da8] transition-all text-sm h-9"
                 onClick={() => console.log('Ver todas')}
               >

@@ -105,17 +105,16 @@ interface ModalAutosProps {
   proceso: Proceso | null;
   onClose: () => void;
   onCrearAuto: () => void;
-  initialView?: 'lista' | 'crear';
 }
 
-export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView = 'lista' }: ModalAutosProps) {
-  console.log('🚀 ModalGestionAutos abierto con proceso:', {
+export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosProps) {
+  console.log('ðŸš€ ModalGestionAutos abierto con proceso:', {
     id: proceso?.id,
     numeroProceso: proceso?.numeroProceso,
     esUUID: proceso?.id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(proceso.id) : false
   });
 
-  const [vistaActual, setVistaActual] = useState<'lista' | 'crear'>(initialView);
+  const [vistaActual, setVistaActual] = useState<'lista' | 'crear'>('lista');
   const [visorDocumento, setVisorDocumento] = useState<{ show: boolean; documento: any | null }>({ show: false, documento: null });
   const [autos, setAutos] = useState<any[]>([]);
   const [processId, setProcessId] = useState('');

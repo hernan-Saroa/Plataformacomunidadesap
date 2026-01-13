@@ -1483,21 +1483,7 @@ function ModalCrearPlanDesdeAuditoria({
             Cancelar
           </button>
           <button
-            onClick={() => {
-              if (auditoriaSeleccionada) {
-                // Ejecutar la creación del plan
-                onCrear(auditoriaSeleccionada);
-                
-                // Mostrar notificación de éxito
-                toast.success('Plan de Mejoramiento creado exitosamente', {
-                  description: `Se ha creado el plan PM-${auditoriaSeleccionada.codigo} con ${auditoriaSeleccionada.hallazgos.length} hallazgos vinculados.`,
-                  duration: 4000
-                });
-                
-                // Cerrar el modal
-                onCerrar();
-              }
-            }}
+            onClick={() => auditoriaSeleccionada && onCrear(auditoriaSeleccionada)}
             disabled={!auditoriaSeleccionada}
             className="px-6 py-2.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >

@@ -104,14 +104,6 @@ export function TopBar({
       </div>
 
       <div className="flex items-center gap-2 lg:gap-1.5 xl:gap-2 2xl:gap-3">
-        {/* System Switcher - Solo para usuarios con acceso dual */}
-        {hasBothSystemsAccess && currentSystem && onSystemChange && (
-          <SystemSwitcher
-            currentSystem={currentSystem}
-            onSystemChange={onSystemChange}
-          />
-        )}
-
         {/* Notifications V2 */}
         <button
           onClick={() => setShowNotifications(true)}
@@ -139,6 +131,14 @@ export function TopBar({
         <DarkModeToggle />
 
         <HelpCenter />
+
+        {/* System Switcher - Solo para usuarios con acceso dual */}
+        {hasBothSystemsAccess && currentSystem && onSystemChange && (
+          <SystemSwitcher
+            currentSystem={currentSystem}
+            onSystemChange={onSystemChange}
+          />
+        )}
 
         <UserMenu
           userName={userName}

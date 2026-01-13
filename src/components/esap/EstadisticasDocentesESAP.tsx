@@ -7,23 +7,24 @@
  * Fecha: 23 de diciembre de 2024
  */
 
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Users, GraduationCap, MapPin, TrendingUp, BookOpen, Briefcase } from 'lucide-react';
-import { TODOS_LOS_DOCENTES } from '../../data/docentesGestionProfesoral';
+import { TODOS_LOS_DOCENTES_ESAP } from '../../data/docentesESAPCompleto';
 
 export function EstadisticasDocentesESAP() {
   // Calcular estadísticas
-  const totalDocentes = TODOS_LOS_DOCENTES.length;
+  const totalDocentes = TODOS_LOS_DOCENTES_ESAP.length;
   
   // Por categoría académica
-  const porCategoria = TODOS_LOS_DOCENTES.reduce((acc, docente) => {
+  const porCategoria = TODOS_LOS_DOCENTES_ESAP.reduce((acc, docente) => {
     const categoria = docente.roles.find(r => r.code.startsWith('DOC_'))?.name || 'Otro';
     acc[categoria] = (acc[categoria] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
   // Por territorial
-  const porTerritorial = TODOS_LOS_DOCENTES.reduce((acc, docente) => {
+  const porTerritorial = TODOS_LOS_DOCENTES_ESAP.reduce((acc, docente) => {
     const territorial = docente.sedes[0]?.nombre || 'Sin asignar';
     acc[territorial] = (acc[territorial] || 0) + 1;
     return acc;
@@ -35,7 +36,7 @@ export function EstadisticasDocentesESAP() {
     .slice(0, 5);
 
   // Por estado
-  const activos = TODOS_LOS_DOCENTES.filter(d => d.status === 'active').length;
+  const activos = TODOS_LOS_DOCENTES_ESAP.filter(d => d.status === 'active').length;
 
   return (
     <div className="space-y-6">
@@ -222,19 +223,19 @@ export function EstadisticasDocentesESAP() {
             <div className="flex items-center justify-between p-2 bg-white rounded border border-green-200">
               <span className="text-gray-700">Registros con email válido</span>
               <Badge className="bg-green-600 text-white">
-                {TODOS_LOS_DOCENTES.filter(d => d.email.includes('@esap.edu.co')).length}
+                {TODOS_LOS_DOCENTES_ESAP.filter(d => d.email.includes('@esap.edu.co')).length}
               </Badge>
             </div>
             <div className="flex items-center justify-between p-2 bg-white rounded border border-green-200">
               <span className="text-gray-700">Registros con sede asignada</span>
               <Badge className="bg-green-600 text-white">
-                {TODOS_LOS_DOCENTES.filter(d => d.sedes.length > 0).length}
+                {TODOS_LOS_DOCENTES_ESAP.filter(d => d.sedes.length > 0).length}
               </Badge>
             </div>
             <div className="flex items-center justify-between p-2 bg-white rounded border border-green-200">
               <span className="text-gray-700">Registros con documento único</span>
               <Badge className="bg-green-600 text-white">
-                {new Set(TODOS_LOS_DOCENTES.map(d => d.documentNumber)).size}
+                {new Set(TODOS_LOS_DOCENTES_ESAP.map(d => d.documentNumber)).size}
               </Badge>
             </div>
           </div>

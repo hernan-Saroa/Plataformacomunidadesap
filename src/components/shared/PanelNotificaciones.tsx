@@ -88,11 +88,10 @@ export function PanelNotificaciones({ isOpen, onClose }: PanelNotificacionesProp
   };
 
   const obtenerNombreCategoria = (categoria: CategoriaNotificacion) => {
-    const nombres: Record<string, string> = {
+    const nombres = {
       'control-interno': 'Control Interno',
       'gestion-personas': 'Gestión de Personas',
       'gestion-academica': 'Gestión Académica',
-      'gestion-legal': 'Gestión Legal',
       'sistema': 'Sistema',
       'general': 'General',
     };
@@ -229,21 +228,23 @@ export function PanelNotificaciones({ isOpen, onClose }: PanelNotificacionesProp
               {notificacionesFiltradas.map((notif) => (
                 <div
                   key={notif.id}
-                  className={`p-4 transition-colors ${notif.leida ? 'bg-white' : obtenerColorPorTipo(notif.tipo)
-                    } hover:bg-gray-50 cursor-pointer border-l-4 ${notif.leida ? 'border-l-transparent' : 'border-l-current'
-                    }`}
+                  className={`p-4 transition-colors ${
+                    notif.leida ? 'bg-white' : obtenerColorPorTipo(notif.tipo)
+                  } hover:bg-gray-50 cursor-pointer border-l-4 ${
+                    notif.leida ? 'border-l-transparent' : 'border-l-current'
+                  }`}
                   style={
                     !notif.leida
                       ? {
-                        borderLeftColor:
-                          notif.tipo === 'critical' || notif.tipo === 'error'
-                            ? '#DC2626'
-                            : notif.tipo === 'warning'
+                          borderLeftColor:
+                            notif.tipo === 'critical' || notif.tipo === 'error'
+                              ? '#DC2626'
+                              : notif.tipo === 'warning'
                               ? '#F59E0B'
                               : notif.tipo === 'success'
-                                ? '#10B981'
-                                : '#3B82F6',
-                      }
+                              ? '#10B981'
+                              : '#3B82F6',
+                        }
                       : undefined
                   }
                   onClick={() => handleNotificacionClick(notif)}
@@ -259,22 +260,24 @@ export function PanelNotificaciones({ isOpen, onClose }: PanelNotificacionesProp
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <div className="flex-1">
                           <h4
-                            className={`text-sm font-medium ${notif.leida ? 'text-gray-700' : 'text-gray-900'
-                              }`}
+                            className={`text-sm font-medium ${
+                              notif.leida ? 'text-gray-700' : 'text-gray-900'
+                            }`}
                           >
                             {notif.titulo}
                           </h4>
                           {notif.metadata?.criticidad && (
                             <Badge
                               variant="outline"
-                              className={`text-xs mt-1 ${notif.metadata.criticidad === 'critica'
+                              className={`text-xs mt-1 ${
+                                notif.metadata.criticidad === 'critica'
                                   ? 'bg-red-100 text-red-800 border-red-200'
                                   : notif.metadata.criticidad === 'alta'
-                                    ? 'bg-orange-100 text-orange-800 border-orange-200'
-                                    : notif.metadata.criticidad === 'media'
-                                      ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
-                                      : 'bg-blue-100 text-blue-800 border-blue-200'
-                                }`}
+                                  ? 'bg-orange-100 text-orange-800 border-orange-200'
+                                  : notif.metadata.criticidad === 'media'
+                                  ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                                  : 'bg-blue-100 text-blue-800 border-blue-200'
+                              }`}
                             >
                               {notif.metadata.criticidad}
                             </Badge>
@@ -286,8 +289,9 @@ export function PanelNotificaciones({ isOpen, onClose }: PanelNotificacionesProp
                       </div>
 
                       <p
-                        className={`text-sm ${notif.leida ? 'text-gray-500' : 'text-gray-700'
-                          } line-clamp-2`}
+                        className={`text-sm ${
+                          notif.leida ? 'text-gray-500' : 'text-gray-700'
+                        } line-clamp-2`}
                       >
                         {notif.descripcion}
                       </p>

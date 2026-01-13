@@ -110,6 +110,7 @@ export class PeiService {
     }
 
     async exportIndicatorsToZip(): Promise<any> {
+        // Dynamic imports to avoid issues if deps are strictly CJS/ESM
         const archiver = require('archiver');
         const PDFDocument = require('pdfkit');
 
@@ -123,113 +124,79 @@ export class PeiService {
             zlib: { level: 9 } // Sets the compression level.
         });
 
-        // Handle errors gracefully to prevent process crash
-        archive.on('error', (err: any) => {
-            console.error('Archiver error:', err);
-            // Optionally emit an error or just stop
-        });
-
-        archive.on('warning', (err: any) => {
-            if (err.code === 'ENOENT') {
-                console.warn('Archiver warning:', err);
-            } else {
-                console.error('Archiver error/warning:', err);
-            }
-        });
-
-        // Helper safe date formatter
-        const formatDate = (date: any): string => {
-            if (!date) return 'N/A';
-            const d = new Date(date);
-            if (isNaN(d.getTime())) return 'Fecha Inválida';
-            return d.toLocaleDateString();
-        };
-
-        // Helper safe number formatter
-        const formatNumber = (num: any): string => {
-            if (num === null || num === undefined) return '0';
-            const n = Number(num);
-            return isNaN(n) ? '0' : n.toFixed(2);
-        };
-
         // 2. Generate PDF for each indicator
         for (const ind of indicadores) {
-            try {
-                const doc = new PDFDocument();
+            const doc = new PDFDocument();
 
-                // Allow the doc to be read by the archive
-                archive.append(doc, { name: `indicador_${ind.id}.pdf` });
+            // Allow the doc to be read by the archive
+            archive.append(doc, { name: `indicador_${ind.id}.pdf` });
 
-                // Header
-                doc.fontSize(20).text(`Plan de Acción Institucional`, { align: 'center' });
-                doc.moveDown();
-                doc.fontSize(16).text(`Detalle de Indicador: ${ind.id}`, { align: 'center' });
-                doc.moveDown();
+            // Header
+            doc.fontSize(20).text(`Plan de Acción Institucional`, { align: 'center' });
+            doc.moveDown();
+            doc.fontSize(16).text(`Detalle de Indicador: ${ind.id}`, { align: 'center' });
+            doc.moveDown();
 
-                // Basic Info
-                doc.fontSize(12).font('Helvetica-Bold').text('Nombre:', { continued: true }).font('Helvetica').text(` ${ind.nombre || 'Sin nombre'}`);
-                doc.font('Helvetica-Bold').text('Responsable:', { continued: true }).font('Helvetica').text(` ${ind.responsableNombre || 'Sin asignar'}`);
-                doc.font('Helvetica-Bold').text('Eje Estratégico:', { continued: true }).font('Helvetica').text(` ${ind.ejeEstrategico || 'N/A'}`);
-                doc.font('Helvetica-Bold').text('Prioridad:', { continued: true }).font('Helvetica').text(` ${ind.prioridad || 'MEDIA'}`);
-                doc.font('Helvetica-Bold').text('Tipo:', { continued: true }).font('Helvetica').text(` ${ind.tipoIndicador || 'GESTION'}`);
-                doc.moveDown();
+            // Basic Info
+            doc.fontSize(12).font('Helvetica-Bold').text('Nombre:', { continued: true }).font('Helvetica').text(` ${ind.nombre}`);
+            doc.font('Helvetica-Bold').text('Responsable:', { continued: true }).font('Helvetica').text(` ${ind.responsableNombre}`);
+            doc.font('Helvetica-Bold').text('Eje Estratégico:', { continued: true }).font('Helvetica').text(` ${ind.ejeEstrategico}`);
+            doc.font('Helvetica-Bold').text('Prioridad:', { continued: true }).font('Helvetica').text(` ${ind.prioridad || 'MEDIA'}`);
+            doc.font('Helvetica-Bold').text('Tipo:', { continued: true }).font('Helvetica').text(` ${ind.tipoIndicador || 'GESTION'}`);
+            doc.moveDown();
 
-                doc.font('Helvetica-Bold').text('Descripción:', { continued: true }).font('Helvetica').text(` ${ind.descripcion || 'Sin descripción'}`);
-                doc.moveDown();
+            doc.font('Helvetica-Bold').text('Descripción:', { continued: true }).font('Helvetica').text(` ${ind.descripcion || 'Sin descripción'}`);
+            doc.moveDown();
 
-                // Metrics
-                const sortedRegistros = ind.registros ? ind.registros.sort((a, b) => new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime()) : [];
-                const latest = sortedRegistros[0];
-                const avance = latest ? formatNumber(latest.porcentajeAvance) : '0';
-                const actual = latest ? Number(latest.valorReportado) : 0; // Keep raw for display logic if needed, or format
+            // Metrics
+            const latest = ind.registros.sort((a, b) => b.fechaRegistro.getTime() - a.fechaRegistro.getTime())[0];
+            const avance = latest ? Number(latest.porcentajeAvance).toFixed(2) : '0';
+            const actual = latest ? Number(latest.valorReportado) : '0';
 
-                doc.text(`Meta Objetivo: ${ind.metaObjetivo || 0} ${ind.unidadMedida || ''}`);
-                doc.text(`Valor Actual: ${actual} ${ind.unidadMedida || ''}`);
-                doc.text(`Avance Porcentual: ${avance}%`);
-                doc.moveDown();
+            doc.text(`Meta Objetivo: ${ind.metaObjetivo} ${ind.unidadMedida}`);
+            doc.text(`Valor Actual: ${actual} ${ind.unidadMedida}`);
+            doc.text(`Avance Porcentual: ${avance}%`);
+            doc.moveDown();
 
-                // Status Calculation
-                const now = new Date();
-                const fin = new Date(ind.fechaFin);
-                let estado = 'EN TIEMPO';
+            // Status Calculation (Simplified)
+            const now = new Date();
+            const fin = new Date(ind.fechaFin);
+            const inicio = new Date(ind.fechaInicio);
+            let estado = 'EN TIPO';
+            if (Number(avance) >= 100) estado = 'COMPLETADO';
+            else if (now > fin) estado = 'VENCIDO';
+            else if (Number(avance) >= 90) estado = 'EN TIEMPO';
+            else if (Number(avance) >= 50) estado = 'EN RIESGO';
 
-                const avanceNum = Number(avance);
+            doc.text(`Estado Calculado: ${estado}`);
+            doc.text(`Fecha Inicio: ${inicio.toLocaleDateString()}`);
+            doc.text(`Fecha Fin: ${fin.toLocaleDateString()}`);
 
-                if (avanceNum >= 100) estado = 'COMPLETADO';
-                else if (!isNaN(fin.getTime()) && now > fin) estado = 'VENCIDO';
-                else if (avanceNum >= 90) estado = 'EN TIEMPO';
-                else if (avanceNum >= 50) estado = 'EN RIESGO';
+            doc.moveDown();
+            doc.fontSize(14).text('Historial de Avances', { underline: true });
+            doc.moveDown(0.5);
 
-                doc.text(`Estado Calculado: ${estado}`);
-                doc.text(`Fecha Inicio: ${formatDate(ind.fechaInicio)}`);
-                doc.text(`Fecha Fin: ${formatDate(ind.fechaFin)}`);
-
-                doc.moveDown();
-                doc.fontSize(14).text('Historial de Avances', { underline: true });
-                doc.moveDown(0.5);
-
-                if (sortedRegistros.length > 0) {
-                    sortedRegistros.forEach((reg) => {
-                        doc.fontSize(10).font('Helvetica').text(
-                            `${formatDate(reg.fechaRegistro)} - Avance: ${formatNumber(reg.porcentajeAvance)}% (Valor: ${reg.valorReportado})`
-                        );
-                        if (reg.observaciones) {
-                            doc.fontSize(8).text(`   Obs: ${reg.observaciones}`, { oblique: true });
-                        }
-                        doc.moveDown(0.5);
-                    });
-                } else {
-                    doc.fontSize(10).text('No hay registros de avance.');
-                }
-
-                // Finalize PDF
-                doc.end();
-            } catch (err) {
-                console.error(`Error generating PDF for indicator ${ind.id}:`, err);
-                // Continue with next indicator even if one fails
+            if (ind.registros.length > 0) {
+                ind.registros.forEach((reg, idx) => {
+                    doc.fontSize(10).font('Helvetica').text(
+                        `${new Date(reg.fechaRegistro).toLocaleDateString()} - Avance: ${Number(reg.porcentajeAvance).toFixed(2)}% (Valor: ${reg.valorReportado})`
+                    );
+                    if (reg.observaciones) {
+                        doc.fontSize(8).text(`   Obs: ${reg.observaciones}`, { oblique: true });
+                    }
+                    doc.moveDown(0.5);
+                });
+            } else {
+                doc.fontSize(10).text('No hay registros de avance.');
             }
+
+            // Finalize PDF
+            doc.end();
         }
 
+        // Finalize the archive (but we don't await finalize here, we verify connection in controller)
+        // Actually, we return the archive object, controller pipes it.
+        // We must call finalize() to start the stream ending process.
         archive.finalize();
 
         return archive;
