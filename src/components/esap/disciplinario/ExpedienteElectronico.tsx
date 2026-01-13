@@ -12,7 +12,7 @@ import {
   AlertCircle, File, FileCheck, Search, Filter, X,
   ChevronDown, ChevronRight, Trash2, Edit2, ExternalLink,
   Archive, Folder, Shield, Key, Copy, Share2, FileSignature,
-  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle
+  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle, Scale
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -27,8 +27,94 @@ import { Viewer, Worker } from '@react-pdf-viewer/core';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/default-layout/lib/styles/index.css';
+import { ModalGestionAutos, ModalGestionEvidencias, ModalGestionOficios } from './ModalesGestionDocumental';
 
-// Interfaces
+// Modal de Selección de Tipo de Documento
+interface ModalSeleccionProps {
+  onClose: () => void;
+  onSelect: (tipo: 'auto' | 'evidencia' | 'oficio' | 'otro') => void;
+}
+
+function ModalSeleccionDocumento({ onClose, onSelect }: ModalSeleccionProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden"
+      >
+        <div className="p-6 border-b bg-gray-50">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-bold text-gray-900">Seleccione el Tipo de Documento</h3>
+            <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-lg">
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+        </div>
+        <div className="p-8 grid grid-cols-2 gap-4">
+          <button
+            onClick={() => onSelect('auto')}
+            className="p-6 rounded-xl border-2 border-transparent bg-purple-50 hover:bg-purple-100 hover:border-purple-200 transition-all flex flex-col items-center gap-3 group"
+          >
+            <div className="w-12 h-12 rounded-full bg-purple-100 group-hover:bg-purple-200 flex items-center justify-center">
+              <Scale className="w-6 h-6 text-purple-600" />
+            </div>
+            <div className="text-center">
+              <h4 className="font-bold text-purple-900">Auto / Fallo</h4>
+              <p className="text-xs text-purple-700 mt-1">Generación automática de títulos y consecutivos</p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onSelect('evidencia')}
+            className="p-6 rounded-xl border-2 border-transparent bg-orange-50 hover:bg-orange-100 hover:border-orange-200 transition-all flex flex-col items-center gap-3 group"
+          >
+            <div className="w-12 h-12 rounded-full bg-orange-100 group-hover:bg-orange-200 flex items-center justify-center">
+              <Archive className="w-6 h-6 text-orange-600" />
+            </div>
+            <div className="text-center">
+              <h4 className="font-bold text-orange-900">Evidencia / Prueba</h4>
+              <p className="text-xs text-orange-700 mt-1">Gestión de material probatorio y anexos</p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onSelect('oficio')}
+            className="p-6 rounded-xl border-2 border-transparent bg-cyan-50 hover:bg-cyan-100 hover:border-cyan-200 transition-all flex flex-col items-center gap-3 group"
+          >
+            <div className="w-12 h-12 rounded-full bg-cyan-100 group-hover:bg-cyan-200 flex items-center justify-center">
+              <Mail className="w-6 h-6 text-cyan-600" />
+            </div>
+            <div className="text-center">
+              <h4 className="font-bold text-cyan-900">Oficio / Comunicación</h4>
+              <p className="text-xs text-cyan-700 mt-1">Comunicaciones oficiales y respuestas</p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onSelect('otro')}
+            className="p-6 rounded-xl border-2 border-transparent bg-gray-50 hover:bg-gray-100 hover:border-gray-200 transition-all flex flex-col items-center gap-3 group"
+          >
+            <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center">
+              <FileText className="w-6 h-6 text-gray-600" />
+            </div>
+            <div className="text-center">
+              <h4 className="font-bold text-gray-900">Otro Documento</h4>
+              <p className="text-xs text-gray-600 mt-1">Carga genérica (Actas, Constancias, etc.)</p>
+            </div>
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
 interface Documento {
   id: string;
   nombre: string;
@@ -1064,21 +1150,32 @@ function ModalVisorDocumento({
 // Modal de Subir Documento
 function ModalSubirDocumento({
   procesoId,
+  defaultEtapa,
   onClose,
-  onConfirm
+  onConfirm,
+  onSwitchType
 }: {
   procesoId: string;
+  defaultEtapa?: string;
   onClose: () => void;
   onConfirm: (doc: any) => void;
+  onSwitchType?: (tipo: 'auto' | 'evidencia' | 'oficio') => void;
 }) {
   const [nombreDocumento, setNombreDocumento] = useState('');
-  const [tipoDocumento, setTipoDocumento] = useState<Documento['tipo']>('auto');
-  const [etapa, setEtapa] = useState('');
+  const [tipoDocumento, setTipoDocumento] = useState<Documento['tipo']>('otro');
+  const [etapa, setEtapa] = useState(defaultEtapa || '');
   const [descripcion, setDescripcion] = useState('');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [usarEnlaceExterno, setUsarEnlaceExterno] = useState(false);
   const [urlExterna, setUrlExterna] = useState('');
   const [dragActive, setDragActive] = useState(false);
+
+  // Sync state with prop
+  useEffect(() => {
+    if (defaultEtapa) {
+      setEtapa(defaultEtapa);
+    }
+  }, [defaultEtapa]);
 
   // Tipos de archivo permitidos
   const tiposPermitidos = [
@@ -1191,7 +1288,13 @@ function ModalSubirDocumento({
             </label>
             <select
               value={tipoDocumento}
-              onChange={(e) => setTipoDocumento(e.target.value as Documento['tipo'])}
+              onChange={(e) => {
+                const nuevoTipo = e.target.value as Documento['tipo'];
+                setTipoDocumento(nuevoTipo);
+                if (onSwitchType && (nuevoTipo === 'auto' || nuevoTipo === 'evidencia' || nuevoTipo === 'oficio')) {
+                  onSwitchType(nuevoTipo);
+                }
+              }}
               className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="auto">Auto</option>
@@ -1214,12 +1317,18 @@ function ModalSubirDocumento({
               className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione...</option>
-              <option value="Noticia">Noticia Disciplinaria</option>
+              <option value="Noticia Disciplinaria">Noticia Disciplinaria</option>
               <option value="Valoración">Valoración</option>
               <option value="Indagación Preliminar">Indagación Preliminar</option>
               <option value="Investigación Formal">Investigación Formal</option>
               <option value="Descargos">Descargos</option>
-              <option value="Cierre">Cierre de Investigación</option>
+              <option value="Cierre de Investigación">Cierre de Investigación</option>
+              {defaultEtapa && ![
+                "Noticia Disciplinaria", "Valoración", "Indagación Preliminar",
+                "Investigación Formal", "Descargos", "Cierre de Investigación"
+              ].includes(defaultEtapa) && (
+                  <option value={defaultEtapa}>{defaultEtapa}</option>
+                )}
             </select>
           </div>
 
@@ -1344,6 +1453,14 @@ export function ExpedienteElectronico() {
   const [filterTipo, setFilterTipo] = useState('all');
   const [showModalVisor, setShowModalVisor] = useState(false);
   const [showModalSubir, setShowModalSubir] = useState(false);
+
+  // Modales especializados
+  const [showModalAutos, setShowModalAutos] = useState(false);
+  const [showModalEvidencias, setShowModalEvidencias] = useState(false);
+  const [showModalOficios, setShowModalOficios] = useState(false);
+  const [showModalSeleccion, setShowModalSeleccion] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState<Documento | null>(null);
   const [vistaActual, setVistaActual] = useState<'documentos' | 'indice' | 'auditoria'>('documentos');
   const [showModalFlujo, setShowModalFlujo] = useState(false);
@@ -1457,7 +1574,7 @@ export function ExpedienteElectronico() {
     };
 
     cargarDocumentos();
-  }, [procesoSeleccionado?.id]);
+  }, [procesoSeleccionado?.id, refreshTrigger]);
 
   // Sincronizar el input con el proceso seleccionado
   useEffect(() => {
@@ -1465,6 +1582,37 @@ export function ExpedienteElectronico() {
       setProcesoSearchQuery(procesoSeleccionado.numero);
     }
   }, [procesoSeleccionado]);
+
+  // Manejo de Modales Especializados
+  const handleCerrarModalesEspecializados = () => {
+    setShowModalAutos(false);
+    setShowModalEvidencias(false);
+    setShowModalOficios(false);
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  const handleSeleccionTipoDocumento = (tipo: 'auto' | 'evidencia' | 'oficio' | 'otro') => {
+    setShowModalSeleccion(false);
+    if (tipo === 'auto') setShowModalAutos(true);
+    else if (tipo === 'evidencia') setShowModalEvidencias(true);
+    else if (tipo === 'oficio') setShowModalOficios(true);
+    else setShowModalSubir(true);
+  };
+
+  // Helper para mapear proceso
+  const mapProcesoToEspecializado = (proc: Proceso | null): any => {
+    if (!proc) return null;
+    return {
+      id: proc.id,
+      numeroProceso: proc.numero,
+      etapaActual: proc.etapaActual,
+      denunciante: { nombre: 'N/A', tipoIdentificacion: 'CC', numeroIdentificacion: '000' },
+      profesionalAsignado: { nombre: 'N/A', tipoIdentificacion: 'CC', numeroIdentificacion: '000' },
+      denunciado: typeof proc.denunciado === 'string'
+        ? { nombre: proc.denunciado, tipoIdentificacion: 'CC', numeroIdentificacion: '000' }
+        : proc.denunciado
+    };
+  };
 
   const handleVerDocumento = (doc: Documento) => {
     setDocumentoSeleccionado(doc);
@@ -2053,7 +2201,7 @@ export function ExpedienteElectronico() {
               <option value="otro">Otros</option>
             </select>
             <button
-              onClick={() => setShowModalSubir(true)}
+              onClick={() => setShowModalSeleccion(true)}
               className="px-4 py-2.5 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
               style={{ background: '#10B981' }}
             >
@@ -2315,6 +2463,38 @@ export function ExpedienteElectronico() {
 
       {/* Modales */}
       <AnimatePresence>
+        {showModalSeleccion && (
+          <ModalSeleccionDocumento
+            onClose={() => setShowModalSeleccion(false)}
+            onSelect={handleSeleccionTipoDocumento}
+          />
+        )}
+
+        {showModalAutos && procesoSeleccionado && (
+          <ModalGestionAutos
+            proceso={mapProcesoToEspecializado(procesoSeleccionado)}
+            onClose={handleCerrarModalesEspecializados}
+            onCrearAuto={handleCerrarModalesEspecializados}
+            initialView="crear"
+          />
+        )}
+
+        {showModalEvidencias && procesoSeleccionado && (
+          <ModalGestionEvidencias
+            proceso={mapProcesoToEspecializado(procesoSeleccionado)}
+            onClose={handleCerrarModalesEspecializados}
+            onSubirEvidencia={handleCerrarModalesEspecializados}
+          />
+        )}
+
+        {showModalOficios && procesoSeleccionado && (
+          <ModalGestionOficios
+            proceso={mapProcesoToEspecializado(procesoSeleccionado)}
+            onClose={handleCerrarModalesEspecializados}
+            onCrearOficio={handleCerrarModalesEspecializados}
+          />
+        )}
+
         {showModalVisor && documentoSeleccionado && (
           <ModalVisorDocumento
             documento={documentoSeleccionado}
@@ -2329,8 +2509,13 @@ export function ExpedienteElectronico() {
         {showModalSubir && (
           <ModalSubirDocumento
             procesoId={procesoSeleccionado?.id || ''}
+            defaultEtapa={procesoSeleccionado?.etapaActual}
             onClose={() => setShowModalSubir(false)}
             onConfirm={handleSubirDocumento}
+            onSwitchType={(tipo) => {
+              setShowModalSubir(false);
+              handleSeleccionTipoDocumento(tipo);
+            }}
           />
         )}
 
