@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
-import { legalService } from '../../../../services/api/legal.service';
+import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
 import {
   FileQuestion, Scale, User, Calendar, Clock, AlertTriangle,
   Download, Eye, ExternalLink, Paperclip, CheckCircle,
@@ -91,6 +91,10 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, false);
       toast.dismiss();
       toast.success('Borrador guardado correctamente');
+      // Recargar datos para reflejar el borrador guardado
+      if (onUpdate) {
+        onUpdate();
+      }
     } catch (error) {
       console.error('Error guardando borrador:', error);
       toast.dismiss();
@@ -101,21 +105,40 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const handleEnviarRespuesta = async () => {
     if (!consulta?.uuid || !respuestaTexto.trim()) return;
 
-    if (!confirm('¿Está seguro de enviar esta respuesta? La consulta quedará marcada como respondida.')) {
+    // Validar que tenga email del solicitante
+    if (!consulta.emailSolicitante) {
+      toast.error('No se puede enviar: el solicitante no tiene correo electrónico registrado');
+      return;
+    }
+
+    if (!confirm(`¿Está seguro de enviar esta respuesta por correo a ${consulta.emailSolicitante}?`)) {
       return;
     }
 
     try {
-      toast.loading('Enviando respuesta...');
+      toast.loading('Enviando respuesta por correo...', { id: 'send-response' });
+
+      // 1. Enviar correo al solicitante
+      const asunto = `Respuesta a Consulta Jurídica ${consulta.id} - ${consulta.funcionarioSolicitante}`;
+      await correosJuridicosService.sendEmail({
+        to: consulta.emailSolicitante,
+        subject: asunto,
+        body: respuestaTexto
+      });
+
+      // 2. Guardar respuesta en BD y marcar como respondida
       await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, true);
-      toast.dismiss();
-      toast.success('Respuesta enviada correctamente');
-      onClose(); // Cerrar modal o recargar datos
-      // Podríamos disparar un evento de recarga si lo recibimos por props
+
+      toast.success('✅ Respuesta enviada correctamente', {
+        id: 'send-response',
+        description: `Correo enviado a ${consulta.emailSolicitante}`
+      });
+
+      if (onUpdate) onUpdate();
+      onClose();
     } catch (error) {
       console.error('Error enviando respuesta:', error);
-      toast.dismiss();
-      toast.error('Error al enviar respuesta');
+      toast.error('Error al enviar la respuesta', { id: 'send-response' });
     }
   };
 
@@ -969,6 +992,18 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                           )}
                         </div>
                       </div>
+
+                      {/* Indicador de envío por correo */}
+                      {consulta.emailSolicitante && (
+                        <div className="bg-blue-50 p-3 mb-4 rounded-lg border border-blue-200 flex items-center gap-3">
+                          <Mail className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-semibold text-blue-800">Respuesta enviada por correo</p>
+                            <p className="text-xs text-blue-600">Destinatario: {consulta.emailSolicitante}</p>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="bg-white p-6 rounded-lg border border-green-200">
                         <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
                           {consulta.respuesta}

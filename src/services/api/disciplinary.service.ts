@@ -547,9 +547,9 @@ class DisciplinaryService {
 
     // --- EVIDENCIAS ---
     // Nota: Estos endpoints pertenecen al microservicio legal-management
-    // Prefix: /legal-management/api/v1 -> api/legal/*
+    // Prefix: /legal/api/v1 -> api-gateway:3000/legal/api/v1/* -> legal-management-service:3008/*
     async getEvidencias(expedienteId: string): Promise<any[]> {
-        return apiClient.get<any[]>(`/legal-management/api/v1/evidencias/expediente/${expedienteId}`);
+        return apiClient.get<any[]>(`/legal/api/v1/evidencias/expediente/${expedienteId}`);
     }
 
     async createEvidencia(expedienteId: string, data: any, file: File): Promise<any> {
@@ -560,20 +560,20 @@ class DisciplinaryService {
         formData.append('tipo', data.tipo || 'Documental');
         formData.append('prioridad', data.prioridad || 'Media');
 
-        return apiClient.upload<any>(`/legal-management/api/v1/evidencias/${expedienteId}`, formData);
+        return apiClient.upload<any>(`/legal/api/v1/evidencias/${expedienteId}`, formData);
     }
 
     async updateEvidenciaEstado(id: string, estado: string): Promise<any> {
-        return apiClient.patch<any>(`/legal-management/api/v1/evidencias/${id}/estado`, { estado });
+        return apiClient.patch<any>(`/legal/api/v1/evidencias/${id}/estado`, { estado });
     }
 
     async deleteEvidenciaReal(id: string): Promise<void> {
-        return apiClient.delete<void>(`/legal-management/api/v1/evidencias/${id}`);
+        return apiClient.delete<void>(`/legal/api/v1/evidencias/${id}`);
     }
 
     // --- ACTAS ---
     async getActas(expedienteId: string): Promise<any[]> {
-        return apiClient.get<any[]>(`/legal-management/api/v1/actas/expediente/${expedienteId}`);
+        return apiClient.get<any[]>(`/legal/api/v1/actas/expediente/${expedienteId}`);
     }
 
     async createActa(expedienteId: string, data: any, file: File): Promise<any> {
@@ -584,15 +584,15 @@ class DisciplinaryService {
                 formData.append(key, data[key]);
             }
         });
-        return apiClient.upload<any>(`/legal-management/api/v1/actas/${expedienteId}`, formData);
+        return apiClient.upload<any>(`/legal/api/v1/actas/${expedienteId}`, formData);
     }
 
     async updateActaEstado(id: string, estado: string): Promise<any> {
-        return apiClient.patch<any>(`/legal-management/api/v1/actas/${id}/estado`, { estado });
+        return apiClient.patch<any>(`/legal/api/v1/actas/${id}/estado`, { estado });
     }
 
     async deleteActaReal(id: string): Promise<void> {
-        return apiClient.delete<void>(`/legal-management/api/v1/actas/${id}`);
+        return apiClient.delete<void>(`/legal/api/v1/actas/${id}`);
     }
 }
 

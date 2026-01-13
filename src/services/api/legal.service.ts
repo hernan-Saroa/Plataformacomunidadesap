@@ -1,6 +1,6 @@
 // import { ApiClient } from './apiClient';
 import { apiClient } from './client';
-import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environment';
+import { API_MODE, MICROSERVICE_URLS, getServiceUrl, buildApiUrl } from '../../config/environment';
 
 // Prefijo del servicio legal en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
@@ -88,6 +88,27 @@ export class LegalService {
 
     async createJuzgamientoDecision(radicado: string, data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`, data);
+    }
+
+    // ===== EXCEPCIONES PROCESALES (Juzgamiento) =====
+    async getJuzgamientoExcepciones(radicado: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`);
+    }
+
+    async createJuzgamientoExcepcion(radicado: string, data: {
+        tipo: 'NULIDAD' | 'RECUSACION' | 'PRESCRIPCION' | 'IMPEDIMENTO' | 'OTRA';
+        descripcion: string;
+        fundamento?: string;
+        presentadoPor?: string;
+    }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`, data);
+    }
+
+    async resolverExcepcion(excepcionId: string, data: {
+        estado: 'RESUELTA' | 'RECHAZADA';
+        resolucion: string;
+    }): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/excepciones/${excepcionId}/resolver`, data);
     }
 
     async updateJuzgamientoProceso(radicado: string, data: any): Promise<any> {
@@ -729,12 +750,25 @@ export interface SendCorreoDto {
     attachments?: { name: string; contentBytes: string; contentType: string }[];
 }
 
+export interface AdjuntoCorreo {
+    id: string;
+    correoId: string;
+    graphMessageId: string;
+    graphAttachmentId: string;
+    nombre: string;
+    contentType: string | null;
+    tamanio: number;
+    archivoLocalUrl: string | null;
+    descargado: boolean;
+    createdAt: string;
+}
+
 export class CorreosJuridicosService {
     /**
      * Trigger manual sync from Microsoft Graph
      */
     async syncCorreos(): Promise<{ synced: number; errors: number }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`);
+        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, {});
     }
 
     /**
@@ -784,6 +818,46 @@ export class CorreosJuridicosService {
      */
     async sendEmail(dto: SendCorreoDto): Promise<{ success: boolean }> {
         return apiClient.post(`${SERVICE_PREFIX}/correos/send`, dto);
+    }
+
+    /**
+     * Get attachments for an email
+     */
+    async getAdjuntos(correoId: string): Promise<AdjuntoCorreo[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/${correoId}/adjuntos`);
+    }
+
+    /**
+     * Download an attachment - returns a blob URL for download
+     * Handles both gateway and direct modes:
+     * - Gateway mode: http://gateway:3000/legal/api/v1/correos/adjuntos/{id}/download
+     * - Direct mode: http://localhost:3008/correos/adjuntos/{id}/download
+     */
+    async downloadAdjunto(adjuntoId: string): Promise<string> {
+        let url: string;
+
+        if (API_MODE === 'direct') {
+            // Direct mode: go straight to microservice without /legal/api/v1 prefix
+            url = `${MICROSERVICE_URLS.legal}/correos/adjuntos/${adjuntoId}/download`;
+        } else {
+            // Gateway mode: use SERVICE_PREFIX which includes /legal/api/v1
+            const baseUrl = getServiceUrl('legal');
+            url = `${baseUrl}${SERVICE_PREFIX}/correos/adjuntos/${adjuntoId}/download`;
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Error downloading attachment');
+
+        const blob = await response.blob();
+        return window.URL.createObjectURL(blob);
+    }
+
+    /**
+     * Export email to ZIP
+     */
+    async exportCorreoZip(id: string): Promise<string> {
+        const blob = await apiClient.getBlob(`${SERVICE_PREFIX}/correos/${id}/export/zip`);
+        return window.URL.createObjectURL(blob);
     }
 }
 

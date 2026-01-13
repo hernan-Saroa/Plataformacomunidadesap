@@ -29,7 +29,7 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
-import { getServiceUrl } from '../../../../config/environment';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { legalService, ocService, ComentarioOC, DocumentoOC } from '../../../../services/api/legal.service';
 
 // Types
@@ -1276,7 +1276,8 @@ export function OrganosControl() {
                               const filename = doc.archivoUrl?.split('/').pop();
                               if (filename) {
                                 const baseUrl = getServiceUrl('legal');
-                                window.open(`${baseUrl}/legal/api/v1/files/${filename}`, '_blank');
+                                const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+                                window.open(`${baseUrl}${prefix}/files/${filename}`, '_blank');
                               }
                             }}
                           >
