@@ -43,8 +43,9 @@ export class MicrosoftGraphService {
             return this.graphClient;
         }
 
-        if (!this.tenantId || !this.clientId || !this.clientSecret) {
-            throw new Error('Azure credentials not configured. Check AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET in .env');
+        if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
+            this.logger.warn('Azure credentials not configured or disabled for development. Microsoft Graph features will be unavailable.');
+            throw new Error('Microsoft Graph is disabled in development mode');
         }
 
         const credential = new ClientSecretCredential(
@@ -294,6 +295,69 @@ export class MicrosoftGraphService {
                 success: false,
                 message: error.message || 'Connection failed',
             };
+        }
+    }
+
+    /**
+     * Get attachments for a specific email message
+     */
+    async getAttachments(messageId: string): Promise<Array<{
+        id: string;
+        name: string;
+        contentType: string;
+        size: number;
+        contentBytes?: string;
+    }>> {
+        try {
+            const client = this.getClient();
+
+            const response = await client
+                .api(`/users/${this.emailAccount}/messages/${messageId}/attachments`)
+                .get();
+
+            const attachments = response.value || [];
+            this.logger.log(`Fetched ${attachments.length} attachments for message ${messageId}`);
+
+            return attachments.map((att: any) => ({
+                id: att.id,
+                name: att.name,
+                contentType: att.contentType,
+                size: att.size,
+                contentBytes: att.contentBytes, // Base64 encoded
+            }));
+        } catch (error) {
+            this.logger.error(`Error fetching attachments for message ${messageId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Download a specific attachment by ID
+     */
+    async downloadAttachment(messageId: string, attachmentId: string): Promise<{
+        name: string;
+        contentType: string;
+        contentBytes: string;
+        size: number;
+    }> {
+        try {
+            const client = this.getClient();
+
+            const attachment = await client
+                .api(`/users/${this.emailAccount}/messages/${messageId}/attachments/${attachmentId}`)
+                .get();
+
+            this.logger.log(`Downloaded attachment: ${attachment.name} (${attachment.size} bytes)`);
+
+            return {
+                name: attachment.name,
+                contentType: attachment.contentType,
+                contentBytes: attachment.contentBytes,
+                size: attachment.size,
+            };
+        } catch (error) {
+            this.logger.error(`Error downloading attachment ${attachmentId}:`, error);
+            throw error;
         }
     }
 }

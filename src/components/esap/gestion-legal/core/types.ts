@@ -407,6 +407,7 @@ export interface SolicitudInforme {
   datosRequeridos?: string[]
   documentos?: Documento[];
   timeline?: EventoTimeline[];
+  metadata?: Record<string, any>;
 
   // ========== CAMPOS PARA INTEGRACIÓN TRANSVERSAL ==========
   moduloOrigen?: ModuloOrigen; // De qué módulo proviene este término

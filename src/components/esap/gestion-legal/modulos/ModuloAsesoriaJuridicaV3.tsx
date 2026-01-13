@@ -113,7 +113,10 @@ export function ModuloAsesoriaJuridicaV3() {
         abogadoAsignadoId: c.abogadoAsignadoId || c.abogadoAsignado?.id || '', // ID needed for Select
         prioridad: c.prioridad || 'media',
         normativaAplicable: [],
-        documentosAdjuntos: []
+        documentosAdjuntos: [],
+        respuesta: c.respuesta || '', // Preservar respuesta/borrador guardado
+        fechaRespuesta: c.fechaRespuesta || null,
+        estado: c.estado || ''
       }));
       setConsultas(mapped);
     } catch (error) {

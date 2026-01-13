@@ -1346,16 +1346,6 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
       timestamp: new Date().toISOString()
     });
 
-    // En producción: llamar al endpoint de descarga
-    // fetch(`/api/documentos/${doc.id}/descargar`)
-    //   .then(response => response.blob())
-    //   .then(blob => {
-    //     const url = window.URL.createObjectURL(blob);
-    //     const a = document.createElement('a');
-    //     a.href = url;
-    //     a.download = doc.nombre;
-    //     a.click();
-    //   });
   };
 
   return (
@@ -1550,7 +1540,6 @@ function FiltroButton({ active, onClick, label, color = 'gray' }: any) {
   );
 }
 
-// Importar ChevronDown si no está
 import { ChevronDown } from 'lucide-react';
 
 // ════════════════════════════════════════════════════════════════════════════
