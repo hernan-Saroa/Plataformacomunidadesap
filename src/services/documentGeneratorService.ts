@@ -27,10 +27,28 @@ interface CertificadoData {
 /**
  * Formatear fecha a texto en español
  */
+const parseDateOnly = (fechaStr: string): Date | null => {
+  if (!fechaStr) {
+    return null;
+  }
+  const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]) - 1;
+    const day = Number(isoMatch[3]);
+    return new Date(year, month, day, 12, 0, 0);
+  }
+  const parsed = new Date(fechaStr);
+  if (isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
+};
+
 const formatearFecha = (fechaStr: string): string => {
   try {
-    const fecha = new Date(fechaStr);
-    if (isNaN(fecha.getTime())) {
+    const fecha = parseDateOnly(fechaStr);
+    if (!fecha) {
       return 'Fecha no disponible';
     }
     return fecha.toLocaleDateString('es-CO', {
@@ -48,7 +66,10 @@ const formatearFecha = (fechaStr: string): string => {
  */
 const calcularTiempoServicio = (fechaVinculacion: string): string => {
   try {
-    const fechaInicio = new Date(fechaVinculacion);
+    const fechaInicio = parseDateOnly(fechaVinculacion);
+    if (!fechaInicio) {
+      return '0 meses';
+    }
     const fechaActual = new Date();
 
     if (isNaN(fechaInicio.getTime())) {

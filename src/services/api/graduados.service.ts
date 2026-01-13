@@ -264,6 +264,7 @@ const graduadosService = {
       companyName?: string;
       programName?: string;
       graduationDate?: string;
+      lastName?: string;
     }): Promise<SolicitarCertificadoLandingResponse> => {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/autoservicio/solicitar-certificado`,

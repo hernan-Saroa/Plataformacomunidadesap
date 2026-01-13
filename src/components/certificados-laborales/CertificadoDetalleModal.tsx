@@ -111,6 +111,32 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
     }
   };
 
+  const parseDateOnly = (fechaStr: string) => {
+    if (!fechaStr) return null;
+    const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day, 12, 0, 0);
+    }
+    const parsed = new Date(fechaStr);
+    if (isNaN(parsed.getTime())) return null;
+    return parsed;
+  };
+
+  const formatearFecha = (fechaStr: string, opciones?: Intl.DateTimeFormatOptions) => {
+    const fecha = parseDateOnly(fechaStr);
+    if (!fecha) {
+      return 'Fecha no disponible';
+    }
+    return fecha.toLocaleDateString('es-CO', opciones || {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -261,11 +287,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Calendar className="w-4 h-4 text-gray-400" />
-                            {new Date(certificado.empleado.fechaVinculacion).toLocaleDateString('es-CO', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric'
-                            })}
+                            {formatearFecha(certificado.empleado.fechaVinculacion)}
                           </p>
                         </div>
                         <div>
@@ -354,7 +376,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Clock className="w-4 h-4 text-gray-400" />
-                            {new Date(certificado.fechaSolicitud).toLocaleDateString('es-CO', {
+                            {formatearFecha(certificado.fechaSolicitud, {
                               year: 'numeric',
                               month: 'long',
                               day: 'numeric',
@@ -370,7 +392,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                             </label>
                             <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                               <CheckCircle className="w-4 h-4 text-green-500" />
-                              {new Date(certificado.fechaGeneracion).toLocaleDateString('es-CO', {
+                              {formatearFecha(certificado.fechaGeneracion, {
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric',

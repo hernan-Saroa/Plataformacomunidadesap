@@ -1721,9 +1721,19 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       metadata: cambio.metadata,
     }));
 
-  const cargarHistorial = async (page: number) => {
+  const fallbackImageData =
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='80'><rect width='100%' height='100%' fill='%23f3f4f6'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-size='12'>No disponible</text></svg>";
+
+  const handleHistorialImageError = (
+    event: React.SyntheticEvent<HTMLImageElement>
+  ) => {
+    event.currentTarget.src = fallbackImageData;
+    event.currentTarget.alt = 'Imagen no disponible';
+  };
+
+  const cargarHistorial = async (page: number, force = false) => {
     try {
-      if (activeTab !== 'historial') return;
+      if (!force && activeTab !== 'historial') return;
       setIsLoadingHistorial(true);
       const safePage = Math.max(1, page);
       const offset = (safePage - 1) * HISTORIAL_POR_PAGINA;
@@ -2834,7 +2844,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   const recargarHistorial = async (force = false) => {
     try {
       if (!force && activeTab !== 'historial') return;
-      await cargarHistorial(historialPage);
+      await cargarHistorial(historialPage, force);
       setHistorialDirty(false);
     } catch (error) {
       console.error('Error al recargar historial:', error);
@@ -7365,6 +7375,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
                                           alt="Logo anterior"
 
+                                          onError={handleHistorialImageError}
+
 
 
                                           className="w-full h-full object-contain"
@@ -7445,6 +7457,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
                                         alt="Logo nuevo"
 
+                                        onError={handleHistorialImageError}
+
 
 
                                         className="w-full h-full object-contain"
@@ -7508,6 +7522,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
                                           alt="Firma anterior"
+
+                                          onError={handleHistorialImageError}
 
 
 
@@ -7588,6 +7604,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
                                         alt="Firma nueva"
+
+                                        onError={handleHistorialImageError}
 
 
 

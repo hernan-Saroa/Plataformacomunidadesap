@@ -72,6 +72,8 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   // Form states
   const [graduateDocumentNumber, setGraduateDocumentNumber] = useState('');
   const [graduateDocumentIssueDate, setGraduateDocumentIssueDate] = useState('');
+  const [graduateGraduationDate, setGraduateGraduationDate] = useState('');
+  const [graduateLastName, setGraduateLastName] = useState('');
   const [requesterName, setRequesterName] = useState('');
   const [requesterEmail, setRequesterEmail] = useState('');
   const [requesterType, setRequesterType] = useState<'empresa' | 'graduado'>('graduado');
@@ -111,6 +113,8 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       const respuesta = await graduadosService.autoservicio.solicitarCertificado({
         idNumber: graduateDocumentNumber,
         ...(graduateDocumentIssueDate ? { idIssueDate: graduateDocumentIssueDate } : {}),
+        ...(graduateGraduationDate ? { graduationDate: graduateGraduationDate } : {}),
+        ...(graduateLastName ? { lastName: graduateLastName } : {}),
         requesterType: requesterType === 'graduado' ? 'GRADUATE' : 'COMPANY',
         requesterName,
         requesterEmail,
@@ -226,6 +230,8 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   const handleReset = () => {
     setGraduateDocumentNumber('');
     setGraduateDocumentIssueDate('');
+    setGraduateGraduationDate('');
+    setGraduateLastName('');
     setRequesterName('');
     setRequesterEmail('');
     setRequesterType('graduado');
@@ -314,13 +320,17 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                   </h3>
                   <div className="grid sm:grid-cols-2 gap-6">
                     <div className="space-y-1">
-                      <p className="text-sm text-gray-600 font-medium">Cédula Consultada</p>
+                      <p className="text-sm text-gray-600 font-medium">Cedula Consultada</p>
                       <p className="font-mono font-bold text-lg text-gray-900">{graduateDocumentNumber}</p>
                     </div>
                     <div className="space-y-1">
-                      <p className="text-sm text-gray-600 font-medium">Fecha de Expedición</p>
+                      <p className="text-sm text-gray-600 font-medium">Apellido(s)</p>
+                      <p className="font-bold text-lg text-gray-900">{graduateLastName || "No suministrado"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm text-gray-600 font-medium">Fecha de Graduacion</p>
                       <p className="font-bold text-lg text-gray-900">
-                        {formatDateOnly(graduateDocumentIssueDate)}
+                        {graduateGraduationDate ? formatDateOnly(graduateGraduationDate) : "No suministrada"}
                       </p>
                     </div>
                     <div className="space-y-1">
@@ -604,6 +614,35 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                         required
                       />
                     </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="graduateLastName" className="text-base font-semibold text-gray-900">
+                        Apellido(s)
+                      </Label>
+                      <Input
+                        id="graduateLastName"
+                        type="text"
+                        value={graduateLastName}
+                        onChange={(e) => setGraduateLastName(e.target.value)}
+                        placeholder="Ej: Rodriguez"
+                        className="h-12 text-base border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
+                      />
+                      <p className="text-sm text-gray-500">Opcional</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="graduateGraduationDate" className="text-base font-semibold text-gray-900">
+                        Fecha de Graduacion
+                      </Label>
+                      <Input
+                        id="graduateGraduationDate"
+                        type="date"
+                        value={graduateGraduationDate}
+                        onChange={(e) => setGraduateGraduationDate(e.target.value)}
+                        className="h-12 text-base border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
+                      />
+                      <p className="text-sm text-gray-500">Opcional</p>
+                    </div>
                   </div>
                 </motion.div>
 
@@ -775,7 +814,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                       </div>
                       <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-emerald-300">
                         <p className="text-sm font-semibold text-gray-600 mb-2">Fecha de Expedición</p>
-                        <p className="font-bold text-lg text-gray-900">2010-05-15</p>
+                        <p className="font-bold text-lg text-gray-900">2024-06-15</p>
                       </div>
                     </div>
                     <p className="text-sm text-emerald-700 flex items-center gap-2">
@@ -797,7 +836,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                       </div>
                       <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-orange-300">
                         <p className="text-sm font-semibold text-gray-600 mb-2">Fecha de Expedición</p>
-                        <p className="font-bold text-lg text-gray-900">2010-06-20</p>
+                        <p className="font-bold text-lg text-gray-900">2023-11-30</p>
                       </div>
                     </div>
                     <p className="text-sm text-orange-700 flex items-center gap-2">

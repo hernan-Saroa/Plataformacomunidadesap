@@ -581,14 +581,39 @@ export class CertificatesService {
       throw new NotFoundException(`Certificado con ID ${certificadoId} no encontrado`);
     }
 
+    const normalizarFecha = (valor: Date | string) => {
+      if (!valor) return null;
+      if (valor instanceof Date) {
+        return new Date(
+          valor.getUTCFullYear(),
+          valor.getUTCMonth(),
+          valor.getUTCDate(),
+          12,
+          0,
+          0,
+        );
+      }
+      const match = valor.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      if (match) {
+        const year = Number(match[1]);
+        const month = Number(match[2]) - 1;
+        const day = Number(match[3]);
+        return new Date(year, month, day, 12, 0, 0);
+      }
+      const parsed = new Date(valor);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
     // Formatear fecha de vinculacion
+    const fechaVinculacionDate = normalizarFecha(certificado.hiring_date);
     const fechaVinculacion = this.certificateGenerator.formatFechaTexto(
-      new Date(certificado.hiring_date),
+      fechaVinculacionDate || new Date(),
     );
 
     // Formatear fecha de expedicion
+    const fechaExpedicionDate = normalizarFecha(certificado.issue_date);
     const fechaExpedicion = this.certificateGenerator.formatFechaTexto(
-      new Date(certificado.issue_date),
+      fechaExpedicionDate || new Date(),
     );
 
     // Formatear salario
