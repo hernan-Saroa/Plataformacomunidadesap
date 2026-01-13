@@ -176,5 +176,3 @@ export const TODOS_LOS_DOCENTES_ESAP: UserWithSedes[] = DOCENTES_RAW.map((docent
 });
 
 export const TOTAL_DOCENTES_ESAP = TODOS_LOS_DOCENTES_ESAP.length;
-
-console.log(`✅ ${TOTAL_DOCENTES_ESAP} docentes ESAP cargados correctamente`);

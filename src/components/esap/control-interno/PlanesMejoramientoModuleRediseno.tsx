@@ -620,25 +620,11 @@ export function PlanesMejoramientoModuleRediseno() {
           return estado === 'Finalizada';
         });
         
-        console.log(`[PlanesMejoramiento] Auditorías finalizadas encontradas: ${auditoriasFinalizadas.length}`);
-        console.log(`[PlanesMejoramiento] Auditorías con contador de hallazgos > 0: ${auditoriasFinalizadas.filter((a: any) => (a.hallazgos || 0) > 0).length}`);
-        
         if (auditoriasFinalizadas.length === 0) {
-          console.warn('[PlanesMejoramiento] ⚠️ No se encontraron auditorías finalizadas');
-          // Log de todas las auditorías para debug
-          const estadosUnicos = [...new Set(responseKanban.data.map((a: any) => a.estado))];
-          console.log('[PlanesMejoramiento] Estados encontrados en Kanban:', estadosUnicos);
-          console.log('[PlanesMejoramiento] Ejemplo de auditorías:', responseKanban.data.slice(0, 5).map((a: any) => ({
-            id: a.id,
-            codigo: a.codigo,
-            estado: a.estado,
-            hallazgos: a.hallazgos
-          })));
           return;
         }
         
         // Obtener todos los hallazgos de una vez y luego filtrar por auditoría
-        console.log('[PlanesMejoramiento] Obteniendo todos los hallazgos desde BD...');
         const responseTodosHallazgos = await hallazgosApi.getAll();
         
         if (!responseTodosHallazgos.success || !responseTodosHallazgos.data) {
@@ -646,7 +632,6 @@ export function PlanesMejoramientoModuleRediseno() {
           return;
         }
         
-        console.log(`[PlanesMejoramiento] Total hallazgos en BD: ${responseTodosHallazgos.data.length}`);
         
         const auditoriasConHallazgosBD: any[] = [];
         
@@ -663,10 +648,7 @@ export function PlanesMejoramientoModuleRediseno() {
               return coincideId || coincideCodigo;
             });
             
-            console.log(`[PlanesMejoramiento] Búsqueda para auditoría ${auditoria.codigo} (ID: ${auditoria.id}): ${hallazgosDeAuditoria.length} hallazgos encontrados`);
-            
             if (hallazgosDeAuditoria.length > 0) {
-              console.log(`[PlanesMejoramiento] ✅ Auditoría ${auditoria.codigo} tiene ${hallazgosDeAuditoria.length} hallazgos en BD`);
               
               // Convertir hallazgos del backend al formato esperado
               const hallazgosMapeados = hallazgosDeAuditoria.map((h: any) => {
@@ -731,7 +713,6 @@ export function PlanesMejoramientoModuleRediseno() {
         
         // Agregar todas las auditorías desde BD (ya limpiamos al inicio)
         if (auditoriasConHallazgosBD.length > 0) {
-          console.log(`[PlanesMejoramiento] ✅ Agregando ${auditoriasConHallazgosBD.length} auditorías con hallazgos desde BD`);
           // Agregar todas las auditorías de BD
           auditoriasConHallazgosBD.forEach(aud => {
             agregarAuditoriaConHallazgos(aud);

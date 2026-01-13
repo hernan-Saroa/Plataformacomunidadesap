@@ -870,8 +870,7 @@ export default function App() {
     }
   };
 
-  const renderViewLanding = () => {
-    console.log('🔍 Vista actual:', vistaActual, currentView); 
+  const renderViewLanding = () => { 
     switch (currentView) {
       case 'solicitar-certificados-laborales':
         return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />

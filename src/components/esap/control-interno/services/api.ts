@@ -1000,6 +1000,191 @@ export const notificacionesApi = {
   },
 };
 
+// ==================== EVIDENCIAS/DOCUMENTOS ====================
+
+// Helper para upload de archivos con progreso
+async function uploadFile<T>(
+  endpoint: string,
+  formData: FormData,
+  onProgress?: (progress: number) => void
+): Promise<ApiResponse<T>> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const token = localStorage.getItem('esap_auth_token');
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    // Manejar progreso
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = (e.loaded / e.total) * 100;
+          onProgress(percentComplete);
+        }
+      });
+    }
+
+    // Manejar respuesta
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+          resolve({
+            success: true,
+            data: response,
+          });
+        } catch (error) {
+          resolve({
+            success: true,
+            data: null,
+          });
+        }
+      } else {
+        try {
+          const error = JSON.parse(xhr.responseText);
+          resolve({
+            success: false,
+            error: error.message || `HTTP ${xhr.status}`,
+          });
+        } catch {
+          resolve({
+            success: false,
+            error: `HTTP ${xhr.status}: ${xhr.statusText}`,
+          });
+        }
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      resolve({
+        success: false,
+        error: 'Error de red al subir el archivo',
+      });
+    });
+
+    xhr.open('POST', url);
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+    xhr.send(formData);
+  });
+}
+
+export const evidenciasApi = {
+  /**
+   * Crear una evidencia/documento (sube archivo)
+   */
+  create: async (
+    file: File,
+    metadata: {
+      nombre: string;
+      descripcion?: string;
+      tipoDocumento: 'evidencia_hallazgo' | 'evidencia_accion' | 'evidencia_plan' | 'documento_plan' | 'certificado' | 'acta' | 'informe' | 'otro';
+      hallazgoId?: string;
+      accionCorrectivaId?: string;
+      planMejoramientoId?: string;
+      auditoriaId?: string;
+      subidoPor?: string;
+    },
+    onProgress?: (progress: number) => void
+  ): Promise<ApiResponse<any>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('nombre', metadata.nombre);
+    if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
+    formData.append('tipoDocumento', metadata.tipoDocumento);
+    if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
+    if (metadata.accionCorrectivaId) formData.append('accionCorrectivaId', metadata.accionCorrectivaId);
+    if (metadata.planMejoramientoId) formData.append('planMejoramientoId', metadata.planMejoramientoId);
+    if (metadata.auditoriaId) formData.append('auditoriaId', metadata.auditoriaId);
+    if (metadata.subidoPor) formData.append('subidoPor', metadata.subidoPor);
+
+    return uploadFile<any>('/evidencias', formData, onProgress);
+  },
+
+  /**
+   * Obtener evidencias por acción correctiva
+   */
+  getByAccion: async (accionId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/evidencias/accion/${accionId}`);
+  },
+
+  /**
+   * Obtener evidencias por hallazgo
+   */
+  getByHallazgo: async (hallazgoId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/evidencias/hallazgo/${hallazgoId}`);
+  },
+
+  /**
+   * Obtener evidencias por plan de mejoramiento
+   */
+  getByPlan: async (planId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/evidencias/plan/${planId}`);
+  },
+
+  /**
+   * Obtener evidencias por auditoría
+   */
+  getByAuditoria: async (auditoriaId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/evidencias/auditoria/${auditoriaId}`);
+  },
+
+  /**
+   * Obtener una evidencia por ID
+   */
+  getById: async (id: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/evidencias/${id}`);
+  },
+
+  /**
+   * Descargar una evidencia
+   */
+  download: async (id: string): Promise<Blob> => {
+    const url = `${API_BASE_URL}/evidencias/${id}/download`;
+    const token = localStorage.getItem('esap_auth_token');
+    
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+      throw new Error(`Error al descargar: ${response.statusText}`);
+    }
+
+    return response.blob();
+  },
+
+  /**
+   * Validar una evidencia (US-032)
+   */
+  validar: async (
+    id: string,
+    estadoValidacion: 'pendiente' | 'aceptado' | 'rechazado' | 'con_observaciones',
+    observaciones?: string
+  ): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/evidencias/${id}/validar`, {
+      method: 'POST',
+      body: JSON.stringify({
+        estadoValidacion,
+        observacionesValidacion: observaciones,
+      }),
+    });
+  },
+
+  /**
+   * Eliminar una evidencia
+   */
+  delete: async (id: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>(`/evidencias/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 // Exportar todo
 export const controlInternoApi = {
   auditorias: auditoriasApi,
@@ -1011,4 +1196,5 @@ export const controlInternoApi = {
   listasChequeo: listasChequeoApi,
   informesLey: informesLeyApi,
   notificaciones: notificacionesApi,
+  evidencias: evidenciasApi,
 };

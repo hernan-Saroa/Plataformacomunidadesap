@@ -52,8 +52,6 @@ export class ApiClient {
       delay: config.API_RETRY_DELAY,
     };
 
-    console.log('🔧 API Client initialized with baseURL:', this.baseURL);
-    console.log('🔧 API Mode:', API_MODE);
   }
 
   // ==========================================================================

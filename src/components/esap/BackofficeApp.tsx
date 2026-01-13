@@ -107,7 +107,6 @@ interface BackofficeAppProps {
 
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, userData, userRoles }: BackofficeAppProps = {}) {
   // Si el usuario tiene acceso restringido, abrir directamente su módulo específico
-  console.log('🚀 BackofficeApp: userData:', userData);
   // const initialModule = userData?.module === 'control-interno'
   //   ? 'control-interno'
   //   : userData?.module === 'control-disciplinario'
@@ -326,9 +325,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               currentModule={currentModule}
               currentSidebarModule={currentSidebarModule}
               onModuleChange={(sidebarModule) => {
-                console.log('🔍 Sidebar module clicked:', sidebarModule);
                 const mappedModule = mapSidebarToModule(sidebarModule);
-                console.log('📍 Mapped to:', mappedModule);
                 setCurrentSidebarModule(sidebarModule);
                 setCurrentModule(mappedModule);
                 setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo

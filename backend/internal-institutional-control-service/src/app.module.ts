@@ -36,6 +36,7 @@ import { AuditoriaProgramada } from './esap/programa-anual/entities/auditoria-pr
 import { PlanIndividual } from './esap/plan-individual/entities/plan-individual.entity';
 import { Notificacion } from './esap/notificaciones/entities/notificacion.entity';
 import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferencia-notificacion.entity';
+import { EvidenciaDocumento } from './esap/evidencias/entities/evidencia-documento.entity';
 
 @Module({
   imports: [
@@ -101,6 +102,7 @@ import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferen
             PlanIndividual,
             Notificacion,
             PreferenciaNotificacion,
+            EvidenciaDocumento,
           ],
           synchronize: false, // Deshabilitado - usar migraciones manuales
           // synchronize: process.env.NODE_ENV !== 'production', // Solo en desarrollo

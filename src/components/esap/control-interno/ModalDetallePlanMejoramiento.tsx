@@ -27,7 +27,7 @@ import {
   BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, ChevronDown, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import { planesMejoramientoApi, hallazgosApi } from './services/api';
+import { planesMejoramientoApi, hallazgosApi, evidenciasApi } from './services/api';
 import type { PlanMejoramiento as PlanMejoramientoBD, AccionMejoramiento, Hallazgo as HallazgoBD } from './services/types';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -567,6 +567,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
   const [plan, setPlan] = useState<PlanMejoramientoDetalle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [conteoDocumentos, setConteoDocumentos] = useState<number>(0);
 
   // Cargar datos del plan desde el backend
   useEffect(() => {
@@ -1027,7 +1028,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
               onClick={() => setTabActiva('documentos')}
               icon={<FileText className="w-4 h-4" />}
               label="Documentos"
-              badge={plan.documentos.length.toString()}
+              badge={(conteoDocumentos ?? 0).toString()}
             />
             <TabButton
               active={tabActiva === 'seguimiento'}
@@ -1051,7 +1052,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
               {tabActiva === 'resumen' && <TabResumen plan={plan} estadisticas={estadisticas} />}
               {tabActiva === 'hallazgos' && <TabHallazgos plan={plan} />}
               {tabActiva === 'acciones' && <TabAcciones plan={plan} planId={planId} onAccionCreada={handleRecargarPlan} />}
-              {tabActiva === 'documentos' && <TabDocumentos plan={plan} />}
+              {tabActiva === 'documentos' && <TabDocumentos plan={plan} onDocumentosCargados={setConteoDocumentos} />}
               {tabActiva === 'seguimiento' && <TabSeguimiento plan={plan} />}
             </motion.div>
           </AnimatePresence>
@@ -1584,6 +1585,8 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
   const [modalEditar, setModalEditar] = useState(false);
   const [modalEvidencia, setModalEvidencia] = useState(false);
   const [marcandoCompletada, setMarcandoCompletada] = useState(false);
+  const [evidencias, setEvidencias] = useState<any[]>([]);
+  const [loadingEvidencias, setLoadingEvidencias] = useState(false);
   
   const estadoConfig = {
     PENDIENTE: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Pendiente', icon: Clock },
@@ -1596,12 +1599,67 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
   const Icon = config.icon;
   const hallazgo = plan.hallazgos.find(h => h.id === accion.hallazgoId);
 
+  // Cargar evidencias de la acción
+  useEffect(() => {
+    const cargarEvidencias = async () => {
+      try {
+        setLoadingEvidencias(true);
+        const response = await evidenciasApi.getByAccion(accion.id);
+        if (response.success && response.data) {
+          setEvidencias(response.data);
+        }
+      } catch (error) {
+        console.error('[CardAccion] Error al cargar evidencias:', error);
+      } finally {
+        setLoadingEvidencias(false);
+      }
+    };
+
+    cargarEvidencias();
+  }, [accion.id]);
+
   const handleEditar = () => {
     setModalEditar(true);
   };
 
   const handleCargarEvidencia = () => {
     setModalEvidencia(true);
+  };
+
+  const handleEvidenciaCargada = async () => {
+    // Recargar evidencias después de cargar
+    try {
+      const response = await evidenciasApi.getByAccion(accion.id);
+      if (response.success && response.data) {
+        setEvidencias(response.data);
+      }
+    } catch (error) {
+      console.error('[CardAccion] Error al recargar evidencias:', error);
+    }
+  };
+
+  const handleDescargarEvidencia = async (evidencia: any) => {
+    try {
+      const blob = await evidenciasApi.download(evidencia.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = evidencia.nombreArchivoOriginal || evidencia.nombre;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Evidencia Descargada', {
+        description: `${evidencia.nombre} se ha descargado exitosamente`,
+        duration: 2000,
+      });
+    } catch (error: any) {
+      console.error('[CardAccion] Error al descargar:', error);
+      toast.error('Error al descargar evidencia', {
+        description: error.message || 'No se pudo descargar el archivo'
+      });
+    }
   };
 
   const handleMarcarCompletada = async () => {
@@ -1735,9 +1793,47 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
                 <Paperclip className="w-3 h-3" />
                 <span>Evidencias</span>
               </div>
-              <div className="text-gray-900">{accion.evidencias} archivos</div>
+              <div className="text-gray-900">
+                {loadingEvidencias ? (
+                  <Loader2 className="w-3 h-3 animate-spin inline" />
+                ) : (
+                  `${evidencias.length} archivo(s)`
+                )}
+              </div>
             </div>
           </div>
+
+          {/* Evidencias */}
+          {evidencias.length > 0 && (
+            <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded">
+              <div className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-1">
+                <Paperclip className="w-3 h-3" />
+                Evidencias ({evidencias.length})
+              </div>
+              <div className="space-y-1">
+                {evidencias.slice(0, 3).map((evidencia) => (
+                  <div key={evidencia.id} className="flex items-center justify-between text-xs bg-white p-2 rounded border border-gray-200">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <FileText className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                      <span className="text-gray-700 truncate">{evidencia.nombre}</span>
+                    </div>
+                    <button
+                      onClick={() => handleDescargarEvidencia(evidencia)}
+                      className="p-1 text-gray-600 hover:text-[#1e5da8] transition-colors flex-shrink-0"
+                      title="Descargar"
+                    >
+                      <Download className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {evidencias.length > 3 && (
+                  <div className="text-xs text-gray-500 text-center pt-1">
+                    +{evidencias.length - 3} más
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Observaciones */}
           {accion.observaciones && (
@@ -1799,7 +1895,13 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
       {modalEvidencia && (
         <ModalCargarEvidencia 
           accion={accion} 
+          planId={planId}
           onClose={() => setModalEvidencia(false)}
+          onEvidenciaCargada={() => {
+            handleEvidenciaCargada();
+            onAccionEditada?.();
+          }}
+          conteoEvidenciasActual={evidencias.length}
         />
       )}
     </div>
@@ -1835,62 +1937,103 @@ function MiniCardAccion({ accion }: { accion: AccionCorrectiva }) {
 // TAB: DOCUMENTOS
 // ════════════════════════════════════════════════════════════════════════════
 
-function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
+function TabDocumentos({ plan, onDocumentosCargados }: { plan: PlanMejoramientoDetalle; onDocumentosCargados?: (count: number) => void }) {
   const [modalCargarDocumento, setModalCargarDocumento] = useState(false);
-  const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<DocumentoPlan | null>(null);
+  const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<any | null>(null);
+  const [evidencias, setEvidencias] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Cargar evidencias del plan desde el backend
+  useEffect(() => {
+    const cargarEvidencias = async () => {
+      try {
+        setLoading(true);
+        const response = await evidenciasApi.getByPlan(plan.id);
+        if (response.success && response.data) {
+          setEvidencias(response.data);
+          // Notificar al componente padre el conteo de documentos
+          onDocumentosCargados?.(response.data.length);
+        }
+      } catch (error) {
+        console.error('[TabDocumentos] Error al cargar evidencias:', error);
+        toast.error('Error al cargar documentos', {
+          description: 'No se pudieron cargar los documentos del plan'
+        });
+        onDocumentosCargados?.(0);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarEvidencias();
+  }, [plan.id, onDocumentosCargados]);
 
   const handleCargarDocumento = () => {
     setModalCargarDocumento(true);
   };
 
-  const handleVerDocumento = (doc: DocumentoPlan) => {
-    setDocumentoVistaPrevia(doc);
-    
-    toast.info('Abriendo Vista Previa', {
-      description: `Cargando ${doc.nombre}...`,
-      duration: 2000,
-    });
-
-    // Log para debugging
-    console.log('👁️ Ver documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      tipo: doc.tipo,
-      tamanio: doc.tamanio,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
-
-    // En producción: abrir modal de vista previa o redirigir a URL del documento
-    // window.open(doc.url, '_blank');
+  const handleVerDocumento = async (evidencia: any) => {
+    try {
+      // Verificar si el archivo se puede previsualizar (solo imágenes y PDFs)
+      const tipoMime = evidencia.tipoMime?.toLowerCase() || '';
+      const esImagen = tipoMime.startsWith('image/');
+      const esPdf = tipoMime === 'application/pdf' || tipoMime.includes('pdf');
+      
+      if (esImagen || esPdf) {
+        // Intentar abrir preview solo para imágenes y PDFs
+        const url = `${import.meta.env.VITE_API_URL || 'http://localhost:3007'}/evidencias/${evidencia.id}/preview`;
+        const token = localStorage.getItem('esap_auth_token');
+        
+        if (token) {
+          window.open(`${url}?token=${token}`, '_blank');
+        } else {
+          window.open(url, '_blank');
+        }
+      } else {
+        // Para otros tipos de archivo, descargar directamente
+        await handleDescargarDocumento(evidencia);
+        toast.info('Archivo descargado', {
+          description: 'Este tipo de archivo se descarga directamente. Solo se pueden previsualizar imágenes y PDFs.'
+        });
+      }
+    } catch (error) {
+      console.error('[TabDocumentos] Error al abrir documento:', error);
+      toast.error('Error al abrir documento', {
+        description: 'No se pudo abrir la vista previa'
+      });
+    }
   };
 
-  const handleDescargarDocumento = (doc: DocumentoPlan) => {
-    toast.success('Descargando Documento', {
-      description: `${doc.nombre} se está descargando...`,
-      duration: 3000,
-    });
+  const handleDescargarDocumento = async (evidencia: any) => {
+    try {
+      const blob = await evidenciasApi.download(evidencia.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = evidencia.nombreArchivoOriginal || evidencia.nombre;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
 
-    // Log para debugging
-    console.log('📥 Descargar documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      tipo: doc.tipo,
-      tamanio: doc.tamanio,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
+      toast.success('Documento Descargado', {
+        description: `${evidencia.nombre} se ha descargado exitosamente`,
+        duration: 3000,
+      });
+    } catch (error: any) {
+      console.error('[TabDocumentos] Error al descargar:', error);
+      toast.error('Error al descargar documento', {
+        description: error.message || 'No se pudo descargar el archivo'
+      });
+    }
+  };
 
-    // En producción: llamar al endpoint de descarga
-    // fetch(`/api/documentos/${doc.id}/descargar`)
-    //   .then(response => response.blob())
-    //   .then(blob => {
-    //     const url = window.URL.createObjectURL(blob);
-    //     const a = document.createElement('a');
-    //     a.href = url;
-    //     a.download = doc.nombre;
-    //     a.click();
-    //   });
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
   return (
@@ -1898,7 +2041,7 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-base font-medium text-gray-900">Documentos y Evidencias</h3>
-          <p className="text-sm text-gray-600">{plan.documentos.length} archivos</p>
+          <p className="text-sm text-gray-600">{loading ? 'Cargando...' : `${evidencias.length} archivos`}</p>
         </div>
 
         <button 
@@ -1910,50 +2053,118 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3">
-        {plan.documentos.map((doc) => (
-          <div key={doc.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <FileText className="w-5 h-5 text-blue-600" />
-              </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-[#1e5da8]" />
+        </div>
+      ) : evidencias.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+          <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No hay documentos</h3>
+          <p className="text-sm text-gray-600 mb-4">Comienza agregando un documento al plan</p>
+          <button
+            onClick={handleCargarDocumento}
+            className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium mx-auto"
+          >
+            <Upload className="w-4 h-4" />
+            Cargar Primer Documento
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {evidencias.map((evidencia) => (
+            <div key={evidencia.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                </div>
 
-              <div className="flex-1">
-                <h4 className="text-sm text-gray-900 font-medium mb-1">{doc.nombre}</h4>
-                <div className="flex items-center gap-4 text-xs text-gray-600">
-                  <span>{doc.tipo}</span>
-                  <span>{doc.tamanio}</span>
-                  <span>{doc.fechaCarga}</span>
-                  <span>{doc.autor}</span>
+                <div className="flex-1">
+                  <h4 className="text-sm text-gray-900 font-medium mb-1">{evidencia.nombre}</h4>
+                  <div className="flex items-center gap-4 text-xs text-gray-600 flex-wrap">
+                    <span>{evidencia.tipoDocumento?.replace(/_/g, ' ')}</span>
+                    <span>{formatFileSize(evidencia.tamanioBytes || 0)}</span>
+                    <span>{new Date(evidencia.fechaSubida).toLocaleDateString('es-CO')}</span>
+                    <span>{evidencia.subidoPor}</span>
+                    {/* Mostrar vinculación */}
+                    {evidencia.hallazgoId && (
+                      <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700">
+                        Hallazgo
+                      </span>
+                    )}
+                    {evidencia.accionCorrectivaId && (
+                      <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700">
+                        Acción
+                      </span>
+                    )}
+                    {evidencia.planMejoramientoId && (
+                      <span className="px-2 py-0.5 rounded bg-green-100 text-green-700">
+                        Plan
+                      </span>
+                    )}
+                    {evidencia.auditoriaId && (
+                      <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-700">
+                        Auditoría
+                      </span>
+                    )}
+                    {evidencia.estadoValidacion && (
+                      <span className={`px-2 py-0.5 rounded ${
+                        evidencia.estadoValidacion === 'aceptado' ? 'bg-green-100 text-green-700' :
+                        evidencia.estadoValidacion === 'rechazado' ? 'bg-red-100 text-red-700' :
+                        evidencia.estadoValidacion === 'con_observaciones' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {evidencia.estadoValidacion}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  {(() => {
+                    const tipoMime = evidencia.tipoMime?.toLowerCase() || '';
+                    const esPrevisualizable = tipoMime.startsWith('image/') || 
+                                            tipoMime === 'application/pdf' || 
+                                            tipoMime.includes('pdf');
+                    
+                    return esPrevisualizable ? (
+                      <button 
+                        onClick={() => handleVerDocumento(evidencia)}
+                        className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
+                        title="Ver documento"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    ) : null;
+                  })()}
+                  <button 
+                    onClick={() => handleDescargarDocumento(evidencia)}
+                    className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
+                    title="Descargar documento"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => handleVerDocumento(doc)}
-                  className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
-                  title="Ver documento"
-                >
-                  <Eye className="w-4 h-4" />
-                </button>
-                <button 
-                  onClick={() => handleDescargarDocumento(doc)}
-                  className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
-                  title="Descargar documento"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Modal Cargar Documento */}
       {modalCargarDocumento && (
         <ModalCargarDocumentoPlan
           planId={plan.id}
-          onClose={() => setModalCargarDocumento(false)}
+          onClose={() => {
+            setModalCargarDocumento(false);
+            // Recargar evidencias después de cargar
+            evidenciasApi.getByPlan(plan.id).then(response => {
+              if (response.success && response.data) {
+                setEvidencias(response.data);
+                onDocumentosCargados?.(response.data.length);
+              }
+            });
+          }}
         />
       )}
 
@@ -2566,9 +2777,10 @@ interface ModalCargarEvidenciaProps {
   planId: string;
   onClose: () => void;
   onEvidenciaCargada?: () => void;
+  conteoEvidenciasActual?: number;
 }
 
-function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada }: ModalCargarEvidenciaProps) {
+function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada, conteoEvidenciasActual = 0 }: ModalCargarEvidenciaProps) {
   const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([]);
   const [observaciones, setObservaciones] = useState('');
   const [subiendo, setSubiendo] = useState(false);
@@ -2611,21 +2823,26 @@ function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada }: M
     setSubiendo(true);
 
     try {
-      // Para cada archivo, necesitamos subirlo y obtener su URL
-      // Por ahora, como el backend espera una URL, vamos a crear URLs temporales
-      // En producción, esto debería subir el archivo a un servicio de almacenamiento primero
+      // Subir cada archivo usando el nuevo servicio de evidencias
       for (const archivo of archivosSeleccionados) {
-        // Generar una URL/ruta temporal (en producción, esto vendría del servicio de upload)
-        // Por ahora, usamos una ruta relativa que el backend puede manejar
-        const nombreArchivo = `${Date.now()}_${archivo.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        const urlArchivo = `/uploads/evidencias/${nombreArchivo}`;
+        const response = await evidenciasApi.create(
+          archivo,
+          {
+            nombre: archivo.name.replace(/\.[^/.]+$/, ''), // Nombre sin extensión
+            descripcion: observaciones || undefined,
+            tipoDocumento: 'evidencia_accion',
+            accionCorrectivaId: accion.id,
+            subidoPor: 'Usuario Actual', // TODO: Obtener del contexto de autenticación
+          },
+          (progress) => {
+            // Progreso individual por archivo (opcional)
+            // Progress tracking removed for cleaner console
+          }
+        );
 
-        await planesMejoramientoApi.addEvidencia(planId, accion.id, {
-          nombre: archivo.name,
-          tipo: getFileType(archivo.name, archivo.type),
-          url: urlArchivo,
-          fecha: new Date().toISOString()
-        });
+        if (!response.success) {
+          throw new Error(response.error || `Error al cargar ${archivo.name}`);
+        }
       }
 
       toast.success('Evidencias Cargadas', {
@@ -2682,7 +2899,7 @@ function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada }: M
               <div className="text-sm font-medium text-blue-900 mb-1">Acción Correctiva</div>
               <div className="text-sm text-blue-700">{accion.descripcion}</div>
               <div className="text-xs text-blue-600 mt-2">
-                Evidencias actuales: {accion.evidencias} archivo(s)
+                Evidencias actuales: {conteoEvidenciasActual} archivo(s)
               </div>
             </div>
 
@@ -2810,13 +3027,22 @@ interface ModalCargarDocumentoPlanProps {
 
 function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanProps) {
   const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([]);
-  const [tipoDocumento, setTipoDocumento] = useState('');
+  const [tipoDocumento, setTipoDocumento] = useState<'evidencia_plan' | 'documento_plan' | 'certificado' | 'acta' | 'informe' | 'otro'>('documento_plan');
   const [descripcion, setDescripcion] = useState('');
+  const [subiendo, setSubiendo] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const nuevosArchivos = Array.from(e.target.files);
-      setArchivosSeleccionados([...archivosSeleccionados, ...nuevosArchivos]);
+      // Validar tamaño (50MB máximo por archivo)
+      const archivosValidos = nuevosArchivos.filter(archivo => {
+        if (archivo.size > 50 * 1024 * 1024) {
+          toast.error(`El archivo ${archivo.name} es demasiado grande (máx. 50MB)`);
+          return false;
+        }
+        return true;
+      });
+      setArchivosSeleccionados([...archivosSeleccionados, ...archivosValidos]);
     }
   };
 
@@ -2825,37 +3051,47 @@ function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanP
     setArchivosSeleccionados(nuevosArchivos);
   };
 
-  const handleCargar = () => {
+  const handleCargar = async () => {
     if (archivosSeleccionados.length === 0) {
       toast.error('Debes seleccionar al menos un archivo');
       return;
     }
 
-    if (!tipoDocumento) {
-      toast.error('Debes seleccionar el tipo de documento');
-      return;
+    setSubiendo(true);
+
+    try {
+      // Subir cada archivo usando el nuevo servicio de evidencias
+      for (const archivo of archivosSeleccionados) {
+        const response = await evidenciasApi.create(
+          archivo,
+          {
+            nombre: archivo.name.replace(/\.[^/.]+$/, ''), // Nombre sin extensión
+            descripcion: descripcion || undefined,
+            tipoDocumento: tipoDocumento,
+            planMejoramientoId: planId,
+            subidoPor: 'Usuario Actual', // TODO: Obtener del contexto de autenticación
+          }
+        );
+
+        if (!response.success) {
+          throw new Error(response.error || `Error al cargar ${archivo.name}`);
+        }
+      }
+
+      toast.success('Documentos Cargados', {
+        description: `${archivosSeleccionados.length} documento(s) cargado(s) exitosamente al plan`,
+        duration: 3000,
+      });
+
+      onClose();
+    } catch (error: any) {
+      console.error('[ModalCargarDocumentoPlan] Error al cargar documentos:', error);
+      toast.error('Error al cargar documentos', {
+        description: error.message || 'No se pudieron cargar los documentos'
+      });
+    } finally {
+      setSubiendo(false);
     }
-
-    // Simular carga de documentos
-    toast.success('Documentos Cargados', {
-      description: `${archivosSeleccionados.length} documento(s) cargado(s) exitosamente al plan`,
-      duration: 3000,
-    });
-
-    console.log('📄 Cargando documentos al plan:', {
-      planId,
-      tipoDocumento,
-      descripcion,
-      archivos: archivosSeleccionados.map(f => ({
-        nombre: f.name,
-        tamanio: f.size,
-        tipo: f.type
-      })),
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
-
-    onClose();
   };
 
   const formatFileSize = (bytes: number) => {
@@ -2897,12 +3133,11 @@ function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanP
               </label>
               <select
                 value={tipoDocumento}
-                onChange={(e) => setTipoDocumento(e.target.value)}
+                onChange={(e) => setTipoDocumento(e.target.value as any)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
               >
-                <option value="">Seleccionar tipo...</option>
-                <option value="plan">Plan de Mejoramiento</option>
-                <option value="evidencia">Evidencia</option>
+                <option value="documento_plan">Documento del Plan</option>
+                <option value="evidencia_plan">Evidencia del Plan</option>
                 <option value="informe">Informe de Seguimiento</option>
                 <option value="acta">Acta</option>
                 <option value="certificado">Certificado</option>
@@ -3001,10 +3236,20 @@ function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanP
             </button>
             <button
               onClick={handleCargar}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+              disabled={subiendo}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Upload className="w-4 h-4" />
-              Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Documento(s)` : 'Documentos'}
+              {subiendo ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Cargando...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Documento(s)` : 'Documentos'}
+                </>
+              )}
             </button>
           </div>
         </div>
