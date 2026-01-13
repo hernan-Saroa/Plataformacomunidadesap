@@ -48,10 +48,10 @@ import {
   AlertCircle,
   Target,
   Scale,
+  Folder,
   Lock,
   Check,
   Users,
-  Folder,
   Zap,
   Grid3x3,
   List,
@@ -59,13 +59,11 @@ import {
   Info,
   TrendingUp,
   ArrowLeft,
-  Check,
   X,
   Briefcase,
   Link2,
   UserCog,
   Database,
-  Lock,
   Globe,
   Save,
   History
@@ -380,7 +378,7 @@ export function PortalTransaccionalUsuarioMD3({ onLogout }: PortalTransaccionalU
               />
 
               {/* Accesos Rápidos MD3 */}
-              <AccesosRapidosMD3 rol="Administrativo" />
+              <AccesosRapidosMD3 />
             </div>
           </motion.div>
 
@@ -1503,13 +1501,13 @@ function CampoPerfilEditableMD3({
   );
 }
 
-function AccesosRapidosMD3({ rol }: { rol: 'Administrativo' | 'Docente' | 'Estudiante' }) {
-  // Accesos según el rol
-  const accesosComunes = [
+function AccesosRapidosMD3() {
+  // Programas internos de ESAP para acceso rápido
+  const accesos = [
     {
       id: 'correo',
       titulo: 'Correo Electrónico',
-      descripcion: 'Acceso al correo institucional @esap.edu.co',
+      descripcion: 'Acceso al correo institucional',
       icono: Mail,
       color: '#2962FF',
       bgColor: '#E3F2FD',
@@ -1519,7 +1517,7 @@ function AccesosRapidosMD3({ rol }: { rol: 'Administrativo' | 'Docente' | 'Estud
     {
       id: 'humanosoft',
       titulo: 'HumanoSoft',
-      descripcion: 'Sistema de gestión de recursos humanos',
+      descripcion: 'Sistema de gestión de recurso humano',
       icono: UserCog,
       color: '#F57C00',
       bgColor: '#FFF3E0',
@@ -1529,7 +1527,7 @@ function AccesosRapidosMD3({ rol }: { rol: 'Administrativo' | 'Docente' | 'Estud
     {
       id: 'arca',
       titulo: 'ARCA',
-      descripcion: 'Sistema académico y de gestión institucional',
+      descripcion: 'Sistema académico y de gestión estudiantil',
       icono: Database,
       color: '#00C853',
       bgColor: '#E8F5E9',
@@ -1537,43 +1535,6 @@ function AccesosRapidosMD3({ rol }: { rol: 'Administrativo' | 'Docente' | 'Estud
       externo: true
     },
   ];
-
-  const accesosAdministrativo = [
-    {
-      id: 'documentos',
-      titulo: 'Documentos',
-      descripcion: 'Gestión documental institucional',
-      icono: Folder,
-      color: '#6200EA',
-      bgColor: '#F3E5F5',
-      url: '#',
-      externo: false
-    },
-    {
-      id: 'control-interno',
-      titulo: 'Control Interno',
-      descripcion: 'Auditorías y seguimiento de procesos',
-      icono: Shield,
-      color: '#F44336',
-      bgColor: '#FFEBEE',
-      url: '#',
-      externo: false
-    },
-    {
-      id: 'disciplinario',
-      titulo: 'Proc. Disciplinarios',
-      descripcion: 'Gestión de procesos disciplinarios',
-      icono: Scale,
-      color: '#FF9800',
-      bgColor: '#FFF3E0',
-      url: '#',
-      externo: false
-    }
-  ];
-
-  const accesos = rol === 'Administrativo' 
-    ? [...accesosComunes, ...accesosAdministrativo]
-    : accesosComunes;
 
   const handleClick = (acceso: typeof accesos[0]) => {
     if (acceso.externo && acceso.url !== '#') {

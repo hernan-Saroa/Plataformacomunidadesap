@@ -345,6 +345,8 @@ export default function App() {
           ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gp-001', restrictedAccess: true, module: 'gestion-profesoral' }
           : usuarioActual?.email === 'funcionario@esap.edu.co'
           ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'func-001', restrictedAccess: true, module: 'procesos' }
+          : usuarioActual?.email === 'superuser@esap.edu.co'
+          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'super-001', hasBothSystemsAccess: true } // ✅ Acceso dual Backoffice + Portal
           : undefined;
 
         return (
@@ -352,6 +354,12 @@ export default function App() {
             usuario={usuarioActual!}
             userData={userData}
             onLogout={handleLogout}
+            onSystemChange={(system) => {
+              if (system === 'portal') {
+                setVistaActual('portal');
+                toast.success('Cambiado al Portal Transaccional');
+              }
+            }}
           />
         );
       

@@ -4,6 +4,9 @@
       "version": "0.1.0",
       "private": true,
       "dependencies": {
+          "@dnd-kit/core": "*",
+          "@dnd-kit/sortable": "*",
+          "@dnd-kit/utilities": "*",
           "@radix-ui/react-accordion": "^1.2.3",
           "@radix-ui/react-alert-dialog": "^1.1.6",
           "@radix-ui/react-aspect-ratio": "^1.1.2",

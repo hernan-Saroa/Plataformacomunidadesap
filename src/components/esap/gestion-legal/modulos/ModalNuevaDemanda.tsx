@@ -21,6 +21,7 @@ interface ModalNuevaDemandaProps {
 export interface NuevaDemandaData {
   numeroRadicado: string;
   medioControl: string;
+  tipoProceso: string;
   demandante: string;
   tipoPersona: 'natural' | 'juridica';
   identificacionDemandante: string;
@@ -56,6 +57,18 @@ const MEDIOS_CONTROL = [
   'OTRO'
 ];
 
+// Tipos de Procesos Judiciales (configurables desde Configuraciones SIGL)
+const TIPOS_PROCESOS_JUDICIALES = [
+  { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización de perjuicios' },
+  { id: 'nulidad-restablecimiento', nombre: 'Nulidad y Restablecimiento del Derecho', descripcion: 'Acción para declarar la nulidad de un acto administrativo' },
+  { id: 'accion-grupo', nombre: 'Acción de Grupo', descripcion: 'Acción interpuesta por un grupo de personas' },
+  { id: 'accion-popular', nombre: 'Acción Popular', descripcion: 'Acción para la protección de derechos colectivos' },
+  { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias de contratos estatales' },
+  { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para protección inmediata de derechos fundamentales' },
+  { id: 'proceso-ejecutivo', nombre: 'Proceso Ejecutivo', descripcion: 'Proceso para cobro de obligaciones' },
+  { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales' },
+];
+
 const DEPARTAMENTOS = [
   'Cundinamarca',
   'Antioquia',
@@ -72,6 +85,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
   const [formData, setFormData] = useState<NuevaDemandaData>({
     numeroRadicado: '',
     medioControl: '',
+    tipoProceso: '',
     demandante: '',
     tipoPersona: 'natural',
     identificacionDemandante: '',
@@ -154,6 +168,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     setFormData({
       numeroRadicado: '',
       medioControl: '',
+      tipoProceso: '',
       demandante: '',
       tipoPersona: 'natural',
       identificacionDemandante: '',
@@ -252,6 +267,30 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                     <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                       <AlertCircle className="w-3 h-3" />
                       {errors.medioControl}
+                    </p>
+                  )}
+                </div>
+
+                {/* Tipo de Proceso Judicial */}
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Tipo de Proceso Judicial
+                  </label>
+                  <select
+                    value={formData.tipoProceso}
+                    onChange={(e) => handleInputChange('tipoProceso', e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Seleccione un tipo de proceso...</option>
+                    {TIPOS_PROCESOS_JUDICIALES.map(tipo => (
+                      <option key={tipo.id} value={tipo.nombre}>
+                        {tipo.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {formData.tipoProceso && (
+                    <p className="text-xs text-gray-600 mt-1.5 italic bg-blue-50 px-2 py-1.5 rounded">
+                      ℹ️ {TIPOS_PROCESOS_JUDICIALES.find(t => t.nombre === formData.tipoProceso)?.descripcion}
                     </p>
                   )}
                 </div>
