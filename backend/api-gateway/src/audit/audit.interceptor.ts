@@ -10,7 +10,6 @@ import { tap, catchError } from 'rxjs/operators';
 import { Request, Response } from 'express';
 import { AuditClientService } from './audit-client.service';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
-import * as jwt from 'jsonwebtoken';
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
@@ -250,16 +249,21 @@ export class AuditInterceptor implements NestInterceptor {
 
       const token = authHeader.substring(7); // Remover 'Bearer '
       
-      // Decodificar el token sin verificar (solo para extraer información)
-      // En producción, esto debería verificar la firma, pero para auditoría
-      // solo necesitamos la información sin bloquear si el token es inválido
-      const decoded = jwt.decode(token, { complete: true });
-      
-      if (!decoded || typeof decoded === 'string' || !decoded.payload) {
+      // Decodificar el token sin verificar (solo extraer el payload)
+      // Un JWT tiene formato: header.payload.signature
+      const parts = token.split('.');
+      if (parts.length !== 3) {
         return {};
       }
 
-      const payload = decoded.payload as any;
+      // Decodificar el payload (segunda parte del token)
+      const payload = JSON.parse(
+        Buffer.from(parts[1], 'base64').toString('utf8')
+      );
+      
+      if (!payload || typeof payload !== 'object') {
+        return {};
+      }
       
       // Extraer información del payload
       // El payload puede tener: sub (userId), username, roles, email
