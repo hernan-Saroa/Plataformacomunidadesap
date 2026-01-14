@@ -1,4 +1,4 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Inject, forwardRef } from '@nestjs/common';
 import { serviceMap } from './proxy.config';
 import { HttpService } from '@nestjs/axios';
 import type { Request, Response } from 'express';
@@ -6,7 +6,9 @@ import { lastValueFrom } from 'rxjs';
 
 @Injectable()
 export class GatewayService {
-  constructor(private readonly http: HttpService) { }
+  constructor(
+    private readonly http: HttpService,
+  ) {}
 
   /**
    * Reenvía la petición al microservicio correspondiente.
@@ -49,25 +51,12 @@ export class GatewayService {
     const targetUrl = `${serviceUrl}${versionPrefix}${pathWithoutPrefix}`;
     const contentType = (req.headers['content-type'] as string) || '';
     const isMultipart = contentType.toLowerCase().includes('multipart/form-data');
-    const forwardedForHeader = req.headers['x-forwarded-for'];
-    const realIpHeader = req.headers['x-real-ip'];
-    const forwardedFor = Array.isArray(forwardedForHeader)
-      ? forwardedForHeader.join(', ')
-      : typeof forwardedForHeader === 'string'
-        ? forwardedForHeader
-        : '';
-    const realIp = Array.isArray(realIpHeader)
-      ? realIpHeader[0]
-      : typeof realIpHeader === 'string'
-        ? realIpHeader
-        : '';
-    const clientIp = req.ip || req.connection?.remoteAddress || realIp || '';
-    const nextForwardedFor = forwardedFor || realIp || clientIp;
+    
+    // Reenviar headers existentes sin modificarlos
+    // NO modificar x-forwarded-for ni x-real-ip (eliminado módulo de cambio de IP)
     const forwardHeaders = {
       ...req.headers,
-      host: undefined,
-      'x-forwarded-for': nextForwardedFor || undefined,
-      'x-real-ip': clientIp || undefined,
+      host: undefined, // Eliminar host para evitar conflictos
       'x-forwarded-proto': (req.headers['x-forwarded-proto'] as string) || req.protocol,
     };
 
@@ -103,6 +92,7 @@ export class GatewayService {
         typeof error.response?.data === 'string'
           ? error.response.data
           : error.response?.data?.message || 'Error at API Gateway';
+
       return res.status(status).send(msg);
     }
   }
