@@ -4,6 +4,7 @@
  * ✅ Responsive mobile-first FUNCIONAL
  * ✅ Colores corporativos ESAP (#003DA5)
  * ✅ Diseño mandatorio 100% igual a Control Disciplinario
+ * ✅ CONECTADO CON CONFIGURACIONES CENTRALIZADAS
  */
 
 import { useState, useEffect } from 'react';
@@ -39,6 +40,9 @@ import { VistaListaDefensaJudicial } from './VistaListaDefensaJudicial';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
+// ✅ Importar configuraciones centralizadas
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+
 type VistaModulo = 'kanban' | 'lista';
 
 // Tipo para drag and drop
@@ -47,6 +51,9 @@ const ItemTypes = {
 };
 
 export function ModuloDefensaJudicialV3() {
+  // ✅ Obtener configuraciones desde el Context API
+  const { estadosActivos, tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
+  
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('kanban');
@@ -57,6 +64,14 @@ export function ModuloDefensaJudicialV3() {
   
   // Estado local para manejar drag and drop
   const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>(expedientesJudicialesMock);
+
+  // ✅ Log de configuraciones cargadas
+  useEffect(() => {
+    console.log('🎯 DEFENSA JUDICIAL - Configuraciones centralizadas cargadas:');
+    console.log('   📊 Estados activos:', estadosActivos.length);
+    console.log('   ⚖️ Tipos de procesos activos:', tiposProcesosActivos.length);
+    console.log('   ✅ Conexión con ConfiguracionesSIGL establecida');
+  }, [estadosActivos, tiposProcesosActivos]);
 
   // Detectar tamaño de pantalla
   useEffect(() => {

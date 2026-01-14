@@ -18,8 +18,8 @@ import {
 import { toast } from 'sonner@2.0.3';
 
 // Importar configuración centralizada de permisos
-import { PERMISSION_MODULES, PERMISSIONS_STATS } from '../../data/permissions-config';
-import type { Permission, PermissionModule } from '../../data/permissions-config';
+import { PERMISSION_MODULES, PERMISSIONS_STATS } from '../../data/permissions-config-updated';
+import type { Permission, PermissionModule } from '../../data/permissions-config-updated';
 
 interface SystemRole {
   id: string;

@@ -220,45 +220,41 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
         <div className="flex items-center gap-3">
           <button
             onClick={() => onNavigate?.('validar-qr')}
-            className="inline-flex items-center justify-center gap-2 transition-all"
+            className="inline-flex items-center justify-center gap-2 transition-all font-semibold shadow-sm hover:shadow-md"
             style={{
-              background: '#FFFFFF',
-              color: '#6B7280',
-              border: '2px solid #E5E7EB',
-              borderRadius: '8px',
-              padding: '12px 20px',
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '12px 24px',
               fontSize: '14px',
-              fontWeight: 500,
+              fontWeight: 600,
               cursor: 'pointer'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#ECFDF5';
-              e.currentTarget.style.borderColor = '#10B981';
-              e.currentTarget.style.color = '#10B981';
-              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 10px 25px rgba(41, 98, 255, 0.3)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-              e.currentTarget.style.borderColor = '#E5E7EB';
-              e.currentTarget.style.color = '#6B7280';
               e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
             }}
           >
-            <QrCode className="w-5 h-5" strokeWidth={2} />
+            <QrCode className="w-5 h-5" strokeWidth={2.5} />
             <span>Validar Certificado</span>
           </button>
 
           <button
             onClick={() => onNavigate?.('configuracion-plantilla')}
-            className="inline-flex items-center justify-center gap-2 transition-all"
+            className="inline-flex items-center justify-center gap-2 transition-all font-semibold"
             style={{
               background: '#FFFFFF',
               color: '#6B7280',
               border: '2px solid #E5E7EB',
-              borderRadius: '8px',
-              padding: '12px 20px',
+              borderRadius: '12px',
+              padding: '12px 24px',
               fontSize: '14px',
-              fontWeight: 500,
+              fontWeight: 600,
               cursor: 'pointer'
             }}
             onMouseEnter={(e) => {

@@ -280,137 +280,32 @@ export function ReviewRequestsModule() {
 
   return (
     <div className="space-y-6">
-      {/* Cards de Estadísticas */}
+      {/* Banner informativo de solicitudes */}
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"
+        className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4"
       >
-        {/* Card 1: Total */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Total
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {mockStats.total}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Solicitudes
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)' }}
-              >
-                <FileText className="w-7 h-7 text-white" />
-              </div>
-            </div>
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
+              Solicitudes de Revisión
+            </p>
+            <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
+              {mockStats.total}
+            </p>
+            <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
+              Solicitudes pendientes y en proceso
+            </p>
           </div>
-        </Card>
-
-        {/* Card 2: Pendientes */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Pendientes
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {mockStats.pending}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Sin revisar
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' }}
-              >
-                <Clock className="w-7 h-7 text-white" />
-              </div>
-            </div>
+          <div
+            className="w-14 h-14 rounded-xl flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' }}
+          >
+            <Clock className="w-7 h-7 text-white" />
           </div>
-        </Card>
-
-        {/* Card 3: En Revisión */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  En Revisión
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {mockStats.underReview}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  En proceso
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%)' }}
-              >
-                <RefreshCw className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Card 4: Aprobadas */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Aprobadas
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {mockStats.approved}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Resueltas
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
-              >
-                <CheckCircle className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Card 5: Tiempo Promedio */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Tiempo Promedio
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {mockStats.avgResolutionTime}h
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Resolución
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)' }}
-              >
-                <TrendingUp className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
+        </div>
       </motion.div>
 
       {/* Filtros y Búsqueda */}

@@ -1,3 +1,21 @@
+/**
+ * ============================================
+ * VALIDAR CERTIFICADO DE GRADO - VISTA COMPLETA
+ * ============================================
+ * 
+ * Componente para validar la autenticidad de certificados de grado
+ * emitidos por la ESAP mediante código QR.
+ * 
+ * FUNCIONALIDAD:
+ * - Vista completa (no modal) como Certificados Laborales
+ * - Validación por código QR
+ * - Escaneo con cámara (opcional)
+ * - Resultados con información del graduado
+ * - Estados: VIGENTE, REVOCADO, NO VÁLIDO
+ * 
+ * ÚLTIMA ACTUALIZACIÓN: 14 Enero 2026
+ */
+
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import {
@@ -12,16 +30,16 @@ import {
   Calendar,
   Building,
   Shield,
-  ExternalLink,
+  GraduationCap,
+  Award,
   Camera,
   ArrowLeft
 } from 'lucide-react';
-import { toast } from 'sonner';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { QRScannerModal } from './QRScannerModal';
+import { toast } from 'sonner@2.0.3';
+import { Button } from '../../ui/button';
+import { Input } from '../../ui/input';
+import { Card } from '../../ui/card';
+import { Badge } from '../../ui/badge';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
 interface ValidacionResult {
@@ -29,29 +47,31 @@ interface ValidacionResult {
   certificado?: {
     consecutivo: string;
     codigoQR: string;
-    empleado: {
+    graduado: {
       nombre: string;
       documento: string;
-      cargo: string;
-      dependencia: string;
+      programa: string;
+      territorial: string;
+      cohorte: string;
     };
-    fechaEmision: string;
-    fechaVigencia?: string;
+    fechaGrado: string;
+    numeroActa: string;
+    numeroFolio: string;
+    tituloOtorgado: string;
     firmadoPor: string;
-    estado: 'VIGENTE' | 'VENCIDO' | 'ANULADO';
+    estado: 'VIGENTE' | 'REVOCADO' | 'ANULADO';
   };
   error?: string;
 }
 
-interface ValidarCertificadoQRProps {
+interface ValidarCertificadoGradoProps {
   onBack?: () => void;
 }
 
-export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {}) {
+export function ValidarCertificadoGrado({ onBack }: ValidarCertificadoGradoProps) {
   const [codigoQR, setCodigoQR] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidacionResult | null>(null);
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   const handleValidar = async () => {
     if (!codigoQR.trim()) {
@@ -69,17 +89,20 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
     const mockResult: ValidacionResult = {
       isValid: codigoQR.length > 5, // Simulación simple
       certificado: codigoQR.length > 5 ? {
-        consecutivo: '001-2025-TH',
+        consecutivo: 'GRAD-2024-001234',
         codigoQR: codigoQR,
-        empleado: {
-          nombre: 'María Fernanda Rodríguez López',
-          documento: '52.345.678',
-          cargo: 'Docente Tiempo Completo',
-          dependencia: 'Dirección Territorial Bogotá'
+        graduado: {
+          nombre: 'Ana María Gutiérrez Sánchez',
+          documento: '1.015.234.567',
+          programa: 'Especialización en Gestión Pública',
+          territorial: 'Dirección Territorial Bogotá',
+          cohorte: '2023-II'
         },
-        fechaEmision: '2025-11-20T08:35:00',
-        fechaVigencia: '2026-11-20',
-        firmadoPor: 'Dr. Juan Carlos Pérez - Director Talento Humano ESAP',
+        fechaGrado: '2024-12-15T14:00:00',
+        numeroActa: 'ACTA-CD-024-2024',
+        numeroFolio: 'FOLIO-152-2024',
+        tituloOtorgado: 'Especialista en Gestión Pública',
+        firmadoPor: 'Dr. Carlos Alberto Ramírez - Rector Nacional ESAP',
         estado: 'VIGENTE'
       } : undefined,
       error: codigoQR.length <= 5 ? 'Código QR inválido o certificado no encontrado' : undefined
@@ -89,7 +112,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
     setIsValidating(false);
 
     if (mockResult.isValid) {
-      toast.success('Certificado validado correctamente');
+      toast.success('Certificado de grado validado correctamente');
     } else {
       toast.error('Certificado no válido');
     }
@@ -98,12 +121,6 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
   const handleReset = () => {
     setCodigoQR('');
     setValidationResult(null);
-  };
-
-  const handleQRCodeScanned = (scannedCode: string) => {
-    setCodigoQR(scannedCode);
-    setIsScannerOpen(false);
-    handleValidar();
   };
 
   return (
@@ -131,7 +148,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                 />
                 <div className="hidden sm:block">
                   <p className="text-xs font-semibold text-white">Validador de Certificados</p>
-                  <p className="text-[9px] font-medium text-white/70 -mt-0.5">Certificados Laborales</p>
+                  <p className="text-[9px] font-medium text-white/70 -mt-0.5">Certificados de Grado</p>
                 </div>
               </div>
 
@@ -176,7 +193,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
               color: '#1F2937'
             }}
           >
-            Validar Certificado Laboral
+            Validar Certificado de Grado
           </h1>
           
           <p 
@@ -187,7 +204,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
               color: '#6B7280'
             }}
           >
-            Verifica la autenticidad de un certificado laboral emitido por la ESAP ingresando el código QR
+            Verifica la autenticidad de un certificado de grado emitido por la ESAP ingresando el código QR
           </p>
         </motion.div>
 
@@ -221,7 +238,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                     <Input
                       id="codigoQR"
                       type="text"
-                      placeholder="Ej: ESAP-CERT-2025-ABC123XYZ"
+                      placeholder="Ej: ESAP-GRAD-2025-ABC123XYZ"
                       value={codigoQR}
                       onChange={(e) => setCodigoQR(e.target.value.toUpperCase())}
                       className="pl-12 pr-14 py-6 text-base border-2"
@@ -230,7 +247,6 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                     />
                     <button
                       type="button"
-                      onClick={() => setIsScannerOpen(true)}
                       className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003DA5] transition-colors"
                       title="Escanear con cámara"
                     >
@@ -263,7 +279,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                         className="text-sm"
                         style={{ color: '#6B7280' }}
                       >
-                        Todos los certificados laborales emitidos por la ESAP incluyen un código QR único que permite verificar su autenticidad en tiempo real. Este sistema garantiza la integridad y validez del documento.
+                        Todos los certificados de grado emitidos por la ESAP incluyen un código QR único que permite verificar su autenticidad en tiempo real. Este sistema garantiza la integridad y validez del documento.
                       </p>
                     </div>
                   </div>
@@ -282,7 +298,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                   {isValidating ? (
                     <>
                       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Validando certificado...
+                      Validando certificado de grado...
                     </>
                   ) : (
                     <>
@@ -306,15 +322,11 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                         style={{
                           background: validationResult.certificado.estado === 'VIGENTE' 
                             ? '#ECFDF5' 
-                            : validationResult.certificado.estado === 'VENCIDO'
-                            ? '#FEF3C7'
                             : '#FEE2E2'
                         }}
                       >
                         {validationResult.certificado.estado === 'VIGENTE' ? (
                           <CheckCircle className="w-8 h-8 text-green-600" strokeWidth={2.5} />
-                        ) : validationResult.certificado.estado === 'VENCIDO' ? (
-                          <AlertCircle className="w-8 h-8 text-yellow-600" strokeWidth={2.5} />
                         ) : (
                           <XCircle className="w-8 h-8 text-red-600" strokeWidth={2.5} />
                         )}
@@ -329,10 +341,8 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                         }}
                       >
                         {validationResult.certificado.estado === 'VIGENTE' 
-                          ? 'Certificado Válido' 
-                          : validationResult.certificado.estado === 'VENCIDO'
-                          ? 'Certificado Vencido'
-                          : 'Certificado Anulado'}
+                          ? 'Certificado de Grado Válido' 
+                          : 'Certificado Revocado o Anulado'}
                       </h2>
                       
                       <Badge 
@@ -340,8 +350,6 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                         className={`text-sm px-4 py-1 ${
                           validationResult.certificado.estado === 'VIGENTE'
                             ? 'bg-green-100 text-green-800 border-green-300'
-                            : validationResult.certificado.estado === 'VENCIDO'
-                            ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
                             : 'bg-red-100 text-red-800 border-red-300'
                         }`}
                       >
@@ -352,14 +360,15 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                     {/* Detalles del Certificado */}
                     <Card className="p-6 bg-gray-50 border-2">
                       <h3 
-                        className="font-bold mb-4"
+                        className="font-bold mb-4 flex items-center gap-2"
                         style={{
                           fontSize: '16px',
                           lineHeight: '24px',
                           color: '#1F2937'
                         }}
                       >
-                        Información del Certificado
+                        <GraduationCap className="w-5 h-5 text-[#003DA5]" />
+                        Información del Certificado de Grado
                       </h3>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -405,7 +414,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                             style={{ color: '#6B7280' }}
                           >
                             <User className="w-3 h-3 inline mr-1" />
-                            Nombre Completo
+                            Nombre del Graduado
                           </label>
                           <p 
                             className="font-medium"
@@ -414,7 +423,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                               color: '#1F2937'
                             }}
                           >
-                            {validationResult.certificado.empleado.nombre}
+                            {validationResult.certificado.graduado.nombre}
                           </p>
                         </div>
 
@@ -423,7 +432,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                             className="text-xs font-semibold uppercase tracking-wide mb-1 block"
                             style={{ color: '#6B7280' }}
                           >
-                            Documento
+                            Documento de Identidad
                           </label>
                           <p 
                             className="font-medium"
@@ -432,17 +441,36 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                               color: '#1F2937'
                             }}
                           >
-                            CC {validationResult.certificado.empleado.documento}
+                            CC {validationResult.certificado.graduado.documento}
                           </p>
                         </div>
 
-                        <div>
+                        <div className="md:col-span-2">
+                          <label 
+                            className="text-xs font-semibold uppercase tracking-wide mb-1 block"
+                            style={{ color: '#6B7280' }}
+                          >
+                            <Award className="w-3 h-3 inline mr-1" />
+                            Título Otorgado
+                          </label>
+                          <p 
+                            className="font-medium"
+                            style={{
+                              fontSize: '14px',
+                              color: '#1F2937'
+                            }}
+                          >
+                            {validationResult.certificado.tituloOtorgado}
+                          </p>
+                        </div>
+
+                        <div className="md:col-span-2">
                           <label 
                             className="text-xs font-semibold uppercase tracking-wide mb-1 block"
                             style={{ color: '#6B7280' }}
                           >
                             <FileText className="w-3 h-3 inline mr-1" />
-                            Cargo
+                            Programa Académico
                           </label>
                           <p 
                             className="font-medium"
@@ -451,7 +479,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                               color: '#1F2937'
                             }}
                           >
-                            {validationResult.certificado.empleado.cargo}
+                            {validationResult.certificado.graduado.programa}
                           </p>
                         </div>
 
@@ -461,7 +489,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                             style={{ color: '#6B7280' }}
                           >
                             <Building className="w-3 h-3 inline mr-1" />
-                            Dependencia
+                            Territorial
                           </label>
                           <p 
                             className="font-medium"
@@ -470,7 +498,25 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                               color: '#1F2937'
                             }}
                           >
-                            {validationResult.certificado.empleado.dependencia}
+                            {validationResult.certificado.graduado.territorial}
+                          </p>
+                        </div>
+
+                        <div>
+                          <label 
+                            className="text-xs font-semibold uppercase tracking-wide mb-1 block"
+                            style={{ color: '#6B7280' }}
+                          >
+                            Cohorte
+                          </label>
+                          <p 
+                            className="font-medium"
+                            style={{
+                              fontSize: '14px',
+                              color: '#1F2937'
+                            }}
+                          >
+                            {validationResult.certificado.graduado.cohorte}
                           </p>
                         </div>
 
@@ -480,7 +526,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                             style={{ color: '#6B7280' }}
                           >
                             <Calendar className="w-3 h-3 inline mr-1" />
-                            Fecha de Emisión
+                            Fecha de Grado
                           </label>
                           <p 
                             className="font-medium"
@@ -489,7 +535,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                               color: '#1F2937'
                             }}
                           >
-                            {new Date(validationResult.certificado.fechaEmision).toLocaleDateString('es-CO', {
+                            {new Date(validationResult.certificado.fechaGrado).toLocaleDateString('es-CO', {
                               year: 'numeric',
                               month: 'long',
                               day: 'numeric'
@@ -497,29 +543,41 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                           </p>
                         </div>
 
-                        {validationResult.certificado.fechaVigencia && (
-                          <div>
-                            <label 
-                              className="text-xs font-semibold uppercase tracking-wide mb-1 block"
-                              style={{ color: '#6B7280' }}
-                            >
-                              Fecha de Vigencia
-                            </label>
-                            <p 
-                              className="font-medium"
-                              style={{
-                                fontSize: '14px',
-                                color: '#1F2937'
-                              }}
-                            >
-                              {new Date(validationResult.certificado.fechaVigencia).toLocaleDateString('es-CO', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                              })}
-                            </p>
-                          </div>
-                        )}
+                        <div>
+                          <label 
+                            className="text-xs font-semibold uppercase tracking-wide mb-1 block"
+                            style={{ color: '#6B7280' }}
+                          >
+                            Número de Acta
+                          </label>
+                          <p 
+                            className="font-medium"
+                            style={{
+                              fontSize: '14px',
+                              color: '#1F2937'
+                            }}
+                          >
+                            {validationResult.certificado.numeroActa}
+                          </p>
+                        </div>
+
+                        <div>
+                          <label 
+                            className="text-xs font-semibold uppercase tracking-wide mb-1 block"
+                            style={{ color: '#6B7280' }}
+                          >
+                            Número de Folio
+                          </label>
+                          <p 
+                            className="font-medium"
+                            style={{
+                              fontSize: '14px',
+                              color: '#1F2937'
+                            }}
+                          >
+                            {validationResult.certificado.numeroFolio}
+                          </p>
+                        </div>
                       </div>
 
                       <div className="mt-4 pt-4 border-t border-gray-300">
@@ -542,21 +600,11 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                       </div>
                     </Card>
 
-                    {/* Alerta adicional si está vencido o anulado */}
+                    {/* Alerta adicional si está revocado o anulado */}
                     {validationResult.certificado.estado !== 'VIGENTE' && (
-                      <Card className={`p-4 border-2 ${
-                        validationResult.certificado.estado === 'VENCIDO'
-                          ? 'bg-yellow-50 border-yellow-300'
-                          : 'bg-red-50 border-red-300'
-                      }`}>
+                      <Card className="p-4 bg-red-50 border-2 border-red-300">
                         <div className="flex items-start gap-3">
-                          <AlertCircle 
-                            className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-                              validationResult.certificado.estado === 'VENCIDO'
-                                ? 'text-yellow-600'
-                                : 'text-red-600'
-                            }`}
-                          />
+                          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                           <div>
                             <h4 
                               className="font-semibold mb-1"
@@ -565,17 +613,13 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                                 color: '#1F2937'
                               }}
                             >
-                              {validationResult.certificado.estado === 'VENCIDO'
-                                ? 'Certificado Vencido'
-                                : 'Certificado Anulado'}
+                              Certificado Revocado o Anulado
                             </h4>
                             <p 
                               className="text-sm"
                               style={{ color: '#6B7280' }}
                             >
-                              {validationResult.certificado.estado === 'VENCIDO'
-                                ? 'Este certificado ha superado su fecha de vigencia. Para obtener un certificado actualizado, el empleado debe solicitarlo nuevamente.'
-                                : 'Este certificado ha sido anulado y no tiene validez. Por favor contacte con Talento Humano ESAP para más información.'}
+                              Este certificado ha sido revocado y no tiene validez. Por favor contacte con la Dirección de Registro Académico ESAP para más información.
                             </p>
                           </div>
                         </div>
@@ -609,7 +653,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                       className="text-base mb-6"
                       style={{ color: '#6B7280' }}
                     >
-                      {validationResult.error || 'No se encontró ningún certificado con el código QR ingresado'}
+                      {validationResult.error || 'No se encontró ningún certificado de grado con el código QR ingresado'}
                     </p>
 
                     <Card className="p-4 bg-red-50 border-2 border-red-200 text-left">
@@ -673,11 +717,6 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
           </Card>
         </motion.div>
       </div>
-      <QRScannerModal
-        isOpen={isScannerOpen}
-        onClose={() => setIsScannerOpen(false)}
-        onQRDetected={handleQRCodeScanned}
-      />
     </div>
   );
 }

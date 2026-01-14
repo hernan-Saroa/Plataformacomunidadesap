@@ -1,15 +1,16 @@
 /**
  * ModuloAsesoriaJuridicaV3 - MOD-03: Asesoría Jurídica
  * DISEÑO DATATABLE PROFESIONAL CON FILTROS AVANZADOS
+ * ✅ CONECTADO CON CONFIGURACIONES CENTRALIZADAS
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Scale, FileText, Clock, AlertTriangle, CheckCircle, User, Building,
   Eye, Edit, Plus, Download, Filter, Search, Calendar, TrendingUp,
   Archive, MessageSquare, History, Send, FileCheck, Mail, Columns3, List,
-  AlertCircle, FolderOpen, FileQuestion, SortAsc, SortDesc, XCircle
+  AlertCircle, FolderOpen, FileQuestion, SortAsc, SortDesc, XCircle, Settings
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -26,10 +27,16 @@ import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalNuevaConsulta, NuevaConsultaData } from './ModalNuevaConsulta';
 import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
 
+// ✅ Importar configuraciones centralizadas
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+
 type VistaModulo = 'tabla' | 'tarjetas';
 type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema';
 
 export function ModuloAsesoriaJuridicaV3() {
+  // ✅ Obtener configuraciones desde el Context API
+  const { estadosActivos } = useConfiguracionModulo('asesoria-juridica');
+  
   const [tipoVista, setTipoVista] = useState<VistaModulo>('tabla');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
@@ -42,6 +49,13 @@ export function ModuloAsesoriaJuridicaV3() {
   const [modalNuevaConsultaOpen, setModalNuevaConsultaOpen] = useState(false);
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [consultaSeleccionada, setConsultaSeleccionada] = useState<ConsultaJuridica | null>(null);
+
+  // ✅ Log de configuraciones cargadas
+  useEffect(() => {
+    console.log('🎯 ASESORÍA JURÍDICA - Configuraciones centralizadas cargadas:');
+    console.log('   📊 Estados activos:', estadosActivos.length);
+    console.log('   ✅ Conexión con ConfiguracionesSIGL establecida');
+  }, [estadosActivos]);
 
   const consultasFiltradas = useMemo(() => {
     let resultado = [...consultasJuridicasMock];

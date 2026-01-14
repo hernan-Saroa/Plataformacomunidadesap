@@ -767,38 +767,6 @@ export function UsersPersonsModulePremium() {
         </div>
       </motion.div>
 
-      {/* ✅ RF015 - Banner de acceso a Roles y Permisos */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.1 }}
-        className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border-2 border-blue-200 p-4"
-      >
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-600">
-              <Shield className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-900">
-                Roles y Permisos
-              </h3>
-              <p className="text-sm text-gray-600">
-                Administra roles, permisos granulares y control
-                de acceso con SSO
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setViewMode("roles-permisos")}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium"
-          >
-            <Shield className="w-5 h-5" />
-            Gestionar Roles
-          </button>
-        </div>
-      </motion.div>
-
       {/* Búsqueda y Filtros - Input estándar según especificaciones */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
