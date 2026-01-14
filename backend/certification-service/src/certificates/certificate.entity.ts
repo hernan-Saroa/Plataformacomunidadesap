@@ -37,6 +37,9 @@ export class Certificate {
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   monthly_salary: number;
 
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  technical_bonus: number;
+
   @Column({ length: 255, nullable: true })
   salary_text: string;
 

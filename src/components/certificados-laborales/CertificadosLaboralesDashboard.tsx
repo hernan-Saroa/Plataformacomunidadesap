@@ -42,11 +42,18 @@ interface CertificadoLaboral {
   consecutivo: string;
   certificateHash: string;
   qrCode: string;
+  position_location?: string;
+  observations?: string;
+  department?: string;
+  department_parent?: string;
+  campus?: string;
+  technical_bonus?: number;
   empleado: {
     nombre: string;
     documento: string;
     cargo: string;
     dependencia: string;
+    dependenciaPadre: string;
     tipoVinculacion: string;
     fechaVinculacion: string;
     grado: string;
@@ -145,16 +152,23 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         consecutivo: cert.certificate_number,
         certificateHash: cert.verification_code,
         qrCode: cert.verification_code,
+        position_location: cert.position_location || cert.positionLocation,
+        observations: cert.observations,
+        department: cert.department,
+        department_parent: cert.department_parent || cert.departmentParent,
+        campus: cert.campus,
+        technical_bonus: cert.technical_bonus,
         empleado: {
           nombre: cert.full_name,
           documento: cert.id_number,
           cargo: cert.position_category,
           dependencia: cert.department || '',
+          dependenciaPadre: cert.department_parent || cert.departmentParent || '',
           tipoVinculacion: cert.career_category,
           fechaVinculacion: cert.hiring_date,
           grado: cert.position_location || '',
           salario: Number(cert.monthly_salary),
-          email: 'email@esap.edu.co' // TODO: Obtener email real
+          email: cert.email || cert.request?.email || cert.certificate_email || cert.employee_email || 'N/A'
         },
         estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
         fechaSolicitud: cert.created_at,
@@ -739,7 +753,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                     </th>
                     <th className="px-4 py-4 text-left">
                       <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                        DEPENDENCIA
+                        DEPENDENCIA PADRE
+                      </span>
+                    </th>
+                    <th className="px-4 py-4 text-left">
+                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                        DEPENDENCIA HIJO
                       </span>
                     </th>
                     <th className="px-4 py-4 text-left">
@@ -817,12 +836,19 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
                         {/* Dependencia */}
                         <td className="px-4 py-4">
+                          <p className="text-sm text-gray-900">
+                            {cert.empleado.dependenciaPadre || 'Registro padre'}
+                          </p>
+                        </td>
+
+                        {/* Dependencia Hijo */}
+                        <td className="px-4 py-4">
                           <p className="text-sm text-gray-900">{cert.empleado.dependencia}</p>
                         </td>
 
                         {/* Grado */}
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <p className="text-sm text-gray-900">{cert.empleado.grado}</p>
+                          <p className="text-sm text-gray-900">{cert.observations || '-'}</p>
                         </td>
 
                         {/* Fecha Solicitud */}
@@ -873,7 +899,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                       {/* Panel Desplegable - debajo de la fila */}
                       {expandedCertId === cert.id && (
                         <tr>
-                          <td colSpan={10} className="p-0 bg-gray-50">
+                          <td colSpan={11} className="p-0 bg-gray-50">
                             <CertificadoDetallePanel
                               certificado={cert}
                               isOpen={true}

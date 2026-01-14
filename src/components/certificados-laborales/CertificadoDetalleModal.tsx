@@ -304,13 +304,26 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                            Dependencia
+                            Dependencia Padre
+                          </label>
+                          <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4 text-gray-400" />
+                            {certificado.empleado.dependenciaPadre || 'Registro padre'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            Dependencia Hijo
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Building2 className="w-4 h-4 text-gray-400" />
                             {certificado.empleado.dependencia}
                           </p>
                         </div>
+                      </div>
+
+                      {/* Fila 5 */}
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                             Salario
@@ -318,6 +331,15 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           <p className="text-gray-900 mt-1.5 font-bold flex items-center gap-1.5">
                             <DollarSign className="w-4 h-4 text-green-600" />
                             ${certificado.empleado.salario.toLocaleString('es-CO')} COP
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            Correo Electrónico
+                          </label>
+                          <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            {certificado.empleado.email}
                           </p>
                         </div>
                       </div>

@@ -40,6 +40,7 @@ interface CertificadoLaboralListado {
     email: string;
     cargo: string;
     dependencia: string;
+    dependenciaPadre?: string;
     tipoVinculacion: string;
     fechaVinculacion: string;
     grado: string;
@@ -63,7 +64,8 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
   const [certificadoSeleccionado, setCertificadoSeleccionado] = useState<CertificadoLaboralListado | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [configuracion, setConfiguracion] = useState({
-    incluyeSalario: true
+    incluyeSalario: true,
+    incluyePrimaTecnica: false
   });
   const [showPDFViewer, setShowPDFViewer] = useState(false);
   const [autoPDFAction, setAutoPDFAction] = useState<'download' | 'print' | null>(null);
@@ -151,11 +153,12 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           documento: cert.id_number,
           cargo: cert.position_category,
           dependencia: cert.department || '',
+          dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
           tipoVinculacion: cert.career_category,
           fechaVinculacion: cert.hiring_date,
           grado: cert.position_location || '',
           salario: Number(cert.monthly_salary),
-          email: cert.email || 'No disponible'
+          email: cert.email || cert.request?.email || 'No disponible'
         },
         estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
         fechaSolicitud: cert.created_at,
@@ -328,7 +331,9 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                                 <span className="text-sm text-gray-600">CC {cert.empleado.documento}</span>
                                 <span className="text-sm text-gray-500">{cert.empleado.cargo}</span>
                               </div>
-                              <p className="text-sm text-gray-500 mt-1">{cert.empleado.dependencia}</p>
+                              <p className="text-sm text-gray-500 mt-1">
+                                {cert.empleado.dependenciaPadre || cert.empleado.dependencia || 'Registro padre'}
+                              </p>
                               <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
                                 <div className="flex items-center gap-1">
                                   <Calendar className="w-3.5 h-3.5" />
@@ -421,7 +426,9 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                     </div>
                     <div>
                       <label className="text-sm text-gray-600">Dependencia</label>
-                      <p className="text-gray-900">{certificadoSeleccionado.empleado.dependencia}</p>
+                      <p className="text-gray-900">
+                        {certificadoSeleccionado.empleado.dependenciaPadre || certificadoSeleccionado.empleado.dependencia || 'Registro padre'}
+                      </p>
                     </div>
                     <div>
                       <label className="text-sm text-gray-600">Salario</label>
@@ -464,25 +471,40 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                     Configuracion del Certificado
                   </h3>
 
-                  <div className="space-y-4">
-                    <div className="space-y-3 pt-2">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="salario"
-                          checked={configuracion.incluyeSalario}
-                          onCheckedChange={(checked) =>
-                            setConfiguracion({ ...configuracion, incluyeSalario: checked as boolean })
-                          }
-                        />
-                        <label
-                          htmlFor="salario"
-                          className="text-sm text-gray-700 cursor-pointer"
-                        >
-                          Incluir informacion salarial
-                        </label>
+                    <div className="space-y-4">
+                      <div className="space-y-3 pt-2">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="salario"
+                            checked={configuracion.incluyeSalario}
+                            onCheckedChange={(checked) =>
+                              setConfiguracion({ ...configuracion, incluyeSalario: checked as boolean })
+                            }
+                          />
+                          <label
+                            htmlFor="salario"
+                            className="text-sm text-gray-700 cursor-pointer"
+                          >
+                            Incluir informacion salarial
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="prima-tecnica"
+                            checked={configuracion.incluyePrimaTecnica}
+                            onCheckedChange={(checked) =>
+                              setConfiguracion({ ...configuracion, incluyePrimaTecnica: checked as boolean })
+                            }
+                          />
+                          <label
+                            htmlFor="prima-tecnica"
+                            className="text-sm text-gray-700 cursor-pointer"
+                          >
+                            Incluir prima tecnica (20%)
+                          </label>
+                        </div>
                       </div>
                     </div>
-                  </div>
                 </Card>
               </div>
             )}
@@ -557,7 +579,8 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           onAutoActionComplete={(_action, success) => handleAutoActionComplete(success)}
           certificado={{
             ...certificadoSeleccionado,
-            incluyeSalario: configuracion.incluyeSalario
+            incluyeSalario: configuracion.incluyeSalario,
+            incluyePrimaTecnica: configuracion.incluyePrimaTecnica
           }}
         />
       )}
