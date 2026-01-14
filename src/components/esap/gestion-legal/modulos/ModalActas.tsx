@@ -433,35 +433,6 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
           onClose={onClose}
         />
 
-          {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
-          <ModalHeaderClean
-            titulo="Actas de Audiencias y Diligencias"
-            subtitulo={`Registro oficial de diligencias del expediente ${expediente.id}`}
-            icono={FileCheck}
-            colorIcono="purple"
-            badgePrincipal="CONTESTACIÓN"
-            badges={
-              <>
-                <Badge variant="outline" className="font-semibold text-xs border-gray-300 text-gray-700">
-                  {expediente.etapa}
-                </Badge>
-                <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
-                  <FileCheck className="w-3 h-3 mr-1" />
-                  {actas.length} actas
-                </Badge>
-                <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  {actas.filter(a => a.estado === 'Firmada').length} firmadas
-                </Badge>
-                <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
-                  <Clock className="w-3 h-3 mr-1" />
-                  {actas.filter(a => a.estado === 'Programada').length} programadas
-                </Badge>
-              </>
-            }
-            onClose={onClose}
-          />
-
           {/* Barra de filtros */}
           <div className="px-6 py-4 bg-gradient-to-b from-purple-50 to-white border-b flex-shrink-0">
             <div className="flex items-center gap-2 mb-3">

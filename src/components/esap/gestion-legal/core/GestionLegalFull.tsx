@@ -275,54 +275,41 @@ export function GestionLegalFull() {
   };
 
   return (
-    <ModuleLayout
-      moduleName="GESTIÓN LEGAL"
-      moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"
-      moduleIcon={<Briefcase className="w-6 h-6" />}
-      moduleColor="#003DA5"
-      menuItems={menuItems}
-      activeSection={vistaActual}
-      onSectionChange={(section) => setVistaActual(section as VistaDisponible)}
-      initialSidebarCollapsed={false} // Logo ESAP compacto cuando se colapsa
-    >
-      {renderVistaActual()}
+    <ConfiguracionesSIGLProvider>
+      <ModuleLayout
+        moduleName="GESTIÓN LEGAL"
+        moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"
+        moduleIcon={<Briefcase className="w-6 h-6" />}
+        moduleColor="#003DA5"
+        menuItems={menuItems}
+        activeSection={vistaActual}
+        onSectionChange={(section) => setVistaActual(section as VistaDisponible)}
+        initialSidebarCollapsed={false} // Logo ESAP compacto cuando se colapsa
+      >
+        {renderVistaActual()}
 
-      {/* Tour Guiado Multi-Módulo */}
-      <GuidedTour
-        steps={siglFullTourSteps}
-        isOpen={isTourOpen}
-        onClose={() => setIsTourOpen(false)}
-        onComplete={() => {
-          console.log('✅ Tour completo de 11 módulos completado!');
-          setIsTourOpen(false);
-        }}
-        tourId="sigl-full-tour"
-        onStepChange={handleTourStepChange}
-      />
+        {/* Tour Guiado Multi-Módulo */}
+        <GuidedTour
+          steps={siglFullTourSteps}
+          isOpen={isTourOpen}
+          onClose={() => setIsTourOpen(false)}
+          onComplete={() => {
+            console.log('✅ Tour completo de 11 módulos completado!');
+            setIsTourOpen(false);
+          }}
+          tourId="sigl-full-tour"
+          onStepChange={handleTourStepChange}
+        />
 
-      {/* Botón Flotante del Tour */}
-      <TourButton
-        onClick={() => {
-          setIsTourOpen(true);
-        }}
-        variant="floating"
-        label="Tour Completo"
-      />
-    </ModuleLayout>
-    // Vista del Figma
-    // <ConfiguracionesSIGLProvider>
-    //   <ModuleLayout
-    //     moduleName="GESTIÓN LEGAL"
-    //     moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"
-    //     moduleIcon={<Briefcase className="w-6 h-6" />}
-    //     moduleColor="#003DA5"
-    //     menuItems={menuItems}
-    //     activeSection={vistaActual}
-    //     onSectionChange={(section) => setVistaActual(section as VistaDisponible)}
-    //     initialSidebarCollapsed={false} // Logo ESAP compacto cuando se colapsa
-    //   >
-    //     {renderVistaActual()}
-    //   </ModuleLayout>
-    // </ConfiguracionesSIGLProvider>
+        {/* Botón Flotante del Tour */}
+        <TourButton
+          onClick={() => {
+            setIsTourOpen(true);
+          }}
+          variant="floating"
+          label="Tour Completo"
+        />
+      </ModuleLayout>
+    </ConfiguracionesSIGLProvider>
   );
 }

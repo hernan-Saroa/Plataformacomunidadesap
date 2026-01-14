@@ -321,30 +321,6 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
           onClose={onClose}
         />
 
-          <ModalHeaderClean
-            titulo="Evidencias y Pruebas Documentales"
-            subtitulo={`Material probatorio del expediente ${expediente.id}`}
-            icono={Paperclip}
-            colorIcono="orange"
-            badgePrincipal={expediente.etapa}
-            badges={
-              <>
-                <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  {evidenciasAdmitidas} admitidas
-                </Badge>
-                <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
-                  <AlertCircle className="w-3 h-3 mr-1" />
-                  {evidenciasPendientes} pendientes
-                </Badge>
-                <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
-                  Total {totalEvidencias}
-                </Badge>
-              </>
-            }
-            onClose={onClose}
-          />
-
           <div className="flex items-center gap-2 px-6 py-3 border-b bg-white sticky top-0 z-10">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
