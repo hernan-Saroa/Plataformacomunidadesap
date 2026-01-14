@@ -3,17 +3,18 @@
  * DISEÑO LIMPIO ESAP 2025
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
+import { Card } from '../../../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import {
   Building2, Calendar, User, Clock, X, AlertTriangle, FileText,
   CheckCircle, Target, Mail, Download, Upload, MessageSquare,
   Paperclip, Edit, Send, Archive, TrendingUp, AlertCircle, Trash2
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalComentarRequerimiento } from './ModalComentarRequerimiento';
 import { ModalSubirRespuesta } from './ModalSubirRespuesta';
 import { ModalCambiarEtapa } from './ModalCambiarEtapa';
@@ -315,6 +316,11 @@ export function ModalVerRequerimientoOrgano({
 
         {/* Header - FIJO NO SCROLL */}
         <div className="flex-shrink-0 px-6 py-5 bg-white border-b flex items-center justify-between">
+          <style>{`
+            .config-dialog-close {
+              display: none !important;
+            }
+          `}</style>
           <div className="flex items-center gap-3 flex-1">
             <div
               className="p-2.5 border-2 rounded-lg"
@@ -595,37 +601,68 @@ export function ModalVerRequerimientoOrgano({
                     <p className="text-sm text-gray-500">No hay documentos adjuntos</p>
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2">
                     {documentos.map((doc) => (
-                      <div key={doc.id} className="flex items-center justify-between p-3 bg-white hover:bg-gray-50 rounded-lg border border-gray-200 transition-colors">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="p-2 bg-blue-50 rounded text-blue-600">
-                            <FileText className="w-4 h-4" />
+                      <Card
+                        key={doc.id}
+                        className="p-3 hover:shadow-md transition-all border-l-4 border-l-blue-500"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className={`p-2.5 rounded-lg flex-shrink-0 ${doc.tipo === 'Soporte' ? 'bg-indigo-50 text-indigo-600' :
+                                doc.tipo === 'Respuesta' ? 'bg-green-50 text-green-600' :
+                                  'bg-blue-50 text-blue-600'
+                              }`}>
+                              <FileText className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-gray-900 truncate" title={doc.nombre}>
+                                {doc.nombre}
+                              </p>
+                              <div className="flex items-center gap-3 mt-1 flex-wrap">
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs font-semibold"
+                                  style={{ borderColor: '#003DA5', color: '#003DA5' }}
+                                >
+                                  {doc.tipo}
+                                </Badge>
+
+                                <span className="text-xs text-gray-500 flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {doc.fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </span>
+                                {doc.subidoPor && (
+                                  <span className="text-xs text-gray-600 flex items-center gap-1">
+                                    <User className="w-3 h-3" />
+                                    {doc.subidoPor}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className="truncate">
-                            <p className="text-sm font-semibold text-gray-900 truncate" title={doc.nombre}>{doc.nombre}</p>
-                            <p className="text-xs text-gray-500 flex items-center gap-2">
-                              <span>{doc.tipo}</span>
-                              <span>•</span>
-                              <span>{doc.fecha.toLocaleDateString('es-CO')}</span>
-                              {doc.subidoPor && (
-                                <>
-                                  <span>•</span>
-                                  <span>{doc.subidoPor}</span>
-                                </>
-                              )}
-                            </p>
+
+                          <div className="flex items-center gap-1 ml-3">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDescargarDocumento(doc)}
+                              title="Ver/Descargar"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                              onClick={() => handleEliminarDocumento(doc.id)}
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => handleDescargarDocumento(doc)} title="Ver/Descargar">
-                            <Download className="w-3.5 h-3.5 text-blue-600" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleEliminarDocumento(doc.id)} title="Eliminar">
-                            <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                          </Button>
-                        </div>
-                      </div>
+                      </Card>
                     ))}
                   </div>
                 )}

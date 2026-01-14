@@ -9,7 +9,7 @@ import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import {
-  AlertTriangle, Shield, FileText, X, Edit, Archive, Target,
+  AlertTriangle, Shield, FileText, X, Edit, Target,
   TrendingUp, Activity, CheckCircle, Clock, User, Calendar,
   Zap, AlertCircle, Download, Trash2, ChevronRight
 } from 'lucide-react';
@@ -22,7 +22,7 @@ interface ModalDetalleRiesgoProps {
   onClose: () => void;
   riesgo: Riesgo | null;
   onEdit?: (riesgo: Riesgo) => void;
-  onArchive?: (riesgo: Riesgo) => void;
+  onDelete?: (riesgo: Riesgo) => void;
 }
 
 const ZONA_RIESGO_CONFIG = {
@@ -41,13 +41,18 @@ const TIPO_RIESGO_MAP = {
 
 const ETAPA_CONFIG = {
   IDENTIFICADO: { label: 'Identificado', color: 'bg-gray-100 text-gray-700', icon: '📝' },
-  EVALUADO: { label: 'Evaluado', color: 'bg-blue-100 text-blue-700', icon: '📊' },
-  EN_TRATAMIENTO: { label: 'En Tratamiento', color: 'bg-yellow-100 text-yellow-700', icon: '⚙️' },
-  MONITOREADO: { label: 'Monitoreado', color: 'bg-purple-100 text-purple-700', icon: '👁️' },
-  CERRADO: { label: 'Cerrado', color: 'bg-green-100 text-green-700', icon: '✅' }
+  ANALIZADO: { label: 'Analizado', color: 'bg-indigo-100 text-indigo-700', icon: '🔍' },
+  VALORADO: { label: 'Valorado', color: 'bg-blue-100 text-blue-700', icon: '📊' },
+  EVALUADO: { label: 'Evaluado', color: 'bg-blue-100 text-blue-700', icon: '📊' }, // Deprecated fallback
+  TRATAMIENTO: { label: 'En Tratamiento', color: 'bg-yellow-100 text-yellow-700', icon: '⚙️' },
+  EN_TRATAMIENTO: { label: 'En Tratamiento', color: 'bg-yellow-100 text-yellow-700', icon: '⚙️' }, // Deprecated fallback
+  MONITOREO: { label: 'Monitoreado', color: 'bg-purple-100 text-purple-700', icon: '👁️' },
+  MONITOREADO: { label: 'Monitoreado', color: 'bg-purple-100 text-purple-700', icon: '👁️' }, // Deprecated fallback
+  CERRADO: { label: 'Cerrado', color: 'bg-green-100 text-green-700', icon: '✅' },
+  MATERIALIZADO: { label: 'Materializado', color: 'bg-red-100 text-red-700', icon: '🔥' }
 };
 
-export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onArchive }: ModalDetalleRiesgoProps) {
+export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onDelete }: ModalDetalleRiesgoProps) {
   const [tabActiva, setTabActiva] = useState('general');
 
   if (!riesgo) return null;
@@ -97,22 +102,15 @@ export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onArchive }:
     }
   };
 
-  const handleArchivar = async () => {
-    if (onArchive && riesgo) {
-      onArchive(riesgo);
-    } else {
-      toast.success('Riesgo archivado', {
-        description: `${riesgo?.codigo || riesgo?.id} ha sido archivado exitosamente`
-      });
+  const handleEliminar = async () => {
+    if (confirm('¿Estás seguro de que quieres eliminar este riesgo permanentemente?')) {
+      if (onDelete && riesgo) {
+        onDelete(riesgo);
+      } else {
+        // Fallback just in case
+        toast.error('Función de eliminar no conectada');
+      }
     }
-    onClose();
-  };
-
-  const handleEliminar = () => {
-    toast.error('Riesgo eliminado', {
-      description: `${riesgo.codigo || riesgo.id} ha sido eliminado del sistema`
-    });
-    onClose();
   };
 
   const handleExportar = () => {
@@ -159,7 +157,7 @@ ${riesgo.consecuencias?.map((c, i) => `${i + 1}. ${c}`).join('\n') || 'No especi
 
 CONTROLES EXISTENTES
 ═══════════════════════════════════════════════════════════════
-${riesgo.controles?.map((c, i) => `${i + 1}. ${c}`).join('\n') || 'No especificados'}
+${riesgo.controlesExistentes?.map((c, i) => `${i + 1}. ${c.descripcion} (${c.efectividad}%)`).join('\n') || 'No especificados'}
 
 PLAN DE TRATAMIENTO
 ═══════════════════════════════════════════════════════════════
@@ -589,9 +587,9 @@ Metodología DAFP - MECI
               <Edit className="w-4 h-4 mr-2" />
               Editar
             </Button>
-            <Button variant="outline" onClick={handleArchivar} className="text-orange-600 border-orange-300">
-              <Archive className="w-4 h-4 mr-2" />
-              Archivar
+            <Button variant="outline" onClick={handleEliminar} className="text-red-600 border-red-300 hover:bg-red-50">
+              <Trash2 className="w-4 h-4 mr-2" />
+              Eliminar
             </Button>
           </div>
         </div>

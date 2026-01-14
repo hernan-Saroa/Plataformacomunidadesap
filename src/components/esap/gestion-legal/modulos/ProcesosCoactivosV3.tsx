@@ -203,8 +203,8 @@ export function ModuloProcesosCoactivosV3() {
               setModalNuevoProceso(true);
             }}
             className="flex-shrink-0"
+            icon={<Plus className="w-4 h-4" />}
           >
-            <Plus className="w-4 h-4 mr-2" />
             {!isMobile && 'Nuevo Proceso'}
           </ButtonSIGL>
         </div>
@@ -488,28 +488,31 @@ function TarjetaProceso({
         <div className="flex flex-wrap gap-2">
           <ButtonSIGL
             variant="primary"
-            size="sm"
+            size="md"
             onClick={() => onVerDetalle(proceso)}
-            className="flex-1 sm:flex-none"
+            className="flex-none min-w-[110px]"
+            icon={<Eye className="w-4 h-4" />}
           >
-            <Eye className="w-4 h-4 mr-2" />
             Ver Detalle
           </ButtonSIGL>
           <ButtonSIGL
             variant="secondary"
-            size="sm"
+            size="md"
             onClick={() => onEditar(proceso)}
+            className="flex-none min-w-[110px]"
+            icon={<Edit className="w-4 h-4" />}
           >
-            <Edit className="w-4 h-4 mr-2" />
             Editar
           </ButtonSIGL>
-          <button
+          <ButtonSIGL
+            variant="danger"
+            size="md"
             onClick={() => onEliminar(proceso.id)}
-            className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+            className="flex-none min-w-[110px]"
+            icon={<Trash2 className="w-4 h-4" />}
           >
-            <Trash2 className="w-4 h-4" />
             Eliminar
-          </button>
+          </ButtonSIGL>
         </div>
       </div>
     </CardSIGL>
