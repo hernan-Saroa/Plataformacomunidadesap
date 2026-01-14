@@ -41,8 +41,11 @@ export class FilesController {
             fileFilter: (req, file, cb) => {
                 const allowedMimes = [
                     'application/pdf',
+                    'image/jpeg',
+                    'image/png',
+                    'image/jpg'
                 ];
-                const allowedExts = /\.(pdf)$/i;
+                const allowedExts = /\.(pdf|jpg|jpeg|png)$/i;
                 if (allowedMimes.includes(file.mimetype) || allowedExts.test(file.originalname)) {
                     cb(null, true);
                     return;
