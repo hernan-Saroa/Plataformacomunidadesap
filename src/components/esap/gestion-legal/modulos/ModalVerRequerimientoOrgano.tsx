@@ -3,22 +3,25 @@
  * DISEÑO LIMPIO ESAP 2025
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
+import { Card } from '../../../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import {
   Building2, Calendar, User, Clock, X, AlertTriangle, FileText,
   CheckCircle, Target, Mail, Download, Upload, MessageSquare,
-  Paperclip, Edit, Send, Archive, TrendingUp, AlertCircle
+  Paperclip, Edit, Send, Archive, TrendingUp, AlertCircle, Trash2
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalComentarRequerimiento } from './ModalComentarRequerimiento';
 import { ModalSubirRespuesta } from './ModalSubirRespuesta';
 import { ModalCambiarEtapa } from './ModalCambiarEtapa';
 import { ModalReasignar } from './ModalReasignar';
 import { ModalArchivar } from './ModalArchivar';
+import { legalService, ocService } from '../../../../services/api/legal.service';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 
 interface RequerimientoOrganoControl {
   id: string;
@@ -55,6 +58,130 @@ export function ModalVerRequerimientoOrgano({
   const [modalPadreVisible, setModalPadreVisible] = useState(true);
 
   if (!requerimiento) return null;
+
+  // Estados para documentos
+  const [documentos, setDocumentos] = useState<any[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+
+  // Cargar documentos al abrir
+  useEffect(() => {
+    if (isOpen && requerimiento?.id) {
+      loadDocumentos();
+    }
+  }, [isOpen, requerimiento?.id]);
+
+  const loadDocumentos = async () => {
+    if (!requerimiento?.id) return;
+    try {
+      setLoadingDocs(true);
+      const docs = await ocService.getDocumentosByRequerimiento(requerimiento.id);
+
+      // Mapear para asegurar campos compatibles
+      const docsMapeados = docs.map(d => ({
+        ...d,
+        nombre: d.nombre,
+        tipo: d.tipoDocumento || 'Documento',
+        fecha: d.createdAt ? new Date(d.createdAt) : new Date(),
+        url: d.archivoUrl
+      }));
+      setDocumentos(docsMapeados);
+    } catch (error) {
+      console.error('Error cargando documentos:', error);
+      // toast.error('Error al cargar documentos');
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
+
+  const handleDescargarTodos = async () => {
+    if (!requerimiento?.id) return;
+    if (documentos.length === 0) {
+      toast.info('No hay documentos para descargar');
+      return;
+    }
+
+    toast.loading('📦 Preparando descarga ZIP...', { id: 'download-oc-zip' });
+
+    try {
+      const url = ocService.getDocumentosDownloadUrl(requerimiento.id);
+      const response = await fetch(url);
+
+      if (!response.ok) throw new Error('Error en descarga');
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `requerimiento_oc_${requerimiento.id}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      toast.success('✅ Documentos descargados', { id: 'download-oc-zip' });
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al descargar documentos', { id: 'download-oc-zip' });
+    }
+  };
+
+  const handleSubirDocumento = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !requerimiento?.id) return;
+
+    toast.loading('Subiendo documento...', { id: 'upload-doc' });
+    setUploadingDoc(true);
+
+    try {
+      await ocService.createDocumento(requerimiento.id, {
+        nombre: file.name,
+        tipoDocumento: 'Soporte',
+        archivo: file,
+        subidoPor: 'Usuario Actual' // TODO: Get from auth context
+      });
+
+      toast.success('Documento subido correctamente', { id: 'upload-doc' });
+      loadDocumentos();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al subir documento', { id: 'upload-doc' });
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  const handleDescargarDocumento = async (doc: any) => {
+    if (!doc.url) return;
+
+    try {
+      const baseUrl = getServiceUrl('legal');
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+
+      let filename = doc.url;
+      if (doc.url.includes('/files/')) filename = doc.url.split('/files/').pop();
+      else if (doc.url.includes('files/')) filename = doc.url.split('files/').pop();
+
+      const fullUrl = `${baseUrl}${prefix}/files/${filename}`;
+
+      window.open(fullUrl, '_blank');
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al abrir documento');
+    }
+  };
+
+  const handleEliminarDocumento = async (id: string) => {
+    if (!confirm('¿Eliminar este documento?')) return;
+    try {
+      await ocService.deleteDocumento(id);
+      toast.success('Documento eliminado');
+      setDocumentos(prev => prev.filter(d => d.id !== id));
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al eliminar documento');
+    }
+  };
 
   // Resetear visibilidad cuando se cierra el modal
   const handleClose = () => {
@@ -129,7 +256,7 @@ export function ModalVerRequerimientoOrgano({
   const porcentajeTiempo = Math.round(((requerimiento.diasTotales - requerimiento.diasRestantes) / requerimiento.diasTotales) * 100);
 
   const getOrganoInfo = (organo: string) => {
-    switch(organo) {
+    switch (organo) {
       case 'CGR': return { nombre: 'Contraloría General de la República', icon: '🏛️', color: '#1E40AF' };
       case 'CONTRALORIA_TERRITORIAL': return { nombre: 'Contraloría Territorial', icon: '📊', color: '#7C3AED' };
       case 'PROCURADURIA': return { nombre: 'Procuraduría General de la Nación', icon: '⚖️', color: '#059669' };
@@ -179,18 +306,23 @@ export function ModalVerRequerimientoOrgano({
 
   return (
     <Dialog open={isOpen && modalPadreVisible} onOpenChange={handleClose}>
-      <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col p-0 my-4 overflow-hidden">
+      <DialogContent hideCloseButton className="max-w-3xl max-h-[85vh] flex flex-col p-0 my-4 overflow-hidden">
         <DialogTitle className="sr-only">
           Detalle del Requerimiento {requerimiento.id}
         </DialogTitle>
         <DialogDescription className="sr-only">
           Vista completa del requerimiento {requerimiento.id} del órgano de control con información detallada sobre plazos, etapas, responsables y documentación asociada.
         </DialogDescription>
-        
+
         {/* Header - FIJO NO SCROLL */}
         <div className="flex-shrink-0 px-6 py-5 bg-white border-b flex items-center justify-between">
+          <style>{`
+            .config-dialog-close {
+              display: none !important;
+            }
+          `}</style>
           <div className="flex items-center gap-3 flex-1">
-            <div 
+            <div
               className="p-2.5 border-2 rounded-lg"
               style={{ borderColor: organoInfo.color, backgroundColor: `${organoInfo.color}10` }}
             >
@@ -221,17 +353,17 @@ export function ModalVerRequerimientoOrgano({
         {/* Contenido - CON SCROLL */}
         <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
           <div className="space-y-6">
-            
+
             {/* ALERTA DE SEMÁFORO */}
-            <div 
+            <div
               className="p-4 rounded-lg border-2 flex items-center gap-3"
-              style={{ 
-                backgroundColor: semaforo.bg, 
-                borderColor: semaforo.color 
+              style={{
+                backgroundColor: semaforo.bg,
+                borderColor: semaforo.color
               }}
             >
-              <AlertTriangle 
-                className="w-6 h-6 flex-shrink-0" 
+              <AlertTriangle
+                className="w-6 h-6 flex-shrink-0"
                 style={{ color: semaforo.color }}
               />
               <div className="flex-1">
@@ -239,8 +371,8 @@ export function ModalVerRequerimientoOrgano({
                   Estado: {semaforo.label}
                 </p>
                 <p className="text-xs text-gray-700 mt-1">
-                  {requerimiento.diasRestantes < 0 
-                    ? `⚠️ Vencido hace ${Math.abs(requerimiento.diasRestantes)} días` 
+                  {requerimiento.diasRestantes < 0
+                    ? `⚠️ Vencido hace ${Math.abs(requerimiento.diasRestantes)} días`
                     : `⏰ Quedan ${requerimiento.diasRestantes} día${requerimiento.diasRestantes !== 1 ? 's' : ''} para vencimiento`
                   }
                 </p>
@@ -263,7 +395,7 @@ export function ModalVerRequerimientoOrgano({
                   </p>
                   <p className="text-sm font-mono font-bold text-gray-900">{requerimiento.numeroOficio}</p>
                 </div>
-                
+
                 <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                   <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
                     <Building2 className="w-3 h-3" />
@@ -299,7 +431,7 @@ export function ModalVerRequerimientoOrgano({
                   </p>
                 </div>
 
-                <div 
+                <div
                   className="p-3 rounded-lg border-2"
                   style={{ backgroundColor: semaforo.bg, borderColor: semaforo.color }}
                 >
@@ -405,7 +537,7 @@ export function ModalVerRequerimientoOrgano({
                   {timeline.map((evento, idx) => (
                     <div key={idx} className="flex gap-3">
                       <div className="flex flex-col items-center">
-                        <div 
+                        <div
                           className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center"
                           style={{ backgroundColor: '#003DA5' }}
                         >
@@ -428,39 +560,112 @@ export function ModalVerRequerimientoOrgano({
 
               <TabsContent value="documentos" className="space-y-3 mt-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-bold text-gray-900">Documentos Adjuntos</h3>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => toast.info('Función de carga de documentos')}
-                  >
-                    <Upload className="w-3 h-3 mr-1" />
-                    Cargar
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  {[
-                    { nombre: 'Oficio CGR-OF-2024-00125.pdf', tipo: 'PDF', fecha: new Date('2024-12-10') },
-                    { nombre: 'Anexo 1 - Contratos 2024.xlsx', tipo: 'Excel', fecha: new Date('2024-12-12') },
-                    { nombre: 'Certificación Presupuestal.pdf', tipo: 'PDF', fecha: new Date('2024-12-13') }
-                  ].map((doc, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <div className="flex items-center gap-3">
-                        <Paperclip className="w-4 h-4 text-gray-600" />
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">{doc.nombre}</p>
-                          <p className="text-xs text-gray-500">
-                            {doc.tipo} • Subido el {doc.fecha.toLocaleDateString('es-CO')}
-                          </p>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm">
-                        <Download className="w-3.5 h-3.5" />
+                  <h3 className="font-bold text-gray-900">Documentos Adjuntos ({documentos.length})</h3>
+                  <div className="flex items-center gap-2">
+                    {documentos.length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDescargarTodos}
+                        className="text-xs font-bold"
+                      >
+                        <Download className="w-3.5 h-3.5 mr-1" />
+                        Descargar ZIP
+                      </Button>
+                    )}
+                    <div className="relative">
+                      <input
+                        type="file"
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        onChange={handleSubirDocumento}
+                        disabled={uploadingDoc}
+                      />
+                      <Button
+                        variant="default" // Changed to default for emphasis
+                        size="sm"
+                        className="text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
+                        disabled={uploadingDoc}
+                      >
+                        <Upload className="w-3.5 h-3.5 mr-1" />
+                        {uploadingDoc ? 'Subiendo...' : 'Cargar Doc'}
                       </Button>
                     </div>
-                  ))}
+                  </div>
                 </div>
+
+                {loadingDocs ? (
+                  <div className="text-center py-6 text-gray-500 text-sm">Cargando documentos...</div>
+                ) : documentos.length === 0 ? (
+                  <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                    <Paperclip className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                    <p className="text-sm text-gray-500">No hay documentos adjuntos</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2">
+                    {documentos.map((doc) => (
+                      <Card
+                        key={doc.id}
+                        className="p-3 hover:shadow-md transition-all border-l-4 border-l-blue-500"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className={`p-2.5 rounded-lg flex-shrink-0 ${doc.tipo === 'Soporte' ? 'bg-indigo-50 text-indigo-600' :
+                                doc.tipo === 'Respuesta' ? 'bg-green-50 text-green-600' :
+                                  'bg-blue-50 text-blue-600'
+                              }`}>
+                              <FileText className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-gray-900 truncate" title={doc.nombre}>
+                                {doc.nombre}
+                              </p>
+                              <div className="flex items-center gap-3 mt-1 flex-wrap">
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs font-semibold"
+                                  style={{ borderColor: '#003DA5', color: '#003DA5' }}
+                                >
+                                  {doc.tipo}
+                                </Badge>
+
+                                <span className="text-xs text-gray-500 flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {doc.fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </span>
+                                {doc.subidoPor && (
+                                  <span className="text-xs text-gray-600 flex items-center gap-1">
+                                    <User className="w-3 h-3" />
+                                    {doc.subidoPor}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 ml-3">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDescargarDocumento(doc)}
+                              title="Ver/Descargar"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                              onClick={() => handleEliminarDocumento(doc.id)}
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
 

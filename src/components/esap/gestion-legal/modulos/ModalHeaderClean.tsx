@@ -32,13 +32,13 @@ export function ModalHeaderClean({
   badgePrincipal,
   onClose
 }: ModalHeaderCleanProps) {
-  
+
   // Validación defensiva: Si no hay icono, usar un icono por defecto
   if (!Icono) {
     console.error('ModalHeaderClean: No se proporcionó un icono válido');
     return null;
   }
-  
+
   // Configuración de colores según el tema
   const colores = {
     purple: {
@@ -105,8 +105,8 @@ export function ModalHeaderClean({
     };
 
     return (
-      <span 
-        key={index} 
+      <span
+        key={index}
         className={`inline-flex items-center rounded-md px-2 py-0.5 ${estilosBadge[badge.color]} font-semibold text-xs border`}
       >
         {badge.texto}
@@ -121,11 +121,11 @@ export function ModalHeaderClean({
     <div className="px-6 py-5 bg-white border-b flex-shrink-0">
       {/* Ocultar el botón X automático del DialogContent */}
       <style>{`
-        [data-slot="dialog-close"] {
+        .config-dialog-close {
           display: none !important;
         }
       `}</style>
-      
+
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4 flex-1">
           {/* Icono */}
@@ -145,16 +145,16 @@ export function ModalHeaderClean({
                 </span>
               )}
             </div>
-            
+
             {subtitulo && (
               <p className="text-sm text-gray-600 mb-2">
                 {subtitulo}
               </p>
             )}
-            
+
             {badges && (
               <div className="flex items-center gap-2 flex-wrap">
-                {isBadgeConfigArray 
+                {isBadgeConfigArray
                   ? (badges as BadgeConfig[]).map((badge, index) => renderBadge(badge, index))
                   : badges
                 }
@@ -165,10 +165,10 @@ export function ModalHeaderClean({
 
         {/* Botón Cerrar */}
         <button
-          onClick={onClose} 
-          className="ml-4 p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
+          onClick={onClose}
+          className="ml-4 p-1 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
         >
-          <X className="w-5 h-5" />
+          <X className="w-7 h-7" />
         </button>
       </div>
     </div>

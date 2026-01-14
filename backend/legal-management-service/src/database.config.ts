@@ -49,6 +49,10 @@ import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
 // Excepciones Procesales
 import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
 
+// Procesos Coactivos
+import { ProcesoCoactivo } from './entities/proceso-coactivo.entity';
+import { ProcesoCoactivoAdjunto } from './entities/proceso-coactivo-adjunto.entity';
+
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
@@ -82,7 +86,9 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Correos Jurídicos
         CorreoJuridico, AdjuntoCorreo,
         // Excepciones Procesales
-        ExcepcionProcesal
+        ExcepcionProcesal,
+        // Procesos Coactivos
+        ProcesoCoactivo, ProcesoCoactivoAdjunto
     ],
     synchronize: false, // ⚠️ Cambiado a false para usar migraciones en producción
     logging: ['error'], // Solo mostrar errores, no queries
