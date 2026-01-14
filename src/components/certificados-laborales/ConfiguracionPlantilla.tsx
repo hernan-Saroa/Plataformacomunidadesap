@@ -26,7 +26,7 @@
 
 
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 
 
@@ -576,51 +576,26 @@ const coloresDisponibles = [
 
 
 
-const variablesDisponibles = [
-
-
-
-  { codigo: '[NOMBRE_EMPLEADO]', descripcion: 'Nombre completo del empleado' },
-
-
-
-  { codigo: '[DOCUMENTO]', descripcion: 'NAomero de documento' },
-
-
-
-  { codigo: '[CARGO]', descripcion: 'Cargo del empleado' },
-
-
-
-  { codigo: '[DEPENDENCIA]', descripcion: 'Dependencia donde trabaja' },
-
-
-
-  { codigo: '[DATO6]', descripcion: 'Ubicacion o dato adicional' },
-
-
-
-  { codigo: '[FECHA_INICIO]', descripcion: 'Fecha de inicio del contrato' },
-
-
-
-  { codigo: '[FECHA_FIN]', descripcion: 'Fecha de finalizacion' },
-
-
-
-  { codigo: '[SALARIO]', descripcion: 'Salario mensual (nAomero)' },
-
-
-
-  { codigo: '[SALARIO_LETRAS]', descripcion: 'Salario en letras' },
-
-
-
-  { codigo: '[FECHA_EXPEDICION_COMPLETA]', descripcion: 'Fecha completa de expedicion (ej: 11 de diciembre de 2025)' },
-
-
-
-];
+const descripcionVariables: Record<string, string> = {
+  '[NOMBRE_EMPLEADO]': 'Nombre completo del empleado',
+  '[DOCUMENTO]': 'Numero de documento',
+  '[CARGO]': 'Cargo del empleado',
+  '[DEPENDENCIA]': 'Dependencia donde trabaja',
+  '[DATO1]': 'Dato 1 (nombre empleado)',
+  '[DATO2]': 'Dato 2 (documento)',
+  '[DATO3]': 'Dato 3 (tipo vinculacion)',
+  '[DATO4]': 'Dato 4 (fecha de inicio)',
+  '[DATO5]': 'Dato 5 (cargo)',
+  '[DATO6]': 'Dato 6 (dato adicional)',
+  '[DATO7]': 'Dato 7 (dato adicional)',
+  '[DATO8]': 'Dato 8 (salario en letras)',
+  '[FECHA_INICIO]': 'Fecha de inicio del contrato',
+  '[FECHA_FIN]': 'Fecha de finalizacion',
+  '[SALARIO]': 'Salario mensual (numero)',
+  '[SALARIO_LETRAS]': 'Salario en letras',
+  '[FECHA_EXPEDICION_COMPLETA]': 'Fecha completa de expedicion (ej: 11 de diciembre de 2025)',
+  '[CIUDAD_EXPEDICION]': 'Ciudad de expedicion',
+};
 
 
 
@@ -714,6 +689,23 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   const [activeTab, setActiveTab] = useState<string>(canEdit ? 'Modificacion' : 'historial');
 
   const [editorContent, setEditorContent] = useState<string>('');
+
+  const variablesDisponibles = useMemo(() => {
+    const contenidoBase = editorContent || borrador?.contenidoCertificado.texto || defaultContenidoCertificado;
+    const tokens = contenidoBase.match(/\[[A-Z0-9_]+\]/g) || [];
+    const vistos = new Set<string>();
+    const ordenados: string[] = [];
+    for (const token of tokens) {
+      if (!vistos.has(token)) {
+        vistos.add(token);
+        ordenados.push(token);
+      }
+    }
+    return ordenados.map((codigo) => ({
+      codigo,
+      descripcion: descripcionVariables[codigo] || 'Variable usada en la plantilla'
+    }));
+  }, [editorContent, borrador?.contenidoCertificado.texto]);
 
 
 
@@ -1721,9 +1713,19 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       metadata: cambio.metadata,
     }));
 
-  const cargarHistorial = async (page: number) => {
+  const fallbackImageData =
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='80'><rect width='100%' height='100%' fill='%23f3f4f6'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-size='12'>No disponible</text></svg>";
+
+  const handleHistorialImageError = (
+    event: React.SyntheticEvent<HTMLImageElement>
+  ) => {
+    event.currentTarget.src = fallbackImageData;
+    event.currentTarget.alt = 'Imagen no disponible';
+  };
+
+  const cargarHistorial = async (page: number, force = false) => {
     try {
-      if (activeTab !== 'historial') return;
+      if (!force && activeTab !== 'historial') return;
       setIsLoadingHistorial(true);
       const safePage = Math.max(1, page);
       const offset = (safePage - 1) * HISTORIAL_POR_PAGINA;
@@ -2834,7 +2836,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   const recargarHistorial = async (force = false) => {
     try {
       if (!force && activeTab !== 'historial') return;
-      await cargarHistorial(historialPage);
+      await cargarHistorial(historialPage, force);
       setHistorialDirty(false);
     } catch (error) {
       console.error('Error al recargar historial:', error);
@@ -7365,6 +7367,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
                                           alt="Logo anterior"
 
+                                          onError={handleHistorialImageError}
+
 
 
                                           className="w-full h-full object-contain"
@@ -7445,6 +7449,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
                                         alt="Logo nuevo"
 
+                                        onError={handleHistorialImageError}
+
 
 
                                         className="w-full h-full object-contain"
@@ -7508,6 +7514,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
                                           alt="Firma anterior"
+
+                                          onError={handleHistorialImageError}
 
 
 
@@ -7588,6 +7596,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
                                         alt="Firma nueva"
+
+                                        onError={handleHistorialImageError}
 
 
 
