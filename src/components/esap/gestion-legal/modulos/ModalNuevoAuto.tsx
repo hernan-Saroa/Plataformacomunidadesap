@@ -223,7 +223,7 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
 
   return (
     <Dialog open={isOpen} onOpenChange={handleCancelar}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent hideCloseButton className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0">
         <DialogTitle className="sr-only">Registrar Nuevo Auto Procesal</DialogTitle>
         <DialogDescription className="sr-only">
           Formulario para registrar un nuevo auto procesal al expediente judicial

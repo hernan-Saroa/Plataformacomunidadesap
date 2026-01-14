@@ -712,7 +712,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
   return (
     <Dialog open={isOpen} onOpenChange={handleCerrar}>
-      <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="max-w-5xl h-[90vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
           Proceso Disciplinario {proceso.id}
         </DialogTitle>
@@ -1270,7 +1270,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       {/* ==================== MODAL: ENLACE COMPARTIR ==================== */}
       {mostrarModalCompartir && (
         <Dialog open={mostrarModalCompartir} onOpenChange={setMostrarModalCompartir}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent hideCloseButton className="max-w-2xl">
             <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
               <Share2 className="w-6 h-6" />
               Enlace de Compartir Generado
@@ -1337,7 +1337,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       {/* ==================== MODAL: NOTIFICAR ==================== */}
       {mostrarModalNotificar && (
         <Dialog open={mostrarModalNotificar} onOpenChange={setMostrarModalNotificar}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent hideCloseButton className="max-w-2xl">
             <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
               <Bell className="w-6 h-6" />
               Notificar Última Actuación Procesal
@@ -1395,7 +1395,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       {/* ==================== MODAL: PORTALES ==================== */}
       {mostrarModalPortales && (
         <Dialog open={mostrarModalPortales} onOpenChange={setMostrarModalPortales}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent hideCloseButton className="max-w-2xl">
             <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
               <ExternalLink className="w-6 h-6" />
               Abrir en Portales

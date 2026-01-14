@@ -160,7 +160,7 @@ export function ModalExpedienteComunicacion({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-6xl h-[95vh] flex flex-col p-0">
+        <DialogContent hideCloseButton className="max-w-4xl h-[95vh] flex flex-col p-0">
           <DialogTitle className="sr-only">Expediente Comunicación {comunicacion.id}</DialogTitle>
           <DialogDescription className="sr-only">
             Visualización completa de la comunicación

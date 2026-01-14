@@ -294,7 +294,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent hideCloseButton className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0">
         <DialogTitle className="sr-only">
           Centro de Comunicaciones - Expediente {expediente.id}
         </DialogTitle>

@@ -178,7 +178,7 @@ export function ModalCrearTarea({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="max-w-2xl max-h-[90vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
           {modoEdicion ? 'Editar Tarea' : 'Crear Nueva Tarea'} - Expediente {expediente.id}
         </DialogTitle>

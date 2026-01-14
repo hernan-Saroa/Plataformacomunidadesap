@@ -455,7 +455,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
   return (
     <>
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="max-w-5xl h-[90vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
           Expediente Judicial {expediente.id} - Vista Completa
         </DialogTitle>

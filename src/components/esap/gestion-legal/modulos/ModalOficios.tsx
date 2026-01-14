@@ -412,7 +412,7 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
           Oficios y Comunicaciones - Expediente {expediente.id}
         </DialogTitle>

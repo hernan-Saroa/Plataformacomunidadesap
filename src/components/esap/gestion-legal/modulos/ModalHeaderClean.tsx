@@ -119,13 +119,6 @@ export function ModalHeaderClean({
 
   return (
     <div className="px-6 py-5 bg-white border-b flex-shrink-0">
-      {/* Ocultar el botón X automático del DialogContent */}
-      <style>{`
-        [data-slot="dialog-close"] {
-          display: none !important;
-        }
-      `}</style>
-      
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4 flex-1">
           {/* Icono */}

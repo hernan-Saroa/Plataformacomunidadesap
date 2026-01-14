@@ -11,11 +11,6 @@ import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Input } from '../../../ui/input';
-import { 
-  FileCheck, Download, Eye, FileText, Calendar, Clock, 
-  X, Upload, Plus, Trash2, CheckCircle, AlertCircle,
-  Search, Filter, Users, Play
-} from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState } from 'react';
 import { toast } from 'sonner@2.0.3';
@@ -374,7 +369,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
           Actas de Audiencias - Expediente {expediente.id}
         </DialogTitle>

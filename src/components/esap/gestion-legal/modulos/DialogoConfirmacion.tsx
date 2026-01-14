@@ -101,7 +101,7 @@ export function DialogoConfirmacion({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md p-0 overflow-hidden border-2 shadow-2xl">
+      <DialogContent hideCloseButton className="max-w-md p-0 overflow-hidden border-2 shadow-2xl">
         <DialogTitle className="sr-only">{titulo}</DialogTitle>
         <DialogDescription className="sr-only">{mensaje}</DialogDescription>
 

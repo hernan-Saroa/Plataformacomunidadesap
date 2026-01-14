@@ -158,7 +158,7 @@ export function FormularioRegistrarDecision({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleCancelar}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent hideCloseButton className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0">
         <DialogDescription className="sr-only">
           Formulario para registrar una nueva decisión en el proceso disciplinario {procesoId}
         </DialogDescription>
