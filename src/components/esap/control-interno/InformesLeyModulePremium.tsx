@@ -242,7 +242,7 @@ interface VistaCatalogoProps {
 
 function VistaCatalogo({ onInformeGenerado }: VistaCatalogoProps) {
   const [busqueda, setBusqueda] = useState('');
-  const [filtroPeriodicidad, setFiltroPeriodicidad] = useState<PeriodicidadInforme | 'TODOS'>('TODOS');
+  const [filtroPeriodicidad, setFiltroPeriodicidad] = useState<PeriodicidadInforme | 'todos'>('todos');
   const [informeSeleccionado, setInformeSeleccionado] = useState<InformeLeyNormativo | null>(null);
   const [informeParaGenerar, setInformeParaGenerar] = useState<InformeLeyNormativo | null>(null);
 
@@ -258,7 +258,7 @@ function VistaCatalogo({ onInformeGenerado }: VistaCatalogoProps) {
       );
     }
 
-    if (filtroPeriodicidad !== 'TODOS') {
+    if (filtroPeriodicidad !== 'todos') {
       resultado = resultado.filter(i => i.periodicidad === filtroPeriodicidad);
     }
 
@@ -267,10 +267,10 @@ function VistaCatalogo({ onInformeGenerado }: VistaCatalogoProps) {
 
   const estadisticas = useMemo(() => {
     const total = CATALOGO_INFORMES_LEY.filter(i => i.activo).length;
-    const semestrales = CATALOGO_INFORMES_LEY.filter(i => i.activo && i.periodicidad === 'SEMESTRAL').length;
-    const anuales = CATALOGO_INFORMES_LEY.filter(i => i.activo && i.periodicidad === 'ANUAL').length;
-    const trimestrales = CATALOGO_INFORMES_LEY.filter(i => i.activo && i.periodicidad === 'TRIMESTRAL').length;
-    const mensuales = CATALOGO_INFORMES_LEY.filter(i => i.activo && i.periodicidad === 'MENSUAL').length;
+    const semestrales = CATALOGO_INFORMES_LEY.filter(i => i.activo && i.periodicidad === 'semestral').length;
+    const anuales = CATALOGO_INFORMES_LEY.filter(i => i.activo && i.periodicidad === 'anual').length;
+    const trimestrales = CATALOGO_INFORMES_LEY.filter(i => i.activo && i.periodicidad === 'trimestral').length;
+    const mensuales = CATALOGO_INFORMES_LEY.filter(i => i.activo && i.periodicidad === 'mensual').length;
 
     return { total, semestrales, anuales, trimestrales, mensuales };
   }, []);
@@ -293,35 +293,35 @@ function VistaCatalogo({ onInformeGenerado }: VistaCatalogoProps) {
 
           <div className="flex gap-2">
             <FilterButton
-              active={filtroPeriodicidad === 'TODOS'}
-              onClick={() => setFiltroPeriodicidad('TODOS')}
+              active={filtroPeriodicidad === 'todos'}
+              onClick={() => setFiltroPeriodicidad('todos')}
               label="Todos"
               count={estadisticas.total}
             />
             <FilterButton
-              active={filtroPeriodicidad === 'SEMESTRAL'}
-              onClick={() => setFiltroPeriodicidad('SEMESTRAL')}
+              active={filtroPeriodicidad === 'semestral'}
+              onClick={() => setFiltroPeriodicidad('semestral')}
               label="Semestral"
               count={estadisticas.semestrales}
               color="purple"
             />
             <FilterButton
-              active={filtroPeriodicidad === 'ANUAL'}
-              onClick={() => setFiltroPeriodicidad('ANUAL')}
+              active={filtroPeriodicidad === 'anual'}
+              onClick={() => setFiltroPeriodicidad('anual')}
               label="Anual"
               count={estadisticas.anuales}
               color="green"
             />
             <FilterButton
-              active={filtroPeriodicidad === 'TRIMESTRAL'}
-              onClick={() => setFiltroPeriodicidad('TRIMESTRAL')}
+              active={filtroPeriodicidad === 'trimestral'}
+              onClick={() => setFiltroPeriodicidad('trimestral')}
               label="Trimestral"
               count={estadisticas.trimestrales}
               color="orange"
             />
             <FilterButton
-              active={filtroPeriodicidad === 'MENSUAL'}
-              onClick={() => setFiltroPeriodicidad('MENSUAL')}
+              active={filtroPeriodicidad === 'mensual'}
+              onClick={() => setFiltroPeriodicidad('mensual')}
               label="Mensual"
               count={estadisticas.mensuales}
               color="cyan"

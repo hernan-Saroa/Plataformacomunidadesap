@@ -13,6 +13,9 @@ import { ActividadPlanAnual5 } from './esap/plan-anual-5-roles/entities/activida
 import { HistorialPlanAnual } from './esap/plan-anual-5-roles/entities/historial-plan-anual.entity';
 import { InformeLey } from './esap/informes-ley/entities/informe-ley.entity';
 import { EntregaInformeLey } from './esap/informes-ley/entities/entrega-informe-ley.entity';
+import { DatosAutomaticosInforme } from './esap/informes-ley/entities/datos-automaticos-informe.entity';
+import { HistorialGeneracionInforme } from './esap/informes-ley/entities/historial-generacion-informe.entity';
+import { PlantillaInformeLey } from './esap/informes-ley/entities/plantilla-informe-ley.entity';
 import { Auditoria } from './esap/auditorias/entities/auditoria.entity';
 import { ObjetivoAuditoria } from './esap/auditorias/entities/objetivo-auditoria.entity';
 import { EquipoAuditor } from './esap/auditorias/entities/equipo-auditor.entity';
@@ -79,6 +82,9 @@ import { EvidenciaDocumento } from './esap/evidencias/entities/evidencia-documen
             HistorialPlanAnual,
             InformeLey,
             EntregaInformeLey,
+            DatosAutomaticosInforme,
+            HistorialGeneracionInforme,
+            PlantillaInformeLey,
             Auditoria,
             ObjetivoAuditoria,
             EquipoAuditor,

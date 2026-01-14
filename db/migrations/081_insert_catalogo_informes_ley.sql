@@ -15,6 +15,15 @@
 -- Febrero/Augosto -> 28, Enero/Diciembre -> 31, Otros -> 15
 
 -- ============================================
+-- Hacer campos nullable (catálogo no tiene estos valores)
+-- ============================================
+ALTER TABLE control_interno.informe_ley 
+ALTER COLUMN fecha_vencimiento DROP NOT NULL;
+
+ALTER TABLE control_interno.informe_ley 
+ALTER COLUMN historial DROP NOT NULL;
+
+-- ============================================
 -- INSERTAR 16 INFORMES DEL CATÁLOGO NORMATIVO
 -- ============================================
 
@@ -419,11 +428,207 @@ INSERT INTO control_interno.informe_ley (
 ) ON CONFLICT (codigo) DO NOTHING;
 
 -- ============================================
--- VERIFICAR INSERCIÓN
+-- INSERTAR PLANTILLAS FALTANTES (12 plantillas adicionales)
 -- ============================================
+INSERT INTO control_interno.plantilla_informe_ley (codigo, nombre, descripcion, tipo_formato, ruta_plantilla, variables_disponibles, estructura_datos, activa, version)
+VALUES
+    (
+        'plantilla-meci',
+        'Plantilla Informe Anual MECI',
+        'Plantilla para el Informe Anual del Estado del Modelo Estándar de Control Interno (MECI)',
+        'PDF',
+        'templates/informes-ley/plantilla-meci.hbs',
+        '["nombreInforme", "periodo", "fechaGeneracion", "evaluacionMECI", "componentes", "resultados", "recomendaciones"]'::jsonb,
+        '{"evaluacionMECI": {}, "componentes": [], "resultados": {}}'::jsonb,
+        TRUE,
+        '1.0'
+    ),
+    (
+        'plantilla-revision-direccion-sgc',
+        'Plantilla Revisión Dirección SGC',
+        'Plantilla para el Informe Anual de Revisión por la Dirección del Sistema de Gestión de Calidad',
+        'PDF',
+        'templates/informes-ley/plantilla-revision-direccion-sgc.hbs',
+        '["nombreInforme", "periodo", "fechaGeneracion", "entradas", "salidas", "acciones", "decisiones"]'::jsonb,
+        '{"entradas": [], "salidas": [], "acciones": [], "decisiones": []}'::jsonb,
+        TRUE,
+        '1.0'
+    ),
+    (
+        'plantilla-anticorrupcion',
+        'Plantilla Informe Anticorrupción',
+        'Plantilla para el Informe de Avance del Plan Anticorrupción y de Atención al Ciudadano',
+        'PDF',
+        'templates/informes-ley/plantilla-anticorrupcion.hbs',
+        '["nombreInforme", "periodo", "fechaGeneracion", "mapaRiesgos", "accionesPrevencion", "pqrs", "resultados"]'::jsonb,
+        '{"mapaRiesgos": [], "accionesPrevencion": [], "pqrs": {}, "resultados": {}}'::jsonb,
+        TRUE,
+        '1.0'
+    ),
+    (
+        'plantilla-seguimiento-sgc',
+        'Plantilla Seguimiento Trimestral SGC',
+        'Plantilla para el Informe Trimestral de Seguimiento al Sistema de Gestión de Calidad',
+        'PDF',
+        'templates/informes-ley/plantilla-seguimiento-sgc.hbs',
+        '["nombreInforme", "periodo", "trimestre", "indicadores", "noConformidades", "accionesCorrectivas", "resultados"]'::jsonb,
+        '{"indicadores": [], "noConformidades": [], "accionesCorrectivas": [], "resultados": {}}'::jsonb,
+        TRUE,
+        '1.0'
+    ),
+    (
+        'plantilla-seguimiento-planes',
+        'Plantilla Seguimiento Planes Mejora',
+        'Plantilla para el Informe Trimestral de Seguimiento a Planes de Mejoramiento',
+        'PDF',
+        'templates/informes-ley/plantilla-seguimiento-planes.hbs',
+        '["nombreInforme", "periodo", "trimestre", "planes", "avance", "hallazgos", "evidencias"]'::jsonb,
+        '{"planes": [], "avance": {}, "hallazgos": [], "evidencias": []}'::jsonb,
+        TRUE,
+        '1.0'
+    ),
+    (
+        'plantilla-indicadores-oci',
+        'Plantilla Indicadores OCI',
+        'Plantilla para el Informe Trimestral de Indicadores de Gestión OCI',
+        'PDF',
+        'templates/informes-ley/plantilla-indicadores-oci.hbs',
+        '["nombreInforme", "periodo", "trimestre", "indicadores", "metas", "resultados", "analisis"]'::jsonb,
+        '{"indicadores": [], "metas": {}, "resultados": {}, "analisis": {}}'::jsonb,
+        TRUE,
+        '1.0'
+    ),
+    (
+        'plantilla-revision-contratos',
+        'Plantilla Revisión Contratos',
+        'Plantilla para el Informe Mensual de Revisión de Procesos de Contratación',
+        'PDF',
+        'templates/informes-ley/plantilla-revision-contratos.hbs',
+        '["nombreInforme", "periodo", "mes", "contratos", "revisiones", "hallazgos", "recomendaciones"]'::jsonb,
+        '{"contratos": [], "revisiones": [], "hallazgos": [], "recomendaciones": []}'::jsonb,
+        TRUE,
+        '1.0'
+    ),
+    (
+        'plantilla-pqrs',
+        'Plantilla Seguimiento PQRS',
+        'Plantilla para el Informe Mensual de Seguimiento a PQRS',
+        'Excel',
+        'templates/informes-ley/plantilla-pqrs.xlsx',
+        '["periodo", "mes", "pqrs", "estados", "tiemposRespuesta", "cumplimiento"]'::jsonb,
+        '{"pqrs": [], "estados": {}, "tiemposRespuesta": {}, "cumplimiento": {}}'::jsonb,
+        TRUE,
+        '1.0'
+    ),
+    (
+        'plantilla-derechos-autor',
+        'Plantilla Derechos de Autor',
+        'Plantilla para el Informe Mensual de Seguimiento a Derechos de Autor y Licenciamiento',
+        'Excel',
+        'templates/informes-ley/plantilla-derechos-autor.xlsx',
+        '["periodo", "mes", "software", "licencias", "cumplimiento", "observaciones"]'::jsonb,
+        '{"software": [], "licencias": [], "cumplimiento": {}, "observaciones": []}'::jsonb,
+        TRUE,
+        '1.0'
+    ),
+    (
+        'plantilla-entes-control',
+        'Plantilla Entes de Control',
+        'Plantilla para Informes a Entes de Control Externo (Contraloría, Procuraduría, Fiscalía)',
+        'PDF',
+        'templates/informes-ley/plantilla-entes-control.hbs',
+        '["nombreInforme", "enteControl", "fechaGeneracion", "requerimiento", "respuesta", "documentosAnexos"]'::jsonb,
+        '{"requerimiento": {}, "respuesta": {}, "documentosAnexos": []}'::jsonb,
+        TRUE,
+        '1.0'
+    ),
+    (
+        'plantilla-consejo-superior',
+        'Plantilla Consejo Superior',
+        'Plantilla para Informes Especiales al Consejo Superior Universitario',
+        'PDF',
+        'templates/informes-ley/plantilla-consejo-superior.hbs',
+        '["nombreInforme", "periodo", "fechaGeneracion", "temas", "presentacion", "recomendaciones"]'::jsonb,
+        '{"temas": [], "presentacion": {}, "recomendaciones": []}'::jsonb,
+        TRUE,
+        '1.0'
+    ),
+    (
+        'plantilla-alerta-temprana',
+        'Plantilla Alerta Temprana',
+        'Plantilla para el Informe Especial de Hallazgos Críticos o Alertas Tempranas',
+        'PDF',
+        'templates/informes-ley/plantilla-alerta-temprana.hbs',
+        '["nombreInforme", "fechaGeneracion", "hallazgo", "riesgo", "impacto", "accionesInmediatas", "recomendaciones"]'::jsonb,
+        '{"hallazgo": {}, "riesgo": {}, "impacto": {}, "accionesInmediatas": [], "recomendaciones": []}'::jsonb,
+        TRUE,
+        '1.0'
+    )
+ON CONFLICT (codigo) DO NOTHING;
+
+-- ============================================
+-- VERIFICACIÓN DE INSERCIONES
+-- ============================================
+
+-- 1. Resumen de Informes Insertados
+DO $$
+DECLARE
+    total_informes INTEGER;
+    informes_activos INTEGER;
+BEGIN
+    SELECT COUNT(*), COUNT(*) FILTER (WHERE activo = true)
+    INTO total_informes, informes_activos
+    FROM control_interno.informe_ley
+    WHERE codigo IN (
+        'INF-PORM', 'INF-ANUAL-OCI', 'INF-FUR', 'INF-ANUAL-MECI', 'INF-ANUAL-CALIDAD',
+        'INF-ANUAL-ANTICORRUPCION', 'INF-TRIM-AUSTERIDAD', 'INF-TRIM-SEGUIMIENTO-SGC',
+        'INF-TRIM-PLANES-MEJORA', 'INF-TRIM-INDICADORES', 'INF-MENS-CONTRATACION',
+        'INF-MENS-PQRS', 'INF-MENS-DERECHOS-AUTOR', 'INF-ESP-ENTES-CONTROL',
+        'INF-ESP-CONSEJO-SUPERIOR', 'INF-ESP-HALLAZGOS-CRITICOS'
+    );
+    
+    RAISE NOTICE '========================================';
+    RAISE NOTICE 'RESUMEN DE INFORMES INSERTADOS';
+    RAISE NOTICE '========================================';
+    RAISE NOTICE 'Tabla: control_interno.informe_ley';
+    RAISE NOTICE 'Total de informes: %', total_informes;
+    RAISE NOTICE 'Informes activos: %', informes_activos;
+    RAISE NOTICE '========================================';
+END $$;
+
+-- 2. Resumen de Plantillas Insertadas
+DO $$
+DECLARE
+    total_plantillas INTEGER;
+    plantillas_activas INTEGER;
+BEGIN
+    SELECT COUNT(*), COUNT(*) FILTER (WHERE activa = true)
+    INTO total_plantillas, plantillas_activas
+    FROM control_interno.plantilla_informe_ley
+    WHERE codigo IN (
+        'plantilla-pormenorizado-dafp', 'plantilla-anual-oci', 'plantilla-fur-dafp', 
+        'plantilla-austeridad', 'plantilla-meci', 'plantilla-revision-direccion-sgc',
+        'plantilla-anticorrupcion', 'plantilla-seguimiento-sgc', 'plantilla-seguimiento-planes',
+        'plantilla-indicadores-oci', 'plantilla-revision-contratos', 'plantilla-pqrs',
+        'plantilla-derechos-autor', 'plantilla-entes-control', 'plantilla-consejo-superior',
+        'plantilla-alerta-temprana'
+    );
+    
+    RAISE NOTICE '========================================';
+    RAISE NOTICE 'RESUMEN DE PLANTILLAS INSERTADAS';
+    RAISE NOTICE '========================================';
+    RAISE NOTICE 'Tabla: control_interno.plantilla_informe_ley';
+    RAISE NOTICE 'Total de plantillas: %', total_plantillas;
+    RAISE NOTICE 'Plantillas activas: %', plantillas_activas;
+    RAISE NOTICE '========================================';
+END $$;
+
+-- 3. Verificación detallada de Informes (Query para ver resultados)
 SELECT 
+    'INFORMES DE LEY' as tipo_registro,
     COUNT(*) as total_insertados,
-    COUNT(*) FILTER (WHERE activo = true) as activos
+    COUNT(*) FILTER (WHERE activo = true) as activos,
+    COUNT(*) FILTER (WHERE activo = false) as inactivos
 FROM control_interno.informe_ley
 WHERE codigo IN (
     'INF-PORM', 'INF-ANUAL-OCI', 'INF-FUR', 'INF-ANUAL-MECI', 'INF-ANUAL-CALIDAD',
@@ -432,3 +637,40 @@ WHERE codigo IN (
     'INF-MENS-PQRS', 'INF-MENS-DERECHOS-AUTOR', 'INF-ESP-ENTES-CONTROL',
     'INF-ESP-CONSEJO-SUPERIOR', 'INF-ESP-HALLAZGOS-CRITICOS'
 );
+
+-- 4. Verificación detallada de Plantillas (Query para ver resultados)
+SELECT 
+    'PLANTILLAS DE INFORMES' as tipo_registro,
+    COUNT(*) as total_insertadas,
+    COUNT(*) FILTER (WHERE activa = true) as activas,
+    COUNT(*) FILTER (WHERE activa = false) as inactivas
+FROM control_interno.plantilla_informe_ley
+WHERE codigo IN (
+    'plantilla-pormenorizado-dafp', 'plantilla-anual-oci', 'plantilla-fur-dafp', 
+    'plantilla-austeridad', 'plantilla-meci', 'plantilla-revision-direccion-sgc',
+    'plantilla-anticorrupcion', 'plantilla-seguimiento-sgc', 'plantilla-seguimiento-planes',
+    'plantilla-indicadores-oci', 'plantilla-revision-contratos', 'plantilla-pqrs',
+    'plantilla-derechos-autor', 'plantilla-entes-control', 'plantilla-consejo-superior',
+    'plantilla-alerta-temprana'
+);
+
+-- 5. Verificación: Informes sin plantilla correspondiente
+SELECT 
+    i.codigo as codigo_informe,
+    i.nombre as nombre_informe,
+    i.url_plantilla as plantilla_referenciada,
+    CASE 
+        WHEN p.codigo IS NULL THEN 'PLANTILLA NO ENCONTRADA'
+        ELSE 'PLANTILLA OK'
+    END as estado_plantilla
+FROM control_interno.informe_ley i
+LEFT JOIN control_interno.plantilla_informe_ley p ON i.url_plantilla = p.codigo
+WHERE i.codigo IN (
+    'INF-PORM', 'INF-ANUAL-OCI', 'INF-FUR', 'INF-ANUAL-MECI', 'INF-ANUAL-CALIDAD',
+    'INF-ANUAL-ANTICORRUPCION', 'INF-TRIM-AUSTERIDAD', 'INF-TRIM-SEGUIMIENTO-SGC',
+    'INF-TRIM-PLANES-MEJORA', 'INF-TRIM-INDICADORES', 'INF-MENS-CONTRATACION',
+    'INF-MENS-PQRS', 'INF-MENS-DERECHOS-AUTOR', 'INF-ESP-ENTES-CONTROL',
+    'INF-ESP-CONSEJO-SUPERIOR', 'INF-ESP-HALLAZGOS-CRITICOS'
+)
+AND i.tiene_plantilla = true
+ORDER BY estado_plantilla, i.codigo;

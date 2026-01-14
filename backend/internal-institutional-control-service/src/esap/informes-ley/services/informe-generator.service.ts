@@ -85,6 +85,7 @@ export class InformeGeneratorService {
       elaboradoPor: usuarioNombre || 'Sistema',
       fechaElaboracion: new Date(),
       datosAutomaticosPoblados: false, // Se actualizará después si se poblan datos
+      observaciones: datosAdicionales?.observaciones || null,
     });
 
     await this.entregaRepository.save(entrega);
@@ -133,8 +134,16 @@ export class InformeGeneratorService {
         await this.entregaRepository.save(entrega);
       } catch (error) {
         console.error('Error generando archivo:', error);
-        // No fallar si hay error en generación, solo registrar
-        entrega.observaciones = `Error al generar archivo: ${error.message}`;
+        // No fallar si hay error en generación, solo registrar en metadata
+        // Preservar las observaciones originales del usuario
+        entrega.metadataGeneracion = {
+          ...(entrega.metadataGeneracion || {}),
+          errorGeneracion: {
+            mensaje: error.message,
+            tipo: error.name || 'Error',
+            fecha: new Date().toISOString(),
+          },
+        };
         await this.entregaRepository.save(entrega);
       }
     }
