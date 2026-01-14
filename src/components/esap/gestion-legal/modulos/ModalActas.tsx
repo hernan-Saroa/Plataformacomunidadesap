@@ -17,6 +17,7 @@ import { toast } from 'sonner@2.0.3';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { FileCheck, Search, Download, Eye, Trash2, FileText, Calendar, User, Clock, CheckCircle, AlertCircle, Plus, Filter, Play, Users, X, Upload } from 'lucide-react';
 
 interface ModalActasProps {
   isOpen: boolean;
