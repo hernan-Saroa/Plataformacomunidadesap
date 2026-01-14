@@ -19,12 +19,12 @@
  * - Integración con catálogo normativo (16 informes)
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Calendar, Clock, Search, Download, Eye, CheckCircle2, 
   Plus, Send, Archive, Book,
-  CheckSquare, XCircle, Loader
+  CheckSquare, XCircle, Loader, SendHorizonal, Check, X
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
@@ -56,9 +56,11 @@ interface InformeGenerado {
   fechaGeneracion: string;
   fechaVencimiento: string;
   estado: 'BORRADOR' | 'GENERADO' | 'ENVIADO' | 'ATRASADO';
+  estadoWorkflow?: 'borrador' | 'en-revision' | 'en-aprobacion' | 'aprobado' | 'rechazado' | 'enviado';
   generadoPor: string;
   archivoUrl?: string;
   observaciones?: string;
+  motivoRechazo?: string;
   destinatarios?: string[];
 }
 
@@ -69,7 +71,7 @@ type VistaActual = 'catalogo' | 'generados' | 'proximos';
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
-export function InformesLeyModulePremium() {
+export default function InformesLeyModulePremium() {
   const [vistaActiva, setVistaActiva] = useState<VistaActual>('catalogo');
   const [informesGenerados, setInformesGenerados] = useState<InformeGenerado[]>([]);
   const [informesLey, setInformesLey] = useState<InformeLey[]>([]);
@@ -111,9 +113,11 @@ export function InformesLeyModulePremium() {
                 fechaGeneracion: entrega.fechaCreacion || new Date().toISOString(),
                 fechaVencimiento: entrega.fechaVencimiento,
                 estado,
+                estadoWorkflow: entrega.estadoWorkflow || 'borrador',
                 generadoPor: entrega.creadoPor || 'Usuario',
                 archivoUrl: entrega.archivoUrl,
                 observaciones: entrega.observaciones,
+                motivoRechazo: entrega.motivoRechazo,
                 destinatarios: []
               });
             });
@@ -187,7 +191,7 @@ export function InformesLeyModulePremium() {
           transition={{ duration: 0.2 }}
         >
           {vistaActiva === 'catalogo' && <VistaCatalogo onInformeGenerado={cargarInformes} />}
-          {vistaActiva === 'generados' && <VistaGenerados informes={informesGenerados} cargandoInformes={cargandoInformes} />}
+          {vistaActiva === 'generados' && <VistaGenerados informes={informesGenerados} cargandoInformes={cargandoInformes} onInformeActualizado={cargarInformes} />}
           {vistaActiva === 'proximos' && <VistaProximos informesLey={informesLey} cargandoInformes={cargandoInformes} onInformeGenerado={cargarInformes} />}
         </motion.div>
       </AnimatePresence>
@@ -493,9 +497,10 @@ function CardInforme({ informe, onVerDetalle, onGenerarInforme }: CardInformePro
 interface VistaGeneradosProps {
   informes: InformeGenerado[];
   cargandoInformes: boolean;
+  onInformeActualizado?: () => void;
 }
 
-function VistaGenerados({ informes, cargandoInformes }: VistaGeneradosProps) {
+function VistaGenerados({ informes, cargandoInformes, onInformeActualizado }: VistaGeneradosProps) {
   const estadisticas = useMemo(() => {
     const enviados = informes.filter(i => i.estado === 'ENVIADO').length;
     const borradores = informes.filter(i => i.estado === 'BORRADOR').length;
@@ -543,8 +548,85 @@ function VistaGenerados({ informes, cargandoInformes }: VistaGeneradosProps) {
   );
 }
 
-function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
+function CardInformeGenerado({ informe, onInformeActualizado }: { informe: InformeGenerado; onInformeActualizado?: () => void }) {
   const [modalDetalle, setModalDetalle] = useState(false);
+  const [modalEnviar, setModalEnviar] = useState(false);
+  const [modalAprobar, setModalAprobar] = useState(false);
+  const [modalRechazar, setModalRechazar] = useState(false);
+  const [procesando, setProcesando] = useState(false);
+
+  // Obtener roles del usuario desde localStorage
+  const obtenerRolesUsuario = (): { codes: string[]; names: string[] } => {
+    try {
+      const userData = localStorage.getItem('esap_user_data');
+      if (userData) {
+        const user = JSON.parse(userData);
+        // Los roles pueden venir en diferentes formatos
+        if (user.roles && Array.isArray(user.roles)) {
+          const codes: string[] = [];
+          const names: string[] = [];
+          user.roles.forEach((r: any) => {
+            if (typeof r === 'string') {
+              codes.push(r);
+              names.push(r);
+            } else if (r && typeof r === 'object') {
+              if (r.code) codes.push(r.code);
+              if (r.name) names.push(r.name);
+            }
+          });
+          return { codes, names };
+        }
+        if (user.role) {
+          return { codes: [user.role], names: [user.role] };
+        }
+      }
+      // También intentar desde el token decodificado si está disponible
+      const sesion = localStorage.getItem('esap-sesion-activa');
+      if (sesion) {
+        const sesionData = JSON.parse(sesion);
+        if (sesionData.roles) {
+          const roles = Array.isArray(sesionData.roles) ? sesionData.roles : [sesionData.roles];
+          return { codes: roles, names: roles };
+        }
+      }
+    } catch (error) {
+      console.error('Error obteniendo roles del usuario:', error);
+    }
+    return { codes: [], names: [] };
+  };
+
+  const { codes: rolesCodes, names: rolesNames } = obtenerRolesUsuario();
+  const todosLosRoles = [...rolesCodes, ...rolesNames];
+  
+  // Determinar permisos según roles (buscar tanto en codes como en names)
+  const esJefeOCI = todosLosRoles.some(rol => {
+    const rolUpper = String(rol).toUpperCase();
+    return rolUpper.includes('JEFE') || 
+           rolUpper === 'JEFE_CONTROL_INTERNO' ||
+           rolUpper.includes('JEFE DE CONTROL INTERNO') ||
+           String(rol).includes('Jefe de Control Interno') ||
+           String(rol).includes('Jefe Control Interno');
+  });
+  
+  const esAuditor = todosLosRoles.some(rol => {
+    const rolUpper = String(rol).toUpperCase();
+    return rolUpper.includes('AUDITOR') || 
+           rolUpper === 'AUDITOR_LIDER' ||
+           String(rol).includes('Auditor Líder') ||
+           String(rol).includes('Auditor Lider');
+  });
+  
+  // Si no hay roles específicos, permitir acciones por defecto (para desarrollo/testing)
+  const puedeEnviar = (informe.estadoWorkflow === 'borrador' || informe.estadoWorkflow === 'rechazado') && 
+                      informe.archivoUrl && 
+                      (esAuditor || todosLosRoles.length === 0);
+  const puedeAprobar = (informe.estadoWorkflow === 'en-revision' || informe.estadoWorkflow === 'en-aprobacion') && 
+                      (esJefeOCI || todosLosRoles.length === 0);
+  const puedeRechazar = (informe.estadoWorkflow === 'en-revision' || informe.estadoWorkflow === 'en-aprobacion') && 
+                        (esJefeOCI || todosLosRoles.length === 0);
+  
+  // Debug: mostrar roles detectados en consola
+  console.log('🔍 Roles detectados:', { rolesCodes, rolesNames, esJefeOCI, esAuditor, puedeEnviar, puedeAprobar, puedeRechazar });
   
   const estadoConfig = {
     ENVIADO: { label: 'Enviado', bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2 },
@@ -565,37 +647,38 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
     }
 
     try {
-      toast.success('Descargando Informe', {
-        description: `${informe.informeNombre} (${informe.periodo})`,
-        duration: 3000,
-      });
-
-      // Construir la URL completa del archivo
-      // Si archivoUrl ya es una URL completa, usarla directamente
-      // Si es una ruta relativa, construir la URL completa
-      const apiBaseUrl = 'http://localhost:3007'; // Por defecto, se puede usar import.meta.env.VITE_API_URL en producción
-      const urlArchivo = informe.archivoUrl.startsWith('http') 
-        ? informe.archivoUrl 
-        : `${apiBaseUrl}${informe.archivoUrl.startsWith('/') ? '' : '/'}${informe.archivoUrl}`;
-
-      // Intentar HEAD primero para verificar si el archivo existe
-      const headResponse = await fetch(urlArchivo, {
-        method: 'HEAD',
-      });
-
-      if (!headResponse.ok) {
-        if (headResponse.status === 404) {
-          throw new Error('El archivo no se encuentra en el servidor');
-        }
-        throw new Error(`Error al verificar archivo: ${headResponse.statusText} (${headResponse.status})`);
+      // Extraer el nombre del archivo de la URL
+      // archivoUrl puede ser: "/uploads/informes-ley/archivo.pdf" o "archivo.pdf"
+      const nombreArchivo = informe.archivoUrl.split('/').pop() || informe.archivoUrl;
+      
+      // Construir la URL del endpoint de descarga
+      // Usar la misma lógica que getApiBaseUrl() del servicio API
+      let apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3007';
+      if (apiBaseUrl.includes('/control-institucional')) {
+        apiBaseUrl = `${apiBaseUrl}/api/v1`;
+      } else if (!apiBaseUrl.includes('/api/v1') && !apiBaseUrl.includes('localhost')) {
+        apiBaseUrl = `${apiBaseUrl}/control-institucional/api/v1`;
       }
+      const urlDescarga = `${apiBaseUrl}/informes-ley/archivos/${encodeURIComponent(nombreArchivo)}`;
 
-      // Si el archivo existe, proceder con la descarga
-      const response = await fetch(urlArchivo, {
+      // Mostrar toast de inicio (solo una vez)
+      toast.loading('Descargando Informe', {
+        description: `${informe.informeNombre} (${informe.periodo})`,
+        id: 'descarga-informe', // ID único para poder actualizar el toast
+      });
+
+      // Descargar el archivo
+      const response = await fetch(urlDescarga, {
         method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('esap_auth_token')}`,
+        },
       });
 
       if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('El archivo no se encuentra en el servidor');
+        }
         throw new Error(`Error al descargar: ${response.statusText} (${response.status})`);
       }
 
@@ -609,8 +692,10 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
+      // Actualizar el toast a éxito
       toast.success('Archivo descargado', {
         description: 'El informe se ha descargado correctamente',
+        id: 'descarga-informe',
         duration: 2000,
       });
     } catch (error) {
@@ -619,29 +704,146 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
         ? error.message 
         : 'Error desconocido al descargar el archivo';
       
+      // Actualizar el toast a error
       toast.error('Error al descargar', {
         description: mensajeError.includes('no se encuentra') || mensajeError.includes('404')
           ? 'El archivo no está disponible en el servidor'
           : mensajeError,
+        id: 'descarga-informe',
+        duration: 4000,
       });
     }
   };
 
   const handleVerDetalle = () => {
     setModalDetalle(true);
-
   };
+
+  const handleEnviarRevision = async (observaciones?: string) => {
+    setProcesando(true);
+    try {
+      const response = await controlInternoApi.informesLey.enviarRevision(
+        informe.informeLeyId,
+        informe.id,
+        { observaciones }
+      );
+
+      if (response.success) {
+        toast.success('Informe enviado a revisión', {
+          description: 'El informe ha sido enviado al Jefe OCI para revisión',
+        });
+        setModalEnviar(false);
+        if (onInformeActualizado) {
+          await onInformeActualizado();
+        }
+      } else {
+        throw new Error(response.error || 'Error al enviar a revisión');
+      }
+    } catch (error) {
+      console.error('Error enviando a revisión:', error);
+      toast.error('Error al enviar a revisión', {
+        description: error instanceof Error ? error.message : 'Ocurrió un error inesperado',
+      });
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  const handleAprobar = async (observaciones?: string) => {
+    setProcesando(true);
+    try {
+      const response = await controlInternoApi.informesLey.aprobar(
+        informe.informeLeyId,
+        informe.id,
+        { observaciones }
+      );
+
+      if (response.success) {
+        toast.success('Informe aprobado', {
+          description: 'El informe ha sido aprobado exitosamente',
+        });
+        setModalAprobar(false);
+        if (onInformeActualizado) {
+          await onInformeActualizado();
+        }
+      } else {
+        throw new Error(response.error || 'Error al aprobar');
+      }
+    } catch (error) {
+      console.error('Error aprobando:', error);
+      toast.error('Error al aprobar', {
+        description: error instanceof Error ? error.message : 'Ocurrió un error inesperado',
+      });
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  // Determinar qué acciones están disponibles según el estado (sin validación de rol aquí, se hace arriba)
+  const estadoPermiteEnviar = informe.estadoWorkflow === 'borrador' || informe.estadoWorkflow === 'rechazado';
+  const estadoPermiteAprobar = informe.estadoWorkflow === 'en-revision' || informe.estadoWorkflow === 'en-aprobacion';
+
+  const handleRechazar = async (motivoRechazo: string, observaciones?: string) => {
+    if (!motivoRechazo.trim()) {
+      toast.error('El motivo de rechazo es obligatorio');
+      return;
+    }
+
+    setProcesando(true);
+    try {
+      const response = await controlInternoApi.informesLey.rechazar(
+        informe.informeLeyId,
+        informe.id,
+        { motivoRechazo, observaciones }
+      );
+
+      if (response.success) {
+        toast.success('Informe rechazado', {
+          description: 'El informe ha sido rechazado. El auditor puede corregirlo y volver a enviarlo.',
+        });
+        setModalRechazar(false);
+        if (onInformeActualizado) {
+          await onInformeActualizado();
+        }
+      } else {
+        throw new Error(response.error || 'Error al rechazar');
+      }
+    } catch (error) {
+      console.error('Error rechazando:', error);
+      toast.error('Error al rechazar', {
+        description: error instanceof Error ? error.message : 'Ocurrió un error inesperado',
+      });
+    } finally {
+      setProcesando(false);
+    }
+  };
+
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-3 mb-2 flex-wrap">
             <h3 className="text-base text-gray-900 font-medium">{informe.informeNombre}</h3>
             <span className={`px-3 py-1 rounded-lg text-xs font-medium ${config.bg} ${config.text} flex items-center gap-1`}>
               <Icon className="w-3 h-3" />
               {config.label}
             </span>
+            {informe.estadoWorkflow && (
+              <span className={`px-3 py-1 rounded-lg text-xs font-medium ${
+                informe.estadoWorkflow === 'aprobado' ? 'bg-green-100 text-green-700' :
+                informe.estadoWorkflow === 'en-revision' ? 'bg-blue-100 text-blue-700' :
+                informe.estadoWorkflow === 'rechazado' ? 'bg-red-100 text-red-700' :
+                informe.estadoWorkflow === 'en-aprobacion' ? 'bg-purple-100 text-purple-700' :
+                'bg-gray-100 text-gray-700'
+              } flex items-center gap-1`}>
+                {informe.estadoWorkflow === 'aprobado' ? '✓ Aprobado' :
+                 informe.estadoWorkflow === 'en-revision' ? '👁️ En Revisión' :
+                 informe.estadoWorkflow === 'rechazado' ? '✗ Rechazado' :
+                 informe.estadoWorkflow === 'en-aprobacion' ? '⏳ En Aprobación' :
+                 '📝 Borrador'}
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-4 mb-3 text-sm">
@@ -664,7 +866,7 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {informe.archivoUrl && (
             <button 
               onClick={handleDescargar}
@@ -674,6 +876,40 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
               Descargar
             </button>
           )}
+          
+          {/* Botones de workflow según estado */}
+          {puedeEnviar && informe.archivoUrl && (
+            <button 
+              onClick={() => setModalEnviar(true)}
+              disabled={procesando}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <SendHorizonal className="w-4 h-4" />
+              Enviar a Revisión
+            </button>
+          )}
+          
+          {puedeAprobar && (
+            <>
+              <button 
+                onClick={() => setModalAprobar(true)}
+                disabled={procesando}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Check className="w-4 h-4" />
+                Aprobar
+              </button>
+              <button 
+                onClick={() => setModalRechazar(true)}
+                disabled={procesando}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <X className="w-4 h-4" />
+                Rechazar
+              </button>
+            </>
+          )}
+
           <button 
             onClick={handleVerDetalle}
             className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
@@ -689,6 +925,37 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
         <ModalDetalleInformeGenerado 
           informe={informe} 
           onClose={() => setModalDetalle(false)}
+          onInformeActualizado={onInformeActualizado}
+        />
+      )}
+
+      {/* Modal Enviar a Revisión */}
+      {modalEnviar && (
+        <ModalEnviarRevision
+          informe={informe}
+          onClose={() => setModalEnviar(false)}
+          onEnviar={handleEnviarRevision}
+          procesando={procesando}
+        />
+      )}
+
+      {/* Modal Aprobar */}
+      {modalAprobar && (
+        <ModalAprobarInforme
+          informe={informe}
+          onClose={() => setModalAprobar(false)}
+          onAprobar={handleAprobar}
+          procesando={procesando}
+        />
+      )}
+
+      {/* Modal Rechazar */}
+      {modalRechazar && (
+        <ModalRechazarInforme
+          informe={informe}
+          onClose={() => setModalRechazar(false)}
+          onRechazar={handleRechazar}
+          procesando={procesando}
         />
       )}
     </div>
@@ -975,9 +1242,73 @@ function ModalDetalleInforme({ informe, onClose }: ModalDetalleInformeProps) {
 interface ModalDetalleInformeGeneradoProps {
   informe: InformeGenerado;
   onClose: () => void;
+  onInformeActualizado?: () => void;
 }
 
-function ModalDetalleInformeGenerado({ informe, onClose }: ModalDetalleInformeGeneradoProps) {
+function ModalDetalleInformeGenerado({ informe, onClose, onInformeActualizado }: ModalDetalleInformeGeneradoProps) {
+  const [subiendoArchivo, setSubiendoArchivo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSubirArchivo = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Tipo de archivo no permitido', {
+        description: 'Solo se permiten archivos PDF, Word (.doc, .docx) y Excel (.xls, .xlsx)',
+      });
+      return;
+    }
+
+    // Validar tamaño (50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error('Archivo muy grande', {
+        description: 'El archivo no puede ser mayor a 50MB',
+      });
+      return;
+    }
+
+    setSubiendoArchivo(true);
+    try {
+      const response = await controlInternoApi.informesLey.uploadArchivo(informe.id, file);
+      
+      if (response.success) {
+        toast.success('Archivo subido exitosamente', {
+          description: 'El archivo se ha asociado al informe correctamente',
+        });
+        // Recargar informes si hay callback
+        if (onInformeActualizado) {
+          await onInformeActualizado();
+        } else {
+          // Fallback: recargar página
+          window.location.reload();
+        }
+      } else {
+        throw new Error(response.error || 'Error al subir archivo');
+      }
+    } catch (error) {
+      console.error('Error subiendo archivo:', error);
+      toast.error('Error al subir archivo', {
+        description: error instanceof Error ? error.message : 'Ocurrió un error inesperado',
+      });
+    } finally {
+      setSubiendoArchivo(false);
+      // Limpiar el input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
     <ModalSIGL isOpen={true} onClose={onClose} title="" size="large">
       <div className="p-8">
@@ -997,6 +1328,17 @@ function ModalDetalleInformeGenerado({ informe, onClose }: ModalDetalleInformeGe
             </div>
           </div>
           <div className="bg-gray-50 rounded-lg p-4">
+            <div className="text-xs text-gray-600 mb-1">Estado Workflow</div>
+            <div className="text-sm text-gray-900">
+              {informe.estadoWorkflow === 'aprobado' ? '✓ Aprobado' :
+               informe.estadoWorkflow === 'en-revision' ? '👁️ En Revisión' :
+               informe.estadoWorkflow === 'rechazado' ? '✗ Rechazado' :
+               informe.estadoWorkflow === 'en-aprobacion' ? '⏳ En Aprobación' :
+               informe.estadoWorkflow === 'enviado' ? '📤 Enviado' :
+               '📝 Borrador'}
+            </div>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4">
             <div className="text-xs text-gray-600 mb-1">Generado por</div>
             <div className="text-sm text-gray-900">{informe.generadoPor}</div>
           </div>
@@ -1010,9 +1352,69 @@ function ModalDetalleInformeGenerado({ informe, onClose }: ModalDetalleInformeGe
           </div>
         </div>
 
+        {informe.motivoRechazo && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <h3 className="text-sm text-red-900 font-medium mb-2">Motivo de Rechazo</h3>
+            <p className="text-sm text-red-700">{informe.motivoRechazo}</p>
+          </div>
+        )}
+
         <div className="bg-blue-50 rounded-lg p-4 mb-6">
           <h3 className="text-sm text-gray-900 font-medium mb-2">Observaciones</h3>
           <p className="text-sm text-gray-700">{informe.observaciones || 'Sin observaciones'}</p>
+        </div>
+
+        {/* Sección de Archivo */}
+        <div className="bg-gray-50 rounded-lg p-4 mb-6">
+          <h3 className="text-sm text-gray-900 font-medium mb-3">Archivo del Informe</h3>
+          {informe.archivoUrl ? (
+            <div className="flex items-center gap-3">
+              <FileText className="w-5 h-5 text-gray-500" />
+              <span className="text-sm text-gray-700">Archivo asociado</span>
+              <button
+                onClick={handleDescargar}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Descargar
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">No hay archivo asociado a este informe</p>
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={handleSubirArchivo}
+                  className="hidden"
+                  id="file-upload"
+                />
+                <label
+                  htmlFor="file-upload"
+                  className={`inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm cursor-pointer ${
+                    subiendoArchivo ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {subiendoArchivo ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin" />
+                      Subiendo...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Subir Archivo
+                    </>
+                  )}
+                </label>
+                <p className="text-xs text-gray-500 mt-2">
+                  Formatos permitidos: PDF, Word (.doc, .docx), Excel (.xls, .xlsx). Máximo 50MB
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-3">
@@ -1076,6 +1478,13 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
   const [previewDatos, setPreviewDatos] = useState<any>(null);
   const [mostrarPreview, setMostrarPreview] = useState(false);
 
+  // Forzar formato anual (AAAA) para el periodo:
+  // - Para todos los informes cuya periodicidad sea anual
+  // - Y de forma explícita para el Informe Pormenorizado (INF-PORM),
+  //   que funcionalmente se maneja por año aunque sea semestral en el catálogo.
+  const esPeriodoAnual =
+    informe.periodicidad === 'anual' || informe.codigo === 'INF-PORM';
+
   // Buscar el informe en la base de datos para obtener el ID real
   const [informeLeyId, setInformeLeyId] = useState<string | null>(null);
 
@@ -1113,9 +1522,25 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
     buscarInformeLey();
   }, [informe]);
 
+  const handlePeriodoChange = (valor: string) => {
+    // Si el periodo es anual, solo permitimos dígitos y máximo 4 caracteres (AAAA)
+    if (esPeriodoAnual) {
+      const soloNumeros = valor.replace(/\D/g, '').slice(0, 4);
+      setPeriodo(soloNumeros);
+      return;
+    }
+    setPeriodo(valor);
+  };
+
   const handlePreview = async () => {
     if (!periodo.trim()) {
       toast.error('Ingresa un periodo para ver el preview');
+      return;
+    }
+
+    // Validar formato anual cuando aplique
+    if (esPeriodoAnual && !/^\d{4}$/.test(periodo.trim())) {
+      toast.error('El periodo debe ser un año en formato AAAA');
       return;
     }
 
@@ -1135,6 +1560,12 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
     // Validaciones
     if (!periodo.trim()) {
       toast.error('El periodo es obligatorio');
+      return;
+    }
+
+    // Validar formato anual cuando aplique
+    if (esPeriodoAnual && !/^\d{4}$/.test(periodo.trim())) {
+      toast.error('El periodo debe ser un año en formato AAAA (por ejemplo, 2024)');
       return;
     }
 
@@ -1208,7 +1639,7 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
           codigo: informe.codigo,
           nombre: informe.nombre,
           descripcion: informe.observaciones || informe.nombre,
-          normativa: informe.baseNormativa,
+          fundamentoLegal: informe.baseNormativa,
           categoria: categoria,
           periodicidad: informe.periodicidad,
           diaPresentacion: diaPresentacion,
@@ -1216,7 +1647,7 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
           responsable: informe.responsableRol || 'Jefe OCI',
           area: 'Control Interno', // Área por defecto para informes de control interno
           areaResponsable: informe.responsableRol || 'Jefe OCI',
-          diasAnticipacionAlerta: informe.diasAnticipacion || 15,
+          diasAnticipacion: informe.diasAnticipacion || 15,
           activo: true,
         };
 
@@ -1309,19 +1740,21 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
               <input
                 type="text"
                 value={periodo}
-                onChange={(e) => setPeriodo(e.target.value)}
-                placeholder={informe.periodicidad === 'SEMESTRAL' ? 'Ej: 2025-S1' : 'Ej: 2024'}
+                onChange={(e) => handlePeriodoChange(e.target.value)}
+                placeholder={esPeriodoAnual ? 'Ej: 2024' : informe.periodicidad === 'semestral' ? 'Ej: 2025-S1' : 'Ej: 2024'}
                 disabled={generando}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <p className="text-xs text-gray-600 mt-1">
-                {informe.periodicidad === 'SEMESTRAL' 
-                  ? 'Formato: AAAA-S1 o AAAA-S2 (semestral)'
-                  : informe.periodicidad === 'TRIMESTRAL'
+                {esPeriodoAnual 
+                  ? 'Formato: AAAA (anual)'
+                  : informe.periodicidad === 'trimestral'
                   ? 'Formato: AAAA-T1, AAAA-T2, AAAA-T3 o AAAA-T4 (trimestral)'
-                  : informe.periodicidad === 'MENSUAL'
+                  : informe.periodicidad === 'mensual'
                   ? 'Formato: AAAA-MM (mensual)'
-                  : 'Formato: AAAA (anual)'
+                  : informe.periodicidad === 'semestral'
+                  ? 'Formato: AAAA-S1 o AAAA-S2 (semestral)'
+                  : 'Formato de periodo según configuración del informe'
                 }
               </p>
             </div>
@@ -1395,6 +1828,277 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODALES DE WORKFLOW
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalEnviarRevisionProps {
+  informe: InformeGenerado;
+  onClose: () => void;
+  onEnviar: (observaciones?: string) => Promise<void>;
+  procesando: boolean;
+}
+
+function ModalEnviarRevision({ informe, onClose, onEnviar, procesando }: ModalEnviarRevisionProps) {
+  const [observaciones, setObservaciones] = useState('');
+
+  const handleSubmit = async () => {
+    await onEnviar(observaciones.trim() || undefined);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      <div 
+        className="relative w-full max-w-lg bg-white rounded-xl shadow-2xl z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 rounded-t-xl">
+          <h3 className="text-xl font-medium">Enviar a Revisión</h3>
+          <p className="text-sm text-blue-100 mt-1">{informe.informeNombre}</p>
+        </div>
+
+        <div className="px-6 py-6">
+          <div className="mb-4">
+            <p className="text-sm text-gray-700 mb-4">
+              El informe será enviado al Jefe OCI para revisión. ¿Deseas agregar alguna observación?
+            </p>
+            
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Observaciones (opcional)
+            </label>
+            <textarea
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.target.value)}
+              rows={4}
+              disabled={procesando}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+              placeholder="Observaciones adicionales sobre el informe..."
+            />
+          </div>
+        </div>
+
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              disabled={procesando}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={procesando}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {procesando ? (
+                <>
+                  <Loader className="w-4 h-4 animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <SendHorizonal className="w-4 h-4" />
+                  Enviar a Revisión
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ModalAprobarInformeProps {
+  informe: InformeGenerado;
+  onClose: () => void;
+  onAprobar: (observaciones?: string) => Promise<void>;
+  procesando: boolean;
+}
+
+function ModalAprobarInforme({ informe, onClose, onAprobar, procesando }: ModalAprobarInformeProps) {
+  const [observaciones, setObservaciones] = useState('');
+
+  const handleSubmit = async () => {
+    await onAprobar(observaciones.trim() || undefined);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      <div 
+        className="relative w-full max-w-lg bg-white rounded-xl shadow-2xl z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-gradient-to-r from-green-600 to-green-700 text-white px-6 py-4 rounded-t-xl">
+          <h3 className="text-xl font-medium">Aprobar Informe</h3>
+          <p className="text-sm text-green-100 mt-1">{informe.informeNombre}</p>
+        </div>
+
+        <div className="px-6 py-6">
+          <div className="mb-4">
+            <p className="text-sm text-gray-700 mb-4">
+              ¿Estás seguro de que deseas aprobar este informe? El informe quedará marcado como aprobado.
+            </p>
+            
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Observaciones (opcional)
+            </label>
+            <textarea
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.target.value)}
+              rows={4}
+              disabled={procesando}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+              placeholder="Observaciones sobre la aprobación..."
+            />
+          </div>
+        </div>
+
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              disabled={procesando}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={procesando}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {procesando ? (
+                <>
+                  <Loader className="w-4 h-4 animate-spin" />
+                  Aprobando...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  Aprobar Informe
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ModalRechazarInformeProps {
+  informe: InformeGenerado;
+  onClose: () => void;
+  onRechazar: (motivoRechazo: string, observaciones?: string) => Promise<void>;
+  procesando: boolean;
+}
+
+function ModalRechazarInforme({ informe, onClose, onRechazar, procesando }: ModalRechazarInformeProps) {
+  const [motivoRechazo, setMotivoRechazo] = useState('');
+  const [observaciones, setObservaciones] = useState('');
+
+  const handleSubmit = async () => {
+    if (!motivoRechazo.trim()) {
+      toast.error('El motivo de rechazo es obligatorio');
+      return;
+    }
+    await onRechazar(motivoRechazo.trim(), observaciones.trim() || undefined);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      <div 
+        className="relative w-full max-w-lg bg-white rounded-xl shadow-2xl z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-gradient-to-r from-red-600 to-red-700 text-white px-6 py-4 rounded-t-xl">
+          <h3 className="text-xl font-medium">Rechazar Informe</h3>
+          <p className="text-sm text-red-100 mt-1">{informe.informeNombre}</p>
+        </div>
+
+        <div className="px-6 py-6">
+          <div className="mb-4">
+            <p className="text-sm text-gray-700 mb-4">
+              El informe será rechazado y el auditor podrá corregirlo y volver a enviarlo.
+            </p>
+            
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Motivo de rechazo <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={motivoRechazo}
+              onChange={(e) => setMotivoRechazo(e.target.value)}
+              rows={3}
+              disabled={procesando}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+              placeholder="Describe el motivo del rechazo..."
+            />
+            
+            <label className="block text-sm font-medium text-gray-700 mb-2 mt-4">
+              Observaciones adicionales (opcional)
+            </label>
+            <textarea
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.target.value)}
+              rows={3}
+              disabled={procesando}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+              placeholder="Observaciones adicionales..."
+            />
+          </div>
+        </div>
+
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              disabled={procesando}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={procesando || !motivoRechazo.trim()}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {procesando ? (
+                <>
+                  <Loader className="w-4 h-4 animate-spin" />
+                  Rechazando...
+                </>
+              ) : (
+                <>
+                  <X className="w-4 h-4" />
+                  Rechazar Informe
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

@@ -403,8 +403,10 @@ export interface EntregaInforme {
   fechaVencimiento: string;
   fechaEntrega?: string;
   estado: EstadoEntregaInforme;
+  estadoWorkflow?: 'borrador' | 'en-revision' | 'en-aprobacion' | 'aprobado' | 'rechazado' | 'enviado';
   archivoUrl?: string;
   observaciones: string;
+  motivoRechazo?: string;
   
   // Metadata
   creadoPor?: string;

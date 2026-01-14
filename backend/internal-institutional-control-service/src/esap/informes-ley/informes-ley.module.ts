@@ -12,6 +12,7 @@ import { HistorialGeneracionInforme } from './entities/historial-generacion-info
 import { PlantillasService } from './services/plantillas.service';
 import { DatosAutomaticosService } from './services/datos-automaticos.service';
 import { InformeGeneratorService } from './services/informe-generator.service';
+import { WorkflowAprobacionService } from './services/workflow-aprobacion.service';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { PlanMejoramiento } from '../planes-mejoramiento/entities/plan-mejoramiento.entity';
 import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
@@ -37,12 +38,14 @@ import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
     PlantillasService,
     DatosAutomaticosService,
     InformeGeneratorService,
+    WorkflowAprobacionService,
   ],
   exports: [
     InformesLeyService,
     PlantillasService,
     DatosAutomaticosService,
     InformeGeneratorService,
+    WorkflowAprobacionService,
     TypeOrmModule,
   ],
 })

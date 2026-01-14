@@ -18,7 +18,7 @@ import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";
 import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  // RF001-004
 // ELIMINADO: ProcesoAuditoriaModuleRediseno - Integrado en Expediente del Kanban (RF005-009)
 import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRediseno";  // RF010-011
-import { InformesLeyModulePremium } from "./InformesLeyModulePremium";  // RF012 - MÓDULO INDEPENDIENTE
+import InformesLeyModulePremium from "./InformesLeyModulePremium";  // RF012 - MÓDULO INDEPENDIENTE
 import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
 import { RolesYPermisosModulePremium } from "./RolesYPermisosModulePremium";  // RF015 - MÓDULO INDEPENDIENTE
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM

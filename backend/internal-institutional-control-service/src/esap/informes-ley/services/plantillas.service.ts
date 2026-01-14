@@ -42,24 +42,49 @@ export class PlantillasService {
    * Cargar contenido de la plantilla desde el sistema de archivos
    */
   async cargarContenidoPlantilla(plantilla: PlantillaInformeLey): Promise<string> {
-    const rutaCompleta = path.join(
-      process.cwd(),
-      'src',
-      'esap',
-      'informes-ley',
-      plantilla.rutaPlantilla,
-    );
+    // La ruta en BD es: "templates/informes-ley/plantilla-pormenorizado-dafp.hbs"
+    // El archivo está en: src/esap/informes-ley/templates/plantilla-pormenorizado-dafp.hbs
+    // Necesitamos construir: process.cwd()/src/esap/informes-ley/templates/plantilla-pormenorizado-dafp.hbs
+    
+    let rutaPlantilla = plantilla.rutaPlantilla;
+    
+    // Si la ruta incluye "templates/informes-ley/", extraer solo el nombre del archivo
+    // y construir la ruta correcta
+    if (rutaPlantilla.includes('templates/informes-ley/')) {
+      const nombreArchivo = path.basename(rutaPlantilla);
+      rutaPlantilla = path.join('templates', nombreArchivo);
+    } else if (rutaPlantilla.startsWith('templates/')) {
+      // Ya tiene templates/, usar directamente
+      // No hacer nada
+    } else {
+      // Asumir que es solo el nombre del archivo
+      rutaPlantilla = path.join('templates', rutaPlantilla);
+    }
+    
+    // Intentar múltiples rutas posibles
+    const rutasIntentar = [
+      // Desarrollo: desde process.cwd()/src/esap/informes-ley/
+      path.join(process.cwd(), 'src', 'esap', 'informes-ley', rutaPlantilla),
+      // Producción compilada: desde process.cwd()/dist/esap/informes-ley/
+      path.join(process.cwd(), 'dist', 'esap', 'informes-ley', rutaPlantilla),
+      // Desde __dirname (servicio compilado en dist/)
+      path.join(__dirname, '..', rutaPlantilla),
+      // Ruta absoluta desde process.cwd()
+      path.join(process.cwd(), rutaPlantilla),
+      // Ruta original de la BD
+      path.join(process.cwd(), 'src', 'esap', 'informes-ley', plantilla.rutaPlantilla),
+    ];
 
-    // Si no existe, intentar ruta alternativa
-    if (!fs.existsSync(rutaCompleta)) {
-      const rutaAlternativa = path.join(process.cwd(), plantilla.rutaPlantilla);
-      if (fs.existsSync(rutaAlternativa)) {
-        return fs.readFileSync(rutaAlternativa, 'utf-8');
+    for (const rutaCompleta of rutasIntentar) {
+      if (fs.existsSync(rutaCompleta)) {
+        return fs.readFileSync(rutaCompleta, 'utf-8');
       }
-      throw new NotFoundException(`No se encontró el archivo de plantilla: ${plantilla.rutaPlantilla}`);
     }
 
-    return fs.readFileSync(rutaCompleta, 'utf-8');
+    throw new NotFoundException(
+      `No se encontró el archivo de plantilla: ${plantilla.rutaPlantilla}. ` +
+      `Rutas intentadas: ${rutasIntentar.join(', ')}`
+    );
   }
 
   /**
@@ -91,24 +116,58 @@ export class PlantillasService {
     const errores: string[] = [];
     const estructura = plantilla.estructuraDatos;
 
-    // Validar variables requeridas
+    // Validar variables requeridas (solo las que no están marcadas como opcionales en estructura)
     for (const variable of plantilla.variablesDisponibles) {
-      if (!(variable in datos)) {
+      // Verificar si la variable es opcional en la estructura
+      let esOpcional = false;
+      if (estructura && estructura[variable]) {
+        const configVar = estructura[variable];
+        if (typeof configVar === 'object' && configVar !== null && 'requerido' in configVar) {
+          esOpcional = configVar.requerido === false;
+        }
+      }
+      
+      // Si la variable no está en datos y no es opcional, es un error
+      if (!(variable in datos) && !esOpcional) {
         errores.push(`Variable requerida faltante: ${variable}`);
       }
     }
 
     // Validar estructura de datos si está definida
     if (estructura && Object.keys(estructura).length > 0) {
-      for (const [key, tipoEsperado] of Object.entries(estructura)) {
+      for (const [key, config] of Object.entries(estructura)) {
+        // Solo validar si el campo está presente (los opcionales pueden no estar)
         if (key in datos) {
           const valor = datos[key];
           const tipoReal = Array.isArray(valor) ? 'array' : typeof valor;
-
-          if (tipoEsperado === 'array' && !Array.isArray(valor)) {
-            errores.push(`El campo ${key} debe ser un array`);
-          } else if (tipoEsperado !== 'array' && tipoReal !== tipoEsperado) {
-            errores.push(`El campo ${key} debe ser de tipo ${tipoEsperado}, pero es ${tipoReal}`);
+          
+          // Si la estructura define un tipo específico
+          if (typeof config === 'object' && config !== null && 'tipo' in config) {
+            const tipoEsperado = config.tipo;
+            
+            // Validar tipo de array
+            if (tipoEsperado === 'array') {
+              if (!Array.isArray(valor)) {
+                errores.push(`El campo ${key} debe ser un array`);
+              }
+              // Si es array y tiene items definidos, validar estructura (opcional, para validación avanzada)
+            } else if (tipoEsperado === 'object') {
+              // Validar que sea un objeto (no array, no primitivo)
+              if (Array.isArray(valor) || (tipoReal !== 'object')) {
+                errores.push(`El campo ${key} debe ser un objeto`);
+              }
+            } else if (tipoEsperado === 'string' && tipoReal !== 'string') {
+              errores.push(`El campo ${key} debe ser de tipo string, pero es ${tipoReal}`);
+            } else if (tipoEsperado !== 'array' && tipoEsperado !== 'string' && tipoEsperado !== 'object' && tipoReal !== tipoEsperado) {
+              errores.push(`El campo ${key} debe ser de tipo ${tipoEsperado}, pero es ${tipoReal}`);
+            }
+          } else if (typeof config === 'string') {
+            // Compatibilidad con formato antiguo
+            if (config === 'array' && !Array.isArray(valor)) {
+              errores.push(`El campo ${key} debe ser un array`);
+            } else if (config !== 'array' && tipoReal !== config) {
+              errores.push(`El campo ${key} debe ser de tipo ${config}, pero es ${tipoReal}`);
+            }
           }
         }
       }

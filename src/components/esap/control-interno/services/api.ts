@@ -956,6 +956,121 @@ export const informesLeyApi = {
   getPlantilla: async (codigo: string): Promise<ApiResponse<any>> => {
     return apiRequest<any>(`/informes-ley/plantillas/${codigo}`);
   },
+
+  // ==================== WORKFLOW DE APROBACIÓN (US-033) ====================
+
+  /**
+   * Enviar informe a revisión (Auditor → Jefe OCI)
+   */
+  enviarRevision: async (
+    informeId: string,
+    entregaId: string,
+    data?: { observaciones?: string }
+  ): Promise<ApiResponse<any>> => {
+    return apiRequest(`/informes-ley/${informeId}/entregas/${entregaId}/enviar`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    });
+  },
+
+  /**
+   * Aprobar informe (Jefe OCI)
+   */
+  aprobar: async (
+    informeId: string,
+    entregaId: string,
+    data?: { observaciones?: string }
+  ): Promise<ApiResponse<any>> => {
+    return apiRequest(`/informes-ley/${informeId}/entregas/${entregaId}/aprobar`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    });
+  },
+
+  /**
+   * Rechazar informe (Jefe OCI)
+   */
+  rechazar: async (
+    informeId: string,
+    entregaId: string,
+    data: { motivoRechazo: string; observaciones?: string }
+  ): Promise<ApiResponse<any>> => {
+    return apiRequest(`/informes-ley/${informeId}/entregas/${entregaId}/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Obtener workflow de una entrega
+   */
+  getWorkflow: async (entregaId: string): Promise<ApiResponse<any>> => {
+    return apiRequest(`/informes-ley/entregas/${entregaId}/workflow`);
+  },
+
+  /**
+   * Obtener historial de una entrega
+   */
+  getHistorial: async (entregaId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest(`/informes-ley/entregas/${entregaId}/historial`);
+  },
+
+  /**
+   * Subir archivo para una entrega
+   */
+  uploadArchivo: async (entregaId: string, file: File): Promise<ApiResponse<EntregaInforme>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = localStorage.getItem('esap_auth_token');
+    // Usar getApiBaseUrl() para construir la URL correctamente
+    const baseUrl = getApiBaseUrl();
+    const url = `${baseUrl}/informes-ley/entregas/${entregaId}/upload`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          // NO establecer Content-Type para FormData, el navegador lo hace automáticamente con boundary
+        },
+        body: formData,
+      });
+
+      const responseText = await response.text();
+      let data: any = null;
+      
+      if (responseText && responseText.trim()) {
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          return {
+            success: false,
+            error: 'Error al parsear respuesta del servidor',
+          };
+        }
+      }
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data?.message || data?.error || `Error HTTP ${response.status}`,
+          statusCode: response.status,
+        };
+      }
+
+      return {
+        success: true,
+        data: data.data || data,
+      };
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Error desconocido al subir archivo',
+      };
+    }
+  },
 };
 
 // ==================== NOTIFICACIONES ====================

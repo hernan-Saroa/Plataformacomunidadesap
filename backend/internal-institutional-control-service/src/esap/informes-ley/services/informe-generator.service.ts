@@ -92,14 +92,58 @@ export class InformeGeneratorService {
 
     // 5. Obtener datos automáticos si está configurado
     // Verificar si el informe tiene plantilla configurada (indica que puede tener datos automáticos)
-    let datosCompletos: Record<string, any> = datosAdicionales || {};
+    let datosCompletos: Record<string, any> = {
+      nombreInforme: informe.nombre,
+      codigoInforme: informe.codigo,
+      periodo,
+      fechaGeneracion: new Date().toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }),
+      baseNormativa: informe.normativa || '',
+      responsable: informe.responsable || usuarioNombre || 'Sistema',
+      // Incluir datos adicionales del usuario (como analisis, conclusiones, etc.)
+      ...(datosAdicionales || {}),
+    };
 
     if (informe.tienePlantilla) {
       const datosAutomaticos = await this.datosAutomaticosService.obtenerDatosAutomaticos(
         informe,
         periodo,
       );
-      datosCompletos = { ...datosAutomaticos, ...datosAdicionales };
+      
+      // Función helper para hacer merge profundo de objetos
+      const deepMerge = (target: any, source: any): any => {
+        const output = { ...target };
+        if (source && typeof source === 'object') {
+          Object.keys(source).forEach(key => {
+            if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+              // Si es un objeto (como resumenEjecutivo, resultados), hacer merge profundo
+              output[key] = deepMerge(target[key] || {}, source[key]);
+            } else if (Array.isArray(source[key])) {
+              // Si es un array (como actividades, logros), usar el del source si existe y no está vacío
+              output[key] = source[key].length > 0 ? source[key] : (target[key] || []);
+            } else {
+              // Para valores primitivos, el source tiene prioridad solo si no es undefined/null
+              output[key] = source[key] !== undefined && source[key] !== null ? source[key] : (target[key] || source[key]);
+            }
+          });
+        }
+        return output;
+      };
+      
+      // Combinar datos automáticos con datos completos
+      // Primero aplicar datos automáticos, luego hacer merge profundo con datosAdicionales
+      datosCompletos = { 
+        ...datosCompletos,
+        ...datosAutomaticos,
+      };
+      
+      // Hacer merge profundo con datosAdicionales para preservar estructuras anidadas
+      if (datosAdicionales) {
+        datosCompletos = deepMerge(datosCompletos, datosAdicionales);
+      }
 
       // Guardar datos automáticos
       await this.datosAutomaticosService.guardarDatosAutomaticos(
