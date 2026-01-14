@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Search, Download, Filter, Calendar, ChevronDown, FileText, Shield, BarChart3, Activity, List, Clock, AlertTriangle } from 'lucide-react';
 import { AuditLogTable } from './AuditLogTable';
 import { AuditEventDetail, AuditEvent } from './AuditEventDetail';
@@ -682,44 +682,7 @@ export function AuditModulePremium() {
         </div>
       </motion.div>
 
-      {/* View Mode Selector */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {viewModes.map((mode) => {
-          const Icon = mode.icon;
-          const isActive = viewMode === mode.id;
-          return (
-            <motion.button
-              key={mode.id}
-              onClick={() => setViewMode(mode.id as ViewMode)}
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              className={`p-4 rounded-xl border-2 transition-all ${
-                isActive
-                  ? 'bg-gradient-to-br from-[#1e5da8] to-blue-600 border-[#1e5da8] shadow-lg'
-                  : 'bg-white border-gray-200 hover:border-[#1e5da8] hover:shadow-md'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                  isActive ? 'bg-white/20' : 'bg-gray-100'
-                }`}>
-                  <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-[#1e5da8]'}`} strokeWidth={2} />
-                </div>
-                <div className="text-left flex-1">
-                  <p className={`font-bold text-sm ${isActive ? 'text-white' : 'text-gray-900'}`}>
-                    {mode.label}
-                  </p>
-                  <p className={`text-xs ${isActive ? 'text-white/80' : 'text-gray-600'}`}>
-                    {mode.description}
-                  </p>
-                </div>
-              </div>
-            </motion.button>
-          );
-        })}
-      </div>
-
-      {/* Advanced Filters */}
+      {/* Filtros Avanzados */}
       <AuditAdvancedFilters
         filters={filters}
         onFiltersChange={setFilters}

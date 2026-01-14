@@ -19,7 +19,8 @@ import {
   MoreVertical,
   UserCheck,
   Users,
-  BookOpen
+  BookOpen,
+  ShieldCheck  // ✅ NUEVO: Icono para verificar certificado
 } from 'lucide-react';
 import { PersonDetailsModalV2 } from './PersonDetailsModalV2';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
@@ -30,6 +31,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { getSyncedGraduates, getGraduatesStats } from '../../data/graduatesSync';  // ✅ IMPORTAR SINCRONIZACIÓN
+import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';  // ✅ NUEVO: Componente de verificación de grado
 
 interface Graduate {
   id: string;
@@ -65,6 +67,7 @@ export function GraduateVerificationModulePremium() {
   const [filterModalidad, setFilterModalidad] = useState<string>('all');
   const [expandedGraduateId, setExpandedGraduateId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [mostrarValidador, setMostrarValidador] = useState(false);  // ✅ NUEVO: Estado para vista de validación
   const itemsPerPage = 10;
 
   // Stats
@@ -149,6 +152,11 @@ export function GraduateVerificationModulePremium() {
 
   const hasActiveFilters = searchQuery || filterProgram !== 'all' || filterYear !== 'all' || filterModalidad !== 'all';
 
+  // ✅ NUEVO: Si el validador está activo, mostrar la vista completa de validación
+  if (mostrarValidador) {
+    return <ValidarCertificadoGrado onBack={() => setMostrarValidador(false)} />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -167,13 +175,62 @@ export function GraduateVerificationModulePremium() {
           </p>
         </div>
 
-        <button
-          onClick={handleExportGraduates}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
-        >
-          <Download className="w-5 h-5" />
-          <span className="text-sm">Exportar</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setMostrarValidador(true)}
+            className="inline-flex items-center justify-center gap-2 transition-all font-semibold shadow-sm hover:shadow-md"
+            style={{
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '12px 24px',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 10px 25px rgba(41, 98, 255, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+            }}
+          >
+            <ShieldCheck className="w-5 h-5" strokeWidth={2.5} />
+            <span>Verificar Certificado</span>
+          </button>
+          <button
+            onClick={handleExportGraduates}
+            className="inline-flex items-center justify-center gap-2 transition-all font-semibold"
+            style={{
+              background: '#FFFFFF',
+              color: '#6B7280',
+              border: '2px solid #E5E7EB',
+              borderRadius: '12px',
+              padding: '12px 24px',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#F9FAFB';
+              e.currentTarget.style.borderColor = '#003DA5';
+              e.currentTarget.style.color = '#003DA5';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#FFFFFF';
+              e.currentTarget.style.borderColor = '#E5E7EB';
+              e.currentTarget.style.color = '#6B7280';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            <Download className="w-5 h-5" strokeWidth={2} />
+            <span>Exportar</span>
+          </button>
+        </div>
       </motion.div>
 
       {/* Stats Cards */}
@@ -731,6 +788,32 @@ export function GraduateVerificationModulePremium() {
           onClose={() => setShowDetailsModal(false)}
         />
       )}
+
+      {/* Modal de Verificación de Certificado - YA NO SE USA, REEMPLAZADO POR VISTA COMPLETA */}
+      {/* <AnimatePresence>
+        {showVerificarTituloModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[9999] bg-white"
+          >
+            <div className="h-screen overflow-y-auto">
+              <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                <h2 className="text-xl font-black text-gray-900">Verificación de Certificados de Títulos</h2>
+                <button
+                  onClick={() => setShowVerificarTituloModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6 text-gray-600" />
+                </button>
+              </div>
+              <VerificarCertificadoTitulo />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence> */}
     </div>
   );
 }

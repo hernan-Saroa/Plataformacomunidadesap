@@ -42,7 +42,7 @@ const tiposAuto = [
   'Auto de Nulidad',
   'Auto de Corrección',
   'Auto Interlocutorio',
-  'Auto de Sustanciación'
+  'Auto de Sustanciaci��n'
 ];
 
 interface Auto {
@@ -251,7 +251,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
           Autos Procesales - Expediente {expediente.id}
         </DialogTitle>
