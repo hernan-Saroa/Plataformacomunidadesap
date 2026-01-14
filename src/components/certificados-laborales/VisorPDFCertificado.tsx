@@ -18,14 +18,18 @@ import { buildServiceAssetUrl } from '../../config/environment';
 interface VisorPDFCertificadoProps {
   isOpen: boolean;
   onClose: () => void;
-  autoAction?: 'download' | 'print';
+  autoAction?: 'download' | 'print' | 'email';
   hiddenMode?: boolean;
   onAutoActionComplete?: (action: 'download' | 'print', success: boolean) => void;
+  onEmailReady?: (payload: { base64: string; fileName: string }) => void;
+  onEmailError?: () => void;
   certificado: {
     consecutivo: string;
     certificateHash?: string;
     qrCode?: string;
     incluyeSalario?: boolean;
+    incluyePrimaTecnica?: boolean;
+    technical_bonus?: number;
     empleado: {
       nombre: string;
       documento: string;
@@ -68,6 +72,8 @@ export function VisorPDFCertificado({
   autoAction,
   hiddenMode = false,
   onAutoActionComplete,
+  onEmailReady,
+  onEmailError,
 }: VisorPDFCertificadoProps) {
   const certificadoRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -325,7 +331,9 @@ export function VisorPDFCertificado({
 
     try {
       setIsGenerating(true);
-      toast.loading('Generando PDF del certificado...', { id: 'generating-pdf' });
+      if (autoAction !== 'email') {
+        toast.loading('Generando PDF del certificado...', { id: 'generating-pdf' });
+      }
 
       // Esperar un momento para que todo se renderice correctamente
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -393,25 +401,35 @@ export function VisorPDFCertificado({
       // Nombre del archivo dinámico según el certificado
       const fileName = `Certificado_Laboral_${certificado.empleado.nombre.replace(/\s+/g, '_')}_${certificado.consecutivo}.pdf`;
 
-      // Descargar el PDF
-      pdf.save(fileName);
-
-      toast.success('¡Certificado descargado exitosamente!', {
-        id: 'generating-pdf',
-        description: `Certificado de ${certificado.empleado.nombre}`,
-        duration: 3000
-      });
-      if (autoAction) {
-        onAutoActionComplete?.('download', true);
+      if (autoAction === 'email') {
+        const dataUri = pdf.output('datauristring');
+        const base64 = dataUri.split(',')[1] || '';
+        onEmailReady?.({ base64, fileName });
+      } else {
+        // Descargar el PDF
+        pdf.save(fileName);
+        toast.success('¡Certificado descargado exitosamente!', {
+          id: 'generating-pdf',
+          description: `Certificado de ${certificado.empleado.nombre}`,
+          duration: 3000
+        });
+        if (autoAction) {
+          onAutoActionComplete?.('download', true);
+        }
       }
     } catch (error) {
       console.error('Error al descargar certificado:', error);
+    if (autoAction !== 'email') {
       toast.error('Error al generar el PDF', {
         id: 'generating-pdf',
         description: error instanceof Error ? error.message : 'Por favor, intente nuevamente',
         duration: 5000
       });
-      if (autoAction) {
+    }
+    if (autoAction === 'email') {
+      onEmailError?.();
+    }
+      if (autoAction && autoAction !== 'email') {
         onAutoActionComplete?.('download', false);
       }
     } finally {
@@ -550,7 +568,7 @@ export function VisorPDFCertificado({
     if (autoActionHandled) return;
     if (!certificadoRef.current) return;
 
-    if (autoAction === 'download') {
+    if (autoAction === 'download' || autoAction === 'email') {
       void handleDescargar();
       setAutoActionHandled(true);
     } else if (autoAction === 'print') {
@@ -580,6 +598,34 @@ export function VisorPDFCertificado({
     : '';
   const salarioParaMostrar = incluirSalario ? salarioBase : 0;
   const salarioEnLetrasParaMostrar = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
+  const incluirPrimaTecnica = certificado.incluyePrimaTecnica ?? false;
+  const primaTecnicaBase = certificado.technical_bonus ?? salarioBase * 0.2;
+  const primaTecnicaParaMostrar = incluirPrimaTecnica ? primaTecnicaBase : 0;
+  const primaTecnicaParrafo = incluirPrimaTecnica && primaTecnicaParaMostrar > 0
+    ? `<p>Percibe mensualmente una prima tecnica de ($${primaTecnicaParaMostrar.toLocaleString('es-CO')}) adicional a su asignacion basica mensual.</p>`
+    : '';
+
+  const contenidoFinal = (() => {
+    if (!primaTecnicaParrafo) return contenidoNormalizado;
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(contenidoNormalizado, 'text/html');
+      const primaNode = parser.parseFromString(primaTecnicaParrafo, 'text/html').body.firstChild;
+      if (!primaNode) {
+        return `${contenidoNormalizado}${primaTecnicaParrafo}`;
+      }
+      const nodes = Array.from(doc.body.querySelectorAll('p, div, li'));
+      const expideNode = nodes.find((node) => (node.textContent || '').toLowerCase().includes('se expide'));
+      if (expideNode) {
+        expideNode.parentNode?.insertBefore(primaNode, expideNode);
+        return doc.body.innerHTML;
+      }
+      doc.body.appendChild(primaNode);
+      return doc.body.innerHTML;
+    } catch (error) {
+      return `${contenidoNormalizado}${primaTecnicaParrafo}`;
+    }
+  })();
 
   return (
     <AnimatePresence>
@@ -769,7 +815,7 @@ export function VisorPDFCertificado({
                   <div
                     className="certificate-content-block"
                     dangerouslySetInnerHTML={{
-                      __html: contenidoNormalizado
+                      __html: contenidoFinal
                     }}
                     style={{
                       textAlign: 'justify',

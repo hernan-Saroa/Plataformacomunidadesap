@@ -47,6 +47,7 @@ interface CertificadoLaboral {
   department?: string;
   department_parent?: string;
   campus?: string;
+  technical_bonus?: number;
   empleado: {
     nombre: string;
     documento: string;
@@ -156,6 +157,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         department: cert.department,
         department_parent: cert.department_parent || cert.departmentParent,
         campus: cert.campus,
+        technical_bonus: cert.technical_bonus,
         empleado: {
           nombre: cert.full_name,
           documento: cert.id_number,
@@ -166,7 +168,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           fechaVinculacion: cert.hiring_date,
           grado: cert.position_location || '',
           salario: Number(cert.monthly_salary),
-          email: 'email@esap.edu.co' // TODO: Obtener email real
+          email: cert.email || cert.request?.email || cert.certificate_email || cert.employee_email || 'N/A'
         },
         estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
         fechaSolicitud: cert.created_at,

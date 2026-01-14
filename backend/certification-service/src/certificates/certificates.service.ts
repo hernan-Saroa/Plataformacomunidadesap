@@ -106,6 +106,7 @@ export class CertificatesService {
 
   async findAllCertificados() {
     const certificates = await this.certificateRepo.find({
+      relations: ['request'],
       order: { issue_date: 'DESC' },
     });
 
@@ -117,6 +118,7 @@ export class CertificatesService {
         });
         return {
           ...cert,
+          email: cert.request?.email,
           validation_count: validationCount,
         };
       }),
@@ -138,6 +140,7 @@ export class CertificatesService {
     const skip = (safePage - 1) * safeLimit;
 
     const qb = this.certificateRepo.createQueryBuilder('cert');
+    qb.leftJoinAndSelect('cert.request', 'request');
 
     if (params.search) {
       const term = `%${params.search.toLowerCase()}%`;
@@ -182,6 +185,7 @@ export class CertificatesService {
         });
         return {
           ...cert,
+          email: cert.request?.email,
           validation_count: validationCount,
         };
       }),
@@ -267,6 +271,7 @@ export class CertificatesService {
       position_category: request.position_category,
       position_location: request.position_location,
       monthly_salary: request.monthly_salary,
+      technical_bonus: Number(request.monthly_salary || 0) * 0.2,
       salary_text: request.salary_text,
       department: request.department,
       campus: request.campus,
