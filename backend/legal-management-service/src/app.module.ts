@@ -28,6 +28,7 @@ import { NotaExpediente } from './entities/nota-expediente.entity';
 import { ComentarioOC } from './entities/comentario-oc.entity';
 import { DocumentoOC } from './entities/documento-oc.entity';
 import { Riesgo } from './entities/riesgo.entity';
+import { RiesgoHistorial } from './entities/riesgo-historial.entity';
 import { DocumentoConsulta } from './entities/documento-consulta.entity';
 import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 import { CorreoJuridico } from './entities/correo-juridico.entity';
@@ -123,6 +124,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       DocumentoOC,
       // Riesgos
       Riesgo,
+      RiesgoHistorial,
       // Documentos Consultas
       DocumentoConsulta,
       ComentarioConsulta,

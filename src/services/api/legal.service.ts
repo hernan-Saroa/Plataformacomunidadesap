@@ -663,6 +663,18 @@ export interface CreateRiesgoData {
     responsable: string;
 }
 
+export interface RiesgoHistorialAPI {
+    id: string;
+    riesgoId: string;
+    tipoEvento: 'CREACION' | 'ACTUALIZACION' | 'CAMBIO_ETAPA' | 'CAMBIO_ZONA' | 'ARCHIVADO' | 'CONTROL_AGREGADO' | 'CONTROL_MODIFICADO' | 'TRATAMIENTO_AGREGADO';
+    descripcion: string;
+    campoModificado: string | null;
+    valorAnterior: string | null;
+    valorNuevo: string | null;
+    usuario: string;
+    createdAt: string;
+}
+
 class RiesgosService {
     async getAll(): Promise<RiesgoAPI[]> {
         return apiClient.get<RiesgoAPI[]>(`${SERVICE_PREFIX}/riesgos`);
@@ -699,6 +711,10 @@ class RiesgosService {
         porEtapa: Record<string, number>;
     }> {
         return apiClient.get(`${SERVICE_PREFIX}/riesgos/estadisticas`);
+    }
+
+    async getHistorial(riesgoId: string): Promise<RiesgoHistorialAPI[]> {
+        return apiClient.get<RiesgoHistorialAPI[]>(`${SERVICE_PREFIX}/riesgos/${riesgoId}/historial`);
     }
 }
 
