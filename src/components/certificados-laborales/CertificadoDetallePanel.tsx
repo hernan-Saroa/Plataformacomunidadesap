@@ -67,14 +67,29 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   const verificationUrl = `${verificationBase}${verificationPath}/${certificado.qrCode}`;
 
   // Helper para formatear fechas de forma segura
+  const parseDateOnly = (fechaStr: string) => {
+    if (!fechaStr || fechaStr === 'N/A') {
+      return null;
+    }
+    const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day, 12, 0, 0);
+    }
+    const parsed = new Date(fechaStr);
+    if (isNaN(parsed.getTime())) {
+      return null;
+    }
+    return parsed;
+  };
+
   const formatearFecha = (fechaStr: string, opciones?: Intl.DateTimeFormatOptions) => {
     try {
-      if (!fechaStr || fechaStr === 'N/A') {
-        return 'Fecha no disponible';
-      }
-      const fecha = new Date(fechaStr);
-      if (isNaN(fecha.getTime())) {
-        console.error('Fecha inválida:', fechaStr);
+      const fecha = parseDateOnly(fechaStr);
+      if (!fecha) {
+        console.error('Fecha invǭomlida:', fechaStr);
         return 'Fecha no disponible';
       }
       return fecha.toLocaleDateString('es-CO', opciones || {

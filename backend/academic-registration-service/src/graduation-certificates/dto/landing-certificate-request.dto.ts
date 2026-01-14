@@ -43,4 +43,9 @@ export class LandingCertificateRequestDto {
    * Fecha de graduación en caso de que el solicitante la conozca
    */
   graduationDate?: string;
+  /**
+   * Apellido(s) del graduado para validaci??n adicional
+   */
+  lastName?: string;
+
 }

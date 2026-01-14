@@ -168,14 +168,18 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         }
       }));
 
+      const certificadosOrdenados = [...certificadosTransformados].sort((a, b) => (
+        new Date(b.fechaSolicitud).getTime() - new Date(a.fechaSolicitud).getTime()
+      ));
+
       console.log('📊 Contador de validaciones por certificado:',
-        certificadosTransformados.map(c => ({
+        certificadosOrdenados.map(c => ({
           consecutivo: c.consecutivo,
           validaciones: c.cantidadEscaneos
         }))
       );
 
-      setCertificados(certificadosTransformados);
+      setCertificados(certificadosOrdenados);
       setTotalItems(total);
       setStats({
         certificadosEmitidos: serverStats?.totalEmitidos ?? total,
