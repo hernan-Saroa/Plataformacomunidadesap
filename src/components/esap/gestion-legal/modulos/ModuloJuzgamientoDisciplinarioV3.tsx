@@ -4,6 +4,7 @@
  * ✅ Responsive mobile-first FUNCIONAL
  * ✅ Drag & Drop FUNCIONAL
  * ✅ Tarjetas 320px con bloque "Última Actuación"
+ * ✅ CONECTADO CON CONFIGURACIONES CENTRALIZADAS
  */
 
 import { useState, useEffect } from 'react';
@@ -38,6 +39,9 @@ import { VistaListaJuzgamiento } from './VistaListaJuzgamiento';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
+// ✅ Importar configuraciones centralizadas
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+
 // Tipo para drag and drop
 const ItemTypes = {
   PROCESO: 'proceso_disciplinario'
@@ -48,6 +52,9 @@ import { legalService } from '../../../../services/api/legal.service';
 // ... (previous imports)
 
 export function ModuloJuzgamientoDisciplinarioV3() {
+  // ✅ Obtener configuraciones desde el Context API
+  const { estadosActivos } = useConfiguracionModulo('juzgamiento');
+  
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
@@ -58,6 +65,13 @@ export function ModuloJuzgamientoDisciplinarioV3() {
 
   // Estado local para manejar drag and drop
   const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
+
+  // ✅ Log de configuraciones cargadas
+  useEffect(() => {
+    console.log('🎯 JUZGAMIENTO - Configuraciones centralizadas cargadas:');
+    console.log('   📊 Estados activos:', estadosActivos.length);
+    console.log('   ✅ Conexión con ConfiguracionesSIGL establecida');
+  }, [estadosActivos]);
 
   // Detectar tamaño de pantalla
   useEffect(() => {

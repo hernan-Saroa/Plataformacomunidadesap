@@ -14,11 +14,6 @@ import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { Textarea } from '../../../ui/textarea';
-import {
-  FileCheck, Download, Eye, FileText, Calendar,
-  Users, Clock, X, Upload, CheckCircle, AlertCircle, Play,
-  Search, Trash2, Filter, Plus
-} from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
@@ -27,6 +22,7 @@ import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { FileCheck, Search, Download, Eye, Trash2, FileText, Calendar, User, Clock, CheckCircle, AlertCircle, Plus, Filter, Play, Users, X, Upload } from 'lucide-react';
 
 interface ModalActasProps {
   isOpen: boolean;
@@ -399,14 +395,43 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
-          <DialogTitle className="sr-only">
-            Actas de Audiencias - Expediente {expediente.id}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            Gestión de actas de audiencias y diligencias del expediente {expediente.id}
-          </DialogDescription>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogTitle className="sr-only">
+          Actas de Audiencias - Expediente {expediente.id}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Gestión de actas de audiencias y diligencias del expediente {expediente.id}
+        </DialogDescription>
+        
+        {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+        <ModalHeaderClean
+          titulo="Actas de Audiencias y Diligencias"
+          subtitulo={`Registro oficial de diligencias del expediente ${expediente.id}`}
+          icono={FileCheck}
+          colorIcono="purple"
+          badgePrincipal="CONTESTACIÓN"
+          badges={
+            <>
+              <Badge variant="outline" className="font-semibold text-xs border-gray-300 text-gray-700">
+                {expediente.etapa}
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
+                <FileCheck className="w-3 h-3 mr-1" />
+                {actas.length} actas
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                {actas.filter(a => a.estado === 'Firmada').length} firmadas
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
+                <Clock className="w-3 h-3 mr-1" />
+                {actas.filter(a => a.estado === 'Programada').length} programadas
+              </Badge>
+            </>
+          }
+          onClose={onClose}
+        />
 
           {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
           <ModalHeaderClean

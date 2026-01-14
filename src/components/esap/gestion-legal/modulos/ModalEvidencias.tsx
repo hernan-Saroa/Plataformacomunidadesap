@@ -286,12 +286,40 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
-          <DialogTitle className="sr-only">Evidencias y Pruebas</DialogTitle>
-          <DialogDescription className="sr-only">
-            Gestión de evidencias y pruebas documentales del expediente {expediente.id}
-          </DialogDescription>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogTitle className="sr-only">
+          Evidencias y Pruebas - Expediente {expediente.id}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Gestión de evidencias y pruebas documentales del expediente {expediente.id}
+        </DialogDescription>
+        
+        {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+        <ModalHeaderClean
+          titulo="Evidencias y Pruebas Documentales"
+          subtitulo={`Material probatorio del expediente ${expediente.id}`}
+          icono={Paperclip}
+          colorIcono="orange"
+          badgePrincipal={expediente.etapa}
+          badges={
+            <>
+              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                {evidenciasAdmitidas} admitidas
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                {evidenciasPendientes} pendientes
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
+                <Paperclip className="w-3 h-3 mr-1" />
+                {totalEvidencias} total
+              </Badge>
+            </>
+          }
+          onClose={onClose}
+        />
 
           <ModalHeaderClean
             titulo="Evidencias y Pruebas Documentales"

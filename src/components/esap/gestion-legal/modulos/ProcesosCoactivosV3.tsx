@@ -1,7 +1,7 @@
 /**
  * ModuloProcesosCoactivosV3 - MOD-07: Procesos Coactivos
  * VISTA DE LISTA/TABLA - Gestión de procesos de cobro coactivo
- * Los procesos son creados manualmente por la oficina de gestión legal
+ * DISEÑO 100% COHERENTE CON EL ESTÁNDAR DEL PROYECTO
  */
 
 import { useState, useEffect } from 'react';
@@ -13,13 +13,7 @@ import {
   MapPin, Building, CreditCard, FileCheck, Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
 import { toast } from 'sonner@2.0.3';
-import { CardSIGL } from '../design-system/CardSIGL';
-import { BadgeSIGL } from '../design-system/BadgeSIGL';
-import { ButtonSIGL } from '../design-system/ButtonSIGL';
-import { ModalSIGL } from '../design-system/ModalSIGL';
 
 // ============ TIPOS ============
 interface ProcesoCoactivo {
@@ -276,70 +270,21 @@ export function ModuloProcesosCoactivosV3() {
               Gestión de cobro coactivo de obligaciones
             </p>
           </div>
-          <ButtonSIGL
+          <button
             onClick={() => setModalNuevoProceso(true)}
-            className="flex-shrink-0"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+            style={{ 
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+            }}
           >
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="w-4 h-4" />
             {!isMobile && 'Nuevo Proceso'}
-          </ButtonSIGL>
-        </div>
-
-        {/* Métricas */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-blue-50 rounded-lg">
-                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-[#003DA5]" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Total Procesos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
-              </div>
-            </div>
-          </CardSIGL>
-
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-amber-50 rounded-lg">
-                <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Activos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.activos}</p>
-              </div>
-            </div>
-          </CardSIGL>
-
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-red-50 rounded-lg">
-                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Críticos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.criticos}</p>
-              </div>
-            </div>
-          </CardSIGL>
-
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-green-50 rounded-lg">
-                <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Monto Total</p>
-                <p className="text-base sm:text-lg font-bold text-gray-900">
-                  ${(stats.totalMonto / 1000000).toFixed(1)}M
-                </p>
-              </div>
-            </div>
-          </CardSIGL>
+          </button>
         </div>
 
         {/* Filtros y búsqueda */}
-        <CardSIGL className="p-4">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             {/* Búsqueda */}
             <div className="relative flex-1">
@@ -380,7 +325,7 @@ export function ModuloProcesosCoactivosV3() {
               <option value="monto-menor">Monto menor</option>
             </select>
           </div>
-        </CardSIGL>
+        </div>
       </div>
 
       {/* Lista de Procesos */}
@@ -400,16 +345,15 @@ export function ModuloProcesosCoactivosV3() {
                 onEliminar={handleEliminarProceso}
               />
             </motion.div>
-          ))}
-        </AnimatePresence>
+          ))}\n        </AnimatePresence>
 
         {procesosFiltrados.length === 0 && (
-          <CardSIGL className="p-12 text-center">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
             <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 text-sm">
               No se encontraron procesos con los filtros seleccionados
             </p>
-          </CardSIGL>
+          </div>
         )}
       </div>
 
@@ -467,7 +411,7 @@ function TarjetaProceso({
   const esCritico = proceso.obligacion.diasVencidos > 180;
 
   return (
-    <CardSIGL className="overflow-hidden hover:shadow-lg transition-shadow">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
       <div className="p-4 sm:p-5">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -554,23 +498,24 @@ function TarjetaProceso({
 
         {/* Acciones */}
         <div className="flex flex-wrap gap-2">
-          <ButtonSIGL
-            variant="default"
-            size="sm"
+          <button
             onClick={() => onVerDetalle(proceso)}
-            className="flex-1 sm:flex-none"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+            style={{ 
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+            }}
           >
-            <Eye className="w-4 h-4 mr-2" />
+            <Eye className="w-4 h-4" />
             Ver Detalle
-          </ButtonSIGL>
-          <ButtonSIGL
-            variant="outline"
-            size="sm"
+          </button>
+          <button
             onClick={() => toast.info('Función en desarrollo')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
           >
-            <Edit className="w-4 h-4 mr-2" />
+            <Edit className="w-4 h-4" />
             Editar
-          </ButtonSIGL>
+          </button>
           <button
             onClick={() => onEliminar(proceso.id)}
             className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
@@ -580,7 +525,7 @@ function TarjetaProceso({
           </button>
         </div>
       </div>
-    </CardSIGL>
+    </div>
   );
 }
 
@@ -647,156 +592,176 @@ function ModalNuevoProceso({
     onCrear(nuevoProceso);
   };
 
+  if (!isOpen) return null;
+
   return (
-    <ModalSIGL
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Nuevo Proceso Coactivo"
-      size="large"
-    >
-      <div className="space-y-4">
-        {/* Información del Deudor */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información del Deudor</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Nombre Completo <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.deudorNombre}
-                onChange={(e) => setFormData({ ...formData, deudorNombre: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: Juan Carlos Pérez Gómez"
-              />
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header - 100% Estándar del Proyecto */}
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+          <h2 className="text-xl font-bold text-gray-900">Nuevo Proceso Coactivo</h2>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Contenido del Formulario */}
+        <div className="p-6 space-y-6">
+          {/* Información del Deudor */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3">Información del Deudor</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Nombre Completo <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.deudorNombre}
+                  onChange={(e) => setFormData({ ...formData, deudorNombre: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Juan Carlos Pérez Gómez"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Identificación <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.deudorIdentificacion}
+                  onChange={(e) => setFormData({ ...formData, deudorIdentificacion: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: 1.012.345.678"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
+                <input
+                  type="text"
+                  value={formData.deudorTelefono}
+                  onChange={(e) => setFormData({ ...formData, deudorTelefono: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: +57 312 456 7890"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={formData.deudorEmail}
+                  onChange={(e) => setFormData({ ...formData, deudorEmail: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: correo@ejemplo.com"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Dirección</label>
+                <input
+                  type="text"
+                  value={formData.deudorDireccion}
+                  onChange={(e) => setFormData({ ...formData, deudorDireccion: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Calle 45 #12-34, Bogotá"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Identificación <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.deudorIdentificacion}
-                onChange={(e) => setFormData({ ...formData, deudorIdentificacion: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: 1.012.345.678"
-              />
+          </div>
+
+          {/* Información de la Obligación */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información de la Obligación</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Concepto <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.concepto}
+                  onChange={(e) => setFormData({ ...formData, concepto: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Matrícula Semestre 2024-2"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Valor (COP) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={formData.valor}
+                  onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: 3250000"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Fecha Vencimiento <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={formData.fechaVencimiento}
+                  onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
-              <input
-                type="text"
-                value={formData.deudorTelefono}
-                onChange={(e) => setFormData({ ...formData, deudorTelefono: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: +57 312 456 7890"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-              <input
-                type="email"
-                value={formData.deudorEmail}
-                onChange={(e) => setFormData({ ...formData, deudorEmail: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: correo@ejemplo.com"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Dirección</label>
-              <input
-                type="text"
-                value={formData.deudorDireccion}
-                onChange={(e) => setFormData({ ...formData, deudorDireccion: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: Calle 45 #12-34, Bogotá"
-              />
+          </div>
+
+          {/* Información Adicional */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información Adicional</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Responsable</label>
+                <input
+                  type="text"
+                  value={formData.responsable}
+                  onChange={(e) => setFormData({ ...formData, responsable: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Dra. María Fernández López"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Observaciones</label>
+                <textarea
+                  value={formData.observaciones}
+                  onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={3}
+                  placeholder="Observaciones adicionales sobre el proceso..."
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Información de la Obligación */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información de la Obligación</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Concepto <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.concepto}
-                onChange={(e) => setFormData({ ...formData, concepto: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: Matrícula Semestre 2024-2"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Valor (COP) <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="number"
-                value={formData.valor}
-                onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: 3250000"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Fecha Vencimiento <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={formData.fechaVencimiento}
-                onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Información Adicional */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información Adicional</h3>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Responsable</label>
-              <input
-                type="text"
-                value={formData.responsable}
-                onChange={(e) => setFormData({ ...formData, responsable: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: Dra. María Fernández López"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Observaciones</label>
-              <textarea
-                value={formData.observaciones}
-                onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                rows={3}
-                placeholder="Observaciones adicionales sobre el proceso..."
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Botones */}
-        <div className="flex justify-end gap-3 pt-4 border-t">
-          <ButtonSIGL variant="outline" onClick={onClose}>
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+          >
             Cancelar
-          </ButtonSIGL>
-          <ButtonSIGL onClick={handleSubmit}>
-            <Plus className="w-4 h-4 mr-2" />
+          </button>
+          <button
+            onClick={handleSubmit}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+            style={{ 
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+            }}
+          >
+            <Plus className="w-4 h-4" />
             Crear Proceso
-          </ButtonSIGL>
+          </button>
         </div>
       </div>
-    </ModalSIGL>
+    </div>
   );
 }
 
@@ -819,148 +784,166 @@ function ModalDetalleProceso({
     FINALIZADO: { label: 'Finalizado', color: 'bg-green-100 text-green-700' }
   }[proceso.estado];
 
+  if (!isOpen) return null;
+
   return (
-    <ModalSIGL
-      isOpen={isOpen}
-      onClose={onClose}
-      title={`Proceso ${proceso.radicado}`}
-      size="large"
-    >
-      <div className="space-y-4">
-        {/* Estado */}
-        <div className="flex items-center justify-between pb-3 border-b">
-          <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${estadoConfig.color}`}>
-            {estadoConfig.label}
-          </span>
-          <div className="text-right">
-            <p className="text-xs text-gray-500">Fecha creación</p>
-            <p className="text-sm font-medium text-gray-900">
-              {proceso.fechaCreacion.toLocaleDateString('es-CO', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}
-            </p>
-          </div>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Proceso {proceso.radicado}</h2>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
         </div>
 
-        {/* Información del Deudor */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <User className="w-4 h-4 text-[#003DA5]" />
-            Información del Deudor
-          </h3>
-          <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-gray-500">Nombre</p>
-                <p className="text-sm font-medium text-gray-900">{proceso.deudor.nombre}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Identificación</p>
-                <p className="text-sm font-medium text-gray-900">{proceso.deudor.identificacion}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Teléfono</p>
-                <p className="text-sm text-gray-900">{proceso.deudor.telefono}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Email</p>
-                <p className="text-sm text-gray-900">{proceso.deudor.email}</p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-xs text-gray-500">Dirección</p>
-                <p className="text-sm text-gray-900">{proceso.deudor.direccion}</p>
-              </div>
+        <div className="p-6 space-y-4">
+          {/* Estado */}
+          <div className="flex items-center justify-between pb-3 border-b">
+            <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${estadoConfig.color}`}>
+              {estadoConfig.label}
+            </span>
+            <div className="text-right">
+              <p className="text-xs text-gray-500">Fecha creación</p>
+              <p className="text-sm font-medium text-gray-900">
+                {proceso.fechaCreacion.toLocaleDateString('es-CO', { 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </p>
             </div>
           </div>
-        </div>
 
-        {/* Información de la Obligación */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <DollarSign className="w-4 h-4 text-green-600" />
-            Obligación
-          </h3>
-          <div className="bg-green-50 rounded-lg p-4 space-y-3">
-            <div>
-              <p className="text-xs text-green-700 mb-1">Concepto</p>
-              <p className="text-sm font-medium text-gray-900">{proceso.obligacion.concepto}</p>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <p className="text-xs text-green-700">Valor</p>
-                <p className="text-lg font-bold text-green-900">
-                  ${proceso.obligacion.valor.toLocaleString('es-CO')}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-green-700">Vencimiento</p>
-                <p className="text-sm font-medium text-gray-900">
-                  {proceso.obligacion.fechaVencimiento.toLocaleDateString('es-CO')}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-green-700">Días vencidos</p>
-                <p className="text-sm font-bold text-red-600">
-                  {proceso.obligacion.diasVencidos} días
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Gestión del Proceso */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <FileCheck className="w-4 h-4 text-blue-600" />
-            Gestión del Proceso
-          </h3>
-          <div className="bg-blue-50 rounded-lg p-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-blue-700">Responsable</p>
-                <p className="text-sm font-medium text-gray-900">{proceso.responsable}</p>
-              </div>
-              <div>
-                <p className="text-xs text-blue-700">Última actuación</p>
-                <p className="text-sm font-medium text-gray-900">
-                  {proceso.ultimaActuacion.toLocaleDateString('es-CO')}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-blue-700">Documentos adjuntos</p>
-                <p className="text-sm font-semibold text-gray-900">{proceso.documentosAdjuntos}</p>
-              </div>
-              <div>
-                <p className="text-xs text-blue-700">Notificaciones enviadas</p>
-                <p className="text-sm font-semibold text-gray-900">{proceso.notificacionesEnviadas}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Observaciones */}
-        {proceso.observaciones && (
+          {/* Información del Deudor */}
           <div>
-            <h3 className="font-semibold text-gray-900 mb-3">Observaciones</h3>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <p className="text-sm text-gray-900">{proceso.observaciones}</p>
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <User className="w-4 h-4 text-[#003DA5]" />
+              Información del Deudor
+            </h3>
+            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500">Nombre</p>
+                  <p className="text-sm font-medium text-gray-900">{proceso.deudor.nombre}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Identificación</p>
+                  <p className="text-sm font-medium text-gray-900">{proceso.deudor.identificacion}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Teléfono</p>
+                  <p className="text-sm text-gray-900">{proceso.deudor.telefono}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Email</p>
+                  <p className="text-sm text-gray-900">{proceso.deudor.email}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-500">Dirección</p>
+                  <p className="text-sm text-gray-900">{proceso.deudor.direccion}</p>
+                </div>
+              </div>
             </div>
           </div>
-        )}
 
-        {/* Botones de acción */}
-        <div className="flex justify-end gap-3 pt-4 border-t">
-          <ButtonSIGL variant="outline" onClick={onClose}>
+          {/* Información de la Obligación */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-green-600" />
+              Obligación
+            </h3>
+            <div className="bg-green-50 rounded-lg p-4 space-y-3">
+              <div>
+                <p className="text-xs text-green-700 mb-1">Concepto</p>
+                <p className="text-sm font-medium text-gray-900">{proceso.obligacion.concepto}</p>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-xs text-green-700">Valor</p>
+                  <p className="text-lg font-bold text-green-900">
+                    ${proceso.obligacion.valor.toLocaleString('es-CO')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-green-700">Vencimiento</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {proceso.obligacion.fechaVencimiento.toLocaleDateString('es-CO')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-green-700">Días vencidos</p>
+                  <p className="text-sm font-bold text-red-600">
+                    {proceso.obligacion.diasVencidos} días
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Gestión del Proceso */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <FileCheck className="w-4 h-4 text-blue-600" />
+              Gestión del Proceso
+            </h3>
+            <div className="bg-blue-50 rounded-lg p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-blue-700">Responsable</p>
+                  <p className="text-sm font-medium text-gray-900">{proceso.responsable}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-blue-700">Última actuación</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {proceso.ultimaActuacion.toLocaleDateString('es-CO')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-blue-700">Documentos adjuntos</p>
+                  <p className="text-sm font-semibold text-gray-900">{proceso.documentosAdjuntos}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-blue-700">Notificaciones enviadas</p>
+                  <p className="text-sm font-semibold text-gray-900">{proceso.notificacionesEnviadas}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Observaciones */}
+          {proceso.observaciones && (
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-3">Observaciones</h3>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <p className="text-sm text-gray-900">{proceso.observaciones}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+          >
             Cerrar
-          </ButtonSIGL>
-          <ButtonSIGL onClick={() => toast.info('Función en desarrollo')}>
-            <Download className="w-4 h-4 mr-2" />
+          </button>
+          <button
+            onClick={() => toast.info('Función en desarrollo')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+            style={{ 
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+            }}
+          >
+            <Download className="w-4 h-4" />
             Exportar PDF
-          </ButtonSIGL>
+          </button>
         </div>
       </div>
-    </ModalSIGL>
+    </div>
   );
 }
