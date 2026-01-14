@@ -187,12 +187,6 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: certification
 
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
-      SMTP_FROM: ${SMTP_FROM}
-
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
     ports:
@@ -342,6 +336,12 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: notifications
+
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000

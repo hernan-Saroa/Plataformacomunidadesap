@@ -30,7 +30,6 @@
     "docx-templates": "^4.15.0",
     "docxtemplater": "^3.67.6",
     "jszip-utils": "^0.1.0",
-    "nodemailer": "^6.9.14",
     "pg": "^8.16.3",
     "pizzip": "^3.2.0",
     "reflect-metadata": "^0.2.2",

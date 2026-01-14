@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Like } from 'typeorm';
 import { Riesgo, TipoRiesgo, ZonaRiesgo, EtapaRiesgo, EstadoRiesgo } from '../entities/riesgo.entity';
 
 @Injectable()
@@ -27,10 +27,25 @@ export class RiesgosService {
     }
 
     async create(data: Partial<Riesgo>): Promise<Riesgo> {
-        // Generar código automático
+        // Generar código automático basado en el último existente
         const year = new Date().getFullYear();
-        const count = await this.riesgoRepo.count();
-        data.codigo = `R-${year}-${String(count + 1).padStart(3, '0')}`;
+        const lastRiesgo = await this.riesgoRepo.findOne({
+            where: { codigo: Like(`R-${year}-%`) },
+            order: { codigo: 'DESC' }
+        });
+
+        let nextNum = 1;
+        if (lastRiesgo && lastRiesgo.codigo) {
+            const parts = lastRiesgo.codigo.split('-');
+            if (parts.length === 3) {
+                const currentNum = parseInt(parts[2], 10);
+                if (!isNaN(currentNum)) {
+                    nextNum = currentNum + 1;
+                }
+            }
+        }
+
+        data.codigo = `R-${year}-${String(nextNum).padStart(3, '0')}`;
 
         // Calcular zona inherente y residual
         data.zonaInherente = this.calcularZona(data.probabilidadInherente || 3, data.impactoInherente || 3);
