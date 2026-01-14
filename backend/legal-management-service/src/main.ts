@@ -12,7 +12,8 @@ async function bootstrap() {
   app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
   app.enableCors({
-    origin: 'http://localhost:3000', // Permitir solo frontend local
+    origin: true, // Permitir cualquier origen (o configurar según var de entorno)
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
 
