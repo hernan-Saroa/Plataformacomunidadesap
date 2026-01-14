@@ -9,7 +9,7 @@
  */
 
 import { SolicitudInforme } from '../core/types';
-import { expedientesJudicialesMock } from './datosExpedientesJudiciales';
+import { expedientesJudicialesMock } from './datosExpedientesJudicialesExpandido';
 import { sincronizarTodosLosTerminos } from '../services/sincronizacionTerminos';
 
 function fechaHace(dias: number): Date {

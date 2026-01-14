@@ -139,7 +139,7 @@ export function VisorDocumentoModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col p-0">
+      <DialogContent hideCloseButton className="max-w-4xl max-h-[95vh] overflow-hidden flex flex-col p-0">
         <DialogTitle className="sr-only">Visor de Documento - {numero}</DialogTitle>
         <DialogDescription className="sr-only">
           Visualización del documento {archivo}

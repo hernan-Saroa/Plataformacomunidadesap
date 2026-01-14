@@ -1,6 +1,6 @@
 // import { ApiClient } from './apiClient';
 import { apiClient } from './client';
-import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environment';
+import { API_MODE, MICROSERVICE_URLS, getServiceUrl, buildApiUrl } from '../../config/environment';
 
 // Prefijo del servicio legal en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
@@ -88,6 +88,27 @@ export class LegalService {
 
     async createJuzgamientoDecision(radicado: string, data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`, data);
+    }
+
+    // ===== EXCEPCIONES PROCESALES (Juzgamiento) =====
+    async getJuzgamientoExcepciones(radicado: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`);
+    }
+
+    async createJuzgamientoExcepcion(radicado: string, data: {
+        tipo: 'NULIDAD' | 'RECUSACION' | 'PRESCRIPCION' | 'IMPEDIMENTO' | 'OTRA';
+        descripcion: string;
+        fundamento?: string;
+        presentadoPor?: string;
+    }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`, data);
+    }
+
+    async resolverExcepcion(excepcionId: string, data: {
+        estado: 'RESUELTA' | 'RECHAZADA';
+        resolucion: string;
+    }): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/excepciones/${excepcionId}/resolver`, data);
     }
 
     async updateJuzgamientoProceso(radicado: string, data: any): Promise<any> {
@@ -275,22 +296,8 @@ export class LegalService {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/actas/${id}/archivo`, formData);
     }
 
-    // ===== CONSULTAS JURÍDICAS (Asesoría Jurídica) =====
-    async getConsultasJuridicas(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas`);
-    }
+    // Duplicates removed
 
-    async getConsultaJuridica(id: string): Promise<any> {
-        return apiClient.get<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`);
-    }
-
-    async createConsultaJuridica(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/consultas-juridicas`, data);
-    }
-
-    async updateConsultaJuridica(id: string, data: any): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`, data);
-    }
 
     async updateConsultaEstado(id: string, estado: string): Promise<any> {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/estado`, { estado });
@@ -442,10 +449,8 @@ export class LegalService {
         return apiClient.getBlob(`${SERVICE_PREFIX}/pei/export/zip`);
     }
 
-    // ==================== DASHBOARD EJECUTIVO ====================
-    async getDashboardEjecutivo(): Promise<any> {
-        return apiClient.get<any>(`${SERVICE_PREFIX}/dashboard/ejecutivo`);
-    }
+    // Duplicate removed
+
 
     // Método Wrapper para Requerimientos OC (por si acaso el componente llama a legalService.getRequerimientosOC)
     async getRequerimientosOC(): Promise<any[]> {
@@ -608,6 +613,12 @@ class OCService {
     async deleteDocumento(documentoId: string): Promise<void> {
         await apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/documentos/${documentoId}`);
     }
+
+    getDocumentosDownloadUrl(requerimientoId: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        return `${baseUrl}${prefix}/requerimientos-oc/${requerimientoId}/documentos/download-zip`;
+    }
 }
 
 // ==================== Riesgos API ====================
@@ -729,12 +740,25 @@ export interface SendCorreoDto {
     attachments?: { name: string; contentBytes: string; contentType: string }[];
 }
 
+export interface AdjuntoCorreo {
+    id: string;
+    correoId: string;
+    graphMessageId: string;
+    graphAttachmentId: string;
+    nombre: string;
+    contentType: string | null;
+    tamanio: number;
+    archivoLocalUrl: string | null;
+    descargado: boolean;
+    createdAt: string;
+}
+
 export class CorreosJuridicosService {
     /**
      * Trigger manual sync from Microsoft Graph
      */
     async syncCorreos(): Promise<{ synced: number; errors: number }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`);
+        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, {});
     }
 
     /**
@@ -785,10 +809,159 @@ export class CorreosJuridicosService {
     async sendEmail(dto: SendCorreoDto): Promise<{ success: boolean }> {
         return apiClient.post(`${SERVICE_PREFIX}/correos/send`, dto);
     }
+
+    /**
+     * Get attachments for an email
+     */
+    async getAdjuntos(correoId: string): Promise<AdjuntoCorreo[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/${correoId}/adjuntos`);
+    }
+
+    /**
+     * Download an attachment - returns a blob URL for download
+     * Handles both gateway and direct modes:
+     * - Gateway mode: http://gateway:3000/legal/api/v1/correos/adjuntos/{id}/download
+     * - Direct mode: http://localhost:3008/correos/adjuntos/{id}/download
+     */
+    async downloadAdjunto(adjuntoId: string): Promise<string> {
+        let url: string;
+
+        if (API_MODE === 'direct') {
+            // Direct mode: go straight to microservice without /legal/api/v1 prefix
+            url = `${MICROSERVICE_URLS.legal}/correos/adjuntos/${adjuntoId}/download`;
+        } else {
+            // Gateway mode: use SERVICE_PREFIX which includes /legal/api/v1
+            const baseUrl = getServiceUrl('legal');
+            url = `${baseUrl}${SERVICE_PREFIX}/correos/adjuntos/${adjuntoId}/download`;
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Error downloading attachment');
+
+        const blob = await response.blob();
+        return window.URL.createObjectURL(blob);
+    }
+
+    /**
+     * Export email to ZIP
+     */
+    async exportCorreoZip(id: string): Promise<string> {
+        const blob = await apiClient.getBlob(`${SERVICE_PREFIX}/correos/${id}/export/zip`);
+        return window.URL.createObjectURL(blob);
+    }
+}
+
+// ===== PROCESOS COACTIVOS SERVICE =====
+export interface ProcesoCoactivoDeudor {
+    nombre: string;
+    identificacion: string;
+    telefono?: string;
+    email?: string;
+    direccion?: string;
+}
+
+export interface ProcesoCoactivoObligacion {
+    concepto: string;
+    valor: number;
+    fechaVencimiento: string;
+}
+
+export interface ProcesoCoactivo {
+    id: string;
+    radicado: string;
+    deudor: ProcesoCoactivoDeudor;
+    obligacion: ProcesoCoactivoObligacion;
+    estado: 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJURIDICO' | 'MANDAMIENTO' | 'EMBARGO' | 'FINALIZADO';
+    responsable?: string;
+    documentosAdjuntos: number;
+    notificacionesEnviadas: number;
+    observaciones?: string;
+    ultimaActuacion?: string;
+    fechaCreacion: string;
+}
+
+export interface ProcesoCoactivoStats {
+    total: number;
+    activos: number;
+    criticos: number;
+    totalMonto: number;
+    porEstado: Record<string, number>;
+}
+
+export interface CreateProcesoCoactivoDto {
+    deudor: ProcesoCoactivoDeudor;
+    obligacion: ProcesoCoactivoObligacion;
+    responsable?: string;
+    observaciones?: string;
+}
+
+export interface ProcesoCoactivoAdjunto {
+    id: string;
+    procesoId: string;
+    nombreOriginal: string;
+    nombreArchivo: string;
+    mimeType: string;
+    tamano: number;
+    fechaCreacion: string;
+}
+
+export class ProcesosCoactivosService {
+    async getAll(): Promise<ProcesoCoactivo[]> {
+        return apiClient.get<ProcesoCoactivo[]>(`${SERVICE_PREFIX}/procesos-coactivos`);
+    }
+
+    async getOne(id: string): Promise<ProcesoCoactivo> {
+        return apiClient.get<ProcesoCoactivo>(`${SERVICE_PREFIX}/procesos-coactivos/${id}`);
+    }
+
+    async getStats(): Promise<ProcesoCoactivoStats> {
+        return apiClient.get<ProcesoCoactivoStats>(`${SERVICE_PREFIX}/procesos-coactivos/stats`);
+    }
+
+    async create(dto: CreateProcesoCoactivoDto): Promise<ProcesoCoactivo> {
+        return apiClient.post<ProcesoCoactivo>(`${SERVICE_PREFIX}/procesos-coactivos`, dto);
+    }
+
+    async update(id: string, dto: Partial<ProcesoCoactivo>): Promise<ProcesoCoactivo> {
+        return apiClient.put<ProcesoCoactivo>(`${SERVICE_PREFIX}/procesos-coactivos/${id}`, dto);
+    }
+
+    async delete(id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/procesos-coactivos/${id}`);
+    }
+
+    // Archivos
+    async uploadAdjunto(procesoId: string, file: File): Promise<ProcesoCoactivoAdjunto> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.upload<ProcesoCoactivoAdjunto>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/adjuntos`, formData);
+    }
+
+    async getAdjuntos(procesoId: string): Promise<ProcesoCoactivoAdjunto[]> {
+        return apiClient.get<ProcesoCoactivoAdjunto[]>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/adjuntos`);
+    }
+
+    async deleteAdjunto(adjuntoId: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/procesos-coactivos/adjuntos/${adjuntoId}`);
+    }
+
+    getAdjuntoDownloadUrl(filename: string, originalName: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        // Ajuste: El endpoint de files está en /files/download/{filename}
+        return `${baseUrl}${prefix}/files/download/${filename}?name=${encodeURIComponent(originalName)}`;
+    }
+
+    getFichaDownloadUrl(procesoId: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/procesos-coactivos/${procesoId}/download-zip`;
+    }
 }
 
 export const legalService = new LegalService();
 export const ocService = new OCService();
 export const riesgosService = new RiesgosService();
 export const correosJuridicosService = new CorreosJuridicosService();
+export const procesosCoactivosService = new ProcesosCoactivosService();
 

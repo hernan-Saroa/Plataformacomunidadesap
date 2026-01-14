@@ -10,7 +10,7 @@ import {
   Gavel, FileText, Users, Clock, AlertTriangle, CheckCircle, X,
   Calendar, User, Building, Phone, Mail, MapPin, Briefcase,
   Eye, Download, Upload, Plus, Edit, Trash2, Send, Bell, Share2,
-  FileDown, ExternalLink
+  FileDown, ExternalLink, Scale
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { FormularioRegistrarDecision } from './FormularioRegistrarDecision';
+import { FormularioExcepcionProcesal } from './FormularioExcepcionProcesal';
 import { copyToClipboard } from '../../../../utils/clipboard';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 
@@ -45,6 +46,10 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   const [mostrarFormularioDecision, setMostrarFormularioDecision] = useState(false);
   const [decisiones, setDecisiones] = useState<any[]>([]);
   const [decisionSeleccionada, setDecisionSeleccionada] = useState<any>(null);
+
+  // Excepciones Procesales
+  const [excepciones, setExcepciones] = useState<any[]>([]);
+  const [mostrarFormularioExcepcion, setMostrarFormularioExcepcion] = useState(false);
 
   // Derived states for tabs options
   const pruebas = actuaciones.filter(a => a.tipoActuacion === 'EVIDENCIA');
@@ -75,6 +80,16 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         .catch(err => {
           console.error('Error loading decisions:', err);
           setDecisiones([]);
+        });
+
+      // Cargar excepciones procesales
+      legalService.getJuzgamientoExcepciones(proceso.id)
+        .then(data => {
+          setExcepciones(Array.isArray(data) ? data : []);
+        })
+        .catch(err => {
+          console.error('Error loading exceptions:', err);
+          setExcepciones([]);
         });
     }
   }, [proceso.id]);
@@ -243,6 +258,34 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     } catch (error) {
       console.error('Error saving decision:', error);
       toast.error('Error al guardar la decisión', { id: 'saving-decision' });
+    }
+  };
+
+  // Handler para guardar nueva excepción procesal
+  const handleGuardarNuevaExcepcion = async (excepcion: any) => {
+    try {
+      toast.loading('Guardando excepción...', { id: 'saving-exception' });
+      const res = await legalService.createJuzgamientoExcepcion(proceso.id, excepcion);
+      setExcepciones(prev => [res, ...prev]);
+      setMostrarFormularioExcepcion(false);
+      setHasChanges(true);
+      toast.success('Excepción registrada correctamente', { id: 'saving-exception' });
+    } catch (error) {
+      console.error('Error saving exception:', error);
+      toast.error('Error al guardar la excepción', { id: 'saving-exception' });
+    }
+  };
+
+  // Handler para resolver excepción
+  const handleResolverExcepcion = async (excepcionId: string, estado: 'RESUELTA' | 'RECHAZADA', resolucion: string) => {
+    try {
+      toast.loading('Resolviendo excepción...', { id: 'resolving-exception' });
+      const res = await legalService.resolverExcepcion(excepcionId, { estado, resolucion });
+      setExcepciones(prev => prev.map(e => e.id === excepcionId ? res : e));
+      toast.success(`Excepción ${estado.toLowerCase()}`, { id: 'resolving-exception' });
+    } catch (error) {
+      console.error('Error resolving exception:', error);
+      toast.error('Error al resolver la excepción', { id: 'resolving-exception' });
     }
   };
 
@@ -622,7 +665,92 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           </TabsContent>
 
           {/* ==================== TAB: DECISIONES ==================== */}
-          <TabsContent value="decisiones" className="flex-1 overflow-y-auto p-6">
+          <TabsContent value="decisiones" className="flex-1 overflow-y-auto p-6 space-y-6">
+
+            {/* ========== SECCIÓN: EXCEPCIONES PROCESALES ========== */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Scale className="w-6 h-6 text-orange-600" />
+                  <h3 className="font-black text-xl text-orange-700">
+                    Excepciones Procesales ({excepciones.length})
+                  </h3>
+                </div>
+                <Button
+                  onClick={() => setMostrarFormularioExcepcion(true)}
+                  style={{ background: '#F97316', color: '#FFFFFF' }}
+                  size="sm"
+                >
+                  <Plus className="w-4 h-4 mr-2" /> Nueva Excepción
+                </Button>
+              </div>
+
+              {excepciones.length === 0 ? (
+                <Card className="p-4 bg-orange-50 border-orange-200 text-center">
+                  <p className="text-orange-700 text-sm">
+                    No hay excepciones procesales registradas en este expediente.
+                  </p>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {excepciones.map((excepcion, index) => (
+                    <Card key={index} className={`p-4 border-2 ${excepcion.estado === 'PENDIENTE' ? 'border-orange-300 bg-orange-50' :
+                      excepcion.estado === 'RESUELTA' ? 'border-green-300 bg-green-50' :
+                        'border-red-300 bg-red-50'
+                      }`}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge
+                              className="font-bold"
+                              style={{
+                                background: excepcion.tipo === 'NULIDAD' ? '#EF4444' :
+                                  excepcion.tipo === 'RECUSACION' ? '#8B5CF6' :
+                                    excepcion.tipo === 'PRESCRIPCION' ? '#F59E0B' :
+                                      excepcion.tipo === 'IMPEDIMENTO' ? '#3B82F6' : '#6B7280',
+                                color: '#FFFFFF'
+                              }}
+                            >
+                              {excepcion.tipo}
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className={`font-bold ${excepcion.estado === 'PENDIENTE' ? 'text-orange-700 border-orange-500' :
+                                excepcion.estado === 'RESUELTA' ? 'text-green-700 border-green-500' :
+                                  'text-red-700 border-red-500'
+                                }`}
+                            >
+                              {excepcion.estado}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-gray-800 mb-2">{excepcion.descripcion}</p>
+                          {excepcion.fundamento && (
+                            <p className="text-xs text-gray-600 italic mb-2">
+                              <strong>Fundamento:</strong> {excepcion.fundamento}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-4 text-xs text-gray-500">
+                            <span>📅 {new Date(excepcion.fechaPresentacion).toLocaleDateString('es-CO')}</span>
+                            {excepcion.presentadoPor && <span>👤 {excepcion.presentadoPor}</span>}
+                          </div>
+                          {excepcion.resolucion && (
+                            <div className="mt-2 p-2 bg-white rounded border">
+                              <p className="text-xs font-bold text-gray-700">Resolución:</p>
+                              <p className="text-sm text-gray-800">{excepcion.resolucion}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Separador */}
+            <div className="border-t-2 border-gray-200 my-6"></div>
+
+            {/* ========== SECCIÓN: DECISIONES ========== */}
             {decisiones.length === 0 ? (
               <Card className="p-6 text-center">
                 <CheckCircle className="w-16 h-16 mx-auto mb-4 text-gray-300" />
@@ -773,7 +901,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       {/* ==================== MODALES COMPLEMENTARIOS ==================== */}
       {mostrarModalNotificar && (
         <Dialog open={mostrarModalNotificar} onOpenChange={setMostrarModalNotificar}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent hideCloseButton className="max-w-2xl">
             <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
               <Bell className="w-6 h-6" />
               Notificar Última Actuación Procesal
@@ -830,7 +958,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
       {mostrarModalPortales && (
         <Dialog open={mostrarModalPortales} onOpenChange={setMostrarModalPortales}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent hideCloseButton className="max-w-2xl">
             <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
               <ExternalLink className="w-6 h-6" />
               Abrir en Portales
@@ -962,6 +1090,16 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Modal para Registrar Excepción Procesal */}
+      {mostrarFormularioExcepcion && (
+        <FormularioExcepcionProcesal
+          isOpen={mostrarFormularioExcepcion}
+          onClose={() => setMostrarFormularioExcepcion(false)}
+          onGuardar={handleGuardarNuevaExcepcion}
+          procesoId={proceso.id || ''}
+        />
       )}
     </Dialog>
   );

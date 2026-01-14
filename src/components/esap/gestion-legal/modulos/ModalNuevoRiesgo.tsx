@@ -462,9 +462,10 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                   >
                     <option value="IDENTIFICADO">1️⃣ Identificado</option>
-                    <option value="EVALUADO">2️⃣ Evaluado</option>
-                    <option value="EN_TRATAMIENTO">3️⃣ En Tratamiento</option>
-                    <option value="MONITOREADO">4️⃣ Monitoreado</option>
+                    <option value="ANALIZADO">2️⃣ Analizado</option>
+                    <option value="VALORADO">3️⃣ Valorado</option>
+                    <option value="TRATAMIENTO">4️⃣ En Tratamiento</option>
+                    <option value="MONITOREO">5️⃣ Monitoreado</option>
                   </select>
                 </div>
               </div>

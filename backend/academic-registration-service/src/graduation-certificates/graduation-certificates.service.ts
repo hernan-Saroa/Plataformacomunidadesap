@@ -48,11 +48,20 @@ export class GraduationCertificatesService {
   /**
    * AUTOSERVICIO: Verificar si un graduado existe en la base de datos
    */
-  async verificarGraduado(idNumber: string, idIssueDate?: string) {
+  async verificarGraduado(
+    idNumber: string,
+    idIssueDate?: string,
+    graduationDate?: string,
+    lastName?: string,
+  ) {
     const normalizedIdNumber = (idNumber || '').replace(/\D+/g, '');
     const issueDate = idIssueDate ? this.normalizeDateString(idIssueDate) : null;
+    const gradDate = graduationDate ? this.normalizeDateString(graduationDate) : null;
     if (idIssueDate && !issueDate) {
       throw new BadRequestException('Fecha de expedici?n inv?lida');
+    }
+    if (graduationDate && !gradDate) {
+      throw new BadRequestException('Fecha de graduaci?n inv?lida');
     }
 
     const where: any = {
@@ -71,10 +80,22 @@ export class GraduationCertificatesService {
     if (issueDate) {
       where.idIssueDate = Raw((alias) => `${alias} = :issueDate`, { issueDate });
     }
+    if (gradDate) {
+      where.graduationDate = Raw((alias) => `${alias} = :gradDate`, { gradDate });
+    }
 
     const graduate = await this.graduateRepository.findOne({ where });
 
+    const lastNameNormalized = lastName ? this.normalizeName(lastName) : '';
+
     if (!graduate) {
+      return {
+        existe: false,
+        mensaje: 'No se encontr? un graduado con esos datos',
+      };
+    }
+
+    if (lastNameNormalized && !this.matchesLastName(graduate.fullName, lastNameNormalized)) {
       return {
         existe: false,
         mensaje: 'No se encontr? un graduado con esos datos',
@@ -155,9 +176,14 @@ export class GraduationCertificatesService {
   async solicitarCertificadoLanding(dto: LandingCertificateRequestDto) {
     const normalizedIdNumber = (dto.idNumber || '').replace(/\D+/g, '');
     const issueDate = dto.idIssueDate ? this.normalizeDateString(dto.idIssueDate) : null;
+    const gradDate = dto.graduationDate ? this.normalizeDateString(dto.graduationDate) : null;
+    const lastNameNormalized = dto.lastName ? this.normalizeName(dto.lastName) : '';
 
     if (dto.idIssueDate && !issueDate) {
       throw new BadRequestException('Fecha de expedici?n inv?lida');
+    }
+    if (dto.graduationDate && !gradDate) {
+      throw new BadRequestException('Fecha de graduaci?n inv?lida');
     }
 
     this.logger.debug(
@@ -180,8 +206,18 @@ export class GraduationCertificatesService {
     if (issueDate) {
       where.idIssueDate = Raw((alias) => `${alias} = :issueDate`, { issueDate });
     }
+    if (gradDate) {
+      where.graduationDate = Raw((alias) => `${alias} = :gradDate`, { gradDate });
+    }
 
-    const graduate = await this.graduateRepository.findOne({ where });
+    let graduate = await this.graduateRepository.findOne({ where });
+
+    if (graduate && lastNameNormalized && !this.matchesLastName(graduate.fullName, lastNameNormalized)) {
+      this.logger.warn(
+        `Apellido no coincide para idNumber=${dto.idNumber?.trim()} lastName=${dto.lastName?.trim() || 'N/A'}`,
+      );
+      graduate = null;
+    }
 
     if (!graduate) {
       this.logger.warn(
@@ -571,6 +607,20 @@ export class GraduationCertificatesService {
       NOT_FOUND: 'No se encontró el certificado',
     };
     return messages[result] || 'Estado desconocido';
+  }
+
+  private normalizeName(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  private matchesLastName(fullName: string, lastNameNormalized: string): boolean {
+    if (!lastNameNormalized) return true;
+    const normalizedFullName = this.normalizeName(fullName);
+    return normalizedFullName.includes(lastNameNormalized);
   }
 
   private normalizeRequesterType(input?: string): 'GRADUATE' | 'COMPANY' {

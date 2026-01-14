@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { CorreoJuridico } from '../entities/correo-juridico.entity';
+import { AdjuntoCorreo } from '../entities/adjunto-correo.entity';
 import { MicrosoftGraphService, GraphEmail } from './microsoft-graph.service';
 
 export interface EmailFilters {
@@ -35,6 +36,8 @@ export class CorreosJuridicosService {
     constructor(
         @InjectRepository(CorreoJuridico)
         private readonly correoRepo: Repository<CorreoJuridico>,
+        @InjectRepository(AdjuntoCorreo)
+        private readonly adjuntoRepo: Repository<AdjuntoCorreo>,
         private readonly graphService: MicrosoftGraphService,
     ) { }
 
@@ -146,6 +149,37 @@ export class CorreosJuridicosService {
                             existing.leido = email.isRead;
                             await this.correoRepo.save(existing);
                         }
+
+                        // Sync attachments for existing emails that have them but haven't synced yet
+                        if (existing.tieneAdjuntos) {
+                            const existingAttachments = await this.adjuntoRepo.count({
+                                where: { correoId: existing.id }
+                            });
+
+                            if (existingAttachments === 0) {
+                                try {
+                                    const attachments = await this.graphService.getAttachments(email.id);
+                                    for (const att of attachments) {
+                                        const adjunto = this.adjuntoRepo.create({
+                                            correoId: existing.id,
+                                            graphMessageId: email.id,
+                                            graphAttachmentId: att.id,
+                                            nombre: att.name,
+                                            contentType: att.contentType,
+                                            tamanio: att.size,
+                                            descargado: false,
+                                        });
+                                        await this.adjuntoRepo.save(adjunto);
+                                    }
+                                    if (attachments.length > 0) {
+                                        this.logger.log(`  -> Synced ${attachments.length} attachment(s) for existing email`);
+                                        synced++; // Count as synced since we added attachments
+                                    }
+                                } catch (attError) {
+                                    this.logger.error(`Error syncing attachments for existing email ${email.id}:`, attError);
+                                }
+                            }
+                        }
                         continue;
                     }
 
@@ -171,7 +205,30 @@ export class CorreosJuridicosService {
                         confianzaClasificacion: classification.confianza,
                     });
 
-                    await this.correoRepo.save(newCorreo);
+                    const savedCorreo = await this.correoRepo.save(newCorreo);
+
+                    // Sync attachments if email has any
+                    if (email.hasAttachments) {
+                        try {
+                            const attachments = await this.graphService.getAttachments(email.id);
+                            for (const att of attachments) {
+                                const adjunto = this.adjuntoRepo.create({
+                                    correoId: savedCorreo.id,
+                                    graphMessageId: email.id,
+                                    graphAttachmentId: att.id,
+                                    nombre: att.name,
+                                    contentType: att.contentType,
+                                    tamanio: att.size,
+                                    descargado: false,
+                                });
+                                await this.adjuntoRepo.save(adjunto);
+                            }
+                            this.logger.log(`  -> Synced ${attachments.length} attachment(s)`);
+                        } catch (attError) {
+                            this.logger.error(`Error syncing attachments for email ${email.id}:`, attError);
+                        }
+                    }
+
                     synced++;
                     this.logger.log(`Synced: ${email.subject?.substring(0, 50)}...`);
                 } catch (emailError) {
@@ -301,4 +358,125 @@ export class CorreosJuridicosService {
     async testConnection(): Promise<{ success: boolean; message: string }> {
         return this.graphService.testConnection();
     }
+
+    /**
+     * Get attachments for a specific email
+     */
+    async getAttachments(correoId: string): Promise<AdjuntoCorreo[]> {
+        return this.adjuntoRepo.find({
+            where: { correoId },
+            order: { nombre: 'ASC' },
+        });
+    }
+
+    /**
+     * Download attachment from Graph API
+     * Returns the attachment data (base64)
+     */
+    async downloadAttachment(adjuntoId: string): Promise<{
+        name: string;
+        contentType: string;
+        contentBytes: string;
+        size: number;
+    }> {
+        const adjunto = await this.adjuntoRepo.findOne({ where: { id: adjuntoId } });
+
+        if (!adjunto) {
+            throw new NotFoundException(`Adjunto ${adjuntoId} not found`);
+        }
+
+        // Download from Graph API
+        const attachment = await this.graphService.downloadAttachment(
+            adjunto.graphMessageId,
+            adjunto.graphAttachmentId
+        );
+
+        return attachment;
+    }
+
+    /**
+     * Export email to ZIP (PDF Report + Attachments)
+     */
+    async exportCorreoToZip(id: string): Promise<any> {
+        const correo = await this.correoRepo.findOne({ where: { id } });
+        if (!correo) throw new NotFoundException('Correo no encontrado');
+
+        const adjuntos = await this.adjuntoRepo.find({ where: { correoId: id } });
+
+        const archiver = require('archiver');
+        const PDFDocument = require('pdfkit');
+
+        const archive = archiver('zip', {
+            zlib: { level: 9 }
+        });
+
+        // Error handling
+        archive.on('error', (err: any) => {
+            console.error('Archiver error:', err);
+        });
+
+        // 1. Generate PDF Report
+        try {
+            const doc = new PDFDocument();
+            archive.append(doc, { name: `Reporte_${correo.id}.pdf` });
+
+            // Header
+            doc.fontSize(18).text('Detalle de Comunicación Jurídica', { align: 'center' });
+            doc.moveDown();
+
+            // Metadata
+            const formatDate = (d: any) => d ? new Date(d).toLocaleString('es-CO') : 'N/A';
+
+            doc.fontSize(12).font('Helvetica-Bold').text('Asunto:', { continued: true }).font('Helvetica').text(` ${correo.asunto}`);
+            doc.font('Helvetica-Bold').text('Remitente:', { continued: true }).font('Helvetica').text(` ${correo.remitenteNombre} <${correo.remitenteEmail}>`);
+            doc.font('Helvetica-Bold').text('Fecha:', { continued: true }).font('Helvetica').text(` ${formatDate(correo.fechaRecepcion)}`);
+            doc.font('Helvetica-Bold').text('Tipo:', { continued: true }).font('Helvetica').text(` ${correo.tipo} - ${correo.categoria || ''}`);
+            doc.font('Helvetica-Bold').text('Estado:', { continued: true }).font('Helvetica').text(` ${correo.archivado ? 'ARCHIVADO' : (correo.leido ? 'LEIDO' : 'PENDIENTE')}`);
+
+            doc.moveDown();
+            doc.font('Helvetica-Bold').text('Contenido:', { underline: true });
+            doc.moveDown(0.5);
+            doc.font('Helvetica').text(correo.cuerpoTexto || '(Sin contenido de texto previa)');
+
+            doc.moveDown();
+
+            // Attachments info
+            if (adjuntos.length > 0) {
+                doc.font('Helvetica-Bold').text(`Adjuntos Relacionados (${adjuntos.length}):`);
+                adjuntos.forEach(adj => {
+                    doc.font('Helvetica').text(`- ${adj.nombre} (${(adj.tamanio / 1024).toFixed(1)} KB)`);
+                });
+            } else {
+                doc.text('Sin archivos adjuntos.');
+            }
+
+            doc.end();
+        } catch (pdfError) {
+            console.error('Error generating PDF report for email export:', pdfError);
+            archive.append(Buffer.from(`Error generando PDF: ${pdfError}`), { name: 'error_pdf.txt' });
+        }
+
+        // 2. Add Attachments
+        if (adjuntos.length > 0) {
+            for (const adj of adjuntos) {
+                try {
+                    // Fetch attachment content from Graph
+                    const attData = await this.graphService.downloadAttachment(adj.graphMessageId, adj.graphAttachmentId);
+
+                    // Decode base64 
+                    if (attData && attData.contentBytes) {
+                        const buffer = Buffer.from(attData.contentBytes, 'base64');
+                        archive.append(buffer, { name: `Adjuntos/${adj.nombre}` });
+                    }
+                } catch (attError) {
+                    console.error(`Error fetching attachment ${adj.nombre}:`, attError);
+                    archive.append(Buffer.from(`Error descargando adjunto: ${attError}`), { name: `Adjuntos/ERROR_${adj.nombre}.txt` });
+                }
+            }
+        }
+
+        archive.finalize();
+        return archive;
+    }
+
 }

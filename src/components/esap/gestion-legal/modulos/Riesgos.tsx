@@ -207,24 +207,23 @@ export function Riesgos() {
     }
   };
 
-  // Handler para archivar riesgo
-  const handleArchivarRiesgo = async (riesgo: Riesgo) => {
-    const toastId = toast.loading('Archivando riesgo...');
+  // Handler para eliminar riesgo
+  const handleEliminarRiesgo = async (riesgo: Riesgo) => {
+    const toastId = toast.loading('Eliminando riesgo...');
     try {
-      await riesgosService.archivar(riesgo.id);
+      await riesgosService.delete(riesgo.id);
 
-      // Actualizar estado local
-      setRiesgos(prev => prev.map(r =>
-        r.id === riesgo.id ? { ...r, estado: 'ARCHIVADO' as const } : r
-      ));
+      // Actualizar estado local eliminando el item
+      setRiesgos(prev => prev.filter(r => r.id !== riesgo.id));
 
-      toast.success('Riesgo archivado', {
+      toast.success('Riesgo eliminado permanentemente', {
         id: toastId,
-        description: `${riesgo.codigo || riesgo.id} ha sido archivado`
+        description: `${riesgo.codigo || riesgo.id} ha sido eliminado`
       });
+      setModalDetalleOpen(false);
     } catch (error) {
-      console.error('Error archivando riesgo:', error);
-      toast.error('Error al archivar el riesgo', { id: toastId });
+      console.error('Error eliminando riesgo:', error);
+      toast.error('Error al eliminar el riesgo', { id: toastId });
     }
   };
 
@@ -401,7 +400,7 @@ export function Riesgos() {
         onClose={() => setModalDetalleOpen(false)}
         riesgo={riesgoSeleccionado}
         onEdit={handleEditarRiesgo}
-        onArchive={handleArchivarRiesgo}
+        onDelete={handleEliminarRiesgo}
       />
     </div>
   );
