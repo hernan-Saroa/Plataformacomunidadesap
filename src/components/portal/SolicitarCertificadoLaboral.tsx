@@ -47,6 +47,7 @@ interface EmpleadoData {
   tipo_vinculacion: string;
   cargo: string;
   dependencia: string;
+  dependenciaPadre?: string;
   fecha_vinculacion: string;
   estado: 'Activo' | 'Retirado';
   correo_institucional: string;
@@ -61,6 +62,7 @@ interface CertificadoGenerado {
   fecha_generacion: string;
   cargo: string;
   dependencia: string;
+  dependenciaPadre?: string;
   fecha_vinculacion: string;
   salario_actual: number;
   salario_original?: number;
@@ -157,6 +159,21 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     return texto.includes('docent') ? 'docente' : 'administrador';
   };
 
+  const parseDateOnly = (fechaStr?: string) => {
+    if (!fechaStr) {
+      return null;
+    }
+    const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day, 12, 0, 0);
+    }
+    const parsed = new Date(fechaStr);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
   const mapCertificadoExistente = (cert: any): CertificadoGenerado => {
     const templateType = resolverTemplateType(cert);
     const salarioBase = cert.monthly_salary || 0;
@@ -167,6 +184,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
       cargo: cert.career_category || 'N/A',
       dependencia: cert.department || 'N/A',
+      dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
       fecha_vinculacion: cert.hiring_date?.split('T')[0] || 'N/A',
       salario_actual: salarioBase,
       salario_original: salarioBase,
@@ -186,6 +204,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
           email: cert.email || cert.certificate_email || 'N/A',
           cargo: cert.career_category,
           dependencia: cert.department || 'N/A',
+          dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
           tipoVinculacion: cert.position_category || 'Administrativo',
           fechaVinculacion: cert.hiring_date,
           grado: cert.position_location || 'N/A',
@@ -390,6 +409,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         tipo_vinculacion: vinculoNormalizado,
         cargo: cargoNormalizado,
         dependencia: solicitud.department || 'N/A',
+        dependenciaPadre: solicitud.department_parent || solicitud.departmentParent || 'Registro padre',
         fecha_vinculacion: solicitud.hiring_date || new Date().toISOString(),
         estado: 'Activo',
         correo_institucional: response.email,
@@ -453,6 +473,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
         cargo: cert.career_category || empleadoEncontrado?.cargo || 'N/A',
         dependencia: cert.department || empleadoEncontrado?.dependencia || 'N/A',
+        dependenciaPadre: cert.department_parent || cert.departmentParent || empleadoEncontrado?.dependenciaPadre || 'Registro padre',
         fecha_vinculacion: cert.hiring_date?.split('T')[0] || empleadoEncontrado?.fecha_vinculacion || 'N/A',
         salario_actual: salarioBase,
         salario_original: salarioBase,
@@ -473,6 +494,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
             email: empleadoEncontrado?.correo_institucional || 'N/A',
             cargo: cert.career_category,
             dependencia: cert.department || 'N/A',
+            dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
             tipoVinculacion: cert.position_category || 'Administrativo',
             fechaVinculacion: cert.hiring_date,
             grado: cert.position_location || 'N/A',
@@ -1171,12 +1193,14 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                           </div>
                           <div>
                             <p className="text-gray-600 mb-1">Dependencia</p>
-                            <p className="font-bold text-gray-900">{certificadoGenerado.dependencia}</p>
+                            <p className="font-bold text-gray-900">
+                              {certificadoGenerado.dependenciaPadre || 'Registro padre'}
+                            </p>
                           </div>
                           <div>
                             <p className="text-gray-600 mb-1">Fecha de Vinculación</p>
                             <p className="font-bold text-gray-900">
-                              {new Date(certificadoGenerado.fecha_vinculacion).toLocaleDateString('es-CO')}
+                              {parseDateOnly(certificadoGenerado.fecha_vinculacion)?.toLocaleDateString('es-CO') || 'N/A'}
                             </p>
                           </div>
                           {incluirSalario ? (

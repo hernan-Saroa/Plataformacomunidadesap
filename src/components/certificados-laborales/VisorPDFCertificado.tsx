@@ -32,6 +32,7 @@ interface VisorPDFCertificadoProps {
       email: string;
       cargo: string;
       dependencia: string;
+      dependenciaPadre?: string;
       tipoVinculacion: string;
       fechaVinculacion: string;
       grado: string;
@@ -43,6 +44,7 @@ interface VisorPDFCertificadoProps {
     fechaSolicitud: string;
     fechaGeneracion?: string;
     estado: string;
+    observations?: string;
     firmante?: {
       nombre: string;
       cargo: string;
@@ -51,6 +53,7 @@ interface VisorPDFCertificadoProps {
     // Campos adicionales del backend
     position_location?: string; // Ubicación del cargo
     department?: string; // Departamento
+    department_parent?: string; // Dependencia padre
     campus?: string; // Sede
     signer_name?: string; // Nombre del firmante
     signer_position?: string; // Cargo del firmante
@@ -140,8 +143,11 @@ export function VisorPDFCertificado({
     const tipoVinculacion = certificado.empleado.tipoVinculacion || '';
     const cargoTexto = certificado.empleado.cargo || '';
     const grado = certificado.empleado.grado || '';
-    const dependencia = certificado.empleado.dependencia || certificado.department || '';
-    const ubicacion = certificado.position_location || certificado.campus || dependencia || '';
+    const dependenciaHijo = certificado.empleado.dependencia || certificado.department || '';
+    const dependenciaPadre = certificado.empleado.dependenciaPadre || certificado.department_parent || 'Registro padre';
+    const dependenciaPlantilla = dependenciaPadre;
+    const ubicacion = certificado.position_location || certificado.campus || dependenciaHijo || dependenciaPadre || '';
+    const ubicacionCargo = certificado.position_location || ubicacion;
 
     const cargoPlantilla =
       templateType === 'docente'
@@ -155,8 +161,13 @@ export function VisorPDFCertificado({
 
     const dato6 =
       templateType === 'docente'
-        ? ubicacion
-        : (grado || ubicacion);
+        ? ubicacionCargo
+        : (certificado.observations || '');
+
+    const dato7 =
+      templateType === 'administrador'
+        ? ubicacionCargo
+        : dependenciaHijo;
 
     const salarioEnLetras = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
     const fechaExpedicionSource =
@@ -172,12 +183,12 @@ export function VisorPDFCertificado({
       '[DATO4]': formatearFecha(certificado.empleado.fechaVinculacion),
       '[DATO5]': cargoPlantilla,
       '[DATO6]': dato6,
-      '[DATO7]': dependencia,
+      '[DATO7]': dato7,
       '[DATO8]': incluirSalario ? (salarioTextoBase || salarioEnLetras) : '',
       '[NOMBRE_EMPLEADO]': certificado.empleado.nombre || '',
       '[DOCUMENTO]': certificado.empleado.documento || '',
       '[CARGO]': cargoPlantilla,
-      '[DEPENDENCIA]': dependencia,
+      '[DEPENDENCIA]': dependenciaPlantilla,
       '[FECHA_INICIO]': formatearFecha(certificado.empleado.fechaVinculacion),
       '[FECHA_FIN]': 'la actualidad',
       '[SALARIO]': incluirSalario && salarioBase ? `($${salarioBase.toLocaleString('es-CO')})` : '',

@@ -39,6 +39,7 @@ interface CertificadoDetallePanelProps {
       email: string;
       cargo: string;
       dependencia: string;
+      dependenciaPadre: string;
       tipoVinculacion: string;
       fechaVinculacion: string;
       grado: string;
@@ -568,17 +569,30 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                     </div>
 
-                    {/* Dependencia y Salario */}
+                    {/* Dependencia Padre y Dependencia Hijo */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Dependencia
+                          Dependencia Padre
+                        </label>
+                        <p className="text-sm text-gray-900 flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-gray-400" />
+                          {certificado.empleado.dependenciaPadre || 'Registro padre'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                          Dependencia Hijo
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
                           <Building2 className="w-3.5 h-3.5 text-gray-400" />
                           {certificado.empleado.dependencia}
                         </p>
                       </div>
+                    </div>
+
+                    {/* Salario y Correo */}
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Salario
@@ -588,17 +602,15 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           ${certificado.empleado.salario.toLocaleString('es-CO')} COP
                         </p>
                       </div>
-                    </div>
-
-                    {/* Email */}
-                    <div>
-                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                        Correo Electrónico
-                      </label>
-                      <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                        <Mail className="w-3.5 h-3.5 text-gray-400" />
-                        {certificado.empleado.email}
-                      </p>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                          Correo Electrónico
+                        </label>
+                        <p className="text-sm text-gray-900 flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5 text-gray-400" />
+                          {certificado.empleado.email}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
