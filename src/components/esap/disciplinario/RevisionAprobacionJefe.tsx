@@ -90,18 +90,21 @@ function ModalRevisionEdicion({
   onClose,
   onAprobar,
   onDevolver,
-  onFirmar
+  onFirmar,
+  onNotificar
 }: {
   borrador: BorradorPendiente;
   onClose: () => void;
   onAprobar: (comentarios: string) => void;
   onDevolver: (motivo: string, comentarios: string, archivos: File[]) => void;
   onFirmar: () => void;
+  onNotificar: (fecha: string, archivo: File) => void;
 }) {
   const [comentariosJefe, setComentariosJefe] = useState('');
   const [showModalAprobar, setShowModalAprobar] = useState(false); // For Signing
   const [showModalDevolver, setShowModalDevolver] = useState(false);
   const [showConfirmAprobar, setShowConfirmAprobar] = useState(false); // For Approval
+  const [showModalNotificar, setShowModalNotificar] = useState(false); // For Notification
   const [activeTab, setActiveTab] = useState<'documento' | 'historial'>('documento');
 
   return (
@@ -250,6 +253,20 @@ function ModalRevisionEdicion({
                         <span className="hidden sm:inline">•</span>
                         <span>{new Date(accion.fecha).toLocaleDateString('es-CO')}</span>
                       </div>
+                      {/* Evidence Link */}
+                      {accion.detalles?.evidenceUrl && (
+                        <div className="mt-2">
+                          <a
+                            href={accion.detalles.evidenceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                          >
+                            <Paperclip className="w-3 h-3" />
+                            Ver Soporte de Notificación
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Card>
@@ -278,6 +295,16 @@ function ModalRevisionEdicion({
                 Aprobar (Visto Bueno)
               </Button>
             </>
+          )}
+
+          {borrador.estado === 'FIRMADO' && (
+            <Button
+              onClick={() => setShowModalNotificar(true)}
+              className="bg-teal-600 hover:bg-teal-700 text-white w-full sm:flex-1 order-1 sm:order-2"
+            >
+              <Send className="w-4 h-4 mr-2" />
+              Registrar Notificación
+            </Button>
           )}
 
           {borrador.estado === 'APROBADO' && (
@@ -326,6 +353,17 @@ function ModalRevisionEdicion({
               onConfirm={(motivo, comentarios, archivos) => {
                 onDevolver(motivo, comentarios, archivos);
                 setShowModalDevolver(false);
+              }}
+            />
+          )}
+
+          {showModalNotificar && (
+            <ModalRegistrarNotificacion
+              borrador={borrador}
+              onClose={() => setShowModalNotificar(false)}
+              onConfirm={(fecha, archivo) => {
+                onNotificar(fecha, archivo);
+                setShowModalNotificar(false);
               }}
             />
           )}
@@ -711,6 +749,93 @@ function ModalDevolver({
   );
 }
 
+// Modal de Registro de Notificación - NUEVO
+function ModalRegistrarNotificacion({
+  borrador,
+  onClose,
+  onConfirm
+}: {
+  borrador: BorradorPendiente;
+  onClose: () => void;
+  onConfirm: (fecha: string, archivo: File) => void;
+}) {
+  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [archivo, setArchivo] = useState<File | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setArchivo(e.target.files[0]);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (!archivo) {
+      toast.error('Evidencia Requerida', { description: 'Debe adjuntar el soporte de la notificación (PDF/Imagen)' });
+      return;
+    }
+    onConfirm(fecha, archivo);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95 }}
+        animate={{ scale: 1 }}
+        exit={{ scale: 0.95 }}
+        className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 bg-teal-600 text-white flex items-center gap-3">
+          <Send className="w-6 h-6" />
+          <h3 className="text-lg font-bold">Registrar Notificación</h3>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Notificación</label>
+            <input
+              type="date"
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Evidencia (Soporte)</label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
+              <input type="file" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" accept=".pdf,image/*" />
+              {archivo ? (
+                <div className="flex items-center gap-2 text-teal-600">
+                  <CheckCircle className="w-5 h-5" />
+                  <span className="text-sm font-medium truncate max-w-[200px]">{archivo.name}</span>
+                </div>
+              ) : (
+                <>
+                  <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-500">Click para subir soporte</p>
+                  <p className="text-xs text-gray-400">PDF o Imagen</p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 bg-gray-50 border-t flex gap-3">
+          <Button onClick={onClose} className="flex-1 bg-gray-200 text-gray-800 hover:bg-gray-300">Cancelar</Button>
+          <Button onClick={handleSubmit} className="flex-1 bg-teal-600 hover:bg-teal-700 text-white">Confirmar</Button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // Componente Principal - RESPONSIVE Y CORPORATIVO
 export function RevisionAprobacionJefe() {
   const [borradores, setBorradores] = useState<BorradorPendiente[]>([]);
@@ -733,9 +858,9 @@ export function RevisionAprobacionJefe() {
       setLoading(true);
       const autos = await disciplinaryService.getAllAutos();
 
-      // Filter out drafts and notified autos
+      // Filter out drafts (but keep NOTIFICADO)
       const mappedBorradores: BorradorPendiente[] = autos
-        .filter(auto => auto.estado !== 'BORRADOR' && auto.estado !== 'NOTIFICADO')
+        .filter(auto => auto.estado !== 'BORRADOR')
         .map(auto => {
           const proceso = (auto as any).process || {};
           const abogado = proceso.abogadoAsignado || {};
@@ -761,11 +886,28 @@ export function RevisionAprobacionJefe() {
               nombreUsuario = 'Profesional';
             }
 
+            // Parse structured changeReason
+            let descripcion = v.changeReason || `Versión ${v.versionNumber}`;
+            let detalles = {};
+
+            try {
+              if (descripcion.startsWith('{')) {
+                const parsed = JSON.parse(descripcion);
+                if (parsed.action === 'NOTIFICACION_REGISTRADA') {
+                  descripcion = `Notificación Registrada (Fecha: ${parsed.date})`;
+                  detalles = { evidenceUrl: parsed.evidenceUrl };
+                }
+              }
+            } catch (e) {
+              // Not JSON, keep original description
+            }
+
             return {
               id: v.id,
-              descripcion: v.changeReason || `Versión ${v.versionNumber}`,
+              descripcion: descripcion,
               usuario: nombreUsuario,
-              fecha: v.createdAt
+              fecha: v.createdAt,
+              detalles: detalles
             };
           });
 
@@ -853,6 +995,27 @@ export function RevisionAprobacionJefe() {
     } catch (error) {
       console.error(error);
       toast.error('Error al devolver el auto');
+    }
+  };
+
+  const handleNotificar = async (borradorId: string, fecha: string, archivo: File) => {
+    try {
+      // 1. Subir archivo
+      const uploadRes = await disciplinaryService.uploadFile(archivo);
+
+      // 2. Registrar Notificación
+      await disciplinaryService.registrarNotificacion(borradorId, fecha, uploadRes.url);
+
+      toast.success('Notificación Registrada', {
+        description: 'El auto ha cambiado a estado NOTIFICADO'
+      });
+
+      setShowModalRevision(false);
+      setBorradorSeleccionado(null);
+      loadAutos(); // Refresh
+    } catch (error) {
+      console.error('Error notificando:', error);
+      toast.error('Error al registrar notificación');
     }
   };
 
@@ -951,6 +1114,7 @@ export function RevisionAprobacionJefe() {
                 <option value="REVISION_JEFE">En Revisión</option>
                 <option value="APROBADO">Aprobados</option>
                 <option value="DEVUELTO">Devueltos</option>
+                <option value="NOTIFICADO">Notificados</option>
                 <option value="BORRADOR">Borradores</option>
               </select>
 
@@ -1119,6 +1283,7 @@ export function RevisionAprobacionJefe() {
             onAprobar={(comentarios) => handleAprobar(borradorSeleccionado.id, comentarios)}
             onDevolver={(motivo, comentarios, archivos) => handleDevolver(borradorSeleccionado.id, motivo, comentarios, archivos)}
             onFirmar={() => handleFirmar(borradorSeleccionado.id)}
+            onNotificar={(fecha, archivo) => handleNotificar(borradorSeleccionado.id, fecha, archivo)}
           />
         )}
       </AnimatePresence>

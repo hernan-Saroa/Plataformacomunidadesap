@@ -15,6 +15,8 @@ import { ReviewAutoDto, ReviewAction } from '../dtos/review-auto.dto';
 import { ProcessService } from './process.service';
 
 import { SystemConfiguration } from '../entities/system-configuration.entity';
+import { AlertasService } from './alertas.service';
+import { TipoAlerta } from '../entities/alerta-enviada.entity';
 
 @Injectable()
 export class AutoService {
@@ -26,6 +28,7 @@ export class AutoService {
     @InjectRepository(SystemConfiguration)
     private configRepository: Repository<SystemConfiguration>,
     private processService: ProcessService,
+    private alertasService: AlertasService,
   ) { }
 
   /**
@@ -260,7 +263,50 @@ export class AutoService {
     }
     auto.estado = AutoStatus.NOTIFICADO;
 
-    return await this.autoRepository.save(auto);
+    const savedAuto = await this.autoRepository.save(auto);
+
+    // Registrar en Historial (Version)
+    await this.versionRepository.save({
+      auto: { id: savedAuto.id } as LegalAuto,
+      contenido: savedAuto.contenido,
+      versionNumber: savedAuto.currentVersion,
+      createdBy: 'Sistema', // O el ID del usuario si estuviera disponible
+      changeReason: JSON.stringify({
+        action: 'NOTIFICACION_REGISTRADA',
+        date: dto.notificationDate,
+        evidenceUrl: dto.notificationEvidence || null
+      }),
+    });
+
+    // Generar Notificación de Sistema en la Bandeja
+    try {
+      const asunto = `Auto Notificado: ${auto.tipo} - ${auto.numero || 'Sin Número'}`;
+      const mensaje = `El auto ha sido notificado correctamente con fecha ${dto.notificationDate}. Radicado: ${auto.process?.radicadoProceso || 'N/A'}`;
+
+      // Intentar obtener email del profesional asignado o usuario actual (si estuviera disponible)
+      // Como fallback usamos 'Usuario Actual' o idealmente el ID del abogado asignado al proceso
+      // Por ahora asignamos el aviso al abogado del proceso si existe
+      let destinatario = 'Profesional Asignado';
+      if (auto.process && auto.process.abogadoAsignadoId) {
+        // TODO: Lookup email from UserService if needed, or store it.
+        // For now, assuming we want to notify the system/tray.
+        destinatario = 'Sistema';
+      }
+
+      await this.alertasService.crearNotificacionAuto(
+        savedAuto.id,
+        TipoAlerta.SISTEMA,
+        destinatario,
+        asunto,
+        mensaje,
+        'Sistema'
+      );
+    } catch (e) {
+      console.error('Error creando notificación en bandeja:', e);
+      // No fallamos la transacción principal si falla la notificación auxiliar
+    }
+
+    return savedAuto;
   }
 
   /**
