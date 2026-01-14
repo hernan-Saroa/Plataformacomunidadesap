@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -43,6 +44,7 @@ export class UsersService {
     });
 
     const user = this.userRepo.create({
+      id_user: randomUUID(),
       username: dto.username,
       password_hash,
       person,
@@ -122,26 +124,21 @@ export class UsersService {
   }
 
   async createPerson(dto: CreatePersonDto): Promise<User> {
-    // Obtener el máximo ID actual para generar uno nuevo
+    // Obtener el próximo id_tercero manualmente (la tabla no usa serial/uuid)
     const maxIdResult = await this.personRepo
       .createQueryBuilder('person')
       .select('MAX(person.id)', 'maxId')
       .getRawOne();
-    const nextId = (maxIdResult?.maxId || 0) + 1;
+    const nextId = parseInt((maxIdResult?.maxId || 0)) + 1;
 
-    // Generar el nombre completo
-    const fullName = `${dto.first_name} ${dto.last_name}`;
 
-    // Insertar persona directamente con query builder para asegurar el ID
-    await this.personRepo
-      .createQueryBuilder()
-      .insert()
-      .into('personas')
-      .values({
+    // Crear y guardar persona primero
+    const savedPerson = await this.personRepo.save(
+      this.personRepo.create({
         id: nextId,
         first_name: dto.first_name,
         last_name: dto.last_name,
-        full_name: fullName,
+        full_name: `${dto.first_name} ${dto.last_name}`,
         identification_number: dto.identification_number,
         identification_type: dto.identification_type,
         email: dto.email,
@@ -149,29 +146,19 @@ export class UsersService {
         gender: dto.gender || '',
         idSeccional: dto.idSeccional || null,
         idSede: dto.idSede || null,
-      })
-      .execute();
+      }),
+    );
 
-    // Obtener la persona recién creada
-    const savedPerson = await this.personRepo.findOne({
-      where: { id: nextId },
-    });
-
-    if (!savedPerson) {
-      throw new Error('Person not found after creation');
-    }
-
-    // Crear usuario usando save() para que genere el UUID automáticamente
-    const passwordHash = await bcrypt.hash('defaultPassword123', 10);
+    // Crear usuario usando save() (generamos UUID manualmente para evitar null)
+    const passwordHash = await bcrypt.hash('123456', 10);
 
     const user = this.userRepo.create({
+      id_user: randomUUID(),
       username: dto.email,
       password_hash: passwordHash,
-      is_active: true,
+      is_active: false,
+      person: savedPerson,
     });
-
-    // Asignar el id de la persona directamente en la columna
-    (user as any).person = savedPerson;
 
     const savedUser = await this.userRepo.save(user);
 
@@ -181,12 +168,10 @@ export class UsersService {
       savedUser.roles = roles;
       await this.userRepo.save(savedUser);
     }
-
     const createdUser = await this.userRepo.findOne({
       where: { id_user: savedUser.id_user },
       relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles'],
     });
-
     if (!createdUser) {
       throw new Error('User not found after creation');
     }

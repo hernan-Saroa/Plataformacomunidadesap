@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS certification.certificate_requests (
   salary_text VARCHAR(255),
 
   -- Additional employment data
+  department_parent VARCHAR(255) DEFAULT 'Registro padre',
   department VARCHAR(255), -- Territorial Directorate Bogotá, etc.
   campus VARCHAR(100), -- Main campus, Bogotá D.C., etc.
   email VARCHAR(100),
@@ -87,7 +88,9 @@ CREATE TABLE IF NOT EXISTS certification.certificates (
   position_category VARCHAR(100) NOT NULL,
   position_location VARCHAR(150),
   monthly_salary DECIMAL(12, 2) NOT NULL,
+  technical_bonus DECIMAL(12, 2) DEFAULT 0,
   salary_text VARCHAR(255),
+  department_parent VARCHAR(255) DEFAULT 'Registro padre',
   department VARCHAR(255),
   campus VARCHAR(100),
 

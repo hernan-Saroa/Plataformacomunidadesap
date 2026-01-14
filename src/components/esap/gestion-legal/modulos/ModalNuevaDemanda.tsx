@@ -23,6 +23,7 @@ interface ModalNuevaDemandaProps {
 export interface NuevaDemandaData {
   numeroRadicado: string;
   medioControl: string;
+  tipoProceso: string;
   demandante: string;
   tipoPersona: 'natural' | 'juridica';
   identificacionDemandante: string;
@@ -66,6 +67,18 @@ const MEDIOS_CONTROL = [
   'OTRO'
 ];
 
+// Tipos de Procesos Judiciales (configurables desde Configuraciones SIGL)
+const TIPOS_PROCESOS_JUDICIALES = [
+  { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización de perjuicios' },
+  { id: 'nulidad-restablecimiento', nombre: 'Nulidad y Restablecimiento del Derecho', descripcion: 'Acción para declarar la nulidad de un acto administrativo' },
+  { id: 'accion-grupo', nombre: 'Acción de Grupo', descripcion: 'Acción interpuesta por un grupo de personas' },
+  { id: 'accion-popular', nombre: 'Acción Popular', descripcion: 'Acción para la protección de derechos colectivos' },
+  { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias de contratos estatales' },
+  { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para protección inmediata de derechos fundamentales' },
+  { id: 'proceso-ejecutivo', nombre: 'Proceso Ejecutivo', descripcion: 'Proceso para cobro de obligaciones' },
+  { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales' },
+];
+
 const DEPARTAMENTOS = [
   'Cundinamarca',
   'Antioquia',
@@ -82,6 +95,7 @@ const INITIAL_FORM_DATA: NuevaDemandaData = {
   numeroRadicado: '',
   medioControl: '',
   demandante: '',
+  tipoProceso: '',
   tipoPersona: 'natural',
   identificacionDemandante: '',
   // Campos de contacto del demandante
@@ -206,6 +220,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     setFormData({
       numeroRadicado: '',
       medioControl: '',
+      tipoProceso: '',
       demandante: '',
       tipoPersona: 'natural',
       identificacionDemandante: '',

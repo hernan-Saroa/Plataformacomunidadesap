@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { TerminoProcesal } from './termino-procesal.entity';
 import { ReglaAlerta } from './regla-alerta.entity';
+import { LegalAuto } from './legal-auto.entity';
 
 export enum TipoAlerta {
   EMAIL = 'email',
@@ -31,19 +32,28 @@ export class AlertaEnviada {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column('uuid', { name: 'termino_id' })
-  terminoId: string;
+  // -- TÉRMINOS (Opcional) --
+  @Column('uuid', { name: 'termino_id', nullable: true })
+  terminoId: string | null;
 
-  @ManyToOne(() => TerminoProcesal, (termino) => termino.alertas, { nullable: false })
+  @ManyToOne(() => TerminoProcesal, (termino) => termino.alertas, { nullable: true })
   @JoinColumn({ name: 'termino_id' })
-  termino: TerminoProcesal;
+  termino: TerminoProcesal | null;
 
-  @Column('uuid', { name: 'regla_alerta_id' })
-  reglaAlertaId: string;
+  @Column('uuid', { name: 'regla_alerta_id', nullable: true })
+  reglaAlertaId: string | null;
 
-  @ManyToOne(() => ReglaAlerta, (regla) => regla.alertas, { nullable: false })
+  @ManyToOne(() => ReglaAlerta, (regla) => regla.alertas, { nullable: true })
   @JoinColumn({ name: 'regla_alerta_id' })
-  reglaAlerta: ReglaAlerta;
+  reglaAlerta: ReglaAlerta | null;
+
+  // -- AUTOS (Opcional) --
+  @Column('uuid', { name: 'auto_id', nullable: true })
+  autoId: string | null;
+
+  @ManyToOne(() => LegalAuto, { nullable: true })
+  @JoinColumn({ name: 'auto_id' })
+  auto: LegalAuto | null;
 
   @Column({
     type: 'enum',

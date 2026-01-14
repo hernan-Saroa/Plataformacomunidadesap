@@ -14,7 +14,7 @@ import { LoginPage } from './components/portal/LoginPage';
 import { PortalDashboard } from './components/portal/PortalDashboard';
 import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
-// import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
+import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
 // import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
@@ -77,7 +77,8 @@ type AppView =
 
 type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | null;
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales' | 'password-demo' | 'procesos-coactivos-demo';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
+// type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
 
 interface Usuario {
   id: string;
@@ -172,7 +173,12 @@ export default function App() {
   const [userType, setUserType] = useState<'portal' | 'administrativo'>('portal');
   const [activeRole, setActiveRole] = useState<string>('Estudiante');
 
-  const [vistaActual, setVistaActual] = useState<Vista>('landing');
+  // const [vistaActual, setVistaActual] = useState<Vista>('landing');
+  // Leer parámetro de vista desde URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const viewParam = urlParams.get('view') as Vista | null;
+  
+  const [vistaActual, setVistaActual] = useState<Vista>(viewParam || 'landing');
   const [usuarioActual, setUsuarioActual] = useState<Usuario | null>(null);
   const [mostrarAlertaInactividad, setMostrarAlertaInactividad] = useState(false);
 
@@ -195,10 +201,7 @@ export default function App() {
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
         : [];
       const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
-                            roles.includes('CONTROL_DISCIPLINARIO') ||
-                            roles.includes('JEFE_CONTROL_INTERNO') ||
-                            roles.includes('AUDITOR_LIDER');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL');
       const emailLower = userEmail.toLowerCase();
 
       let nextView: Vista = 'portal';
@@ -216,17 +219,13 @@ export default function App() {
         nextView = 'backoffice';
         nextCurrentView = 'backoffice';
         nextUserType = 'administrativo';
-        
-        // Determinar módulo específico según el rol
-        if (roles.includes('COORDINADOR_CERT_LABORAL')) {
-          module = 'certificados-laborales';
-        } else if (roles.includes('CONTROL_DISCIPLINARIO')) {
-          module = 'control-disciplinario';
-        } else if (roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER')) {
-          module = 'control-interno';
-        }
-        
-        portalRoles.push('Administrativo');
+        module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
+        : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+        : 'control-interno';
+        const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
+        : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+        : 'Control Interno';
+        portalRoles.push(rolStr);
       } else {
         if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           portalRoles.push('Docente');
@@ -438,10 +437,7 @@ export default function App() {
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
       const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
-                            roles.includes('CONTROL_DISCIPLINARIO') ||
-                            roles.includes('JEFE_CONTROL_INTERNO') ||
-                            roles.includes('AUDITOR_LIDER');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -482,25 +478,20 @@ export default function App() {
           userType = 'administrativo';
           currentView = 'backoffice'
           vistaActualCurrent = 'backoffice';
-          
-          // Determinar módulo específico según el rol
-          let module = 'certificados-laborales'; // Por defecto
-          if (roles.includes('COORDINADOR_CERT_LABORAL')) {
-            module = 'certificados-laborales';
-          } else if (roles.includes('CONTROL_DISCIPLINARIO')) {
-            module = 'control-disciplinario';
-          } else if (roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER')) {
-            module = 'control-interno';
-          }
-          
-          setUserData({ 
-            name: userName, 
-            email: userEmail, 
+          const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
+          : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+          : 'control-interno';
+          setUserData({
+            name: userName,
+            email: userEmail,
             personId: user?.person?.id || user?.id,
             roles,
             module: module // Módulo específico de acceso
           });
-          portalRoles.push('Administrativo');
+          const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
+          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+          : 'Control Interno';
+          portalRoles.push(rolStr);
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           userType = 'docente';
           portalRoles.push('Docente');
@@ -820,7 +811,7 @@ export default function App() {
 
       case 'backoffice':
         // Determinar si el usuario tiene acceso restringido a un módulo específico
-        // const userData1 = usuarioActual?.email === 'OCIG@esap.edu.co' || usuarioActual?.email === 'ocig@esap.edu.co'
+        // const userData = usuarioActual?.email === 'OCIG@esap.edu.co' || usuarioActual?.email === 'ocig@esap.edu.co'
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ci-001', restrictedAccess: true, module: 'control-interno' }
         //   : usuarioActual?.email === 'c.disciplinario@esap.edu.co'
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cd-001', restrictedAccess: true, module: 'control-disciplinario' }
@@ -836,6 +827,8 @@ export default function App() {
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gp-001', restrictedAccess: true, module: 'gestion-profesoral' }
         //   : usuarioActual?.email === 'funcionario@esap.edu.co'
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'func-001', restrictedAccess: true, module: 'procesos' }
+        //   : usuarioActual?.email === 'superuser@esap.edu.co'
+        //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'super-001', hasBothSystemsAccess: true } // ✅ Acceso dual Backoffice + Portal
         //   : undefined;
 
         return (
@@ -843,7 +836,12 @@ export default function App() {
             // usuario={usuarioActual!}
             onLogout={handleLogout}
             onBackToSystemSelector={handleBackToSystemSelector}
-            onSystemChange={handleSystemChange}
+            onSystemChange={(system) => {
+              if (system === 'portal') {
+                setVistaActual('portal');
+                toast.success('Cambiado al Portal Transaccional');
+              }
+            }}
             userData={userData}
             userRoles={userRoles}
           />
@@ -856,12 +854,12 @@ export default function App() {
             onLogout={handleLogout}
           />
         );
-      
-      // case 'password-demo':
-      //   return <DemoPasswordStrength />;
-      
-      // case 'procesos-coactivos-demo':
-      //   return <DemoProcesosCoactivos />;
+
+      case 'password-demo':
+        return <DemoPasswordStrength />;
+
+      case 'procesos-coactivos-demo':
+        return <DemoProcesosCoactivos />;
       
       // case 'edicion-foto-perfil-demo':
       //   return <DemoEdicionFotoPerfil />;
