@@ -15,11 +15,17 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { BadgeSIGL } from '../design-system/BadgeSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
 import { ModalSIGL } from '../design-system/ModalSIGL';
+import {
+  procesosCoactivosService,
+  ProcesoCoactivo as ProcesoCoactivoAPI,
+  ProcesoCoactivoStats,
+  ProcesoCoactivoAdjunto
+} from '../../../../services/api/legal.service';
 
 // ============ TIPOS ============
 interface ProcesoCoactivo {
@@ -47,162 +53,49 @@ interface ProcesoCoactivo {
   observaciones?: string;
 }
 
-// ============ DATOS MOCK ============
-const procesosMock: ProcesoCoactivo[] = [
-  {
-    id: 'PC-2025-001',
-    radicado: 'COA-2025-00001',
+// Función helper para mapear datos del API al formato del componente
+const mapApiToLocal = (apiProceso: ProcesoCoactivoAPI): ProcesoCoactivo => {
+  const hoy = new Date();
+  const fechaVencimiento = new Date(apiProceso.obligacion.fechaVencimiento);
+  const diasVencidos = Math.max(0, Math.floor((hoy.getTime() - fechaVencimiento.getTime()) / (1000 * 60 * 60 * 24)));
+
+  return {
+    id: apiProceso.id,
+    radicado: apiProceso.radicado,
     deudor: {
-      nombre: 'Juan Carlos Pérez Gómez',
-      identificacion: '1.012.345.678',
-      telefono: '+57 312 456 7890',
-      email: 'juan.perez@email.com',
-      direccion: 'Calle 45 #12-34, Bogotá'
+      nombre: apiProceso.deudor.nombre || '',
+      identificacion: apiProceso.deudor.identificacion || '',
+      telefono: apiProceso.deudor.telefono || '',
+      email: apiProceso.deudor.email || '',
+      direccion: apiProceso.deudor.direccion || ''
     },
     obligacion: {
-      concepto: 'Matrícula Semestre 2024-2',
-      valor: 3250000,
-      fechaVencimiento: new Date('2024-08-15'),
-      diasVencidos: 152
+      concepto: apiProceso.obligacion.concepto || '',
+      valor: apiProceso.obligacion.valor || 0,
+      fechaVencimiento: fechaVencimiento,
+      diasVencidos: diasVencidos
     },
-    estado: 'PERSUASIVO',
-    fechaCreacion: new Date('2024-12-10'),
-    ultimaActuacion: new Date('2025-01-08'),
-    responsable: 'Dra. María Fernández López',
-    documentosAdjuntos: 5,
-    notificacionesEnviadas: 3,
-    observaciones: 'Deudor contactado, solicitó plazo de pago'
-  },
-  {
-    id: 'PC-2025-002',
-    radicado: 'COA-2025-00002',
-    deudor: {
-      nombre: 'Ana María Rodríguez Silva',
-      identificacion: '1.023.456.789',
-      telefono: '+57 301 234 5678',
-      email: 'ana.rodriguez@email.com',
-      direccion: 'Carrera 7 #89-45, Bogotá'
-    },
-    obligacion: {
-      concepto: 'Multa Administrativa - Certificado extemporáneo',
-      valor: 850000,
-      fechaVencimiento: new Date('2024-06-20'),
-      diasVencidos: 208
-    },
-    estado: 'PREJURIDICO',
-    fechaCreacion: new Date('2024-11-15'),
-    ultimaActuacion: new Date('2025-01-10'),
-    responsable: 'Dr. Carlos Mendoza García',
-    documentosAdjuntos: 8,
-    notificacionesEnviadas: 5,
-    observaciones: 'Documentación lista para mandamiento de pago'
-  },
-  {
-    id: 'PC-2025-003',
-    radicado: 'COA-2025-00003',
-    deudor: {
-      nombre: 'Roberto Sánchez Castro',
-      identificacion: '1.034.567.890',
-      telefono: '+57 315 678 9012',
-      email: 'roberto.sanchez@email.com',
-      direccion: 'Avenida 68 #23-67, Bogotá'
-    },
-    obligacion: {
-      concepto: 'Reintegro de Beca - Incumplimiento compromiso',
-      valor: 12500000,
-      fechaVencimiento: new Date('2024-09-30'),
-      diasVencidos: 106
-    },
-    estado: 'MANDAMIENTO',
-    fechaCreacion: new Date('2024-12-20'),
-    ultimaActuacion: new Date('2025-01-12'),
-    responsable: 'Dra. María Fernández López',
-    documentosAdjuntos: 12,
-    notificacionesEnviadas: 7,
-    observaciones: 'Mandamiento de pago notificado personalmente'
-  },
-  {
-    id: 'PC-2024-089',
-    radicado: 'COA-2024-00089',
-    deudor: {
-      nombre: 'Laura Patricia Gómez Díaz',
-      identificacion: '1.045.678.901',
-      telefono: '+57 320 789 0123',
-      email: 'laura.gomez@email.com',
-      direccion: 'Calle 100 #15-20, Bogotá'
-    },
-    obligacion: {
-      concepto: 'Devolución pago indebido - Curso cancelado',
-      valor: 1800000,
-      fechaVencimiento: new Date('2024-10-15'),
-      diasVencidos: 91
-    },
-    estado: 'IDENTIFICADO',
-    fechaCreacion: new Date('2025-01-05'),
-    ultimaActuacion: new Date('2025-01-13'),
-    responsable: 'Dr. Carlos Mendoza García',
-    documentosAdjuntos: 3,
-    notificacionesEnviadas: 1,
-    observaciones: 'Proceso recién iniciado, pendiente primera notificación'
-  },
-  {
-    id: 'PC-2024-076',
-    radicado: 'COA-2024-00076',
-    deudor: {
-      nombre: 'Diego Fernando Martínez Ruiz',
-      identificacion: '1.056.789.012',
-      telefono: '+57 318 890 1234',
-      email: 'diego.martinez@email.com',
-      direccion: 'Transversal 45 #78-90, Bogotá'
-    },
-    obligacion: {
-      concepto: 'Sanción Pecuniaria - Proceso disciplinario',
-      valor: 5200000,
-      fechaVencimiento: new Date('2024-07-10'),
-      diasVencidos: 188
-    },
-    estado: 'EMBARGO',
-    fechaCreacion: new Date('2024-10-05'),
-    ultimaActuacion: new Date('2025-01-11'),
-    responsable: 'Dra. María Fernández López',
-    documentosAdjuntos: 15,
-    notificacionesEnviadas: 9,
-    observaciones: 'Medida cautelar de embargo decretada sobre cuenta bancaria'
-  },
-  {
-    id: 'PC-2024-055',
-    radicado: 'COA-2024-00055',
-    deudor: {
-      nombre: 'Camila Alejandra Torres Vega',
-      identificacion: '1.067.890.123',
-      telefono: '+57 310 901 2345',
-      email: 'camila.torres@email.com',
-      direccion: 'Calle 80 #34-56, Bogotá'
-    },
-    obligacion: {
-      concepto: 'Matrícula Semestre 2024-1',
-      valor: 2950000,
-      fechaVencimiento: new Date('2024-03-20'),
-      diasVencidos: 300
-    },
-    estado: 'FINALIZADO',
-    fechaCreacion: new Date('2024-08-10'),
-    ultimaActuacion: new Date('2024-12-28'),
-    responsable: 'Dr. Carlos Mendoza García',
-    documentosAdjuntos: 18,
-    notificacionesEnviadas: 12,
-    observaciones: 'Obligación cancelada en su totalidad con intereses'
-  },
-];
+    estado: apiProceso.estado,
+    fechaCreacion: new Date(apiProceso.fechaCreacion),
+    ultimaActuacion: apiProceso.ultimaActuacion ? new Date(apiProceso.ultimaActuacion) : new Date(),
+    responsable: apiProceso.responsable || 'Sin asignar',
+    documentosAdjuntos: apiProceso.documentosAdjuntos || 0,
+    notificacionesEnviadas: apiProceso.notificacionesEnviadas || 0,
+    observaciones: apiProceso.observaciones
+  };
+};
 
 // ============ COMPONENTE PRINCIPAL ============
 export function ModuloProcesosCoactivosV3() {
-  const [procesos, setProcesos] = useState<ProcesoCoactivo[]>(procesosMock);
+  const [procesos, setProcesos] = useState<ProcesoCoactivo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<ProcesoCoactivoStats>({ total: 0, activos: 0, criticos: 0, totalMonto: 0, porEstado: {} });
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
   const [busqueda, setBusqueda] = useState('');
   const [modalNuevoProceso, setModalNuevoProceso] = useState(false);
   const [modalDetalle, setModalDetalle] = useState(false);
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<ProcesoCoactivo | null>(null);
+  const [procesoEditar, setProcesoEditar] = useState<ProcesoCoactivo | null>(null);
   const [ordenamiento, setOrdenamiento] = useState<'reciente' | 'antiguo' | 'monto-mayor' | 'monto-menor'>('reciente');
 
   // Detectar tamaño de pantalla
@@ -214,11 +107,36 @@ export function ModuloProcesosCoactivosV3() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
+  // Cargar datos desde la API
+  const loadProcesos = async () => {
+    try {
+      setLoading(true);
+      const [procesosData, statsData] = await Promise.all([
+        procesosCoactivosService.getAll().catch(() => []),
+        procesosCoactivosService.getStats().catch(() => ({ total: 0, activos: 0, criticos: 0, totalMonto: 0, porEstado: {} }))
+      ]);
+      // Asegurar que procesosData sea un array
+      const procesosArray = Array.isArray(procesosData) ? procesosData : [];
+      setProcesos(procesosArray.map(mapApiToLocal));
+      setStats(statsData);
+    } catch (error) {
+      console.error('Error cargando procesos coactivos:', error);
+      setProcesos([]);
+      setStats({ total: 0, activos: 0, criticos: 0, totalMonto: 0, porEstado: {} });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProcesos();
+  }, []);
+
   // Filtrar y ordenar procesos
   const procesosFiltrados = procesos
     .filter(p => {
       const cumpleFiltro = filtroEstado === 'TODOS' || p.estado === filtroEstado;
-      const cumpleBusqueda = busqueda === '' || 
+      const cumpleBusqueda = busqueda === '' ||
         p.deudor.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
         p.deudor.identificacion.includes(busqueda) ||
         p.radicado.toLowerCase().includes(busqueda.toLowerCase());
@@ -239,29 +157,32 @@ export function ModuloProcesosCoactivosV3() {
       }
     });
 
-  // Calcular estadísticas
-  const stats = {
-    total: procesos.length,
-    activos: procesos.filter(p => !['FINALIZADO'].includes(p.estado)).length,
-    criticos: procesos.filter(p => p.obligacion.diasVencidos > 180).length,
-    totalMonto: procesos.reduce((sum, p) => sum + p.obligacion.valor, 0)
-  };
-
   const handleVerDetalle = (proceso: ProcesoCoactivo) => {
     setProcesoSeleccionado(proceso);
     setModalDetalle(true);
   };
 
-  const handleEliminarProceso = (procesoId: string) => {
+  const handleEditarProceso = (proceso: ProcesoCoactivo) => {
+    setProcesoEditar(proceso);
+    setModalNuevoProceso(true);
+  };
+
+  const handleEliminarProceso = async (procesoId: string) => {
     const proceso = procesos.find(p => p.id === procesoId);
     if (!proceso) return;
 
     if (confirm(`¿Está seguro de eliminar el proceso "${proceso.radicado}"?\n\nEsta acción no se puede deshacer.`)) {
-      setProcesos(procesos.filter(p => p.id !== procesoId));
-      toast.success('Proceso eliminado', {
-        description: `El proceso ${proceso.radicado} ha sido eliminado`,
-        duration: 3000
-      });
+      try {
+        await procesosCoactivosService.delete(procesoId);
+        toast.success('Proceso eliminado', {
+          description: `El proceso ${proceso.radicado} ha sido eliminado`,
+          duration: 3000
+        });
+        loadProcesos(); // Recargar lista y stats
+      } catch (error) {
+        console.error('Error eliminando proceso:', error);
+        toast.error('Error al eliminar el proceso');
+      }
     }
   };
 
@@ -277,10 +198,13 @@ export function ModuloProcesosCoactivosV3() {
             </p>
           </div>
           <ButtonSIGL
-            onClick={() => setModalNuevoProceso(true)}
+            onClick={() => {
+              setProcesoEditar(null);
+              setModalNuevoProceso(true);
+            }}
             className="flex-shrink-0"
+            icon={<Plus className="w-4 h-4" />}
           >
-            <Plus className="w-4 h-4 mr-2" />
             {!isMobile && 'Nuevo Proceso'}
           </ButtonSIGL>
         </div>
@@ -397,6 +321,7 @@ export function ModuloProcesosCoactivosV3() {
               <TarjetaProceso
                 proceso={proceso}
                 onVerDetalle={handleVerDetalle}
+                onEditar={handleEditarProceso}
                 onEliminar={handleEliminarProceso}
               />
             </motion.div>
@@ -416,12 +341,16 @@ export function ModuloProcesosCoactivosV3() {
       {/* Modal Nuevo Proceso */}
       <ModalNuevoProceso
         isOpen={modalNuevoProceso}
-        onClose={() => setModalNuevoProceso(false)}
-        onCrear={(nuevoProceso) => {
-          setProcesos([nuevoProceso, ...procesos]);
+        onClose={() => {
           setModalNuevoProceso(false);
-          toast.success('Proceso creado exitosamente');
+          setProcesoEditar(null);
         }}
+        onCrear={() => {
+          setModalNuevoProceso(false);
+          setProcesoEditar(null);
+          loadProcesos(); // Recargar lista y stats desde la API
+        }}
+        procesoEditar={procesoEditar}
       />
 
       {/* Modal Detalle */}
@@ -433,6 +362,7 @@ export function ModuloProcesosCoactivosV3() {
             setModalDetalle(false);
             setProcesoSeleccionado(null);
           }}
+          onUpdate={loadProcesos}
         />
       )}
     </div>
@@ -442,13 +372,15 @@ export function ModuloProcesosCoactivosV3() {
 // ============ COMPONENTES AUXILIARES ============
 
 // Tarjeta de Proceso
-function TarjetaProceso({ 
-  proceso, 
+function TarjetaProceso({
+  proceso,
   onVerDetalle,
-  onEliminar 
-}: { 
+  onEditar,
+  onEliminar
+}: {
   proceso: ProcesoCoactivo;
   onVerDetalle: (proceso: ProcesoCoactivo) => void;
+  onEditar: (proceso: ProcesoCoactivo) => void;
   onEliminar: (id: string) => void;
 }) {
   const getEstadoConfig = (estado: ProcesoCoactivo['estado']) => {
@@ -483,7 +415,7 @@ function TarjetaProceso({
             <p className="text-sm text-gray-600 mb-1">{proceso.deudor.nombre}</p>
             <p className="text-xs text-gray-500">CC: {proceso.deudor.identificacion}</p>
           </div>
-          
+
           <div className="flex items-center gap-2">
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${estadoConfig.color}`}>
               {estadoConfig.label}
@@ -555,44 +487,49 @@ function TarjetaProceso({
         {/* Acciones */}
         <div className="flex flex-wrap gap-2">
           <ButtonSIGL
-            variant="default"
-            size="sm"
+            variant="primary"
+            size="md"
             onClick={() => onVerDetalle(proceso)}
-            className="flex-1 sm:flex-none"
+            className="flex-none min-w-[110px]"
+            icon={<Eye className="w-4 h-4" />}
           >
-            <Eye className="w-4 h-4 mr-2" />
             Ver Detalle
           </ButtonSIGL>
           <ButtonSIGL
-            variant="outline"
-            size="sm"
-            onClick={() => toast.info('Función en desarrollo')}
+            variant="secondary"
+            size="md"
+            onClick={() => onEditar(proceso)}
+            className="flex-none min-w-[110px]"
+            icon={<Edit className="w-4 h-4" />}
           >
-            <Edit className="w-4 h-4 mr-2" />
             Editar
           </ButtonSIGL>
-          <button
+          <ButtonSIGL
+            variant="danger"
+            size="md"
             onClick={() => onEliminar(proceso.id)}
-            className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+            className="flex-none min-w-[110px]"
+            icon={<Trash2 className="w-4 h-4" />}
           >
-            <Trash2 className="w-4 h-4" />
             Eliminar
-          </button>
+          </ButtonSIGL>
         </div>
       </div>
     </CardSIGL>
   );
 }
 
-// Modal Nuevo Proceso
+// Modal Nuevo Proceso (y Edición)
 function ModalNuevoProceso({
   isOpen,
   onClose,
-  onCrear
+  onCrear,
+  procesoEditar
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onCrear: (proceso: ProcesoCoactivo) => void;
+  onCrear: () => void;
+  procesoEditar?: ProcesoCoactivo | null;
 }) {
   const [formData, setFormData] = useState({
     deudorNombre: '',
@@ -604,195 +541,384 @@ function ModalNuevoProceso({
     valor: '',
     fechaVencimiento: '',
     responsable: '',
-    observaciones: ''
+    observaciones: '',
+    estado: 'IDENTIFICADO'
   });
+  const [loading, setLoading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [dragActive, setDragActive] = useState(false);
 
-  const handleSubmit = () => {
-    if (!formData.deudorNombre || !formData.deudorIdentificacion || !formData.concepto || !formData.valor) {
+  // Limpiar archivos al abrir/cerrar
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedFiles([]);
+      setDragActive(false);
+    }
+  }, [isOpen]);
+
+  // Cargar datos si estamos editando
+  useEffect(() => {
+    if (procesoEditar) {
+      setFormData({
+        deudorNombre: procesoEditar.deudor.nombre,
+        deudorIdentificacion: procesoEditar.deudor.identificacion,
+        deudorTelefono: procesoEditar.deudor.telefono,
+        deudorEmail: procesoEditar.deudor.email,
+        deudorDireccion: procesoEditar.deudor.direccion,
+        concepto: procesoEditar.obligacion.concepto,
+        valor: procesoEditar.obligacion.valor.toString(),
+        fechaVencimiento: new Date(procesoEditar.obligacion.fechaVencimiento).toISOString().split('T')[0],
+        responsable: procesoEditar.responsable,
+        observaciones: procesoEditar.observaciones || '',
+        estado: procesoEditar.estado
+      });
+    } else {
+      setFormData({
+        deudorNombre: '',
+        deudorIdentificacion: '',
+        deudorTelefono: '',
+        deudorEmail: '',
+        deudorDireccion: '',
+        concepto: '',
+        valor: '',
+        fechaVencimiento: '',
+        responsable: '',
+        observaciones: '',
+        estado: 'IDENTIFICADO'
+      });
+    }
+  }, [procesoEditar, isOpen]);
+
+  const handleSubmit = async () => {
+    if (!formData.deudorNombre || !formData.deudorIdentificacion || !formData.concepto || !formData.valor || !formData.fechaVencimiento) {
       toast.error('Campos requeridos', {
         description: 'Por favor complete todos los campos obligatorios'
       });
       return;
     }
 
-    const fechaVencimiento = new Date(formData.fechaVencimiento);
-    const hoy = new Date();
-    const diasVencidos = Math.floor((hoy.getTime() - fechaVencimiento.getTime()) / (1000 * 60 * 60 * 24));
+    try {
+      setLoading(true);
+      const data = {
+        deudor: {
+          nombre: formData.deudorNombre,
+          identificacion: formData.deudorIdentificacion,
+          telefono: formData.deudorTelefono,
+          email: formData.deudorEmail,
+          direccion: formData.deudorDireccion
+        },
+        obligacion: {
+          concepto: formData.concepto,
+          valor: parseFloat(formData.valor),
+          fechaVencimiento: formData.fechaVencimiento
+        },
+        responsable: formData.responsable || undefined,
+        observaciones: formData.observaciones || undefined,
+        estado: formData.estado as any
+      };
 
-    const nuevoProceso: ProcesoCoactivo = {
-      id: `PC-2025-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
-      radicado: `COA-2025-${String(Math.floor(Math.random() * 10000)).padStart(5, '0')}`,
-      deudor: {
-        nombre: formData.deudorNombre,
-        identificacion: formData.deudorIdentificacion,
-        telefono: formData.deudorTelefono,
-        email: formData.deudorEmail,
-        direccion: formData.deudorDireccion
-      },
-      obligacion: {
-        concepto: formData.concepto,
-        valor: parseFloat(formData.valor),
-        fechaVencimiento: fechaVencimiento,
-        diasVencidos: diasVencidos
-      },
-      estado: 'IDENTIFICADO',
-      fechaCreacion: new Date(),
-      ultimaActuacion: new Date(),
-      responsable: formData.responsable || 'Sin asignar',
-      documentosAdjuntos: 0,
-      notificacionesEnviadas: 0,
-      observaciones: formData.observaciones
-    };
+      let procesoId = '';
+      if (procesoEditar) {
+        await procesosCoactivosService.update(procesoEditar.id, data);
+        procesoId = procesoEditar.id;
+        toast.success('Proceso actualizado exitosamente');
+      } else {
+        const newProceso = await procesosCoactivosService.create(data);
+        procesoId = newProceso.id;
+        toast.success('Proceso creado exitosamente');
+      }
 
-    onCrear(nuevoProceso);
+      // Subir archivos si existen
+      if (selectedFiles.length > 0 && procesoId) {
+        try {
+          // Toast de progreso
+          toast.loading('Subiendo documentos...', { id: 'upload-toast' });
+
+          await Promise.all(selectedFiles.map(file =>
+            procesosCoactivosService.uploadAdjunto(procesoId, file)
+          ));
+
+          toast.dismiss('upload-toast');
+          toast.success(`${selectedFiles.length} documento(s) adjuntado(s) correctamente`);
+        } catch (uploadError) {
+          console.error('Error subiendo archivos:', uploadError);
+          toast.dismiss('upload-toast');
+          toast.error('El proceso se guardó, pero hubo un error al subir algunos documentos');
+        }
+      }
+
+      onCrear();
+    } catch (error) {
+      console.error('Error guardando proceso:', error);
+      toast.error(procesoEditar ? 'Error al actualizar el proceso' : 'Error al crear el proceso');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const newFiles = Array.from(e.dataTransfer.files);
+      setSelectedFiles(prev => [...prev, ...newFiles]);
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
     <ModalSIGL
       isOpen={isOpen}
       onClose={onClose}
-      title="Nuevo Proceso Coactivo"
+      title={procesoEditar ? `Editar Proceso ${procesoEditar.radicado}` : "Nuevo Proceso Coactivo"}
       size="large"
     >
-      <div className="space-y-4">
+      <div className="space-y-6">
         {/* Información del Deudor */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información del Deudor</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+        <section>
+          <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2">
+            <div className="p-1.5 bg-blue-50 rounded-md text-blue-600">
+              <User className="w-4 h-4" />
+            </div>
+            <h3 className="font-semibold text-gray-900 text-sm">Información del Deudor</h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700">
                 Nombre Completo <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={formData.deudorNombre}
                 onChange={(e) => setFormData({ ...formData, deudorNombre: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: Juan Carlos Pérez Gómez"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
+                placeholder="Ej: Juan Carlos Pérez"
               />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700">
                 Identificación <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={formData.deudorIdentificacion}
                 onChange={(e) => setFormData({ ...formData, deudorIdentificacion: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
                 placeholder="Ej: 1.012.345.678"
+                disabled={!!procesoEditar}
               />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
-              <input
-                type="text"
-                value={formData.deudorTelefono}
-                onChange={(e) => setFormData({ ...formData, deudorTelefono: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: +57 312 456 7890"
-              />
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700">Teléfono</label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={formData.deudorTelefono}
+                  onChange={(e) => setFormData({ ...formData, deudorTelefono: e.target.value })}
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
+                  placeholder="+57 300 123 4567"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-              <input
-                type="email"
-                value={formData.deudorEmail}
-                onChange={(e) => setFormData({ ...formData, deudorEmail: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: correo@ejemplo.com"
-              />
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700">Email</label>
+              <div className="relative">
+                <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="email"
+                  value={formData.deudorEmail}
+                  onChange={(e) => setFormData({ ...formData, deudorEmail: e.target.value })}
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
+                  placeholder="correo@ejemplo.com"
+                />
+              </div>
             </div>
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Dirección</label>
-              <input
-                type="text"
-                value={formData.deudorDireccion}
-                onChange={(e) => setFormData({ ...formData, deudorDireccion: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: Calle 45 #12-34, Bogotá"
-              />
+            <div className="sm:col-span-2 space-y-1">
+              <label className="text-xs font-medium text-gray-700">Dirección</label>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={formData.deudorDireccion}
+                  onChange={(e) => setFormData({ ...formData, deudorDireccion: e.target.value })}
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
+                  placeholder="Dirección de residencia o notificaciones"
+                />
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* Información de la Obligación */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información de la Obligación</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Concepto <span className="text-red-500">*</span>
+        <section>
+          <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2">
+            <div className="p-1.5 bg-green-50 rounded-md text-green-600">
+              <DollarSign className="w-4 h-4" />
+            </div>
+            <h3 className="font-semibold text-gray-900 text-sm">Detalle de la Obligación</h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2 space-y-1">
+              <label className="text-xs font-medium text-gray-700">
+                Concepto de Cobro <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={formData.concepto}
                 onChange={(e) => setFormData({ ...formData, concepto: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: Matrícula Semestre 2024-2"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
+                placeholder="Ej: Impuesto Predial 2024"
               />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Valor (COP) <span className="text-red-500">*</span>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700">
+                Valor Total (COP) <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
                 value={formData.valor}
                 onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: 3250000"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
+                placeholder="0"
               />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700">
                 Fecha Vencimiento <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
                 value={formData.fechaVencimiento}
                 onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
               />
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Información Adicional */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información Adicional</h3>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Responsable</label>
-              <input
-                type="text"
-                value={formData.responsable}
-                onChange={(e) => setFormData({ ...formData, responsable: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: Dra. María Fernández López"
-              />
+        {/* Documentos y Adicionales */}
+        <section>
+          <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2">
+            <div className="p-1.5 bg-purple-50 rounded-md text-purple-600">
+              <FileText className="w-4 h-4" />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Observaciones</label>
-              <textarea
-                value={formData.observaciones}
-                onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                rows={3}
-                placeholder="Observaciones adicionales sobre el proceso..."
-              />
+            <h3 className="font-semibold text-gray-900 text-sm">Soportes y Anexos</h3>
+          </div>
+
+          <div className="space-y-4">
+            {/* Aréa de Carga de Archivos */}
+            <div
+              className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-center transition-colors ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'
+                }`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
+              <Upload className={`w-8 h-8 mb-2 ${dragActive ? 'text-blue-500' : 'text-gray-400'}`} />
+              <p className="text-sm font-medium text-gray-700">
+                Arrastra y suelta archivos aquí, o{' '}
+                <label className="text-blue-600 hover:text-blue-700 cursor-pointer hover:underline">
+                  examina
+                  <input
+                    type="file"
+                    className="hidden"
+                    multiple
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        setSelectedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+                      }
+                    }}
+                  />
+                </label>
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Soporta PDF, imágenes y documentos de Office
+              </p>
+            </div>
+
+            {/* Lista de archivos seleccionados */}
+            {selectedFiles.length > 0 && (
+              <div className="space-y-2">
+                {selectedFiles.map((file, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-2 bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <div className="p-1.5 bg-gray-100 rounded text-gray-500">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-700 truncate">{file.name}</p>
+                        <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeFile(idx)}
+                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      title="Quitar archivo"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-700">Responsable Asignado</label>
+                <input
+                  type="text"
+                  value={formData.responsable}
+                  onChange={(e) => setFormData({ ...formData, responsable: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-shadow"
+                  placeholder="Ej: Dra. María Fernández"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-700">Observaciones Iniciales</label>
+                <textarea
+                  value={formData.observaciones}
+                  onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                  rows={1}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-shadow resize-none"
+                  placeholder="Notas adicionales..."
+                />
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Botones */}
-        <div className="flex justify-end gap-3 pt-4 border-t">
-          <ButtonSIGL variant="outline" onClick={onClose}>
+        {/* Footer Actions */}
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+          <ButtonSIGL variant="secondary" onClick={onClose}>
             Cancelar
           </ButtonSIGL>
-          <ButtonSIGL onClick={handleSubmit}>
-            <Plus className="w-4 h-4 mr-2" />
-            Crear Proceso
+          <ButtonSIGL onClick={handleSubmit} disabled={loading} className="min-w-[120px]">
+            {loading ? (
+              <span className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Guardando...
+              </span>
+            ) : (
+              procesoEditar ? 'Actualizar' : 'Crear Proceso'
+            )}
           </ButtonSIGL>
         </div>
       </div>
@@ -804,11 +930,13 @@ function ModalNuevoProceso({
 function ModalDetalleProceso({
   proceso,
   isOpen,
-  onClose
+  onClose,
+  onUpdate
 }: {
   proceso: ProcesoCoactivo;
   isOpen: boolean;
   onClose: () => void;
+  onUpdate?: () => void;
 }) {
   const estadoConfig = {
     IDENTIFICADO: { label: 'Identificado', color: 'bg-gray-100 text-gray-700' },
@@ -819,6 +947,49 @@ function ModalDetalleProceso({
     FINALIZADO: { label: 'Finalizado', color: 'bg-green-100 text-green-700' }
   }[proceso.estado];
 
+  const [adjuntos, setAdjuntos] = useState<ProcesoCoactivoAdjunto[]>([]);
+  const [loadingAdjuntos, setLoadingAdjuntos] = useState(false);
+
+  // Cargar adjuntos al abrir
+  useEffect(() => {
+    if (isOpen && proceso.id) {
+      loadAdjuntos();
+    }
+  }, [isOpen, proceso.id]);
+
+  const loadAdjuntos = async () => {
+    try {
+      setLoadingAdjuntos(true);
+      const docs = await procesosCoactivosService.getAdjuntos(proceso.id);
+      setAdjuntos(docs);
+    } catch (error) {
+      console.error('Error cargando adjuntos:', error);
+      toast.error('Error cargando documentos adjuntos');
+    } finally {
+      setLoadingAdjuntos(false);
+    }
+  };
+
+  const handleDownload = (adjunto: ProcesoCoactivoAdjunto) => {
+    const url = procesosCoactivosService.getAdjuntoDownloadUrl(adjunto.nombreArchivo, adjunto.nombreOriginal);
+    window.open(url, '_blank');
+  };
+
+  const handleDeleteAdjunto = async (id: string) => {
+    if (confirm('¿Está seguro de eliminar este documento?')) {
+      try {
+        await procesosCoactivosService.deleteAdjunto(id);
+        toast.success('Documento eliminado');
+        loadAdjuntos();
+        // Notificar al padre para actualizar stats
+        if (onUpdate) onUpdate();
+      } catch (error) {
+        console.error('Error eliminando adjunto:', error);
+        toast.error('Error al eliminar documento');
+      }
+    }
+  };
+
   return (
     <ModalSIGL
       isOpen={isOpen}
@@ -827,31 +998,34 @@ function ModalDetalleProceso({
       size="large"
     >
       <div className="space-y-4">
-        {/* Estado */}
-        <div className="flex items-center justify-between pb-3 border-b">
-          <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${estadoConfig.color}`}>
-            {estadoConfig.label}
-          </span>
+        {/* Header con Estado */}
+        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
+          <div>
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Estado Actual</p>
+            <span className={`px-3 py-1 mt-1 inline-flex text-sm font-bold rounded-full ${estadoConfig.color}`}>
+              {estadoConfig.label}
+            </span>
+          </div>
           <div className="text-right">
             <p className="text-xs text-gray-500">Fecha creación</p>
             <p className="text-sm font-medium text-gray-900">
-              {proceso.fechaCreacion.toLocaleDateString('es-CO', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
+              {proceso.fechaCreacion.toLocaleDateString('es-CO', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
               })}
             </p>
           </div>
         </div>
 
-        {/* Información del Deudor */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <User className="w-4 h-4 text-[#003DA5]" />
-            Información del Deudor
-          </h3>
-          <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-            <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Información del Deudor */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 border-b pb-2">
+              <User className="w-4 h-4 text-blue-600" />
+              Datos del Deudor
+            </h3>
+            <div className="space-y-2">
               <div>
                 <p className="text-xs text-gray-500">Nombre</p>
                 <p className="text-sm font-medium text-gray-900">{proceso.deudor.nombre}</p>
@@ -861,49 +1035,45 @@ function ModalDetalleProceso({
                 <p className="text-sm font-medium text-gray-900">{proceso.deudor.identificacion}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Teléfono</p>
-                <p className="text-sm text-gray-900">{proceso.deudor.telefono}</p>
+                <p className="text-xs text-gray-500">Contacto</p>
+                <p className="text-sm text-gray-900">{proceso.deudor.telefono || 'N/A'} • {proceso.deudor.email || 'N/A'}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Email</p>
-                <p className="text-sm text-gray-900">{proceso.deudor.email}</p>
-              </div>
-              <div className="col-span-2">
                 <p className="text-xs text-gray-500">Dirección</p>
-                <p className="text-sm text-gray-900">{proceso.deudor.direccion}</p>
+                <p className="text-sm text-gray-900">{proceso.deudor.direccion || 'N/A'}</p>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Información de la Obligación */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <DollarSign className="w-4 h-4 text-green-600" />
-            Obligación
-          </h3>
-          <div className="bg-green-50 rounded-lg p-4 space-y-3">
-            <div>
-              <p className="text-xs text-green-700 mb-1">Concepto</p>
-              <p className="text-sm font-medium text-gray-900">{proceso.obligacion.concepto}</p>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
+          {/* Información de la Obligación */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 border-b pb-2">
+              <DollarSign className="w-4 h-4 text-green-600" />
+              Detalle de la Obligación
+            </h3>
+            <div className="space-y-3">
               <div>
-                <p className="text-xs text-green-700">Valor</p>
-                <p className="text-lg font-bold text-green-900">
-                  ${proceso.obligacion.valor.toLocaleString('es-CO')}
-                </p>
+                <p className="text-xs text-gray-500">Concepto</p>
+                <p className="text-sm font-medium text-gray-900">{proceso.obligacion.concepto}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-xs text-gray-500">Valor Capital</p>
+                  <p className="text-lg font-bold text-green-700">
+                    ${proceso.obligacion.valor.toLocaleString('es-CO')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Días en Mora</p>
+                  <p className={`text-lg font-bold ${proceso.obligacion.diasVencidos > 180 ? 'text-red-600' : 'text-orange-600'}`}>
+                    {proceso.obligacion.diasVencidos}
+                  </p>
+                </div>
               </div>
               <div>
-                <p className="text-xs text-green-700">Vencimiento</p>
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-xs text-gray-500">Fecha de Vencimiento</p>
+                <p className="text-sm text-gray-900">
                   {proceso.obligacion.fechaVencimiento.toLocaleDateString('es-CO')}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-green-700">Días vencidos</p>
-                <p className="text-sm font-bold text-red-600">
-                  {proceso.obligacion.diasVencidos} días
                 </p>
               </div>
             </div>
@@ -911,53 +1081,107 @@ function ModalDetalleProceso({
         </div>
 
         {/* Gestión del Proceso */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <FileCheck className="w-4 h-4 text-blue-600" />
-            Gestión del Proceso
+        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+          <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+            <FileCheck className="w-4 h-4" />
+            Gestión y Seguimiento
           </h3>
-          <div className="bg-blue-50 rounded-lg p-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-blue-700">Responsable</p>
-                <p className="text-sm font-medium text-gray-900">{proceso.responsable}</p>
-              </div>
-              <div>
-                <p className="text-xs text-blue-700">Última actuación</p>
-                <p className="text-sm font-medium text-gray-900">
-                  {proceso.ultimaActuacion.toLocaleDateString('es-CO')}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-blue-700">Documentos adjuntos</p>
-                <p className="text-sm font-semibold text-gray-900">{proceso.documentosAdjuntos}</p>
-              </div>
-              <div>
-                <p className="text-xs text-blue-700">Notificaciones enviadas</p>
-                <p className="text-sm font-semibold text-gray-900">{proceso.notificacionesEnviadas}</p>
-              </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-blue-700">Responsable Asignado</p>
+              <p className="text-sm font-medium text-gray-900">{proceso.responsable || 'Sin asignar'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-blue-700">Última actuación</p>
+              <p className="text-sm font-medium text-gray-900">
+                {proceso.ultimaActuacion.toLocaleDateString('es-CO')}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-blue-700">Documentos</p>
+              <p className="text-sm font-semibold text-gray-900 flex items-center gap-1">
+                <FileText className="w-3 h-3" /> {proceso.documentosAdjuntos}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-blue-700">Notificaciones</p>
+              <p className="text-sm font-semibold text-gray-900 flex items-center gap-1">
+                <Send className="w-3 h-3" /> {proceso.notificacionesEnviadas}
+              </p>
             </div>
           </div>
         </div>
 
         {/* Observaciones */}
         {proceso.observaciones && (
-          <div>
-            <h3 className="font-semibold text-gray-900 mb-3">Observaciones</h3>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <p className="text-sm text-gray-900">{proceso.observaciones}</p>
-            </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <h3 className="font-semibold text-amber-900 mb-2 text-sm">Observaciones</h3>
+            <p className="text-sm text-gray-800 italic">"{proceso.observaciones}"</p>
           </div>
         )}
 
+        {/* Sección de Documentos Adjuntos */}
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 text-sm">
+            <FileText className="w-4 h-4 text-blue-600" />
+            Documentos Adjuntos ({adjuntos.length})
+          </h3>
+
+          {loadingAdjuntos ? (
+            <p className="text-sm text-gray-500">Cargando documentos...</p>
+          ) : adjuntos.length === 0 ? (
+            <p className="text-sm text-gray-500 italic">No hay documentos adjuntos a este proceso.</p>
+          ) : (
+            <div className="space-y-2">
+              {adjuntos.map((adjunto) => (
+                <div key={adjunto.id} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200 hover:bg-gray-50">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <div className="p-1.5 bg-blue-100 rounded text-blue-600">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 truncate max-w-[200px] sm:max-w-[300px]">
+                        {adjunto.nombreOriginal}
+                      </p>
+                      <p className="text-[10px] text-gray-500">
+                        {(adjunto.tamano / 1024).toFixed(1)} KB • {new Date(adjunto.fechaCreacion).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleDownload(adjunto)}
+                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                      title="Descargar"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteAdjunto(adjunto.id)}
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                      title="Eliminar"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+
         {/* Botones de acción */}
         <div className="flex justify-end gap-3 pt-4 border-t">
-          <ButtonSIGL variant="outline" onClick={onClose}>
+          <ButtonSIGL variant="secondary" onClick={onClose}>
             Cerrar
           </ButtonSIGL>
-          <ButtonSIGL onClick={() => toast.info('Función en desarrollo')}>
+          <ButtonSIGL onClick={() => {
+            const url = procesosCoactivosService.getFichaDownloadUrl(proceso.id);
+            window.open(url, '_blank');
+          }}>
             <Download className="w-4 h-4 mr-2" />
-            Exportar PDF
+            Descargar Ficha
           </ButtonSIGL>
         </div>
       </div>

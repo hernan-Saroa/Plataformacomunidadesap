@@ -1,24 +1,5 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * EXPEDIENTES - SISTEMA INTEGRADO DE GESTIÓN LEGAL (SIGL)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Sistema de expedientes electrónicos para Gestión Legal
- * Cada proceso legal = 1 expediente con documentación organizada por tipo
- * 
- * VERSIÓN: 1.0 - SIGL
- * ÚLTIMA ACTUALIZACIÓN: 13 Enero 2026
- * 
- * ✨ Características:
- * - Expediente por cada proceso legal (Defensa Judicial, Juzgamiento, etc.)
- * - Carpetas organizadas por tipo de documento
- * - Vista de árbol de documentos
- * - Búsqueda por expediente
- * - Carga de documentos
- * - Integración con todos los módulos de Gestión Legal
- */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Folder, FolderOpen, FileText, Upload, Download, Search, Eye,
@@ -27,14 +8,16 @@ import {
   File, FolderCheck, FileCheck, Scale, Gavel, FileQuestion,
   BarChart3
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalSIGL } from '../design-system/ModalSIGL';
+import { legalService } from '../../../../services/api/legal.service';
+
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type TipoProceso = 
+type TipoProceso =
   | 'DEFENSA_JUDICIAL'
   | 'JUZGAMIENTO'
   | 'ASESORIA'
@@ -42,7 +25,7 @@ type TipoProceso =
   | 'ORGANOS_CONTROL'
   | 'OTRO';
 
-type TipoDocumento = 
+type TipoDocumento =
   | 'DEMANDA'
   | 'CONTESTACION'
   | 'PRUEBAS'
@@ -63,6 +46,8 @@ interface Documento {
   tamanio: string;
   fechaCreacion: string;
   autor: string;
+  // Campos adicionales para lógica de negocio
+  url?: string;
 }
 
 interface Expediente {
@@ -164,133 +149,8 @@ const TIPOS_DOCUMENTO = [
   }
 ];
 
-// ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK
-// ════════════════════════════════════════════════════════════════════════════
-
-const EXPEDIENTES_MOCK: Expediente[] = [
-  // ═══════════════════════════════════════════════════════════
-  // EXPEDIENTES DE DEFENSA JUDICIAL
-  // Vinculados con datosExpedientesJudicialesExpandido.ts
-  // ═══════════════════════════════════════════════════════════
-  {
-    id: 'exp-dj-001',
-    radicado: 'PJ-2025-001',
-    nombreProceso: 'NRD - María González Pérez vs ESAP',
-    tipoProceso: 'DEFENSA_JUDICIAL',
-    fechaInicio: '2024-10-15',
-    fechaActualizacion: '2025-01-12',
-    estado: 'EN_PROCESO',
-    responsable: 'Dr. Juan Pérez López',
-    totalDocumentos: 15,
-    documentos: [
-      { id: 'd1', nombre: 'Demanda NRD - María González.pdf', tipo: 'DEMANDA', tipoArchivo: 'PDF', tamanio: '2.4 MB', fechaCreacion: '2024-10-15', autor: 'Tribunal Administrativo' },
-      { id: 'd2', nombre: 'Auto Admisorio.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2024-10-20', autor: 'Tribunal' },
-      { id: 'd3', nombre: 'Notificación Auto Admisorio.pdf', tipo: 'NOTIFICACIONES', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2024-10-22', autor: 'Notificador' },
-      { id: 'd4', nombre: 'Contestación ESAP.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '3.8 MB', fechaCreacion: '2024-11-15', autor: 'Dr. Juan Pérez' },
-      { id: 'd5', nombre: 'Prueba - Resolución Litigio.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '890 KB', fechaCreacion: '2024-11-15', autor: 'Dr. Juan Pérez' },
-      { id: 'd6', nombre: 'Auto Decreto Pruebas.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '445 KB', fechaCreacion: '2024-12-10', autor: 'Tribunal' },
-    ]
-  },
-  {
-    id: 'exp-dj-002',
-    radicado: 'PJ-2024-045',
-    nombreProceso: 'Tutela - Derecho de Petición',
-    tipoProceso: 'DEFENSA_JUDICIAL',
-    fechaInicio: '2024-08-15',
-    fechaActualizacion: '2024-09-20',
-    estado: 'FINALIZADO',
-    responsable: 'Dra. Ana López García',
-    totalDocumentos: 10,
-    documentos: [
-      { id: 'd20', nombre: 'Acción de Tutela.pdf', tipo: 'TUTELAS', tipoArchivo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2024-08-15', autor: 'Ciudadano' },
-      { id: 'd21', nombre: 'Informe ESAP.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '2.5 MB', fechaCreacion: '2024-08-16', autor: 'Dra. Ana López' },
-      { id: 'd22', nombre: 'Sentencia Primera Instancia.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '890 KB', fechaCreacion: '2024-08-20', autor: 'Juzgado' },
-      { id: 'd23', nombre: 'Impugnación.pdf', tipo: 'RECURSOS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2024-08-22', autor: 'Ciudadano' },
-      { id: 'd24', nombre: 'Sentencia Segunda Instancia.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '1.1 MB', fechaCreacion: '2024-09-10', autor: 'Tribunal' },
-      { id: 'd25', nombre: 'Constancia Cumplimiento.pdf', tipo: 'ACTAS', tipoArchivo: 'PDF', tamanio: '345 KB', fechaCreacion: '2024-09-20', autor: 'Dra. Ana López' },
-    ]
-  },
-  
-  // ═══════════════════════════════════════════════════════════
-  // EXPEDIENTES DE JUZGAMIENTO
-  // Vinculados con datosProcesoDisciplinarios.ts
-  // ═══════════════════════════════════════════════════════════
-  {
-    id: 'exp-juz-001',
-    radicado: 'PD-2025-001',
-    nombreProceso: 'Disciplinario - Dr. Carlos Rodríguez',
-    tipoProceso: 'JUZGAMIENTO',
-    fechaInicio: '2025-01-08',
-    fechaActualizacion: '2025-01-13',
-    estado: 'ACTIVO',
-    responsable: 'Dra. Ana López García',
-    totalDocumentos: 6,
-    documentos: [
-      { id: 'd7', nombre: 'Queja Inicial.pdf', tipo: 'OTROS', tipoArchivo: 'PDF', tamanio: '456 KB', fechaCreacion: '2024-12-15', autor: 'Ciudadano' },
-      { id: 'd8', nombre: 'Auto Avocamiento.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '678 KB', fechaCreacion: '2025-01-08', autor: 'Dra. Ana López' },
-      { id: 'd9', nombre: 'Notificación Investigado.pdf', tipo: 'NOTIFICACIONES', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2025-01-10', autor: 'Notificador' },
-    ]
-  },
-  {
-    id: 'exp-juz-002',
-    radicado: 'PD-2024-015',
-    nombreProceso: 'Disciplinario - Funcionario Administrativo',
-    tipoProceso: 'JUZGAMIENTO',
-    fechaInicio: '2024-06-20',
-    fechaActualizacion: '2025-01-10',
-    estado: 'EN_PROCESO',
-    responsable: 'Dr. Carlos Ramírez Soto',
-    totalDocumentos: 18,
-    documentos: [
-      { id: 'd10', nombre: 'Pliego de Cargos.pdf', tipo: 'OFICIOS', tipoArchivo: 'PDF', tamanio: '1.5 MB', fechaCreacion: '2024-09-01', autor: 'Dr. Carlos Ramírez' },
-      { id: 'd11', nombre: 'Descargos Investigado.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '2.3 MB', fechaCreacion: '2024-09-20', autor: 'Investigado' },
-      { id: 'd12', nombre: 'Pruebas - Testimonios.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '3.1 MB', fechaCreacion: '2024-10-15', autor: 'Dr. Carlos Ramírez' },
-      { id: 'd13', nombre: 'Fallo Primera Instancia.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '2.8 MB', fechaCreacion: '2025-01-10', autor: 'Dr. Carlos Ramírez' },
-    ]
-  },
-  
-  // ═══════════════════════════════════════════════════════════
-  // EXPEDIENTES DE ASESORÍA JURÍDICA
-  // Vinculados con datosConsultasJuridicas.ts
-  // ═══════════════════════════════════════════════════════════
-  {
-    id: 'exp-as-001',
-    radicado: 'CJ-2025-001',
-    nombreProceso: 'Concepto - Contratación Directa',
-    tipoProceso: 'ASESORIA',
-    fechaInicio: '2025-01-11',
-    fechaActualizacion: '2025-01-12',
-    estado: 'ACTIVO',
-    responsable: 'Dr. Juan Pérez López',
-    totalDocumentos: 5,
-    documentos: [
-      { id: 'd14', nombre: 'Solicitud Concepto DAF.pdf', tipo: 'OFICIOS', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2025-01-11', autor: 'Dir. Administrativa' },
-      { id: 'd15', nombre: 'Normatividad Ley 80.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2025-01-11', autor: 'Dr. Juan Pérez' },
-      { id: 'd16', nombre: 'Concepto No. 001-2025.pdf', tipo: 'CONCEPTOS', tipoArchivo: 'PDF', tamanio: '1.8 MB', fechaCreacion: '2025-01-12', autor: 'Dr. Juan Pérez' },
-    ]
-  },
-  {
-    id: 'exp-as-002',
-    radicado: 'CJ-2025-002',
-    nombreProceso: 'Concepto - Fuero Sindical',
-    tipoProceso: 'ASESORIA',
-    fechaInicio: '2025-01-08',
-    fechaActualizacion: '2025-01-12',
-    estado: 'EN_PROCESO',
-    responsable: 'Dra. Ana López García',
-    totalDocumentos: 7,
-    documentos: [
-      { id: 'd17', nombre: 'Solicitud RRHH Medellín.pdf', tipo: 'OFICIOS', tipoArchivo: 'PDF', tamanio: '345 KB', fechaCreacion: '2025-01-08', autor: 'Gestión Humana' },
-      { id: 'd18', nombre: 'Carta Renuncia.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '156 KB', fechaCreacion: '2025-01-08', autor: 'Gestión Humana' },
-      { id: 'd19', nombre: 'Borrador Concepto.pdf', tipo: 'CONCEPTOS', tipoArchivo: 'PDF', tamanio: '1.5 MB', fechaCreacion: '2025-01-12', autor: 'Dra. Ana López' },
-    ]
-  },
-  
-  // ═══════════════════════════════════════════════════════════
-  // EXPEDIENTES DE PROCESOS COACTIVOS
-  // Vinculados con datosProcesosCoactivos.ts
-  // ═══════════════════════════════════════════════════════════
+// Placeholder para Coactivos que no está implementado en backend aún
+const EXPEDIENTES_COACTIVOS_MOCK: Expediente[] = [
   {
     id: 'exp-coa-001',
     radicado: 'PC-2025-001',
@@ -300,13 +160,9 @@ const EXPEDIENTES_MOCK: Expediente[] = [
     fechaActualizacion: '2024-12-20',
     estado: 'EN_PROCESO',
     responsable: 'Dra. Laura Sánchez',
-    totalDocumentos: 9,
+    totalDocumentos: 1,
     documentos: [
       { id: 'd20', nombre: 'Título Ejecutivo Matrícula.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '345 KB', fechaCreacion: '2024-08-15', autor: 'Oficina Financiera' },
-      { id: 'd21', nombre: 'Mandamiento de Pago.pdf', tipo: 'OFICIOS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2024-09-10', autor: 'Dra. Laura Sánchez' },
-      { id: 'd22', nombre: 'Notificación Personal.pdf', tipo: 'NOTIFICACIONES', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2024-09-25', autor: 'Notificador' },
-      { id: 'd23', nombre: 'Excepciones Deudor.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '890 KB', fechaCreacion: '2024-10-15', autor: 'Deudor' },
-      { id: 'd24', nombre: 'Auto Resuelve Excepciones.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2024-11-20', autor: 'Dra. Laura Sánchez' },
     ]
   },
 ];
@@ -317,6 +173,254 @@ const EXPEDIENTES_MOCK: Expediente[] = [
 
 export function ExpedientesModuloSIGL() {
   const [vistaActiva, setVistaActiva] = useState<VistaActual>('expedientes');
+  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
+  const [cargando, setCargando] = useState(true);
+
+  // Helper para mapear estado del backend al frontend
+  const mapEstado = (estadoBackend: string = ''): 'ACTIVO' | 'EN_PROCESO' | 'FINALIZADO' => {
+    const estado = estadoBackend.toUpperCase();
+    if (['FINALIZADO', 'CERRADO', 'ARCHIVADO', 'PRESCRITO', 'RESUELTA', 'RECHAZADA'].some(s => estado.includes(s))) return 'FINALIZADO';
+    if (['EN_PROCESO', 'TRAMITE', 'EJECUCION', 'INDAGACION', 'INVESTIGACION', 'VALORACION', 'ASIGNADA'].some(s => estado.includes(s))) return 'EN_PROCESO';
+    return 'ACTIVO';
+  };
+
+  // Helper para mapear tipo de documento según nombre/tipo backend
+  const mapearTipoDocumento = (nombre: string = '', tipo: string = ''): TipoDocumento => {
+    const texto = (nombre + ' ' + tipo).toUpperCase();
+    if (texto.includes('DEMANDA')) return 'DEMANDA';
+    if (texto.includes('CONTESTACION') || texto.includes('RESPUESTA')) return 'CONTESTACION';
+    if (texto.includes('PRUEBA') || texto.includes('EVIDENCIA') || texto.includes('TESTIMONIO')) return 'PRUEBAS';
+    if (texto.includes('SENTENCIA') || texto.includes('FALLO') || texto.includes('AUTO')) return 'SENTENCIAS';
+    if (texto.includes('TUTELA')) return 'TUTELAS';
+    if (texto.includes('RECURSO') || texto.includes('APELACION') || texto.includes('REPOSICION')) return 'RECURSOS';
+    if (texto.includes('CONCEPTO') || texto.includes('MEMORIAL') || texto.includes('ALEGATO')) return 'CONCEPTOS';
+    if (texto.includes('ACTA')) return 'ACTAS';
+    if (texto.includes('NOTIFICACION') || texto.includes('CITACION')) return 'NOTIFICACIONES';
+    if (texto.includes('OFICIO') || texto.includes('CARTA')) return 'OFICIOS';
+    return 'OTROS';
+  };
+
+  const cargarExpedientes = async () => {
+    try {
+      setCargando(true);
+
+      // Fetch concurrent from ALL legal services
+      const [legalRes, juzgamientoRes, asesoriaRes, ocRes] = await Promise.allSettled([
+        legalService.getExpedientes(),
+        legalService.getJuzgamientoProcesos(),
+        legalService.getConsultasJuridicas(),
+        legalService.getRequerimientosOC()
+      ]);
+
+      const nuevosExpedientes: Expediente[] = [];
+
+      // 1. Procesar DEFENSA JUDICIAL (Excluyendo Disciplinario)
+      if (legalRes.status === 'fulfilled') {
+        const procesosJudiciales = legalRes.value;
+        for (const proc of procesosJudiciales) {
+          if (proc.jurisdiccion?.toUpperCase() === 'DISCIPLINARIO' || proc.tipoProceso?.toUpperCase() === 'DISCIPLINARIO') {
+            continue;
+          }
+
+          let docsExp: Documento[] = [];
+          try {
+            const docs = await legalService.getDocumentos(proc.id);
+            if (Array.isArray(docs)) {
+              docsExp = docs.map(d => ({
+                id: d.id,
+                nombre: d.nombre,
+                tipo: d.tipo ? mapearTipoDocumento(d.nombre, d.tipo) : mapearTipoDocumento(d.nombre, 'OTROS'),
+                tipoArchivo: d.archivoMimeType?.split('/')[1]?.toUpperCase() || 'PDF',
+                tamanio: d.archivoTamano ? (d.archivoTamano / 1024).toFixed(0) + ' KB' : 'Unknown',
+                fechaCreacion: d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+                autor: d.subidoPor || 'Sistema',
+                url: d.archivoUrl
+              }));
+            }
+          } catch (error) {
+            console.warn(`Error cargando documentos para expediente judicial ${proc.id}`, error);
+          }
+
+          let tipoProc: TipoProceso = 'DEFENSA_JUDICIAL';
+          if (proc.tipoProceso === 'Procesos Coactivos') tipoProc = 'PROCESOS_COACTIVOS';
+          else if (proc.tipoProceso === 'Otro') tipoProc = 'OTRO';
+
+          nuevosExpedientes.push({
+            id: proc.id,
+            radicado: proc.radicado,
+            nombreProceso: `${proc.jurisdiccion || 'Proceso'} - ${proc.demandante} vs ${proc.demandado}`,
+            tipoProceso: tipoProc,
+            fechaInicio: proc.createdAt?.split('T')[0],
+            fechaActualizacion: proc.updatedAt?.split('T')[0],
+            estado: mapEstado(proc.estado),
+            responsable: proc.abogadoSustanciador || 'No asignado',
+            totalDocumentos: docsExp.length,
+            documentos: docsExp
+          });
+        }
+      }
+
+      // 2. Procesar JUZGAMIENTO (Local Legal Service)
+      if (juzgamientoRes.status === 'fulfilled') {
+        const procesosJuzgamiento = juzgamientoRes.value;
+        procesosJuzgamiento.forEach(proc => {
+          const docsExp: Documento[] = (proc.documentos || []).map((d: any) => ({
+            id: d.id || d.uuid,
+            nombre: d.documentoNombre || d.archivoNombre || d.descripcion || 'Documento sin nombre',
+            tipo: mapearTipoDocumento(d.documentoNombre || d.archivoNombre || d.descripcion, d.tipoActuacion || d.tipo),
+            tipoArchivo: (d.documentoUrl || d.archivoUrl) ? (d.documentoUrl || d.archivoUrl).split('.').pop()?.toUpperCase() : 'PDF',
+            tamanio: d.archivoTamano ? (d.archivoTamano / 1024).toFixed(0) + ' KB' : 'Unknown',
+            fechaCreacion: d.fechaActuacion?.split('T')[0] || d.fechaPresentacion?.split('T')[0] || new Date().toISOString().split('T')[0],
+            autor: d.usuarioResponsable || d.aportadoPor || 'Sistema',
+            url: d.documentoUrl || d.archivoUrl
+          })).filter((d: any) => d.url);
+
+          nuevosExpedientes.push({
+            id: proc.id,
+            radicado: proc.radicado,
+            nombreProceso: `Disciplinario - ${proc.etapa}`,
+            tipoProceso: 'JUZGAMIENTO',
+            fechaInicio: new Date().toISOString().split('T')[0],
+            fechaActualizacion: new Date().toISOString().split('T')[0],
+            estado: 'EN_PROCESO',
+            responsable: proc.abogadoAsignado || 'No asignado',
+            totalDocumentos: docsExp.length,
+            documentos: docsExp
+          });
+        });
+      }
+
+      // 3. Procesar ASESORIA JURIDICA (Consultas)
+      if (asesoriaRes.status === 'fulfilled') {
+        const consultas = asesoriaRes.value;
+        for (const cons of consultas) {
+          let docsExp: Documento[] = [];
+          try {
+            const docs = await legalService.getDocumentosConsulta(cons.id);
+            if (Array.isArray(docs)) {
+              docsExp = docs.map(d => ({
+                id: d.id,
+                nombre: d.nombre,
+                // Si el tipo viene vacío, intentamos inferirlo del nombre, o default a OTROS
+                tipo: d.tipo ? mapearTipoDocumento(d.nombre, d.tipo) : mapearTipoDocumento(d.nombre, 'OTROS'),
+                tipoArchivo: d.archivoMimeType?.split('/')[1]?.toUpperCase() || 'PDF', // Default
+                tamanio: d.archivoTamano ? (d.archivoTamano / 1024).toFixed(0) + ' KB' : 'Unknown',
+                fechaCreacion: d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+                autor: d.subidoPor || 'Sistema',
+                url: d.archivoUrl
+              }));
+            }
+          } catch (error) {
+            console.warn(`Error cargando documentos para consulta ${cons.id}`, error);
+          }
+
+          nuevosExpedientes.push({
+            id: cons.id,
+            radicado: cons.codigo || cons.id.substring(0, 8).toUpperCase(),
+            nombreProceso: cons.asunto || 'Consulta Jurídica',
+            tipoProceso: 'ASESORIA',
+            fechaInicio: cons.createdAt?.split('T')[0],
+            fechaActualizacion: cons.updatedAt?.split('T')[0],
+            estado: mapEstado(cons.estado),
+            responsable: cons.abogadoResponsable?.nombre || cons.responsable || 'No asignado',
+            totalDocumentos: docsExp.length,
+            documentos: docsExp
+          });
+        }
+      }
+
+      // 4. Procesar ORGANOS DE CONTROL (Requerimientos)
+      if (ocRes.status === 'fulfilled') {
+        const requerimientosOC = ocRes.value;
+        requerimientosOC.forEach(req => {
+          const docsExp: Documento[] = (req.documentos || []).map((d: any) => ({
+            id: d.id,
+            nombre: d.nombre,
+            tipo: mapearTipoDocumento(d.nombre, d.tipoDocumento),
+            tipoArchivo: d.archivoUrl ? d.archivoUrl.split('.').pop()?.toUpperCase() : 'PDF',
+            tamanio: 'Unknown',
+            fechaCreacion: d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+            autor: d.subidoPor || 'Sistema',
+            url: d.archivoUrl
+          }));
+
+          nuevosExpedientes.push({
+            id: req.id,
+            radicado: req.radicadoExterno || req.codigo || req.id.substring(0, 8).toUpperCase(),
+            nombreProceso: `OC - ${req.entidad || 'Entidad'} - ${req.asunto}`,
+            tipoProceso: 'ORGANOS_CONTROL',
+            fechaInicio: req.fechaRadicacion?.split('T')[0] || req.createdAt?.split('T')[0],
+            fechaActualizacion: req.updatedAt?.split('T')[0],
+            estado: mapEstado(req.estado),
+            responsable: req.responsable || 'No asignado',
+            totalDocumentos: docsExp.length,
+            documentos: docsExp
+          });
+        });
+      }
+
+      // 4. Agregar mock de COACTIVOS (Placeholder) - ELIMINADO por solicitud
+      // nuevosExpedientes.push(...EXPEDIENTES_COACTIVOS_MOCK);
+
+      setExpedientes(nuevosExpedientes);
+
+    } catch (error) {
+      console.error('Error cargando expedientes:', error);
+      toast.error('Error al cargar expedientes electrónicos');
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  useEffect(() => {
+    cargarExpedientes();
+  }, []);
+
+  const handleDocumentoUpload = async (expediente: Expediente, file: File, tipoId: string) => {
+    try {
+      toast.promise(
+        async () => {
+          if (expediente.tipoProceso === 'DEFENSA_JUDICIAL' || expediente.tipoProceso === 'OTRO') {
+            // Carga para Defensa Judicial
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('expedienteId', expediente.id);
+            formData.append('tipo', tipoId); // Enviar el ID del tipo (ej: DEMANDA) como tipo string
+            formData.append('nombre', file.name);
+            await legalService.crearDocumento(formData);
+
+          } else if (expediente.tipoProceso === 'JUZGAMIENTO') {
+            // Carga para Juzgamiento (Legal Service)
+            await legalService.uploadJuzgamientoDocumento(
+              expediente.radicado, // Usa radicado como ID
+              file,
+              tipoId, // tipo
+              `Cargado desde Expedientes Electrónicos` // descripcion
+            );
+          } else if (expediente.tipoProceso === 'ASESORIA') {
+            // Carga para Asesoría
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('tipo', tipoId);
+            formData.append('nombre', file.name);
+            await legalService.uploadDocumentoConsulta(expediente.id, formData);
+          } else if (expediente.tipoProceso === 'PROCESOS_COACTIVOS') {
+            throw new Error('Módulo Coactivos no implementado');
+          }
+
+          // Recargar expedientes para ver el nuevo documento
+          await cargarExpedientes();
+        },
+        {
+          loading: 'Subiendo documento...',
+          success: 'Documento cargado exitosamente',
+          error: 'Error al cargar documento'
+        }
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
@@ -338,7 +442,7 @@ export function ExpedientesModuloSIGL() {
             onClick={() => setVistaActiva('expedientes')}
             icon={<Folder className="w-4 h-4" />}
             label="Expedientes por Proceso"
-            badge={EXPEDIENTES_MOCK.length.toString()}
+            badge={expedientes.length.toString()}
           />
           <TabButton
             active={vistaActiva === 'estadisticas'}
@@ -358,8 +462,26 @@ export function ExpedientesModuloSIGL() {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {vistaActiva === 'expedientes' && <VistaExpedientes />}
-          {vistaActiva === 'estadisticas' && <VistaEstadisticas />}
+          {cargando ? (
+            <div className="flex items-center justify-center p-12">
+              <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin"></div>
+              <span className="ml-3 text-gray-600">Cargando expedientes...</span>
+            </div>
+          ) : (
+            <>
+              {vistaActiva === 'expedientes' &&
+                <VistaExpedientes
+                  expedientes={expedientes}
+                  onUpload={handleDocumentoUpload}
+                />
+              }
+              {vistaActiva === 'estadisticas' &&
+                <VistaEstadisticas
+                  expedientes={expedientes}
+                />
+              }
+            </>
+          )}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -384,8 +506,8 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
       onClick={onClick}
       className={`
         relative px-4 sm:px-6 py-3 flex items-center gap-2 text-sm font-medium border-b-2 transition-all
-        ${active 
-          ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50' 
+        ${active
+          ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
           : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
         }
       `}
@@ -394,9 +516,8 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
       <span className="hidden sm:inline">{label}</span>
       <span className="sm:hidden">{label.split(' ')[0]}</span>
       {badge && (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-          active ? 'bg-[#003DA5] text-white' : 'bg-gray-200 text-gray-700'
-        }`}>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${active ? 'bg-[#003DA5] text-white' : 'bg-gray-200 text-gray-700'
+          }`}>
           {badge}
         </span>
       )}
@@ -408,13 +529,18 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
 // VISTA: EXPEDIENTES POR PROCESO
 // ════════════════════════════════════════════════════════════════════════════
 
-function VistaExpedientes() {
+interface VistaExpedientesProps {
+  expedientes: Expediente[];
+  onUpload: (exp: Expediente, file: File, tipo: string) => Promise<void>;
+}
+
+function VistaExpedientes({ expedientes, onUpload }: VistaExpedientesProps) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | 'ACTIVO' | 'EN_PROCESO' | 'FINALIZADO'>('TODOS');
   const [expedienteExpandido, setExpedienteExpandido] = useState<string | null>(null);
 
   const expedientesFiltrados = useMemo(() => {
-    let resultado = EXPEDIENTES_MOCK;
+    let resultado = expedientes;
 
     if (busqueda) {
       const search = busqueda.toLowerCase();
@@ -429,17 +555,17 @@ function VistaExpedientes() {
     }
 
     return resultado;
-  }, [busqueda, filtroEstado]);
+  }, [busqueda, filtroEstado, expedientes]);
 
   const estadisticas = useMemo(() => {
-    const total = EXPEDIENTES_MOCK.length;
-    const activos = EXPEDIENTES_MOCK.filter(e => e.estado === 'ACTIVO').length;
-    const enProceso = EXPEDIENTES_MOCK.filter(e => e.estado === 'EN_PROCESO').length;
-    const finalizados = EXPEDIENTES_MOCK.filter(e => e.estado === 'FINALIZADO').length;
-    const totalDocs = EXPEDIENTES_MOCK.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
+    const total = expedientes.length;
+    const activos = expedientes.filter(e => e.estado === 'ACTIVO').length;
+    const enProceso = expedientes.filter(e => e.estado === 'EN_PROCESO').length;
+    const finalizados = expedientes.filter(e => e.estado === 'FINALIZADO').length;
+    const totalDocs = expedientes.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
 
     return { total, activos, enProceso, finalizados, totalDocs };
-  }, []);
+  }, [expedientes]);
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -499,6 +625,7 @@ function VistaExpedientes() {
             onToggleExpand={() => setExpedienteExpandido(
               expedienteExpandido === expediente.id ? null : expediente.id
             )}
+            onUpload={onUpload}
           />
         ))}
 
@@ -539,8 +666,8 @@ function FilterButton({ active, onClick, label, count, color }: FilterButtonProp
       onClick={onClick}
       className={`
         px-4 py-2 rounded-lg border text-sm font-medium transition-all whitespace-nowrap
-        ${active 
-          ? color 
+        ${active
+          ? color
             ? colorClasses[color]
             : 'border-[#003DA5] bg-blue-50 text-[#003DA5]'
           : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
@@ -560,11 +687,12 @@ interface CardExpedienteProps {
   expediente: Expediente;
   expandido: boolean;
   onToggleExpand: () => void;
+  onUpload: (exp: Expediente, file: File, tipo: string) => Promise<void>;
 }
 
-function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedienteProps) {
+function CardExpediente({ expediente, expandido, onToggleExpand, onUpload }: CardExpedienteProps) {
   const [modalCargar, setModalCargar] = useState(false);
-  
+
   const estadoConfig = {
     ACTIVO: { bg: 'bg-green-100', text: 'text-green-700', label: 'Activo' },
     EN_PROCESO: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'En Proceso' },
@@ -573,10 +701,10 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
 
   const tipoProcesoConfig = {
     DEFENSA_JUDICIAL: { label: 'Defensa Judicial', icon: Scale, color: '#10B981' },
-    JUZGAMIENTO: { label: 'Juzgamiento', icon: Gavel, color: '#DC2626' },
+    JUZGAMIENTO: { label: 'Juzgamiento Disc.', icon: Gavel, color: '#DC2626' },
     ASESORIA: { label: 'Asesoría Jurídica', icon: FileQuestion, color: '#8B5CF6' },
     PROCESOS_COACTIVOS: { label: 'Procesos Coactivos', icon: FileText, color: '#F59E0B' },
-    ORGANOS_CONTROL: { label: 'Órganos Control', icon: Archive, color: '#2563EB' },
+    ORGANOS_CONTROL: { label: 'Órganos de Control', icon: CheckCircle2, color: '#059669' },
     OTRO: { label: 'Otro', icon: File, color: '#6B7280' }
   };
 
@@ -618,7 +746,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
         <div className="p-4 sm:p-6">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
-              <div 
+              <div
                 className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{ background: `linear-gradient(135deg, ${tipoConfig.color}, ${tipoConfig.color}dd)` }}
               >
@@ -657,66 +785,67 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
             </div>
 
             <div className="flex gap-2 w-full sm:w-auto">
-              <button 
+              <button
                 onClick={() => {
                   setModalCargar(true);
-                  toast.info('Cargar documento al expediente', {
-                    description: expediente.radicado
-                  });
+                  if (expediente.tipoProceso === 'PROCESOS_COACTIVOS') {
+                    toast.info('Los procesos coactivos se gestionan desde el módulo Financiero');
+                    setModalCargar(false);
+                  }
                 }}
                 className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
               >
                 <Upload className="w-4 h-4" />
-                Cargar
+                <span className="hidden sm:inline">Cargar</span>
               </button>
+
               <button
                 onClick={onToggleExpand}
-                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center justify-center gap-2"
+                className={`
+                  flex-1 sm:flex-none px-3 sm:px-4 py-2 border rounded-lg transition-all text-sm flex items-center justify-center gap-2
+                  ${expandido
+                    ? 'bg-[#003DA5] border-[#003DA5] text-white hover:bg-[#003DA5]/90'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }
+                `}
               >
                 {expandido ? (
                   <>
-                    <ChevronDown className="w-4 h-4" />
-                    <span className="hidden sm:inline">Ocultar</span>
+                    <FolderOpen className="w-4 h-4" />
+                    <span className="hidden sm:inline">Cerrar Carpetas</span>
                   </>
                 ) : (
                   <>
-                    <ChevronRight className="w-4 h-4" />
+                    <Folder className="w-4 h-4" />
                     <span className="hidden sm:inline">Ver Carpetas</span>
                   </>
                 )}
+                {expandido ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Estructura de Carpetas por Tipo de Documento */}
+        {/* Carpetas Expandibles */}
         <AnimatePresence>
           {expandido && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className="border-t border-gray-200 bg-gray-50"
+              className="border-t border-gray-100 bg-gray-50"
             >
-              <div className="p-4 sm:p-6">
-                <h4 className="text-sm font-medium text-gray-900 mb-4">Documentos por Tipo</h4>
-
-                <div className="space-y-3">
-                  {TIPOS_DOCUMENTO.map((tipoDoc) => {
-                    const docs = documentosPorTipo[tipoDoc.id];
-                    const Icon = tipoDoc.icon;
-
-                    return (
-                      <CarpetaTipoDocumento
-                        key={tipoDoc.id}
-                        tipoDocumento={tipoDoc}
-                        documentos={docs}
-                        icon={<Icon className="w-5 h-5" />}
-                      />
-                    );
-                  })}
-                </div>
+              <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {TIPOS_DOCUMENTO.map((tipo) => {
+                  const docs = documentosPorTipo[tipo.id];
+                  return (
+                    <CarpetaTipoDocumento
+                      key={tipo.id}
+                      tipo={tipo}
+                      documentos={docs}
+                    />
+                  );
+                })}
               </div>
             </motion.div>
           )}
@@ -724,12 +853,16 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
       </motion.div>
 
       {/* Modal Cargar Documento */}
-      {modalCargar && (
-        <ModalCargarDocumento
-          expediente={expediente}
-          onClose={() => setModalCargar(false)}
-        />
-      )}
+      <ModalCargarDocumento
+        isOpen={modalCargar}
+        onClose={() => setModalCargar(false)}
+        onCargar={(file, tipo) => {
+          onUpload(expediente, file, tipo);
+          setModalCargar(false);
+        }}
+        radicado={expediente.radicado}
+        tipoProceso={expediente.tipoProceso}
+      />
     </>
   );
 }
@@ -738,136 +871,68 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
 // CARPETA TIPO DOCUMENTO
 // ════════════════════════════════════════════════════════════════════════════
 
-interface CarpetaTipoDocumentoProps {
-  tipoDocumento: typeof TIPOS_DOCUMENTO[0];
-  documentos: Documento[];
-  icon: React.ReactNode;
-}
-
-function CarpetaTipoDocumento({ tipoDocumento, documentos, icon }: CarpetaTipoDocumentoProps) {
-  const [expandido, setExpandido] = useState(false);
-
-  const colorClasses = {
-    red: 'bg-red-50 border-red-200 text-red-700',
-    blue: 'bg-blue-50 border-blue-200 text-blue-700',
-    green: 'bg-green-50 border-green-200 text-green-700',
-    purple: 'bg-purple-50 border-purple-200 text-purple-700',
-    orange: 'bg-orange-50 border-orange-200 text-orange-700',
-    indigo: 'bg-indigo-50 border-indigo-200 text-indigo-700',
-    cyan: 'bg-cyan-50 border-cyan-200 text-cyan-700',
-    yellow: 'bg-yellow-50 border-yellow-200 text-yellow-700',
-    pink: 'bg-pink-50 border-pink-200 text-pink-700',
-    teal: 'bg-teal-50 border-teal-200 text-teal-700',
-    gray: 'bg-gray-50 border-gray-200 text-gray-700'
-  };
-
-  const colorClass = colorClasses[tipoDocumento.color as keyof typeof colorClasses];
-
-  const handleVerDocumento = (doc: Documento) => {
-    toast.info('Visualizar documento', {
-      description: doc.nombre,
-      duration: 2000,
-    });
-
-    console.log('👁️ Ver documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      tipo: doc.tipo,
-      tamanio: doc.tamanio,
-      tipoDocumento: tipoDocumento.nombre
-    });
-  };
-
-  const handleDescargarDocumento = (doc: Documento, e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    toast.success('Descargando documento', {
-      description: `${doc.nombre} (${doc.tamanio})`,
-      duration: 3000,
-    });
-
-    console.log('⬇️ Descargar documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      accion: 'descargar'
-    });
-  };
+function CarpetaTipoDocumento({ tipo, documentos }: { tipo: typeof TIPOS_DOCUMENTO[0], documentos: Documento[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const Icon = tipo.icon;
 
   return (
-    <div className={`rounded-lg border ${colorClass}`}>
+    <div className={`
+      bg-white rounded-lg border transition-all duration-200
+      ${isOpen ? 'ring-2 ring-gray-200 border-transparent shadow-md' : 'border-gray-200 hover:border-gray-300'}
+    `}>
       <button
-        onClick={() => setExpandido(!expandido)}
-        className="w-full p-3 sm:p-4 flex items-center justify-between hover:bg-opacity-70 transition-all"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center gap-3 p-4"
       >
-        <div className="flex items-center gap-2 sm:gap-3">
-          {expandido ? <FolderOpen className="w-4 h-4 sm:w-5 sm:h-5" /> : <Folder className="w-4 h-4 sm:w-5 sm:h-5" />}
-          <div className="text-left">
-            <div className="font-medium text-xs sm:text-sm">{tipoDocumento.nombre}</div>
-            <div className="text-xs opacity-80 hidden sm:block">{tipoDocumento.descripcion}</div>
-          </div>
+        <div className={`p-2 rounded-lg bg-${tipo.color}-50 text-${tipo.color}-600`}>
+          <Icon className="w-5 h-5" />
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          <span className="text-xs font-medium px-2 py-0.5 sm:py-1 bg-white bg-opacity-60 rounded">
-            {documentos.length}
-          </span>
-          {expandido ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        <div className="flex-1 text-left">
+          <p className="font-medium text-gray-900 text-sm">{tipo.nombre}</p>
+          <p className="text-xs text-gray-500">{documentos.length} documento{documentos.length !== 1 ? 's' : ''}</p>
         </div>
+
+        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
       </button>
 
       <AnimatePresence>
-        {expandido && (
+        {isOpen && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="border-t border-current border-opacity-20"
+            className="border-t border-gray-100"
           >
-            <div className="p-3 sm:p-4 bg-white bg-opacity-50">
-              {documentos.length === 0 ? (
-                <div className="text-center py-6 sm:py-8 text-xs sm:text-sm opacity-60">
-                  <File className="w-6 h-6 sm:w-8 sm:h-8 mx-auto mb-2 opacity-40" />
-                  No hay documentos de este tipo
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {documentos.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="flex items-center justify-between p-2 sm:p-3 bg-white rounded-lg border border-gray-200 hover:shadow-sm transition-shadow gap-2"
-                    >
-                      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                        <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">{doc.nombre}</p>
-                          <div className="flex items-center gap-2 sm:gap-3 text-xs text-gray-500 mt-0.5">
-                            <span>{doc.tamanio}</span>
-                            <span>•</span>
-                            <span>{doc.fechaCreacion}</span>
-                            <span className="hidden sm:inline">•</span>
-                            <span className="hidden sm:inline">{doc.autor}</span>
-                          </div>
-                        </div>
+            <div className="p-2 space-y-1">
+              {documentos.length > 0 ? (
+                documentos.map(doc => (
+                  <div
+                    key={doc.id}
+                    className="p-2.5 hover:bg-gray-50 rounded-md flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="p-1.5 bg-gray-100 rounded text-gray-500">
+                        <FileText className="w-4 h-4" />
                       </div>
-
-                      <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-                        <button
-                          onClick={() => handleVerDocumento(doc)}
-                          className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
-                          title="Ver documento"
-                        >
-                          <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
-                        </button>
-                        <button
-                          onClick={(e) => handleDescargarDocumento(doc, e)}
-                          className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
-                          title="Descargar"
-                        >
-                          <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
-                        </button>
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-700 font-medium truncate py-0.5">{doc.nombre}</p>
+                        <p className="text-xs text-gray-500 flex items-center gap-2">
+                          <span>{doc.fechaCreacion}</span>
+                          <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                          <span>{doc.tamanio}</span>
+                        </p>
                       </div>
                     </div>
-                  ))}
+
+                    <button className="p-1.5 text-gray-400 hover:text-[#003DA5] hover:bg-blue-50 rounded-md transition-colors opacity-0 group-hover:opacity-100">
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="py-4 text-center">
+                  <p className="text-xs text-gray-400 italic">Carpeta vacía</p>
                 </div>
               )}
             </div>
@@ -882,43 +947,46 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon }: CarpetaTipoDo
 // MODAL CARGAR DOCUMENTO
 // ════════════════════════════════════════════════════════════════════════════
 
-function ModalCargarDocumento({
-  expediente,
-  onClose
-}: {
-  expediente: Expediente;
+interface ModalCargarDocumentoProps {
+  isOpen: boolean;
   onClose: () => void;
-}) {
-  const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>('OTROS');
+  onCargar: (file: File, tipo: string) => void;
+  radicado: string;
+  tipoProceso: TipoProceso;
+}
 
-  const handleCargar = () => {
-    toast.success('Documento cargado exitosamente', {
-      description: `Agregado al expediente ${expediente.radicado}`,
-      duration: 3000
-    });
-    onClose();
+function ModalCargarDocumento({ isOpen, onClose, onCargar, radicado, tipoProceso }: ModalCargarDocumentoProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [tipo, setTipo] = useState<string>('OTROS');
+  const [cargando, setCargando] = useState(false);
+
+  const handleCargar = async () => {
+    if (!file) return;
+    setCargando(true);
+    // Simular delay visual si es necesario, o llamar directamente onCargar
+    await onCargar(file, tipo);
+    setFile(null);
+    setTipo('OTROS');
+    setCargando(false);
   };
 
   return (
     <ModalSIGL
-      isOpen={true}
+      isOpen={isOpen}
       onClose={onClose}
-      title={`Cargar Documento - ${expediente.radicado}`}
-      size="medium"
+      title="Cargar Documento"
+      description={`Expediente: ${radicado}`}
+      size="small"
     >
-      <div className="space-y-4">
-        <div>
-          <p className="text-sm text-gray-600 mb-4">
-            {expediente.nombreProceso}
-          </p>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+      <div className="p-6">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               Tipo de Documento
             </label>
             <select
-              value={tipoDocumento}
-              onChange={(e) => setTipoDocumento(e.target.value as TipoDocumento)}
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5]"
             >
               {TIPOS_DOCUMENTO.map((tipo) => (
@@ -933,10 +1001,15 @@ function ModalCargarDocumento({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Archivo
             </label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[#003DA5] transition-colors cursor-pointer">
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[#003DA5] transition-colors cursor-pointer relative">
+              <input
+                type="file"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+              />
               <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
               <p className="text-sm text-gray-600">
-                Arrastra un archivo o <span className="text-[#003DA5] font-medium">explora</span>
+                {file ? file.name : <>Arrastra un archivo o <span className="text-[#003DA5] font-medium">explora</span></>}
               </p>
               <p className="text-xs text-gray-500 mt-1">PDF, DOCX, XLSX (Máx. 10 MB)</p>
             </div>
@@ -947,14 +1020,16 @@ function ModalCargarDocumento({
           <button
             onClick={onClose}
             className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            disabled={cargando}
           >
             Cancelar
           </button>
           <button
             onClick={handleCargar}
-            className="px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all"
+            className="px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50"
+            disabled={cargando || !file}
           >
-            Cargar Documento
+            {cargando ? 'Cargando...' : 'Cargar Documento'}
           </button>
         </div>
       </div>
@@ -966,7 +1041,11 @@ function ModalCargarDocumento({
 // VISTA: ESTADÍSTICAS
 // ════════════════════════════════════════════════════════════════════════════
 
-function VistaEstadisticas() {
+interface VistaEstadisticasProps {
+  expedientes: Expediente[];
+}
+
+function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
   const estadisticasPorTipo = useMemo(() => {
     const stats: Record<TipoProceso, { total: number; docs: number }> = {
       DEFENSA_JUDICIAL: { total: 0, docs: 0 },
@@ -977,13 +1056,15 @@ function VistaEstadisticas() {
       OTRO: { total: 0, docs: 0 }
     };
 
-    EXPEDIENTES_MOCK.forEach(exp => {
-      stats[exp.tipoProceso].total++;
-      stats[exp.tipoProceso].docs += exp.totalDocumentos;
+    expedientes.forEach(exp => {
+      if (stats[exp.tipoProceso]) {
+        stats[exp.tipoProceso].total++;
+        stats[exp.tipoProceso].docs += exp.totalDocumentos;
+      }
     });
 
     return stats;
-  }, []);
+  }, [expedientes]);
 
   const estadisticasPorTipoDoc = useMemo(() => {
     const stats: Record<TipoDocumento, number> = {
@@ -1000,14 +1081,16 @@ function VistaEstadisticas() {
       OTROS: 0
     };
 
-    EXPEDIENTES_MOCK.forEach(exp => {
+    expedientes.forEach(exp => {
       exp.documentos.forEach(doc => {
-        stats[doc.tipo]++;
+        if (stats[doc.tipo] !== undefined) {
+          stats[doc.tipo]++;
+        }
       });
     });
 
     return stats;
-  }, []);
+  }, [expedientes]);
 
   return (
     <div className="space-y-6">
@@ -1015,7 +1098,7 @@ function VistaEstadisticas() {
         <h2 className="text-xl font-semibold text-gray-900 mb-4">
           Estadísticas Generales
         </h2>
-        
+
         {/* Estadísticas por Tipo de Proceso */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
           <h3 className="font-medium text-gray-900 mb-4">Expedientes por Tipo de Proceso</h3>
@@ -1029,6 +1112,8 @@ function VistaEstadisticas() {
                 ORGANOS_CONTROL: { label: 'Órganos Control', color: '#2563EB' },
                 OTRO: { label: 'Otro', color: '#6B7280' }
               }[tipo];
+
+              if (!tipoConfig) return null;
 
               return (
                 <div key={tipo} className="p-4 rounded-lg border-2" style={{ borderColor: `${tipoConfig.color}40`, background: `${tipoConfig.color}10` }}>

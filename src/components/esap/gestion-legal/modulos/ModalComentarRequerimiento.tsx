@@ -6,7 +6,9 @@
 import { useState } from 'react';
 import { X, MessageSquare, Send, Paperclip, File, Trash2, User, Clock, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { Card } from '../../../ui/card';
+import { Badge } from '../../../ui/badge';
 import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface Comentario {
@@ -57,7 +59,7 @@ export function ModalComentarRequerimiento({
   const handleSelectArchivos = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const nuevosArchivos = Array.from(e.target.files);
-      
+
       // Validar tamaño (máximo 10MB por archivo)
       const archivosGrandes = nuevosArchivos.filter(f => f.size > 10 * 1024 * 1024);
       if (archivosGrandes.length > 0) {
@@ -160,7 +162,7 @@ export function ModalComentarRequerimiento({
 
             {/* Contenido */}
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              
+
               {/* Tipo de Comentario */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-3">
@@ -170,16 +172,14 @@ export function ModalComentarRequerimiento({
                   <button
                     type="button"
                     onClick={() => setTipoComentario('interno')}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      tipoComentario === 'interno'
-                        ? 'border-blue-600 bg-blue-50'
-                        : 'border-gray-300 bg-white hover:border-gray-400'
-                    }`}
+                    className={`p-4 rounded-lg border-2 transition-all ${tipoComentario === 'interno'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-gray-300 bg-white hover:border-gray-400'
+                      }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                        tipoComentario === 'interno' ? 'border-blue-600' : 'border-gray-400'
-                      }`}>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${tipoComentario === 'interno' ? 'border-blue-600' : 'border-gray-400'
+                        }`}>
                         {tipoComentario === 'interno' && (
                           <div className="w-3 h-3 rounded-full bg-blue-600" />
                         )}
@@ -194,16 +194,14 @@ export function ModalComentarRequerimiento({
                   <button
                     type="button"
                     onClick={() => setTipoComentario('oficial')}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      tipoComentario === 'oficial'
-                        ? 'border-orange-600 bg-orange-50'
-                        : 'border-gray-300 bg-white hover:border-gray-400'
-                    }`}
+                    className={`p-4 rounded-lg border-2 transition-all ${tipoComentario === 'oficial'
+                      ? 'border-orange-600 bg-orange-50'
+                      : 'border-gray-300 bg-white hover:border-gray-400'
+                      }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                        tipoComentario === 'oficial' ? 'border-orange-600' : 'border-gray-400'
-                      }`}>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${tipoComentario === 'oficial' ? 'border-orange-600' : 'border-gray-400'
+                        }`}>
                         {tipoComentario === 'oficial' && (
                           <div className="w-3 h-3 rounded-full bg-orange-600" />
                         )}
@@ -295,58 +293,76 @@ export function ModalComentarRequerimiento({
                 )}
               </div>
 
-              {/* Comentarios Anteriores */}
-              <div className="border-t-2 border-gray-200 pt-6">
-                <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-blue-600" />
-                  Comentarios Anteriores ({comentariosExistentes.length})
-                </h3>
-                <div className="space-y-3 max-h-64 overflow-y-auto">
-                  {comentariosExistentes.length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-8">
-                      No hay comentarios registrados
-                    </p>
-                  ) : (
-                    comentariosExistentes.map((com) => (
-                      <div
-                        key={com.id}
-                        className={`p-4 rounded-lg border-2 ${
-                          com.tipo === 'interno'
-                            ? 'bg-blue-50 border-blue-200'
-                            : 'bg-orange-50 border-orange-200'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <User className="w-4 h-4 text-gray-600" />
-                            <span className="text-sm font-bold text-gray-900">
-                              {com.usuario}
-                            </span>
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                                com.tipo === 'interno'
-                                  ? 'bg-blue-200 text-blue-800'
-                                  : 'bg-orange-200 text-orange-800'
-                              }`}
-                            >
-                              {com.tipo === 'interno' ? 'Interno' : 'Oficial'}
-                            </span>
+              <h3 className="text-sm font-bold text-gray-900 mb-6 flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-gray-400" />
+                Historial de Comentarios
+                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-bold">
+                  {comentariosExistentes.length}
+                </span>
+              </h3>
+
+              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+
+                {comentariosExistentes.length === 0 ? (
+                  <div className="text-center py-12 relative z-10">
+                    <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3 border-2 border-gray-100">
+                      <MessageSquare className="w-8 h-8 text-gray-300" />
+                    </div>
+                    <p className="text-gray-500 font-medium">No hay comentarios aún</p>
+                    <p className="text-sm text-gray-400 mt-1">Sé el primero en agregar una nota</p>
+                  </div>
+                ) : (
+                  comentariosExistentes.map((com) => (
+                    <Card
+                      key={com.id}
+                      className="p-4 border-l-4 hover:shadow-md transition-all"
+                      style={{
+                        borderLeftColor: com.tipo === 'interno' ? '#2563EB' : '#EA580C'
+                      }}
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${com.tipo === 'interno' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
+                            }`}>
+                            <User className="w-4 h-4" />
                           </div>
-                          <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <Clock className="w-3 h-3" />
-                            {com.fecha.toLocaleDateString('es-CO', {
-                              day: '2-digit',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">{com.usuario}</p>
+                            <p className="text-xs text-gray-500 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {com.fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })} • {com.fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                            </p>
                           </div>
                         </div>
-                        <p className="text-sm text-gray-700">{com.contenido}</p>
+                        <Badge
+                          className="uppercase text-[10px] font-bold"
+                          style={{
+                            background: com.tipo === 'interno' ? '#E0EDFF' : '#FFF7ED',
+                            color: com.tipo === 'interno' ? '#003DA5' : '#C2410C',
+                            border: `1px solid ${com.tipo === 'interno' ? '#003DA5' : '#C2410C'}`
+                          }}
+                        >
+                          {com.tipo === 'interno' ? 'Interno' : 'Oficial'}
+                        </Badge>
                       </div>
-                    ))
-                  )}
-                </div>
+
+                      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap pl-10">
+                        {com.contenido}
+                      </p>
+
+                      {com.archivos && com.archivos.length > 0 && (
+                        <div className="mt-3 pl-10 flex flex-wrap gap-2">
+                          {com.archivos.map((archivo, i) => (
+                            <div key={i} className="flex items-center gap-2 bg-gray-50 px-2.5 py-1.5 rounded-md border border-gray-200 text-xs text-gray-600">
+                              <Paperclip className="w-3 h-3" />
+                              {archivo.nombre}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </Card>
+                  ))
+                )}
               </div>
 
               {/* Advertencia si es oficial */}
