@@ -3,7 +3,7 @@ import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.
 import esapStudentsReal from 'figma:asset/9366aaa7d27856d9aef10bd134f20dbe9d256906.png';
 import { 
   ArrowRight, Users, Award, Zap, Star, Shield, Sparkles, TrendingUp, 
-  CheckCircle, Globe, Rocket, Clock, Briefcase, Layers, Check
+  CheckCircle, Globe, Rocket, Clock, Briefcase, Layers, Check, ShieldCheck
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
@@ -13,6 +13,7 @@ import { NewsletterSection } from '../NewsletterSection';
 import { SolicitarCertificadoLaboral } from './SolicitarCertificadoLaboral';
 import { PublicTitleVerification } from './PublicTitleVerification';
 import { EnrollmentActivationModal } from './EnrollmentActivationModal';
+import { ValidadorCertificadosPublico } from './ValidadorCertificadosPublico';
 
 interface LandingPageProps {
   onIrALogin?: () => void;
@@ -21,7 +22,7 @@ interface LandingPageProps {
 }
 
 export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPageProps) {
-  const [vistaActual, setVistaActual] = useState<'landing' | 'certificados-laborales' | 'certificados-graduados'>('landing');
+  const [vistaActual, setVistaActual] = useState<'landing' | 'certificados-laborales' | 'certificados-graduados' | 'validador-certificados'>('landing');
   const [isEnrollmentModalOpen, setIsEnrollmentModalOpen] = useState(false);
   
   const handleLoginClick = () => {
@@ -55,10 +56,10 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
   const services = [
     {
       icon: <Award className="w-7 h-7" />,
-      title: 'Validación de Certificados de Graduados',
+      title: 'Certificación de Títulos',
       description: 'Cada certificado tiene un QR único para validación pública. Sistema de trazabilidad completa que registra cada validación.',
       action: () => setVistaActual('certificados-graduados'),
-      gradient: 'from-emerald-600 to-emerald-700',
+      gradient: 'from-[#1e5da8] to-blue-700',
       badge: 'Seguro'
     },
     {
@@ -159,6 +160,15 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
     );
   }
 
+  // Renderizar vista de validador de certificados si está activa
+  if (vistaActual === 'validador-certificados') {
+    return (
+      <ValidadorCertificadosPublico 
+        onBack={() => setVistaActual('landing')}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-50">
       {/* Navbar Superior Flotante - Diseño Moderno con Azul Medio */}
@@ -194,12 +204,28 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
               <a href="#servicios" className="text-sm font-semibold text-white/90 hover:text-white transition-colors">
                 Servicios
               </a>
-              <a href="#beneficios" className="text-sm font-semibold text-white/90 hover:text-white transition-colors">
-                Beneficios
-              </a>
-              <a href="#contacto" className="text-sm font-semibold text-white/90 hover:text-white transition-colors">
-                Contacto
-              </a>
+              
+              {/* Botón Validar Certificados - DESTACADO */}
+              <button
+                onClick={() => setVistaActual('validador-certificados')}
+                className="relative inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-semibold text-xs transition-all duration-300 bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600 hover:scale-105 shadow-lg hover:shadow-xl"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Validar Certificados</span>
+                {/* Badge animado */}
+                <motion.span
+                  className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full"
+                  animate={{
+                    scale: [1, 1.3, 1],
+                    opacity: [1, 0.7, 1]
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "easeInOut"
+                  }}
+                />
+              </button>
             </div>
 
             {/* Botón Login */}

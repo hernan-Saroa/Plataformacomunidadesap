@@ -306,7 +306,7 @@ export function ModalVerRequerimientoOrgano({
 
   return (
     <Dialog open={isOpen && modalPadreVisible} onOpenChange={handleClose}>
-      <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col p-0 my-4 overflow-hidden">
+      <DialogContent hideCloseButton className="max-w-3xl max-h-[85vh] flex flex-col p-0 my-4 overflow-hidden">
         <DialogTitle className="sr-only">
           Detalle del Requerimiento {requerimiento.id}
         </DialogTitle>
