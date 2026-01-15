@@ -108,10 +108,13 @@ interface ModalAutosProps {
   proceso: Proceso | null;
   onClose: () => void;
   onCrearAuto: () => void;
+  onCrearAuto: () => void;
+  initialView?: 'lista' | 'crear';
+  initialAuto?: any; // Auto para editar
 }
 
-export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosProps) {
-  console.log('ðŸš€ ModalGestionAutos abierto con proceso:', {
+export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView = 'lista', initialAuto }: ModalAutosProps) {
+  console.log('🚀 ModalGestionAutos abierto con proceso:', {
     id: proceso?.id,
     numeroProceso: proceso?.numeroProceso,
     esUUID: proceso?.id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(proceso.id) : false
@@ -141,7 +144,38 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const [descripcion, setDescripcion] = useState('');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [archivoError, setArchivoError] = useState<string | null>(null);
+
   const [creandoAuto, setCreandoAuto] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+
+  // Efecto para cargar datos en edición
+  useEffect(() => {
+    if (initialAuto && initialView === 'crear') {
+      // Buscar tipo de auto
+      let tipoEncontrado = tiposAuto.find(t => t.id === initialAuto.tipo || t.nombre === initialAuto.tipo);
+
+      // Si no se encuentra directo, buscar en metadatos (nuevo backend) o parsear nombre
+      if (!tipoEncontrado) {
+        const tipoMeta = initialAuto.metadatos?.tipoAuto;
+        if (tipoMeta) {
+          tipoEncontrado = tiposAuto.find(t => t.nombre === tipoMeta || t.id === tipoMeta);
+        }
+      }
+
+      // Si aún no, intentar por nombre "Auto de Apertura..."
+      if (!tipoEncontrado && initialAuto.nombre) {
+        tipoEncontrado = tiposAuto.find(t => initialAuto.nombre.toLowerCase().includes(t.nombre.toLowerCase()));
+      }
+
+      if (tipoEncontrado) setTipoAutoSeleccionado(tipoEncontrado);
+
+      setTitulo(initialAuto.metadatos?.numero || initialAuto.numero || '');
+      setDescripcion(initialAuto.descripcion || initialAuto.contenido || '');
+      setEditandoId(initialAuto.id);
+      // El archivo no se pre-carga desde URL, solo se muestra nombre si existe en UI
+      // Pero handleCrearAuto manejará la actualización si no se sube uno nuevo
+    }
+  }, [initialAuto, initialView]);
 
 
   const buildAutoDocumentUrl = (relativeUrl: string) => {
@@ -462,24 +496,56 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
         documentSize = archivo.size;
       }
 
-      // Crear auto legal
+      // Crear o Actualizar
       const autoData = {
         processId: processId,
         tipoAuto: tipoAutoSeleccionado.id,
         contenidoHtml: descripcion || '',
         numero: titulo,
         comentarios: descripcion || '',
-        documentUrl,
+        documentUrl,  // enviará '' si no se sube nuevo en edición
         documentName,
         documentType,
         documentSize
       };
 
-      await disciplinaryService.crearAuto(autoData);
+      if (editandoId) {
+        // Mantener URL anterior si no se sube nuevo archivo
+        if (!archivo && initialAuto?.downloadUrl) {
+          autoData.documentUrl = initialAuto.downloadUrl;
+          // Ojo: el backend espera documentUrl relativa o absoluta?
+          // Si el initialAuto.downloadUrl es absoluta (http), el backend la guardará así.
+          // Si queremos mantener la relativa, necesitamos que initialAuto traiga la relativa.
+          // Pero mapAutoLegal construye absoluta.
+          // El backend update maneja esto? 
+          // Si mandamos la misma URL absoluta, el backend la guarda.
+          // Pero mejor si el backend ignora si viene vacío.
+          // Revisando logica: si !archivo, documentUrl es ''.
+          // En update backend: if (updateData.documentUrl) auto.documentUrl = ...
+          // Si mando '', no se actualiza (correcto).
+          delete autoData.documentUrl;
+          delete autoData.documentName;
+          delete autoData.documentType;
+          delete autoData.documentSize;
 
-      toast.success('Auto creado exitosamente', {
-        description: titulo
-      });
+          if (archivo) {
+            // Si hay archivo nuevo, se incluyen
+          }
+        }
+
+        await disciplinaryService.updateAuto(editandoId, autoData);
+        toast.success('Auto actualizado exitosamente');
+      } else {
+        await disciplinaryService.crearAuto(autoData);
+        toast.success('Auto creado exitosamente', { description: titulo });
+      }
+
+      // Cerrar si era edición directa
+      if (initialAuto) {
+        onClose();
+        onCrearAuto(); // Refrescar padre
+        return;
+      }
 
       // Recargar lista y volver a vista de lista
       await cargarAutos(processId);
@@ -488,9 +554,10 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       setTitulo('');
       setDescripcion('');
       setArchivo(null);
+      setEditandoId(null);
     } catch (error) {
-      console.error('Error creando auto', error);
-      toast.error('No se pudo crear el auto');
+      console.error('Error guardando auto', error);
+      toast.error('No se pudo guardar el auto');
     } finally {
       setCreandoAuto(false);
     }
@@ -884,7 +951,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                   <tipoAutoSeleccionado.icon className="w-8 h-8" style={{ color: tipoAutoSeleccionado.color }} />
                   <div>
                     <p className="font-bold text-gray-900">{tipoAutoSeleccionado.nombre}</p>
-                    <p className="text-xs text-gray-600">Completa la informaciÃ³n del documento</p>
+                    <p className="text-xs text-gray-600">{editandoId ? 'Editando documento existente' : 'Completa la información del documento'}</p>
                   </div>
                 </div>
               </Card>
@@ -978,7 +1045,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                   ) : (
                     <>
                       <Save className="w-4 h-4 mr-2" />
-                      Crear Auto
+                      {editandoId ? 'Actualizar Auto' : 'Crear Auto'}
                     </>
                   )}
                 </Button>
@@ -1131,7 +1198,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </motion.div>
+    </motion.div >
   );
 }
 

@@ -13,7 +13,7 @@ import {
   RotateCcw, Mail, Calendar,
   Shield, Key, Users, Trash2, ChevronDown, AlertTriangle,
   Filter, Paperclip, ListFilter, List, LayoutDashboard,
-  HelpCircle
+  HelpCircle, Info
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -425,6 +425,8 @@ function ModalAprobar({
   onClose: () => void;
   onConfirm: (comentarios: string) => void;
 }) {
+  const [signatureMethod, setSignatureMethod] = useState<'ELECTRONIC' | 'DIGITAL_PROVIDER' | 'LOCAL_PDF'>('ELECTRONIC');
+  const [localFile, setLocalFile] = useState<File | null>(null);
   const [comentariosAprobacion, setComentariosAprobacion] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasSignature, setHasSignature] = useState<boolean | null>(null);
@@ -457,9 +459,16 @@ function ModalAprobar({
   };
 
   const handleFirmar = () => {
-    if (!hasSignature) {
-      toast.error('No tiene una firma configurada', {
-        description: 'Debe cargar su firma digital en el Módulo de Configuración antes de firmar.'
+    if (signatureMethod === 'ELECTRONIC') {
+      if (!hasSignature) {
+        toast.error('No tiene una firma configurada', {
+          description: 'Debe cargar su firma digital en el Módulo de Configuración antes de firmar.'
+        });
+        return;
+      }
+    } else if (signatureMethod === 'LOCAL_PDF' && !localFile) {
+      toast.error('Archivo requerido', {
+        description: 'Debe adjuntar el PDF firmado.'
       });
       return;
     }
@@ -484,7 +493,7 @@ function ModalAprobar({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col"
+        className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
       >
         {/* Header - Firma */}
         <div className="p-4 sm:p-6 border-b" style={{ background: '#003DA5' }}>
@@ -506,21 +515,8 @@ function ModalAprobar({
             <AlertTriangle className="w-5 h-5 text-blue-800 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-blue-800">
               Al firmar este documento, usted certifica su validez jurídica y procedimental.
-              La firma se aplicará digitalmente usando su configuración personal.
             </p>
           </div>
-
-          {!checkingSignature && !hasSignature && (
-            <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: '#FEE2E2', border: '1px solid #FECACA' }}>
-              <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-bold text-red-800">Firma no configurada</p>
-                <p className="text-sm text-red-700">
-                  No se ha detectado una firma digital asociada a su usuario. Por favor configure su firma en el <strong>Módulo de Configuración</strong>.
-                </p>
-              </div>
-            </div>
-          )}
 
           {/* Tipo de Firma */}
           <div>
@@ -528,21 +524,132 @@ function ModalAprobar({
               Método de Firma
             </label>
             <div className="space-y-3">
-              <Card
-                className={`p-3 sm:p-4 border-2 transition-all flex items-center gap-3 ${hasSignature ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-gray-50 opacity-60'
+              {/* Firma Electrónica */}
+              <button
+                onClick={() => setSignatureMethod('ELECTRONIC')}
+                className={`w-full text-left p-3 sm:p-4 border-2 transition-all flex items-center gap-3 rounded-lg ${signatureMethod === 'ELECTRONIC' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
                   }`}
               >
-                <div className={`p-2 rounded-full ${hasSignature ? 'bg-blue-100' : 'bg-gray-200'}`}>
-                  <FileText className={`w-5 h-5 ${hasSignature ? 'text-blue-600' : 'text-gray-500'}`} />
+                <div className={`p-2 rounded-full ${signatureMethod === 'ELECTRONIC' ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                  <FileText className={`w-5 h-5 ${signatureMethod === 'ELECTRONIC' ? 'text-blue-600' : 'text-gray-500'}`} />
                 </div>
                 <div className="flex-1">
-                  <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Digital Configurada</h4>
-                  <p className="text-xs text-gray-500">Usa su firma PDF cargada previamente</p>
+                  <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Electrónica (Interna)</h4>
+                  <p className="text-xs text-gray-500">Usar mi firma cargada en el sistema</p>
                 </div>
-                {hasSignature && <CheckCircle className="w-5 h-5 text-blue-600" />}
-              </Card>
+                {signatureMethod === 'ELECTRONIC' && <CheckCircle className="w-5 h-5 text-blue-600" />}
+              </button>
+
+              {/* Firma Digital Proveedor */}
+              <button
+                onClick={() => setSignatureMethod('DIGITAL_PROVIDER')}
+                className={`w-full text-left p-3 sm:p-4 border-2 transition-all flex items-center gap-3 rounded-lg ${signatureMethod === 'DIGITAL_PROVIDER' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+              >
+                <div className={`p-2 rounded-full ${signatureMethod === 'DIGITAL_PROVIDER' ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                  <Shield className={`w-5 h-5 ${signatureMethod === 'DIGITAL_PROVIDER' ? 'text-blue-600' : 'text-gray-500'}`} />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Digital (Certicámara/Otros)</h4>
+                  <p className="text-xs text-gray-500">Usar token o integración con proveedor</p>
+                </div>
+                {signatureMethod === 'DIGITAL_PROVIDER' && <CheckCircle className="w-5 h-5 text-blue-600" />}
+              </button>
+
+              {/* Firma Local */}
+              <button
+                onClick={() => setSignatureMethod('LOCAL_PDF')}
+                className={`w-full text-left p-3 sm:p-4 border-2 transition-all flex items-center gap-3 rounded-lg ${signatureMethod === 'LOCAL_PDF' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+              >
+                <div className={`p-2 rounded-full ${signatureMethod === 'LOCAL_PDF' ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                  <Upload className={`w-5 h-5 ${signatureMethod === 'LOCAL_PDF' ? 'text-blue-600' : 'text-gray-500'}`} />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Local (Subir PDF)</h4>
+                  <p className="text-xs text-gray-500">Descargar, firmar localmente y subir</p>
+                </div>
+                {signatureMethod === 'LOCAL_PDF' && <CheckCircle className="w-5 h-5 text-blue-600" />}
+              </button>
             </div>
           </div>
+
+          {/* Configuración Específica según método */}
+          <AnimatePresence mode="wait">
+            {signatureMethod === 'ELECTRONIC' && (
+              <motion.div
+                key="electronic"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                {!checkingSignature && !hasSignature && (
+                  <div className="p-4 rounded-xl flex items-start gap-3 mt-2" style={{ background: '#FEE2E2', border: '1px solid #FECACA' }}>
+                    <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-red-800">Firma no configurada</p>
+                      <p className="text-sm text-red-700">
+                        No se ha detectado una firma digital asociada a su usuario.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {signatureMethod === 'DIGITAL_PROVIDER' && (
+              <motion.div
+                key="provider"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-2"
+              >
+                <div className="p-4 rounded-xl bg-orange-50 border border-orange-200 text-orange-800 text-sm">
+                  <p className="font-bold flex items-center gap-2">
+                    <Info className="w-4 h-4" /> Integración Externa
+                  </p>
+                  <p className="mt-1">
+                    Será redirigido al portal del proveedor de firma digital autorizada (ej. Certicámara) para completar el proceso.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
+            {signatureMethod === 'LOCAL_PDF' && (
+              <motion.div
+                key="local"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-2 space-y-3"
+              >
+                <div className="flex gap-3">
+                  <Button className="flex-1 bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300">
+                    <Download className="w-4 h-4 mr-2" />
+                    1. Descargar PDF
+                  </Button>
+                  <div className="flex-1 relative">
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(e) => setLocalFile(e.target.files?.[0] || null)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full z-10"
+                    />
+                    <Button className={`w-full ${localFile ? 'bg-green-100 text-green-700 border-green-200' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                      {localFile ? <CheckCircle className="w-4 h-4 mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
+                      {localFile ? 'PDF Cargado' : '2. Subir Firmado'}
+                    </Button>
+                  </div>
+                </div>
+                {localFile && (
+                  <p className="text-xs text-green-600 font-medium text-center">
+                    Archivo seleccionado: {localFile.name}
+                  </p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Comentarios */}
           <div>

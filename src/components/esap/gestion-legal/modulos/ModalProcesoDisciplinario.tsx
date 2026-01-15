@@ -773,7 +773,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       {/* ==================== MODALES COMPLEMENTARIOS ==================== */}
       {mostrarModalNotificar && (
         <Dialog open={mostrarModalNotificar} onOpenChange={setMostrarModalNotificar}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent hideCloseButton className="max-w-2xl">
             <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
               <Bell className="w-6 h-6" />
               Notificar Última Actuación Procesal
@@ -830,7 +830,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
       {mostrarModalPortales && (
         <Dialog open={mostrarModalPortales} onOpenChange={setMostrarModalPortales}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent hideCloseButton className="max-w-2xl">
             <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
               <ExternalLink className="w-6 h-6" />
               Abrir en Portales

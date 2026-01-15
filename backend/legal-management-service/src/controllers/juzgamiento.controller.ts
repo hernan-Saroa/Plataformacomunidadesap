@@ -34,8 +34,10 @@ export class JuzgamientoController {
                 abogadoAsignado: exp.abogadoSustanciador,
                 diasRestantes: diasRestantes,
                 diasDescargos: 15,
-                documentos: exp.actuaciones || [],
+                // Merge actuaciones and evidencias for documents list
+                documentos: [...(exp.actuaciones || []), ...(exp.evidencias || [])],
                 actuaciones: exp.actuaciones || [],
+                evidencias: exp.evidencias || [],
                 hechos: exp.hechos || '',
                 // Semáforo logic is usually frontend, but we pass necessary data
             };
