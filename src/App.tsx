@@ -900,37 +900,41 @@ export default function App() {
         [data-title] { font-weight: 600 !important; color: #111827 !important; font-size: 14px !important; }
         [data-description] { color: #6b7280 !important; font-size: 13px !important; margin-top: 4px !important; }
       `}</style>
-      
-      <Routes>
-        <Route
-          path="/verificar-certificado-graduado"
-          element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
-        />
-        <Route
-          path="/verificar-certificado/:codigo"
-          element={<VerificarCertificadoPublico />}
-        />
-        <Route path="*" element={renderVista()} />
-      </Routes>
-      
-      {/* Modal de Alerta de Inactividad */}
-      {mostrarAlertaInactividad && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000] animate-in fade-in duration-300">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-in zoom-in-95 duration-300">
-            {/* Header */}
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-6 h-6 text-orange-600" />
+
+        <Routes>
+          <Route
+            path="/verificar-certificado-graduado"
+            element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
+          />
+          <Route
+            path="/verificar-certificado/:codigo"
+            element={<VerificarCertificadoPublico />}
+          />
+          <Route
+            path="/validar/:codigo"
+            element={<VerificarCertificadoPublico />}
+          />
+          <Route path="*" element={renderVista()} />
+        </Routes>
+
+        {/* Modal de Alerta de Inactividad */}
+        {mostrarAlertaInactividad && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000] animate-in fade-in duration-300">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-in zoom-in-95 duration-300">
+              {/* Header */}
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-6 h-6 text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    ⚠️ Inactividad Detectada
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Tu sesión está por expirar
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">
-                  ⚠️ Inactividad Detectada
-                </h3>
-                <p className="text-sm text-gray-600">
-                  Tu sesión está por expirar
-                </p>
-              </div>
-            </div>
 
             {/* Contenido */}
             <div className="mb-6">

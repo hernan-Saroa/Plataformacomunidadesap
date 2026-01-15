@@ -492,6 +492,16 @@ const graduadosService = {
     descargarPDF: async (id: string): Promise<Blob> => {
       return apiClient.getBlob(`${SERVICE_PREFIX}/certificates/${id}/pdf`);
     },
+
+    /**
+     * Reenviar certificado por email al solicitante
+     */
+    reenviar: async (id: string): Promise<{ mensaje: string; email: string }> => {
+      const response = await apiClient.post(
+        `${SERVICE_PREFIX}/certificates/${id}/reenviar`,
+      );
+      return response;
+    },
   },
 
   /**
