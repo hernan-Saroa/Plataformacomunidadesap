@@ -285,11 +285,17 @@ export class GraduationCertificatesService {
     request.completionDate = new Date();
     await this.requestRepository.save(request);
 
-    await this.notifyCertificateDelivery(
-      dto.requesterEmail,
-      certificate,
-      frontendBaseUrl,
-    );
+    try {
+      await this.notifyCertificateDelivery(
+        dto.requesterEmail,
+        certificate,
+        frontendBaseUrl,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Certificado generado, pero no se pudo enviar el email para solicitud ${request.requestNumber}: ${error?.message || error}`,
+      );
+    }
 
     return {
       existe: true,
@@ -1316,11 +1322,17 @@ export class GraduationCertificatesService {
     }
 
     if (deliveryEmail) {
-      await this.notifyCertificateDelivery(
-        deliveryEmail,
-        certificate,
-        frontendBaseUrl,
-      );
+      try {
+        await this.notifyCertificateDelivery(
+          deliveryEmail,
+          certificate,
+          frontendBaseUrl,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Solicitud aprobada, pero no se pudo enviar el email para ${request.requestNumber}: ${error?.message || error}`,
+        );
+      }
     }
 
     return {
