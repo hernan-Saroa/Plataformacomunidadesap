@@ -53,6 +53,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Input } from '../ui/input';
@@ -1264,33 +1265,6 @@ export function GraduatesManagementModule() {
                           <DropdownMenuItem onClick={() => handleVerifyTitle(user)}>
                             <BadgeCheck className="w-4 h-4 mr-2" />
                             Verificar Certificado
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleGenerateCertificate(user)}>
-                            <Award className="w-4 h-4 mr-2" />
-                            Generar Certificado
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleSendEmail(user)}>
-                            <Mail className="w-4 h-4 mr-2" />
-                            Enviar Email
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {user.status === 'active' ? (
-                            <DropdownMenuItem onClick={() => handleBlockUser(user)}>
-                              <Lock className="w-4 h-4 mr-2" />
-                              Bloquear
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onClick={() => handleActivateUser(user)}>
-                              <Unlock className="w-4 h-4 mr-2" />
-                              Activar
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem 
-                            onClick={() => handleDelete(user)}
-                            className="text-red-600"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Eliminar
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

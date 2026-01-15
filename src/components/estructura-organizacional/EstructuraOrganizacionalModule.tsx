@@ -18,6 +18,8 @@ import { Input } from '../ui/input';
 import { toast } from 'sonner';
 import { estructuraService } from '../../services/estructuraService';
 import { CreateSeccionalSedeModal } from './CreateSeccionalSedeModal';
+import { useAuth } from '../../hooks';
+import { TERRITORIALES_ESAP } from '../../data/territoriales-cetap-completo';
 import type { Seccional, Sede, EstadisticasEstructuraOrganizacional } from '../../services/api/types';
 
 type TipoCreacion = 'seccional' | 'sede';
@@ -28,12 +30,15 @@ export function EstructuraOrganizacionalModule() {
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [loading, setLoading] = useState(true);
   const [estadisticas, setEstadisticas] = useState<EstadisticasEstructuraOrganizacional | null>(null);
+  const [vistaActual, setVistaActual] = useState<'lista' | 'arbol'>('arbol');
 
   // Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [tipoCreacion, setTipoCreacion] = useState<TipoCreacion>('sede');
   const [showDropdown, setShowDropdown] = useState(false);
   const [editItem, setEditItem] = useState<Seccional | Sede | null>(null);
+  const { hasRole } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN');
 
   // Cargar datos al montar el componente
   useEffect(() => {
@@ -162,41 +167,43 @@ export function EstructuraOrganizacionalModule() {
           </Button>
 
           {/* Dropdown para crear */}
-          <div className="relative">
-            <Button
-              onClick={() => setShowDropdown(!showDropdown)}
-              className="gap-2 bg-[#003DA5] hover:bg-[#002d7a]"
-            >
-              <Plus className="w-4 h-4" />
-              Nuevo
-              <ChevronDown className="w-4 h-4" />
-            </Button>
+          {isSuperAdmin && (
+            <div className="relative">
+              <Button
+                onClick={() => setShowDropdown(!showDropdown)}
+                className="gap-2 bg-[#003DA5] hover:bg-[#002d7a]"
+              >
+                <Plus className="w-4 h-4" />
+                Nuevo
+                <ChevronDown className="w-4 h-4" />
+              </Button>
 
-            {showDropdown && (
-              <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setShowDropdown(false)}
-                />
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                  <button
-                    onClick={() => handleCrear('seccional')}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                  >
-                    <div className="w-2 h-2 rounded-full bg-green-500" />
-                    Nueva Seccional
-                  </button>
-                  <button
-                    onClick={() => handleCrear('sede')}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                  >
-                    <div className="w-2 h-2 rounded-full bg-orange-500" />
-                    Nueva Sede
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+              {showDropdown && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setShowDropdown(false)}
+                  />
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                    <button
+                      onClick={() => handleCrear('seccional')}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                      Nueva Seccional
+                    </button>
+                    <button
+                      onClick={() => handleCrear('sede')}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      <div className="w-2 h-2 rounded-full bg-orange-500" />
+                      Nueva Sede
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -243,7 +250,7 @@ export function EstructuraOrganizacionalModule() {
         </div>
       </Card>
 
-      {/* Vista Arbol */}
+      {/* Vista segun seleccion */}
       {loading ? (
         <Card className="p-12">
           <div className="flex flex-col items-center justify-center gap-4">
@@ -252,16 +259,20 @@ export function EstructuraOrganizacionalModule() {
           </div>
         </Card>
       ) : (
-        <VistaArbolSeccionalesSedes
-          busqueda={busqueda}
-          seccionales={seccionales}
-          sedes={sedes}
-          estadisticas={estadisticas}
-          onEditarSeccional={(seccional) => handleEditar('seccional', seccional)}
-          onEditarSede={(sede) => handleEditar('sede', sede)}
-          onEliminarSeccional={handleEliminarSeccional}
-          onEliminarSede={handleEliminarSede}
-        />
+        vistaActual === 'arbol' ? (
+          <VistaArbolSeccionalesSedes
+            busqueda={busqueda}
+            seccionales={seccionales}
+            sedes={sedes}
+            estadisticas={estadisticas}
+            onEditarSeccional={(seccional) => handleEditar('seccional', seccional)}
+            onEditarSede={(sede) => handleEditar('sede', sede)}
+            onEliminarSeccional={handleEliminarSeccional}
+            onEliminarSede={handleEliminarSede}
+          />
+        ) : (
+          <VistaListaTerritorialesCetap busqueda={busqueda} />
+        )
       )}
 
       {/* Modal Crear/Editar Seccional/Sede */}
