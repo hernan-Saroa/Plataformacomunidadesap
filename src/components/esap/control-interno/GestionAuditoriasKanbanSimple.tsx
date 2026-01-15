@@ -1118,7 +1118,7 @@ function TarjetaAuditoria({
           <div className="mb-1.5 pb-1.5 border-b border-gray-200">
             <p className="text-xs text-gray-500 mb-1">⚠️ Calificación del Riesgo:</p>
             <Badge 
-              className={`text-xs font-semibold ${
+              className={`text-xs font-semibold whitespace-normal break-words max-w-full ${
                 auditoria.riesgo === 'Alto' ? 'bg-red-100 text-red-800 border-red-200' :
                 auditoria.riesgo === 'Medio' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
                 'bg-green-100 text-green-800 border-green-200'
