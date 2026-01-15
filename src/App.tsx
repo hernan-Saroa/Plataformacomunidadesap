@@ -507,6 +507,11 @@ export default function App() {
           userType = 'administrativo';
           currentView = 'backoffice'
           vistaActualCurrent = 'backoffice';
+          // Verificar si tiene acceso a Control Interno (múltiples roles)
+          const hasControlInterno = roles.some((role: string) => 
+            ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
+             'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+          );
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
           : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
           : hasControlInternoRoles ? 'control-interno'
