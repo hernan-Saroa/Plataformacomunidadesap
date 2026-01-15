@@ -32,8 +32,8 @@ export class CorreosJuridicosController {
      */
     @Post('sync')
     @HttpCode(HttpStatus.OK)
-    async sync(): Promise<{ synced: number; errors: number }> {
-        return this.correosService.syncInbox();
+    async sync(@Body() body: { nextLink?: string }): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
+        return this.correosService.syncInbox(body.nextLink);
     }
 
     /**

@@ -5,8 +5,10 @@
  * CONECTADO A CONTEXT API - Los cambios afectan a todos los módulos de Gestión Legal
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle } from 'lucide-react';
+import { legalService } from '../../../../services/api/legal.service';
+import { toast } from 'sonner';
 import {
   DndContext,
   closestCenter,
@@ -26,8 +28,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 // ✅ Importar Context API
-import { 
-  useConfiguracionesSIGL, 
+import {
+  useConfiguracionesSIGL,
   casosPorEstado,
   EstadoKanban,
   ConfiguracionModulo,
@@ -39,8 +41,8 @@ import {
 
 export function ConfiguracionesSIGL() {
   // ✅ Usar Context API en lugar de useState local
-  const { 
-    configuraciones, 
+  const {
+    configuraciones,
     cambiosPendientes,
     setCambiosPendientes,
     actualizarConfiguraciones,
@@ -60,6 +62,69 @@ export function ConfiguracionesSIGL() {
 
   const moduloActual = configuraciones.find(m => m.id === moduloActivo);
 
+  // ✅ Estado para conteo dinámico de expedientes por estado (reemplaza casosPorEstado mock)
+  const [conteoDinamico, setConteoDinamico] = useState<Record<string, Record<string, number>>>({
+    'defensa-judicial': {},
+    'juzgamiento': {},
+    'asesoria-juridica': {},
+  });
+
+  // Cargar conteo de expedientes dinámicamente
+  useEffect(() => {
+    const loadExpedientesCounts = async () => {
+      try {
+        // Cargar expedientes de Defensa Judicial
+        const expedientes = await legalService.getExpedientes();
+        const conteoDefensa: Record<string, number> = {};
+        expedientes.forEach((exp: any) => {
+          const etapa = exp.etapaProcesal || exp.etapa || '';
+          conteoDefensa[etapa] = (conteoDefensa[etapa] || 0) + 1;
+        });
+
+        // Cargar consultas jurídicas
+        const consultas = await legalService.getConsultasJuridicas();
+        const conteoAsesoria: Record<string, number> = {};
+
+        // Mapeo de estados de backend a frontend para Asesoría Jurídica
+        const mapEstadoAsesoria: Record<string, string> = {
+          'en_radicacion': 'RADICADA',
+          'asignado': 'RADICADA',
+          'en_analisis': 'ANÁLISIS',
+          'en_revision': 'ANÁLISIS',
+          'respondido': 'RESPUESTA',
+          'cerrado': 'ENVIADA',
+          'vencido': 'RADICADA'
+        };
+
+        consultas.forEach((c: any) => {
+          const estadoBackend = c.estado || 'en_radicacion';
+          const etapaFrontend = mapEstadoAsesoria[estadoBackend] || 'RADICADA';
+          conteoAsesoria[etapaFrontend] = (conteoAsesoria[etapaFrontend] || 0) + 1;
+        });
+
+        // Cargar procesos de juzgamiento
+        const juzgamiento = await legalService.getJuzgamientoProcesos();
+        const conteoJuzgamiento: Record<string, number> = {};
+        juzgamiento.forEach((j: any) => {
+          const etapa = j.etapa || 'E1_AVOCAMIENTO';
+          conteoJuzgamiento[etapa] = (conteoJuzgamiento[etapa] || 0) + 1;
+        });
+
+        setConteoDinamico({
+          'defensa-judicial': conteoDefensa,
+          'juzgamiento': conteoJuzgamiento,
+          'asesoria-juridica': conteoAsesoria,
+        });
+
+        console.log('✅ Conteo dinámico de expedientes cargado:', { conteoDefensa, conteoAsesoria, conteoJuzgamiento });
+      } catch (error) {
+        console.error('Error cargando conteo de expedientes:', error);
+      }
+    };
+
+    loadExpedientesCounts();
+  }, [moduloActivo]);
+
   // ============ FUNCIONES DE ESTADOS ============
 
   const agregarEstado = () => {
@@ -68,7 +133,7 @@ export function ConfiguracionesSIGL() {
 
   const confirmarAgregarEstado = () => {
     if (!moduloActual) return;
-    
+
     const nuevoEstado: EstadoKanban = {
       id: `estado-${Date.now()}`,
       nombre: 'Nuevo Estado',
@@ -77,13 +142,13 @@ export function ConfiguracionesSIGL() {
       activo: true,
     };
 
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, estados: [...m.estados, nuevoEstado] }
         : m
     ));
     setShowModalAgregarEstado(false);
-    
+
     toast.success('Estado agregado correctamente', {
       description: 'Se ha agregado un nuevo estado al tablero Kanban',
       duration: 3000
@@ -101,41 +166,39 @@ export function ConfiguracionesSIGL() {
   const confirmarEliminarEstado = () => {
     if (!estadoAEliminar) return;
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, estados: m.estados.filter(e => e.id !== estadoAEliminar.id) }
         : m
     ));
-    setCambiosPendientes(true);
     setShowModalEliminarEstado(false);
-    
+
     toast.success('Estado eliminado correctamente', {
       description: `"${estadoAEliminar.nombre}" ha sido eliminado del tablero Kanban`,
       duration: 3000
     });
-    
+
     setEstadoAEliminar(null);
   };
 
   const actualizarEstado = (estadoId: string, cambios: Partial<EstadoKanban>) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            estados: m.estados.map(e => 
-              e.id === estadoId ? { ...e, ...cambios } : e
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          estados: m.estados.map(e =>
+            e.id === estadoId ? { ...e, ...cambios } : e
+          )
+        }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   // ============ FUNCIONES DE TIEMPOS ============
 
   const agregarTiempo = () => {
     if (!moduloActual) return;
-    
+
     const nuevoTiempo: ConfiguracionTiempo = {
       id: `tiempo-${Date.now()}`,
       tipo: 'Nuevo Término',
@@ -144,35 +207,32 @@ export function ConfiguracionesSIGL() {
       activo: true,
     };
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiempos: [...m.tiempos, nuevoTiempo] }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   const eliminarTiempo = (tiempoId: string) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiempos: m.tiempos.filter(t => t.id !== tiempoId) }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   const actualizarTiempo = (tiempoId: string, cambios: Partial<ConfiguracionTiempo>) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            tiempos: m.tiempos.map(t => 
-              t.id === tiempoId ? { ...t, ...cambios } : t
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          tiempos: m.tiempos.map(t =>
+            t.id === tiempoId ? { ...t, ...cambios } : t
+          )
+        }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   // ============ FUNCIONES DE TIPOS DE PROCESOS ============
@@ -183,7 +243,7 @@ export function ConfiguracionesSIGL() {
 
   const confirmarAgregarTipoProceso = () => {
     if (!moduloActual || !moduloActual.tiposProcesos) return;
-    
+
     const nuevoTipo: TipoProcesoJudicial = {
       id: `tipo-${Date.now()}`,
       nombre: 'Nuevo Tipo de Proceso',
@@ -193,14 +253,13 @@ export function ConfiguracionesSIGL() {
       activo: true,
     };
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiposProcesos: [...(m.tiposProcesos || []), nuevoTipo] }
         : m
     ));
-    setCambiosPendientes(true);
     setShowModalAgregarTipoProceso(false);
-    
+
     toast.success('Tipo de proceso agregado correctamente', {
       description: 'Se ha agregado un nuevo tipo de proceso judicial',
       duration: 3000
@@ -218,34 +277,32 @@ export function ConfiguracionesSIGL() {
   const confirmarEliminarTipoProceso = () => {
     if (!tipoProcesoAEliminar) return;
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiposProcesos: (m.tiposProcesos || []).filter(t => t.id !== tipoProcesoAEliminar.id) }
         : m
     ));
-    setCambiosPendientes(true);
     setShowModalEliminarTipoProceso(false);
-    
+
     toast.success('Tipo de proceso eliminado correctamente', {
       description: `"${tipoProcesoAEliminar.nombre}" ha sido eliminado de los tipos de procesos judiciales`,
       duration: 3000
     });
-    
+
     setTipoProcesoAEliminar(null);
   };
 
   const actualizarTipoProceso = (tipoId: string, cambios: Partial<TipoProcesoJudicial>) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            tiposProcesos: (m.tiposProcesos || []).map(t => 
-              t.id === tipoId ? { ...t, ...cambios } : t
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          tiposProcesos: (m.tiposProcesos || []).map(t =>
+            t.id === tipoId ? { ...t, ...cambios } : t
+          )
+        }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   // ============ DRAG AND DROP ============
@@ -271,12 +328,11 @@ export function ConfiguracionesSIGL() {
 
     const reorderedEstados = arrayMove(estados, oldIndex, newIndex);
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, estados: reorderedEstados.map((e, i) => ({ ...e, orden: i + 1 })) }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   return (
@@ -318,7 +374,7 @@ export function ConfiguracionesSIGL() {
               onClick={guardarConfiguraciones}
               disabled={!cambiosPendientes}
               className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ 
+              style={{
                 background: cambiosPendientes ? 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' : '#9CA3AF',
                 boxShadow: cambiosPendientes ? '0 2px 4px rgba(41, 98, 255, 0.2)' : 'none'
               }}
@@ -344,11 +400,10 @@ export function ConfiguracionesSIGL() {
                 <button
                   key={modulo.id}
                   onClick={() => setModuloActivo(modulo.id)}
-                  className={`flex-shrink-0 lg:w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors whitespace-nowrap lg:whitespace-normal ${
-                    moduloActivo === modulo.id
-                      ? 'bg-blue-50 text-blue-900 font-semibold'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}
+                  className={`flex-shrink-0 lg:w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors whitespace-nowrap lg:whitespace-normal ${moduloActivo === modulo.id
+                    ? 'bg-blue-50 text-blue-900 font-semibold'
+                    : 'text-gray-700 hover:bg-gray-50'
+                    }`}
                 >
                   <div className="flex items-center gap-2">
                     <LayoutGrid className="w-4 h-4" />
@@ -380,16 +435,19 @@ export function ConfiguracionesSIGL() {
                     <div>
                       <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                         <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
-                        Estados / Columnas Kanban
+                        {moduloActivo === 'asesoria-juridica' ? 'Etapas del Proceso' : 'Estados / Columnas Kanban'}
                       </h2>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                        Define las columnas que aparecerán en el tablero Kanban de {moduloActual.nombre}
+                        {moduloActivo === 'asesoria-juridica'
+                          ? `Define las etapas del proceso de ${moduloActual.nombre}`
+                          : `Define las columnas que aparecerán en el tablero Kanban de ${moduloActual.nombre}`
+                        }
                       </p>
                     </div>
                     <button
                       onClick={agregarEstado}
                       className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                      style={{ 
+                      style={{
                         background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                         boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                       }}
@@ -410,9 +468,9 @@ export function ConfiguracionesSIGL() {
                     >
                       <div className="space-y-3">
                         {moduloActual.estados.map((estado, index) => (
-                          <EstadoSortable 
-                            key={estado.id} 
-                            estado={estado} 
+                          <EstadoSortable
+                            key={estado.id}
+                            estado={estado}
                             index={index}
                             onUpdate={actualizarEstado}
                             onDelete={solicitarEliminarEstado}
@@ -441,7 +499,7 @@ export function ConfiguracionesSIGL() {
                       <button
                         onClick={agregarTipoProceso}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{ 
+                        style={{
                           background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                           boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                         }}
@@ -453,7 +511,7 @@ export function ConfiguracionesSIGL() {
 
                     <div className="space-y-3">
                       {moduloActual.tiposProcesos.map((tipo) => (
-                        <div 
+                        <div
                           key={tipo.id}
                           className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
                         >
@@ -563,7 +621,7 @@ export function ConfiguracionesSIGL() {
       </div>
 
       {/* MODALES DE CONFIRMACIÓN */}
-      
+
       {/* Modal: Agregar Estado */}
       {showModalAgregarEstado && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
@@ -583,7 +641,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-blue-800">
                   Se creará un nuevo estado con el nombre "Nuevo Estado" que podrá personalizar posteriormente.
@@ -600,7 +658,7 @@ export function ConfiguracionesSIGL() {
                 <button
                   onClick={confirmarAgregarEstado}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-                  style={{ 
+                  style={{
                     background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                     boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                   }}
@@ -615,8 +673,8 @@ export function ConfiguracionesSIGL() {
 
       {/* Modal: Eliminar Estado */}
       {showModalEliminarEstado && estadoAEliminar && (() => {
-        // Obtener cantidad de casos asignados al estado
-        const cantidadCasos = casosPorEstado[moduloActivo]?.[estadoAEliminar.id] || 0;
+        // Obtener cantidad de casos asignados al estado (conteo dinámico desde API)
+        const cantidadCasos = conteoDinamico[moduloActivo]?.[estadoAEliminar.id] || 0;
         const puedeEliminar = cantidadCasos === 0;
 
         return (
@@ -637,7 +695,7 @@ export function ConfiguracionesSIGL() {
                     <X className="w-5 h-5 text-gray-500" />
                   </button>
                 </div>
-                
+
                 {/* Información del estado */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
                   <p className="text-sm font-semibold text-gray-900 mb-2">
@@ -680,7 +738,7 @@ export function ConfiguracionesSIGL() {
                       <button
                         onClick={() => setShowModalEliminarEstado(false)}
                         className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-                        style={{ 
+                        style={{
                           background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                           boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                         }}
@@ -753,7 +811,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-blue-800">
                   Se creará un nuevo tipo de proceso con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nueva Demanda.
@@ -770,7 +828,7 @@ export function ConfiguracionesSIGL() {
                 <button
                   onClick={confirmarAgregarTipoProceso}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-                  style={{ 
+                  style={{
                     background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                     boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                   }}
@@ -802,7 +860,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                 <p className="text-sm font-semibold text-red-900 mb-2">
                   Tipo: "{tipoProcesoAEliminar.nombre}"
@@ -864,7 +922,7 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoK
         <div {...attributes} {...listeners} className="cursor-move">
           <GripVertical className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 flex-shrink-0" />
         </div>
-        
+
         <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center font-bold text-xs sm:text-sm text-gray-700 flex-shrink-0">
           {index + 1}
         </div>

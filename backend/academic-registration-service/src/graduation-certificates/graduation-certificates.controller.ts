@@ -66,11 +66,19 @@ export class GraduationCertificatesController {
   @Post('autoservicio/verificar-graduado')
   @HttpCode(HttpStatus.OK)
   async verificarGraduado(
-    @Body() body: { idNumber: string; idIssueDate?: string },
+    @Body()
+    body: {
+      idNumber: string;
+      idIssueDate?: string;
+      graduationDate?: string;
+      lastName?: string;
+    },
   ) {
     return await this.service.verificarGraduado(
       body.idNumber,
       body.idIssueDate,
+      body.graduationDate,
+      body.lastName,
     );
   }
 
@@ -80,8 +88,22 @@ export class GraduationCertificatesController {
    */
   @Post('autoservicio/solicitar-certificado')
   @HttpCode(HttpStatus.OK)
-  async solicitarCertificado(@Body() body: LandingCertificateRequestDto) {
-    return await this.service.solicitarCertificadoLanding(body);
+  async solicitarCertificado(
+    @Body() body: LandingCertificateRequestDto,
+    @Req() req: Request,
+  ) {
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    let frontendBaseUrl = origin;
+    if (!frontendBaseUrl && referer) {
+      try {
+        frontendBaseUrl = new URL(referer).origin;
+      } catch (_) {
+        frontendBaseUrl = undefined;
+      }
+    }
+
+    return await this.service.solicitarCertificadoLanding(body, frontendBaseUrl);
   }
 
   /**
@@ -91,11 +113,19 @@ export class GraduationCertificatesController {
   @Post('autoservicio/generar-codigo')
   @HttpCode(HttpStatus.OK)
   async generarCodigoValidacion(
-    @Body() body: { idNumber: string; idIssueDate?: string },
+    @Body()
+    body: {
+      idNumber: string;
+      idIssueDate?: string;
+      graduationDate?: string;
+      lastName?: string;
+    },
   ) {
     return await this.service.generarCodigoValidacion(
       body.idNumber,
       body.idIssueDate,
+      body.graduationDate,
+      body.lastName,
     );
   }
 
@@ -273,8 +303,20 @@ export class GraduationCertificatesController {
   async aprobarSolicitud(
     @Param('id') id: string,
     @Body() body: ApproveRequestDto,
+    @Req() req: Request,
   ) {
-    return await this.service.aprobarSolicitud(id, body);
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    let frontendBaseUrl = origin;
+    if (!frontendBaseUrl && referer) {
+      try {
+        frontendBaseUrl = new URL(referer).origin;
+      } catch (_) {
+        frontendBaseUrl = undefined;
+      }
+    }
+
+    return await this.service.aprobarSolicitud(id, body, frontendBaseUrl);
   }
 
   /**
@@ -286,12 +328,25 @@ export class GraduationCertificatesController {
   async rechazarSolicitud(
     @Param('id') id: string,
     @Body() body: { reason: string; reviewerName?: string; reviewerId?: string },
+    @Req() req: Request,
   ) {
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    let frontendBaseUrl = origin;
+    if (!frontendBaseUrl && referer) {
+      try {
+        frontendBaseUrl = new URL(referer).origin;
+      } catch (_) {
+        frontendBaseUrl = undefined;
+      }
+    }
+
     return await this.service.rechazarSolicitud(
       id,
       body.reason,
       body.reviewerName,
       body.reviewerId,
+      frontendBaseUrl,
     );
   }
 
@@ -374,4 +429,29 @@ export class GraduationCertificatesController {
     // TODO: Implementar revocación
     return { message: 'Endpoint en desarrollo' };
   }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/:id/reenviar
+   * Reenviar certificado por email al solicitante
+   */
+  @Post(':id/reenviar')
+  @HttpCode(HttpStatus.OK)
+  async reenviarCertificado(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ) {
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    let frontendBaseUrl = origin;
+    if (!frontendBaseUrl && referer) {
+      try {
+        frontendBaseUrl = new URL(referer).origin;
+      } catch (_) {
+        frontendBaseUrl = undefined;
+      }
+    }
+
+    return await this.service.reenviarCertificado(id, frontendBaseUrl);
+  }
+
 }

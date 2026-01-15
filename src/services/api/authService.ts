@@ -143,7 +143,13 @@ class AuthService {
    */
   hasRole(role: string): boolean {
     const user = this.getCurrentUser();
-    return user?.roles?.includes(role) || false;
+    const roles = user?.roles || [];
+
+    // Manejar tanto arrays de string como objetos { code, name }
+    return roles.some((r: any) => {
+      if (typeof r === 'string') return r === role;
+      return r?.code === role || r?.name === role;
+    });
   }
 
   /**

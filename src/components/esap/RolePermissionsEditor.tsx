@@ -110,7 +110,7 @@ export function RolePermissionsEditor({
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !role?.id) return;
 
     let cancelled = false;
     const loadPermissions = async () => {

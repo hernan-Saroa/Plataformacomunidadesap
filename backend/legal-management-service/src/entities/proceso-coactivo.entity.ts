@@ -17,7 +17,7 @@ export interface ObligacionInfo {
     fechaVencimiento: string;
 }
 
-@Entity('procesos_coactivos')
+@Entity({ name: 'procesos_coactivos', schema: 'legal_management' })
 export class ProcesoCoactivo {
     @PrimaryGeneratedColumn('uuid')
     id: string;

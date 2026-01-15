@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Param, Body, UseInterceptors, UploadedFile, Res } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, UseInterceptors, UploadedFile, Res, Query } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import { extname, join, basename } from 'path';
@@ -83,6 +83,7 @@ export class ComentariosDocumentosOCController {
     @Get(':requerimientoId/documentos/download-zip')
     async downloadAllAsZip(
         @Param('requerimientoId') requerimientoId: string,
+        @Query('nombre') nombre: string,
         @Res() res: Response
     ) {
         try {
@@ -96,7 +97,10 @@ export class ComentariosDocumentosOCController {
 
             const archiver = require('archiver');
             const sanitizedId = requerimientoId.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
-            const zipFilename = `requerimiento_oc_${sanitizedId}.zip`;
+
+            // Usar nombre si existe, sino usar ID
+            const safeName = nombre ? nombre.replace(/[^a-zA-Z0-9_-]/g, '_') : `requerimiento_oc_${sanitizedId}`;
+            const zipFilename = `${safeName}.zip`;
 
             res.set({
                 'Content-Type': 'application/zip',
