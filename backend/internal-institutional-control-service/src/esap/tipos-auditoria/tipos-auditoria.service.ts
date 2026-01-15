@@ -5,7 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, QueryFailedError } from 'typeorm';
 import { TipoAuditoria } from './entities/tipo-auditoria.entity';
 import { CreateTipoAuditoriaDto } from './dto/create-tipo-auditoria.dto';
 import { UpdateTipoAuditoriaDto } from './dto/update-tipo-auditoria.dto';
@@ -65,16 +65,21 @@ export class TiposAuditoriaService {
    * Crear un nuevo tipo de auditoría
    */
   async create(createDto: CreateTipoAuditoriaDto): Promise<TipoAuditoria> {
-    // Verificar que el código no exista
-    const existe = await this.findByCodigo(createDto.codigo);
+    // Verificar que el código no exista (incluyendo eliminados)
+    const codigoUpper = createDto.codigo.toUpperCase();
+    const existe = await this.tipoAuditoriaRepository
+      .createQueryBuilder('tipo')
+      .where('UPPER(tipo.codigo) = :codigo', { codigo: codigoUpper })
+      .getOne();
+    
     if (existe) {
       throw new ConflictException(
-        `Ya existe un tipo de auditoría con el código ${createDto.codigo}`,
+        `Ya existe un tipo de auditoría con el código ${codigoUpper}`,
       );
     }
 
     const tipo = this.tipoAuditoriaRepository.create({
-      codigo: createDto.codigo.toUpperCase(),
+      codigo: codigoUpper,
       nombre: createDto.nombre,
       descripcion: createDto.descripcion,
       alcance: createDto.alcance,
@@ -85,7 +90,24 @@ export class TiposAuditoriaService {
       auditoriasProgramadas: 0,
     });
 
-    return this.tipoAuditoriaRepository.save(tipo);
+    try {
+      return await this.tipoAuditoriaRepository.save(tipo);
+    } catch (error) {
+      // Capturar errores de constraint de base de datos
+      if (error instanceof QueryFailedError) {
+        const pgError = error as any;
+        // Código 23505 = unique_violation en PostgreSQL
+        if (pgError.code === '23505') {
+          if (pgError.constraint === 'tipo_auditoria_codigo_key' || 
+              pgError.constraint?.includes('codigo')) {
+            throw new ConflictException(
+              `Ya existe un tipo de auditoría con el código ${codigoUpper}`,
+            );
+          }
+        }
+      }
+      throw error;
+    }
   }
 
   /**
@@ -94,15 +116,21 @@ export class TiposAuditoriaService {
   async update(id: string, updateDto: UpdateTipoAuditoriaDto): Promise<TipoAuditoria> {
     const tipo = await this.findOne(id);
 
-    // Si se actualiza el código, verificar que no exista otro con ese código
+    // Si se actualiza el código, verificar que no exista otro con ese código (incluyendo eliminados)
     if (updateDto.codigo && updateDto.codigo !== tipo.codigo) {
-      const existe = await this.findByCodigo(updateDto.codigo);
+      const codigoUpper = updateDto.codigo.toUpperCase();
+      const existe = await this.tipoAuditoriaRepository
+        .createQueryBuilder('tipo')
+        .where('UPPER(tipo.codigo) = :codigo', { codigo: codigoUpper })
+        .andWhere('tipo.id != :id', { id })
+        .getOne();
+      
       if (existe) {
         throw new ConflictException(
-          `Ya existe un tipo de auditoría con el código ${updateDto.codigo}`,
+          `Ya existe un tipo de auditoría con el código ${codigoUpper}`,
         );
       }
-      tipo.codigo = updateDto.codigo.toUpperCase();
+      tipo.codigo = codigoUpper;
     }
 
     // Actualizar campos
@@ -116,7 +144,23 @@ export class TiposAuditoriaService {
     if (updateDto.color !== undefined) tipo.color = updateDto.color;
     if (updateDto.activa !== undefined) tipo.activa = updateDto.activa;
 
-    return this.tipoAuditoriaRepository.save(tipo);
+    try {
+      return await this.tipoAuditoriaRepository.save(tipo);
+    } catch (error) {
+      // Capturar errores de constraint de base de datos
+      if (error instanceof QueryFailedError) {
+        const pgError = error as any;
+        if (pgError.code === '23505') {
+          if (pgError.constraint === 'tipo_auditoria_codigo_key' || 
+              pgError.constraint?.includes('codigo')) {
+            throw new ConflictException(
+              `Ya existe un tipo de auditoría con el código ${tipo.codigo}`,
+            );
+          }
+        }
+      }
+      throw error;
+    }
   }
 
   /**
