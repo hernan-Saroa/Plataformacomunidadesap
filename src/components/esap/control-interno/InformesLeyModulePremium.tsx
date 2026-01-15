@@ -1451,8 +1451,11 @@ function ModalDetalleInformeGenerado({ informe, onClose, onInformeActualizado }:
       const response = await controlInternoApi.informesLey.uploadArchivo(informe.id, file);
       
       if (response.success) {
-        toast.success('Archivo subido exitosamente', {
-          description: 'El archivo se ha asociado al informe correctamente',
+        const esReemplazo = !!informe.archivoUrl;
+        toast.success(esReemplazo ? 'Archivo reemplazado exitosamente' : 'Archivo subido exitosamente', {
+          description: esReemplazo 
+            ? 'El archivo anterior ha sido reemplazado por el nuevo archivo'
+            : 'El archivo se ha asociado al informe correctamente',
         });
         // Recargar informes si hay callback
         if (onInformeActualizado) {
@@ -1614,16 +1617,53 @@ function ModalDetalleInformeGenerado({ informe, onClose, onInformeActualizado }:
         <div className="bg-gray-50 rounded-lg p-4 mb-6">
           <h3 className="text-sm text-gray-900 font-medium mb-3">Archivo del Informe</h3>
           {informe.archivoUrl ? (
-            <div className="flex items-center gap-3">
-              <FileText className="w-5 h-5 text-gray-500" />
-              <span className="text-sm text-gray-700">Archivo asociado</span>
-              <button
-                onClick={handleDescargar}
-                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                Descargar
-              </button>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <FileText className="w-5 h-5 text-gray-500" />
+                <span className="text-sm text-gray-700">Archivo asociado</span>
+                <button
+                  onClick={handleDescargar}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar
+                </button>
+              </div>
+              {/* Permitir reemplazar archivo existente */}
+              <div className="pt-2 border-t border-gray-200">
+                <p className="text-xs text-gray-500 mb-2">
+                  Puedes reemplazar el archivo actual subiendo uno nuevo
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={handleSubirArchivo}
+                  className="hidden"
+                  id="file-replace"
+                />
+                <label
+                  htmlFor="file-replace"
+                  className={`inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm cursor-pointer ${
+                    subiendoArchivo ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {subiendoArchivo ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin" />
+                      Reemplazando...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="w-4 h-4" />
+                      Reemplazar Archivo
+                    </>
+                  )}
+                </label>
+                <p className="text-xs text-gray-500 mt-2">
+                  Formatos permitidos: PDF, Word (.doc, .docx), Excel (.xls, .xlsx). Máximo 50MB
+                </p>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">

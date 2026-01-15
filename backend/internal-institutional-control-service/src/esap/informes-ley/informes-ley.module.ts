@@ -13,6 +13,7 @@ import { PlantillasService } from './services/plantillas.service';
 import { DatosAutomaticosService } from './services/datos-automaticos.service';
 import { InformeGeneratorService } from './services/informe-generator.service';
 import { WorkflowAprobacionService } from './services/workflow-aprobacion.service';
+import { DafValidatorService } from './services/daf-validator.service';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { PlanMejoramiento } from '../planes-mejoramiento/entities/plan-mejoramiento.entity';
 import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
@@ -41,6 +42,7 @@ import { PlanAnual5RolesModule } from '../plan-anual-5-roles/plan-anual-5-roles.
     DatosAutomaticosService,
     InformeGeneratorService,
     WorkflowAprobacionService,
+    DafValidatorService,
   ],
   exports: [
     InformesLeyService,
