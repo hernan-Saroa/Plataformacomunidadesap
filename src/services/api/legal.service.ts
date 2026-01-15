@@ -568,6 +568,10 @@ class OCService {
         return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
     }
 
+    async reasignarRequerimiento(id: string, nuevoAbogadoId: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/reasignar`, { nuevoAbogadoId });
+    }
+
     // Solicitudes de Insumos (Delegación)
     async getSolicitudesInsumo(requerimientoId: string): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/insumos`);
@@ -614,10 +618,47 @@ class OCService {
         await apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/documentos/${documentoId}`);
     }
 
-    getDocumentosDownloadUrl(requerimientoId: string): string {
+    getDocumentosDownloadUrl(requerimientoId: string, nombre?: string): string {
         const baseUrl = getServiceUrl('legal');
         const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
-        return `${baseUrl}${prefix}/requerimientos-oc/${requerimientoId}/documentos/download-zip`;
+        let url = `${baseUrl}${prefix}/requerimientos-oc/${requerimientoId}/documentos/download-zip`;
+        if (nombre) {
+            url += `?nombre=${encodeURIComponent(nombre)}`;
+        }
+        return url;
+    }
+
+    // Enviar respuesta formal al órgano de control
+    async enviarRespuesta(requerimientoId: string, data: {
+        destinatarioEmail: string;
+        asunto: string;
+        cuerpoMensaje: string;
+        tipoRespuesta: string;
+        destinatarioNombre?: string;
+        destinatarioCargo?: string;
+    }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/response`, data);
+    }
+
+    // Borradores de Respuesta
+    async getBorradorRespuesta(requerimientoId: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/borrador`);
+    }
+
+    async saveBorradorRespuesta(requerimientoId: string, data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/borrador`, data);
+    }
+
+    // Solicitar insumos a otra área (alias más claro)
+    async solicitarInsumo(requerimientoId: string, data: {
+        areaDestino: string;
+        descripcionSolicitud: string;
+        fechaVencimientoInterna: string;
+        documentosSolicitados?: string;
+        funcionarioDestino?: string;
+        emailDestino?: string;
+    }): Promise<any> {
+        return this.createSolicitudInsumo(requerimientoId, data);
     }
 }
 

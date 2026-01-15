@@ -21,6 +21,7 @@ import { ConsultaJuridica } from './entities/consulta-juridica.entity';
 import { TerminoProcesal } from './entities/termino-procesal.entity';
 import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
 import { RequerimientoOC } from './entities/requerimiento-oc.entity';
+import { RespuestaBorradorOC } from './entities/respuesta-borrador-oc.entity';
 import { SolicitudInsumo } from './entities/solicitud-insumo.entity';
 import { Hallazgo } from './entities/hallazgo.entity';
 import { TareaExpediente } from './entities/tarea-expediente.entity';
@@ -114,6 +115,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Órganos de Control
       OrganismoControlOC,
       RequerimientoOC,
+      RespuestaBorradorOC,
       SolicitudInsumo,
       Hallazgo,
       // Tareas y Notas
