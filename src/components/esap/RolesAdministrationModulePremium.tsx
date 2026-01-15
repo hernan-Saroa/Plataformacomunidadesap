@@ -38,6 +38,7 @@ import { useConfirmation } from './ConfirmationModal';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { rolesService, type SystemRole, type RoleStats, type RoleFilters } from '../../services/api';
+import { useAuth } from '../../hooks';
 
 // ============================================================================
 // TIPOS
@@ -278,6 +279,8 @@ export function RolesAdministrationModulePremium() {
   const [totalItems, setTotalItems] = useState(0);
   const itemsPerPage = 20;
   const { confirm, ConfirmationDialog } = useConfirmation();
+  const { hasRole } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN');
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -607,13 +610,15 @@ export function RolesAdministrationModulePremium() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
-        >
-          <Plus className="w-5 h-5" />
-          <span className="text-sm">Crear Rol</span>
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
+          >
+            <Plus className="w-5 h-5" />
+            <span className="text-sm">Crear Rol</span>
+          </button>
+        )}
       </motion.div>
 
       {/* Búsqueda y Filtros Premium */}
