@@ -21,16 +21,20 @@ export class TiposAuditoriaService {
    * Obtener todos los tipos de auditoría (excluyendo eliminados)
    */
   async findAll(includeInactive: boolean = false): Promise<TipoAuditoria[]> {
-    const query = this.tipoAuditoriaRepository.createQueryBuilder('tipo');
+    const where: any = {
+      deletedAt: IsNull(),
+    };
 
     if (!includeInactive) {
-      query.where('tipo.activa = :activa', { activa: true });
+      where.activa = true;
     }
 
-    query.andWhere('tipo.deletedAt IS NULL');
-    query.orderBy('tipo.createdAt', 'DESC');
-
-    return query.getMany();
+    return this.tipoAuditoriaRepository.find({
+      where,
+      order: {
+        createdAt: 'DESC',
+      },
+    });
   }
 
   /**
