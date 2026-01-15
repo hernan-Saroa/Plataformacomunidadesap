@@ -1792,10 +1792,6 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
 
     try {
       setMostrarPreview(true);
-      // Mostrar preview de datos automáticos
-      toast.info('Preview de datos automáticos', {
-        description: 'Los datos se poblarán automáticamente al generar el informe',
-      });
     } catch (error) {
       console.error('Error en preview:', error);
       toast.error('Error al mostrar preview');
