@@ -50,7 +50,7 @@ export class PdfGeneratorService {
     const validationUrl = `${baseUrl}/verificar-certificado/${certificate.verificationCode}`;
 
     // Formatear fecha de expedición
-    const fechaExpedicion = this.formatDate(new Date());
+    const fechaExpedicion = this.formatDate(certificate.issueDate || new Date());
 
     // Formatear lugar y fecha de expedición del título
     const lugarFechaExpedicion = `${certificate.campus || 'Bogotá'} (${certificate.campus?.toUpperCase() || 'BOYACÁ'}) ${this.formatDateLong(certificate.graduationDate)}`;
@@ -151,7 +151,7 @@ export class PdfGeneratorService {
    * Ejemplo: "24 de Diciembre de 2025"
    */
   private formatDate(date: Date | string): string {
-    const d = new Date(date);
+    const d = this.toSafeDate(date);
     return new Intl.DateTimeFormat('es-CO', {
       day: 'numeric',
       month: 'long',
@@ -165,12 +165,30 @@ export class PdfGeneratorService {
    * Ejemplo: "30 DE SEPTIEMBRE DE 2022"
    */
   private formatDateLong(date: Date | string): string {
-    const d = new Date(date);
+    const d = this.toSafeDate(date);
     return new Intl.DateTimeFormat('es-CO', {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
       timeZone: 'America/Bogota',
     }).format(d).toUpperCase();
+  }
+
+  private toSafeDate(value: Date | string): Date {
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [year, month, day] = value.split('-').map((part) => Number(part));
+      return new Date(year, month - 1, day, 12, 0, 0);
+    }
+
+    const d = new Date(value);
+    if (
+      d.getHours() === 0 &&
+      d.getMinutes() === 0 &&
+      d.getSeconds() === 0 &&
+      d.getMilliseconds() === 0
+    ) {
+      d.setHours(12, 0, 0, 0);
+    }
+    return d;
   }
 }
