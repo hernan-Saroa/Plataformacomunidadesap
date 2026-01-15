@@ -20,6 +20,7 @@ export interface MenuItem {
   icon: ReactNode;
   badge?: number;
   color?: string;
+  visible?: boolean; // Si es false, no se muestra en el menú (por defecto true)
 }
 
 interface ModuleLayoutProps {

@@ -260,7 +260,12 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           return <PortalTransaccionalUsuarioMD3 onLogout={handleLogout} />;
         }
         // Si es usuario de Control Interno (auditor), mostrar dashboard completo
-        return <ControlInternoFull />;
+        return (
+          <ControlInternoFull 
+            userData={userData}
+            userRoles={userRoles}
+          />
+        );
       
       case 'control-disciplinario':
         return <ControlDisciplinarioFull />;
