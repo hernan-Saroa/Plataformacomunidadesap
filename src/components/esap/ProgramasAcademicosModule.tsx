@@ -29,6 +29,7 @@ import { toast } from 'sonner@2.0.3';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreateProgramaModal } from './CreateProgramaModal';
 import { PROGRAMAS_ESAP, SEDES_ESAP } from '../../data/oferta-academica-esap';
+import { useAuth } from '../../hooks';
 
 type NivelFormacion = 'Pregrado' | 'Especialización' | 'Maestría' | 'Doctorado';
 type Modalidad = 'Presencial' | 'Virtual' | 'Distancia' | 'Dual';
@@ -426,6 +427,8 @@ export function ProgramasAcademicosModule() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [programaToEdit, setProgramaToEdit] = useState<ProgramaAcademico | null>(null);
   const itemsPerPage = 10;
+  const { hasRole } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN');
 
   // Stats
   const stats = {
@@ -539,13 +542,15 @@ export function ProgramasAcademicosModule() {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
-        >
-          <Plus className="w-5 h-5" />
-          <span className="text-sm">Crear Programa</span>
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
+          >
+            <Plus className="w-5 h-5" />
+            <span className="text-sm">Crear Programa</span>
+          </button>
+        )}
       </motion.div>
 
       {/* Búsqueda y Filtros */}

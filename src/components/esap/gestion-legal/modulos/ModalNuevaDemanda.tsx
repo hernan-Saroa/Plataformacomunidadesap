@@ -13,6 +13,7 @@ import { ModalSIGLPremium } from '../design-system/ModalSIGLPremium';
 import { Button } from '../../../ui/button';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 
 interface ModalNuevaDemandaProps {
   isOpen: boolean;
@@ -67,17 +68,8 @@ const MEDIOS_CONTROL = [
   'OTRO'
 ];
 
-// Tipos de Procesos Judiciales (configurables desde Configuraciones SIGL)
-const TIPOS_PROCESOS_JUDICIALES = [
-  { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización de perjuicios' },
-  { id: 'nulidad-restablecimiento', nombre: 'Nulidad y Restablecimiento del Derecho', descripcion: 'Acción para declarar la nulidad de un acto administrativo' },
-  { id: 'accion-grupo', nombre: 'Acción de Grupo', descripcion: 'Acción interpuesta por un grupo de personas' },
-  { id: 'accion-popular', nombre: 'Acción Popular', descripcion: 'Acción para la protección de derechos colectivos' },
-  { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias de contratos estatales' },
-  { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para protección inmediata de derechos fundamentales' },
-  { id: 'proceso-ejecutivo', nombre: 'Proceso Ejecutivo', descripcion: 'Proceso para cobro de obligaciones' },
-  { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales' },
-];
+// Tipos de Procesos Judiciales ahora vienen de ConfiguracionesSIGLContext
+// (se obtienen con useConfiguracionModulo en el componente)
 
 const DEPARTAMENTOS = [
   'Cundinamarca',
@@ -129,6 +121,26 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [abogados, setAbogados] = useState<Abogado[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
+
+  // ✅ Obtener tipos de procesos desde configuración centralizada
+  const { tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
+
+  // ✅ Auto-calcular fecha de vencimiento cuando cambia tipoProceso o fechaNotificacion
+  useEffect(() => {
+    if (formData.tipoProceso && formData.fechaNotificacion) {
+      const tipoSeleccionado = tiposProcesosActivos.find(t => t.id === formData.tipoProceso);
+      if (tipoSeleccionado && tipoSeleccionado.plazo) {
+        const fechaNotif = new Date(formData.fechaNotificacion);
+        const fechaVenc = new Date(fechaNotif);
+        fechaVenc.setDate(fechaVenc.getDate() + tipoSeleccionado.plazo);
+        const fechaVencStr = fechaVenc.toISOString().split('T')[0];
+
+        if (formData.fechaVencimiento !== fechaVencStr) {
+          setFormData(prev => ({ ...prev, fechaVencimiento: fechaVencStr }));
+        }
+      }
+    }
+  }, [formData.tipoProceso, formData.fechaNotificacion, tiposProcesosActivos]);
 
   // Cargar abogados desde la API y resetear formulario al abrir
   useEffect(() => {
@@ -352,6 +364,39 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">
                   <AlertCircle className="w-3 h-3" />
                   {errors.medioControl}
+                </p>
+              )}
+            </div>
+
+            {/* Tipo de Proceso (Dinámico desde Configuraciones) */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                Tipo de Proceso <span className="text-red-600">*</span>
+              </label>
+              <select
+                value={formData.tipoProceso}
+                onChange={(e) => handleInputChange('tipoProceso', e.target.value)}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 font-semibold ${errors.tipoProceso
+                  ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                  : 'border-gray-300 focus:ring-blue-500'
+                  }`}
+              >
+                <option value="">Seleccione tipo de proceso...</option>
+                {tiposProcesosActivos.map(tipo => (
+                  <option key={tipo.id} value={tipo.id}>
+                    {tipo.nombre} ({tipo.plazo} días)
+                  </option>
+                ))}
+              </select>
+              {formData.tipoProceso && (
+                <p className="text-xs text-gray-500 mt-1 italic">
+                  {tiposProcesosActivos.find(t => t.id === formData.tipoProceso)?.descripcion}
+                </p>
+              )}
+              {errors.tipoProceso && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.tipoProceso}
                 </p>
               )}
             </div>
@@ -737,14 +782,26 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               )}
             </div>
 
+            {/* Fecha de Vencimiento - Auto-calculada */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5">Fecha de Vencimiento</label>
-              <input
-                type="date"
-                value={formData.fechaVencimiento}
-                onChange={(e) => handleInputChange('fechaVencimiento', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
-              />
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                Fecha de Vencimiento
+                <span className="ml-2 text-xs font-normal text-gray-500">(auto-calculada)</span>
+              </label>
+              <div className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 font-semibold">
+                {formData.fechaVencimiento ? (
+                  <>
+                    📅 {new Date(formData.fechaVencimiento + 'T00:00:00').toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })}
+                    {formData.tipoProceso && (
+                      <span className="text-xs text-gray-500 ml-2">
+                        ({tiposProcesosActivos.find(t => t.id === formData.tipoProceso)?.plazo} días desde notificación)
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-gray-400 italic">Seleccione tipo de proceso y fecha de notificación</span>
+                )}
+              </div>
             </div>
 
             <div className="md:col-span-2">

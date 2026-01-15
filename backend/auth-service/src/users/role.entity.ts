@@ -19,11 +19,14 @@ export class Role {
     @Column({ default: 'Shield' })
     icon: string;
 
-    @Column({ default: '#003DA5' })
-    color: string;
+  @Column({ default: '#003DA5' })
+  color: string;
 
-    @Column({ default: 'personalizado' })
-    type: 'sistema' | 'personalizado';
+  @Column({ default: 'personalizado' })
+  type: 'sistema' | 'personalizado';
+
+  @Column({ default: 'sistema' })
+  category: 'backoffice' | 'portal' | 'sistema' | 'academico' | 'directivo' | 'administrativo';
 
     @Column({ default: true })
     is_active: boolean;

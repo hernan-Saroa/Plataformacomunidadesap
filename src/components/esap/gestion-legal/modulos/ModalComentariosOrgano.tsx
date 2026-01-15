@@ -3,25 +3,26 @@
  * DISEÑO LIMPIO ESAP 2025
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
 import { Textarea } from '../../../ui/textarea';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import {
-  MessageSquare, X, Send, Paperclip, AlertCircle, CheckCircle,
-  Clock, User, TrendingUp, Filter
+  MessageSquare, X, Send, AlertCircle, CheckCircle,
+  Clock, User, TrendingUp, Filter, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { ocService } from '../../../../services/api/legal.service';
 
 interface Comentario {
   id: string;
-  usuario: string;
-  cargo: string;
+  autorNombre: string;
+  autorCargo: string; // Mapped from backend or default
   contenido: string;
-  fecha: Date;
-  tipo: 'actuacion' | 'comentario' | 'alerta';
+  createdAt: Date;
+  tipo: 'ACTUACION' | 'COMENTARIO' | 'ALERTA';
 }
 
 interface ModalComentariosOrganoProps {
@@ -36,107 +37,107 @@ export function ModalComentariosOrgano({
   requerimientoId
 }: ModalComentariosOrganoProps) {
   const [nuevoComentario, setNuevoComentario] = useState('');
-  const [tipoComentario, setTipoComentario] = useState<'actuacion' | 'comentario' | 'alerta'>('comentario');
+  const [tipoComentario, setTipoComentario] = useState<'ACTUACION' | 'COMENTARIO' | 'ALERTA'>('COMENTARIO');
   const [filtroTipo, setFiltroTipo] = useState<string>('todos');
 
-  // Mock data de comentarios
-  const comentariosMock: Comentario[] = [
-    {
-      id: 'com-001',
-      usuario: 'Dra. María Fernández',
-      cargo: 'Jefa Área Jurídica',
-      contenido: 'Requerimiento recibido y revisado. Se solicita información a las áreas de Contratación y Financiera para consolidar respuesta.',
-      fecha: new Date('2024-12-11T09:30:00'),
-      tipo: 'actuacion'
-    },
-    {
-      id: 'com-002',
-      usuario: 'Área de Contratación',
-      cargo: 'Coordinador',
-      contenido: 'Se envía certificación de contratos suscritos en 2024. Total: 45 contratos por valor de $2.300 millones. Adjunto Excel consolidado.',
-      fecha: new Date('2024-12-12T14:15:00'),
-      tipo: 'comentario'
-    },
-    {
-      id: 'com-003',
-      usuario: 'Área Financiera',
-      cargo: 'Contador',
-      contenido: 'Se remite certificación presupuestal del cuarto trimestre 2024. Todos los compromisos están debidamente respaldados presupuestalmente.',
-      fecha: new Date('2024-12-13T10:45:00'),
-      tipo: 'comentario'
-    },
-    {
-      id: 'com-004',
-      usuario: 'Sistema SIGL',
-      cargo: 'Automatización',
-      contenido: '⚠️ ALERTA: Quedan 5 días hábiles para vencimiento del término legal de respuesta. Se recomienda priorizar este requerimiento.',
-      fecha: new Date('2024-12-15T08:00:00'),
-      tipo: 'alerta'
-    },
-    {
-      id: 'com-005',
-      usuario: 'Dra. María Fernández',
-      cargo: 'Jefa Área Jurídica',
-      contenido: 'Información consolidada. Se inicia redacción de proyecto de respuesta. Fecha estimada de finalización: 18 de diciembre.',
-      fecha: new Date('2024-12-15T16:30:00'),
-      tipo: 'actuacion'
-    },
-    {
-      id: 'com-006',
-      usuario: 'Dr. Carlos Méndez',
-      cargo: 'Asesor Jurídico',
-      contenido: 'Revisé el proyecto de respuesta. Incluye toda la información solicitada y está técnicamente bien fundamentado. Listo para firma del Director Jurídico.',
-      fecha: new Date('2024-12-16T11:20:00'),
-      tipo: 'comentario'
+
+
+  const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && requerimientoId) {
+      fetchComentarios();
     }
-  ];
+  }, [isOpen, requerimientoId]);
+
+  const fetchComentarios = async () => {
+    setLoading(true);
+    try {
+      const data = await ocService.getComentariosByRequerimiento(requerimientoId);
+      const ordenados = data.map((c: any) => ({
+        id: c.id,
+        autorNombre: c.autorNombre || 'Usuario Sistema',
+        autorCargo: c.autorCargo || 'Funcionario',
+        contenido: c.contenido,
+        createdAt: new Date(c.createdAt),
+        tipo: c.tipo || 'COMENTARIO'
+      })).sort((a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime());
+
+      setComentarios(ordenados);
+    } catch (error) {
+      console.error('Error cargando comentarios:', error);
+      toast.error('Error al cargar historial');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Filtrar comentarios
-  const comentariosFiltrados = filtroTipo === 'todos' 
-    ? comentariosMock 
-    : comentariosMock.filter(c => c.tipo === filtroTipo);
+  const comentariosFiltrados = filtroTipo === 'todos'
+    ? comentarios
+    : comentarios.filter(c => c.tipo === filtroTipo);
 
   const getTipoConfig = (tipo: string) => {
-    switch(tipo) {
-      case 'actuacion':
-        return { 
-          icon: <CheckCircle className="w-4 h-4" />, 
-          color: '#10B981', 
-          bg: '#D1FAE5', 
-          label: 'Actuación' 
+    // Validar mayúsculas/minúsculas por si acaso
+    const t = tipo.toUpperCase();
+    switch (t) {
+      case 'ACTUACION':
+        return {
+          icon: <CheckCircle className="w-4 h-4" />,
+          color: '#10B981',
+          bg: '#D1FAE5',
+          label: 'Actuación'
         };
-      case 'alerta':
-        return { 
-          icon: <AlertCircle className="w-4 h-4" />, 
-          color: '#F59E0B', 
-          bg: '#FEF3C7', 
-          label: 'Alerta' 
+      case 'ALERTA':
+        return {
+          icon: <AlertCircle className="w-4 h-4" />,
+          color: '#F59E0B',
+          bg: '#FEF3C7',
+          label: 'Alerta'
         };
       default:
-        return { 
-          icon: <MessageSquare className="w-4 h-4" />, 
-          color: '#3B82F6', 
-          bg: '#DBEAFE', 
-          label: 'Comentario' 
+        return {
+          icon: <MessageSquare className="w-4 h-4" />,
+          color: '#3B82F6',
+          bg: '#DBEAFE',
+          label: 'Comentario'
         };
     }
   };
 
-  const handleEnviarComentario = () => {
+
+
+
+
+  const handleEnviarComentario = async () => {
     if (!nuevoComentario.trim()) {
-      toast.error('Comentario vacío', {
-        description: 'Debe escribir un comentario',
-        icon: <AlertCircle className="w-4 h-4" />
-      });
+      toast.error('El comentario no puede estar vacío');
       return;
     }
 
-    toast.success('Comentario agregado', {
-      description: 'El comentario ha sido registrado en el expediente',
-      icon: <MessageSquare className="w-4 h-4" />
-    });
+    setEnviando(true);
+    try {
+      await ocService.createComentario(requerimientoId, {
+        contenido: nuevoComentario,
+        tipo: tipoComentario,
+        autorNombre: 'Usuario Actual'
+      });
 
-    setNuevoComentario('');
+      toast.success(tipoComentario === 'ACTUACION' ? 'Actuación registrada' : 'Comentario agregado', {
+        icon: <CheckCircle className="w-4 h-4" />
+      });
+
+      setNuevoComentario('');
+      fetchComentarios();
+    } catch (error) {
+      console.error('Error enviando comentario:', error);
+      toast.error('Error al guardar');
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return (
@@ -148,7 +149,7 @@ export function ModalComentariosOrgano({
         <DialogDescription className="sr-only">
           Historial de comentarios, actuaciones y alertas del requerimiento {requerimientoId} con toda la trazabilidad de las gestiones realizadas.
         </DialogDescription>
-        
+
         {/* Header */}
         <div className="px-6 py-5 bg-white border-b flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
@@ -172,7 +173,7 @@ export function ModalComentariosOrgano({
 
         {/* Contenido */}
         <div className="p-6 space-y-6">
-          
+
           {/* INFORMACIÓN */}
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-start gap-3">
@@ -180,7 +181,7 @@ export function ModalComentariosOrgano({
               <div className="text-sm text-blue-900">
                 <p className="font-bold mb-1">💡 Sobre los Comentarios:</p>
                 <p className="text-xs text-blue-700">
-                  Este espacio registra TODA la trazabilidad del requerimiento: actuaciones formales, comentarios de coordinación, 
+                  Este espacio registra TODA la trazabilidad del requerimiento: actuaciones formales, comentarios de coordinación,
                   alertas automáticas y notas internas. Todo queda documentado en el historial del expediente.
                 </p>
               </div>
@@ -193,73 +194,74 @@ export function ModalComentariosOrgano({
               <h3 className="font-bold text-gray-900 flex-1">✍️ Agregar Comentario o Actuación</h3>
               <div className="flex items-center gap-2">
                 <Button
-                  variant={tipoComentario === 'comentario' ? 'default' : 'outline'}
+                  variant={tipoComentario === 'COMENTARIO' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setTipoComentario('comentario')}
+                  onClick={() => setTipoComentario('COMENTARIO')}
                   className="text-xs"
                 >
                   💬 Comentario
                 </Button>
                 <Button
-                  variant={tipoComentario === 'actuacion' ? 'default' : 'outline'}
+                  variant={tipoComentario === 'ACTUACION' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setTipoComentario('actuacion')}
+                  onClick={() => setTipoComentario('ACTUACION')}
                   className="text-xs"
-                  style={tipoComentario === 'actuacion' ? { background: '#10B981' } : {}}
+                  style={tipoComentario === 'ACTUACION' ? { background: '#10B981' } : {}}
                 >
                   ✅ Actuación
                 </Button>
                 <Button
-                  variant={tipoComentario === 'alerta' ? 'default' : 'outline'}
+                  variant={tipoComentario === 'ALERTA' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setTipoComentario('alerta')}
+                  onClick={() => setTipoComentario('ALERTA')}
                   className="text-xs"
-                  style={tipoComentario === 'alerta' ? { background: '#F59E0B' } : {}}
+                  style={tipoComentario === 'ALERTA' ? { background: '#F59E0B' } : {}}
                 >
                   ⚠️ Alerta
                 </Button>
               </div>
             </div>
-            
+
             <Textarea
               value={nuevoComentario}
               onChange={(e) => setNuevoComentario(e.target.value)}
               placeholder={
-                tipoComentario === 'actuacion' 
-                  ? 'Describe la actuación realizada (Ej: "Se solicitó información al área de contratación")' 
-                  : tipoComentario === 'alerta'
-                  ? 'Describe la alerta o advertencia (Ej: "Se requiere coordinación urgente con el área financiera")'
-                  : 'Escribe tu comentario o nota interna sobre el requerimiento...'
+                tipoComentario === 'ACTUACION'
+                  ? 'Describe la actuación realizada (Ej: "Se solicitó información al área de contratación")'
+                  : tipoComentario === 'ALERTA'
+                    ? 'Describe la alerta o advertencia (Ej: "Se requiere coordinación urgente con el área financiera")'
+                    : 'Escribe tu comentario o nota interna sobre el requerimiento...'
               }
               rows={4}
               className="text-sm"
+              disabled={enviando}
             />
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-500">
-                {nuevoComentario.length} caracteres
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => toast.info('Función de adjuntar archivo')}
-                >
-                  <Paperclip className="w-3 h-3 mr-1" />
-                  Adjuntar
-                </Button>
-                <Button
-                  onClick={handleEnviarComentario}
-                  size="sm"
-                  style={{ background: '#003DA5' }}
-                  className="text-white"
-                  disabled={!nuevoComentario.trim()}
-                >
-                  <Send className="w-3 h-3 mr-1" />
-                  Publicar {tipoComentario === 'actuacion' ? 'Actuación' : tipoComentario === 'alerta' ? 'Alerta' : 'Comentario'}
-                </Button>
-              </div>
+
+
+
+            <div className="flex justify-end pt-2">
+              <Button
+                onClick={handleEnviarComentario}
+                size="sm"
+                style={{ background: '#003DA5' }}
+                className="text-white"
+                disabled={!nuevoComentario.trim() || enviando}
+              >
+                {enviando ? (
+                  <>
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3 h-3 mr-1" />
+                    Publicar {tipoComentario === 'ACTUACION' ? 'Actuación' : tipoComentario === 'ALERTA' ? 'Alerta' : 'Comentario'}
+                  </>
+                )}
+              </Button>
             </div>
           </div>
+
 
           {/* FILTROS */}
           <div className="flex items-center gap-2">
@@ -272,33 +274,33 @@ export function ModalComentariosOrgano({
                 onClick={() => setFiltroTipo('todos')}
                 className="text-xs"
               >
-                Todos ({comentariosMock.length})
+                Todos ({comentarios.length})
               </Button>
               <Button
-                variant={filtroTipo === 'actuacion' ? 'default' : 'outline'}
+                variant={filtroTipo === 'ACTUACION' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setFiltroTipo('actuacion')}
+                onClick={() => setFiltroTipo('ACTUACION')}
                 className="text-xs"
-                style={filtroTipo === 'actuacion' ? { background: '#10B981' } : {}}
+                style={filtroTipo === 'ACTUACION' ? { background: '#10B981' } : {}}
               >
-                ✅ Actuaciones ({comentariosMock.filter(c => c.tipo === 'actuacion').length})
+                ✅ Actuaciones ({comentarios.filter(c => c.tipo === 'ACTUACION').length})
               </Button>
               <Button
-                variant={filtroTipo === 'comentario' ? 'default' : 'outline'}
+                variant={filtroTipo === 'COMENTARIO' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setFiltroTipo('comentario')}
+                onClick={() => setFiltroTipo('COMENTARIO')}
                 className="text-xs"
               >
-                💬 Comentarios ({comentariosMock.filter(c => c.tipo === 'comentario').length})
+                💬 Comentarios ({comentarios.filter(c => c.tipo === 'COMENTARIO').length})
               </Button>
               <Button
-                variant={filtroTipo === 'alerta' ? 'default' : 'outline'}
+                variant={filtroTipo === 'ALERTA' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setFiltroTipo('alerta')}
+                onClick={() => setFiltroTipo('ALERTA')}
                 className="text-xs"
-                style={filtroTipo === 'alerta' ? { background: '#F59E0B' } : {}}
+                style={filtroTipo === 'ALERTA' ? { background: '#F59E0B' } : {}}
               >
-                ⚠️ Alertas ({comentariosMock.filter(c => c.tipo === 'alerta').length})
+                ⚠️ Alertas ({comentarios.filter(c => c.tipo === 'ALERTA').length})
               </Button>
             </div>
           </div>
@@ -310,14 +312,19 @@ export function ModalComentariosOrgano({
               Historial ({comentariosFiltrados.length})
             </h3>
 
-            {comentariosFiltrados.length > 0 ? (
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                <span className="ml-2 text-gray-600">Cargando comentarios...</span>
+              </div>
+            ) : comentariosFiltrados.length > 0 ? (
               <div className="space-y-3">
                 {comentariosFiltrados.map((comentario, idx) => {
                   const config = getTipoConfig(comentario.tipo);
                   return (
                     <div key={comentario.id} className="flex gap-3">
                       <div className="flex flex-col items-center">
-                        <div 
+                        <div
                           className="w-10 h-10 rounded-full border-2 border-white flex items-center justify-center shadow-md"
                           style={{ backgroundColor: config.bg }}
                         >
@@ -331,29 +338,29 @@ export function ModalComentariosOrgano({
                       </div>
 
                       <div className="flex-1 pb-4">
-                        <div 
+                        <div
                           className="p-4 rounded-lg border-2"
-                          style={{ 
+                          style={{
                             backgroundColor: config.bg,
-                            borderColor: config.color 
+                            borderColor: config.color
                           }}
                         >
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex items-center gap-2">
                               <Avatar className="w-8 h-8">
-                                <AvatarFallback 
+                                <AvatarFallback
                                   className="text-xs font-bold"
                                   style={{ backgroundColor: config.color, color: '#FFFFFF' }}
                                 >
-                                  {comentario.usuario.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                                  {comentario.autorNombre.split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <p className="text-sm font-bold text-gray-900">{comentario.usuario}</p>
-                                <p className="text-xs text-gray-600">{comentario.cargo}</p>
+                                <p className="text-sm font-bold text-gray-900">{comentario.autorNombre}</p>
+                                <p className="text-xs text-gray-600">{comentario.autorCargo}</p>
                               </div>
                             </div>
-                            <Badge 
+                            <Badge
                               className="text-xs"
                               style={{ backgroundColor: config.color, color: '#FFFFFF' }}
                             >
@@ -361,18 +368,18 @@ export function ModalComentariosOrgano({
                             </Badge>
                           </div>
 
-                          <p className="text-sm text-gray-800 mb-2">{comentario.contenido}</p>
+                          <p className="text-sm text-gray-800 mb-2 whitespace-pre-line">{comentario.contenido}</p>
 
                           <div className="flex items-center gap-2 text-xs text-gray-600">
                             <Clock className="w-3 h-3" />
                             <span>
-                              {comentario.fecha.toLocaleDateString('es-CO', {
+                              {comentario.createdAt.toLocaleDateString('es-CO', {
                                 day: '2-digit',
                                 month: 'long',
                                 year: 'numeric'
                               })}
                               {' '}a las{' '}
-                              {comentario.fecha.toLocaleTimeString('es-CO', {
+                              {comentario.createdAt.toLocaleTimeString('es-CO', {
                                 hour: '2-digit',
                                 minute: '2-digit'
                               })}
@@ -387,9 +394,9 @@ export function ModalComentariosOrgano({
             ) : (
               <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
                 <MessageSquare className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-sm font-semibold text-gray-600">No hay comentarios de este tipo</p>
+                <p className="text-sm font-semibold text-gray-600">No hay comentarios {filtroTipo !== 'todos' ? `de tipo ${filtroTipo.toLowerCase()}` : 'registrados'}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Cambia el filtro para ver otros tipos de registros
+                  Sé el primero en agregar una nota al expediente
                 </p>
               </div>
             )}
@@ -400,21 +407,21 @@ export function ModalComentariosOrgano({
             <div className="p-3 bg-green-50 rounded-lg border border-green-200 text-center">
               <CheckCircle className="w-5 h-5 text-green-600 mx-auto mb-1" />
               <p className="text-2xl font-bold text-green-900">
-                {comentariosMock.filter(c => c.tipo === 'actuacion').length}
+                {comentarios.filter(c => c.tipo === 'ACTUACION').length}
               </p>
               <p className="text-xs text-green-700">Actuaciones</p>
             </div>
             <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-center">
               <MessageSquare className="w-5 h-5 text-blue-600 mx-auto mb-1" />
               <p className="text-2xl font-bold text-blue-900">
-                {comentariosMock.filter(c => c.tipo === 'comentario').length}
+                {comentarios.filter(c => c.tipo === 'COMENTARIO').length}
               </p>
               <p className="text-xs text-blue-700">Comentarios</p>
             </div>
             <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200 text-center">
               <AlertCircle className="w-5 h-5 text-yellow-600 mx-auto mb-1" />
               <p className="text-2xl font-bold text-yellow-900">
-                {comentariosMock.filter(c => c.tipo === 'alerta').length}
+                {comentarios.filter(c => c.tipo === 'ALERTA').length}
               </p>
               <p className="text-xs text-yellow-700">Alertas</p>
             </div>
@@ -440,8 +447,7 @@ export function ModalComentariosOrgano({
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </DialogContent >
+    </Dialog >
   );
 }
-

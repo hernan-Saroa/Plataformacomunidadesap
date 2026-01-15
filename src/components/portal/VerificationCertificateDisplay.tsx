@@ -28,6 +28,7 @@ import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import esapLogo from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import graduadosService from '../../services/api/graduados.service';
+import { buildApiUrl } from '../../config/environment';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import headerImg from '../../assets/graduation-certificates/img_primera.png';
@@ -45,6 +46,9 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const lastEmailSentRef = useRef<string | null>(null);
+  const lastEmailAttemptRef = useRef<string | null>(null);
 
   const formatDateOnly = (value?: string) => {
     if (!value) {
@@ -160,6 +164,38 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     }
   };
 
+  const generatePdfFromTemplate = async () => {
+    if (!pdfTemplateRef.current) {
+      throw new Error('No se pudo preparar la plantilla del certificado.');
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const canvas = await html2canvas(pdfTemplateRef.current, {
+      scale: 3,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      windowWidth: 816,
+      windowHeight: 1056,
+      imageTimeout: 0,
+    });
+
+    const pdf = new jsPDF({
+      unit: 'px',
+      format: [816, 1056],
+      orientation: 'portrait',
+      compress: true,
+    });
+
+    const imgData = canvas.toDataURL('image/png', 1.0);
+    pdf.addImage(imgData, 'PNG', 0, 0, 816, 1056, '', 'FAST');
+
+    const fileName = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+    return { pdf, fileName };
+  };
+
   const handleDownload = async () => {
     setIsDownloading(true);
     toast.loading('Generando certificado PDF...', { id: 'pdf-generation' });
@@ -173,34 +209,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
         }
       }
 
-      if (!pdfTemplateRef.current) {
-        throw new Error('No se pudo preparar la plantilla del certificado.');
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      const canvas = await html2canvas(pdfTemplateRef.current, {
-        scale: 3,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: 816,
-        windowHeight: 1056,
-        imageTimeout: 0,
-      });
-
-      const pdf = new jsPDF({
-        unit: 'px',
-        format: [816, 1056],
-        orientation: 'portrait',
-        compress: true,
-      });
-
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      pdf.addImage(imgData, 'PNG', 0, 0, 816, 1056, '', 'FAST');
-
-      const fileName = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+      const { pdf, fileName } = await generatePdfFromTemplate();
       pdf.save(fileName);
 
       toast.success('Certificado descargado exitosamente!', {
@@ -217,6 +226,120 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       setIsDownloading(false);
     }
   };
+
+  const enviarCertificadoPorEmail = async () => {
+    const destinatario = certificate.requester?.email;
+    if (!destinatario) {
+      return;
+    }
+
+    if (lastEmailAttemptRef.current === certificate.certificateNumber) {
+      return;
+    }
+    lastEmailAttemptRef.current = certificate.certificateNumber;
+
+    setIsSendingEmail(true);
+    toast.loading('Enviando certificado por correo...', { id: 'auto-email-certificate' });
+
+    try {
+      const { pdf, fileName } = await generatePdfFromTemplate();
+      const dataUri = pdf.output('datauristring');
+      const base64 = dataUri.split(',')[1];
+
+      if (!base64) {
+        throw new Error('No se pudo preparar el PDF para el correo.');
+      }
+
+      const url = buildApiUrl('notificaciones', '/api/v1/emails/send-with-attachment');
+      const subject = `Certificado de Verificación de Título ESAP - ${certificate.certificateNumber}`;
+      const text = 'Adjuntamos el certificado de validación de título solicitado.';
+      const html = `
+        <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
+          <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
+            <tr>
+              <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
+                Certificados ESAP
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+                Certificado de Validación de Título
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+                Hola ${certificate.requester?.name || 'usuario'}, adjuntamos el certificado de validación de título solicitado.
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 0 24px 12px 24px; font-size: 13px; color: #6b7280;">
+                Graduado: <strong>${certificate.graduate.fullName}</strong><br />
+                Programa: <strong>${certificate.graduate.programName}</strong><br />
+                Consecutivo: <strong>${certificate.certificateNumber}</strong>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+                ESAP - Escuela Superior de Administración Pública
+              </td>
+            </tr>
+          </table>
+        </div>
+      `;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: destinatario,
+          subject,
+          text,
+          html,
+          attachmentName: fileName,
+          attachmentBase64: base64,
+          attachmentContentType: 'application/pdf',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(errorText || 'No se pudo enviar el correo');
+      }
+
+      lastEmailSentRef.current = certificate.certificateNumber;
+      toast.success('Certificado enviado por correo', {
+        id: 'auto-email-certificate',
+        description: `Se envió a ${destinatario}`,
+        duration: 4000,
+      });
+    } catch (error: any) {
+      console.error('Error al enviar certificado por correo:', error);
+      toast.error('No se pudo enviar el certificado por correo', {
+        id: 'auto-email-certificate',
+        description: error?.message || 'Intenta nuevamente',
+        duration: 5000,
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!certificate?.certificateNumber) {
+      return;
+    }
+    if (isSendingEmail) {
+      return;
+    }
+    if (!certificate.requester?.email) {
+      return;
+    }
+    if (lastEmailAttemptRef.current === certificate.certificateNumber) {
+      return;
+    }
+
+    void enviarCertificadoPorEmail();
+  }, [certificate?.certificateNumber, certificate?.requester?.email, isSendingEmail]);
 
   const handleShare = async () => {
     /**

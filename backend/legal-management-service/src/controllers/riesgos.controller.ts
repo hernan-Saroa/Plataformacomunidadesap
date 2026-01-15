@@ -68,7 +68,13 @@ export class RiesgosController {
     async findByZona(@Param('zona') zona: string): Promise<Riesgo[]> {
         return this.riesgosService.findByZona(zona as ZonaRiesgo);
     }
+
+    @Get(':id/historial')
+    async getHistorial(@Param('id') id: string) {
+        return this.riesgosService.getHistorial(id);
+    }
 }
+
 
 
 

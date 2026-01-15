@@ -64,6 +64,40 @@ export class MicrosoftGraphService {
     }
 
     /**
+     * Get a page of emails with pagination token support
+     */
+    async getEmailsPage(nextLink?: string, limit: number = 50): Promise<{ emails: GraphEmail[]; nextLink: string | null }> {
+        try {
+            const client = this.getClient();
+            let response;
+
+            if (nextLink) {
+                // Fetch next page using provided link
+                this.logger.log(`Fetching next page...`);
+                response = await client.api(nextLink).get();
+            } else {
+                // First request
+                this.logger.log(`Fetching first page (limit: ${limit})...`);
+                response = await client
+                    .api(`/users/${this.emailAccount}/messages`)
+                    .top(limit)
+                    .orderby('receivedDateTime desc')
+                    .select('id,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead')
+                    .get();
+            }
+
+            const emails = response.value || [];
+            const newNextLink = response['@odata.nextLink'] || null;
+
+            this.logger.log(`Page fetched: ${emails.length} emails. Has next page: ${!!newNextLink}`);
+            return { emails, nextLink: newNextLink };
+        } catch (error) {
+            this.logger.error('Error fetching emails page:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Get ALL emails with pagination - ensures no emails are missed
      * Uses @odata.nextLink to fetch all pages
      * @param maxEmails Maximum total emails to fetch (default 500, set to 0 for unlimited)
@@ -210,6 +244,13 @@ export class MicrosoftGraphService {
         cc?: string[],
         attachments?: { name: string; contentBytes: string; contentType: string }[]
     ): Promise<boolean> {
+        // MOCK FOR DEV: Si no hay credenciales configuradas, simular envío exitoso
+        if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
+            this.logger.warn(`[DEV MOCK] Email simulación enviado a: ${to} | Asunto: ${subject}`);
+            this.logger.debug(`[DEV MOCK] Cuerpo: ${body.substring(0, 100)}...`);
+            return true;
+        }
+
         try {
             const client = this.getClient();
 
