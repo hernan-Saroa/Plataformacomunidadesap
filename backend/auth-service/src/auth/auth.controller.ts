@@ -20,7 +20,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller()
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Get('')
   index() {
@@ -55,6 +55,13 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   me(@Req() req) {
+    return req.user;
+  }
+
+  // ✅ Endpoint requerido por el frontend para validar sesión
+  @UseGuards(JwtAuthGuard)
+  @Get('verify')
+  verify(@Req() req) {
     return req.user;
   }
 }

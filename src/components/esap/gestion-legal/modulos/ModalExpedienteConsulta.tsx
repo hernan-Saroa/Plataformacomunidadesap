@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
@@ -33,6 +34,7 @@ import type { ConsultaJuridica } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalCompartir } from './ModalCompartir';
 import { ModalAgregarNota } from './ModalAgregarNota';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 
 interface ModalExpedienteConsultaProps {
   isOpen: boolean;
@@ -43,6 +45,9 @@ interface ModalExpedienteConsultaProps {
 
 export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }: ModalExpedienteConsultaProps) {
   const { user } = useAuth();
+  // ✅ Obtener etapas activas desde configuración
+  const { estadosActivos } = useConfiguracionModulo('asesoria-juridica');
+
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
   const [tabActivo, setTabActivo] = useState('general');
@@ -620,8 +625,20 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
             badgePrincipal={`${semaforo.icon} ${semaforo.label}`}
             badges={
               <>
-                <span className="inline-flex items-center rounded-md px-2 py-0.5 bg-blue-100 text-blue-700 border-blue-300 font-semibold text-xs border">
+                <span className="inline-flex items-center rounded-md px-2 py-0.5 bg-blue-100 text-blue-700 border-blue-300 font-semibold text-xs border gap-1">
                   {consulta.etapa}
+                  <button
+                    onClick={() => {
+                      // Usar el estado original (ID) si existe, sino la etapa visual
+                      // Esto asegura que el Select seleccione la opción correcta si coincide con un ID de configuración
+                      setEtapaSeleccionada(consulta.estado || consulta.etapa);
+                      setEditandoEtapa(true);
+                    }}
+                    className="ml-1 p-0.5 hover:bg-blue-200 rounded-full transition-colors"
+                    title="Cambiar etapa"
+                  >
+                    <Edit className="w-3 h-3" />
+                  </button>
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 bg-gray-100 text-gray-700 border-gray-300 font-semibold text-xs border">
                   <Clock className="w-3 h-3" />
@@ -1203,8 +1220,51 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
         </DialogContent>
       </Dialog>
 
-      {/* MODALES SECUNDARIOS */}
-      {/* 
+      {/* Modal Cambio de Etapa */}
+      <Dialog open={editandoEtapa} onOpenChange={setEditandoEtapa}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cambiar Etapa del Caso</DialogTitle>
+            <DialogDescription>
+              Seleccione la nueva etapa para este caso de asesoría jurídica.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Nueva Etapa</label>
+            <Select value={etapaSeleccionada} onValueChange={setEtapaSeleccionada}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccione una etapa" />
+              </SelectTrigger>
+              <SelectContent>
+                {estadosActivos.map((estado) => (
+                  <SelectItem key={estado.id} value={estado.id}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: estado.color }} />
+                      {estado.nombre}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setEditandoEtapa(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleGuardarEtapa}
+              disabled={loadingEtapa || !etapaSeleccionada}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {loadingEtapa ? 'Guardando...' : 'Confirmar Cambio'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>    {/* MODALES SECUNDARIOS */ }
+  {/* 
       {modalCompartirAbierto && (
         <ModalCompartir
           isOpen={modalCompartirAbierto}

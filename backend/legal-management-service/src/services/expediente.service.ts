@@ -158,6 +158,42 @@ export class ExpedienteService {
         });
     }
 
+    async findOneOrCreateFromDisciplinaryProcess(id: string): Promise<Expediente> {
+        // First, try to find in legal_management
+        let expediente = await this.findOne(id);
+        if (expediente) return expediente;
+
+        // If not found, check if it's a disciplinary process
+        const disciplinaryProcess = await this.expedienteRepository.query(`
+            SELECT dp.id, dp."radicadoProceso", dn."disciplinable"->>'nombre' as demandado, dn."disciplinable"->>'dependencia' as dependencia
+            FROM internal_disciplinary_control.disciplinary_processes dp
+            JOIN internal_disciplinary_control.disciplinary_news dn ON dp."newsId" = dn.id
+            WHERE dp.id = $1
+        `, [id]);
+
+        if (disciplinaryProcess.length === 0) {
+            throw new NotFoundException('Expediente no encontrado');
+        }
+
+        const process = disciplinaryProcess[0];
+
+        // Create the expediente in legal_management
+        const newExpediente = await this.crearExpediente({
+            id: process.id,
+            radicado: process.radicadoProceso,
+            jurisdiccion: 'DISCIPLINARIO',
+            tipoProceso: 'DISCIPLINARIO',
+            demandante: 'ESAP',
+            demandado: process.demandado || 'Desconocido',
+            estado: 'ACTIVO',
+            fechaRadicacion: new Date(),
+            dependenciaInvestigado: process.dependencia || 'Desconocida',
+            etapaProcesal: 'INDAGACION_PREVIA'
+        });
+
+        return newExpediente;
+    }
+
     // ==================== EXCEPCIONES PROCESALES ====================
 
     async getExcepciones(expedienteId: string): Promise<ExcepcionProcesal[]> {

@@ -48,6 +48,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const lastEmailSentRef = useRef<string | null>(null);
+  const lastEmailAttemptRef = useRef<string | null>(null);
 
   const formatDateOnly = (value?: string) => {
     if (!value) {
@@ -232,9 +233,10 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       return;
     }
 
-    if (lastEmailSentRef.current === certificate.certificateNumber) {
+    if (lastEmailAttemptRef.current === certificate.certificateNumber) {
       return;
     }
+    lastEmailAttemptRef.current = certificate.certificateNumber;
 
     setIsSendingEmail(true);
     toast.loading('Enviando certificado por correo...', { id: 'auto-email-certificate' });
@@ -330,6 +332,9 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       return;
     }
     if (!certificate.requester?.email) {
+      return;
+    }
+    if (lastEmailAttemptRef.current === certificate.certificateNumber) {
       return;
     }
 
