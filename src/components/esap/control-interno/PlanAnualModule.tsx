@@ -1037,72 +1037,22 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
 
   const handleExportarExcel = async (plan: PlanAnual) => {
     try {
-      toast.success('Generando Excel...', {
-        description: 'Cargando plantilla y aplicando datos...'
+      const toastId = toast.loading('Generando Excel...', {
+        description: 'Por favor espera un momento'
       });
 
-      // Cargar la plantilla Excel existente
-      const response = await fetch('/plantilla_plan_auditoria.xlsx');
-      if (!response.ok) {
-        throw new Error(`No se pudo cargar la plantilla Excel. Status: ${response.status} ${response.statusText}`);
-      }
-      
-      const arrayBuffer = await response.arrayBuffer();
-      
-      // Verificar que el archivo no sea HTML (puede pasar si el servidor devuelve un error)
-      const uint8Array = new Uint8Array(arrayBuffer);
-      const firstBytes = Array.from(uint8Array.slice(0, 8));
-      const isHTML = String.fromCharCode(...firstBytes.slice(0, 4)).toLowerCase() === '<htm';
-      
-      if (isHTML) {
-        throw new Error('El archivo recibido es HTML, no un archivo Excel válido. Verifica que la plantilla esté en la carpeta public.');
-      }
-      
-      // Leer la plantilla con XLSX
-      // Nota: XLSX puede leer .xls y .xlsx
-      let workbook;
-      try {
-        workbook = XLSX.read(arrayBuffer, { 
-          type: 'array',
-          cellStyles: true,
-          cellDates: true,
-          dense: false
-        });
-      } catch (error) {
-        // Si falla, intentar sin opciones de estilos
-        console.warn('Error al leer con estilos, intentando sin estilos:', error);
-        workbook = XLSX.read(arrayBuffer, { 
-          type: 'array'
-        });
-      }
-      
-      if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
-        throw new Error('El archivo Excel no contiene hojas válidas');
-      }
-      
-      // Obtener la primera hoja
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      
-      if (!worksheet) {
-        throw new Error('No se encontró la hoja en la plantilla');
+      // Validar que el plan tenga datos
+      if (!plan || !plan.roles || !Array.isArray(plan.roles)) {
+        throw new Error('El plan no tiene datos válidos');
       }
 
-      // Función auxiliar para escribir en una celda preservando el formato existente
-      const escribirCelda = (cellRef: string, valor: string | number) => {
-        if (!worksheet[cellRef]) {
-          // Si la celda no existe, crearla
-          worksheet[cellRef] = { v: valor, t: typeof valor === 'number' ? 'n' : 's' };
-        } else {
-          // Preservar todos los atributos existentes y solo actualizar el valor
-          const celdaExistente = worksheet[cellRef];
-          worksheet[cellRef] = {
-            ...celdaExistente,
-            v: valor,
-            t: typeof valor === 'number' ? 'n' : 's'
-          };
-        }
-      };
+      // Crear workbook desde cero (sin usar plantillas)
+      const wb = XLSX.utils.book_new();
+      
+      // Validar que el workbook se haya creado correctamente
+      if (!wb || !wb.SheetNames) {
+        throw new Error('No se pudo crear el archivo Excel');
+      }
 
       // Preparar datos
       const equipoAuditores = plan.roles
@@ -1110,134 +1060,202 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
         .filter((nombre, index, arr) => arr.indexOf(nombre) === index)
         .join(', ') || 'Por definir';
 
-      // ============ DATOS GENERALES ============
-      // D5: Fecha del plan
-      escribirCelda('D5', new Date().toLocaleDateString('es-CO'));
-      
-      // D6: PROCESO/DEPENDENCIA A AUDITAR
-      escribirCelda('D6', 'Control Interno - Plan Anual');
-      
-      // D7: RESPONSABLE PROCESO/DEPENDENCIA A AUDITAR
-      escribirCelda('D7', plan.jefeOCI.nombre);
-      
-      // D8: AUDITOR LIDER
-      escribirCelda('D8', plan.jefeOCI.nombre);
-      
-      // D9: EQUIPO AUDITOR
-      escribirCelda('D9', equipoAuditores);
+      // ============ HOJA 1: INFORMACIÓN GENERAL ============
+      const infoGeneralData = [
+        ['ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP'],
+        ['OFICINA DE CONTROL INTERNO DE GESTIÓN'],
+        ['PLAN ANUAL DE AUDITORÍAS'],
+        [''],
+        ['INFORMACIÓN GENERAL'],
+        ['Fecha del Plan:', new Date().toLocaleDateString('es-CO')],
+        ['Año:', plan.año],
+        ['Estado:', plan.estado],
+        ['Proceso/Dependencia a Auditar:', 'Control Interno - Plan Anual'],
+        ['Responsable Proceso/Dependencia:', plan.jefeOCI.nombre],
+        ['Auditor Líder:', plan.jefeOCI.nombre],
+        ['Equipo Auditor:', equipoAuditores],
+        [''],
+        ['OBJETIVO DE LA AUDITORÍA'],
+        ['Verificar el cumplimiento del Plan Anual de Control Interno según Decreto 648/2017'],
+        [''],
+        ['ALCANCE'],
+        [`Plan Anual ${plan.año} - ${plan.roles.length} roles del Decreto 648/2017`],
+        [''],
+        ['CRITERIOS DE AUDITORÍA'],
+        ['Decreto 648 de 2017 - Sistema de Control Interno'],
+        [''],
+        ['MÉTODO DE AUDITORÍA'],
+        ['Revisión documental y verificación de actividades'],
+        [''],
+        ['ASPECTOS A TENER EN CUENTA'],
+        ['Riesgos identificados en el Plan Anual de Control Interno'],
+        ['Procesos críticos del Decreto 648/2017'],
+        ['Resultados de auditorías anteriores del sistema de control interno'],
+        ['Cambios recientes en procesos o normativa aplicable'],
+        [''],
+        ['RECURSOS'],
+        ['Financieros:', 'Recursos asignados en el presupuesto anual'],
+        ['Logísticos:', 'Espacios físicos y equipos necesarios para la auditoría'],
+        ['Tecnológicos:', 'Sistemas de información y herramientas de auditoría'],
+        ['Otros:', 'No aplica']
+      ];
 
-      // ============ DATOS GENERALES DE LA AUDITORÍA ============
-      // C4: Objetivo de la auditoría (celda combinada - escribir en celda superior izquierda)
-      escribirCelda('C4', 'Verificar el cumplimiento del Plan Anual de Control Interno según Decreto 648/2017');
-      
-      // C6: Alcance de la auditoría
-      escribirCelda('C6', `Plan Anual ${plan.año} - ${plan.roles.length} roles del Decreto 648/2017`);
-      
-      // C8: Criterios de auditoría
-      escribirCelda('C8', 'Decreto 648 de 2017 - Sistema de Control Interno');
-      
-      // C10: Método de auditoría
-      escribirCelda('C10', 'Revisión documental y verificación de actividades');
+      const wsInfo = XLSX.utils.aoa_to_sheet(infoGeneralData);
+      wsInfo['!cols'] = [
+        { wch: 25 },
+        { wch: 60 }
+      ];
+      XLSX.utils.book_append_sheet(wb, wsInfo, 'Información General');
 
-      // ============ ASPECTOS A TENER EN CUENTA ============
-      // C13: Aspectos a tener en cuenta
-      const aspectos = [
-        'Riesgos identificados en el Plan Anual de Control Interno',
-        'Procesos críticos del Decreto 648/2017',
-        'Resultados de auditorías anteriores del sistema de control interno',
-        'Cambios recientes en procesos o normativa aplicable'
-      ].join(' • ');
-      escribirCelda('C13', aspectos);
+      // ============ HOJA 2: ROLES Y ACTIVIDADES ============
+      const rolesHeaders = [
+        'Rol',
+        'Actividad',
+        'Descripción',
+        'Responsable',
+        'Fecha Inicio',
+        'Fecha Fin',
+        'Porcentaje',
+        'Estado'
+      ];
 
-      // ============ RECURSOS ============
-      // C16: Financieros
-      escribirCelda('C16', 'Recursos asignados en el presupuesto anual');
-      
-      // E16: Logísticos
-      escribirCelda('E16', 'Espacios físicos y equipos necesarios para la auditoría');
-      
-      // G16: Tecnológicos
-      escribirCelda('G16', 'Sistemas de información y herramientas de auditoría');
-      
-      // I16: Otros
-      escribirCelda('I16', 'No aplica');
+      const rolesRows: any[] = [];
+      plan.roles.forEach(rol => {
+        if (rol.actividades.length === 0) {
+          rolesRows.push([
+            rol.nombre,
+            'Sin actividades',
+            '',
+            '',
+            '',
+            '',
+            0,
+            'Pendiente'
+          ]);
+        } else {
+          rol.actividades.forEach((actividad, index) => {
+            rolesRows.push([
+              index === 0 ? rol.nombre : '', // Solo mostrar el nombre del rol en la primera fila
+              actividad.nombre,
+              actividad.descripcion || '',
+              actividad.responsableNombre || 'Por asignar',
+              actividad.fechaInicio || 'Por definir',
+              actividad.fechaFin || 'Por definir',
+              actividad.porcentaje || 0,
+              actividad.estado || 'Pendiente'
+            ]);
+          });
+        }
+      });
 
-      // ============ CRONOGRAMA Y EQUIPO AUDITOR ============
-      // Filas 19-30: Actividades
-      // Columnas: B (actividad), D (auditores), F (procesos), H (fecha), I (hora), J (lugar)
-      let filaActual = 19;
-      
+      const wsRoles = XLSX.utils.aoa_to_sheet([rolesHeaders, ...rolesRows]);
+      wsRoles['!cols'] = [
+        { wch: 30 }, // Rol
+        { wch: 40 }, // Actividad
+        { wch: 50 }, // Descripción
+        { wch: 30 }, // Responsable
+        { wch: 15 }, // Fecha Inicio
+        { wch: 15 }, // Fecha Fin
+        { wch: 12 }, // Porcentaje
+        { wch: 15 }  // Estado
+      ];
+      XLSX.utils.book_append_sheet(wb, wsRoles, 'Roles y Actividades');
+
+      // ============ HOJA 3: CRONOGRAMA ============
+      const cronogramaHeaders = [
+        'Actividad',
+        'Auditor(es)',
+        'Proceso(s) Auditado(s)',
+        'Fecha',
+        'Hora',
+        'Lugar'
+      ];
+
+      const cronogramaRows: any[] = [];
       plan.roles.forEach(rol => {
         rol.actividades.forEach(actividad => {
-          if (filaActual <= 30) {
-            // B: Actividad a desarrollar
-            escribirCelda(`B${filaActual}`, `${rol.nombre}: ${actividad.nombre}`);
-            
-            // D: Auditor(es)
-            escribirCelda(`D${filaActual}`, actividad.responsableNombre || 'Por asignar');
-            
-            // F: Proceso(s) auditado(s)
-            escribirCelda(`F${filaActual}`, actividad.responsableNombre || 'Por asignar');
-            
-            // H: Fecha
-            escribirCelda(`H${filaActual}`, actividad.fechaInicio || 'Por definir');
-            
-            // I: Hora
-            escribirCelda(`I${filaActual}`, 'Por definir');
-            
-            // J: Lugar
-            escribirCelda(`J${filaActual}`, 'Por definir');
-            
-            filaActual++;
-          }
+          cronogramaRows.push([
+            `${rol.nombre}: ${actividad.nombre}`,
+            actividad.responsableNombre || 'Por asignar',
+            actividad.responsableNombre || 'Por asignar',
+            actividad.fechaInicio || 'Por definir',
+            'Por definir',
+            'Por definir'
+          ]);
         });
       });
 
-      // Si no hay actividades, agregar mensaje
-      if (plan.roles.every(rol => rol.actividades.length === 0) && filaActual <= 30) {
-        escribirCelda(`B${filaActual}`, 'No hay actividades registradas');
+      if (cronogramaRows.length === 0) {
+        cronogramaRows.push(['No hay actividades registradas', '', '', '', '', '']);
       }
 
-      // ============ FIRMAS ============
-      // B33: Nombre Auditor Líder
-      escribirCelda('B33', plan.jefeOCI.nombre);
-      
-      // B34: Cargo Auditor Líder
-      escribirCelda('B34', 'Jefe Oficina de Control Interno');
-      
-      // G33: Nombre Auditado
-      escribirCelda('G33', plan.jefeOCI.nombre);
-      
-      // G34: Cargo Auditado
-      escribirCelda('G34', 'Responsable del Proceso');
+      const wsCronograma = XLSX.utils.aoa_to_sheet([cronogramaHeaders, ...cronogramaRows]);
+      wsCronograma['!cols'] = [
+        { wch: 50 }, // Actividad
+        { wch: 30 }, // Auditor(es)
+        { wch: 30 }, // Proceso(s)
+        { wch: 15 }, // Fecha
+        { wch: 15 }, // Hora
+        { wch: 20 }  // Lugar
+      ];
+      XLSX.utils.book_append_sheet(wb, wsCronograma, 'Cronograma');
 
-      // Generar archivo en formato .xlsx (mejor preservación de estilos que .xls)
-      const fileName = `Plan_Anual_${plan.año}_${new Date().getTime()}.xlsx`;
-      
-      // Escribir el workbook manteniendo estilos
-      const wbout = XLSX.write(workbook, { 
-        bookType: 'xlsx', 
-        type: 'array',
-        cellStyles: true
-      });
-      
-      // Crear blob y descargar
-      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      link.click();
-      window.URL.revokeObjectURL(url);
+      // ============ HOJA 4: FIRMAS ============
+      const firmasData = [
+        ['FIRMAS'],
+        [''],
+        ['AUDITOR LÍDER'],
+        ['Nombre:', plan.jefeOCI.nombre],
+        ['Cargo:', 'Jefe Oficina de Control Interno'],
+        [''],
+        ['AUDITADO'],
+        ['Nombre:', plan.jefeOCI.nombre],
+        ['Cargo:', 'Responsable del Proceso'],
+        [''],
+        ['Fecha de Generación:', new Date().toLocaleDateString('es-CO')]
+      ];
 
+      const wsFirmas = XLSX.utils.aoa_to_sheet(firmasData);
+      wsFirmas['!cols'] = [
+        { wch: 20 },
+        { wch: 40 }
+      ];
+      XLSX.utils.book_append_sheet(wb, wsFirmas, 'Firmas');
+
+      // Validar que el workbook tenga al menos una hoja
+      if (!wb.SheetNames || wb.SheetNames.length === 0) {
+        throw new Error('El archivo Excel no contiene hojas válidas');
+      }
+
+      // Generar archivo
+      const fileName = `Plan_Anual_${plan.año}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // Escribir el archivo usando writeFile (método más seguro)
+      try {
+        XLSX.writeFile(wb, fileName);
+      } catch (writeError: any) {
+        console.error('Error al escribir archivo:', writeError);
+        throw new Error(`Error al guardar el archivo: ${writeError.message || 'Error desconocido'}`);
+      }
+
+      toast.dismiss(toastId);
       toast.success('Excel generado correctamente', {
         description: fileName
       });
     } catch (error: any) {
       console.error('Error al generar Excel:', error);
-      toast.error('Error al generar Excel', {
-        description: error.message || 'No se pudo generar el documento'
-      });
+      const errorMessage = error?.message || 'No se pudo generar el documento';
+      
+      // Si el error menciona HTML o plantilla, dar un mensaje más específico
+      if (errorMessage.includes('HTML') || errorMessage.includes('plantilla') || errorMessage.includes('table')) {
+        toast.error('Error al generar Excel', {
+          description: 'Por favor, recarga la página y vuelve a intentar. Si el problema persiste, contacta al administrador.'
+        });
+      } else {
+        toast.error('Error al generar Excel', {
+          description: errorMessage
+        });
+      }
     }
   };
 

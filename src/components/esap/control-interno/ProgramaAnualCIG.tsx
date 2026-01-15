@@ -46,6 +46,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { auditoriasApi } from './services/api';
+import ExcelJS from 'exceljs';
 
 // ============ COMPONENTES DEL DESIGN SYSTEM ============
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
@@ -641,6 +642,668 @@ export function ProgramaAnualCIG({ filtros: filtrosExternos }: ProgramaAnualCIGP
     });
   }, [auditoriasPrograma, filtroTipo, filtroEstado, busqueda, filtrosExternos]);
 
+  // Función para exportar Programa Anual siguiendo el diseño del Excel proporcionado
+  const handleExportarProgramaAnual = async () => {
+    try {
+      const toastId = toast.loading('Generando Excel...', {
+        description: 'Por favor espera un momento'
+      });
+
+      // Crear workbook
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Programa Anual');
+
+      // Función auxiliar para fusionar celdas de forma segura
+      const mergeCellsSafely = (range: string) => {
+        try {
+          worksheet.mergeCells(range);
+        } catch (error: any) {
+          // Si la celda ya está fusionada o hay otro error, continuar silenciosamente
+          // Esto puede ocurrir si ExcelJS detecta un conflicto, pero no es crítico
+          if (!error.message?.includes('already merged')) {
+            console.warn(`Advertencia al fusionar ${range}:`, error.message);
+          }
+        }
+      };
+
+      // ============ CONFIGURACIÓN DE COLUMNAS ============
+      // Ajustar anchos de columna según el diseño
+      worksheet.getColumn('A').width = 5;   // N°
+      worksheet.getColumn('B').width = 20;  // Auditorias (inicio)
+      worksheet.getColumn('C').width = 20;  // Auditorias (fin)
+      worksheet.getColumn('D').width = 8;   // Tipo Procesos - Estratégico
+      worksheet.getColumn('E').width = 8;   // Tipo Procesos - Misional
+      worksheet.getColumn('F').width = 8;   // Tipo Procesos - Apoyo
+      worksheet.getColumn('G').width = 12;  // Tipo Procesos - Evaluación y Control
+      worksheet.getColumn('H').width = 15;  // Responsable de la Auditoria (inicio)
+      worksheet.getColumn('I').width = 15;  // Responsable de la Auditoria (fin)
+      worksheet.getColumn('J').width = 15;  // Recursos
+      worksheet.getColumn('K').width = 5;   // Enero
+      worksheet.getColumn('L').width = 5;   // Febrero
+      worksheet.getColumn('M').width = 5;   // Marzo
+      worksheet.getColumn('N').width = 5;   // Abril
+      worksheet.getColumn('O').width = 5;   // Mayo
+      worksheet.getColumn('P').width = 5;   // Junio
+      worksheet.getColumn('Q').width = 5;   // Julio
+      worksheet.getColumn('R').width = 5;   // Agosto
+      worksheet.getColumn('S').width = 5;   // Septiembre
+      worksheet.getColumn('T').width = 5;   // Octubre
+      worksheet.getColumn('U').width = 5;   // Noviembre
+      worksheet.getColumn('V').width = 5;   // Diciembre
+      worksheet.getColumn('W').width = 15;  // Observaciones (inicio)
+      worksheet.getColumn('X').width = 15;
+      worksheet.getColumn('Y').width = 15;
+      worksheet.getColumn('Z').width = 15;
+      worksheet.getColumn('AA').width = 15; // Observaciones (fin)
+
+      // ============ FILA 1-4: LOGO Y TÍTULO ============
+      // Logo ESAP (A1:C4) - Insertar logo desde el Excel original
+      worksheet.mergeCells('A1:C4');
+      
+      // Intentar cargar e insertar el logo de ESAP
+      let logoInserted = false;
+      try {
+        let imageBuffer: ArrayBuffer | null = null;
+        let imageExtension = 'png';
+        
+        // Estrategia 1: Intentar leer el logo del Excel original en la carpeta public
+        try {
+          const templatePath = '/FORMATOPROGRAMAANUALDEAUDITORIASN- (1).xlsx';
+          const templateResponse = await fetch(templatePath);
+          
+          if (templateResponse.ok) {
+            const templateBuffer = await templateResponse.arrayBuffer();
+            const templateWorkbook = new ExcelJS.Workbook();
+            await templateWorkbook.xlsx.load(templateBuffer);
+            const templateWorksheet = templateWorkbook.getWorksheet(1);
+            
+            // Buscar imágenes en el template usando getImages()
+            if (templateWorksheet) {
+              const images = templateWorksheet.getImages();
+              console.log('Imágenes encontradas en template:', images.length);
+              
+              if (images.length > 0) {
+                // Obtener la primera imagen (debería ser el logo)
+                const firstImage = images[0];
+                const imageId = firstImage.imageId;
+                
+                // Buscar el buffer en workbook.model.media
+                const media = (templateWorkbook as any).model?.media || [];
+                console.log('Media items encontrados:', media.length);
+                
+                const mediaItem = media.find((m: any) => m.index === imageId);
+                
+                if (mediaItem && mediaItem.buffer) {
+                  imageBuffer = mediaItem.buffer;
+                  imageExtension = mediaItem.extension || 'png';
+                  console.log('Logo cargado desde template, extensión:', imageExtension);
+                }
+              }
+            }
+          } else {
+            console.warn('Template no encontrado en:', templatePath);
+          }
+        } catch (e) {
+          console.warn('Error al leer el logo del template:', e);
+        }
+        
+        // Estrategia 2: Intentar desde ruta pública
+        if (!imageBuffer) {
+          try {
+            const response = await fetch('/certificados/header-esap.png');
+            if (response.ok) {
+              imageBuffer = await response.arrayBuffer();
+              console.log('Logo cargado desde /certificados/header-esap.png');
+            } else {
+              console.warn('No se encontró /certificados/header-esap.png');
+            }
+          } catch (e) {
+            console.warn('Error al cargar logo desde ruta pública:', e);
+          }
+        }
+        
+        // Estrategia 3: Usar logo base64 como último recurso
+        if (!imageBuffer) {
+          console.log('Usando logo base64 como fallback');
+          // Logo ESAP en base64 (extraído del Excel original)
+          const logoBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAGQAAABGCAYAAAA3W5EfAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAALEwAACxMBAJqcGAAAAhNJREFUeJzt3LFKw0AYB/D/XRJwcHFw6OYg+ABuPoBDN8EnEHwABx/AxcVBcBAHBwcHX0DwAYRODg4ODg4ODtKlJZe0Te7uS+7+P0ihQ4f0R0pyfS0AIiIiIiIiIiIiIiIiIiKiRtLSJ0jTNAXgA8B79OsIQABgBOAMwAmAIwBHURv5sCzbVFGapolSSksp9wDsAdiNft0F0AWwHbUdAGMAXvR7OPouACDlPWdK2wcwAPAS/T1834ve89vy+1K070HU5wBAx4aNDIJ4uxRCnAO4BnAF4BLARfRnAGBY8xjdaDs5eM/r6L0r0XsXAC6itz9LPr+IPr+O3rsSvX8ZfT4obZ/Rz38O4EwIsaugY9xGhtdLAB8A3gC8AniJ/nwF8Azg6RefW7bvKWon/3ke7XtYsU3+8xOA+2jfE4D76OeG0b5BdMxemc0M73fL63MA7wDeATxFr58APu9x9P6H6JgPpe9O0T6Z13cAHgE8RO95iI75cM++p6V9d9HxelU2Mwh6sFJKpZTySin1SKnGqZTSSinlUio1Uan0vZRKP5RK6amU+q1Sqe+llPoqZdUvKeVFqda1lEpNpdT/l+HyJ3qfRtl7f8cYLZ7rz0aG17xelZzXQ8V5PWvL+T5G75f3yqJzfoxer9rI8P2p5LweVpzXs3lf9gW0UT+iLbOV4e/oW+Y8ZH5+VivD6915NrI3o5/RTgDcp1TqR0r1LaVU4+h5zL+Uqp9SqutSKj2Nsue+t9E23hMRERERERERERERERERbYYfHllRW7U3ptEAAAAASUVORK5CYII=';
+          
+          // Convertir base64 a ArrayBuffer
+          const binaryString = atob(logoBase64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          imageBuffer = bytes.buffer;
+        }
+        
+        // Insertar la imagen en el workbook
+        if (imageBuffer && imageBuffer.byteLength > 0) {
+          console.log('Insertando logo, tamaño del buffer:', imageBuffer.byteLength);
+          
+          try {
+            const imageId = workbook.addImage({
+              buffer: imageBuffer,
+              extension: imageExtension,
+            });
+            
+            console.log('Image ID generado:', imageId);
+            
+            // Insertar imagen en A1:C4
+            // Usar coordenadas de celda para posicionar la imagen
+            // Ajustar el tamaño para que quepa bien en las celdas A1:C4
+            // Las celdas tienen aproximadamente 80 píxeles de ancho (3 columnas) y 80 píxeles de alto (4 filas)
+            worksheet.addImage(imageId, {
+              tl: { col: 0, row: 0 }, // Columna A (0), Fila 1 (0)
+              ext: { width: 200, height: 100 }, // Tamaño en píxeles (ajustado para mejor visibilidad)
+              editAs: 'oneCell' // Anclar a una celda
+            });
+            
+            logoInserted = true;
+            console.log('Logo insertado exitosamente en A1:C4');
+          } catch (imgError) {
+            console.error('Error al insertar imagen en worksheet:', imgError);
+            throw imgError;
+          }
+        } else {
+          throw new Error('Buffer de imagen vacío o inválido');
+        }
+      } catch (error) {
+        console.error('Error al insertar logo:', error);
+      }
+      
+      // Si no se pudo insertar el logo, usar texto como fallback
+      if (!logoInserted) {
+        console.warn('Usando texto como fallback para el logo');
+        const logoCell = worksheet.getCell('A1');
+        logoCell.value = 'ESAP\nEscuela Superior de\nAdministración Pública';
+        logoCell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF003DA5' } };
+        logoCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      }
+      
+      worksheet.getRow(1).height = 20;
+      worksheet.getRow(2).height = 20;
+      worksheet.getRow(3).height = 20;
+      worksheet.getRow(4).height = 20;
+
+      // Título principal (D1:W4)
+      worksheet.mergeCells('D1:W4');
+      const tituloCell = worksheet.getCell('D1');
+      tituloCell.value = 'PROGRAMA ANUAL DE AUDITORIAS INTERNAS\nDEL SISTEMA DE GESTIÓN DE LA CALIDAD';
+      tituloCell.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FF003DA5' } };
+      tituloCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+
+      // Metadatos (X1:AA4)
+      const fechaActual = new Date();
+      worksheet.mergeCells('X1:AA1');
+      worksheet.getCell('X1').value = 'CÓDIGO: EM-FO-013';
+      worksheet.getCell('X1').font = { name: 'Arial', size: 9, bold: true };
+      worksheet.getCell('X1').alignment = { vertical: 'middle', horizontal: 'left' };
+
+      worksheet.mergeCells('X2:AA2');
+      worksheet.getCell('X2').value = 'VERSIÓN: 1';
+      worksheet.getCell('X2').font = { name: 'Arial', size: 9, bold: true };
+      worksheet.getCell('X2').alignment = { vertical: 'middle', horizontal: 'left' };
+
+      worksheet.mergeCells('X3:AA3');
+      worksheet.getCell('X3').value = `FECHA: ${fechaActual.getDate()}/${fechaActual.getMonth() + 1}/${fechaActual.getFullYear()}`;
+      worksheet.getCell('X3').font = { name: 'Arial', size: 9, bold: true };
+      worksheet.getCell('X3').alignment = { vertical: 'middle', horizontal: 'left' };
+
+      // ============ FILA 5: OBJETIVO DEL PROGRAMA ============
+      worksheet.mergeCells('A5:C5');
+      worksheet.getCell('A5').value = 'Objetivo del programa:';
+      worksheet.getCell('A5').font = { name: 'Arial', size: 10, bold: true };
+      worksheet.getCell('A5').alignment = { vertical: 'middle', horizontal: 'left' };
+
+      worksheet.mergeCells('D5:AA5');
+      worksheet.getCell('D5').value = 'Verificar el cumplimiento de los procesos del Sistema de Gestión de la Calidad mediante auditorías internas programadas.';
+      worksheet.getCell('D5').font = { name: 'Arial', size: 10 };
+      worksheet.getCell('D5').alignment = { vertical: 'middle', horizontal: 'left' };
+
+      // ============ FILA 6: ALCANCE DEL PROGRAMA ============
+      worksheet.mergeCells('A6:C6');
+      worksheet.getCell('A6').value = 'Alcance del Programa:';
+      worksheet.getCell('A6').font = { name: 'Arial', size: 10, bold: true };
+      worksheet.getCell('A6').alignment = { vertical: 'middle', horizontal: 'left' };
+
+      worksheet.mergeCells('D6:AA6');
+      worksheet.getCell('D6').value = `Todos los procesos del Sistema de Gestión de la Calidad de la ESAP para el año ${añoActual}.`;
+      worksheet.getCell('D6').font = { name: 'Arial', size: 10 };
+      worksheet.getCell('D6').alignment = { vertical: 'middle', horizontal: 'left' };
+
+      // ============ FILA 7: RESPONSABLE ============
+      worksheet.mergeCells('A7:C7');
+      worksheet.getCell('A7').value = 'Responsable:';
+      worksheet.getCell('A7').font = { name: 'Arial', size: 10, bold: true };
+      worksheet.getCell('A7').alignment = { vertical: 'middle', horizontal: 'left' };
+
+      worksheet.mergeCells('D7:AA7');
+      worksheet.getCell('D7').value = 'Oficina de Control Interno de Gestión - ESAP';
+      worksheet.getCell('D7').font = { name: 'Arial', size: 10 };
+      worksheet.getCell('D7').alignment = { vertical: 'middle', horizontal: 'left' };
+
+      // ============ FILA 8-9: ESPACIO ============
+      worksheet.getRow(8).height = 5;
+      worksheet.getRow(9).height = 5;
+
+      // ============ FILA 10-11: HEADERS DE LA TABLA ============
+      // N° (A10:A11)
+      worksheet.mergeCells('A10:A11');
+      worksheet.getCell('A10').value = 'N°';
+      worksheet.getCell('A10').font = { name: 'Arial', size: 9, bold: true };
+      worksheet.getCell('A10').alignment = { vertical: 'middle', horizontal: 'center' };
+      worksheet.getCell('A10').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD3D3D3' }
+      };
+      worksheet.getCell('A10').border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+
+      // Auditorias (B10:C11)
+      worksheet.mergeCells('B10:C11');
+      worksheet.getCell('B10').value = 'Auditorias';
+      worksheet.getCell('B10').font = { name: 'Arial', size: 9, bold: true };
+      worksheet.getCell('B10').alignment = { vertical: 'middle', horizontal: 'center' };
+      worksheet.getCell('B10').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD3D3D3' }
+      };
+      worksheet.getCell('B10').border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+
+      // Tipo de Procesos (D10:G10)
+      worksheet.mergeCells('D10:G10');
+      worksheet.getCell('D10').value = 'Tipo de Procesos';
+      worksheet.getCell('D10').font = { name: 'Arial', size: 9, bold: true };
+      worksheet.getCell('D10').alignment = { vertical: 'middle', horizontal: 'center' };
+      worksheet.getCell('D10').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD3D3D3' }
+      };
+      worksheet.getCell('D10').border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+
+      // Subcolumnas de Tipo de Procesos (D11:G11)
+      const tiposProceso = ['Estratégico', 'Misional', 'Apoyo', 'Evaluación y Control'];
+      ['D11', 'E11', 'F11', 'G11'].forEach((cellRef, index) => {
+        const cell = worksheet.getCell(cellRef);
+        cell.value = tiposProceso[index];
+        cell.font = { name: 'Arial', size: 8, bold: true };
+        cell.alignment = { vertical: 'middle', horizontal: 'center', textRotation: 90 };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFD3D3D3' }
+        };
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+      });
+
+      // Responsable de la Auditoria (H10:I11)
+      worksheet.mergeCells('H10:I11');
+      worksheet.getCell('H10').value = 'Responsable de la Auditoria';
+      worksheet.getCell('H10').font = { name: 'Arial', size: 9, bold: true };
+      worksheet.getCell('H10').alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      worksheet.getCell('H10').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD3D3D3' }
+      };
+      worksheet.getCell('H10').border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+
+      // Recursos (J10:J11)
+      worksheet.mergeCells('J10:J11');
+      worksheet.getCell('J10').value = 'Recursos';
+      worksheet.getCell('J10').font = { name: 'Arial', size: 9, bold: true };
+      worksheet.getCell('J10').alignment = { vertical: 'middle', horizontal: 'center' };
+      worksheet.getCell('J10').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD3D3D3' }
+      };
+      worksheet.getCell('J10').border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+
+      // Meses (K10:V10)
+      worksheet.mergeCells('K10:V10');
+      worksheet.getCell('K10').value = 'Meses';
+      worksheet.getCell('K10').font = { name: 'Arial', size: 9, bold: true };
+      worksheet.getCell('K10').alignment = { vertical: 'middle', horizontal: 'center' };
+      worksheet.getCell('K10').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD3D3D3' }
+      };
+      worksheet.getCell('K10').border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+
+      // Subcolumnas de Meses (K11:V11) - Enero a Diciembre
+      const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const columnasMeses = ['K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V'];
+      columnasMeses.forEach((col, index) => {
+        const cell = worksheet.getCell(`${col}11`);
+        cell.value = meses[index];
+        cell.font = { name: 'Arial', size: 8, bold: true };
+        cell.alignment = { vertical: 'middle', horizontal: 'center', textRotation: 90 };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFD3D3D3' }
+        };
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+      });
+
+      // Observaciones (W10:AA11)
+      worksheet.mergeCells('W10:AA11');
+      worksheet.getCell('W10').value = 'Observaciones';
+      worksheet.getCell('W10').font = { name: 'Arial', size: 9, bold: true };
+      worksheet.getCell('W10').alignment = { vertical: 'middle', horizontal: 'center' };
+      worksheet.getCell('W10').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD3D3D3' }
+      };
+      worksheet.getCell('W10').border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+
+      // Ajustar altura de filas de headers
+      worksheet.getRow(10).height = 20;
+      worksheet.getRow(11).height = 40; // Más alto para texto vertical
+
+      // ============ FILAS DE DATOS (12+) ============
+      let filaActual = 12;
+      auditoriasFiltradas.forEach((auditoria, index) => {
+        // Ajustar altura de fila para mejor visualización
+        worksheet.getRow(filaActual).height = 30;
+        // N°
+        const cellN = worksheet.getCell(`A${filaActual}`);
+        cellN.value = index + 1;
+        cellN.font = { name: 'Arial', size: 9 };
+        cellN.alignment = { vertical: 'middle', horizontal: 'center' };
+        cellN.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+
+        // Auditorias (B:C)
+        mergeCellsSafely(`B${filaActual}:C${filaActual}`);
+        const cellAuditorias = worksheet.getCell(`B${filaActual}`);
+        cellAuditorias.value = auditoria.nombre || auditoria.codigo;
+        cellAuditorias.font = { name: 'Arial', size: 9 };
+        cellAuditorias.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+        cellAuditorias.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+
+        // Tipo de Procesos - Determinar tipo según el proceso
+        // Mapear tipo de proceso basado en el nombre del proceso o área
+        let tipoProceso = 'Misional'; // Por defecto
+        const procesoNombre = (auditoria.procesoNombre || auditoria.areaAuditable || '').toLowerCase();
+        
+        // Lógica de mapeo mejorada
+        if (procesoNombre.includes('estratégico') || procesoNombre.includes('estrategia') || procesoNombre.includes('plan')) {
+          tipoProceso = 'Estratégico';
+        } else if (procesoNombre.includes('apoyo') || procesoNombre.includes('administrativo') || procesoNombre.includes('financiero')) {
+          tipoProceso = 'Apoyo';
+        } else if (procesoNombre.includes('evaluación') || procesoNombre.includes('control') || procesoNombre.includes('auditoría')) {
+          tipoProceso = 'Evaluación y Control';
+        } else {
+          tipoProceso = 'Misional'; // Por defecto para procesos misionales
+        }
+        
+        const columnasTipo = { 
+          'Estratégico': 'D', 
+          'Misional': 'E', 
+          'Apoyo': 'F', 
+          'Evaluación y Control': 'G' 
+        };
+        const columnaTipo = columnasTipo[tipoProceso] || 'E';
+        
+        ['D', 'E', 'F', 'G'].forEach((col) => {
+          const cell = worksheet.getCell(`${col}${filaActual}`);
+          if (col === columnaTipo) {
+            cell.value = 'X';
+            cell.font = { name: 'Arial', size: 9, bold: true };
+          } else {
+            cell.value = '';
+          }
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+        });
+
+        // Responsable de la Auditoria (H:I)
+        mergeCellsSafely(`H${filaActual}:I${filaActual}`);
+        const cellResponsable = worksheet.getCell(`H${filaActual}`);
+        cellResponsable.value = auditoria.auditorLider?.nombre || 'Sin asignar';
+        cellResponsable.font = { name: 'Arial', size: 9 };
+        cellResponsable.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+        cellResponsable.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+
+        // Recursos (J)
+        const cellRecursos = worksheet.getCell(`J${filaActual}`);
+        const equipoCount = auditoria.equipoAuditores?.length || 0;
+        cellRecursos.value = `${equipoCount + 1} auditores`; // Líder + equipo
+        cellRecursos.font = { name: 'Arial', size: 9 };
+        cellRecursos.alignment = { vertical: 'middle', horizontal: 'left' };
+        cellRecursos.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+
+        // Meses (K:V) - Marcar meses según cronograma de fases
+        const mesInicio = auditoria.mesInicio;
+        const duracionPlaneacion = auditoria.fases.planeacion.duracionDias;
+        const duracionEjecucion = auditoria.fases.ejecucion.duracionDias;
+        const duracionComunicacion = auditoria.fases.comunicacion.duracionDias;
+        
+        // Calcular días acumulados para cada fase
+        let diaInicioPlaneacion = 1; // Día 1 del mes de inicio
+        let diaFinPlaneacion = diaInicioPlaneacion + duracionPlaneacion - 1;
+        let diaInicioEjecucion = diaFinPlaneacion + 1;
+        let diaFinEjecucion = diaInicioEjecucion + duracionEjecucion - 1;
+        let diaInicioComunicacion = diaFinEjecucion + 1;
+        let diaFinComunicacion = diaInicioComunicacion + duracionComunicacion - 1;
+        
+        // Función para determinar en qué mes está un día específico
+        const obtenerMesParaDia = (dia: number, mesInicial: number): number => {
+          const diasPorMes = 30; // Aproximado
+          const mesOffset = Math.floor((dia - 1) / diasPorMes);
+          return Math.min(mesInicial + mesOffset, 11); // Máximo diciembre (mes 11)
+        };
+        
+        // Calcular meses activos para cada fase
+        const mesesActivos = new Set<number>();
+        
+        // Meses de Planeación
+        const mesInicioPlaneacion = mesInicio;
+        const mesFinPlaneacion = obtenerMesParaDia(diaFinPlaneacion, mesInicio);
+        for (let mes = mesInicioPlaneacion; mes <= mesFinPlaneacion && mes < 12; mes++) {
+          mesesActivos.add(mes);
+        }
+        
+        // Meses de Ejecución
+        const mesInicioEjecucion = obtenerMesParaDia(diaInicioEjecucion, mesInicio);
+        const mesFinEjecucion = obtenerMesParaDia(diaFinEjecucion, mesInicio);
+        for (let mes = mesInicioEjecucion; mes <= mesFinEjecucion && mes < 12; mes++) {
+          mesesActivos.add(mes);
+        }
+        
+        // Meses de Comunicación
+        const mesInicioComunicacion = obtenerMesParaDia(diaInicioComunicacion, mesInicio);
+        const mesFinComunicacion = obtenerMesParaDia(diaFinComunicacion, mesInicio);
+        for (let mes = mesInicioComunicacion; mes <= mesFinComunicacion && mes < 12; mes++) {
+          mesesActivos.add(mes);
+        }
+
+        columnasMeses.forEach((col, mesIndex) => {
+          const cell = worksheet.getCell(`${col}${filaActual}`);
+          if (mesesActivos.has(mesIndex)) {
+            cell.value = 'X';
+            cell.font = { name: 'Arial', size: 9, bold: true };
+          } else {
+            cell.value = '';
+          }
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+        });
+
+        // Observaciones (W:AA)
+        mergeCellsSafely(`W${filaActual}:AA${filaActual}`);
+        const cellObservaciones = worksheet.getCell(`W${filaActual}`);
+        cellObservaciones.value = auditoria.observaciones || '';
+        cellObservaciones.font = { name: 'Arial', size: 9 };
+        cellObservaciones.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+        cellObservaciones.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+
+        filaActual++;
+      });
+
+      // Si no hay auditorías, agregar una fila vacía
+      if (auditoriasFiltradas.length === 0) {
+        filaActual = 12;
+        ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA'].forEach((col) => {
+          const cell = worksheet.getCell(`${col}${filaActual}`);
+          cell.value = '';
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+        });
+        mergeCellsSafely(`B${filaActual}:C${filaActual}`);
+        mergeCellsSafely(`H${filaActual}:I${filaActual}`);
+        mergeCellsSafely(`W${filaActual}:AA${filaActual}`);
+        filaActual++;
+      }
+
+      // ============ FIRMAS (FILAS DESPUÉS DE LOS DATOS) ============
+      // Espacio antes de las firmas
+      filaActual = Math.max(filaActual + 3, 18);
+      
+      // Elaboró (columna B-D aproximadamente)
+      worksheet.mergeCells(`B${filaActual}:D${filaActual}`);
+      const cellElaboroLabel = worksheet.getCell(`B${filaActual}`);
+      cellElaboroLabel.value = 'Elaboró';
+      cellElaboroLabel.font = { name: 'Arial', size: 10, bold: true };
+      cellElaboroLabel.alignment = { vertical: 'middle', horizontal: 'center' };
+      
+      // Línea para firma Elaboró
+      worksheet.mergeCells(`B${filaActual + 1}:D${filaActual + 1}`);
+      const cellFirmaElaboro = worksheet.getCell(`B${filaActual + 1}`);
+      cellFirmaElaboro.border = {
+        bottom: { style: 'medium', color: { argb: 'FF000000' } }
+      };
+      worksheet.getRow(filaActual + 1).height = 20;
+
+      // Responsable (columna G-I aproximadamente)
+      worksheet.mergeCells(`G${filaActual}:I${filaActual}`);
+      const cellResponsableLabel = worksheet.getCell(`G${filaActual}`);
+      cellResponsableLabel.value = 'Responsable';
+      cellResponsableLabel.font = { name: 'Arial', size: 10, bold: true };
+      cellResponsableLabel.alignment = { vertical: 'middle', horizontal: 'center' };
+      
+      // Línea para firma Responsable
+      worksheet.mergeCells(`G${filaActual + 1}:I${filaActual + 1}`);
+      const cellFirmaResponsable = worksheet.getCell(`G${filaActual + 1}`);
+      cellFirmaResponsable.border = {
+        bottom: { style: 'medium', color: { argb: 'FF000000' } }
+      };
+      worksheet.getRow(filaActual + 1).height = 20;
+
+      // ============ GUARDAR ARCHIVO ============
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `PROGRAMA_ANUAL_AUDITORIAS_${añoActual}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.dismiss(toastId);
+      toast.success('Excel generado correctamente', {
+        description: `Programa Anual ${añoActual} exportado`
+      });
+    } catch (error: any) {
+      console.error('Error al generar Excel:', error);
+      toast.error('Error al generar Excel', {
+        description: error.message || 'No se pudo generar el documento'
+      });
+    }
+  };
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* ============ HEADER ============ */}
@@ -670,7 +1333,7 @@ export function ProgramaAnualCIG({ filtros: filtrosExternos }: ProgramaAnualCIGP
           <ButtonSIGL
             variant="outline"
             icon={<Download className="w-4 h-4" />}
-            onClick={() => toast.success('Exportando programa anual...')}
+            onClick={handleExportarProgramaAnual}
           >
             Exportar
           </ButtonSIGL>

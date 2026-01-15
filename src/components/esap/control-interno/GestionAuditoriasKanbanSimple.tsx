@@ -63,6 +63,7 @@ import { Card } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
 import jsPDF from 'jspdf';
+import * as XLSX from 'xlsx';
 import { ModalExpedienteAuditoria } from './ModalExpedienteAuditoria';
 import { ModalNotasAuditoria } from './ModalNotasAuditoria';
 import { ModalHistorialAuditoria } from './ModalHistorialAuditoria';
@@ -3015,6 +3016,212 @@ export function GestionAuditoriasKanbanSimple() {
     }
   };
 
+  // Exportar todas las auditorías divididas por estados
+  const handleExportarTodas = () => {
+    try {
+      const toastId = toast.loading('Generando archivo Excel...', {
+        description: 'Por favor espera un momento'
+      });
+
+      // Crear workbook
+      const wb = XLSX.utils.book_new();
+
+      // Estados disponibles
+      const estados: EstadoAuditoria[] = ['Planeación', 'Ejecución', 'Comunicación', 'Seguimiento', 'Finalizada'];
+
+      // Crear una hoja por cada estado
+      estados.forEach((estado) => {
+        const auditoriasPorEstado = auditorias.filter((aud) => aud.estado === estado);
+
+        if (auditoriasPorEstado.length === 0) {
+          // Crear hoja vacía con encabezados
+          const headers = [
+            'Código',
+            'Título',
+            'Descripción',
+            'Estado',
+            'Territorial',
+            'Riesgo',
+            'Auditor Líder',
+            'Cargo Auditor Líder',
+            'Auditor Asignado',
+            'Cargo Auditor Asignado',
+            'Fecha Inicio',
+            'Fecha Fin',
+            'Progreso (%)',
+            'Hallazgos',
+            'Documentos',
+            'Informes',
+            'Tareas',
+            'Días Restantes',
+            'Porcentaje Tiempo',
+            'Última Actuación',
+            'Calificación Riesgo',
+            'Tipo',
+            'Prioridad',
+            'Área Objetivo'
+          ];
+
+          const ws = XLSX.utils.aoa_to_sheet([headers]);
+          ws['!cols'] = [
+            { wch: 15 }, // Código
+            { wch: 40 }, // Título
+            { wch: 50 }, // Descripción
+            { wch: 12 }, // Estado
+            { wch: 18 }, // Territorial
+            { wch: 10 }, // Riesgo
+            { wch: 30 }, // Auditor Líder
+            { wch: 25 }, // Cargo Auditor Líder
+            { wch: 30 }, // Auditor Asignado
+            { wch: 25 }, // Cargo Auditor Asignado
+            { wch: 12 }, // Fecha Inicio
+            { wch: 12 }, // Fecha Fin
+            { wch: 12 }, // Progreso
+            { wch: 10 }, // Hallazgos
+            { wch: 12 }, // Documentos
+            { wch: 10 }, // Informes
+            { wch: 10 }, // Tareas
+            { wch: 12 }, // Días Restantes
+            { wch: 15 }, // Porcentaje Tiempo
+            { wch: 40 }, // Última Actuación
+            { wch: 20 }, // Calificación Riesgo
+            { wch: 12 }, // Tipo
+            { wch: 12 }, // Prioridad
+            { wch: 25 }  // Área Objetivo
+          ];
+
+          XLSX.utils.book_append_sheet(wb, ws, estado);
+        } else {
+          // Preparar datos para la hoja
+          const datos = auditoriasPorEstado.map((aud) => [
+            aud.codigo || '',
+            aud.titulo || '',
+            aud.descripcion || '',
+            aud.estado || '',
+            aud.territorial || '',
+            aud.riesgo || '',
+            aud.auditorLider?.nombre || 'Sin asignar',
+            aud.auditorLider?.cargo || '',
+            aud.auditorAsignado?.nombre || 'Sin asignar',
+            aud.auditorAsignado?.cargo || '',
+            aud.fechaInicio || '',
+            aud.fechaFin || '',
+            aud.progreso ?? 0,
+            aud.hallazgos ?? 0,
+            aud.documentos ?? 0,
+            aud.informes ?? 0,
+            aud.tareas ?? 0,
+            aud.diasRestantes ?? 0,
+            aud.porcentajeTiempo ?? 0,
+            aud.ultimaActuacion || '',
+            aud.calificacionRiesgo || '',
+            aud.tipo || '',
+            aud.prioridad || '',
+            aud.areaObjetivo || ''
+          ]);
+
+          const headers = [
+            'Código',
+            'Título',
+            'Descripción',
+            'Estado',
+            'Territorial',
+            'Riesgo',
+            'Auditor Líder',
+            'Cargo Auditor Líder',
+            'Auditor Asignado',
+            'Cargo Auditor Asignado',
+            'Fecha Inicio',
+            'Fecha Fin',
+            'Progreso (%)',
+            'Hallazgos',
+            'Documentos',
+            'Informes',
+            'Tareas',
+            'Días Restantes',
+            'Porcentaje Tiempo',
+            'Última Actuación',
+            'Calificación Riesgo',
+            'Tipo',
+            'Prioridad',
+            'Área Objetivo'
+          ];
+
+          const ws = XLSX.utils.aoa_to_sheet([headers, ...datos]);
+          
+          // Ajustar anchos de columna
+          ws['!cols'] = [
+            { wch: 15 }, // Código
+            { wch: 40 }, // Título
+            { wch: 50 }, // Descripción
+            { wch: 12 }, // Estado
+            { wch: 18 }, // Territorial
+            { wch: 10 }, // Riesgo
+            { wch: 30 }, // Auditor Líder
+            { wch: 25 }, // Cargo Auditor Líder
+            { wch: 30 }, // Auditor Asignado
+            { wch: 25 }, // Cargo Auditor Asignado
+            { wch: 12 }, // Fecha Inicio
+            { wch: 12 }, // Fecha Fin
+            { wch: 12 }, // Progreso
+            { wch: 10 }, // Hallazgos
+            { wch: 12 }, // Documentos
+            { wch: 10 }, // Informes
+            { wch: 10 }, // Tareas
+            { wch: 12 }, // Días Restantes
+            { wch: 15 }, // Porcentaje Tiempo
+            { wch: 40 }, // Última Actuación
+            { wch: 20 }, // Calificación Riesgo
+            { wch: 12 }, // Tipo
+            { wch: 12 }, // Prioridad
+            { wch: 25 }  // Área Objetivo
+          ];
+
+          XLSX.utils.book_append_sheet(wb, ws, estado);
+        }
+      });
+
+      // Crear hoja de resumen
+      const resumenData = [
+        ['RESUMEN DE AUDITORÍAS POR ESTADO'],
+        [''],
+        ['Estado', 'Cantidad'],
+        ...estados.map((estado) => [
+          estado,
+          auditorias.filter((aud) => aud.estado === estado).length
+        ]),
+        [''],
+        ['TOTAL', auditorias.length],
+        [''],
+        [`Generado el: ${new Date().toLocaleString('es-CO')}`]
+      ];
+
+      const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
+      wsResumen['!cols'] = [{ wch: 20 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+
+      // Generar nombre de archivo con fecha
+      const fecha = new Date().toISOString().split('T')[0];
+      const nombreArchivo = `Auditorias_Exportadas_${fecha}.xlsx`;
+
+      // Descargar archivo
+      XLSX.writeFile(wb, nombreArchivo);
+
+      // Cerrar toast y mostrar éxito
+      toast.dismiss(toastId);
+      toast.success('Exportación completada', {
+        description: `Archivo ${nombreArchivo} descargado exitosamente`,
+        duration: 4000
+      });
+    } catch (error) {
+      console.error('Error al exportar auditorías:', error);
+      toast.error('Error al exportar', {
+        description: error instanceof Error ? error.message : 'No se pudo generar el archivo Excel',
+        duration: 4000
+      });
+    }
+  };
+
   // Archivar individual - ACTUALIZADO
   const handleArchivar = (auditoria: Auditoria) => {
     setAuditoriaSeleccionada(auditoria);
@@ -3359,7 +3566,7 @@ export function GestionAuditoriasKanbanSimple() {
               <option value="Valle del Cauca">Valle del Cauca</option>
             </select>
 
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" className="gap-2" onClick={handleExportarTodas}>
               <Download className="w-4 h-4" />
               Exportar
             </Button>
