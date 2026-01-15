@@ -502,7 +502,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta }: ModalExpe
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent hideCloseButton className="max-w-5xl h-[95vh] flex flex-col p-0">
+        <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl h-[95vh] flex flex-col p-0">
           <DialogTitle className="sr-only">Expediente Consulta Jurídica {consulta.id}</DialogTitle>
           <DialogDescription className="sr-only">
             Visualización completa del expediente de consulta jurídica

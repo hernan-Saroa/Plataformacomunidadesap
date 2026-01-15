@@ -277,7 +277,7 @@ export function ModalGestionDocumentos({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-4xl max-h-[90vh] overflow-y-auto p-0">
         <DialogTitle className="sr-only">
           {tituloContexto} - {requerimientoId}
         </DialogTitle>

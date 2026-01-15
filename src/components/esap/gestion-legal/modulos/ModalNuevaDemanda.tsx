@@ -191,7 +191,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-2xl h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[650px] lg:max-w-2xl h-[90vh] flex flex-col p-0 gap-0">
         {/* Títulos ocultos para accesibilidad */}
         <DialogTitle className="sr-only">Nueva Demanda Judicial</DialogTitle>
         <DialogDescription className="sr-only">

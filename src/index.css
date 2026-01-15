@@ -1320,6 +1320,10 @@
     grid-row-start: 1;
   }
 
+  .float-right {
+    float: right;
+  }
+
   .container {
     width: 100%;
   }
@@ -2226,6 +2230,10 @@
     width: 95%;
   }
 
+  .w-\[95vw\] {
+    width: 95vw;
+  }
+
   .w-\[180px\] {
     width: 180px;
   }
@@ -2322,12 +2330,32 @@
     max-width: 200px;
   }
 
+  .max-w-\[450px\] {
+    max-width: 450px;
+  }
+
+  .max-w-\[650px\] {
+    max-width: 650px;
+  }
+
+  .max-w-\[750px\] {
+    max-width: 750px;
+  }
+
   .max-w-\[800px\] {
     max-width: 800px;
   }
 
+  .max-w-\[900px\] {
+    max-width: 900px;
+  }
+
   .max-w-\[950px\] {
     max-width: 950px;
+  }
+
+  .max-w-\[1100px\] {
+    max-width: 1100px;
   }
 
   .max-w-\[1400px\] {
@@ -11579,6 +11607,18 @@
   }
 
   @media (width >= 64rem) {
+    .lg\:max-w-2xl {
+      max-width: var(--container-2xl);
+    }
+  }
+
+  @media (width >= 64rem) {
+    .lg\:max-w-3xl {
+      max-width: var(--container-3xl);
+    }
+  }
+
+  @media (width >= 64rem) {
     .lg\:max-w-4xl {
       max-width: var(--container-4xl);
     }
@@ -11611,6 +11651,12 @@
   @media (width >= 64rem) {
     .lg\:max-w-\[150px\] {
       max-width: 150px;
+    }
+  }
+
+  @media (width >= 64rem) {
+    .lg\:max-w-md {
+      max-width: var(--container-md);
     }
   }
 
@@ -12865,6 +12911,92 @@
   scrollbar-width: none;
 }
 
+.h-screen-safe {
+  height: 100dvh;
+}
+
+.min-h-screen-safe {
+  min-height: 100dvh;
+}
+
+.max-h-screen-safe {
+  max-height: 100dvh;
+}
+
+.h-modal-90 {
+  height: 90dvh;
+}
+
+.max-h-modal-90 {
+  max-height: 90dvh;
+}
+
+.h-modal-95 {
+  height: 95dvh;
+}
+
+.max-h-modal-95 {
+  max-height: 95dvh;
+}
+
+.h-modal-80 {
+  height: 80dvh;
+}
+
+.max-h-modal-80 {
+  max-height: 80dvh;
+}
+
+@supports not (gap: 1rem) {
+  .flex.gap-2 > * + * {
+    margin-left: .5rem;
+  }
+
+  .flex.gap-3 > * + * {
+    margin-left: .75rem;
+  }
+
+  .flex.gap-4 > * + * {
+    margin-left: 1rem;
+  }
+}
+
+.backdrop-blur-sm {
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.backdrop-blur {
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.backdrop-blur-md {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.backdrop-blur-lg {
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.backdrop-blur-xl {
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}
+
+@supports not (position: sticky) {
+  .sticky {
+    position: fixed;
+  }
+}
+
+.transform-gpu {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: #9ca3af80 transparent;
@@ -12894,6 +13026,7 @@
   --background: #fff;
   --foreground: oklch(.145 0 0);
   --vh: 1vh;
+  --vh-offset: 0px;
   --sidebar-width: 280px;
   --sidebar-width-laptop: 240px;
   --sidebar-collapsed-width: 80px;

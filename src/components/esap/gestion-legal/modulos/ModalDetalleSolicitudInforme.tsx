@@ -270,7 +270,7 @@ Sistema SIGL - Gestión Legal ESAP
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-3xl h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl h-[90vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
           Detalle de Solicitud de Informe {solicitud.id}
         </DialogTitle>

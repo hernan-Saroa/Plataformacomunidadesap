@@ -343,13 +343,14 @@ export function GraduatesManagementModule() {
 
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || programFilter !== 'all' || locationFilter !== 'all';
 
-  // ✅ NUEVO: Si el validador está activo, mostrar la vista completa de validación
-  if (mostrarValidador) {
-    return <ValidarCertificadoGrado onBack={() => setMostrarValidador(false)} />;
-  }
-
   return (
     <div className="space-y-6">
+      {/* ✅ Modal de Validador de Certificados */}
+      <ValidarCertificadoGrado 
+        isOpen={mostrarValidador} 
+        onClose={() => setMostrarValidador(false)} 
+      />
+
       {/* Header - Según especificaciones Figma */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}

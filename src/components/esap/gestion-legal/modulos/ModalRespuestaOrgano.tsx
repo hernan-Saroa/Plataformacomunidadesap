@@ -120,7 +120,7 @@ Escuela Superior de Administración Pública - ESAP`;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-3xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
           Elaborar Respuesta al Requerimiento {requerimientoId}
         </DialogTitle>

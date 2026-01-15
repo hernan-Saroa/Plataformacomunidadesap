@@ -1058,7 +1058,7 @@ function ModalNuevoRequerimiento({ onClose }: { onClose: () => void }) {
 // Modal Ver Requerimiento
 function ModalVerRequerimiento({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
       <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <ModalHeaderClean
           titulo={requerimiento.id}
@@ -1182,7 +1182,7 @@ function ModalDocumentos({ requerimiento, onClose }: { requerimiento: Requerimie
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
       <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <ModalHeaderClean
           titulo="Documentos del Requerimiento"
@@ -1245,7 +1245,7 @@ function ModalRespuesta({ requerimiento, onClose }: { requerimiento: Requerimien
   const [contenido, setContenido] = useState('');
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
       <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <ModalHeaderClean
           titulo="Redactar Respuesta"
@@ -1333,7 +1333,7 @@ function ModalComentarios({ requerimiento, onClose }: { requerimiento: Requerimi
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
       <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <ModalHeaderClean
           titulo="Comentarios y Seguimiento"

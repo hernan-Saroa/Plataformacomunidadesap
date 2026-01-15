@@ -369,8 +369,8 @@ export function ModalRedactarOficio({ isOpen, onClose, onGuardar, expedienteId }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleCancelar}>
-      <DialogContent hideCloseButton className="max-w-4xl max-h-[95vh] overflow-hidden flex flex-col p-0">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">Redactar Oficio Judicial</DialogTitle>
         <DialogDescription className="sr-only">
           Formulario para redactar y enviar oficios judiciales oficiales
