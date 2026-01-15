@@ -589,7 +589,11 @@ function VistaGenerados({ informes, cargandoInformes, onInformeActualizado }: Vi
       {/* Lista */}
       <div className="space-y-4">
         {informes.map((informe) => (
-          <CardInformeGenerado key={informe.id} informe={informe} />
+          <CardInformeGenerado 
+            key={`${informe.id}-${informe.estadoWorkflow || 'sin-estado'}`} 
+            informe={informe} 
+            onInformeActualizado={onInformeActualizado} 
+          />
         ))}
       </div>
     </div>
@@ -757,7 +761,9 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
     tieneArchivo: !!informe.archivoUrl,
     puedeEnviar, 
     puedeAprobar, 
-    puedeRechazar 
+    puedeRechazar,
+    informeId: informe.id,
+    informeNombre: informe.informeNombre
   });
   
   // Determinar el estado visual basado en estadoWorkflow si existe
@@ -877,8 +883,21 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
         setModalEnviar(false);
         if (onInformeActualizado) {
           console.log('🔄 Recargando informes después de enviar a revisión...');
+          console.log('📋 Estado ANTES de recargar:', { 
+            informeId: informe.id, 
+            estadoWorkflow: informe.estadoWorkflow,
+            estado: informe.estado 
+          });
           await onInformeActualizado();
           console.log('✅ Informes recargados');
+          // Forzar un pequeño delay para asegurar que el estado se actualice
+          setTimeout(() => {
+            console.log('📋 Estado DESPUÉS de recargar (verificar en siguiente render):', { 
+              informeId: informe.id, 
+              estadoWorkflow: informe.estadoWorkflow,
+              estado: informe.estado 
+            });
+          }, 100);
         }
       } else {
         throw new Error(response.error || 'Error al enviar a revisión');
@@ -1456,6 +1475,83 @@ function ModalDetalleInformeGenerado({ informe, onClose, onInformeActualizado }:
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  };
+
+  const handleDescargar = async () => {
+    if (!informe.archivoUrl) {
+      toast.error('Archivo no disponible', {
+        description: 'No hay archivo asociado a este informe',
+      });
+      return;
+    }
+
+    try {
+      // Extraer el nombre del archivo de la URL
+      // archivoUrl puede ser: "/uploads/informes-ley/archivo.pdf" o "archivo.pdf"
+      const nombreArchivo = informe.archivoUrl.split('/').pop() || informe.archivoUrl;
+      
+      // Construir la URL del endpoint de descarga
+      // Usar la misma lógica que getApiBaseUrl() del servicio API
+      let apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3007';
+      if (apiBaseUrl.includes('/control-institucional')) {
+        apiBaseUrl = `${apiBaseUrl}/api/v1`;
+      } else if (!apiBaseUrl.includes('/api/v1') && !apiBaseUrl.includes('localhost')) {
+        apiBaseUrl = `${apiBaseUrl}/control-institucional/api/v1`;
+      }
+      const urlDescarga = `${apiBaseUrl}/informes-ley/archivos/${encodeURIComponent(nombreArchivo)}`;
+
+      // Mostrar toast de inicio (solo una vez)
+      toast.loading('Descargando Informe', {
+        description: `${informe.informeNombre} (${informe.periodo})`,
+        id: 'descarga-informe', // ID único para poder actualizar el toast
+      });
+
+      // Descargar el archivo
+      const response = await fetch(urlDescarga, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('esap_auth_token')}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('El archivo no se encuentra en el servidor');
+        }
+        throw new Error(`Error al descargar: ${response.statusText} (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${informe.informeNombre.replace(/[^a-z0-9]/gi, '_')}_${informe.periodo}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      // Actualizar el toast a éxito
+      toast.success('Archivo descargado', {
+        description: 'El informe se ha descargado correctamente',
+        id: 'descarga-informe',
+        duration: 2000,
+      });
+    } catch (error) {
+      console.error('Error descargando archivo:', error);
+      const mensajeError = error instanceof Error 
+        ? error.message 
+        : 'Error desconocido al descargar el archivo';
+      
+      // Actualizar el toast a error
+      toast.error('Error al descargar', {
+        description: mensajeError.includes('no se encuentra') || mensajeError.includes('404')
+          ? 'El archivo no está disponible en el servidor'
+          : mensajeError,
+        id: 'descarga-informe',
+        duration: 4000,
+      });
     }
   };
 

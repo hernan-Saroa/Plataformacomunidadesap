@@ -81,6 +81,25 @@ export class PlantillasService {
       }
     }
 
+    // Si el archivo no existe y es Excel, intentar buscar versión .hbs como fallback
+    if (plantilla.tipoFormato === 'Excel' && rutaPlantilla.endsWith('.xlsx')) {
+      const rutaHbs = rutaPlantilla.replace('.xlsx', '.hbs');
+      const rutasHbsIntentar = [
+        path.join(process.cwd(), 'src', 'esap', 'informes-ley', rutaHbs),
+        path.join(process.cwd(), 'dist', 'esap', 'informes-ley', rutaHbs),
+        path.join(__dirname, '..', rutaHbs),
+        path.join(process.cwd(), rutaHbs),
+        path.join(process.cwd(), 'src', 'esap', 'informes-ley', plantilla.rutaPlantilla.replace('.xlsx', '.hbs')),
+      ];
+
+      for (const rutaHbsCompleta of rutasHbsIntentar) {
+        if (fs.existsSync(rutaHbsCompleta)) {
+          console.warn(`Archivo Excel no encontrado, usando plantilla Handlebars: ${rutaHbsCompleta}`);
+          return fs.readFileSync(rutaHbsCompleta, 'utf-8');
+        }
+      }
+    }
+
     throw new NotFoundException(
       `No se encontró el archivo de plantilla: ${plantilla.rutaPlantilla}. ` +
       `Rutas intentadas: ${rutasIntentar.join(', ')}`
@@ -96,7 +115,11 @@ export class PlantillasService {
   ): Promise<string> {
     const contenido = await this.cargarContenidoPlantilla(plantilla);
 
-    if (plantilla.tipoFormato === 'HTML' || plantilla.tipoFormato === 'PDF') {
+    // Si el contenido parece ser HTML (empieza con <!DOCTYPE o <html), renderizar con Handlebars
+    // Esto permite usar plantillas .hbs incluso cuando el tipo está marcado como Excel
+    const esHTML = contenido.trim().startsWith('<!DOCTYPE') || contenido.trim().startsWith('<html');
+
+    if (plantilla.tipoFormato === 'HTML' || plantilla.tipoFormato === 'PDF' || esHTML) {
       // Usar Handlebars para renderizar
       const template = Handlebars.compile(contenido);
       return template(datos);

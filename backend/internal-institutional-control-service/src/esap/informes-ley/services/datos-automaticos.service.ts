@@ -163,6 +163,75 @@ export class DatosAutomaticosService {
         break;
       }
       
+      case 'INF-MENS-DERECHOS-AUTOR':
+      case 'INF-DERECHOS-AUTOR': {
+        // Informe de Uso de Software Licenciado
+        const mes = new Date().toLocaleString('es-CO', { month: 'long' });
+        datos.mes = mes;
+        datos.software = [
+          {
+            nombre: 'En proceso de recopilación',
+            version: 'Por definir',
+            tipo: 'Por definir',
+            estado: 'En revisión',
+          },
+        ];
+        datos.licencias = [
+          {
+            software: 'En proceso de recopilación',
+            tipo: 'Por definir',
+            fechaVencimiento: 'Por definir',
+            estado: 'En revisión',
+          },
+        ];
+        datos.cumplimiento = {
+          totalSoftware: 0,
+          softwareLicenciado: 0,
+          porcentajeCumplimiento: 0,
+          estado: 'En evaluación',
+        };
+        datos.observaciones = [];
+        break;
+      }
+      
+      case 'INF-MENS-PQRS':
+      case 'INF-PQRS': {
+        // Informe Mensual de Seguimiento a PQRS
+        const mes = new Date().toLocaleString('es-CO', { month: 'long' });
+        datos.mes = mes;
+        datos.pqrs = [
+          {
+            numero: 'En proceso de recopilación',
+            tipo: 'Por definir',
+            fechaRecepcion: 'Por definir',
+            estado: 'En revisión',
+            tiempoRespuesta: 0,
+          },
+        ];
+        datos.estados = {
+          recibidas: 0,
+          enTramite: 0,
+          resueltas: 0,
+          cerradas: 0,
+          vencidas: 0,
+        };
+        datos.tiemposRespuesta = {
+          promedio: 0,
+          minimo: 0,
+          maximo: 0,
+          dentroPlazo: 0,
+          fueraPlazo: 0,
+        };
+        datos.cumplimiento = {
+          porcentajeCumplimiento: 0,
+          totalPQRS: 0,
+          resueltas: 0,
+          pendientes: 0,
+          estado: 'En evaluación',
+        };
+        break;
+      }
+      
       case 'INF-ESP-ENTES-CONTROL': {
         // Informes a Entes de Control Externo
         datos.enteControl = 'Ente de Control Externo';

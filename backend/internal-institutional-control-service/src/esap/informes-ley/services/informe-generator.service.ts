@@ -169,7 +169,7 @@ export class InformeGeneratorService {
         entrega.archivoNombre = archivoGenerado.nombre;
         entrega.archivoUrl = archivoGenerado.url;
         entrega.archivoTamano = archivoGenerado.tamano;
-        entrega.formatoArchivo = archivoGenerado.formato;
+        entrega.formatoArchivo = archivoGenerado.formato; // Usar el formato real generado (puede ser PDF aunque la plantilla diga Excel)
         entrega.plantillaUsada = informe.urlPlantilla;
         entrega.versionPlantilla = '1.0';
         entrega.fechaGeneracion = new Date();
@@ -230,7 +230,16 @@ export class InformeGeneratorService {
     // Generar archivo según formato
     const nombreArchivo = `${informe.codigo}_${entrega.periodo}_${uuidv4()}`;
 
-    switch (plantilla.tipoFormato) {
+    // Si el contenido renderizado es HTML pero el tipo es Excel, generar PDF como fallback
+    const esHTML = contenidoRenderizado.trim().startsWith('<!DOCTYPE') || contenidoRenderizado.trim().startsWith('<html');
+    let formatoFinal = plantilla.tipoFormato;
+    
+    if (plantilla.tipoFormato === 'Excel' && esHTML) {
+      console.warn(`Plantilla marcada como Excel pero contenido es HTML, generando PDF como fallback`);
+      formatoFinal = 'PDF';
+    }
+
+    switch (formatoFinal) {
       case 'PDF':
         return await this.generarPDF(contenidoRenderizado, nombreArchivo, informe, entrega);
 
@@ -241,7 +250,7 @@ export class InformeGeneratorService {
         return await this.generarExcel(contenidoRenderizado, nombreArchivo, informe, entrega);
 
       default:
-        throw new BadRequestException(`Formato ${plantilla.tipoFormato} no soportado`);
+        throw new BadRequestException(`Formato ${formatoFinal} no soportado`);
     }
   }
 

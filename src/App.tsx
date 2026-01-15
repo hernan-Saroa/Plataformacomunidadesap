@@ -509,7 +509,7 @@ export default function App() {
           vistaActualCurrent = 'backoffice';
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
           : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
-          : hasControlInterno ? 'control-interno'
+          : hasControlInternoRoles ? 'control-interno'
           : 'users-persons';
           const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
           : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
