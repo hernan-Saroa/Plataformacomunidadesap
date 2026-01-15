@@ -349,8 +349,7 @@ export class GraduationCertificatesService {
 
   /**
    * Generar certificado de graduado
-   */
-  private async generateCertificate(
+   */  private async generateCertificate(
     request: GraduationCertificateRequest,
     frontendBaseUrl?: string,
   ) {
@@ -362,14 +361,32 @@ export class GraduationCertificatesService {
     });
 
     if (!signer) {
-      throw new NotFoundException('No se encontró un firmante activo');
+      throw new NotFoundException('No se encontro un firmante activo');
     }
 
-    // Generar número de certificado único
+    const requestExtras = request as {
+      programType?: string;
+      degreeTitle?: string;
+      campus?: string;
+      seccionalName?: string;
+      diplomaNumber?: string;
+      actaNumber?: string;
+    };
+
+    // Generar numero de certificado unico
     const certificateNumber = await this.generateCertificateNumber();
 
-    // Generar código de verificación único (QR)
+    // Generar codigo de verificacion unico (QR)
     const verificationCode = await this.generateVerificationCode();
+
+    const diplomaNumber =
+      graduate?.diplomaNumber ||
+      requestExtras.diplomaNumber ||
+      (await this.generateDiplomaNumber());
+    const actaNumber =
+      graduate?.actaNumber ||
+      requestExtras.actaNumber ||
+      (await this.generateActaNumber());
 
     // Crear certificado
     const certificate = this.certificateRepository.create({
@@ -380,14 +397,13 @@ export class GraduationCertificatesService {
       fullName: request.fullName,
       idNumber: request.idNumber,
       programName: request.programName,
-      programType: graduate?.programType || 'Pregrado',
-      degreeTitle: graduate?.degreeTitle || request.programName,
+      programType: graduate?.programType || requestExtras.programType || 'Pregrado',
+      degreeTitle: graduate?.degreeTitle || requestExtras.degreeTitle || request.programName,
       graduationDate: request.graduationDate,
-      diplomaNumber: graduate?.diplomaNumber,
-      actaNumber: graduate?.actaNumber,
-      campus: graduate?.campus,
-      seccionalName:
-        graduate?.seccionalName || (request as { seccionalName?: string })?.seccionalName,
+      diplomaNumber,
+      actaNumber,
+      campus: graduate?.campus || requestExtras.campus,
+      seccionalName: graduate?.seccionalName || requestExtras.seccionalName,
       signerName: signer.fullName,
       signerPosition: signer.position,
       signatureUrl: signer.signatureUrl,
@@ -397,6 +413,14 @@ export class GraduationCertificatesService {
     });
 
     await this.certificateRepository.save(certificate);
+
+    if (graduate && (!graduate.diplomaNumber || !graduate.actaNumber)) {
+      const updates: Partial<Graduate> = {};
+      if (!graduate.diplomaNumber) updates.diplomaNumber = diplomaNumber;
+      if (!graduate.actaNumber) updates.actaNumber = actaNumber;
+      Object.assign(graduate, updates);
+      await this.graduateRepository.save(graduate);
+    }
 
     // Generar PDF del certificado
     try {
@@ -424,7 +448,7 @@ export class GraduationCertificatesService {
       await this.certificateRepository.save(certificate);
     } catch (error) {
       console.error('Error generando PDF:', error);
-      // No lanzar error, el certificado ya está creado
+      // No lanzar error, el certificado ya esta creado
     }
 
     return certificate;
@@ -611,9 +635,7 @@ export class GraduationCertificatesService {
     const count = await this.requestRepository.count();
     const sequence = (count + 1).toString().padStart(4, '0');
     return `GC-${year}-${sequence}`;
-  }
-
-  private async generateCertificateNumber(): Promise<string> {
+  }  private async generateCertificateNumber(): Promise<string> {
     const year = new Date().getFullYear();
     const count = await this.certificateRepository.count();
     const sequence = (count + 1).toString().padStart(4, '0');
@@ -622,7 +644,7 @@ export class GraduationCertificatesService {
 
   private async generateDiplomaNumber(): Promise<string> {
     const year = new Date().getFullYear();
-    const count = await this.graduateRepository.count();
+    const count = await this.certificateRepository.count();
     const sequence = (count + 1).toString().padStart(6, '0');
     return `DIPL-${year}-${sequence}`;
   }
@@ -631,7 +653,7 @@ export class GraduationCertificatesService {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const count = await this.graduateRepository.count();
+    const count = await this.certificateRepository.count();
     const sequence = (count + 1).toString().padStart(3, '0');
     return `ACTA-${year}-${month}-${sequence}`;
   }
@@ -808,7 +830,7 @@ export class GraduationCertificatesService {
       frontendBaseUrl ||
       process.env.FRONTEND_URL ||
       'https://certificados.esap.edu.co'
-    }/validar/${certificate.verificationCode}`;
+    }/verificar-certificado/${certificate.verificationCode}`;
 
     const attachment = await this.resolveCertificatePdf(
       certificate,
@@ -1226,6 +1248,15 @@ export class GraduationCertificatesService {
       request.graduationDate =
         this.parseDate(payload.graduationDate) ?? request.graduationDate;
     }
+    if (payload?.programType) {
+      (request as { programType?: string }).programType = payload.programType;
+    }
+    if (payload?.degreeTitle) {
+      (request as { degreeTitle?: string }).degreeTitle = payload.degreeTitle;
+    }
+    if (payload?.campus) {
+      (request as { campus?: string }).campus = payload.campus;
+    }
     if (payload?.seccionalName) {
       (request as { seccionalName?: string }).seccionalName =
         payload.seccionalName.trim();
@@ -1278,11 +1309,19 @@ export class GraduationCertificatesService {
 
     const certificate = await this.generateCertificate(request);
 
-    await this.notifyCertificateDelivery(
-      request.requesterEmail,
-      certificate,
-      frontendBaseUrl,
-    );
+    const deliveryEmail = request.requesterEmail || payload?.email;
+    if (deliveryEmail && !request.requesterEmail) {
+      request.requesterEmail = deliveryEmail;
+      await this.requestRepository.save(request);
+    }
+
+    if (deliveryEmail) {
+      await this.notifyCertificateDelivery(
+        deliveryEmail,
+        certificate,
+        frontendBaseUrl,
+      );
+    }
 
     return {
       request,
@@ -1298,6 +1337,7 @@ export class GraduationCertificatesService {
     reason: string,
     reviewerName?: string,
     reviewerId?: string,
+    frontendBaseUrl?: string,
   ) {
     const request = await this.requestRepository.findOne({
       where: { id },
@@ -1322,7 +1362,104 @@ export class GraduationCertificatesService {
       `Solicitud ${request.requestNumber} rechazada. Notificar a ${request.requesterEmail}`,
     );
 
+    await this.sendRejectionEmail(request, frontendBaseUrl);
+
     return request;
+  }
+
+  private async sendRejectionEmail(
+    request: GraduationCertificateRequest,
+    frontendBaseUrl?: string,
+  ): Promise<void> {
+    const email = request.requesterEmail;
+    if (!email) {
+      this.logger.warn(
+        `No se pudo notificar el rechazo para solicitud ${request.requestNumber}: email vacio`,
+      );
+      return;
+    }
+
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const url = `${baseUrl}/api/v1/emails/send`;
+    const portalUrl =
+      frontendBaseUrl ||
+      process.env.FRONTEND_URL ||
+      'https://certificados.esap.edu.co';
+
+    const subject = `Solicitud de certificado rechazada - ${request.requestNumber}`;
+    const text =
+      `Tu solicitud ${request.requestNumber} fue rechazada.\n` +
+      (request.rejectionReason
+        ? `Motivo: ${request.rejectionReason}\n`
+        : '') +
+      `Puedes realizar una nueva solicitud en ${portalUrl}.`;
+
+    const html = `
+      <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
+        <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #ef4444; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #b91c1c 0%, #ef4444 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
+              Certificados ESAP
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Solicitud rechazada
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              Tu solicitud <strong>${request.requestNumber}</strong> fue rechazada.
+            </td>
+          </tr>
+          ${
+            request.rejectionReason
+              ? `<tr><td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;"><strong>Motivo:</strong> ${request.rejectionReason}</td></tr>`
+              : ''
+          }
+          <tr>
+            <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563;">
+              Si deseas intentar de nuevo, puedes hacer una nueva solicitud desde <a href="${portalUrl}" style="color: #0b68d1;">${portalUrl}</a>.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+              ESAP - Escuela Superior de Administracion Publica
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: email,
+        subject,
+        text,
+        html,
+      }),
+    });
+
+    if (!response.ok) {
+      let errorBody = '';
+      try {
+        errorBody = await response.text();
+      } catch (_) {
+        errorBody = '';
+      }
+      this.logger.warn(
+        `No se pudo enviar el rechazo por email: ${response.status} ${errorBody}`,
+      );
+      throw new Error(
+        `Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`,
+      );
+    }
+
+    this.logger.log(`Notificacion de rechazo enviada a ${email}`);
   }
 
   /**
@@ -1453,5 +1590,12 @@ export class GraduationCertificatesService {
     return null;
   }
 }
+
+
+
+
+
+
+
 
 
