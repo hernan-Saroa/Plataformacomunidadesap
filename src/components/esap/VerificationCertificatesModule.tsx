@@ -785,6 +785,20 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     setIsQrModalOpen(true);
   };
 
+  const handleResendCertificate = async (cert: CertificateRecord) => {
+    try {
+      const response = await graduadosService.certificados.reenviar(cert.id);
+      toast.success('Certificado reenviado', {
+        description: response?.mensaje || `Se reenvio el certificado a ${cert.requester.email}`,
+      });
+    } catch (error: any) {
+      console.error('Error reenviando certificado:', error);
+      toast.error('No se pudo reenviar el certificado', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
+  };
+
   const getPublicValidationUrl = (qrCode: string) => {
     return `${window.location.origin}/verificar-certificado/${qrCode}`;
   };
@@ -1437,6 +1451,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           <DropdownMenuItem onClick={() => handleOpenEditCertificate(cert)}>
                             <Edit className="w-4 h-4 mr-2" />
                             Editar certificado
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleResendCertificate(cert)}>
+                            <Mail className="w-4 h-4 mr-2" />
+                            Reenviar certificado
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

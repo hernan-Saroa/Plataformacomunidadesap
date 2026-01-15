@@ -390,4 +390,29 @@ export class GraduationCertificatesController {
     // TODO: Implementar revocación
     return { message: 'Endpoint en desarrollo' };
   }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/:id/reenviar
+   * Reenviar certificado por email al solicitante
+   */
+  @Post(':id/reenviar')
+  @HttpCode(HttpStatus.OK)
+  async reenviarCertificado(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ) {
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    let frontendBaseUrl = origin;
+    if (!frontendBaseUrl && referer) {
+      try {
+        frontendBaseUrl = new URL(referer).origin;
+      } catch (_) {
+        frontendBaseUrl = undefined;
+      }
+    }
+
+    return await this.service.reenviarCertificado(id, frontendBaseUrl);
+  }
+
 }
