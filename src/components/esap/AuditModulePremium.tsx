@@ -10,6 +10,7 @@ import { AuditAnomaliesDetector } from './AuditAnomaliesDetector';
 import { toast } from 'sonner';
 import { mapLogToEvent, loadAuditLogs, loadAvailableModules, type LoadLogsParams } from './audit/auditUtils';
 import type { AuditLog } from '../../services/api/audit.service';
+import { auditService } from '../../services/auditService';
 
 type ViewMode = 'table' | 'timeline' | 'anomalies';
 
@@ -30,6 +31,8 @@ export function AuditModulePremium() {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(100);
   
   const [filters, setFilters] = useState<FilterOptions>({
     dateRange: 'last24h',
@@ -592,11 +595,50 @@ export function AuditModulePremium() {
     setIsDetailOpen(true);
   };
 
-  const handleExport = (format: 'csv' | 'excel' | 'pdf') => {
-    toast.success('Exportando registros', {
-      description: `Generando archivo ${format.toUpperCase()} con ${filteredEvents.length} eventos...`
-    });
-    setExportMenuOpen(false);
+  const handleExport = async (format: 'csv' | 'excel' | 'pdf', singleEvent?: AuditEvent) => {
+    try {
+      setExportMenuOpen(false);
+      const eventsToExport = singleEvent ? [singleEvent] : filteredEvents;
+      
+      if (eventsToExport.length === 0) {
+        toast.warning('No hay eventos para exportar');
+        return;
+      }
+
+      toast.info('Generando archivo de exportación...', {
+        description: `Preparando ${format.toUpperCase()} con ${eventsToExport.length} ${singleEvent ? 'evento' : 'eventos'}`
+      });
+
+      let blob: Blob;
+      let filename: string;
+      const dateStr = new Date().toISOString().split('T')[0];
+      const eventId = singleEvent ? `_${singleEvent.id}` : '';
+
+      switch (format) {
+        case 'csv':
+          blob = auditService.exportEventsToCSV(eventsToExport);
+          filename = `auditoria${eventId}_${dateStr}.csv`;
+          break;
+        case 'excel':
+          blob = await auditService.exportEventsToExcel(eventsToExport);
+          filename = `auditoria${eventId}_${dateStr}.xlsx`;
+          break;
+        case 'pdf':
+          blob = await auditService.exportEventsToPDF(eventsToExport);
+          filename = `auditoria${eventId}_${dateStr}.pdf`;
+          break;
+      }
+
+      auditService.downloadBlob(blob, filename);
+      toast.success('Archivo exportado correctamente', {
+        description: `El archivo ${filename} ha sido descargado`
+      });
+    } catch (error: any) {
+      console.error('Error al exportar:', error);
+      toast.error('Error al exportar', {
+        description: error.message || 'No se pudo generar el archivo de exportación'
+      });
+    }
   };
 
   const handleClearFilters = () => {
@@ -735,12 +777,23 @@ export function AuditModulePremium() {
         onClearFilters={handleClearFilters}
       />
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1e5da8] mx-auto mb-4"></div>
+            <p className="text-gray-600">Cargando logs de auditoría...</p>
+          </div>
+        </div>
+      )}
+
       {/* Content Based on View Mode */}
-      {viewMode === 'table' && (
+      {!loading && viewMode === 'table' && (
         <AuditLogTable 
           events={filteredEvents}
           onEventClick={handleEventClick}
           searchQuery={searchQuery}
+          onExportEvent={(event, format) => handleExport(format, event)}
         />
       )}
 
