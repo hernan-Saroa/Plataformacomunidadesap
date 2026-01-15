@@ -181,10 +181,7 @@ export class LegalService {
         return apiClient.get<any>(`${SERVICE_PREFIX}/stats/general`);
     }
 
-    // Dashboard Ejecutivo SIGL
-    async getDashboardEjecutivo(): Promise<any> {
-        return apiClient.get<any>(`${SERVICE_PREFIX}/dashboard/ejecutivo`);
-    }
+
 
     async createAbogado(data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/abogados`, data);
@@ -299,16 +296,16 @@ export class LegalService {
     // Duplicates removed
 
 
-    async updateConsultaEstado(id: string, estado: string): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/estado`, { estado });
+    async updateEstadoConsulta(id: string, estado: string, usuario?: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/estado`, { estado, usuario });
     }
 
     async responderConsulta(id: string, respuestaData: any): Promise<any> {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/respuesta`, respuestaData);
     }
 
-    async guardarRespuestaConsulta(id: string, respuesta: string, enviar: boolean): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/gestionar-respuesta`, { respuesta, enviar });
+    async guardarRespuestaConsulta(id: string, respuesta: string, enviar: boolean, usuario?: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/gestionar-respuesta`, { respuesta, enviar, usuario });
     }
 
     async getComentariosConsulta(consultaId: string): Promise<any[]> {
@@ -321,6 +318,10 @@ export class LegalService {
 
     async deleteConsultaJuridica(id: string): Promise<void> {
         return apiClient.delete(`${SERVICE_PREFIX}/consultas-juridicas/${id}`);
+    }
+
+    async getConsultaJuridicaHistorial(id: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/historial`);
     }
 
     // ===== DOCUMENTOS DE CONSULTAS JURÍDICAS =====
@@ -475,6 +476,15 @@ export class LegalService {
 
     async deleteRequerimientoOC(id: string): Promise<void> {
         return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
+    }
+
+    // ==================== CONFIGURACIONES ====================
+    async getConfiguration(key: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/configurations/${key}`);
+    }
+
+    async saveConfiguration(key: string, value: any): Promise<any> {
+        return apiClient.put<any>(`${SERVICE_PREFIX}/configurations/${key}`, { value });
     }
 }
 
