@@ -16,6 +16,8 @@ import { EntregaInformeLey } from './esap/informes-ley/entities/entrega-informe-
 import { DatosAutomaticosInforme } from './esap/informes-ley/entities/datos-automaticos-informe.entity';
 import { HistorialGeneracionInforme } from './esap/informes-ley/entities/historial-generacion-informe.entity';
 import { PlantillaInformeLey } from './esap/informes-ley/entities/plantilla-informe-ley.entity';
+import { WorkflowAprobacionInforme } from './esap/informes-ley/entities/workflow-aprobacion-informe.entity';
+import { PasoWorkflowInforme } from './esap/informes-ley/entities/paso-workflow-informe.entity';
 import { Auditoria } from './esap/auditorias/entities/auditoria.entity';
 import { ObjetivoAuditoria } from './esap/auditorias/entities/objetivo-auditoria.entity';
 import { EquipoAuditor } from './esap/auditorias/entities/equipo-auditor.entity';
@@ -85,6 +87,8 @@ import { EvidenciaDocumento } from './esap/evidencias/entities/evidencia-documen
             DatosAutomaticosInforme,
             HistorialGeneracionInforme,
             PlantillaInformeLey,
+            WorkflowAprobacionInforme,
+            PasoWorkflowInforme,
             Auditoria,
             ObjetivoAuditoria,
             EquipoAuditor,
