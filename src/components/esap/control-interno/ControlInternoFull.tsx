@@ -202,6 +202,9 @@ function ControlInternoContent({
           <p className="text-sm text-gray-500">
             Tu rol detectado: {rolDetectado || 'No asignado'}
           </p>
+          <p className="text-xs text-gray-400 mt-2">
+            Roles recibidos: {JSON.stringify(userRoles || userData?.roles || [])}
+          </p>
           {submódulosAccesibles.length > 0 && (
             <p className="text-sm text-blue-600 mt-4">
               Submódulos disponibles: {submódulosAccesibles.join(', ')}

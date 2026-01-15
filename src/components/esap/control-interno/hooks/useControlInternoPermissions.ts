@@ -62,70 +62,136 @@ export function useControlInternoPermissions(
   userRoles?: string[],
   userData?: { roles?: string[] }
 ) {
-  // Obtener roles del usuario
+  // Obtener roles del usuario - COMBINAR ambos arrays
   const rolesUsuario = useMemo(() => {
-    const roles = userRoles || userData?.roles || [];
+    // Combinar ambos arrays de roles (userRoles y userData?.roles)
+    const rolesCombinados = [
+      ...(userRoles || []),
+      ...(userData?.roles || [])
+    ];
     
-    // Normalizar roles (convertir a mayúsculas y buscar coincidencias)
-    return roles.map((r: any) => {
-      const rolStr = typeof r === 'string' ? r : (r?.code || r?.name || '');
-      return rolStr.toUpperCase();
-    });
+    // Normalizar roles (extraer código si es objeto, convertir a mayúsculas)
+    const rolesNormalizados = rolesCombinados.map((r: any) => {
+      if (typeof r === 'string') {
+        return r.toUpperCase().trim();
+      }
+      // Si es objeto, extraer code o name
+      const rolStr = r?.code || r?.name || '';
+      return rolStr.toUpperCase().trim();
+    }).filter(Boolean); // Filtrar valores vacíos
+    
+    // Eliminar duplicados
+    const rolesUnicos = Array.from(new Set(rolesNormalizados));
+    
+    // Debug: Log para ver qué roles se están recibiendo
+    if (rolesUnicos.length > 0) {
+      console.log('🔍 [useControlInternoPermissions] Roles recibidos:', {
+        userRoles,
+        userDataRoles: userData?.roles,
+        rolesCombinados,
+        rolesNormalizados,
+        rolesUnicos
+      });
+    }
+    
+    return rolesUnicos;
   }, [userRoles, userData]);
 
   // Detectar rol del usuario en Control Interno
   const rolDetectado = useMemo<RolControlInterno | null>(() => {
-    // Si es ADMIN, dar acceso completo como JEFE_OCI
-    if (rolesUsuario.includes('ADMIN')) {
-      return 'JEFE_OCI';
+    let rolEncontrado: RolControlInterno | null = null;
+
+    // Si es ADMIN, SUPER_ADMIN o ADMINISTRATIVO, dar acceso completo como JEFE_OCI
+    if (rolesUsuario.includes('ADMIN') || 
+        rolesUsuario.includes('SUPER_ADMIN') || 
+        rolesUsuario.includes('ADMINISTRATIVO')) {
+      rolEncontrado = 'JEFE_OCI';
+      console.log('✅ [useControlInternoPermissions] Rol detectado (ADMIN):', rolEncontrado, 'de roles:', rolesUsuario);
+      return rolEncontrado;
     }
     
-    // Buscar rol específico de Control Interno
+    // Primero buscar coincidencias EXACTAS (más preciso)
+    const rolesExactos: Record<string, RolControlInterno> = {
+      'JEFE_OCI': 'JEFE_OCI',
+      'PROFESIONAL_AUDITOR': 'PROFESIONAL_AUDITOR',
+      'AUXILIAR_AUDITORIA': 'AUXILIAR_AUDITORIA',
+      'CONSULTA': 'CONSULTA',
+      // Roles antiguos para compatibilidad
+      'JEFE_CONTROL_INTERNO': 'JEFE_OCI',
+      'AUDITOR_LIDER': 'JEFE_OCI',
+      'CONTROL_INTERNO': 'CONSULTA',
+    };
+    
     for (const rolUsuario of rolesUsuario) {
-      if (rolUsuario.includes('JEFE') && (rolUsuario.includes('OCI') || rolUsuario.includes('CONTROL_INTERNO'))) {
-        return 'JEFE_OCI';
+      // Buscar coincidencia exacta primero
+      if (rolesExactos[rolUsuario]) {
+        rolEncontrado = rolesExactos[rolUsuario];
+        console.log('✅ [useControlInternoPermissions] Rol detectado (exacto):', rolEncontrado, 'de roles:', rolesUsuario);
+        return rolEncontrado;
+      }
+    }
+    
+    // Si no hay coincidencia exacta, buscar coincidencias parciales (fallback)
+    for (const rolUsuario of rolesUsuario) {
+      if ((rolUsuario.includes('JEFE') && rolUsuario.includes('OCI')) || 
+          (rolUsuario.includes('JEFE') && rolUsuario.includes('CONTROL_INTERNO'))) {
+        rolEncontrado = 'JEFE_OCI';
+        console.log('✅ [useControlInternoPermissions] Rol detectado (parcial):', rolEncontrado, 'de roles:', rolesUsuario);
+        return rolEncontrado;
       }
       if (rolUsuario.includes('PROFESIONAL') && rolUsuario.includes('AUDITOR')) {
-        return 'PROFESIONAL_AUDITOR';
+        rolEncontrado = 'PROFESIONAL_AUDITOR';
+        console.log('✅ [useControlInternoPermissions] Rol detectado (parcial):', rolEncontrado, 'de roles:', rolesUsuario);
+        return rolEncontrado;
       }
       if (rolUsuario.includes('AUXILIAR') && rolUsuario.includes('AUDITORIA')) {
-        return 'AUXILIAR_AUDITORIA';
+        rolEncontrado = 'AUXILIAR_AUDITORIA';
+        console.log('✅ [useControlInternoPermissions] Rol detectado (parcial):', rolEncontrado, 'de roles:', rolesUsuario);
+        return rolEncontrado;
       }
       if (rolUsuario.includes('CONSULTA')) {
-        return 'CONSULTA';
+        rolEncontrado = 'CONSULTA';
+        console.log('✅ [useControlInternoPermissions] Rol detectado (parcial):', rolEncontrado, 'de roles:', rolesUsuario);
+        return rolEncontrado;
       }
     }
     
-    // Si tiene rol CONTROL_INTERNO genérico, asignar como Consulta por defecto
-    if (rolesUsuario.includes('CONTROL_INTERNO')) {
-      return 'CONSULTA';
+    // Debug: Log si no se detectó ningún rol
+    if (!rolesUsuario.length) {
+      console.warn('⚠️ [useControlInternoPermissions] No se recibieron roles del usuario');
+    } else {
+      console.warn('⚠️ [useControlInternoPermissions] Roles recibidos pero ninguno coincide con Control Interno:', rolesUsuario);
     }
     
     return null;
   }, [rolesUsuario]);
 
   // Verificar si puede acceder a un submódulo
-  const puedeAcceder = (submodulo: string): boolean => {
-    if (!rolDetectado) return false;
-    
-    const permisos = PERMISOS_POR_ROL[rolDetectado];
-    const permiso = permisos.find(p => p.submodulo === submodulo);
-    
-    return permiso ? permiso.acciones.includes('view') : false;
-  };
+  const puedeAcceder = useMemo(() => {
+    return (submodulo: string): boolean => {
+      if (!rolDetectado) return false;
+      
+      const permisos = PERMISOS_POR_ROL[rolDetectado];
+      const permiso = permisos.find(p => p.submodulo === submodulo);
+      
+      return permiso ? permiso.acciones.includes('view') : false;
+    };
+  }, [rolDetectado]);
 
   // Verificar si puede realizar una acción específica
-  const puedeRealizar = (
-    submodulo: string, 
-    accion: 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export'
-  ): boolean => {
-    if (!rolDetectado) return false;
-    
-    const permisos = PERMISOS_POR_ROL[rolDetectado];
-    const permiso = permisos.find(p => p.submodulo === submodulo);
-    
-    return permiso ? permiso.acciones.includes(accion) : false;
-  };
+  const puedeRealizar = useMemo(() => {
+    return (
+      submodulo: string, 
+      accion: 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export'
+    ): boolean => {
+      if (!rolDetectado) return false;
+      
+      const permisos = PERMISOS_POR_ROL[rolDetectado];
+      const permiso = permisos.find(p => p.submodulo === submodulo);
+      
+      return permiso ? permiso.acciones.includes(accion) : false;
+    };
+  }, [rolDetectado]);
 
   // Obtener submódulos accesibles
   const submódulosAccesibles = useMemo(() => {
@@ -145,4 +211,3 @@ export function useControlInternoPermissions(
     rolesUsuario,
   };
 }
-

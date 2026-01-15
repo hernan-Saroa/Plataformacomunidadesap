@@ -122,7 +122,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   //   : userData?.module === 'gestion-profesoral'
   //   ? 'gestion-profesoral'
   //   : 'dashboard';
-  const initialModule = userData?.roles?.includes('CONTROL_INTERNO') 
+  // Verificar si tiene acceso a Control Interno (verificar múltiples roles)
+  const hasControlInternoAccess = userData?.roles?.some((role: string) => 
+    ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA', 
+     'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+  );
+  
+  const initialModule = hasControlInternoAccess
     ? 'control-interno'
     : userData?.roles?.includes('CONTROL_DISCIPLINARIO')
     ? 'control-disciplinario'

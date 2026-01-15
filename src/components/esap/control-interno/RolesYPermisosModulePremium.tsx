@@ -207,12 +207,6 @@ export function RolesYPermisosModulePremium() {
       try {
         setCargandoEquipo(true);
         
-        // Cargar usuarios desde el auth service
-        const usuariosResponse = await usersService.getUsers({
-          limit: 1000, // Obtener todos los usuarios (ajustar según necesidad)
-          status: 'active'
-        });
-
         // Cargar roles disponibles
         const rolesResponse = await rolesService.getRoles({ limit: 1000 });
 
@@ -220,13 +214,60 @@ export function RolesYPermisosModulePremium() {
           setRolesDisponibles(rolesResponse.roles);
         }
 
+        // Roles de Control Interno que debemos buscar
+        const rolesControlInterno = [
+          'JEFE_OCI',
+          'PROFESIONAL_AUDITOR',
+          'AUXILIAR_AUDITORIA',
+          'CONSULTA',
+          'JEFE_CONTROL_INTERNO', // Roles antiguos para compatibilidad
+          'AUDITOR_LIDER',
+          'CONTROL_INTERNO'
+        ];
+
+        // También incluir usuarios de Gestión Legal (según solicitud del usuario)
+        const rolesGestionLegal = [
+          'GESTION_LEGAL',
+          'GESTIONLEGAL',
+          'GESTION-LEGAL'
+        ];
+
+        // Combinar ambos arrays de roles
+        const rolesABuscar = [...rolesControlInterno, ...rolesGestionLegal];
+
+        // Usar el nuevo método para obtener usuarios por rol
+        const usuariosResponse = await usersService.getUsersByRole(rolesABuscar, {
+          limit: 1000,
+          status: 'active'
+        });
+
         if (usuariosResponse.data) {
+          const usuariosConRolCI = usuariosResponse.data;
+
           // Mapear usuarios de la API al formato PersonaAsignada
-          const equipoMapeado: PersonaAsignada[] = usuariosResponse.data.map((user: User) => {
-            // Obtener el primer rol del usuario (o 'Sin rol' si no tiene)
-            const rolPrincipal = user.roles && user.roles.length > 0 
-              ? user.roles[0].name 
-              : 'Sin rol';
+          const equipoMapeado: PersonaAsignada[] = usuariosConRolCI.map((user: User) => {
+            // Buscar el rol de Control Interno del usuario (prioridad)
+            const rolControlInterno = user.roles?.find(role => {
+              const roleCode = role.code?.toUpperCase() || '';
+              const roleName = role.name?.toUpperCase() || '';
+              return rolesControlInterno.some(rolCI => 
+                roleCode.includes(rolCI) || roleName.includes(rolCI)
+              );
+            });
+
+            // Si no tiene rol de Control Interno, buscar rol de Gestión Legal
+            const rolGestionLegal = !rolControlInterno ? user.roles?.find(role => {
+              const roleCode = role.code?.toUpperCase() || '';
+              const roleName = role.name?.toUpperCase() || '';
+              return rolesGestionLegal.some(rolGL => 
+                roleCode.includes(rolGL) || roleName.includes(rolGL)
+              );
+            }) : null;
+
+            // Obtener el rol principal (prioridad: Control Interno > Gestión Legal > otros)
+            const rolPrincipal = rolControlInterno?.name || 
+              rolGestionLegal?.name ||
+              (user.roles && user.roles.length > 0 ? user.roles[0].name : 'Sin rol');
 
             // Mapear permisos del usuario (basado en sus roles)
             const permisos: string[] = user.roles?.flatMap(role => [
@@ -234,11 +275,17 @@ export function RolesYPermisosModulePremium() {
               `${role.code}:write`
             ]) || [];
 
+            // Construir nombre completo con fallbacks
+            const nombreCompleto = user.person?.full_name?.trim() 
+              || `${user.person?.first_name || ''} ${user.person?.last_name || ''}`.trim() 
+              || user.username?.trim() 
+              || 'Usuario sin nombre';
+
             return {
-              id: user.id_user,
-              personaId: user.person?.id?.toString() || user.id_user,
-              nombreCompleto: user.person?.full_name || `${user.person?.first_name || ''} ${user.person?.last_name || ''}`.trim() || user.username,
-              email: user.person?.email || '',
+              id: user.id_user || `user-${Date.now()}-${Math.random()}`, // Asegurar ID único
+              personaId: user.person?.id?.toString() || user.id_user || '',
+              nombreCompleto: nombreCompleto,
+              email: user.person?.email || user.username || '',
               telefono: user.person?.phone || '',
               rolAsignado: rolPrincipal,
               permisos: permisos,
@@ -248,7 +295,19 @@ export function RolesYPermisosModulePremium() {
             };
           });
 
+          console.log('👥 Usuarios cargados (Control Interno + Gestión Legal):', {
+            totalUsuarios: usuariosResponse.meta.total,
+            activos: usuariosResponse.meta.totalActive,
+            bloqueados: usuariosResponse.meta.totalBlocked,
+            usuariosFiltrados: usuariosConRolCI.length,
+            equipoMapeado: equipoMapeado.length,
+            rolesBuscados: rolesABuscar
+          });
+
           setEquipo(equipoMapeado);
+        } else {
+          console.log('⚠️ No se encontraron usuarios con roles de Control Interno');
+          setEquipo([]);
         }
       } catch (error) {
         console.error('Error cargando equipo:', error);
@@ -485,8 +544,8 @@ function VistaEquipo({ equipo, cargandoEquipo }: VistaEquipoProps) {
             </p>
           </div>
         ) : equipoFiltrado.length > 0 ? (
-          equipoFiltrado.map((persona) => (
-            <CardPersonaEquipo key={persona.id} persona={persona} />
+          equipoFiltrado.map((persona, index) => (
+            <CardPersonaEquipo key={`${persona.id}-${persona.personaId}-${index}`} persona={persona} />
           ))
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
@@ -595,13 +654,15 @@ function CardPersonaEquipo({ persona }: CardPersonaEquipoProps) {
             {/* Avatar */}
             <div className="w-12 h-12 bg-gradient-to-br from-[#1e5da8] to-[#2a6dbd] rounded-full flex items-center justify-center flex-shrink-0">
               <span className="text-white font-semibold text-lg">
-                {persona.nombreCompleto.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                {persona.nombreCompleto && persona.nombreCompleto.trim()
+                  ? persona.nombreCompleto.split(' ').filter(n => n).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U'
+                  : 'U'}
               </span>
             </div>
 
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-3">
-                <h3 className="text-base text-gray-900 font-medium">{persona.nombreCompleto}</h3>
+                <h3 className="text-base text-gray-900 font-medium">{persona.nombreCompleto || 'Sin nombre'}</h3>
                 <span className={`px-3 py-1 rounded-lg text-xs font-medium border ${rolColor} whitespace-nowrap`}>
                   {persona.rolAsignado}
                 </span>
@@ -916,14 +977,18 @@ function ModalAsignarPersona({ equipoActual, onClose, onAsignar }: ModalAsignarP
         return permiso ? `${permiso.modulo.toLowerCase().replace(/\s+/g, '_')}:${permiso.accion}` : permisoId;
       });
 
+      // Construir nombre completo con fallbacks
+      const nombreCompleto = personaSeleccionada.person?.full_name?.trim() 
+        || `${personaSeleccionada.person?.first_name || ''} ${personaSeleccionada.person?.last_name || ''}`.trim() 
+        || personaSeleccionada.username?.trim() 
+        || 'Usuario sin nombre';
+
       // Crear objeto PersonaAsignada
       const nuevaPersona: PersonaAsignada = {
         id: personaSeleccionada.id_user,
         personaId: personaSeleccionada.person?.id?.toString() || personaSeleccionada.id_user,
-        nombreCompleto: personaSeleccionada.person?.full_name || 
-          `${personaSeleccionada.person?.first_name || ''} ${personaSeleccionada.person?.last_name || ''}`.trim() || 
-          personaSeleccionada.username,
-        email: personaSeleccionada.person?.email || '',
+        nombreCompleto: nombreCompleto,
+        email: personaSeleccionada.person?.email || personaSeleccionada.username || '',
         telefono: personaSeleccionada.person?.phone || '',
         rolAsignado: rolSeleccionadoData?.nombre || '',
         permisos: permisosMapeados,

@@ -201,7 +201,15 @@ export default function App() {
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
         : [];
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL');
+      // Verificar si tiene roles de configuración (incluyendo Control Interno)
+      const hasControlInternoRoles = roles.some((role: string) => 
+        ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
+         'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+      );
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
+                           roles.includes('CONTROL_DISCIPLINARIO') || 
+                           roles.includes('GESTION_LEGAL') ||
+                           hasControlInternoRoles;
       const emailLower = userEmail.toLowerCase();
 
       let nextView: Vista = 'portal';
@@ -219,12 +227,22 @@ export default function App() {
         nextView = 'backoffice';
         nextCurrentView = 'backoffice';
         nextUserType = 'administrativo';
+        // Verificar si tiene acceso a Control Interno (múltiples roles)
+        const hasControlInterno = roles.some((role: string) => 
+          ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
+           'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+        );
+        
         module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
         : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
-        : roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER') ? 'control-interno'
-        : 'control-interno';
+        : hasControlInterno ? 'control-interno'
+        : 'users-persons';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
         : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+        : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+        : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+        : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+        : roles.includes('CONSULTA') ? 'Consulta Control Interno'
         : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
         : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
         : 'Control Interno';
@@ -440,7 +458,15 @@ export default function App() {
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
+      // Verificar si tiene roles de configuración (incluyendo Control Interno)
+      const hasControlInternoRoles = roles.some((role: string) => 
+        ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
+         'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+      );
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
+                           roles.includes('CONTROL_DISCIPLINARIO') || 
+                           roles.includes('GESTION_LEGAL') ||
+                           hasControlInternoRoles;
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -483,10 +509,14 @@ export default function App() {
           vistaActualCurrent = 'backoffice';
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
           : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
-          : roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER') ? 'control-interno'
-          : 'control-interno';
+          : hasControlInterno ? 'control-interno'
+          : 'users-persons';
           const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
           : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+          : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+          : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+          : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+          : roles.includes('CONSULTA') ? 'Consulta Control Interno'
           : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
           : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
           : 'Control Interno';
