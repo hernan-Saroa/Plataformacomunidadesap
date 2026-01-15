@@ -1884,7 +1884,7 @@ export function UsersPersonsModulePremium() {
                             verticalAlign: "middle",
                           }}
                         >
-                          <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center justify-center gap-2" style={{display: hasSuperAdminRole(user) ? 'none' : 'block'}}>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1988,6 +1988,7 @@ export function UsersPersonsModulePremium() {
                                   style={{
                                     border: "1px solid #E5E7EB",
                                     background: "#FFFFFF",
+                                    display: hasSuperAdminRole(user) ? 'none' : 'block'
                                   }}
                                   onMouseEnter={(e) => {
                                     e.currentTarget.style.background =
