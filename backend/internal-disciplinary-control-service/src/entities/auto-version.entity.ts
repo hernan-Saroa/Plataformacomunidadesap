@@ -22,10 +22,16 @@ export class AutoVersion {
     versionNumber: number;
 
     @Column({ type: 'uuid', nullable: true })
-    createdBy: string;
+    createdBy: string | null;
 
     @Column({ type: 'text', nullable: true })
     changeReason: string;
+
+    @Column({ type: 'text', nullable: true })
+    documentUrl: string | null;
+
+    @Column({ type: 'text', nullable: true })
+    documentName: string | null;
 
     @CreateDateColumn()
     createdAt: Date;

@@ -28,6 +28,7 @@ import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/default-layout/lib/styles/index.css';
 import { ModalGestionAutos, ModalGestionEvidencias, ModalGestionOficios } from './ModalesGestionDocumental';
+import { EditorDocumentos } from './EditorDocumentos';
 
 // Modal de Selección de Tipo de Documento
 interface ModalSeleccionProps {
@@ -134,7 +135,13 @@ interface Documento {
     firmado?: boolean;
     notificado?: boolean;
     folios?: number;
+    firmado?: boolean;
+    notificado?: boolean;
+    folios?: number;
+    esAutoDigital?: boolean; // Nuevo flag
+    estado?: string;
   };
+  contenido?: string; // Nuevo campo para contenido HTML
 }
 
 interface VersionDocumento {
@@ -142,7 +149,9 @@ interface VersionDocumento {
   fecha: string;
   usuario: string;
   cambios: string;
+  cambios: string;
   tamaño: string;
+  downloadUrl?: string; // URL opcional para descargar versión
 }
 
 interface Persona {
@@ -380,10 +389,12 @@ function ModalVisorDocumento({
   documento,
   onClose,
   processId,
+  onEdit,
 }: {
   documento: Documento;
   onClose: () => void;
   processId?: string;
+  onEdit?: (documento: Documento) => void;
 }) {
   const [versionSeleccionada, setVersionSeleccionada] = useState(documento.version);
   // NO mostrar documento automáticamente - el usuario debe hacer clic en "Mostrar Documento"
@@ -426,12 +437,19 @@ function ModalVisorDocumento({
         setErrorPDF(null);
 
         // Usar buildApiUrl para construir la URL correctamente según el modo (gateway/direct)
-        // En modo directo: /disciplinary-processes/...
-        // En modo gateway: /api/v1/disciplinary-processes/...
-        const endpoint = API_MODE === 'direct'
-          ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
-          : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
-        const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
+        let downloadUrl: string;
+
+        if (documento.downloadUrl) {
+          // Si el documento ya trae una URL de descarga (ej: Autos), usarla
+          // NO remover el slash inicial, buildApiUrl lo necesita o lo maneja
+          downloadUrl = buildApiUrl('control-disciplinario', documento.downloadUrl);
+        } else {
+          // Construcción legacy para evidencias
+          const endpoint = API_MODE === 'direct'
+            ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
+            : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
+          downloadUrl = buildApiUrl('control-disciplinario', endpoint);
+        }
         const token = localStorage.getItem('esap_access_token');
 
         const headers: HeadersInit = {
@@ -459,7 +477,7 @@ function ModalVisorDocumento({
 
         // Detectar tipo de archivo basado en el nombre del documento
         const nombreArchivo = documento.nombre.toLowerCase();
-        let tipoDetectado: 'pdf' | 'word' | 'ppt' | 'xls' | 'otro' = 'otro';
+        let tipoDetectado: 'pdf' | 'word' | 'ppt' | 'xls' | 'html' | 'otro' = 'otro';
 
         if (nombreArchivo.endsWith('.pdf')) {
           tipoDetectado = 'pdf';
@@ -471,10 +489,19 @@ function ModalVisorDocumento({
           if (pdfHeader !== '%PDF') {
             const text = await blob.text();
             if (text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('<!doctype')) {
-              throw new Error('El servidor devolvió HTML en lugar de PDF. Verifique la autenticación y la URL.');
+              // Si es un auto, es normal que sea HTML
+              if (documento.metadatos?.esAutoDigital || nombreArchivo.endsWith('.html')) {
+                tipoDetectado = 'html';
+                // No lanzamos error, permitimos que se setee como html
+              } else {
+                throw new Error('El servidor devolvió HTML en lugar de PDF. Verifique la autenticación y la URL.');
+              }
+            } else {
+              throw new Error('El archivo no es un PDF válido. Header esperado: %PDF, recibido: ' + pdfHeader);
             }
-            throw new Error('El archivo no es un PDF válido. Header esperado: %PDF, recibido: ' + pdfHeader);
           }
+        } else if (documento.metadatos?.esAutoDigital || nombreArchivo.endsWith('.html')) {
+          tipoDetectado = 'html';
         } else if (nombreArchivo.endsWith('.doc') || nombreArchivo.endsWith('.docx')) {
           tipoDetectado = 'word';
         } else if (nombreArchivo.endsWith('.ppt') || nombreArchivo.endsWith('.pptx')) {
@@ -537,11 +564,18 @@ function ModalVisorDocumento({
         return;
       }
 
+      const version = documento.versiones.find(v => v.numero === versionSeleccionada);
+
+      if (version && version.downloadUrl) {
+        toast.loading(`Descargando versión ${versionSeleccionada}...`, { id: 'download' });
+        await disciplinaryService.downloadFileFromUrl(version.downloadUrl, `Version-${versionSeleccionada}-${documento.nombre}`);
+        toast.success('Versión descargada', { id: 'download' });
+        return;
+      }
+
       toast.loading('Generando PDF...', { id: 'download' });
 
-      // Descargar el archivo original primero usando buildApiUrl
-      // En modo directo: /disciplinary-processes/...
-      // En modo gateway: /api/v1/disciplinary-processes/...
+      // Fallback para documentos sin URL específica de versión
       const endpoint = API_MODE === 'direct'
         ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
         : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
@@ -806,6 +840,18 @@ function ModalVisorDocumento({
               </div>
             </div>
 
+            {/* Botón Editar - Solo para Autos DIGITALES del sistema y si hay función de edición */}
+            {documento.tipo === 'auto' && documento.metadatos?.esAutoDigital && onEdit && (
+              <button
+                onClick={() => onEdit(documento)}
+                className="p-2 mr-2 hover:bg-white/50 rounded-lg transition-colors text-blue-700 bg-blue-50 border border-blue-200 flex items-center gap-1"
+                title="Editar Documento"
+              >
+                <Edit2 className="w-4 h-4" />
+                <span className="text-sm font-medium">Editar</span>
+              </button>
+            )}
+
             <button onClick={handleCerrarModal} className="p-2 hover:bg-white/50 rounded-lg transition-colors">
               <X className="w-6 h-6 text-gray-600" />
             </button>
@@ -980,52 +1026,62 @@ function ModalVisorDocumento({
                   )}
                   {pdfBlobUrl && !cargandoPDF && !errorPDF && tipoArchivo !== 'pdf' && (
                     <div className="h-full w-full bg-white relative flex items-center justify-center">
-                      {/* Usar object tag para mejor compatibilidad con diferentes tipos de archivo */}
-                      <object
-                        data={pdfBlobUrl}
-                        type={
-                          tipoArchivo === 'word'
-                            ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                            : tipoArchivo === 'ppt'
-                              ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-                              : tipoArchivo === 'xls'
-                                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                                : 'application/octet-stream'
-                        }
-                        className="w-full h-full"
-                        style={{ minHeight: '100%', width: '100%' }}
-                      >
-                        {/* Fallback: si el object no funciona, mostrar mensaje y opción de descarga */}
-                        <div className="flex flex-col items-center justify-center p-8 text-center">
-                          <FileText className="w-16 h-16 text-gray-400 mb-4" />
-                          <p className="text-lg font-semibold text-gray-700 mb-2">
-                            Vista previa no disponible
-                          </p>
-                          <p className="text-sm text-gray-600 mb-6">
-                            El navegador no puede mostrar este tipo de archivo directamente.
-                          </p>
-                          <Button
-                            onClick={() => {
-                              const link = document.createElement('a');
-                              link.href = pdfBlobUrl;
-                              link.download = documento.nombre;
-                              document.body.appendChild(link);
-                              link.click();
-                              document.body.removeChild(link);
-                            }}
-                            className="bg-blue-600 hover:bg-blue-700 text-white"
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Descargar para ver
-                          </Button>
-                        </div>
-                      </object>
+                      {tipoArchivo === 'html' ? (
+                        <iframe
+                          src={pdfBlobUrl}
+                          className="w-full h-full border-none bg-white p-8"
+                          title="Vista Previa HTML"
+                        />
+                      ) : (
+                        <object
+                          data={pdfBlobUrl}
+                          type={
+                            tipoArchivo === 'word'
+                              ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                              : tipoArchivo === 'ppt'
+                                ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+                                : tipoArchivo === 'xls'
+                                  ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                  : 'application/octet-stream'
+                          }
+                          className="w-full h-full"
+                          style={{ minHeight: '100%', width: '100%' }}
+                        >
+                          {/* Fallback: si el object no funciona, mostrar mensaje y opción de descarga */}
+                          <div className="flex flex-col items-center justify-center p-8 text-center">
+                            <FileText className="w-16 h-16 text-gray-400 mb-4" />
+                            <p className="text-lg font-semibold text-gray-700 mb-2">
+                              Vista previa no disponible
+                            </p>
+                            <p className="text-sm text-gray-600 mb-6">
+                              El navegador no puede mostrar este tipo de archivo directamente.
+                            </p>
+                            <Button
+                              onClick={() => {
+                                const link = document.createElement('a');
+                                link.href = pdfBlobUrl;
+                                link.download = documento.nombre;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                              }}
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                            >
+                              <Download className="w-4 h-4 mr-2" />
+                              <Download className="w-4 h-4 mr-2" />
+                              Descargar Original (PDF)
+                            </Button>
+                          </div>
+
+                        </object>
+                      )}
                     </div>
                   )}
                 </div>
               </Card>
             </div>
-          )}
+          )
+          }
 
           {/* Información del Documento - Siempre visible */}
           <div className="p-6 overflow-y-auto flex-1" style={{ maxHeight: viendoPDF ? 'calc(95vh - 700px)' : 'calc(95vh - 280px)' }}>
@@ -1118,10 +1174,10 @@ function ModalVisorDocumento({
               </div>
             </div>
           </div>
-        </div>
+        </div >
 
         {/* Footer */}
-        <div className="p-6 border-t bg-gray-50 flex gap-3">
+        < div className="p-6 border-t bg-gray-50 flex gap-3" >
           <Button
             onClick={handleDescargarVersion}
             style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -1129,21 +1185,23 @@ function ModalVisorDocumento({
             <Download className="w-4 h-4 mr-2" />
             Descargar Versión {versionSeleccionada}
           </Button>
-          {(documento.urlExterna || (processId && documento.id)) && (
-            <Button
-              onClick={() => setViendoPDF(!viendoPDF)}
-              className={viendoPDF ? "bg-gray-600" : "bg-purple-600"}
-            >
-              <Eye className="w-4 h-4 mr-2" />
-              {viendoPDF ? 'Ocultar Documento' : 'Mostrar Documento'}
-            </Button>
-          )}
+          {
+            (documento.urlExterna || (processId && documento.id)) && (
+              <Button
+                onClick={() => setViendoPDF(!viendoPDF)}
+                className={viendoPDF ? "bg-gray-600" : "bg-purple-600"}
+              >
+                <Eye className="w-4 h-4 mr-2" />
+                {viendoPDF ? 'Ocultar Documento' : 'Mostrar Documento'}
+              </Button>
+            )
+          }
           <Button onClick={handleCerrarModal} className="bg-gray-500 ml-auto">
             Cerrar
           </Button>
-        </div>
-      </motion.div>
-    </motion.div>
+        </div >
+      </motion.div >
+    </motion.div >
   );
 }
 
@@ -1453,6 +1511,7 @@ export function ExpedienteElectronico() {
   const [filterTipo, setFilterTipo] = useState('all');
   const [showModalVisor, setShowModalVisor] = useState(false);
   const [showModalSubir, setShowModalSubir] = useState(false);
+  const [editingAutoForModal, setEditingAutoForModal] = useState<Documento | null>(null);
 
   // Modales especializados
   const [showModalAutos, setShowModalAutos] = useState(false);
@@ -1473,6 +1532,44 @@ export function ExpedienteElectronico() {
   const [showProcesoDropdown, setShowProcesoDropdown] = useState(false);
   const [procesosRecientes, setProcesosRecientes] = useState<Proceso[]>([]);
   const [radicadosDisponibles, setRadicadosDisponibles] = useState<string[]>([]);
+
+  // Editor State
+  const [showEditor, setShowEditor] = useState(false);
+  const [editingDoc, setEditingDoc] = useState<any>(null);
+
+  // MANEJO DE EDICIÓN DE DOCUMENTOS
+  const handleGuardarEdicion = async (nuevoContenido: string, nuevaVersion: number) => {
+    try {
+      if (!editingDoc) return;
+
+      toast.loading('Guardando nueva versión...', { id: 'save-version' });
+
+      console.log('Guardando edición para documento ID:', editingDoc.id);
+
+      // 1. Actualizar contenido en backend (esto debe crear nueva versión)
+      await disciplinaryService.updateAutoContent(editingDoc.id, nuevoContenido);
+
+      // 2. Recargar documentos
+      if (procesoSeleccionado?.id) {
+        const respuesta = await disciplinaryService.getDocumentosExpediente(procesoSeleccionado.id);
+        if (respuesta && respuesta.documentos) {
+          setDocumentos(respuesta.documentos as Documento[]);
+
+          // Actualizar documento en edición si sigue abierto (opcional, por ahora cerramos)
+          setShowEditor(false);
+          setEditingDoc(null);
+
+          toast.success('Nueva versión guardada exitosamente', { id: 'save-version' });
+        }
+      }
+    } catch (error: any) {
+      console.error('Error al guardar edición:', error);
+      toast.error('Error al guardar versión', {
+        id: 'save-version',
+        description: error.message || 'No se pudo actualizar el documento'
+      });
+    }
+  };
 
   // Cargar procesos desde la API
   useEffect(() => {
@@ -1588,7 +1685,11 @@ export function ExpedienteElectronico() {
     setShowModalAutos(false);
     setShowModalEvidencias(false);
     setShowModalOficios(false);
+    setShowModalAutos(false);
+    setShowModalEvidencias(false);
+    setShowModalOficios(false);
     setRefreshTrigger(prev => prev + 1);
+    setEditingAutoForModal(null); // Limpiar edición
   };
 
   const handleSeleccionTipoDocumento = (tipo: 'auto' | 'evidencia' | 'oficio' | 'otro') => {
@@ -1642,11 +1743,17 @@ export function ExpedienteElectronico() {
 
       toast.loading('Descargando documento...', { id: 'download-doc' });
 
-      await disciplinaryService.downloadDocument(
-        procesoSeleccionado.id,
-        doc.id,
-        doc.nombre
-      );
+      toast.loading('Descargando documento...', { id: 'download-doc' });
+
+      if (doc.downloadUrl) {
+        await disciplinaryService.downloadFileFromUrl(doc.downloadUrl, doc.nombre);
+      } else {
+        await disciplinaryService.downloadDocument(
+          procesoSeleccionado.id,
+          doc.id,
+          doc.nombre
+        );
+      }
 
       toast.success('Descarga completada', {
         id: 'download-doc',
@@ -2475,7 +2582,8 @@ export function ExpedienteElectronico() {
             proceso={mapProcesoToEspecializado(procesoSeleccionado)}
             onClose={handleCerrarModalesEspecializados}
             onCrearAuto={handleCerrarModalesEspecializados}
-            initialView="crear"
+            initialView={editingAutoForModal ? 'crear' : 'lista'} // Si hay edición, ir directo al form
+            initialAuto={editingAutoForModal}
           />
         )}
 
@@ -2503,6 +2611,26 @@ export function ExpedienteElectronico() {
               setShowModalVisor(false);
               setDocumentoSeleccionado(null);
             }}
+            onEdit={(doc) => {
+              // En lugar de EditorDocumentos, abrir ModalGestionAutos en modo edición
+              setEditingAutoForModal(doc);
+              setShowModalVisor(false);
+              setShowModalAutos(true);
+            }}
+          />
+        )}
+
+        {showEditor && editingDoc && procesoSeleccionado && (
+          <EditorDocumentos
+            proceso={mapProcesoToEspecializado(procesoSeleccionado)}
+            plantilla={{ nombre: editingDoc.nombre, contenido: editingDoc.contenido || '' }}
+            borradorExistente={editingDoc}
+            onClose={() => {
+              setShowEditor(false);
+              setEditingDoc(null);
+            }}
+            onGuardar={handleGuardarEdicion}
+            onEnviarRevision={() => { }} // No aplica para edición directa en expediente por ahora
           />
         )}
 

@@ -230,7 +230,7 @@ export class ProcessController {
       // Obtener proceso para usar su radicado (sin cargar autos para evitar errores)
       const proceso = await this.processService.findById(id, false);
       console.log('✅ Proceso encontrado:', proceso.radicadoProceso);
-      
+
       let tipoDocumento = body.tipo || 'DOCUMENTO';
       let rutaRelativa: string;
       let nombreDocumento: string;
@@ -283,7 +283,7 @@ export class ProcessController {
       let etapa = body.etapa || null;
       let descripcionFinal = body.descripcion || '';
       const participantes = body.participantes ? Number(body.participantes) : undefined;
-      
+
       console.log('📋 Datos a guardar:', {
         nombreDocumento,
         tipoDocumento,
@@ -352,77 +352,150 @@ export class ProcessController {
   })
   async getDocuments(@Param('id') id: string) {
     try {
-      // Obtener evidencias del proceso directamente sin cargar relaciones pesadas
+      // Obtener evidencias del proceso
       const evidencias = await this.processService.getEvidenceByProcessId(id);
-      
-      // Verificar que el proceso existe y obtener solo su radicado
-      // No cargamos autos para evitar errores si faltan columnas en la BD
-      const proceso = await this.processService.findById(id, false);
 
-    // Construir documentos con toda la información guardada en BD
-    const documentos = evidencias.map(evidencia => {
-      // Formatear tamaño
-      const tamañoKB = evidencia.fileSize ? (evidencia.fileSize / 1024).toFixed(0) : '0';
-      const tamaño = evidencia.fileSize >= 1024 * 1024 
-        ? `${(evidencia.fileSize / (1024 * 1024)).toFixed(2)} MB`
-        : `${tamañoKB} KB`;
+      // Obtener el proceso con sus autos
+      const proceso = await this.processService.findById(id, true);
 
-      // Mapear tipoDocumento al formato esperado por el frontend
-      const tipoMap: Record<string, 'auto' | 'evidencia' | 'oficio' | 'notificacion' | 'acta' | 'otro'> = {
-        'AUTO': 'auto',
-        'EVIDENCIA': 'evidencia',
-        'OFICIO': 'oficio',
-        'NOTIFICACION': 'notificacion',
-        'ACTA': 'acta',
-      };
-      const tipo = tipoMap[evidencia.tipoDocumento?.toUpperCase() || ''] || 'otro';
+      // Mapear evidencias a documentos
+      const documentosEvidencia = evidencias.map(evidencia => {
+        // Formatear tamaño
+        const tamañoKB = evidencia.fileSize ? (evidencia.fileSize / 1024).toFixed(0) : '0';
+        const tamaño = evidencia.fileSize >= 1024 * 1024
+          ? `${(evidencia.fileSize / (1024 * 1024)).toFixed(2)} MB`
+          : `${tamañoKB} KB`;
 
-      // Detectar si la URL es externa (empieza con http:// o https://)
-      const isUrlExterna = evidencia.url && (evidencia.url.startsWith('http://') || evidencia.url.startsWith('https://'));
-      
-      return {
-        id: evidencia.id,
-        nombre: evidencia.nombreDocumento || evidencia.filename || 'Documento sin nombre',
-        archivoNombre: evidencia.filename || evidencia.nombreDocumento || 'Documento sin nombre',
-        tipo,
-        categoria: evidencia.categoria || null,
-        destinatario: evidencia.destinatario || null,
-        asunto: evidencia.asunto || null,
-        participantes: evidencia.participantes ?? null,
-        etapa: evidencia.etapa || 'Sin etapa',
-        version: 1, // Por ahora siempre versión 1
-        tamaño,
-        fechaCarga: evidencia.createdAt?.toISOString() || new Date().toISOString(),
-        usuarioCarga: evidencia.usuarioCarga || 'Sistema',
-        descripcion: evidencia.description || '',
-        url: evidencia.url,
-        urlExterna: isUrlExterna ? evidencia.url : null,
-        downloadUrl: isUrlExterna ? null : `/control-disciplinario/api/v1/disciplinary-processes/${id}/documents/${evidencia.id}/download`,
-        processId: evidencia.processId,
-        fileType: evidencia.fileType,
-        fileSize: evidencia.fileSize,
-        versiones: [
-          {
-            numero: 1,
-            fecha: evidencia.createdAt?.toISOString() || new Date().toISOString(),
-            usuario: evidencia.usuarioCarga || 'Sistema',
-            cambios: 'Versión inicial',
-            tamaño,
+        // Mapear tipoDocumento
+        const tipoMap: Record<string, 'auto' | 'evidencia' | 'oficio' | 'notificacion' | 'acta' | 'otro'> = {
+          'AUTO': 'auto',
+          'EVIDENCIA': 'evidencia',
+          'OFICIO': 'oficio',
+          'NOTIFICACION': 'notificacion',
+          'ACTA': 'acta',
+        };
+        const tipo = tipoMap[evidencia.tipoDocumento?.toUpperCase() || ''] || 'otro';
+
+        // Detectar si la URL es externa
+        const isUrlExterna = evidencia.url && (evidencia.url.startsWith('http://') || evidencia.url.startsWith('https://'));
+
+        return {
+          id: evidencia.id,
+          nombre: evidencia.nombreDocumento || evidencia.filename || 'Documento sin nombre',
+          archivoNombre: evidencia.filename || evidencia.nombreDocumento || 'Documento sin nombre',
+          tipo, // Si es 'auto' aquí, es un archivo subido manualmente como auto
+          etapa: evidencia.etapa || 'Sin etapa',
+          version: 1,
+          tamaño,
+          fechaCarga: evidencia.createdAt?.toISOString() || new Date().toISOString(),
+          usuarioCarga: evidencia.usuarioCarga || 'Sistema',
+          descripcion: evidencia.description || '',
+          url: evidencia.url,
+          urlExterna: isUrlExterna ? evidencia.url : null,
+          downloadUrl: isUrlExterna ? null : `/control-disciplinario/api/v1/disciplinary-processes/${id}/documents/${evidencia.id}/download`,
+          processId: evidencia.processId,
+          fileType: evidencia.fileType,
+          fileSize: evidencia.fileSize,
+          versiones: [
+            {
+              numero: 1,
+              fecha: evidencia.createdAt?.toISOString() || new Date().toISOString(),
+              usuario: evidencia.usuarioCarga || 'Sistema',
+              cambios: 'Versión inicial',
+              tamaño,
+            }
+          ],
+          metadatos: {
+            firmado: false,
+            notificado: false,
+            esAutoDigital: false, // Flag para distinguir
           },
-        ],
-        metadatos: {
-          firmado: false,
-          notificado: false,
-        },
-      };
-    });
+        };
+      });
+
+      // Mapear autos procesales a documentos
+      const documentosAutos = (proceso.autos || []).map((auto: any) => {
+        // Calcular tamaño aproximado del contenido HTML
+        const sizeBytes = new TextEncoder().encode(auto.contenido || '').length;
+        const tamaño = sizeBytes >= 1024 * 1024
+          ? `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
+          : `${Math.max(1, (sizeBytes / 1024)).toFixed(0)} KB`;
+
+        return {
+          id: auto.id,
+          nombre: `${auto.tipo || 'Auto'} ${auto.numero || ''}`.trim(),
+
+          tipo: 'auto',
+          etapa: 'Gestión', // O la etapa del auto
+          version: auto.currentVersion || 1,
+          tamaño,
+          fechaCarga: auto.createdAt?.toISOString() || new Date().toISOString(),
+          usuarioCarga: 'Sistema', // O el creador
+          descripcion: auto.asunto || '',
+          // Si el auto tiene un archivo físico asociado (pdf), usar esa URL.
+          // Si no, usar la URL del generador de PDF (HTML).
+          url: null,
+          urlExterna: null,
+          downloadUrl: auto.documentUrl
+            ? auto.documentUrl
+            : `/disciplinary-autos/${auto.id}/pdf`,
+          processId: id,
+          // Si hay archivo, usar su tipo. Si no, es HTML.
+          fileType: auto.documentUrl ? (auto.documentType || 'application/pdf') : 'text/html',
+          archivoNombre: auto.documentName || `Auto-${auto.numero || 'borrador'}.${auto.documentUrl ? 'pdf' : 'html'}`,
+          fileSize: sizeBytes,
+          versiones: [
+            // Agregar la versión actual como la más reciente
+            {
+              numero: auto.currentVersion || 1,
+              fecha: auto.updatedAt || auto.createdAt,
+              usuario: 'Usuario Actual', // Idealmente obtener nombre
+              cambios: 'Versión Actual',
+              tamaño: sizeBytes >= 1024 * 1024
+                ? `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
+                : `${Math.max(1, (sizeBytes / 1024)).toFixed(0)} KB`,
+              downloadUrl: auto.documentUrl
+                ? auto.documentUrl
+                : `/disciplinary-autos/${auto.id}/pdf` // La url actual
+            },
+            ...(auto.versions || []).map((v: any) => {
+              const vSizeBytes = new TextEncoder().encode(v.contenido || '').length;
+              const vTam = vSizeBytes >= 1024 * 1024
+                ? `${(vSizeBytes / (1024 * 1024)).toFixed(2)} MB`
+                : `${Math.max(1, (vSizeBytes / 1024)).toFixed(0)} KB`;
+
+              return {
+                numero: v.versionNumber,
+                fecha: v.createdAt,
+                usuario: v.createdBy || 'Sistema',
+                cambios: v.changeReason || 'Versión guardada',
+                tamaño: vTam,
+                downloadUrl: `/disciplinary-autos/${auto.id}/versions/${v.versionNumber}/pdf` // URL de descarga para la versión
+              };
+            })],
+          contenido: auto.contenido, // Incluir contenido para el editor
+          metadatos: {
+            firmado: auto.estado === 'FIRMADO' || auto.estado === 'NOTIFICADO',
+            notificado: auto.estado === 'NOTIFICADO',
+            esAutoDigital: true,
+            estado: auto.estado,
+            tipoAuto: auto.tipo, // Tipo específico para edición
+            numero: auto.numero // Número para pre-llenar título
+          },
+        };
+      });
+
+      // Combinar y ordenar por fecha
+      const todosDocumentos = [...documentosEvidencia, ...documentosAutos].sort((a, b) => {
+        return new Date(b.fechaCarga).getTime() - new Date(a.fechaCarga).getTime();
+      });
 
       return {
         proceso: {
           id: proceso.id,
           radicadoProceso: proceso.radicadoProceso,
         },
-        documentos,
+        documentos: todosDocumentos,
       };
     } catch (error) {
       console.error('❌ ERROR en getDocuments:', error);
@@ -468,7 +541,7 @@ export class ProcessController {
     }
 
     const rutaCompleta = this.storageService.getFullPath(documento.url);
-    
+
     // Verificar que el archivo existe
     if (!fs.existsSync(rutaCompleta)) {
       throw new HttpException('Archivo no encontrado en el servidor', HttpStatus.NOT_FOUND);

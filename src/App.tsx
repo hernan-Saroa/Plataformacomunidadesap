@@ -200,8 +200,8 @@ export default function App() {
       const roles = Array.isArray(user?.roles)
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
         : [];
-      const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL') || roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER');
+      const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL');
       const emailLower = userEmail.toLowerCase();
 
       let nextView: Vista = 'portal';
@@ -439,8 +439,8 @@ export default function App() {
 
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
-      const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL') || roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER');
+      const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
