@@ -80,7 +80,7 @@ export class DocumentosConsultaController {
 
             // Sanitizar el ID para el nombre del archivo
             const sanitizedId = consultaId.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
-            const zipFilename = `consulta_juridica_${sanitizedId}.zip`;
+            const zipFilename = `Consultas_${sanitizedId}.zip`;
 
             res.set({
                 'Content-Type': 'application/zip',
