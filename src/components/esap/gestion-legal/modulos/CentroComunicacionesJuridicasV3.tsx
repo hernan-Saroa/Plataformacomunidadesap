@@ -130,20 +130,50 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     }
   };
 
-  // Sincronizar con Microsoft Graph
+  // Sincronizar con Microsoft Graph de forma progresiva
   const handleSyncCorreos = async () => {
     setSyncing(true);
+    let nextLink: string | null | undefined = undefined;
+    let totalSynced = 0;
+    let totalErrors = 0;
+    let pagesProcessed = 0;
+    const MAX_PAGES = 10; // Límite de 500 correos (10 * 50)
+
     try {
-      const result = await correosJuridicosService.syncCorreos();
-      toast.success(`✅ Sincronización completada: ${result.synced} correos nuevos`, {
-        description: result.errors > 0 ? `${result.errors} errores` : undefined
+      toast.info("Iniciando sincronización de correos...");
+
+      do {
+        // Notificar progreso si no es la primera página
+        if (pagesProcessed > 0) {
+          toast.loading(`Cargando lote ${pagesProcessed + 1}...`, { id: 'sync-progress', duration: 2000 });
+        }
+
+        const result = await correosJuridicosService.syncCorreos(nextLink ?? undefined);
+
+        totalSynced += result.synced;
+        totalErrors += result.errors;
+        nextLink = result.nextLink; // Actualizar nextLink para la siguiente iteración
+        pagesProcessed++;
+
+        // Si encontramos nuevos correos, refrescar la lista inmediatamente para efecto "poco a poco"
+        if (result.synced > 0) {
+          await loadCorreosFromAPI();
+        }
+
+      } while (nextLink && pagesProcessed < MAX_PAGES);
+
+      toast.dismiss('sync-progress');
+      toast.success(`✅ Sincronización completada: ${totalSynced} correos nuevos procesados`, {
+        description: totalErrors > 0 ? `${totalErrors} errores` : undefined
       });
-      await loadCorreosFromAPI();
+
     } catch (error) {
       console.error('Error sincronizando:', error);
       toast.error('Error al sincronizar con Microsoft 365');
     } finally {
       setSyncing(false);
+      // Asegurar que tenemos la última versión
+      loadCorreosFromAPI();
     }
   };
 
