@@ -84,18 +84,10 @@ export class GraduationCertificatesService {
       where.graduationDate = Raw((alias) => `${alias} = :gradDate`, { gradDate });
     }
 
-    const graduate = await this.graduateRepository.findOne({ where });
-
     const lastNameNormalized = lastName ? this.normalizeName(lastName) : '';
+    const graduate = await this.findGraduateMatch(where, lastNameNormalized);
 
     if (!graduate) {
-      return {
-        existe: false,
-        mensaje: 'No se encontr? un graduado con esos datos',
-      };
-    }
-
-    if (lastNameNormalized && !this.matchesLastName(graduate.fullName, lastNameNormalized)) {
       return {
         existe: false,
         mensaje: 'No se encontr? un graduado con esos datos',
@@ -112,9 +104,19 @@ export class GraduationCertificatesService {
   /**
    * AUTOSERVICIO: Generar código de validación
    */
-  async generarCodigoValidacion(idNumber: string, idIssueDate?: string) {
+  async generarCodigoValidacion(
+    idNumber: string,
+    idIssueDate?: string,
+    graduationDate?: string,
+    lastName?: string,
+  ) {
     // Verificar que el graduado existe
-    const verificacion = await this.verificarGraduado(idNumber, idIssueDate);
+    const verificacion = await this.verificarGraduado(
+      idNumber,
+      idIssueDate,
+      graduationDate,
+      lastName,
+    );
     if (!verificacion.existe) {
       throw new NotFoundException('No se encontró un graduado con esos datos');
     }
@@ -210,13 +212,12 @@ export class GraduationCertificatesService {
       where.graduationDate = Raw((alias) => `${alias} = :gradDate`, { gradDate });
     }
 
-    let graduate = await this.graduateRepository.findOne({ where });
+    const graduate = await this.findGraduateMatch(where, lastNameNormalized);
 
-    if (graduate && lastNameNormalized && !this.matchesLastName(graduate.fullName, lastNameNormalized)) {
+    if (!graduate && lastNameNormalized) {
       this.logger.warn(
         `Apellido no coincide para idNumber=${dto.idNumber?.trim()} lastName=${dto.lastName?.trim() || 'N/A'}`,
       );
-      graduate = null;
     }
 
     if (!graduate) {
@@ -615,6 +616,24 @@ export class GraduationCertificatesService {
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  private async findGraduateMatch(
+    where: Record<string, any>,
+    lastNameNormalized: string,
+  ): Promise<Graduate | null> {
+    const graduates = await this.graduateRepository.find({ where });
+    if (!graduates.length) {
+      return null;
+    }
+    if (!lastNameNormalized) {
+      return graduates[0];
+    }
+    return (
+      graduates.find((graduate) =>
+        this.matchesLastName(graduate.fullName, lastNameNormalized),
+      ) || null
+    );
   }
 
   private matchesLastName(fullName: string, lastNameNormalized: string): boolean {
