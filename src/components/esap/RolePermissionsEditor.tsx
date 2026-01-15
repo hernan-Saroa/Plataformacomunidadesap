@@ -42,8 +42,8 @@ import {
 import { toast } from 'sonner@2.0.3';
 
 // Importar configuración centralizada de permisos (fallback)
-import { PERMISSION_MODULES } from '../../data/permissions-config';
-import type { Permission, PermissionModule } from '../../data/permissions-config';
+import { PERMISSION_MODULES } from '../../data/permissions-config-updated';
+import type { Permission, PermissionModule } from '../../data/permissions-config-updated';
 import { modulesService } from '../../services/api/modules.service';
 import { rolesService } from '../../services/api';
 
@@ -110,7 +110,7 @@ export function RolePermissionsEditor({
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !role?.id) return;
 
     let cancelled = false;
     const loadPermissions = async () => {

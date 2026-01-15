@@ -2,7 +2,7 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { Actuacion } from './actuacion.entity';
 import { DecisionDisciplinaria } from './decision-disciplinaria.entity';
-
+import { Evidencia } from './evidencia.entity';
 import { Documento } from './documento.entity';
 
 @Entity('expedientes', { schema: 'legal_management' })
@@ -18,6 +18,9 @@ export class Expediente {
 
     @OneToMany(() => Documento, (doc) => doc.expediente)
     documentos: Documento[];
+
+    @OneToMany(() => Evidencia, (evidencia) => evidencia.expediente)
+    evidencias: Evidencia[];
 
     documentosCount: number = 0;
 

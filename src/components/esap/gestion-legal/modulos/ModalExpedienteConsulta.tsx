@@ -7,8 +7,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { getServiceUrl } from '../../../../config/environment';
-import { legalService } from '../../../../services/api/legal.service';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
+import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
 import {
   FileQuestion, Scale, User, Calendar, Clock, AlertTriangle,
   Download, Eye, ExternalLink, Paperclip, CheckCircle,
@@ -91,6 +91,10 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, false);
       toast.dismiss();
       toast.success('Borrador guardado correctamente');
+      // Recargar datos para reflejar el borrador guardado
+      if (onUpdate) {
+        onUpdate();
+      }
     } catch (error) {
       console.error('Error guardando borrador:', error);
       toast.dismiss();
@@ -101,21 +105,40 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const handleEnviarRespuesta = async () => {
     if (!consulta?.uuid || !respuestaTexto.trim()) return;
 
-    if (!confirm('¿Está seguro de enviar esta respuesta? La consulta quedará marcada como respondida.')) {
+    // Validar que tenga email del solicitante
+    if (!consulta.emailSolicitante) {
+      toast.error('No se puede enviar: el solicitante no tiene correo electrónico registrado');
+      return;
+    }
+
+    if (!confirm(`¿Está seguro de enviar esta respuesta por correo a ${consulta.emailSolicitante}?`)) {
       return;
     }
 
     try {
-      toast.loading('Enviando respuesta...');
+      toast.loading('Enviando respuesta por correo...', { id: 'send-response' });
+
+      // 1. Enviar correo al solicitante
+      const asunto = `Respuesta a Consulta Jurídica ${consulta.id} - ${consulta.funcionarioSolicitante}`;
+      await correosJuridicosService.sendEmail({
+        to: consulta.emailSolicitante,
+        subject: asunto,
+        body: respuestaTexto
+      });
+
+      // 2. Guardar respuesta en BD y marcar como respondida
       await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, true);
-      toast.dismiss();
-      toast.success('Respuesta enviada correctamente');
-      onClose(); // Cerrar modal o recargar datos
-      // Podríamos disparar un evento de recarga si lo recibimos por props
+
+      toast.success('✅ Respuesta enviada correctamente', {
+        id: 'send-response',
+        description: `Correo enviado a ${consulta.emailSolicitante}`
+      });
+
+      if (onUpdate) onUpdate();
+      onClose();
     } catch (error) {
       console.error('Error enviando respuesta:', error);
-      toast.dismiss();
-      toast.error('Error al enviar respuesta');
+      toast.error('Error al enviar la respuesta', { id: 'send-response' });
     }
   };
 
@@ -292,7 +315,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
     try {
       toast.loading('Asignando abogado...', { id: 'assign-lawyer' });
-      await legalService.updateConsultaJuridica(consulta.uuid, { abogadoAsignadoId: abogadoSeleccionado });
+      await legalService.updateConsultaJuridica(consulta.uuid || '', { abogadoAsignadoId: abogadoSeleccionado });
 
       // Actualizar UI localmente (idealmente recargar consulta completa)
       const abogado = abogados.find(a => a.id === abogadoSeleccionado);
@@ -380,7 +403,18 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
         toast.error('No hay URL de archivo', { id: 'descargar-doc' });
         return;
       }
-      const fullUrl = url.startsWith('http') ? url : `${baseUrl}/legal/${url}`;
+
+      // Extraer solo el nombre del archivo
+      let filename = url;
+      if (url.includes('/files/')) {
+        filename = url.split('/files/').pop() || url;
+      } else if (url.includes('/')) {
+        filename = url.split('/').pop() || url;
+      }
+
+      // Construir URL: directo sin prefix, gateway con /legal/api/v1/
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      const fullUrl = url.startsWith('http') ? url : `${baseUrl}${prefix}/files/${filename}`;
 
       const response = await fetch(fullUrl);
       const blob = await response.blob();
@@ -417,9 +451,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
   };
 
-  // Función auxiliar para construir URL completa sin duplicar prefijos
-  // Función auxiliar para construir URL completa usando el patrón del gateway
-  // Gateway pattern: /legal/api/v1/files/:filename
+  // Función auxiliar para construir URL completa
+  // Direct mode: localhost:3008/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename
   const getFullUrl = (url: string) => {
     if (!url) return '';
     if (url.startsWith('http')) return url;
@@ -434,7 +468,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       filename = url.split('/').pop() || url;
     }
 
-    return `${baseUrl}/legal/api/v1/files/${filename}`;
+    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    return `${baseUrl}${prefix}/files/${filename}`;
   };
 
   /**
@@ -464,7 +499,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     toast.loading('📦 Preparando descarga ZIP...', { id: 'download-docs' });
 
     try {
-      const url = legalService.getDocumentosConsultaDownloadUrl(consulta.uuid);
+      const baseUrl = getServiceUrl('legal');
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      const url = `${baseUrl}${prefix}/consultas-juridicas/${consulta.uuid}/documentos/download-zip`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -475,7 +512,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `consulta_juridica_${consulta.id || consulta.uuid}.zip`;
+      link.download = `Consultas_${consulta.id || consulta.uuid}.zip`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -586,7 +623,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-7xl h-[95vh] flex flex-col p-0">
+        <DialogContent hideCloseButton className="max-w-5xl h-[95vh] flex flex-col p-0">
           <DialogTitle className="sr-only">Expediente Consulta Jurídica {consulta.id}</DialogTitle>
           <DialogDescription className="sr-only">
             Visualización completa del expediente de consulta jurídica
@@ -595,7 +632,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           {/* HEADER - flex-shrink-0 (siempre visible) */}
           <ModalHeaderClean
             icono={FileQuestion}
-            colorIcono={semaforo.diasRestantes <= 3 ? 'red' : semaforo.diasRestantes <= 5 ? 'orange' : 'green'}
+            colorIcono={consulta.diasRestantes <= 3 ? 'red' : consulta.diasRestantes <= 5 ? 'orange' : 'green'}
             titulo={`Consulta ${consulta.id}`}
             subtitulo={consulta.temaJuridico}
             badgePrincipal={`${semaforo.icon} ${semaforo.label}`}
@@ -957,6 +994,18 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                           )}
                         </div>
                       </div>
+
+                      {/* Indicador de envío por correo */}
+                      {consulta.emailSolicitante && (
+                        <div className="bg-blue-50 p-3 mb-4 rounded-lg border border-blue-200 flex items-center gap-3">
+                          <Mail className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-semibold text-blue-800">Respuesta enviada por correo</p>
+                            <p className="text-xs text-blue-600">Destinatario: {consulta.emailSolicitante}</p>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="bg-white p-6 rounded-lg border border-green-200">
                         <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
                           {consulta.respuesta}

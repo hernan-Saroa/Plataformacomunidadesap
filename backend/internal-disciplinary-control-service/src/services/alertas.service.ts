@@ -15,7 +15,7 @@ export class AlertasService {
   constructor(
     @InjectRepository(AlertaEnviada)
     private alertasRepository: Repository<AlertaEnviada>,
-  ) {}
+  ) { }
 
   /**
    * Listar alertas con filtros y paginación
@@ -71,9 +71,9 @@ export class AlertasService {
 
     // Transformar para incluir información del proceso
     const alertasTransformadas = alertas.map(alerta => {
-      const nombreDenunciado = alerta.termino?.proceso?.news?.disciplinable?.[0]?.nombre || 
-                               alerta.termino?.numeroProceso || 
-                               'Proceso sin nombre';
+      const nombreDenunciado = alerta.termino?.proceso?.news?.disciplinable?.[0]?.nombre ||
+        alerta.termino?.numeroProceso ||
+        'Proceso sin nombre';
       const nombreProceso = `${alerta.termino?.numeroProceso} - ${nombreDenunciado}`;
       return transformAlerta(alerta, nombreProceso);
     });
@@ -105,11 +105,11 @@ export class AlertasService {
     }
 
     // Transformar para compatibilidad con frontend
-    const nombreDenunciado = alerta.termino?.proceso?.news?.disciplinable?.[0]?.nombre || 
-                             alerta.termino?.numeroProceso || 
-                             'Proceso sin nombre';
+    const nombreDenunciado = alerta.termino?.proceso?.news?.disciplinable?.[0]?.nombre ||
+      alerta.termino?.numeroProceso ||
+      'Proceso sin nombre';
     const nombreProceso = `${alerta.termino?.numeroProceso} - ${nombreDenunciado}`;
-    
+
     return transformAlerta(alerta, nombreProceso) as any;
   }
 
@@ -134,6 +134,33 @@ export class AlertasService {
       mensaje,
       estado: EstadoAlerta.PENDIENTE,
       creadoPorId: creadoPorId || null,
+    });
+
+    return await this.alertasRepository.save(alerta);
+  }
+
+  /**
+   * Crear nueva alerta/notificación para un Auto (Sin término/regla)
+   */
+  async crearNotificacionAuto(
+    autoId: string,
+    tipo: TipoAlerta,
+    destinatario: string,
+    asunto: string,
+    mensaje: string,
+    creadoPorId?: string,
+  ): Promise<AlertaEnviada> {
+    const alerta = this.alertasRepository.create({
+      autoId,
+      tipo,
+      destinatario,
+      asunto,
+      mensaje,
+      estado: EstadoAlerta.PENDIENTE,
+      creadoPorId: creadoPorId || 'Sistema',
+      // Campos opcionales explícitamente null
+      terminoId: null,
+      reglaAlertaId: null
     });
 
     return await this.alertasRepository.save(alerta);

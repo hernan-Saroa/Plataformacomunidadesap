@@ -20,7 +20,8 @@ import {
   RefreshCw,
   Briefcase,
   Settings,
-  Mail
+  Mail,
+  History
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
@@ -30,6 +31,7 @@ import { PaginationPremium } from '../shared/PaginationPremium';
 import { CertificadoDetalleModal } from './CertificadoDetalleModal';
 import { GenerarCertificadoModal } from './GenerarCertificadoModal';
 import { CertificadoDetallePanel } from './CertificadoDetallePanel';
+import { ModalHistorialCertificados } from './ModalHistorialCertificados';
 import React from 'react';
 import { EMPLEADOS_ELEGIBLES, DATOS_LABORALES } from '../../data/empleadosElegiblesCertificados';
 import { certificadosService } from '../../services/api/certificados.service';
@@ -40,11 +42,18 @@ interface CertificadoLaboral {
   consecutivo: string;
   certificateHash: string;
   qrCode: string;
+  position_location?: string;
+  observations?: string;
+  department?: string;
+  department_parent?: string;
+  campus?: string;
+  technical_bonus?: number;
   empleado: {
     nombre: string;
     documento: string;
     cargo: string;
     dependencia: string;
+    dependenciaPadre: string;
     tipoVinculacion: string;
     fechaVinculacion: string;
     grado: string;
@@ -94,6 +103,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   const [selectedCertificado, setSelectedCertificado] = useState<CertificadoLaboral | null>(null);
   const [isDetalleOpen, setIsDetalleOpen] = useState(false);
   const [isGenerarOpen, setIsGenerarOpen] = useState(false);
+  const [isHistorialOpen, setIsHistorialOpen] = useState(false);
   const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
 
   // Estado para certificados y loading
@@ -142,16 +152,23 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         consecutivo: cert.certificate_number,
         certificateHash: cert.verification_code,
         qrCode: cert.verification_code,
+        position_location: cert.position_location || cert.positionLocation,
+        observations: cert.observations,
+        department: cert.department,
+        department_parent: cert.department_parent || cert.departmentParent,
+        campus: cert.campus,
+        technical_bonus: cert.technical_bonus,
         empleado: {
           nombre: cert.full_name,
           documento: cert.id_number,
           cargo: cert.position_category,
           dependencia: cert.department || '',
+          dependenciaPadre: cert.department_parent || cert.departmentParent || '',
           tipoVinculacion: cert.career_category,
           fechaVinculacion: cert.hiring_date,
           grado: cert.position_location || '',
           salario: Number(cert.monthly_salary),
-          email: 'email@esap.edu.co' // TODO: Obtener email real
+          email: cert.email || cert.request?.email || cert.certificate_email || cert.employee_email || 'N/A'
         },
         estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
         fechaSolicitud: cert.created_at,
@@ -165,14 +182,18 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         }
       }));
 
+      const certificadosOrdenados = [...certificadosTransformados].sort((a, b) => (
+        new Date(b.fechaSolicitud).getTime() - new Date(a.fechaSolicitud).getTime()
+      ));
+
       console.log('📊 Contador de validaciones por certificado:',
-        certificadosTransformados.map(c => ({
+        certificadosOrdenados.map(c => ({
           consecutivo: c.consecutivo,
           validaciones: c.cantidadEscaneos
         }))
       );
 
-      setCertificados(certificadosTransformados);
+      setCertificados(certificadosOrdenados);
       setTotalItems(total);
       setStats({
         certificadosEmitidos: serverStats?.totalEmitidos ?? total,
@@ -242,7 +263,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -285,48 +306,44 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => onNavigate?.('validar-qr')}
-            className="inline-flex items-center justify-center gap-2 transition-all"
+            className="inline-flex items-center justify-center gap-2 transition-all font-semibold shadow-sm hover:shadow-md"
             style={{
-              background: '#FFFFFF',
-              color: '#6B7280',
-              border: '2px solid #E5E7EB',
-              borderRadius: '8px',
-              padding: '12px 20px',
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '12px 24px',
               fontSize: '14px',
-              fontWeight: 500,
+              fontWeight: 600,
               cursor: 'pointer'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#ECFDF5';
-              e.currentTarget.style.borderColor = '#10B981';
-              e.currentTarget.style.color = '#10B981';
-              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 10px 25px rgba(41, 98, 255, 0.3)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-              e.currentTarget.style.borderColor = '#E5E7EB';
-              e.currentTarget.style.color = '#6B7280';
               e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
             }}
           >
-            <QrCode className="w-5 h-5" strokeWidth={2} />
+            <QrCode className="w-5 h-5" strokeWidth={2.5} />
             <span>Validar Certificado</span>
           </button>
 
           <button
             onClick={() => onNavigate?.('configuracion-plantilla')}
-            className="inline-flex items-center justify-center gap-2 transition-all"
+            className="inline-flex items-center justify-center gap-2 transition-all font-semibold"
             style={{
               background: '#FFFFFF',
               color: puedeConfigurarPlantilla ? '#6B7280' : '#9CA3AF',
               border: '2px solid #E5E7EB',
-              borderRadius: '8px',
-              padding: '12px 20px',
+              borderRadius: '12px',
+              padding: '12px 24px',
               fontSize: '14px',
-              fontWeight: 500,
+              fontWeight: 600,
               cursor: 'pointer',
               opacity: puedeConfigurarPlantilla ? 1 : 0.9
             }}
@@ -350,14 +367,14 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           <button
             onClick={() => fetchCertificados(true)}
             disabled={isRefreshing}
-            className="inline-flex items-center justify-center gap-2 transition-all"
+            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
             style={{
               background: '#FFFFFF',
               color: '#10B981',
               border: '2px solid #10B981',
               borderRadius: '8px',
-              padding: '12px 20px',
-              fontSize: '14px',
+              padding: '10px 16px',
+              fontSize: '13px',
               fontWeight: 500,
               cursor: isRefreshing ? 'not-allowed' : 'pointer',
               opacity: isRefreshing ? 0.6 : 1
@@ -384,14 +401,14 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
           <button
             onClick={() => setIsGenerarOpen(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
+            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
             style={{
               background: '#FFFFFF',
               color: '#003DA5',
               border: '2px solid #003DA5',
               borderRadius: '8px',
-              padding: '12px 20px',
-              fontSize: '14px',
+              padding: '10px 16px',
+              fontSize: '13px',
               fontWeight: 500,
               cursor: 'pointer'
             }}
@@ -406,6 +423,32 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           >
             <Download className="w-5 h-5" strokeWidth={2} />
             <span>Exportar</span>
+          </button>
+
+          <button
+            onClick={() => setIsHistorialOpen(true)}
+            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
+            style={{
+              background: '#FFFFFF',
+              color: '#F97316',
+              border: '2px solid #F97316',
+              borderRadius: '8px',
+              padding: '10px 16px',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#FFF7ED';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#FFFFFF';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            <History className="w-5 h-5" strokeWidth={2} />
+            <span>Ver historial</span>
           </button>
         </div>
       </motion.div>
@@ -706,7 +749,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                     </th>
                     <th className="px-4 py-4 text-left">
                       <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                        DEPENDENCIA
+                        DEPENDENCIA PADRE
+                      </span>
+                    </th>
+                    <th className="px-4 py-4 text-left">
+                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                        DEPENDENCIA HIJO
                       </span>
                     </th>
                     <th className="px-4 py-4 text-left">
@@ -784,12 +832,19 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
                         {/* Dependencia */}
                         <td className="px-4 py-4">
+                          <p className="text-sm text-gray-900">
+                            {cert.empleado.dependenciaPadre || 'Registro padre'}
+                          </p>
+                        </td>
+
+                        {/* Dependencia Hijo */}
+                        <td className="px-4 py-4">
                           <p className="text-sm text-gray-900">{cert.empleado.dependencia}</p>
                         </td>
 
                         {/* Grado */}
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <p className="text-sm text-gray-900">{cert.empleado.grado}</p>
+                          <p className="text-sm text-gray-900">{cert.observations || '-'}</p>
                         </td>
 
                         {/* Fecha Solicitud */}
@@ -840,7 +895,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                       {/* Panel Desplegable - debajo de la fila */}
                       {expandedCertId === cert.id && (
                         <tr>
-                          <td colSpan={10} className="p-0 bg-gray-50">
+                          <td colSpan={11} className="p-0 bg-gray-50">
                             <CertificadoDetallePanel
                               certificado={cert}
                               isOpen={true}
@@ -910,6 +965,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           setIsGenerarOpen(false);
         }}
         certificados={certificados}
+      />
+
+      <ModalHistorialCertificados
+        isOpen={isHistorialOpen}
+        onClose={() => setIsHistorialOpen(false)}
       />
     </div>
   );

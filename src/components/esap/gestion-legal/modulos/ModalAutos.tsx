@@ -22,7 +22,7 @@ import type { ExpedienteJudicial } from '../core/types';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
-import { getServiceUrl } from '../../../../config/environment';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { VisorPDFModal } from './VisorPDFModal';
 import { ModalNuevoAuto } from './ModalNuevoAuto';
 import { ModalHeaderClean } from './ModalHeaderClean';
@@ -42,7 +42,7 @@ const tiposAuto = [
   'Auto de Nulidad',
   'Auto de Corrección',
   'Auto Interlocutorio',
-  'Auto de Sustanciación'
+  'Auto de Sustanciaci��n'
 ];
 
 interface Auto {
@@ -101,7 +101,8 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
   }, [isOpen, expediente.id]);
 
   // Helper para construir URL correcta de archivo
-  // Gateway pattern: /legal/api/v1/files/:filename -> backend /files/:filename
+  // Direct mode: localhost:3008/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
@@ -120,8 +121,9 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
 
-    // Construir URL usando el patrón del gateway: /legal/api/v1/files/
-    return `${baseUrl}/legal/api/v1/files/${filename}`;
+    // En modo directo, no agregar prefijo /legal/
+    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    return `${baseUrl}${prefix}/files/${filename}`;
   };
 
   const handleDescargarAuto = async (auto: Auto) => {
@@ -215,9 +217,60 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
     }
   };
 
-  const handleDescargarTodos = () => {
-    const url = legalService.getAutosDownloadUrl(expediente.id);
-    window.open(url, '_blank');
+  const handleDescargarTodos = async () => {
+    // Verificar si hay autos
+    const autosConArchivo = autos.filter(a => a.archivoUrl);
+
+    if (autosConArchivo.length === 0) {
+      toast.info('No hay autos con archivos para descargar');
+      return;
+    }
+
+    toast.loading('📦 Preparando descarga ZIP...', { id: 'download-autos' });
+
+    try {
+      // Misma lógica de construcción de URL que en ModalEvidencias y ModalActas
+      // para asegurar consistencia y corregir el error de prefijo en el servicio
+      const baseUrl = getServiceUrl('legal');
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      // Usar expediente.radicado si existe, sino expediente.id, o el input del usuario si es el caso
+      // En ModalAutos, "expediente" es ExpedienteJudicial.
+      // El backend autos.controller espera "radicado" como parametro.
+      // Dependiendo de cómo se cargaron los autos (fecthAutos usa expediente.id), usaremos el mismo ID.
+      const radicadoTarget = expediente.id || expediente.radicado;
+
+      const url = `${baseUrl}${prefix}/autos/expediente/${radicadoTarget}/download-zip`;
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('No se encontraron archivos para descargar');
+        }
+        throw new Error('Error al descargar los autos');
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      // Normalizar nombre de archivo como solicita el usuario: Autos_NombreDelExpediente.zip
+      // Se limpia el nombre de caracteres especiales
+      const safeName = radicadoTarget.replace(/[^a-zA-Z0-9]/g, '_');
+      link.download = `Autos_${safeName}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      toast.success('✅ Autos descargados', {
+        id: 'download-autos',
+        description: `${autosConArchivo.length} archivos en ZIP`
+      });
+    } catch (error: any) {
+      console.error('Error descargando ZIP de autos:', error);
+      toast.error(error.message || 'Error al descargar autos', { id: 'download-autos' });
+    }
   };
 
   const getEstadoBadge = (estado: string) => {
@@ -249,7 +302,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
           Autos Procesales - Expediente {expediente.id}
         </DialogTitle>

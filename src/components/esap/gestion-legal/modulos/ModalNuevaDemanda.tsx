@@ -23,6 +23,7 @@ interface ModalNuevaDemandaProps {
 export interface NuevaDemandaData {
   numeroRadicado: string;
   medioControl: string;
+  tipoProceso: string;
   demandante: string;
   tipoPersona: 'natural' | 'juridica';
   identificacionDemandante: string;
@@ -66,6 +67,18 @@ const MEDIOS_CONTROL = [
   'OTRO'
 ];
 
+// Tipos de Procesos Judiciales (configurables desde Configuraciones SIGL)
+const TIPOS_PROCESOS_JUDICIALES = [
+  { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización de perjuicios' },
+  { id: 'nulidad-restablecimiento', nombre: 'Nulidad y Restablecimiento del Derecho', descripcion: 'Acción para declarar la nulidad de un acto administrativo' },
+  { id: 'accion-grupo', nombre: 'Acción de Grupo', descripcion: 'Acción interpuesta por un grupo de personas' },
+  { id: 'accion-popular', nombre: 'Acción Popular', descripcion: 'Acción para la protección de derechos colectivos' },
+  { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias de contratos estatales' },
+  { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para protección inmediata de derechos fundamentales' },
+  { id: 'proceso-ejecutivo', nombre: 'Proceso Ejecutivo', descripcion: 'Proceso para cobro de obligaciones' },
+  { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales' },
+];
+
 const DEPARTAMENTOS = [
   'Cundinamarca',
   'Antioquia',
@@ -78,46 +91,51 @@ const DEPARTAMENTOS = [
   'Otro'
 ];
 
+const INITIAL_FORM_DATA: NuevaDemandaData = {
+  numeroRadicado: '',
+  medioControl: '',
+  demandante: '',
+  tipoProceso: '',
+  tipoPersona: 'natural',
+  identificacionDemandante: '',
+  // Campos de contacto del demandante
+  demandanteDireccion: '',
+  demandanteTelefono: '',
+  demandanteEmail: '',
+  demandanteApoderado: '',
+  // Datos del demandado (ESAP por defecto)
+  demandado: 'ESAP - Escuela Superior de Administración Pública',
+  tipoIdDemandado: 'NIT',
+  numeroIdDemandado: '899.999.061-4',
+  demandadoDireccion: 'Calle 44 #53-37, Bogotá D.C.',
+  demandadoTelefono: '+57 601 220 2790',
+  demandadoEmail: 'juridica@esap.edu.co',
+  cuantia: '',
+  juzgado: '',
+  ciudad: '',
+  departamento: '',
+  fechaNotificacion: '',
+  fechaVencimiento: '',
+  abogadoAsignado: '',
+  etapa: 'NOTIFICADA',
+  pretensiones: '',
+  hechos: '',
+  observaciones: ''
+};
+
 export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemandaProps) {
-  const [formData, setFormData] = useState<NuevaDemandaData>({
-    numeroRadicado: '',
-    medioControl: '',
-    demandante: '',
-    tipoPersona: 'natural',
-    identificacionDemandante: '',
-    // Campos de contacto del demandante
-    demandanteDireccion: '',
-    demandanteTelefono: '',
-    demandanteEmail: '',
-    demandanteApoderado: '',
-    // Datos del demandado (ESAP por defecto)
-    demandado: 'ESAP - Escuela Superior de Administración Pública',
-    tipoIdDemandado: 'NIT',
-    numeroIdDemandado: '899.999.061-4',
-    demandadoDireccion: 'Calle 44 #53-37, Bogotá D.C.',
-    demandadoTelefono: '+57 601 220 2790',
-    demandadoEmail: 'juridica@esap.edu.co',
-    cuantia: '',
-    juzgado: '',
-    ciudad: '',
-    departamento: '',
-    fechaNotificacion: '',
-    fechaVencimiento: '',
-    abogadoAsignado: '',
-    etapa: 'NOTIFICADA',
-    pretensiones: '',
-    hechos: '',
-    observaciones: ''
-  });
+  const [formData, setFormData] = useState<NuevaDemandaData>(INITIAL_FORM_DATA);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [abogados, setAbogados] = useState<Abogado[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
 
-  // Cargar abogados desde la API
+  // Cargar abogados desde la API y resetear formulario al abrir
   useEffect(() => {
     if (isOpen) {
       loadAbogados();
+      setFormData(INITIAL_FORM_DATA);
+      setErrors({});
     }
   }, [isOpen]);
 
@@ -202,9 +220,20 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     setFormData({
       numeroRadicado: '',
       medioControl: '',
+      tipoProceso: '',
       demandante: '',
       tipoPersona: 'natural',
       identificacionDemandante: '',
+      demandanteDireccion: '',
+      demandanteTelefono: '',
+      demandanteEmail: '',
+      demandanteApoderado: '',
+      demandado: 'ESAP - Escuela Superior de Administración Pública',
+      tipoIdDemandado: 'NIT',
+      numeroIdDemandado: '899.999.061-4',
+      demandadoDireccion: 'Calle 44 #53-37, Bogotá D.C.',
+      demandadoTelefono: '+57 601 220 2790',
+      demandadoEmail: 'juridica@esap.edu.co',
       cuantia: '',
       juzgado: '',
       ciudad: '',
@@ -517,7 +546,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               </label>
               <input
                 type="text"
-                value={formData.demandado || 'ESAP - Escuela Superior de Administración Pública'}
+                value={formData.demandado}
                 onChange={(e) => handleInputChange('demandado', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="ESAP - Escuela Superior de Administración Pública"
@@ -530,7 +559,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 Tipo de Identificación
               </label>
               <select
-                value={formData.tipoIdDemandado || 'NIT'}
+                value={formData.tipoIdDemandado}
                 onChange={(e) => handleInputChange('tipoIdDemandado', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -547,7 +576,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               </label>
               <input
                 type="text"
-                value={formData.numeroIdDemandado || '899.999.061-4'}
+                value={formData.numeroIdDemandado}
                 onChange={(e) => handleInputChange('numeroIdDemandado', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="899.999.061-4"
@@ -561,7 +590,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               </label>
               <input
                 type="text"
-                value={formData.demandadoDireccion || 'Calle 44 #53-37, Bogotá D.C.'}
+                value={formData.demandadoDireccion}
                 onChange={(e) => handleInputChange('demandadoDireccion', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Calle 44 #53-37, Bogotá D.C."
@@ -575,7 +604,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               </label>
               <input
                 type="text"
-                value={formData.demandadoTelefono || '+57 601 220 2790'}
+                value={formData.demandadoTelefono}
                 onChange={(e) => handleInputChange('demandadoTelefono', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="+57 601 220 2790"
@@ -589,7 +618,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               </label>
               <input
                 type="email"
-                value={formData.demandadoEmail || 'juridica@esap.edu.co'}
+                value={formData.demandadoEmail}
                 onChange={(e) => handleInputChange('demandadoEmail', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="juridica@esap.edu.co"

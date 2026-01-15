@@ -1,8 +1,7 @@
 /**
  * MÓDULO: CERTIFICADOS CON QR ÚNICO PARA VALIDACIÓN
- * - Cada combinación única (graduado + datos + entidad) genera UN certificado con QR único
- * - Si la MISMA combinación vuelve a solicitar → se REUTILIZA el QR existente (no se genera nuevo)
- * - Solo se crea QR nuevo si cambia: graduado, datos o entidad solicitante
+ * - Cada solicitud genera un certificado con QR único
+ * - Los certificados previos se mantienen para trazabilidad, pero no se reutilizan
  * - Estado "Activo" = QR habilitado para validación pública
  * - Al escanear QR: muestra si está activo + datos completos del certificado
  * - Trazabilidad completa:
@@ -41,7 +40,8 @@ import {
   Copy,
   RefreshCw,
   AlertTriangle,
-  History
+  History,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Card } from '../ui/card';
@@ -68,19 +68,20 @@ import graduadosService, {
 } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 
-// Tipo de certificado con QR único (reutilizable por misma combinación)
+// Tipo de certificado con QR único (uno por solicitud)
 interface CertificateRequest {
   id: string;
   graduateId?: string;
   certificateNumber: string;
   certificateHash: string;
-  qrCode: string; // QR único para la combinación graduado+datos+entidad
+  qrCode: string; // QR único por solicitud
   graduate: {
     fullName: string;
     document: string;
     program: string;
     graduationDate: string;
     campus?: string;
+    seccionalName?: string;
   };
   programType?: string;
   degreeTitle?: string;
@@ -98,7 +99,7 @@ interface CertificateRequest {
   lastRequestedAt: string; // Última solicitud
   generatedAt: string; // Fecha de generación del certificado
   generatedBy: string;
-  requestCount: number; // Número de veces que se ha solicitado este mismo certificado
+  requestCount: number; // Numero de solicitudes asociadas al certificado
   qrScanCount: number; // Número de veces que se ha escaneado el QR
   viewCount: number;
   downloadCount: number;
@@ -140,6 +141,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
+  const [resendingCertificateId, setResendingCertificateId] = useState<string | null>(null);
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
@@ -202,11 +204,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     return `ACTA-${year}${month}${day}-${suffix}`;
   };
 
-  const buildRequestKey = (request: SolicitudCertificadoGraduado) => {
-    const dateKey = request.graduationDate?.slice(0, 10) || '';
-    return `${request.idNumber}|${request.programName}|${dateKey}`;
-  };
-
   const ensureArray = <T,>(value: T[] | { data?: T[] } | undefined | null): T[] => {
     if (Array.isArray(value)) return value;
     if (value && typeof value === 'object' && Array.isArray((value as { data?: T[] }).data)) {
@@ -262,14 +259,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       const validationsData = ensureArray<ValidacionCertificado>(validationsResponse);
       const downloadsData = ensureArray<DescargaCertificado>(downloadsResponse);
 
-      const requestsByKey = new Map<string, SolicitudCertificadoGraduado[]>();
       const requestsById = new Map<string, SolicitudCertificadoGraduado>();
       requestsData.forEach((request) => {
-        const key = buildRequestKey(request);
-        if (!requestsByKey.has(key)) {
-          requestsByKey.set(key, []);
-        }
-        requestsByKey.get(key)!.push(request);
         requestsById.set(request.id, request);
       });
 
@@ -290,27 +281,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       });
 
       const mappedCertificates = certificatesData.map((certificate) => {
-          const requestKey = `${certificate.idNumber}|${certificate.programName}|${certificate.graduationDate?.slice(0, 10) || ''}`;
-          const relatedRequests = requestsByKey.get(requestKey) || [];
-          const landingRequests = relatedRequests.filter((request) =>
-            request.observations?.toLowerCase().includes('landing')
-          );
-          const effectiveRequests =
-            landingRequests.length > 0 ? landingRequests : relatedRequests;
-          const mainRequest = requestsById.get(certificate.requestId) || relatedRequests[0];
+          const mainRequest = requestsById.get(certificate.requestId);
+          const requestDate = mainRequest?.requestDate;
+          const normalizedRequestDate = requestDate ? normalizeDate(requestDate) : '';
+          const fallbackIssueDate = normalizeDate(certificate.issueDate);
 
-          const requestDates = effectiveRequests
-            .map((req) => req.requestDate)
-            .filter(Boolean)
-            .map((date) => new Date(normalizeDate(date)).getTime())
-            .filter((time) => !Number.isNaN(time));
-
-          const firstRequestedAt = requestDates.length
-            ? new Date(Math.min(...requestDates)).toISOString()
-            : normalizeDate(certificate.issueDate);
-          const lastRequestedAt = requestDates.length
-            ? new Date(Math.max(...requestDates)).toISOString()
-            : normalizeDate(certificate.issueDate);
+          const firstRequestedAt = normalizedRequestDate || fallbackIssueDate;
+          const lastRequestedAt = normalizedRequestDate || fallbackIssueDate;
 
           const scanHistory = (validationsByCertificate.get(certificate.id) || []).map((validation) => ({
             id: validation.id,
@@ -346,7 +323,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               document: certificate.idNumber,
               program: certificate.programName,
               graduationDate: certificate.graduationDate,
-              campus: certificate.campus || '',
+              campus: certificate.campus || (certificate as any)?.graduate?.campus || '',
+              seccionalName:
+                (certificate as any)?.seccionalName ||
+                (certificate as any)?.graduate?.seccionalName ||
+                '',
             },
             programType: certificate.programType,
             degreeTitle: certificate.degreeTitle,
@@ -363,96 +344,38 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             lastRequestedAt,
             generatedAt: normalizeDate(certificate.issueDate),
             generatedBy: certificate.signerName || 'Registro Academico',
-            requestCount: effectiveRequests.length || 1,
+            requestCount: 1,
             qrScanCount: scanHistory.length,
-            viewCount: effectiveRequests.length || 1,
+            viewCount: 1,
             downloadCount,
             lastActivity,
-            requestHistory: effectiveRequests.map((request) => ({
-              id: request.id,
-              requestedAt: normalizeDate(request.requestDate),
-              requestedBy: request.requesterName || request.fullName,
-              ipAddress: 'N/A',
-            })),
+            requestHistory: mainRequest
+              ? [
+                  {
+                    id: mainRequest.id,
+                    requestedAt: normalizeDate(mainRequest.requestDate),
+                    requestedBy: mainRequest.requesterName || mainRequest.fullName,
+                    ipAddress: 'N/A',
+                  },
+                ]
+              : [],
             scanHistory,
           } as CertificateRecord;
         });
 
-        const normalizeTime = (value?: string) => {
-          if (!value) return 0;
-          const date = new Date(value);
-          return Number.isNaN(date.getTime()) ? 0 : date.getTime();
-        };
+      const getSortTime = (value?: string) => {
+        if (!value) return 0;
+        const time = new Date(value).getTime();
+        return Number.isNaN(time) ? 0 : time;
+      };
 
-        const statusPriority = (status: CertificateRecord['status']) => {
-          if (status === 'active') return 3;
-          if (status === 'revoked') return 2;
-          return 1;
-        };
+      const sortedCertificates = [...mappedCertificates].sort((a, b) => {
+        const aTime = getSortTime(a.lastRequestedAt || a.generatedAt);
+        const bTime = getSortTime(b.lastRequestedAt || b.generatedAt);
+        return bTime - aTime;
+      });
 
-        const groupedCertificates = new Map<string, CertificateRecord>();
-        mappedCertificates.forEach((cert) => {
-          const groupKey = `${cert.graduate.document}|${cert.graduate.program}|${cert.graduate.graduationDate}`;
-          const existing = groupedCertificates.get(groupKey);
-          if (!existing) {
-            groupedCertificates.set(groupKey, cert);
-            return;
-          }
-
-          const mergedRequestHistory = [...existing.requestHistory, ...cert.requestHistory].reduce(
-            (acc, item) => {
-              acc.set(item.id, item);
-              return acc;
-            },
-            new Map<string, CertificateRecord['requestHistory'][number]>()
-          );
-          const mergedScanHistory = [...existing.scanHistory, ...cert.scanHistory].reduce(
-            (acc, item) => {
-              acc.set(item.id, item);
-              return acc;
-            },
-            new Map<string, CertificateRecord['scanHistory'][number]>()
-          );
-          const mergedRequests = Array.from(mergedRequestHistory.values());
-          const mergedScans = Array.from(mergedScanHistory.values());
-
-          const latestCandidate =
-            normalizeTime(cert.generatedAt) > normalizeTime(existing.generatedAt) ? cert : existing;
-
-          groupedCertificates.set(groupKey, {
-            ...latestCandidate,
-            requestCount: mergedRequests.length || 1,
-            qrScanCount: mergedScans.length,
-            viewCount: mergedRequests.length || 1,
-            downloadCount: existing.downloadCount + cert.downloadCount,
-            requestHistory: mergedRequests,
-            scanHistory: mergedScans,
-            firstRequestedAt:
-              normalizeTime(existing.firstRequestedAt) === 0
-                ? cert.firstRequestedAt
-                : normalizeTime(cert.firstRequestedAt) === 0
-                ? existing.firstRequestedAt
-                : normalizeTime(cert.firstRequestedAt) < normalizeTime(existing.firstRequestedAt)
-                ? cert.firstRequestedAt
-                : existing.firstRequestedAt,
-            lastRequestedAt:
-              normalizeTime(cert.lastRequestedAt) > normalizeTime(existing.lastRequestedAt)
-                ? cert.lastRequestedAt
-                : existing.lastRequestedAt,
-            lastActivity:
-              normalizeTime(cert.lastActivity) > normalizeTime(existing.lastActivity)
-                ? cert.lastActivity
-                : existing.lastActivity,
-            status:
-              statusPriority(cert.status) > statusPriority(existing.status)
-                ? cert.status
-                : existing.status,
-          });
-        });
-
-      const uniqueCertificates = Array.from(groupedCertificates.values());
-
-      setCertificates(uniqueCertificates);
+      setCertificates(sortedCertificates);
     } catch (error) {
       console.error('Error cargando certificados:', error);
       toast.error('No se pudieron cargar los certificados', {
@@ -492,7 +415,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       diplomaNumber: cert.diplomaNumber || '',
       actaNumber: cert.actaNumber || '',
       campus: cert.campus || cert.graduate.campus || '',
-      seccionalName: '',
+      seccionalName:
+        (cert as any)?.seccionalName ||
+        cert.graduate.seccionalName ||
+        '',
     });
     setIsEditGraduateModalOpen(true);
     setIsLoadingGraduate(true);
@@ -568,6 +494,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             programType: nextForm.programType,
             degreeTitle: nextForm.degreeTitle,
             campus: nextForm.campus,
+            seccionalName: nextForm.seccionalName,
             diplomaNumber,
             actaNumber,
           }
@@ -581,6 +508,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             diplomaNumber,
             actaNumber,
             campus: nextForm.campus,
+            seccionalName: nextForm.seccionalName,
           };
 
       await graduadosService.certificados.actualizar(
@@ -643,6 +571,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   program: nextForm.programName,
                   graduationDate: nextForm.graduationDate,
                   campus: nextForm.campus,
+                  seccionalName: nextForm.seccionalName,
                 },
                 programType: nextForm.programType,
                 degreeTitle: nextForm.degreeTitle,
@@ -870,6 +799,26 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     setIsQrModalOpen(true);
   };
 
+  const handleResendCertificate = async (cert: CertificateRecord) => {
+    if (resendingCertificateId === cert.id) {
+      return;
+    }
+    setResendingCertificateId(cert.id);
+    try {
+      const response = await graduadosService.certificados.reenviar(cert.id);
+      toast.success('Certificado reenviado', {
+        description: response?.mensaje || `Se reenvio el certificado a ${cert.requester.email}`,
+      });
+    } catch (error: any) {
+      console.error('Error reenviando certificado:', error);
+      toast.error('No se pudo reenviar el certificado', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    } finally {
+      setResendingCertificateId(null);
+    }
+  };
+
   const getPublicValidationUrl = (qrCode: string) => {
     return `${window.location.origin}/verificar-certificado/${qrCode}`;
   };
@@ -1079,7 +1028,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   
       canvas.toBlob((blob) => {
         if (!blob) return;
-  
+
         const downloadUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = downloadUrl;
@@ -1088,7 +1037,18 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(downloadUrl);
-  
+
+        setQrPreviewCertificate((prev) =>
+          prev ? { ...prev, downloadCount: prev.downloadCount + 1 } : prev
+        );
+        setCertificates((prev) =>
+          prev.map((item) =>
+            item.id === qrPreviewCertificate.id
+              ? { ...item, downloadCount: item.downloadCount + 1 }
+              : item
+          )
+        );
+
         toast.success('QR descargado exitosamente', {
           description: `El codigo QR del certificado ${qrPreviewCertificate.certificateNumber} se ha descargado.`
         });
@@ -1128,7 +1088,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               color: '#1F2937'
             }}
           >
-            Cada combinación única genera <strong>UN certificado con QR único</strong>. Si la misma persona y entidad vuelve a solicitarlo, se <strong>reutiliza el QR existente</strong> (no se genera nuevo).
+            Cada solicitud genera <strong>un certificado con QR unico</strong>. Los certificados previos se mantienen como historial, pero no se reutilizan.
           </p>
         </div>
       </motion.div>
@@ -1174,13 +1134,12 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           </div>
           <div className="flex-1">
             <h3 className="font-semibold text-sm text-gray-900 mb-1">
-              🔄 Lógica de QR Único (Reutilizable)
+              Logica de QR unico
             </h3>
             <p className="text-sm text-gray-700">
-              <strong>1)</strong> Se solicita certificado (graduado + entidad) → 
-              <strong> 2)</strong> Sistema verifica si YA existe esa combinación → 
-              <strong> 3a)</strong> Si NO existe: genera certificado + QR nuevo · 
-              <strong> 3b)</strong> Si SÍ existe: reutiliza QR existente (no genera nuevo)
+              <strong>1)</strong> Se solicita certificado (graduado + entidad) {'->'}
+              <strong> 2)</strong> El sistema genera un certificado con QR nuevo {'->'}
+              <strong> 3)</strong> El historial conserva certificados anteriores para trazabilidad
             </p>
           </div>
         </div>
@@ -1433,11 +1392,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           title="Ver código QR único"
                         >
                           <QrCode className="w-5 h-5" style={{ color: cert.status === 'active' ? '#F59E0B' : '#9CA3AF' }} />
-                          {cert.requestCount > 1 && (
-                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                              {cert.requestCount}
-                            </div>
-                          )}
                         </button>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 mb-0.5">
@@ -1451,11 +1405,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           <p className="text-xs truncate font-mono" style={{ color: '#6B7280' }}>
                             {cert.qrCode}
                           </p>
-                          {cert.requestCount > 1 && (
-                            <p className="text-xs font-semibold" style={{ color: '#3B82F6' }}>
-                              Solicitado {cert.requestCount} veces
-                            </p>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -1522,6 +1471,17 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           <DropdownMenuItem onClick={() => handleOpenEditCertificate(cert)}>
                             <Edit className="w-4 h-4 mr-2" />
                             Editar certificado
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleResendCertificate(cert)}
+                            disabled={resendingCertificateId === cert.id}
+                          >
+                            {resendingCertificateId === cert.id ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Mail className="w-4 h-4 mr-2" />
+                            )}
+                            {resendingCertificateId === cert.id ? 'Reenviando...' : 'Reenviar certificado'}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -1591,6 +1551,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 </div>
                               </div>
                               <div className="flex items-start gap-2">
+                                <MapPin className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                <div>
+                                  <p className="text-xs text-gray-600">Seccional</p>
+                                  <p className="font-semibold text-gray-900">
+                                    {cert.graduate.seccionalName || 'Sin asignar'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-2">
                                 <Calendar className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Graduación</p>
@@ -1640,7 +1609,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Solicitud</p>
                                   <p className="font-semibold text-gray-900">
-                                    {new Date(cert.generatedAt).toLocaleString('es-CO')}
+                                    {formatDateTime(cert.lastRequestedAt || cert.generatedAt, {
+                                      timeZone: 'America/Bogota',
+                                    })}
                                   </p>
                                 </div>
                               </div>
@@ -2345,55 +2316,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   <span className="ml-2 text-xs text-gray-500">({qrPreviewCertificate?.requester.type === 'graduado' ? 'Graduado' : 'Entidad'})</span>
                 </div>
                 <div>
-                  <span className="text-gray-600">Veces solicitado:</span>
-                  <span className="ml-2 font-semibold text-gray-900">{qrPreviewCertificate?.requestCount}</span>
-                  {qrPreviewCertificate && qrPreviewCertificate.requestCount > 1 && (
-                    <span className="ml-2 text-xs font-semibold text-blue-600">
-                      (QR reutilizado {qrPreviewCertificate.requestCount - 1} {qrPreviewCertificate.requestCount - 1 === 1 ? 'vez' : 'veces'})
-                    </span>
-                  )}
-                </div>
-                <div>
                   <span className="text-gray-600">Veces escaneado:</span>
                   <span className="ml-2 font-semibold text-gray-900">{qrPreviewCertificate?.qrScanCount}</span>
                 </div>
               </div>
             </div>
-
-            {/* Historial de Solicitudes (si hay múltiples) */}
-            {qrPreviewCertificate && qrPreviewCertificate.requestCount > 1 && (
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4 text-purple-600" />
-                  Historial de Solicitudes (QR Reutilizado)
-                </h4>
-                <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-                  {qrPreviewCertificate.requestHistory.map((req, index) => (
-                    <div key={req.id} className="flex items-start gap-3 text-sm bg-white rounded-lg p-3 border border-purple-100">
-                      <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold flex-shrink-0">
-                        {index + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 mb-1">{req.requestedBy}</p>
-                        <p className="text-gray-600 mb-1">
-                          📅 {formatDateTime(req.requestedAt, {
-                            year: 'numeric',
-                            month: 'short',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                        <p className="text-gray-500 font-mono text-xs">🌐 IP: {req.ipAddress}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-purple-700 mt-3 font-medium">
-                  💡 Este QR NO se generó nuevamente. Se reutilizó el existente para la misma combinación.
-                </p>
-              </div>
-            )}
 
             {/* Historial de Validaciones (Escaneos del QR) */}
             {qrPreviewCertificate && qrPreviewCertificate.scanHistory.length > 0 && (
@@ -2480,9 +2407,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   <Copy className="w-4 h-4 text-gray-600" />
                 </button>
               </div>
-              <p className="text-xs text-gray-600 mt-2">
-                🔒 Este QR es <strong>único e irrepetible</strong> para esta combinación de graduado + entidad
-              </p>
             </div>
 
             {/* Explicación de Funcionamiento */}

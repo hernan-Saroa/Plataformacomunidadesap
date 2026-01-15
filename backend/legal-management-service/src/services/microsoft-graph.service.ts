@@ -43,8 +43,9 @@ export class MicrosoftGraphService {
             return this.graphClient;
         }
 
-        if (!this.tenantId || !this.clientId || !this.clientSecret) {
-            throw new Error('Azure credentials not configured. Check AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET in .env');
+        if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
+            this.logger.warn('Azure credentials not configured or disabled for development. Microsoft Graph features will be unavailable.');
+            throw new Error('Microsoft Graph is disabled in development mode');
         }
 
         const credential = new ClientSecretCredential(
@@ -60,6 +61,40 @@ export class MicrosoftGraphService {
         this.graphClient = Client.initWithMiddleware({ authProvider });
         this.logger.log('Microsoft Graph client initialized');
         return this.graphClient;
+    }
+
+    /**
+     * Get a page of emails with pagination token support
+     */
+    async getEmailsPage(nextLink?: string, limit: number = 50): Promise<{ emails: GraphEmail[]; nextLink: string | null }> {
+        try {
+            const client = this.getClient();
+            let response;
+
+            if (nextLink) {
+                // Fetch next page using provided link
+                this.logger.log(`Fetching next page...`);
+                response = await client.api(nextLink).get();
+            } else {
+                // First request
+                this.logger.log(`Fetching first page (limit: ${limit})...`);
+                response = await client
+                    .api(`/users/${this.emailAccount}/messages`)
+                    .top(limit)
+                    .orderby('receivedDateTime desc')
+                    .select('id,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead')
+                    .get();
+            }
+
+            const emails = response.value || [];
+            const newNextLink = response['@odata.nextLink'] || null;
+
+            this.logger.log(`Page fetched: ${emails.length} emails. Has next page: ${!!newNextLink}`);
+            return { emails, nextLink: newNextLink };
+        } catch (error) {
+            this.logger.error('Error fetching emails page:', error);
+            throw error;
+        }
     }
 
     /**
@@ -198,19 +233,50 @@ export class MicrosoftGraphService {
     }
 
     /**
-     * Send an email
+     * Send an email with optional CC and attachments
      * IMPORTANT: From address MUST be the configured email account
+     * Note: Microsoft/Exchange may add organizational signature after the content
      */
-    async sendEmail(to: string, subject: string, body: string): Promise<boolean> {
+    async sendEmail(
+        to: string,
+        subject: string,
+        body: string,
+        cc?: string[],
+        attachments?: { name: string; contentBytes: string; contentType: string }[]
+    ): Promise<boolean> {
         try {
             const client = this.getClient();
 
-            const message = {
+            // Build ccRecipients if provided
+            const ccRecipients = cc?.length
+                ? cc.map(email => ({ emailAddress: { address: email.trim() } }))
+                : [];
+
+            // Format body as HTML with clear separation
+            // This helps distinguish user content from any org-added signatures
+            const htmlBody = `
+                <div style="font-family: Arial, sans-serif; font-size: 14px;">
+                    ${body.replace(/\n/g, '<br/>')}
+                </div>
+                <br/><br/>
+                <hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;"/>
+                <!-- Cualquier firma organizacional aparecerá debajo de esta línea -->
+            `;
+
+            // Build attachments array for Graph API
+            const graphAttachments = attachments?.map(att => ({
+                '@odata.type': '#microsoft.graph.fileAttachment',
+                name: att.name,
+                contentBytes: att.contentBytes,
+                contentType: att.contentType
+            })) || [];
+
+            const message: any = {
                 message: {
                     subject,
                     body: {
                         contentType: 'HTML',
-                        content: body,
+                        content: htmlBody,
                     },
                     toRecipients: [
                         {
@@ -219,6 +285,8 @@ export class MicrosoftGraphService {
                             },
                         },
                     ],
+                    ...(ccRecipients.length > 0 && { ccRecipients }),
+                    ...(graphAttachments.length > 0 && { attachments: graphAttachments }),
                     from: {
                         emailAddress: {
                             address: this.emailAccount,
@@ -232,7 +300,7 @@ export class MicrosoftGraphService {
                 .api(`/users/${this.emailAccount}/sendMail`)
                 .post(message);
 
-            this.logger.log(`Email sent to ${to} with subject: ${subject}`);
+            this.logger.log(`Email sent to ${to}${cc?.length ? ` (CC: ${cc.join(', ')})` : ''}${attachments?.length ? ` with ${attachments.length} attachment(s)` : ''} - Subject: ${subject}`);
             return true;
         } catch (error) {
             this.logger.error(`Error sending email to ${to}:`, error);
@@ -261,6 +329,69 @@ export class MicrosoftGraphService {
                 success: false,
                 message: error.message || 'Connection failed',
             };
+        }
+    }
+
+    /**
+     * Get attachments for a specific email message
+     */
+    async getAttachments(messageId: string): Promise<Array<{
+        id: string;
+        name: string;
+        contentType: string;
+        size: number;
+        contentBytes?: string;
+    }>> {
+        try {
+            const client = this.getClient();
+
+            const response = await client
+                .api(`/users/${this.emailAccount}/messages/${messageId}/attachments`)
+                .get();
+
+            const attachments = response.value || [];
+            this.logger.log(`Fetched ${attachments.length} attachments for message ${messageId}`);
+
+            return attachments.map((att: any) => ({
+                id: att.id,
+                name: att.name,
+                contentType: att.contentType,
+                size: att.size,
+                contentBytes: att.contentBytes, // Base64 encoded
+            }));
+        } catch (error) {
+            this.logger.error(`Error fetching attachments for message ${messageId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Download a specific attachment by ID
+     */
+    async downloadAttachment(messageId: string, attachmentId: string): Promise<{
+        name: string;
+        contentType: string;
+        contentBytes: string;
+        size: number;
+    }> {
+        try {
+            const client = this.getClient();
+
+            const attachment = await client
+                .api(`/users/${this.emailAccount}/messages/${messageId}/attachments/${attachmentId}`)
+                .get();
+
+            this.logger.log(`Downloaded attachment: ${attachment.name} (${attachment.size} bytes)`);
+
+            return {
+                name: attachment.name,
+                contentType: attachment.contentType,
+                contentBytes: attachment.contentBytes,
+                size: attachment.size,
+            };
+        } catch (error) {
+            this.logger.error(`Error downloading attachment ${attachmentId}:`, error);
+            throw error;
         }
     }
 }

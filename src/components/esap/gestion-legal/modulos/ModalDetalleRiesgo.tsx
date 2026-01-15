@@ -1,28 +1,30 @@
 /**
  * ModalDetalleRiesgo - Vista completa de detalle del riesgo
  * ✅ DISEÑO LIMPIO ESAP 2025 - ESTÁNDAR
+ * ✅ TIMELINE CONECTADO A BACKEND
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import {
-  AlertTriangle, Shield, FileText, X, Edit, Archive, Target,
+  AlertTriangle, Shield, FileText, X, Edit, Target,
   TrendingUp, Activity, CheckCircle, Clock, User, Calendar,
-  Zap, AlertCircle, Download, Trash2, ChevronRight
+  Zap, AlertCircle, Download, Trash2, ChevronRight, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import type { Riesgo } from '../core/types';
+import { riesgosService, RiesgoHistorialAPI } from '../../../../services/api/legal.service';
 
 interface ModalDetalleRiesgoProps {
   open: boolean;
   onClose: () => void;
   riesgo: Riesgo | null;
   onEdit?: (riesgo: Riesgo) => void;
-  onArchive?: (riesgo: Riesgo) => void;
+  onDelete?: (riesgo: Riesgo) => void;
 }
 
 const ZONA_RIESGO_CONFIG = {
@@ -41,14 +43,40 @@ const TIPO_RIESGO_MAP = {
 
 const ETAPA_CONFIG = {
   IDENTIFICADO: { label: 'Identificado', color: 'bg-gray-100 text-gray-700', icon: '📝' },
-  EVALUADO: { label: 'Evaluado', color: 'bg-blue-100 text-blue-700', icon: '📊' },
-  EN_TRATAMIENTO: { label: 'En Tratamiento', color: 'bg-yellow-100 text-yellow-700', icon: '⚙️' },
-  MONITOREADO: { label: 'Monitoreado', color: 'bg-purple-100 text-purple-700', icon: '👁️' },
-  CERRADO: { label: 'Cerrado', color: 'bg-green-100 text-green-700', icon: '✅' }
+  ANALIZADO: { label: 'Analizado', color: 'bg-indigo-100 text-indigo-700', icon: '🔍' },
+  VALORADO: { label: 'Valorado', color: 'bg-blue-100 text-blue-700', icon: '📊' },
+  EVALUADO: { label: 'Evaluado', color: 'bg-blue-100 text-blue-700', icon: '📊' }, // Deprecated fallback
+  TRATAMIENTO: { label: 'En Tratamiento', color: 'bg-yellow-100 text-yellow-700', icon: '⚙️' },
+  EN_TRATAMIENTO: { label: 'En Tratamiento', color: 'bg-yellow-100 text-yellow-700', icon: '⚙️' }, // Deprecated fallback
+  MONITOREO: { label: 'Monitoreado', color: 'bg-purple-100 text-purple-700', icon: '👁️' },
+  MONITOREADO: { label: 'Monitoreado', color: 'bg-purple-100 text-purple-700', icon: '👁️' }, // Deprecated fallback
+  CERRADO: { label: 'Cerrado', color: 'bg-green-100 text-green-700', icon: '✅' },
+  MATERIALIZADO: { label: 'Materializado', color: 'bg-red-100 text-red-700', icon: '🔥' }
 };
 
-export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onArchive }: ModalDetalleRiesgoProps) {
+export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onDelete }: ModalDetalleRiesgoProps) {
   const [tabActiva, setTabActiva] = useState('general');
+  const [historial, setHistorial] = useState<RiesgoHistorialAPI[]>([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
+
+  // Cargar historial cuando se abre el modal o cambia el riesgo
+  useEffect(() => {
+    if (open && riesgo?.id) {
+      const cargarHistorial = async () => {
+        setLoadingHistorial(true);
+        try {
+          const data = await riesgosService.getHistorial(riesgo.id);
+          setHistorial(data);
+        } catch (error) {
+          console.log('Historial no disponible');
+          setHistorial([]);
+        } finally {
+          setLoadingHistorial(false);
+        }
+      };
+      cargarHistorial();
+    }
+  }, [open, riesgo?.id]);
 
   if (!riesgo) return null;
 
@@ -60,33 +88,11 @@ export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onArchive }:
   const valorResidual = calcularValorRiesgo(riesgo.probabilidadResidual || 0, riesgo.impactoResidual || 0);
   const reduccionRiesgo = ((valorInherente - valorResidual) / valorInherente * 100).toFixed(0);
 
-  // Mock data para timeline
-  const timeline = [
-    {
-      fecha: '2024-11-15',
-      accion: 'Riesgo identificado en evaluación de procesos',
-      usuario: 'Dra. María Fernández',
-      tipo: 'identificacion'
-    },
-    {
-      fecha: '2024-11-18',
-      accion: 'Evaluación inicial completada - Clasificado como ALTO',
-      usuario: 'Coordinador de Riesgos',
-      tipo: 'evaluacion'
-    },
-    {
-      fecha: '2024-11-22',
-      accion: 'Controles preventivos implementados',
-      usuario: 'Jefe Área Jurídica',
-      tipo: 'tratamiento'
-    },
-    {
-      fecha: '2024-12-01',
-      accion: 'Reevaluación - Riesgo reducido a MODERADO',
-      usuario: 'Coordinador de Riesgos',
-      tipo: 'actualizacion'
-    }
-  ];
+  // Formatear fecha para mostrar
+  const formatearFecha = (fechaStr: string) => {
+    const fecha = new Date(fechaStr);
+    return fecha.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
 
   const handleEditar = () => {
     if (onEdit && riesgo) {
@@ -97,22 +103,15 @@ export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onArchive }:
     }
   };
 
-  const handleArchivar = async () => {
-    if (onArchive && riesgo) {
-      onArchive(riesgo);
-    } else {
-      toast.success('Riesgo archivado', {
-        description: `${riesgo?.id} ha sido archivado exitosamente`
-      });
+  const handleEliminar = async () => {
+    if (confirm('¿Estás seguro de que quieres eliminar este riesgo permanentemente?')) {
+      if (onDelete && riesgo) {
+        onDelete(riesgo);
+      } else {
+        // Fallback just in case
+        toast.error('Función de eliminar no conectada');
+      }
     }
-    onClose();
-  };
-
-  const handleEliminar = () => {
-    toast.error('Riesgo eliminado', {
-      description: `${riesgo.id} ha sido eliminado del sistema`
-    });
-    onClose();
   };
 
   const handleExportar = () => {
@@ -124,7 +123,7 @@ export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onArchive }:
 
 IDENTIFICACIÓN DEL RIESGO
 ═══════════════════════════════════════════════════════════════
-ID del Riesgo:        ${riesgo.id}
+ID del Riesgo:        ${riesgo.codigo || riesgo.id}
 Descripción:          ${riesgo.descripcion}
 Proceso:              ${riesgo.proceso}
 Tipo de Riesgo:       ${TIPO_RIESGO_MAP[riesgo.tipo]}
@@ -159,7 +158,7 @@ ${riesgo.consecuencias?.map((c, i) => `${i + 1}. ${c}`).join('\n') || 'No especi
 
 CONTROLES EXISTENTES
 ═══════════════════════════════════════════════════════════════
-${riesgo.controles?.map((c, i) => `${i + 1}. ${c}`).join('\n') || 'No especificados'}
+${riesgo.controlesExistentes?.map((c, i) => `${i + 1}. ${c.descripcion} (${c.efectividad}%)`).join('\n') || 'No especificados'}
 
 PLAN DE TRATAMIENTO
 ═══════════════════════════════════════════════════════════════
@@ -180,31 +179,31 @@ Metodología DAFP - MECI
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Riesgo_${riesgo.id}_${new Date().getTime()}.txt`;
+    link.download = `Riesgo_${riesgo.codigo || riesgo.id}_${new Date().getTime()}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
 
     toast.success('✅ Ficha de riesgo exportada', {
-      description: `Riesgo_${riesgo.id}.txt`,
+      description: `Riesgo_${riesgo.codigo || riesgo.id}.txt`,
       duration: 4000
     });
   };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl h-auto max-h-[80vh] flex flex-col p-0 overflow-hidden !top-[10vh] !translate-y-0">
+      <DialogContent hideCloseButton className="max-w-3xl h-auto max-h-[80vh] flex flex-col p-0 overflow-hidden !top-[10vh] !translate-y-0">
         <DialogTitle className="sr-only">
-          Detalle del Riesgo {riesgo.id}
+          Detalle del Riesgo {riesgo.codigo || riesgo.id}
         </DialogTitle>
         <DialogDescription className="sr-only">
-          Vista completa del riesgo {riesgo.id} con evaluación, controles, tratamiento y seguimiento
+          Vista completa del riesgo {riesgo.codigo || riesgo.id} con evaluación, controles, tratamiento y seguimiento
         </DialogDescription>
 
         {/* Header ESAP 2025 - FIJO */}
         <ModalHeaderClean
-          titulo={riesgo.id}
+          titulo={riesgo.codigo || riesgo.id || 'Detalle del Riesgo'}
           subtitulo={riesgo.descripcion}
           icono={AlertTriangle}
           colorIcono="orange"
@@ -533,27 +532,45 @@ Metodología DAFP - MECI
 
               {/* TAB: TIMELINE */}
               <TabsContent value="timeline" className="space-y-3 mt-4">
-                {timeline.map((evento, idx) => (
-                  <div key={idx} className="flex gap-3">
-                    <div className="flex flex-col items-center">
-                      <div
-                        className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center"
-                        style={{ backgroundColor: '#003DA5' }}
-                      >
-                        <Activity className="w-4 h-4 text-white" />
-                      </div>
-                      {idx < timeline.length - 1 && (
-                        <div className="w-0.5 h-full min-h-[40px] bg-gray-300 mt-1" />
-                      )}
-                    </div>
-                    <div className="flex-1 pb-4">
-                      <p className="text-sm font-bold text-gray-900">{evento.accion}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        👤 {evento.usuario} • 📅 {evento.fecha}
-                      </p>
-                    </div>
+                {loadingHistorial ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-blue-600 mr-2" />
+                    <span className="text-sm text-gray-600">Cargando historial...</span>
                   </div>
-                ))}
+                ) : historial.length > 0 ? (
+                  historial.map((evento, idx) => (
+                    <div key={evento.id} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div
+                          className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center"
+                          style={{ backgroundColor: '#003DA5' }}
+                        >
+                          <Activity className="w-4 h-4 text-white" />
+                        </div>
+                        {idx < historial.length - 1 && (
+                          <div className="w-0.5 h-full min-h-[40px] bg-gray-300 mt-1" />
+                        )}
+                      </div>
+                      <div className="flex-1 pb-4">
+                        <p className="text-sm font-bold text-gray-900">{evento.descripcion}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          👤 {evento.usuario} • 📅 {formatearFecha(evento.createdAt)}
+                        </p>
+                        {evento.campoModificado && evento.valorAnterior && evento.valorNuevo && (
+                          <p className="text-xs text-gray-400 mt-1">
+                            {evento.campoModificado}: {evento.valorAnterior} → {evento.valorNuevo}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center">
+                    <Clock className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">No hay historial de eventos registrado</p>
+                    <p className="text-xs text-gray-400 mt-1">Los cambios futuros se registrarán aquí automáticamente</p>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
 
@@ -589,9 +606,9 @@ Metodología DAFP - MECI
               <Edit className="w-4 h-4 mr-2" />
               Editar
             </Button>
-            <Button variant="outline" onClick={handleArchivar} className="text-orange-600 border-orange-300">
-              <Archive className="w-4 h-4 mr-2" />
-              Archivar
+            <Button variant="outline" onClick={handleEliminar} className="text-red-600 border-red-300 hover:bg-red-50">
+              <Trash2 className="w-4 h-4 mr-2" />
+              Eliminar
             </Button>
           </div>
         </div>

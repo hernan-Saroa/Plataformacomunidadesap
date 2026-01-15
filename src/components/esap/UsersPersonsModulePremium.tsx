@@ -71,6 +71,7 @@ import { UserExpandedView } from './UserExpandedView';  // ✅ VISTA EXPANDIDA R
 import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  // ✅ RF015 - ROLES Y PERMISOS ACTUALIZADO
 import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  // ✅ ESTADÍSTICAS DOCENTES ESAP
 import React, { useEffect } from 'react';
+import { useAuth } from '../../hooks';
 
 export function UsersPersonsModulePremium() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -108,6 +109,8 @@ export function UsersPersonsModulePremium() {
   const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false); // ✅ MODAL CAMBIAR CONTRASEÑA
   const itemsPerPage = 10;
+  const { hasRole } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN');
 
   // ✅ FUNCIÓN PARA CARGAR USUARIOS DESDE EL BACKEND
   const loadUsers = async () => {
@@ -743,6 +746,61 @@ export function UsersPersonsModulePremium() {
     setLocationFilter("all");
   };
 
+  // const hasActiveFilters =
+  //   searchQuery ||
+  //   statusFilter !== "all" ||
+  //   roleFilter !== "all" ||
+  //   locationFilter !== "all";
+
+  // ✅ FILTROS RÁPIDOS POR ROL - Contadores de usuarios por rol
+  const quickFiltersData = [
+    {
+      role: 'Docente',
+      code: 'DOCENTE',
+      icon: Users,
+      color: '#2962FF',
+      bgColor: '#EFF6FF',
+      borderColor: '#3B82F6',
+      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Docente')).length
+    },
+    {
+      role: 'Estudiante',
+      code: 'ESTUDIANTE',
+      icon: UserCheck,
+      color: '#10B981',
+      bgColor: '#D1FAE5',
+      borderColor: '#10B981',
+      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Estudiante')).length
+    },
+    {
+      role: 'Coordinador Académico',
+      code: 'COORD_ACAD',
+      icon: Shield,
+      color: '#8B5CF6',
+      bgColor: '#EDE9FE',
+      borderColor: '#8B5CF6',
+      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Coordinador Académico')).length
+    },
+    {
+      role: 'Director Territorial',
+      code: 'DIR_TERRITORIAL',
+      icon: Building2,
+      color: '#F59E0B',
+      bgColor: '#FEF3C7',
+      borderColor: '#F59E0B',
+      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Director Territorial')).length
+    },
+    {
+      role: 'Directivo',
+      code: 'DIRECTIVO',
+      icon: Shield,
+      color: '#EF4444',
+      bgColor: '#FEE2E2',
+      borderColor: '#EF4444',
+      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Directivo')).length
+    },
+  ];
+
   // Si estamos en la vista de carpeta digital, mostrar esa sección
   if (viewMode === "digital-folder") {
     return (
@@ -832,7 +890,7 @@ export function UsersPersonsModulePremium() {
                 color: "#1F2937",
               }}
             >
-              Administración
+              Gestión Personas
             </h1>
           </div>
           {/* Body: 14px Regular, line-height 20px */}
@@ -908,36 +966,38 @@ export function UsersPersonsModulePremium() {
           </button>
 
           {/* Botón Primario - Crear Usuario */}
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: "#003DA5",
-              color: "#FFFFFF",
-              borderRadius: "8px",
-              padding: "12px 24px",
-              fontSize: "14px",
-              fontWeight: 500,
-              boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#002D7A";
-              e.currentTarget.style.boxShadow =
-                "0 4px 8px rgba(0, 61, 165, 0.15)";
-              e.currentTarget.style.transform =
-                "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#003DA5";
-              e.currentTarget.style.boxShadow =
-                "0 1px 2px rgba(0, 0, 0, 0.05)";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-          >
-            <UserPlus className="w-5 h-5" strokeWidth={2} />
-            <span>Crear Usuario</span>
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center justify-center gap-2 transition-all"
+              style={{
+                background: "#003DA5",
+                color: "#FFFFFF",
+                borderRadius: "8px",
+                padding: "12px 24px",
+                fontSize: "14px",
+                fontWeight: 500,
+                boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#002D7A";
+                e.currentTarget.style.boxShadow =
+                  "0 4px 8px rgba(0, 61, 165, 0.15)";
+                e.currentTarget.style.transform =
+                  "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "#003DA5";
+                e.currentTarget.style.boxShadow =
+                  "0 1px 2px rgba(0, 0, 0, 0.05)";
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              <UserPlus className="w-5 h-5" strokeWidth={2} />
+              <span>Crear Usuario</span>
+            </button>
+          )}
         </div>
       </motion.div>
 
@@ -946,6 +1006,7 @@ export function UsersPersonsModulePremium() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}
+        style={{ display: 'none'}}
       >
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -1163,6 +1224,7 @@ export function UsersPersonsModulePremium() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.12 }}
+        style={{ display: 'none'}}
       >
         <button
           onClick={() => setShowSedesMetrics(!showSedesMetrics)}
@@ -1371,6 +1433,116 @@ export function UsersPersonsModulePremium() {
             </button>
           </div>
         )}
+      </motion.div>
+
+      {/* ✅ TARJETAS DE FILTROS RÁPIDOS POR ROL */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.18 }}
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4"
+      >
+        {quickFiltersData.map((filter) => {
+          const Icon = filter.icon;
+          const isActive = roleFilter === filter.role;
+          
+          return (
+            <motion.button
+              key={filter.code}
+              onClick={() => {
+                if (isActive) {
+                  setRoleFilter("all");
+                  toast.info("Filtro Eliminado", {
+                    description: `Se eliminó el filtro de ${filter.role}`,
+                  });
+                } else {
+                  setRoleFilter(filter.role);
+                  toast.success("Filtro Aplicado", {
+                    description: `Mostrando usuarios con rol ${filter.role}`,
+                  });
+                }
+              }}
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              className="relative overflow-hidden rounded-xl border-2 p-4 text-left transition-all"
+              style={{
+                backgroundColor: isActive ? filter.bgColor : '#FFFFFF',
+                borderColor: isActive ? filter.borderColor : '#E5E7EB',
+                boxShadow: isActive 
+                  ? `0 4px 12px ${filter.color}20` 
+                  : '0 1px 3px rgba(0, 0, 0, 0.05)',
+              }}
+            >
+              {/* Badge de filtro activo */}
+              {isActive && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute top-2 right-2"
+                >
+                  <div 
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: filter.color }}
+                  />
+                </motion.div>
+              )}
+
+              {/* Icono */}
+              <div 
+                className="w-10 h-10 rounded-lg flex items-center justify-center mb-3"
+                style={{ 
+                  backgroundColor: filter.bgColor,
+                  border: `2px solid ${filter.borderColor}20`
+                }}
+              >
+                <Icon 
+                  className="w-5 h-5" 
+                  style={{ color: filter.color }}
+                  strokeWidth={2.5}
+                />
+              </div>
+
+              {/* Contenido */}
+              <div>
+                <p 
+                  className="font-semibold mb-1"
+                  style={{ 
+                    fontSize: '14px',
+                    color: isActive ? filter.color : '#1F2937'
+                  }}
+                >
+                  {filter.role}
+                </p>
+                <div className="flex items-center gap-2">
+                  <span 
+                    className="font-bold"
+                    style={{ 
+                      fontSize: '24px',
+                      color: filter.color
+                    }}
+                  >
+                    {filter.count}
+                  </span>
+                  <span 
+                    className="text-xs"
+                    style={{ color: '#6B7280' }}
+                  >
+                    usuarios
+                  </span>
+                </div>
+              </div>
+
+              {/* Indicador hover */}
+              <div 
+                className="absolute bottom-0 left-0 right-0 h-1 transition-all"
+                style={{ 
+                  backgroundColor: filter.color,
+                  opacity: isActive ? 1 : 0
+                }}
+              />
+            </motion.button>
+          );
+        })}
       </motion.div>
 
       {/* Tabla Premium - Según especificaciones de Table */}
@@ -1719,7 +1891,7 @@ export function UsersPersonsModulePremium() {
                             verticalAlign: "middle",
                           }}
                         >
-                          <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center justify-center gap-2" style={{display: hasSuperAdminRole(user) ? 'none' : 'block'}}>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1823,6 +1995,7 @@ export function UsersPersonsModulePremium() {
                                   style={{
                                     border: "1px solid #E5E7EB",
                                     background: "#FFFFFF",
+                                    display: hasSuperAdminRole(user) ? 'none' : 'block'
                                   }}
                                   onMouseEnter={(e) => {
                                     e.currentTarget.style.background =

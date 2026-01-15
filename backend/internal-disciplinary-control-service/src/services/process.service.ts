@@ -324,7 +324,11 @@ export class ProcessService {
    * Obtiene un proceso por ID
    */
   async findById(id: string, includeAutos: boolean = false): Promise<any> {
-    const relations = ['news', 'evidence', 'autos', 'abogadoAsignado'];
+    const relations = ['news', 'evidence', 'abogadoAsignado'];
+    if (includeAutos) {
+      relations.push('autos');
+      relations.push('autos.versions');
+    }
 
     const proceso = await this.processRepository.findOne({
       where: { id },
@@ -562,12 +566,12 @@ export class ProcessService {
       // Preparar datos para la evidencia
       // Mapear tipoDocumento a tipo para la columna NOT NULL
       const tipoMapeado = tipoDocumento || 'DOCUMENTO';
-      
+
       // La URL es la ruta relativa que retorna el storageService
       // archivoUrl debe ser la misma ruta (o ruta completa si se necesita)
       const archivoUrl = url; // Usar la misma ruta que url para archivoUrl
       const nombreArchivoFinal = nombreDocumento || originalName;
-      
+
       const evidenceData = {
         url,
         archivoUrl, // Campo requerido NOT NULL - ruta del archivo guardado

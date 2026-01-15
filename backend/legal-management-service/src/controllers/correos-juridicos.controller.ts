@@ -8,6 +8,7 @@ import {
     Body,
     HttpCode,
     HttpStatus,
+    Res,
 } from '@nestjs/common';
 import { CorreosJuridicosService } from '../services/correos-juridicos.service';
 import type { EmailFilters } from '../services/correos-juridicos.service';
@@ -16,8 +17,10 @@ import { CorreoJuridico } from '../entities/correo-juridico.entity';
 // DTO as class for decorator compatibility
 export class SendEmailDto {
     to: string;
+    cc?: string[];
     subject: string;
     body: string;
+    attachments?: { name: string; contentBytes: string; contentType: string }[];
 }
 
 @Controller('correos')
@@ -29,8 +32,8 @@ export class CorreosJuridicosController {
      */
     @Post('sync')
     @HttpCode(HttpStatus.OK)
-    async sync(): Promise<{ synced: number; errors: number }> {
-        return this.correosService.syncInbox();
+    async sync(@Body() body: { nextLink?: string }): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
+        return this.correosService.syncInbox(body.nextLink);
     }
 
     /**
@@ -95,6 +98,48 @@ export class CorreosJuridicosController {
     async sendEmail(@Body() dto: SendEmailDto): Promise<{ success: boolean }> {
         const success = await this.correosService.sendEmail(dto);
         return { success };
+    }
+
+    /**
+     * Get attachments for an email
+     */
+    @Get(':id/adjuntos')
+    async getAttachments(@Param('id') id: string) {
+        return this.correosService.getAttachments(id);
+    }
+
+    /**
+     * Download a specific attachment
+     * Returns the file as binary data
+     */
+    @Get('adjuntos/:adjuntoId/download')
+    async downloadAttachment(
+        @Param('adjuntoId') adjuntoId: string,
+        @Res() res: any,
+    ) {
+        const attachment = await this.correosService.downloadAttachment(adjuntoId);
+
+        // Set headers for file download
+        res.setHeader('Content-Type', attachment.contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${attachment.name}"`);
+        res.setHeader('Content-Length', attachment.size);
+
+        // Convert base64 to buffer and send
+        const buffer = Buffer.from(attachment.contentBytes, 'base64');
+        res.send(buffer);
+    }
+
+    /**
+     * Export email to ZIP
+     */
+    @Get(':id/export/zip')
+    async exportZip(@Param('id') id: string, @Res() res: any) {
+        const archive = await this.correosService.exportCorreoToZip(id);
+        res.set({
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="correo_${id}.zip"`,
+        });
+        archive.pipe(res);
     }
 }
 

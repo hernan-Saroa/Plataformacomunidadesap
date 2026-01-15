@@ -1,6 +1,7 @@
 /**
  * ModuloAsesoriaJuridicaV3 - MOD-03: Asesoría Jurídica
  * DISEÑO DATATABLE PROFESIONAL CON FILTROS AVANZADOS
+ * ✅ CONECTADO CON CONFIGURACIONES CENTRALIZADAS
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -9,7 +10,7 @@ import {
   Scale, FileText, Clock, AlertTriangle, CheckCircle, User, Building,
   Eye, Edit, Plus, Download, Filter, Search, Calendar, TrendingUp,
   Archive, MessageSquare, History, Send, FileCheck, Mail, Columns3, List,
-  AlertCircle, FolderOpen, FileQuestion, SortAsc, SortDesc, XCircle, Trash2
+  AlertCircle, FolderOpen, FileQuestion, SortAsc, SortDesc, XCircle, Trash2, Settings
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -29,10 +30,16 @@ import { legalService } from '../../../../services/api/legal.service';
 import { ModalNuevaConsulta, NuevaConsultaData } from './ModalNuevaConsulta';
 import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
 
+// ✅ Importar configuraciones centralizadas
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+
 type VistaModulo = 'tabla' | 'tarjetas';
 type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema';
 
 export function ModuloAsesoriaJuridicaV3() {
+  // ✅ Obtener configuraciones desde el Context API
+  const { estadosActivos } = useConfiguracionModulo('asesoria-juridica');
+  
   const [tipoVista, setTipoVista] = useState<VistaModulo>('tabla');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
@@ -89,6 +96,13 @@ export function ModuloAsesoriaJuridicaV3() {
     try {
       setLoading(true);
       const data = await legalService.getConsultasJuridicas();
+
+      if (!Array.isArray(data)) {
+        console.error('Error: La respuesta no es un array', data);
+        setConsultas([]);
+        return;
+      }
+
       // Map backend data to frontend format
       const mapped = data.map((c: any) => ({
         id: c.numeroRadicado,
@@ -106,7 +120,10 @@ export function ModuloAsesoriaJuridicaV3() {
         abogadoAsignadoId: c.abogadoAsignadoId || c.abogadoAsignado?.id || '', // ID needed for Select
         prioridad: c.prioridad || 'media',
         normativaAplicable: [],
-        documentosAdjuntos: []
+        documentosAdjuntos: [],
+        respuesta: c.respuesta || '', // Preservar respuesta/borrador guardado
+        fechaRespuesta: c.fechaRespuesta || null,
+        estado: c.estado || ''
       }));
       setConsultas(mapped);
     } catch (error) {

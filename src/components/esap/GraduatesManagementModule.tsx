@@ -53,6 +53,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Input } from '../ui/input';
@@ -62,6 +63,7 @@ import React from 'react';
 import graduadosService, { GraduadoData } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
+import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
 
 type GraduateRow = {
   id: string;
@@ -104,6 +106,7 @@ export function GraduatesManagementModule() {
   const [isSaving, setIsSaving] = useState(false);
   const [sedesCatalog, setSedesCatalog] = useState<Sede[]>([]);
   const [seccionalesCatalog, setSeccionalesCatalog] = useState<Seccional[]>([]);
+  const [mostrarValidador, setMostrarValidador] = useState(false); // ✅ NUEVO: Estado para vista de validación
 
   // Estados para modales
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -528,6 +531,15 @@ export function GraduatesManagementModule() {
     setIsEditModalOpen(true);
   };
 
+  const handleLocationChange = (value: string) => {
+    const mappedTerritorial = territorialBySede.get(normalizeKey(value));
+    setEditForm((prev) => ({
+      ...prev,
+      location: value,
+      territorial: mappedTerritorial || prev.territorial || '',
+    }));
+  };
+
   const handleDelete = (user: GraduateRow) => {
     setSelectedUser(user);
     setIsDeleteModalOpen(true);
@@ -548,9 +560,11 @@ export function GraduatesManagementModule() {
     });
   };
 
-  const handleVerifyTitle = (user: GraduateRow) => {
-    setSelectedUser(user);
-    window.location.href = '/verificar-certificado-graduado';
+  const handleVerifyTitle = (user?: GraduateRow) => {
+    // setSelectedUser(user);
+    // window.location.href = '/verificar-certificado-graduado';
+    // ✅ NUEVO: Abrir vista completa de validación de certificados de grado
+    setMostrarValidador(true);
   };
 
   const handleGenerateCertificate = (user: GraduateRow) => {
@@ -573,6 +587,11 @@ export function GraduatesManagementModule() {
     setIsSaving(true);
     try {
       const fullName = `${editForm.firstName} ${editForm.lastName}`.trim();
+      const effectiveTerritorial =
+        editForm.territorial ||
+        (editForm.location
+          ? territorialBySede.get(normalizeKey(editForm.location))
+          : undefined);
       const payload: Partial<GraduadoData> = {
         fullName,
         email: editForm.email,
@@ -580,7 +599,7 @@ export function GraduatesManagementModule() {
         idNumber: editForm.document,
         programName: editForm.program || selectedUser.program || '',
         campus: editForm.location || undefined,
-        seccionalName: editForm.territorial || undefined,
+        seccionalName: effectiveTerritorial || undefined,
       };
 
       await graduadosService.graduados.actualizar(selectedUser.id, payload);
@@ -638,8 +657,8 @@ export function GraduatesManagementModule() {
   };
 
   const confirmVerifyTitle = () => {
-    toast.success('Título Verificado', {
-      description: `El título de ${selectedUser?.firstName} ${selectedUser?.lastName} ha sido verificado exitosamente.`
+    toast.success('Certificado Verificado', {
+      description: `El certificado de ${selectedUser?.firstName} ${selectedUser?.lastName} ha sido verificado exitosamente.`
     });
     setIsVerifyTitleModalOpen(false);
   };
@@ -756,6 +775,11 @@ export function GraduatesManagementModule() {
     ? territorialBySede.get(normalizeKey(editForm.location))
     : undefined;
 
+  // ✅ NUEVO: Si el validador está activo, mostrar la vista completa de validación
+  if (mostrarValidador) {
+    return <ValidarCertificadoGrado onBack={() => setMostrarValidador(false)} />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Header - Según especificaciones Figma */}
@@ -829,9 +853,10 @@ export function GraduatesManagementModule() {
           </button>
 
           <button
-            onClick={() => {
-              window.location.href = '/verificar-certificado-graduado';
-            }}
+            // onClick={() => {
+            //   window.location.href = '/verificar-certificado-graduado';
+            // }}
+            onClick={() => handleVerifyTitle()}
             className="inline-flex items-center justify-center gap-2 transition-all"
             style={{
               background: '#003DA5',
@@ -855,7 +880,7 @@ export function GraduatesManagementModule() {
             }}
           >
             <BadgeCheck className="w-5 h-5" strokeWidth={2} />
-            <span>Verificar Título</span>
+            <span>Verificar Certificado</span>
           </button>
         </div>
       </motion.div>
@@ -1235,7 +1260,11 @@ export function GraduatesManagementModule() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => handleEdit(user)}>
                             <Edit className="w-4 h-4 mr-2" />
-                            Editar graduado
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleVerifyTitle(user)}>
+                            <BadgeCheck className="w-4 h-4 mr-2" />
+                            Verificar Certificado
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -1263,6 +1292,18 @@ export function GraduatesManagementModule() {
                             <FileText className="w-4 h-4" style={{ color: '#6B7280' }} />
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
                               {user.document}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            Correo
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <Mail className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                              {user.email || 'Sin correo'}
                             </p>
                           </div>
                         </div>
@@ -1549,7 +1590,7 @@ export function GraduatesManagementModule() {
               <select
                 id="edit-location"
                 value={editForm.location}
-                onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                onChange={(e) => handleLocationChange(e.target.value)}
                 className="w-full border-2 rounded-lg px-3 py-2 text-sm"
                 style={{ borderColor: '#D1D5DB' }}
               >
@@ -1597,16 +1638,16 @@ export function GraduatesManagementModule() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal: Verificar Título */}
+      {/* Modal: Verificar Certificado */}
       <Dialog open={isVerifyTitleModalOpen} onOpenChange={setIsVerifyTitleModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <BadgeCheck className="w-5 h-5" style={{ color: '#10B981' }} />
-              Verificar Título Académico
+              Verificar Certificado de Título
             </DialogTitle>
             <DialogDescription>
-              Confirma la verificación del título de {selectedUser?.firstName} {selectedUser?.lastName}
+              Confirma la verificación del certificado de {selectedUser?.firstName} {selectedUser?.lastName}
             </DialogDescription>
           </DialogHeader>
 
@@ -1616,7 +1657,7 @@ export function GraduatesManagementModule() {
                 <GraduationCap className="w-5 h-5 mt-0.5" style={{ color: '#003DA5' }} />
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-gray-900 mb-1">
-                    Información del Título
+                    Información del Certificado
                   </p>
                   <div className="space-y-1 text-sm text-gray-600">
                     <p><strong>Graduado:</strong> {selectedUser?.firstName} {selectedUser?.lastName}</p>
@@ -1657,7 +1698,7 @@ export function GraduatesManagementModule() {
               style={{ background: '#10B981', color: '#FFFFFF' }}
             >
               <BadgeCheck className="w-4 h-4" />
-              Verificar Título
+              Verificar Certificado
             </button>
           </DialogFooter>
         </DialogContent>

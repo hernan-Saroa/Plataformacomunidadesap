@@ -19,7 +19,7 @@ import {
   Mail, MailOpen, Inbox, Archive, AlertTriangle, CheckCircle,
   Eye, Plus, Search, XCircle, Send, FileText, Download,
   Circle, Check, Sparkles, User, Building, Clock, List, Columns3,
-  Filter, Star, Gavel, Scale, Briefcase
+  Filter, Star, Gavel, Scale, Briefcase, Paperclip
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -27,7 +27,7 @@ import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Checkbox } from '../../../ui/checkbox';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
@@ -62,179 +62,6 @@ interface ComunicacionUnificada {
   };
 }
 
-// DATOS MOCK (Fallback cuando no hay conexión con el backend)
-const comunicacionesMock: ComunicacionUnificada[] = [
-  // ============= JUDICIALES (Notificaciones oficiales) =============
-  {
-    id: 'JUD-2025-001',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Acción Popular',
-    asunto: 'Nueva demanda radicada - Acción Popular',
-    descripcion: 'Se ha radicado nueva demanda por acción popular contra ESAP',
-    remitente: 'Juzgado 10 Administrativo Bogotá',
-    despachoOrigen: 'Juzgado 10 Admin. Bogotá',
-    radicadoExterno: '25000-33-10-001-2024-00234-00',
-    fechaRadicacion: new Date('2024-12-24'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['demanda.pdf', 'anexos.pdf']
-  },
-  {
-    id: 'JUD-2025-002',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Laboral',
-    asunto: 'Término cercano - Contestación demanda DJ-2024-089',
-    descripcion: 'Quedan 3 días para contestar demanda DJ-2024-089',
-    remitente: 'Juzgado 3 Laboral Circuito Bogotá',
-    despachoOrigen: 'Juzgado 3 Laboral Bogotá',
-    radicadoExterno: '11001-31-03-002-2024-00567-00',
-    fechaRadicacion: new Date('2024-12-24'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['notificacion.pdf']
-  },
-  {
-    id: 'JUD-2024-156',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'NRD',
-    asunto: 'Audiencia programada - Proceso DJ-2024-045',
-    descripcion: 'Audiencia de conciliación el 15 de enero de 2025',
-    remitente: 'Tribunal Administrativo de Cundinamarca',
-    despachoOrigen: 'Tribunal Admin. Cundinamarca',
-    radicadoExterno: '25000-23-42-000-2024-01234-01',
-    fechaRadicacion: new Date('2024-12-23'),
-    urgente: false,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['citacion_audiencia.pdf']
-  },
-  {
-    id: 'JUD-2024-155',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Laboral',
-    asunto: 'Auto admisorio notificado - DJ-2024-102',
-    descripcion: 'Se notificó auto admisorio de demanda laboral',
-    remitente: 'Juzgado 5 Laboral Circuito Bogotá',
-    despachoOrigen: 'Juzgado 5 Laboral Bogotá',
-    radicadoExterno: '11001-31-05-001-2024-00789-00',
-    fechaRadicacion: new Date('2024-12-22'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['auto_admisorio.pdf']
-  },
-
-  // ============= CORREOS (Emails con clasificación IA) =============
-  {
-    id: 'EMAIL-2025-001',
-    tipo: 'CORREO',
-    asunto: 'Consulta urgente sobre licitación pública - Requiere concepto jurídico',
-    descripcion: 'Dirección de Contratación solicita concepto sobre posible inhabilidad de proponente',
-    remitente: 'contratacion@esap.edu.co',
-    fechaRadicacion: new Date('2024-12-24'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['documentos_licitacion.pdf', 'anexo_tecnico.xlsx'],
-    clasificacionIA: {
-      tipoDetectado: 'Consulta Jurídica Interna',
-      moduloSugerido: 'MOD-03: Asesoría Jurídica',
-      confianza: 98
-    }
-  },
-  {
-    id: 'EMAIL-2025-002',
-    tipo: 'CORREO',
-    asunto: 'Notificación Contraloría - Solicitud de información proceso DJ-2024-023',
-    descripcion: 'Contraloría General solicita información sobre proceso de defensa judicial',
-    remitente: 'notificaciones@contraloria.gov.co',
-    fechaRadicacion: new Date('2024-12-23'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['oficio_contraloria.pdf'],
-    clasificacionIA: {
-      tipoDetectado: 'Órgano de Control',
-      moduloSugerido: 'MOD-07: Órganos de Control',
-      confianza: 99
-    }
-  },
-  {
-    id: 'EMAIL-2024-234',
-    tipo: 'CORREO',
-    asunto: 'Solicitud de concepto - Modificación estatutaria',
-    descripcion: 'Secretaría General solicita concepto jurídico sobre reforma de estatutos',
-    remitente: 'secretariageneral@esap.edu.co',
-    fechaRadicacion: new Date('2024-12-22'),
-    urgente: false,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['proyecto_reforma.docx'],
-    clasificacionIA: {
-      tipoDetectado: 'Consulta Jurídica Interna',
-      moduloSugerido: 'MOD-03: Asesoría Jurídica',
-      confianza: 97
-    }
-  },
-  {
-    id: 'EMAIL-2024-233',
-    tipo: 'CORREO',
-    asunto: 'PQRS ciudadana - Solicitud información procesos judiciales',
-    descripcion: 'Ciudadano solicita información sobre estado de demanda contra ESAP',
-    remitente: 'juan.perez@example.com',
-    fechaRadicacion: new Date('2024-12-21'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['solicitud_pqrs.pdf'],
-    clasificacionIA: {
-      tipoDetectado: 'PQRS Externa',
-      moduloSugerido: 'MOD-04: Gestión PQRS',
-      confianza: 96
-    }
-  },
-
-  // ============= OFICIOS (Documentos internos) =============
-  {
-    id: 'OFIC-2025-001',
-    tipo: 'OFICIO',
-    asunto: 'Oficio 001-2025 - Instrucciones para contestación de tutelas',
-    descripcion: 'Rectoría emite instrucciones para contestación oportuna de acciones de tutela',
-    remitente: 'Rectoría Nacional',
-    fechaRadicacion: new Date('2024-12-23'),
-    urgente: false,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['oficio_001_2025.pdf']
-  },
-  {
-    id: 'OFIC-2024-089',
-    tipo: 'OFICIO',
-    asunto: 'Circular Jurídica - Actualización normativa Ley 2294 de 2023',
-    descripcion: 'Circular sobre aplicación de nueva ley anticorrupción en contratación',
-    remitente: 'Oficina Asesora Jurídica',
-    fechaRadicacion: new Date('2024-12-20'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['circular_juridica_089.pdf', 'ley_2294.pdf']
-  },
-  {
-    id: 'OFIC-2024-088',
-    tipo: 'OFICIO',
-    asunto: 'Memorando - Socialización de nuevo sistema SIGL',
-    descripcion: 'Invitación a capacitación sobre el Sistema Integral de Gestión Legal (SIGL)',
-    remitente: 'Dirección TI',
-    fechaRadicacion: new Date('2024-12-18'),
-    urgente: false,
-    leida: true,
-    estado: 'ARCHIVADA',
-    documentosAdjuntos: ['invitacion_capacitacion.pdf']
-  }
-];
-
 type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'urgentes' | 'archivadas';
 type VistaModulo = 'inbox' | 'lista';
 
@@ -249,7 +76,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   const [tipoVista, setTipoVista] = useState<VistaModulo>('inbox');
 
   // Estado reactivo para las comunicaciones
-  const [comunicaciones, setComunicaciones] = useState<ComunicacionUnificada[]>(comunicacionesMock);
+  const [comunicaciones, setComunicaciones] = useState<ComunicacionUnificada[]>([]);
 
   // Estados para modales
   const [modalNuevaComunicacionOpen, setModalNuevaComunicacionOpen] = useState(false);
@@ -290,33 +117,63 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         setApiConnected(true);
         console.log('✅ Correos cargados desde API:', correos.length);
       } else {
-        // Usar mock si no hay datos
-        setComunicaciones(comunicacionesMock);
-        console.log('⚠️ Sin datos de API, usando mock');
+        // No hay correos en la API
+        setComunicaciones([]);
+        console.log('⚠️ Sin datos de API');
       }
     } catch (error) {
       console.error('❌ Error cargando correos:', error);
-      setComunicaciones(comunicacionesMock);
+      setComunicaciones([]);
       setApiConnected(false);
     } finally {
       setLoading(false);
     }
   };
 
-  // Sincronizar con Microsoft Graph
+  // Sincronizar con Microsoft Graph de forma progresiva
   const handleSyncCorreos = async () => {
     setSyncing(true);
+    let nextLink: string | null | undefined = undefined;
+    let totalSynced = 0;
+    let totalErrors = 0;
+    let pagesProcessed = 0;
+    const MAX_PAGES = 10; // Límite de 500 correos (10 * 50)
+
     try {
-      const result = await correosJuridicosService.syncCorreos();
-      toast.success(`✅ Sincronización completada: ${result.synced} correos nuevos`, {
-        description: result.errors > 0 ? `${result.errors} errores` : undefined
+      toast.info("Iniciando sincronización de correos...");
+
+      do {
+        // Notificar progreso si no es la primera página
+        if (pagesProcessed > 0) {
+          toast.loading(`Cargando lote ${pagesProcessed + 1}...`, { id: 'sync-progress', duration: 2000 });
+        }
+
+        const result = await correosJuridicosService.syncCorreos(nextLink ?? undefined);
+
+        totalSynced += result.synced;
+        totalErrors += result.errors;
+        nextLink = result.nextLink; // Actualizar nextLink para la siguiente iteración
+        pagesProcessed++;
+
+        // Si encontramos nuevos correos, refrescar la lista inmediatamente para efecto "poco a poco"
+        if (result.synced > 0) {
+          await loadCorreosFromAPI();
+        }
+
+      } while (nextLink && pagesProcessed < MAX_PAGES);
+
+      toast.dismiss('sync-progress');
+      toast.success(`✅ Sincronización completada: ${totalSynced} correos nuevos procesados`, {
+        description: totalErrors > 0 ? `${totalErrors} errores` : undefined
       });
-      await loadCorreosFromAPI();
+
     } catch (error) {
       console.error('Error sincronizando:', error);
       toast.error('Error al sincronizar con Microsoft 365');
     } finally {
       setSyncing(false);
+      // Asegurar que tenemos la última versión
+      loadCorreosFromAPI();
     }
   };
 
@@ -325,29 +182,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     loadCorreosFromAPI();
   }, []);
 
-  // Debug: Monitorear cambios en el estado del modal
-  useEffect(() => {
-    console.log('📊 Estado modalExpedienteOpen:', modalExpedienteOpen);
-    console.log('📊 Estado comunicacionParaExpediente:', comunicacionParaExpediente);
-  }, [modalExpedienteOpen, comunicacionParaExpediente]);
 
-  // TEST: Detectar clicks en toda la página
-  useEffect(() => {
-    const handleGlobalClick = (e: MouseEvent) => {
-      console.log('🖱️ CLICK GLOBAL DETECTADO:', {
-        x: e.clientX,
-        y: e.clientY,
-        target: (e.target as HTMLElement).tagName,
-        className: (e.target as HTMLElement).className
-      });
-    };
-
-    document.addEventListener('click', handleGlobalClick, true);
-
-    return () => {
-      document.removeEventListener('click', handleGlobalClick, true);
-    };
-  }, []);
 
   const comunicacionesFiltradas = useMemo(() => {
     let resultado = [...comunicaciones];
@@ -735,15 +570,18 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       />
 
       {/* Modal Expediente Comunicación */}
-      <ModalExpedienteComunicacion
-        isOpen={modalExpedienteOpen && comunicacionParaExpediente !== null}
-        onClose={() => {
-          console.log('🚪 Cerrando modal expediente');
-          setModalExpedienteOpen(false);
-          setComunicacionParaExpediente(null);
-        }}
-        comunicacion={comunicacionParaExpediente || comunicacionesFiltradas[0] || comunicacionesUnificadas[0]}
-      />
+      {comunicacionParaExpediente && (
+        <ModalExpedienteComunicacion
+          isOpen={modalExpedienteOpen}
+          onClose={() => {
+            setModalExpedienteOpen(false);
+            setComunicacionParaExpediente(null);
+          }}
+          comunicacion={comunicacionParaExpediente}
+          onMarcarLeida={handleMarcarLeida}
+          onArchivar={handleArchivar}
+        />
+      )}
     </div>
   );
 }
@@ -913,7 +751,7 @@ function ItemComunicacion({
         <Checkbox
           checked={marcada}
           onCheckedChange={() => onToggleMarcada(comunicacion.id)}
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
         />
       </div>
 
@@ -1078,20 +916,15 @@ function VistaPreviaComunicacion({
         </div>
       )}
 
-      {/* Documentos adjuntos */}
+      {/* Documentos adjuntos - Solo indicador, ver detalles en el modal */}
       {comunicacion.documentosAdjuntos.length > 0 && (
         <div className="mb-4">
-          <p className="text-xs text-gray-500 mb-2">Documentos Adjuntos:</p>
-          <div className="space-y-2">
-            {comunicacion.documentosAdjuntos.map((doc, idx) => (
-              <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded border border-gray-200">
-                <FileText className="w-4 h-4 text-gray-600" />
-                <span className="text-sm text-gray-700 flex-1">{doc}</span>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                  <Download className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            ))}
+          <div className="flex items-center gap-2 p-2 bg-blue-50 rounded border border-blue-200">
+            <Paperclip className="w-4 h-4 text-blue-600" />
+            <span className="text-sm text-blue-700 font-medium">
+              Tiene archivos adjuntos
+            </span>
+            <span className="text-xs text-blue-500 ml-auto">Ver en expediente completo</span>
           </div>
         </div>
       )}

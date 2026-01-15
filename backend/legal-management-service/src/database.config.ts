@@ -18,6 +18,7 @@ import { TerminoProcesal } from './entities/termino-procesal.entity';
 // Órganos de Control - Nuevo módulo
 import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
 import { RequerimientoOC } from './entities/requerimiento-oc.entity';
+import { RespuestaBorradorOC } from './entities/respuesta-borrador-oc.entity';
 import { SolicitudInsumo } from './entities/solicitud-insumo.entity';
 import { Hallazgo } from './entities/hallazgo.entity';
 import { PeiIndicador } from './entities/pei-indicador.entity';
@@ -33,6 +34,7 @@ import { DocumentoOC } from './entities/documento-oc.entity';
 
 // Módulo de Riesgos
 import { Riesgo } from './entities/riesgo.entity';
+import { RiesgoHistorial } from './entities/riesgo-historial.entity';
 import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 
 // Planes de Mejoramiento
@@ -44,6 +46,14 @@ import { ComentarioConsulta } from './entities/comentario-consulta.entity';
 
 // Correos Jurídicos (Microsoft Graph)
 import { CorreoJuridico } from './entities/correo-juridico.entity';
+import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
+
+// Excepciones Procesales
+import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
+
+// Procesos Coactivos
+import { ProcesoCoactivo } from './entities/proceso-coactivo.entity';
+import { ProcesoCoactivoAdjunto } from './entities/proceso-coactivo-adjunto.entity';
 
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
@@ -60,7 +70,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
         Expediente, Actuacion, Abogado, Audiencia, Requerimiento, OrganismoControl,
         Auto, Documento, Comentario, Evidencia, Acta, ConsultaJuridica, TerminoProcesal,
         // Órganos de Control
-        OrganismoControlOC, RequerimientoOC, SolicitudInsumo, Hallazgo,
+        OrganismoControlOC, RequerimientoOC, RespuestaBorradorOC, SolicitudInsumo, Hallazgo,
         // PEI
         PeiIndicador, PeiRegistroAvance,
         // Tareas y Notas
@@ -68,7 +78,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Comentarios y Documentos OC
         ComentarioOC, DocumentoOC,
         // Riesgos
-        Riesgo,
+        Riesgo, RiesgoHistorial,
         // Decisiones
         DecisionDisciplinaria,
         // Planes de Mejoramiento
@@ -76,7 +86,11 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Documentos de Consultas Jurídicas
         DocumentoConsulta, ComentarioConsulta,
         // Correos Jurídicos
-        CorreoJuridico
+        CorreoJuridico, AdjuntoCorreo,
+        // Excepciones Procesales
+        ExcepcionProcesal,
+        // Procesos Coactivos
+        ProcesoCoactivo, ProcesoCoactivoAdjunto
     ],
     synchronize: false, // ⚠️ Cambiado a false para usar migraciones en producción
     logging: ['error'], // Solo mostrar errores, no queries

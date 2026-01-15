@@ -27,7 +27,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
-import { getServiceUrl } from '../../../../config/environment';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalNotificar } from './ModalNotificar';
@@ -262,9 +262,21 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const getFullUrl = (url: string) => {
     if (!url) return '';
     if (url.startsWith('http')) return url;
-    // URL Base para desarrollo local - sin /api/
+
+    // URL Base del Gateway
     const baseUrl = getServiceUrl('legal');
-    return `${baseUrl}/legal/${url}`;
+
+    // Extraer nombre del archivo si la URL tiene ruta
+    let filename = url;
+    if (url.includes('/files/')) {
+      filename = url.split('/files/').pop() || url;
+    } else if (url.includes('/')) {
+      filename = url.split('/').pop() || url;
+    }
+
+    // En modo directo, no agregar prefijo /legal/
+    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    return `${baseUrl}${prefix}/files/${filename}`;
   };
 
   const handleDownloadFile = async (doc: any) => {
@@ -357,6 +369,23 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     toast.success('👁️ Documento abierto en nueva pestaña', { description: doc.nombre });
   };
 
+  const handleEliminarDocumento = async (doc: any) => {
+    if (!confirm(`¿Estás seguro de eliminar el documento "${doc.nombre}"?`)) {
+      return;
+    }
+
+    toast.loading('🗑️ Eliminando documento...', { id: 'delete-doc' });
+    try {
+      await legalService.eliminarDocumento(doc.id);
+      toast.success('✅ Documento eliminado', { id: 'delete-doc', description: doc.nombre });
+      // Recargar documentos
+      loadDocumentos();
+    } catch (error) {
+      console.error('Error eliminando documento:', error);
+      toast.error('Error al eliminar el documento', { id: 'delete-doc' });
+    }
+  };
+
   const handleDescargarTodos = async () => {
     if (documentos.length === 0) {
       toast.info('No hay documentos para descargar');
@@ -368,7 +397,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     try {
       const expedienteId = expediente.uuid || expediente.id;
       const baseUrl = getServiceUrl('legal');
-      const url = `${baseUrl}/legal/api/v1/documentos/expediente/${expedienteId}/download-zip`;
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      const url = `${baseUrl}${prefix}/documentos/expediente/${expedienteId}/download-zip`;
 
       const response = await fetch(url);
 
@@ -662,7 +692,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
+        <DialogContent hideCloseButton className="max-w-5xl h-[90vh] flex flex-col p-0">
           <DialogTitle className="sr-only">
             Expediente Judicial {expediente.id} - Vista Completa
           </DialogTitle>
@@ -732,6 +762,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
               </span>
             </div>
           </div>
+
+
 
           {/* ==================== CONTENIDO CON TABS ==================== */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -1167,6 +1199,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => handleDescargarDocumento(doc)} title="Descargar">
                             <Download className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => handleEliminarDocumento(doc)} title="Eliminar" className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                            <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
                       </div>
