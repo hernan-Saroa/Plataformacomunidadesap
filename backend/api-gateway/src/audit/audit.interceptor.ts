@@ -10,6 +10,7 @@ import { tap, catchError } from 'rxjs/operators';
 import { Request, Response } from 'express';
 import { AuditClientService } from './audit-client.service';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
+import { getServiceFromUrl, getModuleFromService, getSubmoduleFromUrl, Microservice } from './microservice.enum';
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
@@ -22,31 +23,22 @@ export class AuditInterceptor implements NestInterceptor {
     const response = context.switchToHttp().getResponse<Response>();
     const startTime = Date.now();
 
-    // Extraer información de la petición
     const method = request.method;
     const url = request.originalUrl || request.url;
     const path = request.path;
     const queryParams = request.query;
 
-    // Solo registrar métodos que modifican datos (POST, PUT, DELETE, PATCH)
-    // NO registrar GET, OPTIONS, HEAD, etc.
     const shouldAudit = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method);
-    
-    // Si no debe auditarse, continuar sin registrar
     if (!shouldAudit) {
       return next.handle();
     }
 
-    // Extraer módulo y versión de la URL
-    // Formato: /{module}/api/v{version}/{path}
-    const urlMatch = url.match(/\/([^\/]+)\/api\/v?(\d+)?/);
-    const module = urlMatch?.[1] || 'unknown';
+    const urlMatch = url.match(/^\/([^\/]+)\/api\/v(\d+)/);
+    const serviceName = urlMatch?.[1] || null;
     const version = urlMatch?.[2] || '1';
-
-    // Obtener IP del cliente (SIN modificar headers)
+    const module = getModuleFromService(serviceName);
+    const submodule = getSubmoduleFromUrl(url) || undefined;
     const clientIp = this.getClientIp(request);
-
-    // Extraer información del usuario del token JWT si está presente
     const userInfo = this.extractUserInfo(request);
 
     // Capturar body de la petición (solo si es pequeño)
@@ -78,6 +70,7 @@ export class AuditInterceptor implements NestInterceptor {
           path,
           queryParams,
           module,
+          submodule,
           version,
           ipAddress: clientIp,
           userAgent: request.headers['user-agent'],
@@ -114,6 +107,7 @@ export class AuditInterceptor implements NestInterceptor {
           path,
           queryParams,
           module,
+          submodule,
           version,
           ipAddress: clientIp,
           userAgent: request.headers['user-agent'],
@@ -141,38 +135,27 @@ export class AuditInterceptor implements NestInterceptor {
     );
   }
 
-  /**
-   * Obtiene la IP del cliente SIN modificar headers
-   * Respeta los headers existentes pero no los cambia
-   */
   private getClientIp(request: Request): string {
-    // Orden de prioridad para obtener IP real
     const forwardedFor = request.headers['x-forwarded-for'];
     const realIp = request.headers['x-real-ip'];
     const cfConnectingIp = request.headers['cf-connecting-ip'];
 
-    // Extraer primera IP de x-forwarded-for (puede tener múltiples)
     if (forwardedFor) {
       const ips = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
       const firstIp = ips.split(',')[0].trim();
       if (firstIp) return firstIp;
     }
 
-    // Cloudflare
     if (cfConnectingIp) {
-      const ip = Array.isArray(cfConnectingIp)
-        ? cfConnectingIp[0]
-        : cfConnectingIp;
+      const ip = Array.isArray(cfConnectingIp) ? cfConnectingIp[0] : cfConnectingIp;
       if (ip) return ip;
     }
 
-    // x-real-ip
     if (realIp) {
       const ip = Array.isArray(realIp) ? realIp[0] : realIp;
       if (ip) return ip;
     }
 
-    // Fallback a IP de conexión
     return (
       request.ip ||
       request.connection?.remoteAddress ||
@@ -181,34 +164,21 @@ export class AuditInterceptor implements NestInterceptor {
     );
   }
 
-  /**
-   * Determina si se debe registrar el body de la petición
-   * Solo para peticiones pequeñas (< 10KB)
-   */
   private shouldLogBody(request: Request): boolean {
-    const contentLength = parseInt(
-      request.headers['content-length'] || '0',
-      10,
-    );
-    return contentLength > 0 && contentLength < 10240; // 10KB
+    const contentLength = parseInt(request.headers['content-length'] || '0', 10);
+    return contentLength > 0 && contentLength < 10240;
   }
 
-  /**
-   * Determina si se debe registrar el body de la respuesta
-   */
   private shouldLogResponse(data: any): boolean {
     if (!data) return false;
     try {
       const dataStr = JSON.stringify(data);
-      return dataStr.length < 10240; // 10KB
+      return dataStr.length < 10240;
     } catch {
       return false;
     }
   }
 
-  /**
-   * Sanitiza el body removiendo información sensible
-   */
   private sanitizeBody(body: any): any {
     if (!body || typeof body !== 'object') return body;
 
@@ -233,9 +203,7 @@ export class AuditInterceptor implements NestInterceptor {
     return sanitized;
   }
 
-  /**
-   * Extrae información del usuario del token JWT
-   */
+
   private extractUserInfo(request: Request): {
     userId?: number;
     userEmail?: string;
@@ -247,36 +215,34 @@ export class AuditInterceptor implements NestInterceptor {
         return {};
       }
 
-      const token = authHeader.substring(7); // Remover 'Bearer '
-      
-      // Decodificar el token sin verificar (solo extraer el payload)
-      // Un JWT tiene formato: header.payload.signature
+      const token = authHeader.substring(7);
       const parts = token.split('.');
       if (parts.length !== 3) {
         return {};
       }
 
-      // Decodificar el payload (segunda parte del token)
-      const payload = JSON.parse(
-        Buffer.from(parts[1], 'base64').toString('utf8')
-      );
-      
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
       if (!payload || typeof payload !== 'object') {
         return {};
       }
       
-      // Extraer información del payload
-      // El payload puede tener: sub (userId), username, roles, email
       const userId = payload.sub ? parseInt(payload.sub, 10) : undefined;
       const userEmail = payload.email || payload.username || undefined;
       
-      // Roles puede ser un array o string
       let userRole: string | undefined;
       if (payload.roles) {
         if (Array.isArray(payload.roles)) {
-          userRole = payload.roles.join(', ');
+          if (payload.roles.length > 0 && typeof payload.roles[0] === 'object') {
+            userRole = payload.roles
+              .map((r: any) => r.code || r.name || r.id || JSON.stringify(r))
+              .join(', ');
+          } else {
+            userRole = payload.roles.join(', ');
+          }
         } else if (typeof payload.roles === 'string') {
           userRole = payload.roles;
+        } else if (typeof payload.roles === 'object') {
+          userRole = payload.roles.code || payload.roles.name || JSON.stringify(payload.roles);
         }
       }
 
@@ -286,8 +252,6 @@ export class AuditInterceptor implements NestInterceptor {
         userRole,
       };
     } catch (error) {
-      // Si hay error al decodificar, no fallar la auditoría
-      // Solo retornar objeto vacío
       return {};
     }
   }

@@ -32,6 +32,9 @@ export class RequestLog {
   @Column({ type: 'varchar', length: 100, nullable: true })
   module?: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  submodule?: string;
+
   @Column({ type: 'varchar', length: 10, nullable: true })
   version?: string;
 

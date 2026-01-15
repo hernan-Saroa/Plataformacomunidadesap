@@ -26,6 +26,10 @@ export class CreateAuditLogDto {
 
   @IsOptional()
   @IsString()
+  submodule?: string;
+
+  @IsOptional()
+  @IsString()
   version?: string;
 
   @IsOptional()

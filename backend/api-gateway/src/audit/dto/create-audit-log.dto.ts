@@ -4,6 +4,7 @@ export class CreateAuditLogDto {
   path: string;
   queryParams?: any;
   module?: string;
+  submodule?: string;
   version?: string;
   ipAddress?: string;
   userAgent?: string;
