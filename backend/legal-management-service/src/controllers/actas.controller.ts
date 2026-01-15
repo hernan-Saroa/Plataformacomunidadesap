@@ -34,7 +34,7 @@ export class ActasController {
 
             res.set({
                 'Content-Type': 'application/zip',
-                'Content-Disposition': `attachment; filename=actas_${expedienteId.replace(/[^a-zA-Z0-9]/g, '_')}.zip`,
+                'Content-Disposition': `attachment; filename=Actas_${expedienteId.replace(/[^a-zA-Z0-9]/g, '_')}.zip`,
             });
 
             const archive = archiver('zip', { zlib: { level: 9 } });
