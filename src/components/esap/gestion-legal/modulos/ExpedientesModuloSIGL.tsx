@@ -11,7 +11,17 @@ import {
 import { toast } from 'sonner';
 import { ModalSIGL } from '../design-system/ModalSIGL';
 import { legalService } from '../../../../services/api/legal.service';
+import { ModalSeleccionTipo } from './ModalSeleccionTipo';
+import { ModalAutos } from './ModalAutos';
+import { ModalActas } from './ModalActas';
+import { ModalEvidencias } from './ModalEvidencias';
+import { ModalOficios } from './ModalOficios';
 
+import { ModalSubirRespuesta } from './ModalSubirRespuesta';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
+
+
+import { buildApiUrl } from '../../../../config/environment';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -29,6 +39,7 @@ type TipoDocumento =
   | 'DEMANDA'
   | 'CONTESTACION'
   | 'PRUEBAS'
+  | 'EVIDENCIAS'
   | 'SENTENCIAS'
   | 'TUTELAS'
   | 'RECURSOS'
@@ -69,7 +80,7 @@ type VistaActual = 'expedientes' | 'estadisticas';
 // CONFIGURACIÓN DE TIPOS DE DOCUMENTOS
 // ════════════════════════════════════════════════════════════════════════════
 
-const TIPOS_DOCUMENTO = [
+export const TIPOS_DOCUMENTO = [
   {
     id: 'DEMANDA' as TipoDocumento,
     nombre: 'Demandas',
@@ -88,6 +99,13 @@ const TIPOS_DOCUMENTO = [
     id: 'PRUEBAS' as TipoDocumento,
     nombre: 'Pruebas',
     descripcion: 'Documentos probatorios, evidencias, anexos',
+    color: 'green',
+    icon: FolderCheck
+  },
+  {
+    id: 'EVIDENCIAS' as TipoDocumento,
+    nombre: 'Evidencias',
+    descripcion: 'Material probatorio y evidencias',
     color: 'green',
     icon: FolderCheck
   },
@@ -176,6 +194,21 @@ export function ExpedientesModuloSIGL() {
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [cargando, setCargando] = useState(true);
 
+  // Estado para el visor de documentos
+  const [visorOpen, setVisorOpen] = useState(false);
+  const [documentoVisor, setDocumentoVisor] = useState<Documento | null>(null);
+
+  const handleVerDocumentoCentralizado = (doc: Documento) => {
+    let url = doc.url;
+    // Helper rápido para asegurar URL absoluta
+    if (url && !url.startsWith('http') && !url.startsWith('blob:')) {
+      url = `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+    }
+
+    setDocumentoVisor({ ...doc, url });
+    setVisorOpen(true);
+  };
+
   // Helper para mapear estado del backend al frontend
   const mapEstado = (estadoBackend: string = ''): 'ACTIVO' | 'EN_PROCESO' | 'FINALIZADO' => {
     const estado = estadoBackend.toUpperCase();
@@ -189,7 +222,8 @@ export function ExpedientesModuloSIGL() {
     const texto = (nombre + ' ' + tipo).toUpperCase();
     if (texto.includes('DEMANDA')) return 'DEMANDA';
     if (texto.includes('CONTESTACION') || texto.includes('RESPUESTA')) return 'CONTESTACION';
-    if (texto.includes('PRUEBA') || texto.includes('EVIDENCIA') || texto.includes('TESTIMONIO')) return 'PRUEBAS';
+    if (texto.includes('EVIDENCIA')) return 'EVIDENCIAS';
+    if (texto.includes('PRUEBA') || texto.includes('TESTIMONIO')) return 'PRUEBAS';
     if (texto.includes('SENTENCIA') || texto.includes('FALLO') || texto.includes('AUTO')) return 'SENTENCIAS';
     if (texto.includes('TUTELA')) return 'TUTELAS';
     if (texto.includes('RECURSO') || texto.includes('APELACION') || texto.includes('REPOSICION')) return 'RECURSOS';
@@ -224,21 +258,48 @@ export function ExpedientesModuloSIGL() {
 
           let docsExp: Documento[] = [];
           try {
-            const docs = await legalService.getDocumentos(proc.id);
-            if (Array.isArray(docs)) {
-              docsExp = docs.map(d => ({
+            // Cargar Documentos y Evidencias en paralelo
+            const [docsRes, evidenciasRes] = await Promise.allSettled([
+              legalService.getDocumentos(proc.id),
+              legalService.getEvidencias(proc.id)
+            ]);
+
+            const docs = docsRes.status === 'fulfilled' && Array.isArray(docsRes.value) ? docsRes.value : [];
+            const evidencias = evidenciasRes.status === 'fulfilled' && Array.isArray(evidenciasRes.value) ? evidenciasRes.value : [];
+
+            // Mapear Documentos Generales
+            const docsMapeados: Documento[] = docs.map((d: any) => {
+              const tipoInicial = d.tipo ? mapearTipoDocumento(d.nombre || '', d.tipo) : mapearTipoDocumento(d.nombre || '', 'OTROS');
+              const tipoFinal = (tipoInicial === 'PRUEBAS') ? 'EVIDENCIAS' : tipoInicial;
+
+              return {
                 id: d.id,
-                nombre: d.nombre,
-                tipo: d.tipo ? mapearTipoDocumento(d.nombre, d.tipo) : mapearTipoDocumento(d.nombre, 'OTROS'),
-                tipoArchivo: d.archivoMimeType?.split('/')[1]?.toUpperCase() || 'PDF',
-                tamanio: d.archivoTamano ? (d.archivoTamano / 1024).toFixed(0) + ' KB' : 'Unknown',
-                fechaCreacion: d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
-                autor: d.subidoPor || 'Sistema',
-                url: d.archivoUrl
-              }));
-            }
+                nombre: d.nombre || d.nombreArchivo || 'Documento sin nombre',
+                tipo: tipoFinal,
+                tipoArchivo: d.tipoArchivo || d.archivoMimeType?.split('/')[1]?.toUpperCase() || 'PDF',
+                tamanio: d.tamanio || (d.archivoTamano ? (d.archivoTamano / 1024).toFixed(0) + ' KB' : 'N/A'),
+                fechaCreacion: d.fechaCreacion || d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+                autor: d.autor || d.subidoPor || 'Sistema',
+                url: d.url || d.archivoUrl
+              };
+            });
+
+            // Mapear Evidencias (Entidad separada del backend)
+            const evidenciasMapeadas: Documento[] = evidencias.map((e: any) => ({
+              id: e.id,
+              nombre: e.descripcion || e.archivoNombre || 'Evidencia sin nombre',
+              tipo: 'EVIDENCIAS' as TipoDocumento,
+              tipoArchivo: e.tipoArchivo || 'PDF',
+              tamanio: e.archivoTamano ? (e.archivoTamano / 1024).toFixed(0) + ' KB' : 'N/A',
+              fechaCreacion: e.fechaPresentacion?.split('T')[0] || e.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+              autor: e.aportadoPor || 'Sistema',
+              url: e.archivoUrl
+            }));
+
+            docsExp = [...docsMapeados, ...evidenciasMapeadas];
+
           } catch (error) {
-            console.warn(`Error cargando documentos para expediente judicial ${proc.id}`, error);
+            console.warn(`Error cargando documentos/evidencias para expediente judicial ${proc.id}`, error);
           }
 
           let tipoProc: TipoProceso = 'DEFENSA_JUDICIAL';
@@ -264,16 +325,58 @@ export function ExpedientesModuloSIGL() {
       if (juzgamientoRes.status === 'fulfilled') {
         const procesosJuzgamiento = juzgamientoRes.value;
         procesosJuzgamiento.forEach(proc => {
-          const docsExp: Documento[] = (proc.documentos || []).map((d: any) => ({
-            id: d.id || d.uuid,
-            nombre: d.documentoNombre || d.archivoNombre || d.descripcion || 'Documento sin nombre',
-            tipo: mapearTipoDocumento(d.documentoNombre || d.archivoNombre || d.descripcion, d.tipoActuacion || d.tipo),
-            tipoArchivo: (d.documentoUrl || d.archivoUrl) ? (d.documentoUrl || d.archivoUrl).split('.').pop()?.toUpperCase() : 'PDF',
-            tamanio: d.archivoTamano ? (d.archivoTamano / 1024).toFixed(0) + ' KB' : 'Unknown',
-            fechaCreacion: d.fechaActuacion?.split('T')[0] || d.fechaPresentacion?.split('T')[0] || new Date().toISOString().split('T')[0],
-            autor: d.usuarioResponsable || d.aportadoPor || 'Sistema',
-            url: d.documentoUrl || d.archivoUrl
-          })).filter((d: any) => d.url);
+          // Backend devuelve 'documentos' como merge de 'actuaciones' + 'evidencias'
+          // Actuaciones tienen: documentoNombre, documentoUrl, tipoActuacion
+          // Evidencias tienen: archivoNombre, archivoUrl, tipo
+          const docsExp: Documento[] = (proc.documentos || []).map((d: any) => {
+            // Determinar si es PRUEBA o EVIDENCIA basado en tipoActuacion o tipo
+            const esEvidencia = d.tipoActuacion === 'EVIDENCIA' || d.tipo?.toUpperCase().includes('EVIDENCIA') || d.tipo?.toUpperCase().includes('PERICIAL') || d.tipo?.toUpperCase().includes('TESTIMONIAL');
+            const tipoFinal: TipoDocumento = esEvidencia ? 'EVIDENCIAS' : 'PRUEBAS';
+
+            // Obtener nombre correcto (actuaciones usan documentoNombre, evidencias usan archivoNombre o descripcion)
+            const nombre = d.documentoNombre || d.archivoNombre || d.descripcion || 'Documento sin nombre';
+
+            // Obtener URL correcto
+            let url = d.documentoUrl || d.archivoUrl || d.url;
+
+            // Si no hay URL pero hay nombre de archivo, construir ruta al controlador de archivos
+            if (!url && d.documentoNombre) {
+              url = `/files/${d.documentoNombre}`;
+            }
+
+            // Normalización robusta de URLs (Environment-Safe)
+            if (url && !url.startsWith('http') && !url.startsWith('blob:')) {
+              // Limpiar basura de rutas incorrectas previas
+              if (url.includes('/api/legal/files/')) {
+                const filename = url.split('/').pop();
+                url = `/files/${filename}`;
+              }
+
+              // Construir URL completa usando la configuración del entorno
+              if (url.startsWith('/uploads') || url.startsWith('uploads')) {
+                const cleanPath = url.startsWith('/') ? url : `/${url}`;
+                url = buildApiUrl('legal', cleanPath);
+              } else if (!url.includes('/')) {
+                // Es solo nombre de archivo
+                url = buildApiUrl('legal', `/files/${url}`);
+              } else {
+                // Es una ruta relativa, asegurarnos de que empiece con /
+                const path = url.startsWith('/') ? url : `/${url}`;
+                url = buildApiUrl('legal', path);
+              }
+            }
+
+            return {
+              id: d.id,
+              nombre: nombre,
+              tipo: tipoFinal,
+              tipoArchivo: d.tipoArchivo || 'PDF',
+              tamanio: d.archivoTamano ? (d.archivoTamano / 1024).toFixed(0) + ' KB' : 'N/A',
+              fechaCreacion: d.fechaActuacion?.split('T')[0] || d.fechaPresentacion?.split('T')[0] || d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+              autor: d.usuarioResponsable || d.aportadoPor || 'Juzgamiento',
+              url: url
+            };
+          });
 
           nuevosExpedientes.push({
             id: proc.id,
@@ -372,11 +475,62 @@ export function ExpedientesModuloSIGL() {
     }
   };
 
+  // Estados para modales especializados
+  const [expedienteSeleccionado, setExpedienteSeleccionado] = useState<Expediente | null>(null);
+  const [selectedTipoId, setSelectedTipoId] = useState<string | null>(null);
+  const [modalSeleccionOpen, setModalSeleccionOpen] = useState(false);
+  const [modalAutosOpen, setModalAutosOpen] = useState(false);
+  const [modalActasOpen, setModalActasOpen] = useState(false);
+  const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
+  const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
+  const [modalRespuestaOpen, setModalRespuestaOpen] = useState(false);
+  const [modalCargarOpen, setModalCargarOpen] = useState(false); // Generic
+
+  const handleCargarClick = (exp: Expediente) => {
+    setExpedienteSeleccionado(exp);
+    setModalSeleccionOpen(true);
+  };
+
+  const handleTipoSelected = (tipoId: string) => {
+    if (!expedienteSeleccionado) return;
+    setSelectedTipoId(tipoId);
+
+    console.log('Tipo seleccionado:', tipoId);
+
+    switch (tipoId) {
+      case 'ACTAS':
+        setModalActasOpen(true);
+        break;
+      case 'SENTENCIAS':
+      case 'AUTOS':
+      case 'FALLOS':
+        setModalAutosOpen(true);
+        break;
+      case 'PRUEBAS':
+      case 'EVIDENCIAS':
+        setModalEvidenciasOpen(true);
+        break;
+      case 'OFICIOS':
+        setModalOficiosOpen(true);
+        break;
+      case 'RESPUESTA':
+        setModalRespuestaOpen(true);
+        break;
+      case 'OTROS':
+      default:
+        setModalCargarOpen(true);
+        break;
+    }
+  };
+
   useEffect(() => {
     cargarExpedientes();
   }, []);
 
-  const handleDocumentoUpload = async (expediente: Expediente, file: File, tipoId: string) => {
+  const handleGenericUpload = async (file: File, tipoId: string) => {
+    if (!expedienteSeleccionado) return;
+    const expediente = expedienteSeleccionado;
+
     try {
       toast.promise(
         async () => {
@@ -472,7 +626,8 @@ export function ExpedientesModuloSIGL() {
               {vistaActiva === 'expedientes' &&
                 <VistaExpedientes
                   expedientes={expedientes}
-                  onUpload={handleDocumentoUpload}
+                  onUpload={handleCargarClick}
+                  onViewDoc={handleVerDocumentoCentralizado}
                 />
               }
               {vistaActiva === 'estadisticas' &&
@@ -484,6 +639,75 @@ export function ExpedientesModuloSIGL() {
           )}
         </motion.div>
       </AnimatePresence>
+      {/* Modales Especializados */}
+      {expedienteSeleccionado && (
+        <>
+          <ModalSeleccionTipo
+            isOpen={modalSeleccionOpen}
+            onClose={() => setModalSeleccionOpen(false)}
+            tipoProceso={expedienteSeleccionado.tipoProceso}
+            tiposDocumento={TIPOS_DOCUMENTO}
+            onSelectTipo={handleTipoSelected}
+          />
+
+          <ModalAutos
+            isOpen={modalAutosOpen}
+            onClose={() => setModalAutosOpen(false)}
+            expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+          />
+
+          <ModalActas
+            isOpen={modalActasOpen}
+            onClose={() => setModalActasOpen(false)}
+            expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+          />
+
+          <ModalEvidencias
+            isOpen={modalEvidenciasOpen}
+            onClose={() => setModalEvidenciasOpen(false)}
+            expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+          />
+
+          <ModalOficios
+            isOpen={modalOficiosOpen}
+            onClose={() => setModalOficiosOpen(false)}
+            expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+          />
+
+          {modalRespuestaOpen && (
+            <ModalSubirRespuesta
+              isOpen={modalRespuestaOpen}
+              onClose={() => setModalRespuestaOpen(false)}
+              requerimiento={{
+                id: expedienteSeleccionado.id,
+                numeroOficio: expedienteSeleccionado.radicado,
+                organismo: 'Contraloría', // Placeholder
+                asunto: expedienteSeleccionado.nombreProceso,
+                fechaVencimiento: new Date(),
+                diasRestantes: 5
+              }}
+            />
+          )}
+
+          <ModalCargarDocumento
+            isOpen={modalCargarOpen}
+            onClose={() => setModalCargarOpen(false)}
+            onCargar={handleGenericUpload}
+            radicado={expedienteSeleccionado.radicado}
+            tipoProceso={expedienteSeleccionado.tipoProceso}
+            preSelectedType={selectedTipoId}
+          />
+
+          {/* Visor de Documentos Centralizado */}
+          <VisorDocumentoModal
+            isOpen={visorOpen}
+            onClose={() => setVisorOpen(false)}
+            archivo={documentoVisor?.url}
+            numero={documentoVisor?.nombre}
+            asunto={documentoVisor?.tipo}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -531,10 +755,11 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
 
 interface VistaExpedientesProps {
   expedientes: Expediente[];
-  onUpload: (exp: Expediente, file: File, tipo: string) => Promise<void>;
+  onUpload: (exp: Expediente) => void;
+  onViewDoc: (doc: Documento) => void;
 }
 
-function VistaExpedientes({ expedientes, onUpload }: VistaExpedientesProps) {
+function VistaExpedientes({ expedientes, onUpload, onViewDoc }: VistaExpedientesProps) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | 'ACTIVO' | 'EN_PROCESO' | 'FINALIZADO'>('TODOS');
   const [expedienteExpandido, setExpedienteExpandido] = useState<string | null>(null);
@@ -625,7 +850,9 @@ function VistaExpedientes({ expedientes, onUpload }: VistaExpedientesProps) {
             onToggleExpand={() => setExpedienteExpandido(
               expedienteExpandido === expediente.id ? null : expediente.id
             )}
-            onUpload={onUpload}
+
+            onUpload={() => onUpload(expediente)}
+            onViewDoc={onViewDoc}
           />
         ))}
 
@@ -683,15 +910,17 @@ function FilterButton({ active, onClick, label, count, color }: FilterButtonProp
 // CARD EXPEDIENTE
 // ════════════════════════════════════════════════════════════════════════════
 
+
 interface CardExpedienteProps {
   expediente: Expediente;
   expandido: boolean;
   onToggleExpand: () => void;
-  onUpload: (exp: Expediente, file: File, tipo: string) => Promise<void>;
+  onUpload: () => void;
+  onViewDoc: (doc: Documento) => void;
 }
 
-function CardExpediente({ expediente, expandido, onToggleExpand, onUpload }: CardExpedienteProps) {
-  const [modalCargar, setModalCargar] = useState(false);
+function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onViewDoc }: CardExpedienteProps) {
+  // const [modalCargar, setModalCargar] = useState(false); // Estado elevado al padre
 
   const estadoConfig = {
     ACTIVO: { bg: 'bg-green-100', text: 'text-green-700', label: 'Activo' },
@@ -701,10 +930,10 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload }: Car
 
   const tipoProcesoConfig = {
     DEFENSA_JUDICIAL: { label: 'Defensa Judicial', icon: Scale, color: '#10B981' },
-    JUZGAMIENTO: { label: 'Juzgamiento Disc.', icon: Gavel, color: '#DC2626' },
+    JUZGAMIENTO: { label: 'Juzgamiento', icon: Gavel, color: '#DC2626' },
     ASESORIA: { label: 'Asesoría Jurídica', icon: FileQuestion, color: '#8B5CF6' },
     PROCESOS_COACTIVOS: { label: 'Procesos Coactivos', icon: FileText, color: '#F59E0B' },
-    ORGANOS_CONTROL: { label: 'Órganos de Control', icon: CheckCircle2, color: '#059669' },
+    ORGANOS_CONTROL: { label: 'Órganos Control', icon: Archive, color: '#2563EB' },
     OTRO: { label: 'Otro', icon: File, color: '#6B7280' }
   };
 
@@ -718,6 +947,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload }: Car
       DEMANDA: [],
       CONTESTACION: [],
       PRUEBAS: [],
+      EVIDENCIAS: [],
       SENTENCIAS: [],
       TUTELAS: [],
       RECURSOS: [],
@@ -786,83 +1016,82 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload }: Car
 
             <div className="flex gap-2 w-full sm:w-auto">
               <button
-                onClick={() => {
-                  setModalCargar(true);
-                  if (expediente.tipoProceso === 'PROCESOS_COACTIVOS') {
-                    toast.info('Los procesos coactivos se gestionan desde el módulo Financiero');
-                    setModalCargar(false);
-                  }
-                }}
+                onClick={onUpload}
                 className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
               >
                 <Upload className="w-4 h-4" />
-                <span className="hidden sm:inline">Cargar</span>
+                Cargar
               </button>
-
               <button
                 onClick={onToggleExpand}
-                className={`
-                  flex-1 sm:flex-none px-3 sm:px-4 py-2 border rounded-lg transition-all text-sm flex items-center justify-center gap-2
-                  ${expandido
-                    ? 'bg-[#003DA5] border-[#003DA5] text-white hover:bg-[#003DA5]/90'
-                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }
-                `}
+                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center justify-center gap-2"
               >
                 {expandido ? (
                   <>
-                    <FolderOpen className="w-4 h-4" />
-                    <span className="hidden sm:inline">Cerrar Carpetas</span>
+                    <ChevronDown className="w-4 h-4" />
+                    <span className="hidden sm:inline">Ocultar</span>
                   </>
                 ) : (
                   <>
-                    <Folder className="w-4 h-4" />
+                    <ChevronRight className="w-4 h-4" />
                     <span className="hidden sm:inline">Ver Carpetas</span>
                   </>
                 )}
-                {expandido ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Carpetas Expandibles */}
+        {/* Estructura de Carpetas por Tipo de Documento */}
         <AnimatePresence>
           {expandido && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="border-t border-gray-100 bg-gray-50"
+              transition={{ duration: 0.3 }}
+              className="border-t border-gray-200 bg-gray-50"
             >
-              <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {TIPOS_DOCUMENTO.map((tipo) => {
-                  const docs = documentosPorTipo[tipo.id];
-                  return (
-                    <CarpetaTipoDocumento
-                      key={tipo.id}
-                      tipo={tipo}
-                      documentos={docs}
-                    />
-                  );
-                })}
+              <div className="p-4 sm:p-6">
+                <h4 className="text-sm font-medium text-gray-900 mb-4">Documentos por Tipo</h4>
+
+                <div className="space-y-3">
+                  {TIPOS_DOCUMENTO.filter(tipoDoc => {
+                    // Lógica de filtrado por Tipo de Proceso
+
+                    // DEFENSA_JUDICIAL: Mostrar EVIDENCIAS, ocultar PRUEBAS (según requerimiento)
+                    if (expediente.tipoProceso === 'DEFENSA_JUDICIAL') {
+                      if (tipoDoc.id === 'PRUEBAS') return false;
+                      if (tipoDoc.id === 'EVIDENCIAS') return true;
+                    }
+
+                    // JUZGAMIENTO: Mostrar AMBAS (Pruebas y Evidencias)
+                    if (expediente.tipoProceso === 'JUZGAMIENTO') {
+                      // Se muestran ambas por defecto
+                    }
+
+                    return true;
+                  }).map((tipoDoc) => {
+                    const docs = documentosPorTipo[tipoDoc.id];
+                    const Icon = tipoDoc.icon;
+
+                    return (
+                      <CarpetaTipoDocumento
+                        key={tipoDoc.id}
+                        tipoDocumento={tipoDoc}
+                        documentos={docs}
+                        icon={<Icon className="w-5 h-5" />}
+                        onViewDoc={onViewDoc}
+                      />
+                    );
+                  })}
+                </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </motion.div>
 
-      {/* Modal Cargar Documento */}
-      <ModalCargarDocumento
-        isOpen={modalCargar}
-        onClose={() => setModalCargar(false)}
-        onCargar={(file, tipo) => {
-          onUpload(expediente, file, tipo);
-          setModalCargar(false);
-        }}
-        radicado={expediente.radicado}
-        tipoProceso={expediente.tipoProceso}
-      />
     </>
   );
 }
@@ -871,68 +1100,177 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload }: Car
 // CARPETA TIPO DOCUMENTO
 // ════════════════════════════════════════════════════════════════════════════
 
-function CarpetaTipoDocumento({ tipo, documentos }: { tipo: typeof TIPOS_DOCUMENTO[0], documentos: Documento[] }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const Icon = tipo.icon;
+interface CarpetaTipoDocumentoProps {
+  tipoDocumento: typeof TIPOS_DOCUMENTO[0];
+  documentos: Documento[];
+  icon: React.ReactNode;
+  onViewDoc: (doc: Documento) => void;
+}
+
+function CarpetaTipoDocumento({ tipoDocumento, documentos, icon, onViewDoc }: CarpetaTipoDocumentoProps) {
+  const [expandido, setExpandido] = useState(false);
+
+  const colorClasses = {
+    red: 'bg-red-50 border-red-200 text-red-700',
+    blue: 'bg-blue-50 border-blue-200 text-blue-700',
+    green: 'bg-green-50 border-green-200 text-green-700',
+    purple: 'bg-purple-50 border-purple-200 text-purple-700',
+    orange: 'bg-orange-50 border-orange-200 text-orange-700',
+    indigo: 'bg-indigo-50 border-indigo-200 text-indigo-700',
+    cyan: 'bg-cyan-50 border-cyan-200 text-cyan-700',
+    yellow: 'bg-yellow-50 border-yellow-200 text-yellow-700',
+    pink: 'bg-pink-50 border-pink-200 text-pink-700',
+    teal: 'bg-teal-50 border-teal-200 text-teal-700',
+    gray: 'bg-gray-50 border-gray-200 text-gray-700'
+  };
+
+  const colorClass = colorClasses[tipoDocumento.color as keyof typeof colorClasses];
+
+  const handleVerDocumento = (doc: Documento) => {
+    toast.info('Visualizar documento', {
+      description: doc.nombre,
+      duration: 2000,
+    });
+
+    // Uso del visor centralizado
+    onViewDoc(doc);
+  };
+
+  const handleDescargarDocumento = async (doc: Documento, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    let url = doc.url;
+
+    if (url) {
+      // FIX: Eliminar prefijo incorrecto si existe
+      if (url.includes('/api/legal/files/')) {
+        const filename = url.split('/').pop();
+        url = `/files/${filename}`;
+      }
+
+      if (url.startsWith('http')) {
+        // Ya es absoluta (externa o interna construida previamente)
+      } else if (!url.startsWith('blob:')) {
+        // Construir con buildApiUrl
+        if (url.startsWith('/uploads') || url.startsWith('uploads')) {
+          const cleanPath = url.startsWith('/') ? url : `/${url}`;
+          url = buildApiUrl('legal', cleanPath);
+        } else if (!url.includes('/')) {
+          url = buildApiUrl('legal', `/files/${url}`);
+        } else {
+          const path = url.startsWith('/') ? url : `/${url}`;
+          url = buildApiUrl('legal', path);
+        }
+      }
+    }
+
+    if (!url) {
+      toast.error('No hay URL disponible para descargar');
+      return;
+    }
+
+    try {
+      toast.loading('Iniciando descarga...', { id: 'descarga-rapida' });
+
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Error de red al descargar');
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = doc.nombre || 'documento.pdf';
+      document.body.appendChild(a);
+      a.click();
+
+      window.URL.revokeObjectURL(blobUrl);
+      document.body.removeChild(a);
+
+      toast.success('Descarga completada', { id: 'descarga-rapida' });
+    } catch (error) {
+      console.error('Error descargando:', error);
+      // Fallback a window.open si falla el fetch (ej: CORS estricto)
+      window.open(url, '_blank');
+      toast.error('Error en descarga directa, intentando abrir en nueva pestaña...', { id: 'descarga-rapida' });
+    }
+  };
 
   return (
-    <div className={`
-      bg-white rounded-lg border transition-all duration-200
-      ${isOpen ? 'ring-2 ring-gray-200 border-transparent shadow-md' : 'border-gray-200 hover:border-gray-300'}
-    `}>
+    <div className={`rounded-lg border ${colorClass}`}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center gap-3 p-4"
+        onClick={() => setExpandido(!expandido)}
+        className="w-full p-3 sm:p-4 flex items-center justify-between hover:bg-opacity-70 transition-all"
       >
-        <div className={`p-2 rounded-lg bg-${tipo.color}-50 text-${tipo.color}-600`}>
-          <Icon className="w-5 h-5" />
+        <div className="flex items-center gap-2 sm:gap-3">
+          {expandido ? <FolderOpen className="w-4 h-4 sm:w-5 sm:h-5" /> : <Folder className="w-4 h-4 sm:w-5 sm:h-5" />}
+          <div className="text-left">
+            <div className="font-medium text-xs sm:text-sm">{tipoDocumento.nombre}</div>
+            <div className="text-xs opacity-80 hidden sm:block">{tipoDocumento.descripcion}</div>
+          </div>
         </div>
 
-        <div className="flex-1 text-left">
-          <p className="font-medium text-gray-900 text-sm">{tipo.nombre}</p>
-          <p className="text-xs text-gray-500">{documentos.length} documento{documentos.length !== 1 ? 's' : ''}</p>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <span className="text-xs font-medium px-2 py-0.5 sm:py-1 bg-white bg-opacity-60 rounded">
+            {documentos?.length || 0}
+          </span>
+          {expandido ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </div>
-
-        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
       </button>
 
       <AnimatePresence>
-        {isOpen && (
+        {expandido && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="border-t border-gray-100"
+            className="border-t border-current border-opacity-20"
           >
-            <div className="p-2 space-y-1">
-              {documentos.length > 0 ? (
-                documentos.map(doc => (
-                  <div
-                    key={doc.id}
-                    className="p-2.5 hover:bg-gray-50 rounded-md flex items-center justify-between group"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="p-1.5 bg-gray-100 rounded text-gray-500">
-                        <FileText className="w-4 h-4" />
+            <div className="p-3 sm:p-4 bg-white bg-opacity-50">
+              {(!documentos || documentos.length === 0) ? (
+                <div className="text-center py-6 sm:py-8 text-xs sm:text-sm opacity-60">
+                  <File className="w-6 h-6 sm:w-8 sm:h-8 mx-auto mb-2 opacity-40" />
+                  No hay documentos de este tipo
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {documentos.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="flex items-center justify-between p-2 sm:p-3 bg-white rounded-lg border border-gray-200 hover:shadow-sm transition-shadow gap-2"
+                    >
+                      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                        <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">{doc.nombre}</p>
+                          <div className="flex items-center gap-2 sm:gap-3 text-xs text-gray-500 mt-0.5">
+                            <span>{doc.tamanio}</span>
+                            <span>•</span>
+                            <span>{doc.fechaCreacion}</span>
+                            <span className="hidden sm:inline">•</span>
+                            <span className="hidden sm:inline">{doc.autor}</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm text-gray-700 font-medium truncate py-0.5">{doc.nombre}</p>
-                        <p className="text-xs text-gray-500 flex items-center gap-2">
-                          <span>{doc.fechaCreacion}</span>
-                          <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                          <span>{doc.tamanio}</span>
-                        </p>
+
+                      <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => handleVerDocumento(doc)}
+                          className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
+                          title="Ver documento"
+                        >
+                          <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
+                        </button>
+                        <button
+                          onClick={(e) => handleDescargarDocumento(doc, e)}
+                          className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
+                          title="Descargar"
+                        >
+                          <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
+                        </button>
                       </div>
                     </div>
-
-                    <button className="p-1.5 text-gray-400 hover:text-[#003DA5] hover:bg-blue-50 rounded-md transition-colors opacity-0 group-hover:opacity-100">
-                      <Download className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <div className="py-4 text-center">
-                  <p className="text-xs text-gray-400 italic">Carpeta vacía</p>
+                  ))}
                 </div>
               )}
             </div>
@@ -953,12 +1291,21 @@ interface ModalCargarDocumentoProps {
   onCargar: (file: File, tipo: string) => void;
   radicado: string;
   tipoProceso: TipoProceso;
+  preSelectedType?: string | null;
 }
 
-function ModalCargarDocumento({ isOpen, onClose, onCargar, radicado, tipoProceso }: ModalCargarDocumentoProps) {
+function ModalCargarDocumento({ isOpen, onClose, onCargar, radicado, tipoProceso, preSelectedType }: ModalCargarDocumentoProps) {
   const [file, setFile] = useState<File | null>(null);
   const [tipo, setTipo] = useState<string>('OTROS');
   const [cargando, setCargando] = useState(false);
+
+  useEffect(() => {
+    if (preSelectedType) {
+      setTipo(preSelectedType);
+    } else {
+      setTipo('OTROS');
+    }
+  }, [preSelectedType, isOpen]);
 
   const handleCargar = async () => {
     if (!file) return;
@@ -984,17 +1331,24 @@ function ModalCargarDocumento({ isOpen, onClose, onCargar, radicado, tipoProceso
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Tipo de Documento
             </label>
-            <select
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5]"
-            >
-              {TIPOS_DOCUMENTO.map((tipo) => (
-                <option key={tipo.id} value={tipo.id}>
-                  {tipo.nombre}
-                </option>
-              ))}
-            </select>
+            {preSelectedType ? (
+              <div className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-700">
+                {TIPOS_DOCUMENTO.find(t => t.id === preSelectedType)?.nombre || (preSelectedType === 'EVIDENCIAS' ? 'Evidencias' : preSelectedType)}
+              </div>
+            ) : (
+              <select
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5]"
+              >
+                {TIPOS_DOCUMENTO.map((tipo) => (
+                  <option key={tipo.id} value={tipo.id}>
+                    {tipo.nombre}
+                  </option>
+                ))}
+              </select>
+            )}
+
           </div>
 
           <div className="mb-4">
