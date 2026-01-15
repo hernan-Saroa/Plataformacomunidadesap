@@ -36,7 +36,7 @@ export class AuditInterceptor implements NestInterceptor {
     const urlMatch = url.match(/^\/([^\/]+)\/api\/v(\d+)/);
     const serviceName = urlMatch?.[1] || null;
     const version = urlMatch?.[2] || '1';
-    const module = getModuleFromService(serviceName);
+    const module = getModuleFromService(serviceName, url);
     const submodule = getSubmoduleFromUrl(url) || undefined;
     const clientIp = this.getClientIp(request);
     const userInfo = this.extractUserInfo(request);

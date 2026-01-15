@@ -28,11 +28,17 @@ export class GatewayService {
     req: Request,
     res: Response,
   ) {
-    const serviceUrl = serviceMap[serviceName];
+    const serviceUrl = (serviceMap as Record<string, string>)[serviceName];
 
     if (!serviceUrl) {
+      console.error(`[Gateway] Service not found: "${serviceName}"`);
+      console.error(`[Gateway] Available services:`, Object.keys(serviceMap));
+      console.error(`[Gateway] serviceMap content:`, serviceMap);
       throw new HttpException(
-        { message: `Service not found: ${serviceName}` },
+        { 
+          message: `Service not found: ${serviceName}`, 
+          availableServices: Object.keys(serviceMap) 
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -49,6 +55,7 @@ export class GatewayService {
     // Para otras versiones, incluir el prefijo de versión
     const versionPrefix = version === '1' ? '' : `/v${version}`;
     const targetUrl = `${serviceUrl}${versionPrefix}${pathWithoutPrefix}`;
+    
     const contentType = (req.headers['content-type'] as string) || '';
     const isMultipart = contentType.toLowerCase().includes('multipart/form-data');
     
@@ -85,15 +92,44 @@ export class GatewayService {
         }
       });
 
-      return res.status(response.status).send(response.data);
-    } catch (error) {
-      const status = error.response?.status || 500;
-      const msg =
-        typeof error.response?.data === 'string'
-          ? error.response.data
-          : error.response?.data?.message || 'Error at API Gateway';
+      // Si la respuesta es un error (4xx, 5xx), intentar parsear el arraybuffer como JSON
+      if (response.status >= 400) {
+        try {
+          const buffer = Buffer.from(response.data);
+          const jsonString = buffer.toString('utf-8');
+          const errorData = JSON.parse(jsonString);
+          return res.status(response.status).json(errorData);
+        } catch (parseError) {
+          // Si no es JSON, enviar el buffer directamente
+          return res.status(response.status).send(response.data);
+        }
+      }
 
-      return res.status(status).send(msg);
+      return res.status(response.status).send(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || 500;
+      
+      // Intentar parsear el error si viene como arraybuffer
+      if (error.response?.data) {
+        try {
+          const buffer = Buffer.from(error.response.data);
+          const jsonString = buffer.toString('utf-8');
+          const errorData = JSON.parse(jsonString);
+          return res.status(status).json(errorData);
+        } catch (parseError) {
+          // Si no es JSON, usar el mensaje de error
+          const msg =
+            typeof error.response.data === 'string'
+              ? error.response.data
+              : error.response.data?.message || 'Error at API Gateway';
+          return res.status(status).send(msg);
+        }
+      }
+
+      return res.status(status).json({ 
+        message: error.message || 'Error at API Gateway',
+        statusCode: status 
+      });
     }
   }
 

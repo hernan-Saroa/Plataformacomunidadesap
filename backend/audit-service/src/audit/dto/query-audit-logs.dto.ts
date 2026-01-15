@@ -10,11 +10,11 @@ import { Type } from 'class-transformer';
 
 export class QueryAuditLogsDto {
   @IsOptional()
-  @IsDateString()
+  @IsString()
   startDate?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsString()
   endDate?: string;
 
   @IsOptional()
@@ -27,7 +27,7 @@ export class QueryAuditLogsDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'userId debe ser un número' })
   userId?: number;
 
   @IsOptional()
@@ -36,20 +36,20 @@ export class QueryAuditLogsDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'statusCode debe ser un número' })
   statusCode?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  @Max(1000)
+  @IsNumber({}, { message: 'limit debe ser un número' })
+  @Min(1, { message: 'limit debe ser al menos 1' })
+  @Max(1000, { message: 'limit no puede ser mayor a 1000' })
   limit?: number = 100;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
-  @Min(0)
+  @IsNumber({}, { message: 'offset debe ser un número' })
+  @Min(0, { message: 'offset no puede ser negativo' })
   offset?: number = 0;
 }
 

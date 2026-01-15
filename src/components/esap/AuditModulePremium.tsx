@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Download, Filter, Calendar, ChevronDown, FileText, Shield, BarChart3, Activity, List, Clock, AlertTriangle } from 'lucide-react';
 import { AuditLogTable } from './AuditLogTable';
@@ -7,7 +7,9 @@ import { AuditAnalytics } from './AuditAnalytics';
 import { AuditAdvancedFilters } from './AuditAdvancedFilters';
 import { AuditTimeline } from './AuditTimeline';
 import { AuditAnomaliesDetector } from './AuditAnomaliesDetector';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { mapLogToEvent, loadAuditLogs, loadAvailableModules, type LoadLogsParams } from './audit/auditUtils';
+import type { AuditLog } from '../../services/api/audit.service';
 
 type ViewMode = 'table' | 'timeline' | 'anomalies';
 
@@ -39,8 +41,42 @@ export function AuditModulePremium() {
     userSearch: '',
     ipAddress: ''
   });
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [total, setTotal] = useState(0);
 
-  // Mock data - ACTUALIZADO con eventos de Usuario Persona, Roles y 2FA
+  const loadLogs = async () => {
+    setLoading(true);
+    try {
+      const params: LoadLogsParams = {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        ipAddress: filters.ipAddress,
+        modules: filters.modules,
+      };
+      const result = await loadAuditLogs(params);
+      setLogs(result.logs || []);
+      setTotal(result.total || 0);
+    } catch (error) {
+      console.error('Error loading audit logs:', error);
+      toast.error('Error al cargar logs de auditoría');
+      setLogs([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadLogs();
+  }, [filters.startDate, filters.endDate, filters.ipAddress, filters.modules]);
+
+  const events: AuditEvent[] = useMemo(() => {
+    if (!logs || !Array.isArray(logs)) return [];
+    return logs.map(mapLogToEvent);
+  }, [logs]);
+
+  // Mock data - ACTUALIZADO con eventos de Usuario Persona, Roles y 2FA (fallback si no hay logs)
   const mockEvents: AuditEvent[] = [
     // ============ EVENTOS DE AUTENTICACIÓN 2FA ============
     {
@@ -489,14 +525,23 @@ export function AuditModulePremium() {
     }
   ];
 
-  // Obtener módulos únicos para filtros
-  const availableModules = useMemo(() => {
-    return Array.from(new Set(mockEvents.map(e => e.module)));
-  }, [mockEvents]);
+  const [availableModulesList, setAvailableModulesList] = useState<string[]>([]);
 
-  // Aplicar filtros
+  useEffect(() => {
+    loadAvailableModules().then(modules => {
+      setAvailableModulesList(modules);
+    }).catch(() => {
+      setAvailableModulesList(Array.from(new Set(events.map(e => e.module))));
+    });
+  }, []);
+
+  const availableModules = useMemo(() => {
+    if (availableModulesList.length > 0) return availableModulesList;
+    return Array.from(new Set(events.map(e => e.module)));
+  }, [availableModulesList, events]);
+
   const filteredEvents = useMemo(() => {
-    return mockEvents.filter(event => {
+    return events.filter(event => {
       // Search query
       if (searchQuery) {
         const searchLower = searchQuery.toLowerCase();
@@ -540,7 +585,7 @@ export function AuditModulePremium() {
 
       return true;
     });
-  }, [mockEvents, searchQuery, filters]);
+  }, [events, searchQuery, filters]);
 
   const handleEventClick = (event: AuditEvent) => {
     setSelectedEvent(event);

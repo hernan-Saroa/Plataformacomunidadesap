@@ -106,7 +106,7 @@ export function AuditLogTable({ events, onEventClick, searchQuery = '' }: AuditL
                 Acción
               </th>
               <th className="px-4 xl:px-6 py-3 xl:py-4 text-left text-xs font-bold text-[--esap-gray-700] uppercase tracking-wider">
-                Módulo
+                Submódulo
               </th>
               <th className="px-4 xl:px-6 py-3 xl:py-4 text-left text-xs font-bold text-[--esap-gray-700] uppercase tracking-wider">
                 Severidad

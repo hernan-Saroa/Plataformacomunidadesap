@@ -36,7 +36,6 @@ export class AuditController {
 
   @Get('modules')
   async getModules() {
-    // Endpoint para obtener lista de módulos únicos
     return this.auditService.getModules();
   }
 }
