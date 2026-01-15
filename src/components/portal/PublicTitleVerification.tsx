@@ -10,8 +10,7 @@ import { VerificationCertificateDisplay } from './VerificationCertificateDisplay
 import { VerificationCertificate } from '../../types';
 import { PublicNavbar } from './PublicNavbar';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
-import { simularEnvioCorreo } from '../../utils/emailTemplates';
-import { validateGraduateForPublicService, type Graduate } from '../../data/graduatesSync';  // ✅ IMPORTAR FUNCIÓN DE VALIDACIÓN
+import graduadosService, { type CertificadoGraduado } from '../../services/api/graduados.service';
 
 interface PublicTitleVerificationProps {
   onBack: () => void;
@@ -35,7 +34,6 @@ interface PublicTitleVerificationProps {
  * 
  * ✅ COORDINADO CON BACKOFFICE: 
  * Este servicio consulta directamente el módulo de "Gestión de Graduados" del backoffice
- * a través de la función validateGraduateForPublicService()
  */
 
 export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVerificationProps) {
@@ -50,13 +48,52 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCertificate, setGeneratedCertificate] = useState<VerificationCertificate | null>(null);
   const [reviewRequestCreated, setReviewRequestCreated] = useState(false);
+
+  const mapCertificado = (
+    certificado: CertificadoGraduado,
+    requester: { name: string; email: string; type: 'empresa' | 'graduado' }
+  ): VerificationCertificate => {
+    const statusMap: VerificationCertificate['status'] =
+      certificado.status === 'REVOKED'
+        ? 'revoked'
+        : certificado.status === 'EXPIRED'
+          ? 'expired'
+          : 'active';
+
+    const nowIso = new Date().toISOString();
+
+    return {
+      id: certificado.id,
+      certificateNumber: certificado.certificateNumber,
+      qrCode: certificado.verificationCode,
+      qrUrl: `${window.location.origin}/verificar-certificado/${certificado.verificationCode}`,
+      graduate: {
+        documentNumber: certificado.idNumber,
+        documentIssueDate: '',
+        fullName: certificado.fullName,
+        titleType: certificado.degreeTitle || certificado.programType || certificado.programName,
+        programName: certificado.programName,
+        diplomaNumber: certificado.diplomaNumber || '',
+        graduationDate: certificado.graduationDate,
+      },
+      requester,
+      status: statusMap,
+      generatedAt: certificado.issueDate || nowIso,
+      viewCount: 0,
+      qrScanCount: 0,
+      scanHistory: [],
+      createdAt: certificado.issueDate || nowIso,
+      updatedAt: certificado.issueDate || nowIso,
+      certificatePdfUrl: certificado.pdfUrl || undefined,
+    };
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validaciones
     if (!graduateDocumentNumber) {
-      toast.error('Por favor ingresa el número de cédula del graduado');
+      toast.error('Por favor ingresa el numero de cedula del graduado');
       return;
     }
     if (!graduateDocumentIssueDate) {
@@ -72,110 +109,61 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       return;
     }
     if (!requesterEmail) {
-      toast.error('Por favor ingresa tu correo electrónico');
+      toast.error('Por favor ingresa tu correo electronico');
       return;
     }
 
-    // Validación de email
+    // Validacion de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(requesterEmail)) {
-      toast.error('Por favor ingresa un correo electrónico válido');
+      toast.error('Por favor ingresa un correo electronico valido');
       return;
     }
 
     setIsGenerating(true);
-    
-    // Simular búsqueda del graduado en la base de datos
-    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // ✅ VALIDAR GRADUADO COORDINADO CON BACKOFFICE
-    // Usa la función que consulta el módulo de "Gestión de Graduados" del backoffice
-    const validationResult = validateGraduateForPublicService(
-      graduateDocumentNumber,
-      graduateDocumentIssueDate,
-      graduateLastName
-    );
-
-    if (!validationResult.isValid) {
-      // Graduado NO encontrado o datos no coinciden - Crear solicitud de revisión manual
-      // LÓGICA DE NEGOCIO: Todos en la BD están graduados (Pregrado/Especialización/Maestría)
-      // Si NO está en BD → Solicitud de revisión manual (48-72h)
-      setIsGenerating(false);
-      setReviewRequestCreated(true);
-      
-      toast.info('Solicitud de revisión creada', {
-        description: validationResult.error || 'No se encontró el graduado en nuestra base de datos. Se ha generado una solicitud de revisión manual (48-72 horas).'
+    try {
+      const response = await graduadosService.autoservicio.solicitarCertificado({
+        idNumber: graduateDocumentNumber,
+        graduationDate: graduateDocumentIssueDate,
+        lastName: graduateLastName,
+        requesterType: requesterType === 'empresa' ? 'COMPANY' : 'GRADUATE',
+        requesterName,
+        requesterEmail,
       });
 
-      // Enviar correo de confirmación de solicitud de revisión
-      const numeroSolicitud = 'REV-2025-' + Math.floor(1000 + Math.random() * 9000);
-      simularEnvioCorreo('verificacion-titulo-revision', {
-        nombreCompleto: requesterName,
-        correoDestino: requesterEmail,
-        consecutivoCertificado: numeroSolicitud,
-        datosAdicionales: {
-          nombreGraduado: 'Datos proporcionados',
-          documentoGraduado: graduateDocumentNumber
-        }
-      });
+      if (!response.existe) {
+        setReviewRequestCreated(true);
+        setGeneratedCertificate(null);
+        toast.info('Solicitud de revision creada', {
+          description:
+            response.mensaje ||
+            'No se encontro el graduado en nuestra base de datos. Se ha generado una solicitud de revision manual (48-72 horas).',
+        });
+        return;
+      }
 
-      return;
-    }
+      if (!response.certificado) {
+        throw new Error('No se pudo generar el certificado. Intenta nuevamente.');
+      }
 
-    // ✅ Graduado encontrado y validado - Generar certificado con datos reales del backoffice
-    const foundGraduate = validationResult.graduate!;
-    const certificate: VerificationCertificate = {
-      id: 'CERT-' + Date.now(),
-      certificateNumber: 'ESAP-CERT-2025-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-      qrCode: 'QR-' + Math.random().toString(36).substr(2, 16).toUpperCase(),
-      qrUrl: `${window.location.origin}/verificar/${Math.random().toString(36).substr(2, 16)}`,
-      
-      graduate: {
-        documentNumber: foundGraduate.documento,
-        documentIssueDate: foundGraduate.fechaExpedicionDocumento || '',
-        fullName: `${foundGraduate.nombre} ${foundGraduate.apellido}`,
-        titleType: foundGraduate.tituloObtenido.includes('Especialización') ? 'Especialización' : 
-                   foundGraduate.tituloObtenido.includes('Maestría') ? 'Maestría' : 'Pregrado',
-        programName: foundGraduate.programa,
-        diplomaNumber: `ESAP-${new Date(foundGraduate.fechaGrado).getFullYear()}-${foundGraduate.id.substr(-6)}`,
-        graduationDate: foundGraduate.fechaGrado,
-        honors: foundGraduate.promedio >= 4.5 ? 'Cum Laude' : '',
-        gpa: foundGraduate.promedio,
-      },
-      
-      requester: {
+      const certificate = mapCertificado(response.certificado, {
         name: requesterName,
         email: requesterEmail,
         type: requesterType,
-      },
-      
-      status: 'active',
-      generatedAt: new Date().toISOString(),
-      viewCount: 0,
-      qrScanCount: 0,
-      scanHistory: [],
-      
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+      });
 
-    setGeneratedCertificate(certificate);
-    setIsGenerating(false);
-    toast.success('Certificado generado exitosamente');
-
-    // Enviar correo con el certificado generado
-    simularEnvioCorreo('verificacion-titulo-generado', {
-      nombreCompleto: requesterName,
-      correoDestino: requesterEmail,
-      consecutivoCertificado: certificate.certificateNumber,
-      urlValidacion: certificate.qrUrl,
-      datosAdicionales: {
-        nombreGraduado: `${foundGraduate.nombre} ${foundGraduate.apellido}`,
-        programa: foundGraduate.programa,
-        tipoTitulo: certificate.graduate.titleType,
-        fechaGraduacion: new Date(foundGraduate.graduationDate).toLocaleDateString('es-CO')
-      }
-    });
+      setGeneratedCertificate(certificate);
+      setReviewRequestCreated(false);
+      toast.success('Certificado generado exitosamente');
+    } catch (error: any) {
+      console.error('Error al solicitar certificado:', error);
+      toast.error('Error al generar el certificado', {
+        description: error?.message || 'Por favor intenta nuevamente',
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleReset = () => {
@@ -1000,3 +988,8 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     </div>
   );
 }
+
+
+
+
+
