@@ -26,7 +26,7 @@ services:
     env_file:
       - ./backend/api-gateway/.env
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: 3000
 
       # Rutas internas a otros microservicios (DNS de Docker)
@@ -40,6 +40,7 @@ services:
       LEGAL_MANAGEMENT_SERVICE_URL: http://legal-management-service:3008
       NOTIFICATIONS_SERVICE_URL: http://notifications-service:3009
       TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service:3010
+      AUDIT_SERVICE_URL: http://audit-service:3011
     ports:
       - "3000:3000"
     depends_on:
@@ -53,6 +54,7 @@ services:
       - legal-management-service
       - notifications-service
       - travel-expenses-service
+      - audit-service
     networks:
       - superapp-net
 
@@ -345,6 +347,30 @@ services:
     depends_on:
       - db
       - redis
+    networks:
+      - superapp-net
+
+  # ============ AUDIT SERVICE ============
+  audit-service:
+    build:
+      context: ./backend/audit-service
+      dockerfile: Dockerfile
+    container_name: audit-service
+    env_file:
+      - ./backend/audit-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3011
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: 
+      DB_NAME: esap_db
+    ports:
+      - "3011:3011"
+    depends_on:
+      - db
     networks:
       - superapp-net
 

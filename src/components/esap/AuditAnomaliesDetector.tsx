@@ -1,19 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { AlertTriangle, Shield, Clock, MapPin, TrendingUp, Users, Activity, ZapOff } from 'lucide-react';
-
-interface AuditEvent {
-  id: string;
-  timestamp: string;
-  user: string;
-  userId: string;
-  action: string;
-  module: string;
-  severity: string;
-  status: string;
-  ipAddress: string;
-  location: string;
-}
+import type { AuditEvent } from './AuditEventDetail';
 
 interface Anomaly {
   id: string;

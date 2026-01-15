@@ -1,21 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Clock, User, Activity, AlertCircle, CheckCircle, Info, MapPin, Monitor } from 'lucide-react';
-
-interface AuditEvent {
-  id: string;
-  timestamp: string;
-  user: string;
-  userId: string;
-  action: string;
-  module: string;
-  severity: string;
-  status: string;
-  ipAddress: string;
-  device: string;
-  location: string;
-  details: string;
-}
+import type { AuditEvent } from './AuditEventDetail';
 
 interface AuditTimelineProps {
   events: AuditEvent[];

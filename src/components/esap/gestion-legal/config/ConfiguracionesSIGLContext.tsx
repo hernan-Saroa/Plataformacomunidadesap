@@ -5,7 +5,7 @@
  */
 
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // ============ TIPOS ============
 
@@ -205,16 +205,16 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     try {
       // Guardar en localStorage
       localStorage.setItem('sigl-configuraciones', JSON.stringify(configuraciones));
-      
+
       // Aquí se enviaría al backend en producción
       // await fetch('/api/sigl/configuraciones', { method: 'POST', body: JSON.stringify(configuraciones) });
-      
+
       setCambiosPendientes(false);
       toast.success('Configuraciones guardadas correctamente', {
         description: 'Los cambios se han aplicado a todos los módulos de Gestión Legal',
         duration: 3000
       });
-      
+
       console.log('✅ Configuraciones SIGL guardadas:', configuraciones);
     } catch (error) {
       console.error('❌ Error al guardar configuraciones:', error);
@@ -266,7 +266,7 @@ export function useConfiguracionesSIGL() {
 
 export function useConfiguracionModulo(moduloId: string) {
   const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos } = useConfiguracionesSIGL();
-  
+
   return {
     configuracion: getConfiguracionModulo(moduloId),
     estadosActivos: getEstadosActivos(moduloId),

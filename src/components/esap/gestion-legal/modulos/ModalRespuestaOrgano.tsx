@@ -3,7 +3,7 @@
  * DISEÑO LIMPIO ESAP 2025
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
@@ -12,35 +12,102 @@ import { Input } from '../../../ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import {
   Send, X, FileText, CheckCircle, AlertCircle, Upload, Eye,
-  Mail, Calendar, User, Building2, Clock, Save, Download
+  Mail, Calendar, User, Building2, Clock, Save, Download, Loader2
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { ocService } from '../../../../services/api/legal.service';
 
 interface ModalRespuestaOrganoProps {
   isOpen: boolean;
   onClose: () => void;
   requerimientoId: string;
   organismoNombre: string;
+  emailPredeterminado?: string;
+  onSuccess?: () => void;
 }
 
 export function ModalRespuestaOrgano({
   isOpen,
   onClose,
   requerimientoId,
-  organismoNombre
+  organismoNombre,
+  emailPredeterminado,
+  onSuccess
 }: ModalRespuestaOrganoProps) {
+  const [loading, setLoading] = useState(false);
+  const [radicado, setRadicado] = useState(requerimientoId);
   const [contenidoRespuesta, setContenidoRespuesta] = useState('');
   const [destinatario, setDestinatario] = useState('');
+  const [email, setEmail] = useState(emailPredeterminado || '');
   const [cargo, setCargo] = useState('');
   const [tipoRespuesta, setTipoRespuesta] = useState('completa');
-  const [documentosAdjuntos, setDocumentosAdjuntos] = useState<string[]>([]);
+  const [documentosAdjuntos, setDocumentosAdjuntos] = useState<{ nombre: string; url: string }[]>([]);
+  const [enviando, setEnviando] = useState(false);
+  const [isReadOnly, setIsReadOnly] = useState(false);
+
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Cargar datos (Borrador y Detalles)
+  useEffect(() => {
+    const cargarDatos = async () => {
+      try {
+        setLoading(true);
+
+        // 1. Obtener detalles del requerimiento para mostrar el Radicado real
+        const reqData = await ocService.getRequerimientoOC(requerimientoId).catch(() => null);
+        if (reqData) {
+          setRadicado(reqData.radicadoInterno || reqData.radicadoExterno || requerimientoId);
+
+          // Bloquear si ya fue enviado o cerrado
+          if (reqData.estado === 'ENVIADO' || reqData.estado === 'CERRADO') {
+            setIsReadOnly(true);
+            const fechaRespuestaStr = reqData.fechaRespuesta ? new Date(reqData.fechaRespuesta).toLocaleDateString() : 'fecha desconocida';
+            toast.info(`Requerimiento ya respondido el ${fechaRespuestaStr}`, { duration: 5000 });
+          }
+        }
+
+        // 2. Cargar borrador si existe
+        const borrador = await ocService.getBorradorRespuesta(requerimientoId).catch(() => null);
+        if (borrador) {
+          setContenidoRespuesta(borrador.contenido || '');
+          setDestinatario(borrador.destinatarioNombre || '');
+          setEmail(borrador.destinatarioEmail || emailPredeterminado || '');
+          setCargo(borrador.destinatarioCargo || '');
+          if (borrador.tipoRespuesta) setTipoRespuesta(borrador.tipoRespuesta);
+
+          if (borrador.documentosAdjuntos) {
+            let adjuntos = borrador.documentosAdjuntos;
+            if (typeof adjuntos === 'string') {
+              try {
+                adjuntos = JSON.parse(adjuntos);
+              } catch (e) {
+                adjuntos = [];
+              }
+            }
+            setDocumentosAdjuntos(Array.isArray(adjuntos) ? adjuntos : []);
+          }
+          toast.info('Borrador recuperado', { description: 'Se han cargado los datos guardados previamente.' });
+        }
+
+      } catch (error) {
+        console.error('Error cargando borrador:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (isOpen) {
+      cargarDatos();
+    }
+  }, [isOpen, requerimientoId, emailPredeterminado]);
 
   // Template de respuesta
   const aplicarTemplate = () => {
-    const template = `Bogotá D.C., ${new Date().toLocaleDateString('es-CO', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+    const template = `Bogotá D.C., ${new Date().toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     })}
 
 Señor(a)
@@ -48,7 +115,7 @@ ${destinatario || '[NOMBRE DEL DESTINATARIO]'}
 ${cargo || '[CARGO]'}
 ${organismoNombre}
 
-Ref: ${requerimientoId}
+Ref: ${radicado}
      Asunto: Respuesta a requerimiento
 
 Respetado(a) señor(a):
@@ -84,14 +151,27 @@ Escuela Superior de Administración Pública - ESAP`;
     });
   };
 
-  const handleGuardarBorrador = () => {
-    toast.success('Borrador guardado', {
-      description: 'La respuesta ha sido guardada como borrador',
-      icon: <Save className="w-4 h-4" />
-    });
+  const handleGuardarBorrador = async () => {
+    try {
+      await ocService.saveBorradorRespuesta(requerimientoId, {
+        requerimientoId,
+        contenido: contenidoRespuesta,
+        destinatarioNombre: destinatario,
+        destinatarioEmail: email,
+        destinatarioCargo: cargo,
+        tipoRespuesta,
+        documentosAdjuntos: JSON.stringify(documentosAdjuntos)
+      });
+      toast.success('Borrador guardado', {
+        description: 'La respuesta ha sido guardada como borrador',
+        icon: <Save className="w-4 h-4" />
+      });
+    } catch (error) {
+      toast.error('Error al guardar borrador', { description: 'Intente nuevamente.' });
+    }
   };
 
-  const handleEnviarRespuesta = () => {
+  const handleEnviarRespuesta = async () => {
     if (!contenidoRespuesta.trim()) {
       toast.error('Contenido requerido', {
         description: 'Debe escribir el contenido de la respuesta',
@@ -100,22 +180,95 @@ Escuela Superior de Administración Pública - ESAP`;
       return;
     }
 
-    toast.success('Respuesta enviada', {
-      description: 'La respuesta ha sido enviada al órgano de control',
-      icon: <Send className="w-4 h-4" />
-    });
-    
-    // Cerrar modal después de enviar
-    setTimeout(() => onClose(), 1500);
+    if (!email.trim()) {
+      toast.error('Destinatario requerido', {
+        description: 'Debe ingresar el email del destinatario',
+        icon: <AlertCircle className="w-4 h-4" />
+      });
+      return;
+    }
+
+    try {
+      setEnviando(true);
+      toast.info('Enviando respuesta...', { description: 'Contactando con Microsoft Graph' });
+
+      await ocService.enviarRespuesta(requerimientoId, {
+        destinatarioEmail: email,
+        asunto: `Respuesta a Requerimiento ${radicado} - ${organismoNombre}`,
+        cuerpoMensaje: contenidoRespuesta,
+        tipoRespuesta: tipoRespuesta,
+        destinatarioNombre: destinatario,
+        destinatarioCargo: cargo
+      });
+
+      toast.success('Respuesta enviada', {
+        description: 'La respuesta ha sido enviada oficialmente al correo del destinatario.',
+        icon: <Send className="w-4 h-4" />
+      });
+
+      // Limpiar borrador si existe (opcional, pero buena práctica) after success
+      try {
+        await ocService.saveBorradorRespuesta(requerimientoId, {
+          // Maybe delete API needed? Or just overwrite as empty/sent?
+          // For now, we will assume standard flow is enough.
+          // Actually, let's keep it simple.
+          requerimientoId // dummy
+        }).catch(() => { }); // Ignore error on cleanup
+      } catch (e) { }
+
+      if (onSuccess) onSuccess();
+      setTimeout(() => onClose(), 1500);
+
+    } catch (error: any) {
+      console.error('Error enviando respuesta:', error);
+      toast.error('Error al enviar', {
+        description: error.message || 'No se pudo enviar el correo de respuesta.'
+      });
+    } finally {
+      setEnviando(false);
+    }
   };
 
   const handleAdjuntarDocumento = () => {
-    const nuevoDoc = `Documento_${Date.now()}.pdf`;
-    setDocumentosAdjuntos([...documentosAdjuntos, nuevoDoc]);
-    toast.success('Documento adjuntado', {
-      description: nuevoDoc,
-      icon: <Upload className="w-4 h-4" />
-    });
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setLoading(true); // O un estado de subida especifico
+      toast.info('Subiendo documento...');
+
+      // Usamos el servicio de documentos de OC para subirlo
+      // Esto lo asocia al requerimiento y nos devuelve la URL
+      const doc = await ocService.createDocumento(requerimientoId, {
+        nombre: file.name,
+        tipoDocumento: 'anexo', // Corrected to match CHECK constraint
+        descripcion: 'Adjunto al borrador de respuesta',
+        archivo: file,
+        subidoPor: 'Usuario Actual' // TODO: Obtener usuario real
+      });
+
+      // Agregamos al estado
+      setDocumentosAdjuntos(prev => [...prev, {
+        nombre: doc.nombre,
+        url: doc.archivoUrl || ''
+      }]);
+
+      toast.success('Documento adjuntado', {
+        description: doc.nombre,
+        icon: <Upload className="w-4 h-4" />
+      });
+    } catch (error) {
+      console.error('Error subiendo documento:', error);
+      toast.error('Error al subir documento');
+    } finally {
+      setLoading(false);
+      // Limpiar input
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   return (
@@ -127,7 +280,7 @@ Escuela Superior de Administración Pública - ESAP`;
         <DialogDescription className="sr-only">
           Formulario para elaborar y enviar respuesta oficial al requerimiento {requerimientoId} del órgano de control {organismoNombre}.
         </DialogDescription>
-        
+
         {/* Header */}
         <div className="px-6 py-5 bg-white border-b flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
@@ -136,7 +289,7 @@ Escuela Superior de Administración Pública - ESAP`;
             </div>
             <div>
               <h2 className="text-lg font-bold text-gray-900">Elaborar Respuesta</h2>
-              <p className="text-sm text-gray-600">{requerimientoId} • {organismoNombre}</p>
+              <p className="text-sm text-gray-600">Radicado: {radicado} • {organismoNombre}</p>
             </div>
           </div>
           <Button
@@ -151,8 +304,18 @@ Escuela Superior de Administración Pública - ESAP`;
 
         {/* Contenido */}
         <div className="p-6 space-y-6">
-          
+
           {/* INFORMACIÓN DEL REQUERIMIENTO */}
+          {isReadOnly && (
+            <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg flex items-center gap-3">
+              <CheckCircle className="w-5 h-5 text-orange-600" />
+              <div>
+                <p className="font-bold text-sm text-orange-900">Respuesta Enviada</p>
+                <p className="text-xs text-orange-700">Este requerimiento ya fue gestionado y enviado al órgano de control. No se permiten más ediciones.</p>
+              </div>
+            </div>
+          )}
+
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
@@ -160,7 +323,7 @@ Escuela Superior de Administración Pública - ESAP`;
                 <p className="font-bold mb-1">📋 Información del Requerimiento</p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-blue-700 mt-2">
                   <div>
-                    <span className="font-semibold">Radicado:</span> {requerimientoId}
+                    <span className="font-semibold">Radicado:</span> {radicado}
                   </div>
                   <div>
                     <span className="font-semibold">Órgano:</span> {organismoNombre}
@@ -173,8 +336,8 @@ Escuela Superior de Administración Pública - ESAP`;
             </div>
           </div>
 
-          {/* TIPO DE RESPUESTA */}
-          <div className="space-y-2">
+          {/* TIPO DE RESPUESTA (Oculto por solicitud usuario) */}
+          {/* <div className="space-y-2">
             <label className="text-sm font-bold text-gray-900">Tipo de Respuesta</label>
             <Select value={tipoRespuesta} onValueChange={setTipoRespuesta}>
               <SelectTrigger>
@@ -187,7 +350,7 @@ Escuela Superior de Administración Pública - ESAP`;
                 <SelectItem value="impedimento">🚫 Impedimento Legal para Responder</SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </div> */}
 
           {/* DATOS DEL DESTINATARIO */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -200,6 +363,19 @@ Escuela Superior de Administración Pública - ESAP`;
                 value={destinatario}
                 onChange={(e) => setDestinatario(e.target.value)}
                 placeholder="Nombre completo del funcionario"
+                disabled={isReadOnly}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-gray-900 flex items-center gap-1">
+                <Mail className="w-4 h-4 text-gray-600" />
+                Email
+              </label>
+              <Input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="correo@ejemplo.com"
+                disabled={isReadOnly}
               />
             </div>
             <div className="space-y-2">
@@ -211,6 +387,7 @@ Escuela Superior de Administración Pública - ESAP`;
                 value={cargo}
                 onChange={(e) => setCargo(e.target.value)}
                 placeholder="Ej: Director de Control Fiscal"
+                disabled={isReadOnly}
               />
             </div>
           </div>
@@ -246,6 +423,7 @@ Escuela Superior de Administración Pública - ESAP`;
               placeholder="Escriba aquí el contenido de la respuesta oficial al órgano de control..."
               rows={16}
               className="font-mono text-sm"
+              disabled={isReadOnly}
             />
             <p className="text-xs text-gray-500">
               {contenidoRespuesta.length} caracteres • Se recomienda usar el template oficial
@@ -263,6 +441,7 @@ Escuela Superior de Administración Pública - ESAP`;
                 variant="outline"
                 size="sm"
                 onClick={handleAdjuntarDocumento}
+                disabled={isReadOnly}
               >
                 <Upload className="w-3 h-3 mr-1" />
                 Adjuntar
@@ -278,7 +457,10 @@ Escuela Superior de Administración Pública - ESAP`;
                   >
                     <div className="flex items-center gap-2">
                       <FileText className="w-4 h-4 text-gray-600" />
-                      <span className="text-sm text-gray-900">{doc}</span>
+                      <div className="flex flex-col">
+                        <span className="text-sm text-gray-900 font-medium">{doc.nombre}</span>
+                        {/* {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">Ver archivo</a>} */}
+                      </div>
                     </div>
                     <Button
                       variant="ghost"
@@ -295,7 +477,7 @@ Escuela Superior de Administración Pública - ESAP`;
                 ))}
               </div>
             ) : (
-              <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center">
+              <div className="p-4 bg-gray-50 border border-dashed text-center border-gray-300 rounded-lg">
                 <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                 <p className="text-sm text-gray-500">No hay documentos adjuntos</p>
                 <p className="text-xs text-gray-400 mt-1">
@@ -303,6 +485,13 @@ Escuela Superior de Administración Pública - ESAP`;
                 </p>
               </div>
             )}
+            {/* Hidden File Input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              onChange={handleFileChange}
+            />
           </div>
 
           {/* CHECKLIST DE VERIFICACIÓN */}
@@ -370,6 +559,7 @@ Escuela Superior de Administración Pública - ESAP`;
             <Button
               variant="outline"
               onClick={handleGuardarBorrador}
+              disabled={isReadOnly}
             >
               <Save className="w-4 h-4 mr-2" />
               Guardar Borrador
@@ -383,17 +573,20 @@ Escuela Superior de Administración Pública - ESAP`;
             </Button>
             <Button
               onClick={handleEnviarRespuesta}
-              style={{ background: '#10B981' }}
-              className="text-white"
-              disabled={!contenidoRespuesta.trim()}
+              style={{ background: isReadOnly ? undefined : '#10B981' }}
+              className={isReadOnly ? "bg-gray-400 cursor-not-allowed text-white" : "text-white"}
+              disabled={!contenidoRespuesta.trim() || enviando || isReadOnly}
             >
-              <Send className="w-4 h-4 mr-2" />
-              Enviar Respuesta
+              {enviando ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4 mr-2" />
+              )}
+              {enviando ? 'Enviando...' : 'Enviar Respuesta'}
             </Button>
           </div>
         </div>
       </DialogContent>
-    </Dialog>
+    </Dialog >
   );
 }
-

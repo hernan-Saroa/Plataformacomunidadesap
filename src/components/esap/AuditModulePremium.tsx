@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Download, Filter, Calendar, ChevronDown, FileText, Shield, BarChart3, Activity, List, Clock, AlertTriangle } from 'lucide-react';
 import { AuditLogTable } from './AuditLogTable';
@@ -7,7 +7,10 @@ import { AuditAnalytics } from './AuditAnalytics';
 import { AuditAdvancedFilters } from './AuditAdvancedFilters';
 import { AuditTimeline } from './AuditTimeline';
 import { AuditAnomaliesDetector } from './AuditAnomaliesDetector';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { mapLogToEvent, loadAuditLogs, loadAvailableModules, type LoadLogsParams } from './audit/auditUtils';
+import type { AuditLog } from '../../services/api/audit.service';
+import { auditService } from '../../services/auditService';
 
 type ViewMode = 'table' | 'timeline' | 'anomalies';
 
@@ -28,6 +31,8 @@ export function AuditModulePremium() {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(100);
   
   const [filters, setFilters] = useState<FilterOptions>({
     dateRange: 'last24h',
@@ -39,8 +44,42 @@ export function AuditModulePremium() {
     userSearch: '',
     ipAddress: ''
   });
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [total, setTotal] = useState(0);
 
-  // Mock data - ACTUALIZADO con eventos de Usuario Persona, Roles y 2FA
+  const loadLogs = async () => {
+    setLoading(true);
+    try {
+      const params: LoadLogsParams = {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        ipAddress: filters.ipAddress,
+        modules: filters.modules,
+      };
+      const result = await loadAuditLogs(params);
+      setLogs(result.logs || []);
+      setTotal(result.total || 0);
+    } catch (error) {
+      console.error('Error loading audit logs:', error);
+      toast.error('Error al cargar logs de auditoría');
+      setLogs([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadLogs();
+  }, [filters.startDate, filters.endDate, filters.ipAddress, filters.modules]);
+
+  const events: AuditEvent[] = useMemo(() => {
+    if (!logs || !Array.isArray(logs)) return [];
+    return logs.map(mapLogToEvent);
+  }, [logs]);
+
+  // Mock data - ACTUALIZADO con eventos de Usuario Persona, Roles y 2FA (fallback si no hay logs)
   const mockEvents: AuditEvent[] = [
     // ============ EVENTOS DE AUTENTICACIÓN 2FA ============
     {
@@ -489,14 +528,23 @@ export function AuditModulePremium() {
     }
   ];
 
-  // Obtener módulos únicos para filtros
-  const availableModules = useMemo(() => {
-    return Array.from(new Set(mockEvents.map(e => e.module)));
-  }, [mockEvents]);
+  const [availableModulesList, setAvailableModulesList] = useState<string[]>([]);
 
-  // Aplicar filtros
+  useEffect(() => {
+    loadAvailableModules().then(modules => {
+      setAvailableModulesList(modules);
+    }).catch(() => {
+      setAvailableModulesList(Array.from(new Set(events.map(e => e.module))));
+    });
+  }, []);
+
+  const availableModules = useMemo(() => {
+    if (availableModulesList.length > 0) return availableModulesList;
+    return Array.from(new Set(events.map(e => e.module)));
+  }, [availableModulesList, events]);
+
   const filteredEvents = useMemo(() => {
-    return mockEvents.filter(event => {
+    return events.filter(event => {
       // Search query
       if (searchQuery) {
         const searchLower = searchQuery.toLowerCase();
@@ -540,18 +588,57 @@ export function AuditModulePremium() {
 
       return true;
     });
-  }, [mockEvents, searchQuery, filters]);
+  }, [events, searchQuery, filters]);
 
   const handleEventClick = (event: AuditEvent) => {
     setSelectedEvent(event);
     setIsDetailOpen(true);
   };
 
-  const handleExport = (format: 'csv' | 'excel' | 'pdf') => {
-    toast.success('Exportando registros', {
-      description: `Generando archivo ${format.toUpperCase()} con ${filteredEvents.length} eventos...`
-    });
-    setExportMenuOpen(false);
+  const handleExport = async (format: 'csv' | 'excel' | 'pdf', singleEvent?: AuditEvent) => {
+    try {
+      setExportMenuOpen(false);
+      const eventsToExport = singleEvent ? [singleEvent] : filteredEvents;
+      
+      if (eventsToExport.length === 0) {
+        toast.warning('No hay eventos para exportar');
+        return;
+      }
+
+      toast.info('Generando archivo de exportación...', {
+        description: `Preparando ${format.toUpperCase()} con ${eventsToExport.length} ${singleEvent ? 'evento' : 'eventos'}`
+      });
+
+      let blob: Blob;
+      let filename: string;
+      const dateStr = new Date().toISOString().split('T')[0];
+      const eventId = singleEvent ? `_${singleEvent.id}` : '';
+
+      switch (format) {
+        case 'csv':
+          blob = auditService.exportEventsToCSV(eventsToExport);
+          filename = `auditoria${eventId}_${dateStr}.csv`;
+          break;
+        case 'excel':
+          blob = await auditService.exportEventsToExcel(eventsToExport);
+          filename = `auditoria${eventId}_${dateStr}.xlsx`;
+          break;
+        case 'pdf':
+          blob = await auditService.exportEventsToPDF(eventsToExport);
+          filename = `auditoria${eventId}_${dateStr}.pdf`;
+          break;
+      }
+
+      auditService.downloadBlob(blob, filename);
+      toast.success('Archivo exportado correctamente', {
+        description: `El archivo ${filename} ha sido descargado`
+      });
+    } catch (error: any) {
+      console.error('Error al exportar:', error);
+      toast.error('Error al exportar', {
+        description: error.message || 'No se pudo generar el archivo de exportación'
+      });
+    }
   };
 
   const handleClearFilters = () => {
@@ -690,12 +777,23 @@ export function AuditModulePremium() {
         onClearFilters={handleClearFilters}
       />
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1e5da8] mx-auto mb-4"></div>
+            <p className="text-gray-600">Cargando logs de auditoría...</p>
+          </div>
+        </div>
+      )}
+
       {/* Content Based on View Mode */}
-      {viewMode === 'table' && (
+      {!loading && viewMode === 'table' && (
         <AuditLogTable 
           events={filteredEvents}
           onEventClick={handleEventClick}
           searchQuery={searchQuery}
+          onExportEvent={(event, format) => handleExport(format, event)}
         />
       )}
 

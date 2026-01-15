@@ -34,4 +34,7 @@ export const serviceMap = {
 
   // Travel Expenses Service - Puerto 3010
   viaticos: USE_LOCALHOST ? 'http://localhost:3010' : 'http://travel-expenses-service:3010',
+
+  // Audit Service - Puerto 3011
+  audit: USE_LOCALHOST ? 'http://localhost:3011' : 'http://audit-service:3011',
 };
