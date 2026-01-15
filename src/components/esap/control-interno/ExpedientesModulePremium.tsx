@@ -18,19 +18,25 @@
  * - Integración con auditorías
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Folder, FolderOpen, FileText, Upload, Download, Search, Eye,
   ChevronRight, ChevronDown, Plus, Filter, Calendar, User,
   Archive, CheckCircle2, AlertCircle, Clock,
-  File, FolderCheck, FileCheck
+  File, FolderCheck, FileCheck, Loader2
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
+
+// API Services
+import { auditoriasApi } from './services/api';
+import { controlInternoService } from '../../../services/api/controlInternoService';
+import { LoadingSpinner } from '../../ui/loading-spinner';
+import { EmptyState } from '../../ui/empty-state';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -119,72 +125,60 @@ const FASES_AUDITORIA = [
 ];
 
 // ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK
+// FUNCIONES AUXILIARES PARA MAPEO DE DATOS
 // ════════════════════════════════════════════════════════════════════════════
 
-const EXPEDIENTES_MOCK: Expediente[] = [
-  {
-    id: 'exp-1',
-    codigoAuditoria: 'AU-2025-001',
-    nombreAuditoria: 'Auditoría Gestión Contractual',
-    tipoAuditoria: 'Auditoría de Gestión',
-    fechaInicio: '2025-01-15',
-    estado: 'EN_PROCESO',
-    responsable: 'Fernando Ávila',
-    totalDocumentos: 18,
-    documentos: [
-      // PLANIFICACIÓN
-      { id: 'd1', nombre: 'Programa de Auditoría AU-2025-001.pdf', tipo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2025-01-15', autor: 'Fernando Ávila', fase: 'PLANIFICACION' },
-      { id: 'd2', nombre: 'Memorando de Asignación.pdf', tipo: 'PDF', tamanio: '345 KB', fechaCreacion: '2025-01-15', autor: 'Fernando Ávila', fase: 'PLANIFICACION' },
-      { id: 'd3', nombre: 'Alcance y Objetivos.docx', tipo: 'DOCX', tamanio: '89 KB', fechaCreacion: '2025-01-16', autor: 'Fernando Ávila', fase: 'PLANIFICACION' },
-      
-      // EJECUCIÓN
-      { id: 'd4', nombre: 'Papeles de Trabajo - Semana 1.xlsx', tipo: 'XLSX', tamanio: '2.4 MB', fechaCreacion: '2025-01-22', autor: 'María Rodríguez', fase: 'EJECUCION' },
-      { id: 'd5', nombre: 'Evidencia Contratos Vigentes.pdf', tipo: 'PDF', tamanio: '5.6 MB', fechaCreacion: '2025-01-25', autor: 'Carlos Gómez', fase: 'EJECUCION' },
-      { id: 'd6', nombre: 'Acta Entrevista Director Jurídico.pdf', tipo: 'PDF', tamanio: '678 KB', fechaCreacion: '2025-01-28', autor: 'Fernando Ávila', fase: 'EJECUCION' },
-      { id: 'd7', nombre: 'Papeles de Trabajo - Semana 2.xlsx', tipo: 'XLSX', tamanio: '3.1 MB', fechaCreacion: '2025-02-05', autor: 'María Rodríguez', fase: 'EJECUCION' },
-      
-      // HALLAZGOS
-      { id: 'd8', nombre: 'Matriz de Hallazgos Preliminar.xlsx', tipo: 'XLSX', tamanio: '1.8 MB', fechaCreacion: '2025-02-10', autor: 'Fernando Ávila', fase: 'HALLAZGOS' },
-      { id: 'd9', nombre: 'Hallazgo H-001 Evidencias.pdf', tipo: 'PDF', tamanio: '4.2 MB', fechaCreacion: '2025-02-12', autor: 'María Rodríguez', fase: 'HALLAZGOS' },
-      { id: 'd10', nombre: 'Respuesta Auditado Hallazgo H-001.pdf', tipo: 'PDF', tamanio: '890 KB', fechaCreacion: '2025-02-15', autor: 'Sistema', fase: 'HALLAZGOS' },
-      
-      // COMUNICACIÓN
-      { id: 'd11', nombre: 'Informe Final AU-2025-001.pdf', tipo: 'PDF', tamanio: '3.5 MB', fechaCreacion: '2025-02-20', autor: 'Fernando Ávila', fase: 'COMUNICACION_RESULTADOS' },
-      { id: 'd12', nombre: 'Acta Reunión Cierre.pdf', tipo: 'PDF', tamanio: '567 KB', fechaCreacion: '2025-02-22', autor: 'Fernando Ávila', fase: 'COMUNICACION_RESULTADOS' }
-    ]
-  },
-  {
-    id: 'exp-2',
-    codigoAuditoria: 'AU-2024-012',
-    nombreAuditoria: 'Auditoría Control Interno Contable',
-    tipoAuditoria: 'Auditoría de Cumplimiento',
-    fechaInicio: '2024-09-10',
-    fechaFin: '2024-12-20',
-    estado: 'CERRADO',
-    responsable: 'María Rodríguez',
-    totalDocumentos: 24,
-    documentos: [
-      { id: 'd13', nombre: 'Programa de Auditoría AU-2024-012.pdf', tipo: 'PDF', tamanio: '1.1 MB', fechaCreacion: '2024-09-10', autor: 'María Rodríguez', fase: 'PLANIFICACION' },
-      { id: 'd14', nombre: 'Informe Final AU-2024-012.pdf', tipo: 'PDF', tamanio: '4.8 MB', fechaCreacion: '2024-12-15', autor: 'María Rodríguez', fase: 'COMUNICACION_RESULTADOS' },
-      { id: 'd15', nombre: 'Acta de Cierre Definitivo.pdf', tipo: 'PDF', tamanio: '445 KB', fechaCreacion: '2024-12-20', autor: 'María Rodríguez', fase: 'CIERRE' }
-    ]
-  },
-  {
-    id: 'exp-3',
-    codigoAuditoria: 'AU-2025-003',
-    nombreAuditoria: 'Auditoría Talento Humano',
-    tipoAuditoria: 'Auditoría de Gestión',
-    fechaInicio: '2025-02-01',
-    estado: 'ABIERTO',
-    responsable: 'Carlos Gómez',
-    totalDocumentos: 6,
-    documentos: [
-      { id: 'd16', nombre: 'Programa de Auditoría AU-2025-003.pdf', tipo: 'PDF', tamanio: '980 KB', fechaCreacion: '2025-02-01', autor: 'Carlos Gómez', fase: 'PLANIFICACION' },
-      { id: 'd17', nombre: 'Memorando de Asignación.pdf', tipo: 'PDF', tamanio: '234 KB', fechaCreacion: '2025-02-01', autor: 'Carlos Gómez', fase: 'PLANIFICACION' }
-    ]
+/**
+ * Mapea el estado de auditoría al estado del expediente
+ */
+const mapearEstadoExpediente = (estadoAuditoria: string): 'ABIERTO' | 'EN_PROCESO' | 'CERRADO' => {
+  const estadoLower = estadoAuditoria.toLowerCase();
+  if (estadoLower === 'planeación' || estadoLower === 'planeacion') {
+    return 'ABIERTO';
   }
-];
+  if (estadoLower === 'finalizada' || estadoLower === 'finalizado') {
+    return 'CERRADO';
+  }
+  return 'EN_PROCESO';
+};
+
+/**
+ * Mapea la etapa del documento a la fase del expediente
+ */
+const mapearFaseDocumento = (etapa: string | undefined): FaseAuditoria => {
+  if (!etapa) return 'PLANIFICACION';
+  
+  const etapaLower = etapa.toLowerCase();
+  if (etapaLower.includes('planificacion') || etapaLower.includes('planeacion')) {
+    return 'PLANIFICACION';
+  }
+  if (etapaLower.includes('ejecucion') || etapaLower.includes('ejecución')) {
+    return 'EJECUCION';
+  }
+  if (etapaLower.includes('hallazgo')) {
+    return 'HALLAZGOS';
+  }
+  if (etapaLower.includes('comunicacion') || etapaLower.includes('comunicación')) {
+    return 'COMUNICACION_RESULTADOS';
+  }
+  if (etapaLower.includes('seguimiento')) {
+    return 'SEGUIMIENTO';
+  }
+  if (etapaLower.includes('cierre')) {
+    return 'CIERRE';
+  }
+  return 'PLANIFICACION';
+};
+
+/**
+ * Formatea el tamaño del archivo
+ */
+const formatearTamanio = (bytes: number | undefined): string => {
+  if (!bytes) return '0 KB';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -192,6 +186,92 @@ const EXPEDIENTES_MOCK: Expediente[] = [
 
 export function ExpedientesModulePremium() {
   const [vistaActiva, setVistaActiva] = useState<VistaActual>('expedientes');
+  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Función para cargar expedientes desde la API
+  const cargarExpedientes = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Obtener todas las auditorías
+      const response = await auditoriasApi.getAllKanban();
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Error al cargar auditorías');
+      }
+
+      const auditorias = response.data;
+
+      // Para cada auditoría, obtener sus documentos y construir el expediente
+      const expedientesPromises = auditorias.map(async (auditoria: any) => {
+        try {
+          // Obtener documentos de la auditoría
+          const documentos = await controlInternoService.getDocumentosByAuditoria(auditoria.id);
+
+          // Mapear documentos al formato esperado
+          const documentosMapeados: Documento[] = documentos.map((doc: any) => ({
+            id: doc.id || doc.documentoId || String(Math.random()),
+            nombre: doc.nombre || doc.nombreArchivo || 'Sin nombre',
+            tipo: doc.tipo || doc.tipoArchivo || 'PDF',
+            tamanio: formatearTamanio(doc.tamanio || doc.size),
+            fechaCreacion: doc.fechaCreacion || doc.createdAt || new Date().toISOString().split('T')[0],
+            autor: doc.autor || doc.creadoPor || doc.usuarioNombre || 'Sistema',
+            fase: mapearFaseDocumento(doc.etapa || doc.fase)
+          }));
+
+          // Construir el expediente
+          const expediente: Expediente = {
+            id: auditoria.id,
+            codigoAuditoria: auditoria.codigo || auditoria.codigoAuditoria || `AUD-${auditoria.id}`,
+            nombreAuditoria: auditoria.titulo || auditoria.nombre || 'Sin título',
+            tipoAuditoria: auditoria.tipo || 'Auditoría de Gestión',
+            fechaInicio: auditoria.fechaInicio || auditoria.fechaCreacion || new Date().toISOString().split('T')[0],
+            fechaFin: auditoria.fechaFin,
+            estado: mapearEstadoExpediente(auditoria.estado || 'Planeación'),
+            responsable: auditoria.auditorLider?.nombre || auditoria.responsable || 'Sin asignar',
+            totalDocumentos: documentosMapeados.length,
+            documentos: documentosMapeados
+          };
+
+          return expediente;
+        } catch (err) {
+          console.error(`Error al cargar documentos de auditoría ${auditoria.id}:`, err);
+          // Retornar expediente sin documentos si hay error
+          return {
+            id: auditoria.id,
+            codigoAuditoria: auditoria.codigo || auditoria.codigoAuditoria || `AUD-${auditoria.id}`,
+            nombreAuditoria: auditoria.titulo || auditoria.nombre || 'Sin título',
+            tipoAuditoria: auditoria.tipo || 'Auditoría de Gestión',
+            fechaInicio: auditoria.fechaInicio || auditoria.fechaCreacion || new Date().toISOString().split('T')[0],
+            fechaFin: auditoria.fechaFin,
+            estado: mapearEstadoExpediente(auditoria.estado || 'Planeación'),
+            responsable: auditoria.auditorLider?.nombre || auditoria.responsable || 'Sin asignar',
+            totalDocumentos: 0,
+            documentos: []
+          };
+        }
+      });
+
+      const expedientesData = await Promise.all(expedientesPromises);
+      setExpedientes(expedientesData);
+    } catch (err: any) {
+      console.error('Error al cargar expedientes:', err);
+      setError(err.message || 'Error al cargar los expedientes');
+      toast.error('Error al cargar expedientes', {
+        description: err.message || 'No se pudieron cargar los expedientes desde el servidor'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cargar expedientes al montar el componente
+  useEffect(() => {
+    cargarExpedientes();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -209,7 +289,7 @@ export function ExpedientesModulePremium() {
               onClick={() => setVistaActiva('expedientes')}
               icon={<Folder className="w-4 h-4" />}
               label="Expedientes por Auditoría"
-              badge={EXPEDIENTES_MOCK.length.toString()}
+              badge={expedientes.length.toString()}
             />
             <TabButton
               active={vistaActiva === 'estadisticas'}
@@ -230,8 +310,28 @@ export function ExpedientesModulePremium() {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {vistaActiva === 'expedientes' && <VistaExpedientes />}
-          {vistaActiva === 'estadisticas' && <VistaEstadisticas />}
+          {loading ? (
+            <div className="flex items-center justify-center min-h-[400px]">
+              <LoadingSpinner />
+            </div>
+          ) : error ? (
+            <div className="mx-auto px-8 py-6 max-w-[1920px]">
+              <EmptyState
+                icon={AlertCircle}
+                title="Error al cargar expedientes"
+                description={error}
+                action={{
+                  label: "Reintentar",
+                  onClick: () => window.location.reload()
+                }}
+              />
+            </div>
+          ) : (
+            <>
+              {vistaActiva === 'expedientes' && <VistaExpedientes expedientes={expedientes} onRefresh={cargarExpedientes} />}
+              {vistaActiva === 'estadisticas' && <VistaEstadisticas expedientes={expedientes} />}
+            </>
+          )}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -279,13 +379,18 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
 // VISTA: EXPEDIENTES POR AUDITORÍA
 // ════════════════════════════════════════════════════════════════════════════
 
-function VistaExpedientes() {
+interface VistaExpedientesProps {
+  expedientes: Expediente[];
+  onRefresh?: () => void;
+}
+
+function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | 'ABIERTO' | 'EN_PROCESO' | 'CERRADO'>('TODOS');
   const [expedienteExpandido, setExpedienteExpandido] = useState<string | null>(null);
 
   const expedientesFiltrados = useMemo(() => {
-    let resultado = EXPEDIENTES_MOCK;
+    let resultado = expedientes;
 
     if (busqueda) {
       const search = busqueda.toLowerCase();
@@ -300,17 +405,17 @@ function VistaExpedientes() {
     }
 
     return resultado;
-  }, [busqueda, filtroEstado]);
+  }, [busqueda, filtroEstado, expedientes]);
 
   const estadisticas = useMemo(() => {
-    const total = EXPEDIENTES_MOCK.length;
-    const abiertos = EXPEDIENTES_MOCK.filter(e => e.estado === 'ABIERTO').length;
-    const enProceso = EXPEDIENTES_MOCK.filter(e => e.estado === 'EN_PROCESO').length;
-    const cerrados = EXPEDIENTES_MOCK.filter(e => e.estado === 'CERRADO').length;
-    const totalDocs = EXPEDIENTES_MOCK.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
+    const total = expedientes.length;
+    const abiertos = expedientes.filter(e => e.estado === 'ABIERTO').length;
+    const enProceso = expedientes.filter(e => e.estado === 'EN_PROCESO').length;
+    const cerrados = expedientes.filter(e => e.estado === 'CERRADO').length;
+    const totalDocs = expedientes.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
 
     return { total, abiertos, enProceso, cerrados, totalDocs };
-  }, []);
+  }, [expedientes]);
 
   return (
     <div className="mx-auto px-8 py-6 max-w-[1920px]">
@@ -404,18 +509,33 @@ function VistaExpedientes() {
       </div>
 
       {/* Lista de Expedientes */}
-      <div className="space-y-4">
-        {expedientesFiltrados.map((expediente) => (
-          <CardExpediente
-            key={expediente.id}
-            expediente={expediente}
-            expandido={expedienteExpandido === expediente.id}
-            onToggleExpand={() => setExpedienteExpandido(
-              expedienteExpandido === expediente.id ? null : expediente.id
-            )}
+      {expedientesFiltrados.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
+          <EmptyState
+            icon={Folder}
+            title="No se encontraron expedientes"
+            description={
+              busqueda || filtroEstado !== 'TODOS'
+                ? 'Intenta ajustar los filtros de búsqueda'
+                : 'No hay expedientes disponibles en este momento'
+            }
           />
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+            {expedientesFiltrados.map((expediente) => (
+            <CardExpediente
+              key={expediente.id}
+              expediente={expediente}
+              expandido={expedienteExpandido === expediente.id}
+              onToggleExpand={() => setExpedienteExpandido(
+                expedienteExpandido === expediente.id ? null : expediente.id
+              )}
+              onRefresh={onRefresh}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -428,9 +548,10 @@ interface CardExpedienteProps {
   expediente: Expediente;
   expandido: boolean;
   onToggleExpand: () => void;
+  onRefresh?: () => void;
 }
 
-function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedienteProps) {
+function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: CardExpedienteProps) {
   const [modalCargar, setModalCargar] = useState(false);
   
   const estadoConfig = {
@@ -593,6 +714,10 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
           onCargar={() => {
             setModalCargar(false);
             toast.success('Documento cargado exitosamente');
+            // Refrescar la lista de expedientes después de cargar
+            if (onRefresh) {
+              onRefresh();
+            }
           }}
         />
       )}
@@ -770,9 +895,13 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
 // VISTA: ESTADÍSTICAS
 // ════════════════════════════════════════════════════════════════════════════
 
-function VistaEstadisticas() {
+interface VistaEstadisticasProps {
+  expedientes: Expediente[];
+}
+
+function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
   const stats = useMemo(() => {
-    const totalDocs = EXPEDIENTES_MOCK.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
+    const totalDocs = expedientes.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
     const docsPorFase: Record<FaseAuditoria, number> = {
       PLANIFICACION: 0,
       EJECUCION: 0,
@@ -782,14 +911,14 @@ function VistaEstadisticas() {
       CIERRE: 0
     };
 
-    EXPEDIENTES_MOCK.forEach(exp => {
+    expedientes.forEach(exp => {
       exp.documentos.forEach(doc => {
         docsPorFase[doc.fase]++;
       });
     });
 
     return { totalDocs, docsPorFase };
-  }, []);
+  }, [expedientes]);
 
   return (
     <div className="mx-auto px-8 py-6 max-w-[1920px]">
@@ -803,11 +932,13 @@ function VistaEstadisticas() {
           </div>
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
             <div className="text-xs text-green-700 mb-1">Expedientes Activos</div>
-            <div className="text-2xl font-semibold text-green-900">{EXPEDIENTES_MOCK.filter(e => e.estado !== 'CERRADO').length}</div>
+            <div className="text-2xl font-semibold text-green-900">{expedientes.filter(e => e.estado !== 'CERRADO').length}</div>
           </div>
           <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200">
             <div className="text-xs text-purple-700 mb-1">Promedio Docs/Expediente</div>
-            <div className="text-2xl font-semibold text-purple-900">{Math.round(stats.totalDocs / EXPEDIENTES_MOCK.length)}</div>
+            <div className="text-2xl font-semibold text-purple-900">
+              {expedientes.length > 0 ? Math.round(stats.totalDocs / expedientes.length) : 0}
+            </div>
           </div>
         </div>
 
@@ -879,40 +1010,162 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
   const [fase, setFase] = useState<FaseAuditoria>('PLANIFICACION');
   const [nombreDocumento, setNombreDocumento] = useState('');
   const [descripcion, setDescripcion] = useState('');
+  const [archivoSeleccionado, setArchivoSeleccionado] = useState<File | null>(null);
+  const [cargando, setCargando] = useState(false);
+  const [progresoCarga, setProgresoCarga] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleCargar = () => {
+  /**
+   * Mapea la fase del expediente a la etapa del backend
+   */
+  const mapearFaseAEtapa = (fase: FaseAuditoria): string => {
+    const mapeo: Record<FaseAuditoria, string> = {
+      PLANIFICACION: 'planeacion',
+      EJECUCION: 'ejecucion',
+      HALLAZGOS: 'ejecucion', // Los hallazgos están en la fase de ejecución
+      COMUNICACION_RESULTADOS: 'comunicacion',
+      SEGUIMIENTO: 'seguimiento',
+      CIERRE: 'comunicacion' // El cierre está en comunicación
+    };
+    return mapeo[fase] || 'planeacion';
+  };
+
+  /**
+   * Valida el archivo seleccionado
+   */
+  const validarArchivo = (file: File): boolean => {
+    // Validar tamaño (máx 50 MB)
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error('Archivo demasiado grande', {
+        description: 'El tamaño máximo permitido es 50 MB',
+      });
+      return false;
+    }
+
+    // Validar tipo de archivo
+    const tiposPermitidos = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+    ];
+
+    const extensionesPermitidas = /\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png)$/i;
+
+    if (!tiposPermitidos.includes(file.type) && !extensionesPermitidas.test(file.name)) {
+      toast.error('Tipo de archivo no permitido', {
+        description: 'Solo se permiten: PDF, Word, Excel, JPG, PNG',
+      });
+      return false;
+    }
+
+    return true;
+  };
+
+  /**
+   * Maneja la selección de archivo
+   */
+  const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (validarArchivo(file)) {
+        setArchivoSeleccionado(file);
+        // Auto-completar nombre si está vacío
+        if (!nombreDocumento.trim()) {
+          setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
+        }
+      }
+    }
+  };
+
+  /**
+   * Maneja el drag & drop
+   */
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      if (validarArchivo(file)) {
+        setArchivoSeleccionado(file);
+        if (!nombreDocumento.trim()) {
+          setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
+        }
+      }
+    }
+  };
+
+  /**
+   * Maneja la carga del documento
+   */
+  const handleCargar = async () => {
     // Validaciones
+    if (!archivoSeleccionado) {
+      toast.error('Debe seleccionar un archivo');
+      return;
+    }
+
     if (!nombreDocumento.trim()) {
       toast.error('El nombre del documento es obligatorio');
       return;
     }
 
-    // Simular carga del documento
-    toast.success('Documento Cargado Exitosamente', {
-      description: `${nombreDocumento} agregado a ${FASES_AUDITORIA.find(f => f.id === fase)?.nombre}`,
-      duration: 4000,
-    });
+    setCargando(true);
+    setProgresoCarga(0);
 
-    console.log('📤 Cargar documento al expediente:', {
-      expedienteId: expediente.id,
-      codigoAuditoria: expediente.codigoAuditoria,
-      nombreAuditoria: expediente.nombreAuditoria,
-      documento: {
-        nombre: nombreDocumento,
-        fase: fase,
-        faseNombre: FASES_AUDITORIA.find(f => f.id === fase)?.nombre,
-        descripcion,
-        fechaCarga: new Date().toISOString(),
-        usuario: expediente.responsable
-      },
-      timestamp: new Date().toISOString()
-    });
+    try {
+      // Subir documento a la base de datos
+      await controlInternoService.createDocumento(
+        archivoSeleccionado,
+        {
+          nombre: nombreDocumento.trim(),
+          descripcion: descripcion.trim() || undefined,
+          tipoDocumento: 'otro', // Valor válido según constraint de BD (minúsculas)
+          etapa: mapearFaseAEtapa(fase),
+          auditoriaId: expediente.id,
+          subidoPor: expediente.responsable || 'Usuario',
+        },
+        (progress) => {
+          setProgresoCarga(progress);
+        }
+      );
 
-    // En producción: llamar al backend para cargar el documento
-    // POST /api/expedientes/${expediente.id}/documentos
-    // FormData con archivo + metadatos
+      toast.success('Documento Cargado Exitosamente', {
+        description: `${nombreDocumento} agregado a ${FASES_AUDITORIA.find(f => f.id === fase)?.nombre}`,
+        duration: 4000,
+      });
 
-    onCargar();
+      // Limpiar formulario
+      setArchivoSeleccionado(null);
+      setNombreDocumento('');
+      setDescripcion('');
+      setProgresoCarga(0);
+
+      // Cerrar modal y refrescar
+      onCargar();
+    } catch (error: any) {
+      console.error('Error al cargar documento:', error);
+      toast.error('Error al cargar el documento', {
+        description: error.message || 'Por favor, intente nuevamente',
+      });
+    } finally {
+      setCargando(false);
+    }
   };
 
   return (
@@ -1001,20 +1254,89 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
               />
             </div>
 
-            {/* Selector de Archivo (simulado) */}
+            {/* Selector de Archivo */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Archivo
+                Archivo <span className="text-red-500">*</span>
               </label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#1e5da8] transition-colors cursor-pointer">
-                <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-600 mb-1">
-                  Haz clic para seleccionar o arrastra el archivo aquí
-                </p>
-                <p className="text-xs text-gray-500">
-                  PDF, DOCX, XLSX, hasta 50MB
-                </p>
+              <input
+                type="file"
+                ref={(el) => {
+                  if (el) {
+                    (fileInputRef as any).current = el;
+                  }
+                }}
+                onChange={handleSeleccionarArchivo}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                className="hidden"
+                disabled={cargando}
+              />
+              <div
+                onClick={() => !cargando && (fileInputRef as any).current?.click()}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`
+                  border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer
+                  ${isDragging 
+                    ? 'border-[#1e5da8] bg-blue-50' 
+                    : archivoSeleccionado 
+                      ? 'border-green-400 bg-green-50' 
+                      : 'border-gray-300 hover:border-[#1e5da8] hover:bg-gray-50'
+                  }
+                  ${cargando ? 'opacity-50 cursor-not-allowed' : ''}
+                `}
+              >
+                {archivoSeleccionado ? (
+                  <div className="space-y-2">
+                    <FileText className="w-8 h-8 text-green-600 mx-auto" />
+                    <p className="text-sm font-medium text-gray-900">{archivoSeleccionado.name}</p>
+                    <p className="text-xs text-gray-600">
+                      {(archivoSeleccionado.size / (1024 * 1024)).toFixed(2)} MB
+                    </p>
+                    {!cargando && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setArchivoSeleccionado(null);
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = '';
+                          }
+                        }}
+                        className="text-xs text-red-600 hover:text-red-700 mt-2"
+                      >
+                        Eliminar archivo
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <Upload className={`w-8 h-8 mx-auto mb-2 ${isDragging ? 'text-[#1e5da8]' : 'text-gray-400'}`} />
+                    <p className="text-sm text-gray-600 mb-1">
+                      {isDragging ? 'Suelta el archivo aquí' : 'Haz clic para seleccionar o arrastra el archivo aquí'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      PDF, DOCX, XLSX, JPG, PNG hasta 50MB
+                    </p>
+                  </>
+                )}
               </div>
+              
+              {/* Barra de progreso */}
+              {cargando && progresoCarga > 0 && (
+                <div className="mt-2">
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-[#1e5da8] h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${progresoCarga}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1 text-center">
+                    Cargando... {progresoCarga}%
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1024,16 +1346,27 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
           <div className="flex justify-end gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+              disabled={cargando}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancelar
             </button>
             <button
               onClick={handleCargar}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+              disabled={cargando || !archivoSeleccionado || !nombreDocumento.trim()}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Upload className="w-4 h-4" />
-              Cargar Documento
+              {cargando ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Cargando...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Cargar Documento
+                </>
+              )}
             </button>
           </div>
         </div>
