@@ -12,28 +12,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import {
   Building2, Calendar, User, Clock, X, AlertTriangle, FileText,
   CheckCircle, Target, Mail, Download, Upload, MessageSquare,
-  Paperclip, Edit, Send, Archive, TrendingUp, AlertCircle, Trash2
+  Paperclip, Edit, Send, Archive, TrendingUp, AlertCircle, Trash2, Users, Loader2
 } from 'lucide-react';
-import { toast } from 'sonner';
-import { ModalComentarRequerimiento } from './ModalComentarRequerimiento';
-import { ModalSubirRespuesta } from './ModalSubirRespuesta';
+import { toast } from 'sonner@2.0.3';
+import { ModalComentariosOrgano } from './ModalComentariosOrgano';
+import { ModalRespuestaOrgano } from './ModalRespuestaOrgano';
+import { ModalSolicitudInsumo } from './ModalSolicitudInsumo';
 import { ModalCambiarEtapa } from './ModalCambiarEtapa';
 import { ModalReasignar } from './ModalReasignar';
 import { ModalArchivar } from './ModalArchivar';
+import { ModalSubirDocumento } from './ModalSubirDocumento';
 import { legalService, ocService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 
 interface RequerimientoOrganoControl {
   id: string;
   numeroOficio: string;
-  organismo: 'CGR' | 'PROCURADURIA' | 'CONTRALORIA_TERRITORIAL' | 'FISCALIA' | 'DEFENSORIA' | 'PERSONERIA';
+  organismo: string;
   asunto: string;
   responsable: string;
   fechaRadicacion: Date;
   fechaVencimiento: Date;
   diasRestantes: number;
   diasTotales: number;
-  etapa: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO';
+  etapa: 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO';
   ultimaActuacion?: string;
   documentos?: number;
 }
@@ -42,32 +44,39 @@ interface ModalVerRequerimientoOrganoProps {
   isOpen: boolean;
   onClose: () => void;
   requerimiento: RequerimientoOrganoControl | null;
+  onUpdate?: () => void;
 }
 
 export function ModalVerRequerimientoOrgano({
   isOpen,
   onClose,
-  requerimiento
+  requerimiento,
+  onUpdate
 }: ModalVerRequerimientoOrganoProps) {
   const [tabActiva, setTabActiva] = useState('general');
   const [showComentarModal, setShowComentarModal] = useState(false);
-  const [showSubirRespuestaModal, setShowSubirRespuestaModal] = useState(false);
+  const [showRespuestaModal, setShowRespuestaModal] = useState(false);
+  const [showInsumoModal, setShowInsumoModal] = useState(false);
   const [showCambiarEtapaModal, setShowCambiarEtapaModal] = useState(false);
   const [showReasignarModal, setShowReasignarModal] = useState(false);
   const [showArchivarModal, setShowArchivarModal] = useState(false);
+  const [showSubirDocModal, setShowSubirDocModal] = useState(false);
   const [modalPadreVisible, setModalPadreVisible] = useState(true);
 
   if (!requerimiento) return null;
 
-  // Estados para documentos
+  // Estados para documentos y timeline
   const [documentos, setDocumentos] = useState<any[]>([]);
+  const [timeline, setTimeline] = useState<any[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
 
-  // Cargar documentos al abrir
+  // Cargar documentos y timeline al abrir
   useEffect(() => {
     if (isOpen && requerimiento?.id) {
       loadDocumentos();
+      loadTimeline();
     }
   }, [isOpen, requerimiento?.id]);
 
@@ -78,7 +87,7 @@ export function ModalVerRequerimientoOrgano({
       const docs = await ocService.getDocumentosByRequerimiento(requerimiento.id);
 
       // Mapear para asegurar campos compatibles
-      const docsMapeados = docs.map(d => ({
+      const docsMapeados = docs.map((d: any) => ({
         ...d,
         nombre: d.nombre,
         tipo: d.tipoDocumento || 'Documento',
@@ -88,9 +97,30 @@ export function ModalVerRequerimientoOrgano({
       setDocumentos(docsMapeados);
     } catch (error) {
       console.error('Error cargando documentos:', error);
-      // toast.error('Error al cargar documentos');
     } finally {
       setLoadingDocs(false);
+    }
+  };
+
+  const loadTimeline = async () => {
+    if (!requerimiento?.id) return;
+    try {
+      setLoadingTimeline(true);
+      // Usamos los comentarios/actuaciones como timeline
+      const comments = await ocService.getComentariosByRequerimiento(requerimiento.id);
+      const timelineMapeado = comments.map((c: any) => ({
+        id: c.id,
+        fecha: new Date(c.createdAt),
+        accion: c.contenido,
+        usuario: c.autorNombre || 'Usuario Sistema',
+        tipo: (c.tipo === 'ACTUACION' || c.tipo === 'seguimiento') ? 'actuacion' : 'comentario'
+      })).sort((a: any, b: any) => b.fecha.getTime() - a.fecha.getTime());
+
+      setTimeline(timelineMapeado);
+    } catch (error) {
+      console.error('Error cargando timeline:', error);
+    } finally {
+      setLoadingTimeline(false);
     }
   };
 
@@ -126,29 +156,16 @@ export function ModalVerRequerimientoOrgano({
     }
   };
 
-  const handleSubirDocumento = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !requerimiento?.id) return;
 
-    toast.loading('Subiendo documento...', { id: 'upload-doc' });
-    setUploadingDoc(true);
 
-    try {
-      await ocService.createDocumento(requerimiento.id, {
-        nombre: file.name,
-        tipoDocumento: 'Soporte',
-        archivo: file,
-        subidoPor: 'Usuario Actual' // TODO: Get from auth context
-      });
+  const handleAbrirSubirDocumento = () => {
+    setModalPadreVisible(false);
+    setShowSubirDocModal(true);
+  };
 
-      toast.success('Documento subido correctamente', { id: 'upload-doc' });
-      loadDocumentos();
-    } catch (error) {
-      console.error(error);
-      toast.error('Error al subir documento', { id: 'upload-doc' });
-    } finally {
-      setUploadingDoc(false);
-    }
+  const handleCerrarSubirDocumento = () => {
+    setShowSubirDocModal(false);
+    setModalPadreVisible(true);
   };
 
   const handleDescargarDocumento = async (doc: any) => {
@@ -187,10 +204,13 @@ export function ModalVerRequerimientoOrgano({
   const handleClose = () => {
     setModalPadreVisible(true);
     setShowComentarModal(false);
-    setShowSubirRespuestaModal(false);
+    setShowRespuestaModal(false);
+    setShowInsumoModal(false);
     setShowCambiarEtapaModal(false);
     setShowReasignarModal(false);
+    setShowReasignarModal(false);
     setShowArchivarModal(false);
+    setShowSubirDocModal(false);
     onClose();
   };
 
@@ -203,17 +223,33 @@ export function ModalVerRequerimientoOrgano({
   const handleCerrarComentar = () => {
     setShowComentarModal(false);
     setModalPadreVisible(true);
+    // Recargar timeline al cerrar por si hubo cambios
+    loadTimeline();
   };
 
   const handleAbrirRespuesta = () => {
     setModalPadreVisible(false);
-    setShowSubirRespuestaModal(true);
+    setShowRespuestaModal(true);
   };
 
   const handleCerrarRespuesta = () => {
-    setShowSubirRespuestaModal(false);
+    setShowRespuestaModal(false);
     setModalPadreVisible(true);
+    // Podríamos recargar info si cambió estado
+    loadTimeline();
+    // Si la respuesta fue exitosa, el modal hijo llama a onSuccess que nosotros pasamos
   };
+
+  const handleAbrirInsumo = () => {
+    setModalPadreVisible(false);
+    setShowInsumoModal(true);
+  }
+
+  const handleCerrarInsumo = () => {
+    setShowInsumoModal(false);
+    setModalPadreVisible(true);
+    loadTimeline(); // Recargar timeline por si se generó actuación automática
+  }
 
   const handleAbrirCambiarEtapa = () => {
     setModalPadreVisible(false);
@@ -253,60 +289,33 @@ export function ModalVerRequerimientoOrgano({
   };
 
   const semaforo = getSemaforoColor(requerimiento.diasRestantes);
-  const porcentajeTiempo = Math.round(((requerimiento.diasTotales - requerimiento.diasRestantes) / requerimiento.diasTotales) * 100);
+  const diasTranscurridos = requerimiento.diasTotales > 0 ? Math.max(0, requerimiento.diasTotales - Math.max(0, requerimiento.diasRestantes)) : 0;
+  const porcentajeTiempo = requerimiento.diasTotales > 0 ? Math.min(100, Math.max(0, Math.round((diasTranscurridos / requerimiento.diasTotales) * 100))) : 0;
 
   const getOrganoInfo = (organo: string) => {
-    switch (organo) {
-      case 'CGR': return { nombre: 'Contraloría General de la República', icon: '🏛️', color: '#1E40AF' };
-      case 'CONTRALORIA_TERRITORIAL': return { nombre: 'Contraloría Territorial', icon: '📊', color: '#7C3AED' };
-      case 'PROCURADURIA': return { nombre: 'Procuraduría General de la Nación', icon: '⚖️', color: '#059669' };
-      case 'FISCALIA': return { nombre: 'Fiscalía General de la Nación', icon: '🔍', color: '#DC2626' };
-      case 'DEFENSORIA': return { nombre: 'Defensoría del Pueblo', icon: '🛡️', color: '#EA580C' };
-      case 'PERSONERIA': return { nombre: 'Personería Municipal', icon: '📜', color: '#0891B2' };
-      default: return { nombre: organo, icon: '📋', color: '#6B7280' };
-    }
+    // Normalizar string para coincidencia aproximada
+    const org = organo.toUpperCase();
+    if (org.includes('CGR') || org.includes('CONTRALORIA GENERAL')) return { nombre: 'Contraloría General de la República', icon: '🏛️', color: '#1E40AF' };
+    if (org.includes('TERRITORIAL')) return { nombre: 'Contraloría Territorial', icon: '📊', color: '#7C3AED' };
+    if (org.includes('PROCURADURIA')) return { nombre: 'Procuraduría General de la Nación', icon: '⚖️', color: '#059669' };
+    if (org.includes('FISCALIA')) return { nombre: 'Fiscalía General de la Nación', icon: '🔍', color: '#DC2626' };
+    if (org.includes('DEFENSORIA')) return { nombre: 'Defensoría del Pueblo', icon: '🛡️', color: '#EA580C' };
+    if (org.includes('PERSONERIA')) return { nombre: 'Personería Municipal', icon: '📜', color: '#0891B2' };
+    return { nombre: organo, icon: '📋', color: '#6B7280' };
   };
 
   const organoInfo = getOrganoInfo(requerimiento.organismo);
 
   const etapasConfig = {
     RECIBIDO: { label: 'Recibido', color: 'bg-gray-100 text-gray-700', icon: '📥' },
-    ANALISIS: { label: 'En Análisis', color: 'bg-yellow-100 text-yellow-700', icon: '🔍' },
-    RESPUESTA: { label: 'Elaborando Respuesta', color: 'bg-blue-100 text-blue-700', icon: '✍️' },
+    EN_ANALISIS: { label: 'En Análisis', color: 'bg-yellow-100 text-yellow-700', icon: '🔍' },
+    EN_RESPUESTA: { label: 'Elaborando Respuesta', color: 'bg-blue-100 text-blue-700', icon: '✍️' },
     ENVIADO: { label: 'Respuesta Enviada', color: 'bg-green-100 text-green-700', icon: '✅' }
   };
 
-  // Mock data para timeline
-  const timeline = [
-    {
-      fecha: new Date('2024-12-10'),
-      accion: 'Requerimiento recibido por Centro de Comunicaciones',
-      usuario: 'Sistema SIGL',
-      tipo: 'recepcion'
-    },
-    {
-      fecha: new Date('2024-12-11'),
-      accion: 'Asignado a Dra. María Fernández - Área Jurídica',
-      usuario: 'Director Jurídico',
-      tipo: 'asignacion'
-    },
-    {
-      fecha: new Date('2024-12-12'),
-      accion: 'Solicitud de información a áreas técnicas (Contratación, Financiera)',
-      usuario: 'Dra. María Fernández',
-      tipo: 'actuacion'
-    },
-    {
-      fecha: new Date('2024-12-15'),
-      accion: 'Información consolidada de áreas. Iniciando redacción de respuesta',
-      usuario: 'Dra. María Fernández',
-      tipo: 'actuacion'
-    }
-  ];
-
   return (
     <Dialog open={isOpen && modalPadreVisible} onOpenChange={handleClose}>
-      <DialogContent hideCloseButton className="max-w-3xl max-h-[85vh] flex flex-col p-0 my-4 overflow-hidden">
+      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0 my-4 overflow-hidden">
         <DialogTitle className="sr-only">
           Detalle del Requerimiento {requerimiento.id}
         </DialogTitle>
@@ -330,7 +339,7 @@ export function ModalVerRequerimientoOrgano({
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg font-bold text-gray-900">{requerimiento.id}</h2>
+                <h2 className="text-lg font-bold text-gray-900">{requerimiento.numeroOficio}</h2>
                 <Badge className={etapasConfig[requerimiento.etapa].color}>
                   {etapasConfig[requerimiento.etapa].icon} {etapasConfig[requerimiento.etapa].label}
                 </Badge>
@@ -474,25 +483,25 @@ export function ModalVerRequerimientoOrgano({
                 />
               </div>
               <p className="text-xs text-gray-500 text-center">
-                {requerimiento.diasTotales - requerimiento.diasRestantes} de {requerimiento.diasTotales} días transcurridos
+                {diasTranscurridos} de {requerimiento.diasTotales} días transcurridos
               </p>
             </div>
 
             {/* TABS CON INFORMACIÓN DETALLADA */}
             <Tabs value={tabActiva} onValueChange={setTabActiva}>
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="general">
                   <FileText className="w-4 h-4 mr-2" />
                   General
                 </TabsTrigger>
                 <TabsTrigger value="timeline">
                   <TrendingUp className="w-4 h-4 mr-2" />
-                  Timeline
+                  Historia ({timeline.length})
                 </TabsTrigger>
-                <TabsTrigger value="documentos">
+                {/* <TabsTrigger value="documentos">
                   <Paperclip className="w-4 h-4 mr-2" />
-                  Documentos ({requerimiento.documentos || 0})
-                </TabsTrigger>
+                  Documentos ({documentos.length})
+                </TabsTrigger> */}
               </TabsList>
 
               <TabsContent value="general" className="space-y-4 mt-4">
@@ -510,7 +519,7 @@ export function ModalVerRequerimientoOrgano({
                       {requerimiento.ultimaActuacion || 'Sin actuaciones registradas'}
                     </p>
                     <p className="text-xs text-gray-500 mt-2">
-                      📅 {requerimiento.fechaRadicacion.toLocaleDateString('es-CO')}
+                      📅 {(requerimiento.fechaRadicacion instanceof Date && !isNaN(requerimiento.fechaRadicacion.getTime())) ? requerimiento.fechaRadicacion.toLocaleDateString('es-CO') : 'Sin fecha'}
                     </p>
                   </div>
                 </div>
@@ -533,144 +542,64 @@ export function ModalVerRequerimientoOrgano({
               </TabsContent>
 
               <TabsContent value="timeline" className="space-y-3 mt-4">
-                <div className="space-y-3">
-                  {timeline.map((evento, idx) => (
-                    <div key={idx} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div
-                          className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center"
-                          style={{ backgroundColor: '#003DA5' }}
-                        >
-                          <CheckCircle className="w-4 h-4 text-white" />
-                        </div>
-                        {idx < timeline.length - 1 && (
-                          <div className="w-0.5 h-full min-h-[40px] bg-gray-300 mt-1" />
-                        )}
-                      </div>
-                      <div className="flex-1 pb-4">
-                        <p className="text-sm font-bold text-gray-900">{evento.accion}</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          👤 {evento.usuario} • 📅 {evento.fecha.toLocaleDateString('es-CO')}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="documentos" className="space-y-3 mt-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-bold text-gray-900">Documentos Adjuntos ({documentos.length})</h3>
-                  <div className="flex items-center gap-2">
-                    {documentos.length > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleDescargarTodos}
-                        className="text-xs font-bold"
-                      >
-                        <Download className="w-3.5 h-3.5 mr-1" />
-                        Descargar ZIP
-                      </Button>
-                    )}
-                    <div className="relative">
-                      <input
-                        type="file"
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        onChange={handleSubirDocumento}
-                        disabled={uploadingDoc}
-                      />
-                      <Button
-                        variant="default" // Changed to default for emphasis
-                        size="sm"
-                        className="text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
-                        disabled={uploadingDoc}
-                      >
-                        <Upload className="w-3.5 h-3.5 mr-1" />
-                        {uploadingDoc ? 'Subiendo...' : 'Cargar Doc'}
-                      </Button>
-                    </div>
+                {loadingTimeline ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                    <span className="ml-2 text-sm text-gray-600">Cargando historial...</span>
                   </div>
-                </div>
-
-                {loadingDocs ? (
-                  <div className="text-center py-6 text-gray-500 text-sm">Cargando documentos...</div>
-                ) : documentos.length === 0 ? (
-                  <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                    <Paperclip className="w-8 h-8 mx-auto text-gray-300 mb-2" />
-                    <p className="text-sm text-gray-500">No hay documentos adjuntos</p>
+                ) : timeline.length === 0 ? (
+                  <div className="text-center p-6 bg-gray-50 border border-dashed rounded-lg">
+                    <p className="text-sm text-gray-500">No hay actuaciones registradas</p>
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2">
-                    {documentos.map((doc) => (
-                      <Card
-                        key={doc.id}
-                        className="p-3 hover:shadow-md transition-all border-l-4 border-l-blue-500"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className={`p-2.5 rounded-lg flex-shrink-0 ${doc.tipo === 'Soporte' ? 'bg-indigo-50 text-indigo-600' :
-                                doc.tipo === 'Respuesta' ? 'bg-green-50 text-green-600' :
-                                  'bg-blue-50 text-blue-600'
-                              }`}>
-                              <FileText className="w-5 h-5" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-gray-900 truncate" title={doc.nombre}>
-                                {doc.nombre}
-                              </p>
-                              <div className="flex items-center gap-3 mt-1 flex-wrap">
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs font-semibold"
-                                  style={{ borderColor: '#003DA5', color: '#003DA5' }}
-                                >
-                                  {doc.tipo}
-                                </Badge>
-
-                                <span className="text-xs text-gray-500 flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
-                                  {doc.fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                </span>
-                                {doc.subidoPor && (
-                                  <span className="text-xs text-gray-600 flex items-center gap-1">
-                                    <User className="w-3 h-3" />
-                                    {doc.subidoPor}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+                    {timeline.map((evento, idx) => (
+                      <div key={idx} className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <div
+                            className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center ${evento.tipo === 'actuacion' ? 'bg-green-100' : 'bg-blue-100'
+                              }`}
+                          >
+                            {evento.tipo === 'actuacion' ? (
+                              <CheckCircle className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <MessageSquare className="w-4 h-4 text-blue-600" />
+                            )}
                           </div>
-
-                          <div className="flex items-center gap-1 ml-3">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDescargarDocumento(doc)}
-                              title="Ver/Descargar"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                              onClick={() => handleEliminarDocumento(doc.id)}
-                              title="Eliminar"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
+                          {idx < timeline.length - 1 && (
+                            <div className="w-0.5 h-full min-h-[40px] bg-gray-300 mt-1" />
+                          )}
                         </div>
-                      </Card>
+                        <div className="flex-1 pb-4">
+                          <p className="text-sm font-bold text-gray-900 whitespace-pre-line">{evento.accion}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            👤 {evento.usuario} • 📅 {(evento.fecha instanceof Date && !isNaN(evento.fecha.getTime())) ? `${evento.fecha.toLocaleDateString('es-CO')} ${evento.fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}` : 'Fecha inválida'}
+                          </p>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
               </TabsContent>
+
+              {/* Documentos Tab - Commented out
+              <TabsContent value="documentos" className="space-y-3 mt-4">
+                ... documentos content ...
+              </TabsContent>
+              */}
             </Tabs>
 
             {/* ACCIONES RÁPIDAS */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-4 border-t">
+            <div className="grid grid-cols-2 gap-2 pt-4 border-t">
+              {/* Botón de Adjuntar Documento eliminado según solicitud */}
+              {/* <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAbrirInsumo}
+              >
+                <Users className="w-3 h-3 mr-1" />
+                Solicitar Insumo
+              </Button> */}
               <Button
                 variant="outline"
                 size="sm"
@@ -687,22 +616,14 @@ export function ModalVerRequerimientoOrgano({
                 <User className="w-3 h-3 mr-1" />
                 Reasignar
               </Button>
-              <Button
+              {/* <Button
                 variant="outline"
                 size="sm"
                 onClick={handleAbrirArchivar}
               >
                 <Archive className="w-3 h-3 mr-1" />
                 Archivar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => toast.info('Función de exportación')}
-              >
-                <Download className="w-3 h-3 mr-1" />
-                Exportar
-              </Button>
+              </Button> */}
             </div>
           </div>
         </div>
@@ -719,10 +640,22 @@ export function ModalVerRequerimientoOrgano({
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              onClick={handleAbrirComentar}
+              className="text-red-600 hover:bg-red-50"
+              onClick={async () => {
+                if (!confirm('¿Está seguro de eliminar este requerimiento? Esta acción no se puede deshacer.')) return;
+                try {
+                  await ocService.deleteRequerimientoOC(requerimiento.id);
+                  toast.success('Requerimiento eliminado');
+                  if (onUpdate) onUpdate();
+                  onClose();
+                } catch (error) {
+                  console.error(error);
+                  toast.error('Error al eliminar el requerimiento');
+                }
+              }}
             >
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Comentar
+              <Trash2 className="w-4 h-4 mr-2" />
+              Eliminar
             </Button>
             <Button
               style={{ background: '#003DA5' }}
@@ -737,23 +670,30 @@ export function ModalVerRequerimientoOrgano({
       </DialogContent>
 
       {/* Modales Hijos - FUERA del Dialog padre para evitar conflictos de z-index */}
-      <ModalComentarRequerimiento
+      <ModalComentariosOrgano
         isOpen={showComentarModal}
         onClose={handleCerrarComentar}
         requerimientoId={requerimiento.id}
-        requerimientoAsunto={requerimiento.asunto}
       />
 
-      <ModalSubirRespuesta
-        isOpen={showSubirRespuestaModal}
+      <ModalRespuestaOrgano
+        isOpen={showRespuestaModal}
         onClose={handleCerrarRespuesta}
-        requerimiento={{
-          id: requerimiento.id,
-          numeroOficio: requerimiento.numeroOficio,
-          organismo: organoInfo.nombre,
-          asunto: requerimiento.asunto,
-          fechaVencimiento: requerimiento.fechaVencimiento,
-          diasRestantes: requerimiento.diasRestantes,
+        requerimientoId={requerimiento.id}
+        organismoNombre={organoInfo.nombre}
+        onSuccess={() => {
+          if (onUpdate) onUpdate();
+          // Además loadTimeline se llama en el handleCerrarRespuesta
+        }}
+      />
+
+      <ModalSolicitudInsumo
+        isOpen={showInsumoModal}
+        onClose={handleCerrarInsumo}
+        requerimientoId={requerimiento.id}
+        fechaVencimientoPrincipal={requerimiento.fechaVencimiento}
+        onSuccess={() => {
+          if (onUpdate) onUpdate();
         }}
       />
 
@@ -762,6 +702,9 @@ export function ModalVerRequerimientoOrgano({
         onClose={handleCerrarCambiarEtapa}
         requerimientoId={requerimiento.id}
         etapaActual={requerimiento.etapa}
+        onCambioEtapa={() => {
+          if (onUpdate) onUpdate();
+        }}
       />
 
       <ModalReasignar
@@ -769,6 +712,9 @@ export function ModalVerRequerimientoOrgano({
         onClose={handleCerrarReasignar}
         requerimientoId={requerimiento.id}
         responsableActual={requerimiento.responsable}
+        onReasignacion={() => {
+          if (onUpdate) onUpdate();
+        }}
       />
 
       <ModalArchivar
@@ -776,6 +722,20 @@ export function ModalVerRequerimientoOrgano({
         onClose={handleCerrarArchivar}
         requerimientoId={requerimiento.id}
         requerimientoAsunto={requerimiento.asunto}
+        onArchivar={() => {
+          if (onUpdate) onUpdate();
+          onClose(); // Close parent too if archived
+        }}
+      />
+
+      <ModalSubirDocumento
+        isOpen={showSubirDocModal}
+        onClose={handleCerrarSubirDocumento}
+        requerimientoId={requerimiento.id}
+        onSuccess={() => {
+          if (onUpdate) onUpdate();
+          loadDocumentos();
+        }}
       />
     </Dialog>
   );

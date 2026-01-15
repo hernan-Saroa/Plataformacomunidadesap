@@ -96,4 +96,8 @@ export class RequerimientoOC {
     // Campos calculados (no en BD)
     documentosCount?: number;
     diasRestantes?: number;
+    docRequerimientos?: number;
+    docRespuestas?: number;
+    docSoportes?: number;
+    docInternos?: number;
 }

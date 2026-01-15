@@ -41,6 +41,7 @@ import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import graduadosService, { CertificadoGraduado } from '../../../services/api/graduados.service';
 
 interface ValidacionResult {
   isValid: boolean;
@@ -73,48 +74,73 @@ export function ValidarCertificadoGrado({ onBack }: ValidarCertificadoGradoProps
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidacionResult | null>(null);
 
+  const mapEstadoCertificado = (status?: CertificadoGraduado['status']): ValidacionResult['certificado']['estado'] => {
+    if (status === 'REVOKED') return 'REVOCADO';
+    if (status === 'EXPIRED') return 'ANULADO';
+    return 'VIGENTE';
+  };
+
+  const mapCertificado = (certificado: CertificadoGraduado): ValidacionResult['certificado'] => ({
+    consecutivo: certificado.certificateNumber,
+    codigoQR: certificado.verificationCode || codigoQR,
+    graduado: {
+      nombre: certificado.fullName,
+      documento: certificado.idNumber,
+      programa: certificado.programName,
+      territorial: certificado.seccionalName || certificado.campus || 'No especificado',
+      cohorte: 'No especificado'
+    },
+    fechaGrado: certificado.graduationDate,
+    numeroActa: certificado.actaNumber || 'No especificado',
+    numeroFolio: certificado.diplomaNumber || 'No especificado',
+    tituloOtorgado: certificado.degreeTitle,
+    firmadoPor: [certificado.signerName, certificado.signerPosition].filter(Boolean).join(' - ') || 'No especificado',
+    estado: mapEstadoCertificado(certificado.status)
+  });
+
   const handleValidar = async () => {
-    if (!codigoQR.trim()) {
-      toast.error('Por favor ingresa un código QR');
+    const codigoIngresado = codigoQR.trim();
+    if (!codigoIngresado) {
+      toast.error('Por favor ingresa un codigo QR o numero de certificado');
       return;
     }
 
     setIsValidating(true);
     setValidationResult(null);
 
-    // Simular llamado al servicio de validación
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const isNumeroCertificado = /^CERT-GR-\d{4}-\d{4}$/i.test(codigoIngresado);
+      const response = isNumeroCertificado
+        ? await graduadosService.validacion.validarPorNumero(codigoIngresado)
+        : await graduadosService.validacion.validarQR(codigoIngresado);
+      const certificado = response.certificado;
+      const isValid = Boolean(certificado);
+      const result: ValidacionResult = isValid
+        ? {
+            isValid: true,
+            certificado: mapCertificado(certificado as CertificadoGraduado)
+          }
+        : {
+            isValid: false,
+            error: response.mensaje || 'Certificado no existente o no encontrado'
+          };
 
-    // Mock de respuesta - En producción sería una llamada real al backend
-    const mockResult: ValidacionResult = {
-      isValid: codigoQR.length > 5, // Simulación simple
-      certificado: codigoQR.length > 5 ? {
-        consecutivo: 'GRAD-2024-001234',
-        codigoQR: codigoQR,
-        graduado: {
-          nombre: 'Ana María Gutiérrez Sánchez',
-          documento: '1.015.234.567',
-          programa: 'Especialización en Gestión Pública',
-          territorial: 'Dirección Territorial Bogotá',
-          cohorte: '2023-II'
-        },
-        fechaGrado: '2024-12-15T14:00:00',
-        numeroActa: 'ACTA-CD-024-2024',
-        numeroFolio: 'FOLIO-152-2024',
-        tituloOtorgado: 'Especialista en Gestión Pública',
-        firmadoPor: 'Dr. Carlos Alberto Ramírez - Rector Nacional ESAP',
-        estado: 'VIGENTE'
-      } : undefined,
-      error: codigoQR.length <= 5 ? 'Código QR inválido o certificado no encontrado' : undefined
-    };
+      setValidationResult(result);
 
-    setValidationResult(mockResult);
-    setIsValidating(false);
-
-    if (mockResult.isValid) {
-      toast.success('Certificado de grado validado correctamente');
-    } else {
-      toast.error('Certificado no válido');
+      if (response.valido) {
+        toast.success('Certificado de grado validado correctamente');
+      } else {
+        toast.error(response.mensaje || 'Certificado no valido');
+      }
+    } catch (error) {
+      console.error('Error al validar certificado:', error);
+      setValidationResult({
+        isValid: false,
+        error: 'Error al validar el certificado. Intenta nuevamente.'
+      });
+      toast.error('Error al validar el certificado');
+    } finally {
+      setIsValidating(false);
     }
   };
 
@@ -203,9 +229,7 @@ export function ValidarCertificadoGrado({ onBack }: ValidarCertificadoGradoProps
               lineHeight: '24px',
               color: '#6B7280'
             }}
-          >
-            Verifica la autenticidad de un certificado de grado emitido por la ESAP ingresando el código QR
-          </p>
+          >Verifica la autenticidad de un certificado de grado emitido por la ESAP ingresando el codigo QR o el numero de certificado</p>
         </motion.div>
 
         {/* Card Principal */}
@@ -227,9 +251,7 @@ export function ValidarCertificadoGrado({ onBack }: ValidarCertificadoGradoProps
                       lineHeight: '20px',
                       color: '#1F2937'
                     }}
-                  >
-                    Código QR del Certificado
-                  </label>
+                  >Codigo QR o Numero de Certificado</label>
                   <div className="relative">
                     <QrCode 
                       className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
@@ -238,9 +260,9 @@ export function ValidarCertificadoGrado({ onBack }: ValidarCertificadoGradoProps
                     <Input
                       id="codigoQR"
                       type="text"
-                      placeholder="Ej: ESAP-GRAD-2025-ABC123XYZ"
+                      placeholder="Ej: QR-GR-2026-0040-lv0329kxdf o CERT-GR-2026-0040"
                       value={codigoQR}
-                      onChange={(e) => setCodigoQR(e.target.value.toUpperCase())}
+                      onChange={(e) => setCodigoQR(e.target.value)}
                       className="pl-12 pr-14 py-6 text-base border-2"
                       disabled={isValidating}
                       onKeyPress={(e) => e.key === 'Enter' && handleValidar()}
@@ -256,9 +278,7 @@ export function ValidarCertificadoGrado({ onBack }: ValidarCertificadoGradoProps
                   <p 
                     className="mt-2 text-sm"
                     style={{ color: '#6B7280' }}
-                  >
-                    El código QR se encuentra impreso en la parte inferior del certificado
-                  </p>
+                  >El codigo QR o el numero de certificado se encuentran impresos en el certificado</p>
                 </div>
 
                 {/* Info Card */}
@@ -278,9 +298,7 @@ export function ValidarCertificadoGrado({ onBack }: ValidarCertificadoGradoProps
                       <p 
                         className="text-sm"
                         style={{ color: '#6B7280' }}
-                      >
-                        Todos los certificados de grado emitidos por la ESAP incluyen un código QR único que permite verificar su autenticidad en tiempo real. Este sistema garantiza la integridad y validez del documento.
-                      </p>
+                      >Todos los certificados de grado emitidos por la ESAP incluyen un codigo QR unico y un numero de certificado irrepetible que permiten verificar su autenticidad en tiempo real. Este sistema garantiza la integridad y validez del documento.</p>
                     </div>
                   </div>
                 </Card>

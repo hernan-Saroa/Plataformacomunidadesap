@@ -40,7 +40,8 @@ import {
   Copy,
   RefreshCw,
   AlertTriangle,
-  History
+  History,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Card } from '../ui/card';
@@ -140,6 +141,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
+  const [resendingCertificateId, setResendingCertificateId] = useState<string | null>(null);
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
@@ -361,7 +363,19 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           } as CertificateRecord;
         });
 
-      setCertificates(mappedCertificates);
+      const getSortTime = (value?: string) => {
+        if (!value) return 0;
+        const time = new Date(value).getTime();
+        return Number.isNaN(time) ? 0 : time;
+      };
+
+      const sortedCertificates = [...mappedCertificates].sort((a, b) => {
+        const aTime = getSortTime(a.lastRequestedAt || a.generatedAt);
+        const bTime = getSortTime(b.lastRequestedAt || b.generatedAt);
+        return bTime - aTime;
+      });
+
+      setCertificates(sortedCertificates);
     } catch (error) {
       console.error('Error cargando certificados:', error);
       toast.error('No se pudieron cargar los certificados', {
@@ -783,6 +797,26 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const handleViewQR = (cert: CertificateRecord) => {
     setQrPreviewCertificate(cert);
     setIsQrModalOpen(true);
+  };
+
+  const handleResendCertificate = async (cert: CertificateRecord) => {
+    if (resendingCertificateId === cert.id) {
+      return;
+    }
+    setResendingCertificateId(cert.id);
+    try {
+      const response = await graduadosService.certificados.reenviar(cert.id);
+      toast.success('Certificado reenviado', {
+        description: response?.mensaje || `Se reenvio el certificado a ${cert.requester.email}`,
+      });
+    } catch (error: any) {
+      console.error('Error reenviando certificado:', error);
+      toast.error('No se pudo reenviar el certificado', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    } finally {
+      setResendingCertificateId(null);
+    }
   };
 
   const getPublicValidationUrl = (qrCode: string) => {
@@ -1437,6 +1471,17 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           <DropdownMenuItem onClick={() => handleOpenEditCertificate(cert)}>
                             <Edit className="w-4 h-4 mr-2" />
                             Editar certificado
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleResendCertificate(cert)}
+                            disabled={resendingCertificateId === cert.id}
+                          >
+                            {resendingCertificateId === cert.id ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Mail className="w-4 h-4 mr-2" />
+                            )}
+                            {resendingCertificateId === cert.id ? 'Reenviando...' : 'Reenviar certificado'}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

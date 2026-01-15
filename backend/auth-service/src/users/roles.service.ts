@@ -1,25 +1,33 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
+import { isUUID } from 'class-validator';
+import { v4 as uuidv4 } from 'uuid';
 import { Role } from './role.entity';
 import { Permission } from './permission.entity';
 import { User } from './user.entity';
 
 export interface CreateRoleDto {
+  id?: string;
   name: string;
+  code?: string;
   description?: string;
   icon?: string;
   color?: string;
   type?: 'sistema' | 'personalizado';
+  category?: 'backoffice' | 'portal' | 'sistema' | 'academico' | 'directivo' | 'administrativo';
   requires_2fa?: boolean;
   permissionIds?: string[];
 }
 
 export interface UpdateRoleDto {
   name?: string;
+  code?: string;
   description?: string;
   icon?: string;
   color?: string;
+  type?: 'sistema' | 'personalizado';
+  category?: 'backoffice' | 'portal' | 'sistema' | 'academico' | 'directivo' | 'administrativo';
   requires_2fa?: boolean;
   permissionIds?: string[];
 }
@@ -139,19 +147,39 @@ export class RolesService {
     } as any;
   }
 
+  private generateCode(base: string): string {
+    const normalized = base
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    const cleaned = normalized
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '');
+    const fallback = cleaned || 'ROL_SIN_NOMBRE';
+    return fallback.slice(0, 50);
+  }
+
   async create(createRoleDto: CreateRoleDto, createdBy?: string): Promise<Role> {
-    // Verificar si el nombre ya existe
-    const existingRole = await this.roleRepo.findOne({ where: { name: createRoleDto.name } });
+    // Normalizar y validar nombre/código únicos
+    const code = this.generateCode(createRoleDto.code || createRoleDto.name);
+
+    const existingRole = await this.roleRepo.findOne({ where: [{ name: createRoleDto.name }, { code }] });
     if (existingRole) {
-      throw new BadRequestException('Ya existe un rol con este nombre');
+      throw new BadRequestException('Ya existe un rol con este nombre o código');
     }
 
+    const roleId = createRoleDto.id && isUUID(createRoleDto.id) ? createRoleDto.id : uuidv4();
+
     const role = this.roleRepo.create({
+      id: roleId,
+      code,
       name: createRoleDto.name,
       description: createRoleDto.description,
       icon: createRoleDto.icon || 'Shield',
       color: createRoleDto.color || '#003DA5',
       type: createRoleDto.type || 'personalizado',
+      category: createRoleDto.category || 'sistema',
       requires_2fa: createRoleDto.requires_2fa || false,
       created_by: createdBy,
       is_active: true,
@@ -184,8 +212,17 @@ export class RolesService {
     if (updateRoleDto.description !== undefined) role.description = updateRoleDto.description;
     if (updateRoleDto.icon) role.icon = updateRoleDto.icon;
     if (updateRoleDto.color) role.color = updateRoleDto.color;
+    if (updateRoleDto.category) role.category = updateRoleDto.category;
     if (updateRoleDto.requires_2fa !== undefined) role.requires_2fa = updateRoleDto.requires_2fa;
     if (updatedBy) role.updated_by = updatedBy;
+    if (updateRoleDto.code) {
+      const newCode = this.generateCode(updateRoleDto.code);
+      const existingCode = await this.roleRepo.findOne({ where: { code: newCode } });
+      if (existingCode && existingCode.id !== role.id) {
+        throw new BadRequestException('Ya existe un rol con este código');
+      }
+      role.code = newCode;
+    }
 
     // Actualizar permisos si se proporcionan
     if (updateRoleDto.permissionIds !== undefined) {
@@ -273,6 +310,10 @@ export class RolesService {
   }
 
   async getPermissions(roleId: string): Promise<Permission[]> {
+    if (!roleId || !isUUID(roleId)) {
+      throw new BadRequestException('ID de rol inválido');
+    }
+
     // Obtener el rol con sus permisos usando la relación de TypeORM
     const role = await this.roleRepo.findOne({
       where: { id: roleId },

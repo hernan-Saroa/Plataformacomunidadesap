@@ -1151,11 +1151,13 @@ export function ReviewRequestsModule() {
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Solicitud</p>
                                   <p className="font-semibold text-gray-900">
-                                    {new Date(request.graduateDocumentIssueDate).toLocaleDateString('es-CO', {
-                                      year: 'numeric',
-                                      month: 'long',
-                                      day: 'numeric'
-                                    })}
+                                    {request.createdAt
+                                      ? new Date(request.createdAt).toLocaleDateString('es-CO', {
+                                          year: 'numeric',
+                                          month: 'long',
+                                          day: 'numeric',
+                                        })
+                                      : 'Sin fecha'}
                                   </p>
                                 </div>
                               </div>

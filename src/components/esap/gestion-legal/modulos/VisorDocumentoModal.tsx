@@ -244,111 +244,66 @@ export function VisorDocumentoModal({
           </div>
         </div>
 
-        {/* ==================== CONTENIDO DEL DOCUMENTO ==================== */}
-        <div className="flex-1 overflow-y-auto p-6 bg-gray-100">
-          <Card
-            className="max-w-4xl mx-auto bg-white shadow-xl"
-            style={{
-              transform: `scale(${zoomLevel / 100})`,
-              transformOrigin: 'top center',
-              transition: 'transform 0.2s'
-            }}
-          >
-            {/* Encabezado del documento */}
-            <div className="p-8 border-b-4 border-blue-600">
-              <div className="text-center">
-                <h1 className="text-2xl font-black text-blue-900 mb-1">
-                  ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA
-                </h1>
-                <p className="text-sm text-gray-600 font-bold">ESAP - República de Colombia</p>
-                <p className="text-xs text-gray-500 mt-1">Oficina Jurídica</p>
-              </div>
-            </div>
+        {/* Contenido REAL del Documento */}
+        <div className="flex-1 w-full min-h-[600px] bg-gray-200 flex items-center justify-center p-4">
+          {archivo ? (
+            (() => {
+              const extension = archivo.split('.').pop()?.toLowerCase();
+              const isPdf = extension === 'pdf' || archivo.includes('pdf');
+              const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '') || archivo.match(/\.(jpg|jpeg|png|gif|webp)/i);
 
-            {/* Contenido */}
-            <div className="p-8 space-y-6">
-              {/* Metadatos */}
-              <div className="grid grid-cols-2 gap-4 text-sm pb-4 border-b">
-                <div>
-                  <p className="text-gray-600 font-bold">OFICIO No:</p>
-                  <p className="text-gray-900 font-black">{numero}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600 font-bold">FECHA:</p>
-                  <p className="text-gray-900 font-black">
-                    {new Date().toLocaleDateString('es-CO', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-gray-600 font-bold">ASUNTO:</p>
-                  <p className="text-gray-900">{asunto || 'Comunicación Oficial'}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-gray-600 font-bold">ARCHIVO:</p>
-                  <p className="text-gray-900">{archivo}</p>
-                </div>
-              </div>
-
-              {/* Cuerpo del documento */}
-              <div className="text-sm leading-relaxed space-y-4 text-justify">
-                <p><strong>Respetado(a) Doctor(a),</strong></p>
-
-                <p>
-                  Por medio del presente oficio nos permitimos comunicar lo siguiente:
-                </p>
-
-                <p>
-                  Este es el contenido del oficio oficial número <strong>{numero}</strong>.
-                  El documento ha sido generado por el Sistema de Gestión Legal de la ESAP y
-                  contiene información relevante para el proceso judicial en curso.
-                </p>
-
-                <p>
-                  El presente documento ha sido revisado y aprobado por la Oficina Jurídica de
-                  la entidad, cumpliendo con todos los requisitos legales y formales establecidos
-                  en la normatividad vigente.
-                </p>
-
-                <p>
-                  Quedamos atentos a cualquier requerimiento adicional y nos permitimos manifestar
-                  nuestra disposición para atender cualquier solicitud de su Despacho.
-                </p>
-
-                <p><strong>Cordialmente,</strong></p>
-              </div>
-
-              {/* Firma */}
-              <div className="pt-8 mt-8 border-t">
-                <p className="font-bold text-gray-900">Oficina Jurídica ESAP</p>
-                <p className="text-sm text-gray-600 mt-1">
-                  Escuela Superior de Administración Pública
-                </p>
-                <p className="text-sm text-gray-600">República de Colombia</p>
-              </div>
-            </div>
-
-            {/* Footer del documento */}
-            <div className="p-4 bg-gray-50 border-t text-center text-xs text-gray-500">
-              <p>Este es un documento oficial generado por el Sistema de Gestión Legal ESAP</p>
-              <p className="mt-1">
-                Generado el: {new Date().toLocaleString('es-CO')}
-              </p>
-            </div>
-          </Card>
-
-          {/* Indicador de página */}
-          {currentPage !== totalPages && (
-            <div className="text-center mt-4">
-              <Badge variant="outline" className="font-bold">
-                Continúa en página {currentPage + 1}
-              </Badge>
+              if (isPdf) {
+                return (
+                  <iframe
+                    src={archivo}
+                    className="w-full h-[800px] bg-white shadow-lg"
+                    title="Visor PDF"
+                  />
+                );
+              } else if (isImage) {
+                return (
+                  <img
+                    src={archivo}
+                    alt={numero || 'Documento'}
+                    className="max-w-full max-h-full object-contain shadow-lg"
+                  />
+                );
+              } else {
+                return (
+                  <div className="text-center p-10 bg-white rounded-lg shadow-md">
+                    <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-bold text-gray-700 mb-2">Vista previa no disponible</h3>
+                    <p className="text-gray-500 mb-6">
+                      Este tipo de archivo no se puede visualizar directamente.
+                      <br />
+                      Por favor, descárgalo para verlo.
+                    </p>
+                    <Button onClick={handleDescargar} style={{ background: '#1976D2' }}>
+                      <Download className="w-4 h-4 mr-2" />
+                      Descargar Archivo
+                    </Button>
+                  </div>
+                );
+              }
+            })()
+          ) : (
+            <div className="text-center text-gray-500">
+              <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              No se ha proporcionado una URL válida para el documento.
             </div>
           )}
         </div>
+
+
+        {/* Indicador de página */}
+        {currentPage !== totalPages && (
+          <div className="text-center mt-4">
+            <Badge variant="outline" className="font-bold">
+              Continúa en página {currentPage + 1}
+            </Badge>
+          </div>
+        )}
+
 
         {/* ==================== FOOTER ==================== */}
         <div className="px-6 py-3 bg-gray-50 border-t flex items-center justify-between">
@@ -375,7 +330,7 @@ export function VisorDocumentoModal({
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </DialogContent >
+    </Dialog >
   );
 }

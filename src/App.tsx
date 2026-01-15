@@ -986,6 +986,10 @@ export default function App() {
             path="/verificar-certificado/:codigo"
             element={<VerificarCertificadoPublico />}
           />
+          <Route
+            path="/validar/:codigo"
+            element={<VerificarCertificadoPublico />}
+          />
           <Route path="*" element={renderVista()} />
         </Routes>
 

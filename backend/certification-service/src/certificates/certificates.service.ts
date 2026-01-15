@@ -618,10 +618,13 @@ export class CertificatesService {
   async verificarDocumentoPorSolicitud(documento: string) {
     // Buscar la solicitud por numero de documento
     const documentoTrim = (documento || '').trim();
-    const solicitud = await this.requestRepo.findOne({
-      where: { id_number: documentoTrim },
-      order: { request_date: 'DESC', created_at: 'DESC' },
-    });
+    const solicitud = await this.requestRepo
+      .createQueryBuilder('request')
+      .where('request.id_number = :documento', { documento: documentoTrim })
+      .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
+      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.created_at', 'DESC')
+      .getOne();
 
     if (!solicitud) {
       return {
