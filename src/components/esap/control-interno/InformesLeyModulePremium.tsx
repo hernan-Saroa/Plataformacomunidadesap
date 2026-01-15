@@ -81,7 +81,9 @@ export default function InformesLeyModulePremium() {
   const cargarInformes = async () => {
     try {
       setCargandoInformes(true);
+      console.log('📥 Cargando informes desde el servidor...');
       const response = await controlInternoApi.informesLey.getAll();
+      console.log('📦 Respuesta recibida:', response);
       
       if (response.success && response.data) {
         // Guardar todos los informes de ley
@@ -94,15 +96,38 @@ export default function InformesLeyModulePremium() {
           if (informe.entregas && informe.entregas.length > 0) {
             informe.entregas.forEach((entrega: EntregaInforme) => {
               // Mapear estado de EntregaInforme a InformeGenerado
+              // Priorizar estadoWorkflow sobre estado
               let estado: 'BORRADOR' | 'GENERADO' | 'ENVIADO' | 'ATRASADO' = 'BORRADOR';
-              if (entrega.estado === 'entregado') {
-                estado = 'ENVIADO';
-              } else if (entrega.estado === 'vencido') {
-                estado = 'ATRASADO';
-              } else if (entrega.archivoUrl) {
-                estado = 'GENERADO';
+              
+              // Si tiene estadoWorkflow, usarlo como prioridad
+              if (entrega.estadoWorkflow) {
+                switch (entrega.estadoWorkflow) {
+                  case 'aprobado':
+                    estado = 'ENVIADO'; // Aprobado = Enviado
+                    break;
+                  case 'en-revision':
+                  case 'en-aprobacion':
+                    estado = 'GENERADO'; // En revisión/aprobación = Generado (visible pero pendiente)
+                    break;
+                  case 'rechazado':
+                    estado = 'BORRADOR'; // Rechazado vuelve a borrador
+                    break;
+                  case 'borrador':
+                  default:
+                    estado = entrega.archivoUrl ? 'GENERADO' : 'BORRADOR';
+                    break;
+                }
               } else {
-                estado = 'BORRADOR';
+                // Fallback al estado anterior si no hay estadoWorkflow
+                if (entrega.estado === 'entregado') {
+                  estado = 'ENVIADO';
+                } else if (entrega.estado === 'vencido') {
+                  estado = 'ATRASADO';
+                } else if (entrega.archivoUrl) {
+                  estado = 'GENERADO';
+                } else {
+                  estado = 'BORRADOR';
+                }
               }
 
               todasLasEntregas.push({
@@ -128,6 +153,15 @@ export default function InformesLeyModulePremium() {
         todasLasEntregas.sort((a, b) => 
           new Date(b.fechaGeneracion).getTime() - new Date(a.fechaGeneracion).getTime()
         );
+
+        console.log('📊 Informes mapeados:', todasLasEntregas.map(i => ({
+          id: i.id,
+          nombre: i.informeNombre,
+          periodo: i.periodo,
+          estado: i.estado,
+          estadoWorkflow: i.estadoWorkflow,
+          archivoUrl: i.archivoUrl
+        })));
 
         setInformesGenerados(todasLasEntregas);
       }
@@ -502,11 +536,20 @@ interface VistaGeneradosProps {
 
 function VistaGenerados({ informes, cargandoInformes, onInformeActualizado }: VistaGeneradosProps) {
   const estadisticas = useMemo(() => {
-    const enviados = informes.filter(i => i.estado === 'ENVIADO').length;
-    const borradores = informes.filter(i => i.estado === 'BORRADOR').length;
+    // Contar según estadoWorkflow si existe, sino usar estado
+    const enviados = informes.filter(i => 
+      i.estadoWorkflow === 'aprobado' || i.estado === 'ENVIADO'
+    ).length;
+    const borradores = informes.filter(i => 
+      i.estadoWorkflow === 'borrador' || i.estadoWorkflow === 'rechazado' || 
+      (i.estado === 'BORRADOR' && !i.estadoWorkflow)
+    ).length;
     const atrasados = informes.filter(i => i.estado === 'ATRASADO').length;
+    const enRevision = informes.filter(i => 
+      i.estadoWorkflow === 'en-revision' || i.estadoWorkflow === 'en-aprobacion'
+    ).length;
 
-    return { total: informes.length, enviados, borradores, atrasados };
+    return { total: informes.length, enviados, borradores, atrasados, enRevision };
   }, [informes]);
 
   return (
@@ -515,7 +558,7 @@ function VistaGenerados({ informes, cargandoInformes, onInformeActualizado }: Vi
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <h2 className="text-xl text-gray-900 font-medium mb-6">Historial de Informes Generados</h2>
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-4">
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
             <div className="text-xs text-blue-700 mb-1">Total Generados</div>
             <div className="text-2xl font-semibold text-blue-900">{estadisticas.total}</div>
@@ -524,6 +567,11 @@ function VistaGenerados({ informes, cargandoInformes, onInformeActualizado }: Vi
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
             <div className="text-xs text-green-700 mb-1">Enviados</div>
             <div className="text-2xl font-semibold text-green-900">{estadisticas.enviados}</div>
+          </div>
+
+          <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-lg p-4 border border-purple-200">
+            <div className="text-xs text-purple-700 mb-1">En Revisión</div>
+            <div className="text-2xl font-semibold text-purple-900">{estadisticas.enRevision}</div>
           </div>
 
           <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg p-4 border border-yellow-200">
@@ -558,9 +606,11 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
   // Obtener roles del usuario desde localStorage
   const obtenerRolesUsuario = (): { codes: string[]; names: string[] } => {
     try {
+      // 1. Intentar desde esap_user_data (guardado por authService)
       const userData = localStorage.getItem('esap_user_data');
       if (userData) {
         const user = JSON.parse(userData);
+        console.log('📦 Usuario desde esap_user_data:', user);
         // Los roles pueden venir en diferentes formatos
         if (user.roles && Array.isArray(user.roles)) {
           const codes: string[] = [];
@@ -574,24 +624,85 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
               if (r.name) names.push(r.name);
             }
           });
-          return { codes, names };
+          if (codes.length > 0 || names.length > 0) {
+            console.log('✅ Roles encontrados en esap_user_data:', { codes, names });
+            return { codes, names };
+          }
         }
         if (user.role) {
+          console.log('✅ Rol único encontrado en esap_user_data:', user.role);
           return { codes: [user.role], names: [user.role] };
         }
       }
-      // También intentar desde el token decodificado si está disponible
+      
+      // 2. Intentar desde esap-sesion-activa (guardado por App.tsx)
       const sesion = localStorage.getItem('esap-sesion-activa');
       if (sesion) {
         const sesionData = JSON.parse(sesion);
+        console.log('📦 Sesión desde esap-sesion-activa:', sesionData);
+        
+        // Buscar roles directamente en sesionData.roles
         if (sesionData.roles) {
           const roles = Array.isArray(sesionData.roles) ? sesionData.roles : [sesionData.roles];
+          console.log('✅ Roles encontrados en esap-sesion-activa.roles:', roles);
+          return { codes: roles, names: roles };
+        }
+        
+        // Buscar en sesionData.user.roles (formato usado por App.tsx)
+        if (sesionData.user && sesionData.user.roles) {
+          const userRoles = sesionData.user.roles;
+          const codes: string[] = [];
+          const names: string[] = [];
+          
+          if (Array.isArray(userRoles)) {
+            userRoles.forEach((r: any) => {
+              if (typeof r === 'string') {
+                codes.push(r);
+                names.push(r);
+              } else if (r && typeof r === 'object') {
+                if (r.code) codes.push(r.code);
+                if (r.name) names.push(r.name);
+              }
+            });
+          } else {
+            codes.push(userRoles);
+            names.push(userRoles);
+          }
+          
+          if (codes.length > 0 || names.length > 0) {
+            console.log('✅ Roles encontrados en sesion.user.roles:', { codes, names });
+            return { codes, names };
+          }
+        }
+        
+        // También buscar en userData dentro de la sesión
+        if (sesionData.userData && sesionData.userData.roles) {
+          const roles = Array.isArray(sesionData.userData.roles) 
+            ? sesionData.userData.roles 
+            : [sesionData.userData.roles];
+          console.log('✅ Roles encontrados en sesion.userData.roles:', roles);
           return { codes: roles, names: roles };
         }
       }
+      
+      // 3. Intentar decodificar el token JWT para extraer roles
+      const token = localStorage.getItem('esap_auth_token') || localStorage.getItem('esap-auth-token');
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          if (payload.roles) {
+            const roles = Array.isArray(payload.roles) ? payload.roles : [payload.roles];
+            console.log('✅ Roles encontrados en JWT token:', roles);
+            return { codes: roles, names: roles };
+          }
+        } catch (e) {
+          console.warn('⚠️ No se pudo decodificar el token JWT:', e);
+        }
+      }
     } catch (error) {
-      console.error('Error obteniendo roles del usuario:', error);
+      console.error('❌ Error obteniendo roles del usuario:', error);
     }
+    console.warn('⚠️ No se encontraron roles en ningún lugar de localStorage');
     return { codes: [], names: [] };
   };
 
@@ -616,18 +727,45 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
            String(rol).includes('Auditor Lider');
   });
   
-  // Si no hay roles específicos, permitir acciones por defecto (para desarrollo/testing)
+  // Lógica de permisos según roles:
+  // - AUDITOR_LIDER: Solo puede enviar a revisión (cuando tiene archivo y está en borrador/rechazado)
+  // - JEFE_CONTROL_INTERNO: Solo puede aprobar/rechazar (cuando está en revisión/aprobación)
+  // IMPORTANTE: El Jefe OCI NO puede enviar a revisión, solo aprobar/rechazar
+  // IMPORTANTE: Cuando el estado es 'aprobado', ningún botón de acción debe aparecer
   const puedeEnviar = (informe.estadoWorkflow === 'borrador' || informe.estadoWorkflow === 'rechazado') && 
                       informe.archivoUrl && 
-                      (esAuditor || todosLosRoles.length === 0);
+                      esAuditor && // SOLO auditores pueden enviar
+                      !esJefeOCI && // El jefe NO puede enviar (solo aprobar/rechazar)
+                      informe.estadoWorkflow !== 'aprobado'; // No se puede enviar si ya está aprobado
   const puedeAprobar = (informe.estadoWorkflow === 'en-revision' || informe.estadoWorkflow === 'en-aprobacion') && 
-                      (esJefeOCI || todosLosRoles.length === 0);
+                      esJefeOCI && // SOLO el jefe puede aprobar
+                      !esAuditor && // Los auditores NO pueden aprobar
+                      informe.estadoWorkflow !== 'aprobado'; // No se puede aprobar si ya está aprobado
   const puedeRechazar = (informe.estadoWorkflow === 'en-revision' || informe.estadoWorkflow === 'en-aprobacion') && 
-                        (esJefeOCI || todosLosRoles.length === 0);
+                        esJefeOCI && // SOLO el jefe puede rechazar
+                        !esAuditor && // Los auditores NO pueden rechazar
+                        informe.estadoWorkflow !== 'aprobado'; // No se puede rechazar si ya está aprobado
   
   // Debug: mostrar roles detectados en consola
-  console.log('🔍 Roles detectados:', { rolesCodes, rolesNames, esJefeOCI, esAuditor, puedeEnviar, puedeAprobar, puedeRechazar });
+  console.log('🔍 Roles detectados:', { 
+    rolesCodes, 
+    rolesNames, 
+    todosLosRoles,
+    esJefeOCI, 
+    esAuditor, 
+    informeEstado: informe.estadoWorkflow,
+    tieneArchivo: !!informe.archivoUrl,
+    puedeEnviar, 
+    puedeAprobar, 
+    puedeRechazar 
+  });
   
+  // Determinar el estado visual basado en estadoWorkflow si existe
+  const estadoVisual = informe.estadoWorkflow === 'aprobado' ? 'ENVIADO' :
+                       informe.estadoWorkflow === 'en-revision' || informe.estadoWorkflow === 'en-aprobacion' ? 'GENERADO' :
+                       informe.estadoWorkflow === 'rechazado' ? 'BORRADOR' :
+                       informe.estado;
+
   const estadoConfig = {
     ENVIADO: { label: 'Enviado', bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2 },
     BORRADOR: { label: 'Borrador', bg: 'bg-yellow-100', text: 'text-yellow-700', icon: Loader },
@@ -635,7 +773,8 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
     ATRASADO: { label: 'Atrasado', bg: 'bg-red-100', text: 'text-red-700', icon: XCircle }
   };
 
-  const config = estadoConfig[informe.estado];
+  const config = estadoConfig[estadoVisual as keyof typeof estadoConfig] || estadoConfig.BORRADOR;
+
   const Icon = config.icon;
 
   const handleDescargar = async () => {
@@ -722,11 +861,14 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
   const handleEnviarRevision = async (observaciones?: string) => {
     setProcesando(true);
     try {
+      console.log('📤 Enviando informe a revisión:', { informeId: informe.informeLeyId, entregaId: informe.id });
       const response = await controlInternoApi.informesLey.enviarRevision(
         informe.informeLeyId,
         informe.id,
         { observaciones }
       );
+
+      console.log('✅ Respuesta del servidor:', response);
 
       if (response.success) {
         toast.success('Informe enviado a revisión', {
@@ -734,13 +876,15 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
         });
         setModalEnviar(false);
         if (onInformeActualizado) {
+          console.log('🔄 Recargando informes después de enviar a revisión...');
           await onInformeActualizado();
+          console.log('✅ Informes recargados');
         }
       } else {
         throw new Error(response.error || 'Error al enviar a revisión');
       }
     } catch (error) {
-      console.error('Error enviando a revisión:', error);
+      console.error('❌ Error enviando a revisión:', error);
       toast.error('Error al enviar a revisión', {
         description: error instanceof Error ? error.message : 'Ocurrió un error inesperado',
       });
@@ -752,11 +896,14 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
   const handleAprobar = async (observaciones?: string) => {
     setProcesando(true);
     try {
+      console.log('✅ Aprobando informe:', { informeId: informe.informeLeyId, entregaId: informe.id });
       const response = await controlInternoApi.informesLey.aprobar(
         informe.informeLeyId,
         informe.id,
         { observaciones }
       );
+
+      console.log('✅ Respuesta del servidor al aprobar:', response);
 
       if (response.success) {
         toast.success('Informe aprobado', {
@@ -764,13 +911,15 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
         });
         setModalAprobar(false);
         if (onInformeActualizado) {
+          console.log('🔄 Recargando informes después de aprobar...');
           await onInformeActualizado();
+          console.log('✅ Informes recargados');
         }
       } else {
         throw new Error(response.error || 'Error al aprobar');
       }
     } catch (error) {
-      console.error('Error aprobando:', error);
+      console.error('❌ Error aprobando:', error);
       toast.error('Error al aprobar', {
         description: error instanceof Error ? error.message : 'Ocurrió un error inesperado',
       });
@@ -878,7 +1027,8 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
           )}
           
           {/* Botones de workflow según estado */}
-          {puedeEnviar && informe.archivoUrl && (
+          {/* Solo mostrar botones si el estado NO es 'aprobado' */}
+          {puedeEnviar && informe.archivoUrl && informe.estadoWorkflow !== 'aprobado' && (
             <button 
               onClick={() => setModalEnviar(true)}
               disabled={procesando}
@@ -889,7 +1039,7 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
             </button>
           )}
           
-          {puedeAprobar && (
+          {puedeAprobar && informe.estadoWorkflow !== 'aprobado' && (
             <>
               <button 
                 onClick={() => setModalAprobar(true)}
@@ -901,7 +1051,7 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
               </button>
               <button 
                 onClick={() => setModalRechazar(true)}
-                disabled={procesando}
+                disabled={procesando || informe.estadoWorkflow === 'aprobado'}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <X className="w-4 h-4" />
