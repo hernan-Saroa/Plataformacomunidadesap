@@ -9,6 +9,9 @@ import {
   UserCircle,
   Building2,
   FileText,
+  MessageSquare,
+  FolderOpen,
+  BarChart3,
   Plus,
   Search,
   Users,
@@ -246,6 +249,9 @@ const ICON_MAP: Record<string, any> = {
   UserCircle,
   Building2,
   FileText,
+  MessageSquare,
+  FolderOpen,
+  BarChart3,
   Cog
 };
 
@@ -350,6 +356,7 @@ export function RolesAdministrationModulePremium() {
       const newRole = await rolesService.createRole({
         name: roleData.nombre,
         description: roleData.descripcion,
+        code: roleData.codigo,
         icon: roleData.icono,
         color: roleData.color,
         type: 'personalizado',
