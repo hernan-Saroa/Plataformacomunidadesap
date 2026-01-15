@@ -25,6 +25,7 @@ import { InformesLeyService } from './informes-ley.service';
 import { InformeGeneratorService } from './services/informe-generator.service';
 import { PlantillasService } from './services/plantillas.service';
 import { WorkflowAprobacionService } from './services/workflow-aprobacion.service';
+import { DafValidatorService } from './services/daf-validator.service';
 import { CreateInformeLeyDto } from './dto/create-informe-ley.dto';
 import { UpdateInformeLeyDto } from './dto/update-informe-ley.dto';
 import { CreateEntregaDto } from './dto/create-entrega.dto';
@@ -54,6 +55,7 @@ export class InformesLeyController {
     private readonly informeGeneratorService: InformeGeneratorService,
     private readonly plantillasService: PlantillasService,
     private readonly workflowAprobacionService: WorkflowAprobacionService,
+    private readonly dafValidatorService: DafValidatorService,
   ) {}
 
   // ==================== CRUD INFORMES ====================
@@ -361,13 +363,65 @@ export class InformesLeyController {
     const usuarioId = req.user?.id || req.user?.sub || 'system';
     const usuarioNombre = req.user?.name || req.user?.nombre || 'Sistema';
 
+    // Obtener información de la entrega para validación específica
+    const entrega = await this.informesLeyService.findOneEntrega(entregaId);
+    if (!entrega) {
+      throw new NotFoundException(`Entrega con ID ${entregaId} no encontrada`);
+    }
+
+    // Obtener el informe asociado para conocer el tipo
+    const informe = await this.informesLeyService.findOne(entrega.informeId);
+    const tipoInforme = informe?.codigo;
+
+    // Validar formato DAF si es un archivo Excel
+    const formatoArchivo = this.getFormatoArchivo(file.mimetype);
+    if (formatoArchivo === 'Excel') {
+      try {
+        const resultadoValidacion = await this.dafValidatorService.validarFormatoDaf(
+          file.buffer,
+          file.originalname,
+          tipoInforme,
+        );
+
+        // Si hay errores críticos, rechazar el archivo
+        if (!resultadoValidacion.valido && resultadoValidacion.errores.length > 0) {
+          const mensajeErrores = resultadoValidacion.errores.join('; ');
+          const mensajeAdvertencias = resultadoValidacion.advertencias.length > 0
+            ? ` Advertencias: ${resultadoValidacion.advertencias.join('; ')}`
+            : '';
+          
+          throw new BadRequestException(
+            `El archivo Excel no cumple con el formato DAF requerido. Errores: ${mensajeErrores}${mensajeAdvertencias}`,
+          );
+        }
+
+        // Si solo hay advertencias, registrarlas pero permitir la carga
+        if (resultadoValidacion.advertencias.length > 0) {
+          // Log de advertencias (podría guardarse en historial)
+          console.warn(
+            `Advertencias al validar archivo Excel ${file.originalname}:`,
+            resultadoValidacion.advertencias,
+          );
+        }
+      } catch (error) {
+        // Si es un BadRequestException, re-lanzarlo
+        if (error instanceof BadRequestException) {
+          throw error;
+        }
+        // Otros errores de validación
+        throw new BadRequestException(
+          `Error al validar el formato DAF del archivo: ${error.message}`,
+        );
+      }
+    }
+
     return this.informesLeyService.uploadArchivoEntrega(
       entregaId,
       {
         nombre: file.originalname,
         url: `/uploads/informes-ley/${file.filename}`,
         tamano: file.size,
-        formato: this.getFormatoArchivo(file.mimetype),
+        formato: formatoArchivo,
       },
       usuarioId,
       usuarioNombre,

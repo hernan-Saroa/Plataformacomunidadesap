@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { EntregaInformeLey } from '../entities/entrega-informe-ley.entity';
@@ -8,6 +8,7 @@ import { HistorialGeneracionInforme } from '../entities/historial-generacion-inf
 import { EnviarRevisionDto } from '../dto/enviar-revision.dto';
 import { AprobarInformeDto } from '../dto/aprobar-informe.dto';
 import { RechazarInformeDto } from '../dto/rechazar-informe.dto';
+import { PlanAnual5RolesService } from '../../plan-anual-5-roles/plan-anual-5-roles.service';
 
 @Injectable()
 export class WorkflowAprobacionService {
@@ -21,6 +22,8 @@ export class WorkflowAprobacionService {
     @InjectRepository(HistorialGeneracionInforme)
     private readonly historialRepository: Repository<HistorialGeneracionInforme>,
     private readonly dataSource: DataSource,
+    @Inject(forwardRef(() => PlanAnual5RolesService))
+    private readonly planAnualService: PlanAnual5RolesService,
   ) {}
 
   /**
@@ -250,6 +253,16 @@ export class WorkflowAprobacionService {
       });
       await manager.save(HistorialGeneracionInforme, historial);
 
+      // 4. Vincular a "Enfoque a la Prevención" si aplica (US-033)
+      // Esto se hace fuera de la transacción para evitar dependencias circulares
+      // y porque no es crítico si falla (el informe ya está aprobado)
+      try {
+        await this.vincularEnfoquePrevencion(entregaActualizada, usuarioNombre, usuarioId);
+      } catch (error) {
+        // Log del error pero no fallar la aprobación
+        console.error('Error al vincular informe a Enfoque a la Prevención:', error);
+      }
+
       return entregaActualizada;
     });
   }
@@ -349,5 +362,175 @@ export class WorkflowAprobacionService {
       relations: ['pasos'],
       order: { pasos: { orden: 'ASC' } },
     });
+  }
+
+  /**
+   * Vincular informe aprobado al módulo "Enfoque a la Prevención" del Plan Anual
+   * (US-033: Al aprobar, almacenar y vincular a "Enfoque a la prevención")
+   * 
+   * Códigos de informes que se vinculan a "Enfoque a la Prevención":
+   * - INF-PORM: Informe Pormenorizado
+   * - INF-ANUAL-OCI: Informe Anual OCI
+   * - INF-FUR: Informe FUR
+   * - INF-ANTICORRUPCION: Informe Anticorrupción
+   * - INF-AUSTERIDAD: Informe Austeridad
+   * - INF-ESP-ENTES-CONTROL: Informes a Entes de Control
+   * - INF-ESP-CONSEJO-SUPERIOR: Informes Consejo Superior
+   */
+  private async vincularEnfoquePrevencion(
+    entrega: EntregaInformeLey,
+    responsable: string,
+    usuarioId?: string,
+  ): Promise<void> {
+    // Códigos de informes que se vinculan a "Enfoque a la Prevención"
+    const CODIGOS_ENFOQUE_PREVENCION = [
+      'INF-PORM',
+      'INF-ANUAL-OCI',
+      'INF-FUR',
+      'INF-ANTICORRUPCION',
+      'INF-AUSTERIDAD',
+      'INF-ESP-ENTES-CONTROL',
+      'INF-ESP-CONSEJO-SUPERIOR',
+    ];
+
+    // Verificar si el informe debe vincularse
+    if (!CODIGOS_ENFOQUE_PREVENCION.includes(entrega.informeLey.codigo)) {
+      return; // No requiere vinculación
+    }
+
+    // Extraer el año del periodo
+    // Formatos posibles: "2025", "2025-S1", "2025-Q1", "2025-01", "2025-02"
+    const año = this.extraerAñoDelPeriodo(entrega.periodo);
+    if (!año) {
+      console.warn(`⚠️ No se pudo extraer el año del periodo: ${entrega.periodo}. El informe se aprobó pero no se vinculó al Plan Anual.`);
+      return;
+    }
+
+    // Buscar el Plan Anual del año correspondiente
+    let planAnual = await this.planAnualService.findByYear(año);
+    
+    // Si no existe el Plan Anual, crearlo automáticamente
+    if (!planAnual) {
+      console.log(`📋 No se encontró Plan Anual para el año ${año}. Creando Plan Anual automáticamente...`);
+      try {
+        // Convertir usuarioId a número (bigint) si es necesario
+        // El usuarioId debe ser un número (bigint) que referencia auth.personas(id_tercero)
+        let usuarioIdParaPlan: number | undefined;
+        if (usuarioId) {
+          if (typeof usuarioId === 'string') {
+            // Intentar convertir string a número
+            const usuarioIdNum = parseInt(usuarioId, 10);
+            usuarioIdParaPlan = isNaN(usuarioIdNum) ? 1 : usuarioIdNum; // Usar 1 como valor por defecto si no se puede convertir
+          } else if (typeof usuarioId === 'number') {
+            usuarioIdParaPlan = usuarioId;
+          }
+        } else {
+          // Si no hay usuarioId, usar 1 como valor por defecto (sistema)
+          usuarioIdParaPlan = 1;
+        }
+        
+        planAnual = await this.planAnualService.create(
+          {
+            año: año,
+            responsable: responsable || 'Jefe OCI',
+            estado: 'borrador', // Se crea en borrador, puede ser aprobado después
+          },
+          usuarioIdParaPlan?.toString(), // El método create espera string, pero registrarHistorial lo convierte a número
+        );
+        console.log(`✅ Plan Anual ${año} creado automáticamente para vincular el informe.`);
+      } catch (error) {
+        console.error(`❌ Error al crear Plan Anual para el año ${año}:`, error);
+        console.warn(`⚠️ El informe se aprobó pero no se pudo vincular al Plan Anual. Se recomienda crear el Plan Anual manualmente.`);
+        return;
+      }
+    }
+
+    // Buscar el rol 2 (Enfoque a la Prevención) en el plan
+    // Si el plan se acaba de crear, recargarlo con relaciones
+    if (!planAnual.roles || planAnual.roles.length === 0) {
+      planAnual = await this.planAnualService.findOne(planAnual.id);
+    }
+
+    const rolEnfoquePrevencion = planAnual.roles?.find((rol) => rol.rol_numero === 2);
+    if (!rolEnfoquePrevencion) {
+      console.error(`❌ No se encontró el rol "Enfoque a la Prevención" (rol_numero=2) en el Plan Anual ${año}. Esto indica un problema en la estructura del Plan Anual.`);
+      console.warn(`⚠️ El informe se aprobó pero no se pudo vincular. Verifique que el Plan Anual tenga los 5 roles del Decreto 648.`);
+      return;
+    }
+
+    // Crear actividad automática en el Plan Anual
+    const nombreActividad = `Informe de Ley: ${entrega.informeLey.nombre}`;
+    const descripcionActividad = `Informe aprobado: ${entrega.informeLey.nombre} (${entrega.periodo}).\n` +
+      `Código: ${entrega.informeLey.codigo}\n` +
+      `Aprobado por: ${entrega.aprobadoPor || responsable}\n` +
+      `Fecha de aprobación: ${entrega.fechaAprobacion?.toLocaleDateString('es-CO')}\n` +
+      (entrega.archivoUrl ? `Archivo: ${entrega.archivoUrl}\n` : '') +
+      (entrega.observaciones ? `Observaciones: ${entrega.observaciones}` : '');
+
+    // Usar el servicio del Plan Anual para crear la actividad
+    // Convertir usuarioId a número (bigint) si es necesario
+    let usuarioIdParaActividad: number | undefined;
+    if (usuarioId) {
+      if (typeof usuarioId === 'string') {
+        // Intentar convertir string a número
+        const usuarioIdNum = parseInt(usuarioId, 10);
+        usuarioIdParaActividad = isNaN(usuarioIdNum) ? 1 : usuarioIdNum; // Usar 1 como valor por defecto si no se puede convertir
+      } else if (typeof usuarioId === 'number') {
+        usuarioIdParaActividad = usuarioId;
+      }
+    } else {
+      // Si no hay usuarioId, usar 1 como valor por defecto (sistema)
+      usuarioIdParaActividad = 1;
+    }
+    
+    await this.planAnualService.addActividad(
+      rolEnfoquePrevencion.id,
+      {
+        nombre: nombreActividad,
+        descripcion: descripcionActividad,
+        responsable: entrega.aprobadoPor || responsable || 'Jefe OCI',
+        fecha_inicio: entrega.fechaAprobacion?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+        fecha_fin: entrega.fechaAprobacion?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+        estado: 'completada', // El informe ya está aprobado, la actividad se marca como completada
+        porcentaje_avance: 100, // 100% porque ya está aprobado
+        observaciones: `Vinculado automáticamente desde Informes de Ley. Entrega ID: ${entrega.id}`,
+        prioridad: 'Alta',
+      },
+      usuarioIdParaActividad, // Pasar número directamente (addActividad acepta string | number)
+    );
+
+    console.log(`✅ Informe ${entrega.informeLey.codigo} vinculado exitosamente al Plan Anual ${año}, Rol "Enfoque a la Prevención"`);
+  }
+
+  /**
+   * Extrae el año de un periodo en diferentes formatos
+   * Formatos soportados: "2025", "2025-S1", "2025-Q1", "2025-01", "2025-02"
+   */
+  private extraerAñoDelPeriodo(periodo: string): number | null {
+    if (!periodo) return null;
+
+    // Formato simple: "2025"
+    const añoSimple = /^(\d{4})$/.exec(periodo);
+    if (añoSimple) {
+      return parseInt(añoSimple[1], 10);
+    }
+
+    // Formatos con sufijo: "2025-S1", "2025-Q1", "2025-01", "2025-02"
+    const añoConSufijo = /^(\d{4})[-/]/.exec(periodo);
+    if (añoConSufijo) {
+      return parseInt(añoConSufijo[1], 10);
+    }
+
+    // Intentar extraer cualquier número de 4 dígitos al inicio
+    const añoGenerico = /^(\d{4})/.exec(periodo);
+    if (añoGenerico) {
+      const año = parseInt(añoGenerico[1], 10);
+      // Validar que sea un año razonable (2000-2100)
+      if (año >= 2000 && año <= 2100) {
+        return año;
+      }
+    }
+
+    return null;
   }
 }

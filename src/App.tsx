@@ -514,7 +514,7 @@ export default function App() {
           );
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
           : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
-          : hasControlInterno ? 'control-interno'
+          : hasControlInternoRoles ? 'control-interno'
           : 'users-persons';
           const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
           : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
@@ -949,7 +949,7 @@ export default function App() {
           position: fixed !important; 
           top: 20px !important; 
           right: 20px !important; 
-          z-index: 9999 !important; 
+          z-index: 100010 !important; 
         }
         [data-sonner-toast] { 
           background: white !important; 
