@@ -34,6 +34,14 @@ import {
   mapearTipoAuditoriaBackendAFrontend,
   mapearTipoAuditoriaFrontendABackend
 } from './services/tiposAuditoriaService';
+import {
+  cargarListasChequeo,
+  crearListaChequeo,
+  actualizarListaChequeo,
+  eliminarListaChequeo,
+  mapearListaChequeoBackendAFrontend,
+  mapearListaChequeoFrontendABackend
+} from './services/listasChequeoService';
 
 // ====================================
 // TIPOS
@@ -50,24 +58,7 @@ interface TabConfig {
   badge?: number;
 }
 
-const TABS_CONFIG: TabConfig[] = [
-  {
-    id: 'tipos',
-    label: 'Tipos de Auditoría',
-    description: 'Regular, Territorial, Especial',
-    icon: CheckSquare,
-    color: '#10B981',
-    badge: 3
-  },
-  {
-    id: 'listas',
-    label: 'Listas de Chequeo',
-    description: 'Plantillas de verificación estándar',
-    icon: List,
-    color: '#3B82F6',
-    badge: 8
-  }
-];
+// TABS_CONFIG se actualizará dinámicamente
 
 // ====================================
 // DATOS MOCK
@@ -273,22 +264,30 @@ const COLORES_DISPONIBLES = [
 export function ConfiguracionAuditoriasModule() {
   const [tabActiva, setTabActiva] = useState<TabActiva>('listas'); // Cambio a 'listas' por defecto
   const [tipos, setTipos] = useState<TipoAuditoria[]>([]);
-  const [listas, setListas] = useState<ListaChequeo[]>(LISTAS_CHEQUEO_INICIAL);
+  const [listas, setListas] = useState<ListaChequeo[]>([]);
   const [cambiosSinGuardar, setCambiosSinGuardar] = useState(false);
   const [cargandoTipos, setCargandoTipos] = useState(true);
+  const [cargandoListas, setCargandoListas] = useState(true);
 
-  // Cargar tipos de auditoría desde el backend
+  // Cargar datos desde el backend
   useEffect(() => {
     async function cargarDatos() {
       setCargandoTipos(true);
+      setCargandoListas(true);
       try {
+        // Cargar tipos de auditoría
         const tiposCargados = await cargarTiposAuditoria();
         const tiposMapeados = tiposCargados.map(mapearTipoAuditoriaBackendAFrontend);
         setTipos(tiposMapeados);
+
+        // Cargar listas de chequeo
+        const listasCargadas = await cargarListasChequeo();
+        setListas(listasCargadas);
       } catch (error) {
-        console.error('Error cargando tipos:', error);
+        console.error('Error cargando datos:', error);
       } finally {
         setCargandoTipos(false);
+        setCargandoListas(false);
       }
     }
     cargarDatos();
@@ -364,7 +363,24 @@ export function ConfiguracionAuditoriasModule() {
 
           {/* TABS */}
           <div className="flex gap-2 mt-6">
-            {TABS_CONFIG.map((tab) => {
+            {[
+              {
+                id: 'tipos' as TabActiva,
+                label: 'Tipos de Auditoría',
+                description: 'Regular, Territorial, Especial',
+                icon: CheckSquare,
+                color: '#10B981',
+                badge: tipos.length
+              },
+              {
+                id: 'listas' as TabActiva,
+                label: 'Listas de Chequeo',
+                description: 'Plantillas de verificación estándar',
+                icon: List,
+                color: '#3B82F6',
+                badge: listas.length
+              }
+            ].map((tab) => {
               const isActive = tabActiva === tab.id;
               const Icon = tab.icon;
 
@@ -426,6 +442,7 @@ export function ConfiguracionAuditoriasModule() {
               <SeccionListasChequeo 
                 listas={listas}
                 onActualizar={handleActualizarListas}
+                cargandoListas={cargandoListas}
               />
             )}
           </motion.div>
@@ -823,9 +840,10 @@ function ModalTipoAuditoria({ tipo, onGuardar, onCerrar }: ModalTipoAuditoriaPro
 interface SeccionListasChequeoProps {
   listas: ListaChequeo[];
   onActualizar: (listas: ListaChequeo[]) => void;
+  cargandoListas?: boolean;
 }
 
-function SeccionListasChequeo({ listas, onActualizar }: SeccionListasChequeoProps) {
+function SeccionListasChequeo({ listas, onActualizar, cargandoListas }: SeccionListasChequeoProps) {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [listaEditando, setListaEditando] = useState<ListaChequeo | null>(null);
   const [modalVistaAbierto, setModalVistaAbierto] = useState(false);
@@ -846,29 +864,33 @@ function SeccionListasChequeo({ listas, onActualizar }: SeccionListasChequeoProp
     setModalAbierto(true);
   };
 
-  const handleGuardarLista = (listaNueva: ListaChequeo) => {
+  const handleGuardarLista = async (listaNueva: ListaChequeo) => {
+    const datosBackend = mapearListaChequeoFrontendABackend(listaNueva);
+    
     if (listaEditando) {
-      const listasActualizadas = listas.map(l => 
-        l.id === listaEditando.id ? { ...listaNueva, ultimaActualizacion: new Date().toISOString().split('T')[0] } : l
-      );
-      onActualizar(listasActualizadas);
-      toast.success('✅ Lista de chequeo actualizada');
+      // Actualizar lista existente
+      const listaActualizada = await actualizarListaChequeo(listaEditando.id, datosBackend);
+      if (listaActualizada) {
+        const listasActualizadas = listas.map(l => 
+          l.id === listaEditando.id ? listaActualizada : l
+        );
+        onActualizar(listasActualizadas);
+      }
     } else {
-      const nuevaLista = {
-        ...listaNueva,
-        id: `lista-${Date.now()}`,
-        usosProgramados: 0,
-        fechaCreacion: new Date().toISOString().split('T')[0],
-        ultimaActualizacion: new Date().toISOString().split('T')[0]
-      };
-      onActualizar([...listas, nuevaLista]);
-      toast.success('✅ Nueva lista de chequeo creada');
+      // Crear nueva lista
+      const nuevaLista = await crearListaChequeo(datosBackend);
+      if (nuevaLista) {
+        onActualizar([...listas, nuevaLista]);
+      }
     }
-    setModalAbierto(false);
-    setListaEditando(null);
+    
+    if (listaEditando || !listas.find(l => l.id === listaNueva.id)) {
+      setModalAbierto(false);
+      setListaEditando(null);
+    }
   };
 
-  const handleEliminarLista = (listaId: string) => {
+  const handleEliminarLista = async (listaId: string) => {
     const lista = listas.find(l => l.id === listaId);
     if (lista && lista.usosProgramados > 0) {
       toast.error('❌ No se puede eliminar una lista con usos programados', {
@@ -877,8 +899,10 @@ function SeccionListasChequeo({ listas, onActualizar }: SeccionListasChequeoProp
       return;
     }
 
-    onActualizar(listas.filter(l => l.id !== listaId));
-    toast.success('✅ Lista de chequeo eliminada');
+    const eliminado = await eliminarListaChequeo(listaId);
+    if (eliminado) {
+      onActualizar(listas.filter(l => l.id !== listaId));
+    }
   };
 
   return (
@@ -895,7 +919,19 @@ function SeccionListasChequeo({ listas, onActualizar }: SeccionListasChequeoProp
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {cargandoListas ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader className="w-8 h-8 animate-spin text-blue-600" />
+            <span className="ml-3 text-gray-600">Cargando listas de chequeo...</span>
+          </div>
+        ) : listas.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">
+            <List className="w-16 h-16 mx-auto mb-4 opacity-50" />
+            <p>No hay listas de chequeo configuradas</p>
+            <p className="text-sm mt-2">Haz clic en "Nueva Lista" para crear una</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {listas.map((lista) => (
             <motion.div
               key={lista.id}
@@ -956,6 +992,7 @@ function SeccionListasChequeo({ listas, onActualizar }: SeccionListasChequeoProp
             </motion.div>
           ))}
         </div>
+        )}
       </Card>
 
       <AnimatePresence>

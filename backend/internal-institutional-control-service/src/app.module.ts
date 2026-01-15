@@ -43,6 +43,8 @@ import { Notificacion } from './esap/notificaciones/entities/notificacion.entity
 import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferencia-notificacion.entity';
 import { EvidenciaDocumento } from './esap/evidencias/entities/evidencia-documento.entity';
 import { TipoAuditoria } from './esap/tipos-auditoria/entities/tipo-auditoria.entity';
+import { ListaChequeo } from './esap/listas-chequeo/entities/lista-chequeo.entity';
+import { ItemListaChequeo } from './esap/listas-chequeo/entities/item-lista-chequeo.entity';
 
 @Module({
   imports: [
@@ -115,6 +117,8 @@ import { TipoAuditoria } from './esap/tipos-auditoria/entities/tipo-auditoria.en
             PreferenciaNotificacion,
             EvidenciaDocumento,
             TipoAuditoria,
+            ListaChequeo,
+            ItemListaChequeo,
           ],
           synchronize: false, // Deshabilitado - usar migraciones manuales
           // synchronize: process.env.NODE_ENV !== 'production', // Solo en desarrollo
