@@ -14,6 +14,7 @@ const SERVICE_PREFIX = '/auth/api/v1';
 
 export interface SystemRole {
   id: string;
+  code?: string;
   name: string;
   description?: string;
   icon: string;
@@ -38,6 +39,7 @@ export interface RoleStats {
 
 export interface CreateRoleRequest {
   name: string;
+  code?: string;
   description?: string;
   icon?: string;
   color?: string;

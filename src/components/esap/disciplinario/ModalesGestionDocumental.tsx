@@ -5,8 +5,11 @@
 
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/environment';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { legalService } from '../../../services/api/legal.service';
 
 // Funciones utilitarias globales - disponibles para todos los componentes
 const isUuidLike = (value: string) =>
@@ -105,19 +108,16 @@ interface ModalAutosProps {
   proceso: Proceso | null;
   onClose: () => void;
   onCrearAuto: () => void;
-  onCrearAuto: () => void;
-  initialView?: 'lista' | 'crear';
-  initialAuto?: any; // Auto para editar
 }
 
-export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView = 'lista', initialAuto }: ModalAutosProps) {
-  console.log('🚀 ModalGestionAutos abierto con proceso:', {
+export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosProps) {
+  console.log('ðŸš€ ModalGestionAutos abierto con proceso:', {
     id: proceso?.id,
     numeroProceso: proceso?.numeroProceso,
     esUUID: proceso?.id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(proceso.id) : false
   });
 
-  const [vistaActual, setVistaActual] = useState<'lista' | 'crear'>(initialView);
+  const [vistaActual, setVistaActual] = useState<'lista' | 'editor' | 'crear'>('lista');
   const [visorDocumento, setVisorDocumento] = useState<{ show: boolean; documento: any | null }>({ show: false, documento: null });
   const [autos, setAutos] = useState<any[]>([]);
   const [processId, setProcessId] = useState('');
@@ -126,44 +126,22 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView =
   const [eliminandoAuto, setEliminandoAuto] = useState(false);
   const [autoEnviandoRevision, setAutoEnviandoRevision] = useState<string | null>(null);
 
+  // Estados para editor con plantillas
+  const [plantillas, setPlantillas] = useState<any[]>([]);
+  const [plantillaSeleccionada, setPlantillaSeleccionada] = useState<any | null>(null);
+  const [contenidoHtml, setContenidoHtml] = useState('');
+  const [datosPlantilla, setDatosPlantilla] = useState<Record<string, any>>({});
+  const [cargandoPlantillas, setCargandoPlantillas] = useState(false);
+  const [guardandoAuto, setGuardandoAuto] = useState(false);
+  const [autoEditando, setAutoEditando] = useState<any | null>(null);
+
   // Estados para crear nuevo auto
   const [tipoAutoSeleccionado, setTipoAutoSeleccionado] = useState<any | null>(null);
   const [titulo, setTitulo] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [archivoError, setArchivoError] = useState<string | null>(null);
-
   const [creandoAuto, setCreandoAuto] = useState(false);
-  const [editandoId, setEditandoId] = useState<string | null>(null);
-
-  // Efecto para cargar datos en edición
-  useEffect(() => {
-    if (initialAuto && initialView === 'crear') {
-      // Buscar tipo de auto
-      let tipoEncontrado = tiposAuto.find(t => t.id === initialAuto.tipo || t.nombre === initialAuto.tipo);
-
-      // Si no se encuentra directo, buscar en metadatos (nuevo backend) o parsear nombre
-      if (!tipoEncontrado) {
-        const tipoMeta = initialAuto.metadatos?.tipoAuto;
-        if (tipoMeta) {
-          tipoEncontrado = tiposAuto.find(t => t.nombre === tipoMeta || t.id === tipoMeta);
-        }
-      }
-
-      // Si aún no, intentar por nombre "Auto de Apertura..."
-      if (!tipoEncontrado && initialAuto.nombre) {
-        tipoEncontrado = tiposAuto.find(t => initialAuto.nombre.toLowerCase().includes(t.nombre.toLowerCase()));
-      }
-
-      if (tipoEncontrado) setTipoAutoSeleccionado(tipoEncontrado);
-
-      setTitulo(initialAuto.metadatos?.numero || initialAuto.numero || '');
-      setDescripcion(initialAuto.descripcion || initialAuto.contenido || '');
-      setEditandoId(initialAuto.id);
-      // El archivo no se pre-carga desde URL, solo se muestra nombre si existe en UI
-      // Pero handleCrearAuto manejará la actualización si no se sube uno nuevo
-    }
-  }, [initialAuto, initialView]);
 
 
   const buildAutoDocumentUrl = (relativeUrl: string) => {
@@ -216,6 +194,116 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView =
       toast.error('No se pudieron cargar los autos');
     } finally {
       setCargandoAutos(false);
+    }
+  };
+
+  const cargarPlantillas = async () => {
+    setCargandoPlantillas(true);
+    try {
+      const response = await fetch(buildApiUrl('legal', '/api/v1/autos/plantillas'));
+      if (response.ok) {
+        const data = await response.json();
+        setPlantillas(data);
+      } else {
+        console.error('Error cargando plantillas');
+      }
+    } catch (error) {
+      console.error('Error cargando plantillas', error);
+    } finally {
+      setCargandoPlantillas(false);
+    }
+  };
+
+  const seleccionarPlantilla = async (plantilla: any) => {
+    setPlantillaSeleccionada(plantilla);
+    setContenidoHtml(plantilla.contenidoHtml);
+
+    // Extraer placeholders y crear campos de formulario
+    const placeholders = plantilla.placeholders || [];
+    const nuevosDatos: Record<string, any> = {};
+    placeholders.forEach((placeholder: string) => {
+      nuevosDatos[placeholder] = '';
+    });
+    setDatosPlantilla(nuevosDatos);
+  };
+
+  const guardarAutoDesdeEditor = async () => {
+    if (!proceso?.numeroProceso) {
+      toast.error('No se puede identificar el expediente');
+      return;
+    }
+
+    if (!plantillaSeleccionada) {
+      toast.error('Debe seleccionar una plantilla');
+      return;
+    }
+
+    setGuardandoAuto(true);
+    try {
+      const response = await fetch(buildApiUrl('legal', `/api/v1/autos/${proceso.numeroProceso}/desde-plantilla`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`
+        },
+        body: JSON.stringify({
+          plantillaId: plantillaSeleccionada.id,
+          datosPlantilla
+        })
+      });
+
+      if (response.ok) {
+        const nuevoAuto = await response.json();
+        toast.success('Auto creado exitosamente desde plantilla');
+
+        // Actualizar contenido HTML si hay cambios
+        if (contenidoHtml !== plantillaSeleccionada.contenidoHtml) {
+          await fetch(buildApiUrl('legal', `/api/v1/autos/${nuevoAuto.id}/contenido-html`), {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`
+            },
+            body: JSON.stringify({ contenidoHtml })
+          });
+        }
+
+        // Recargar lista de autos
+        if (processId) {
+          await cargarAutos(processId);
+        }
+
+        // Limpiar formulario
+        setPlantillaSeleccionada(null);
+        setContenidoHtml('');
+        setDatosPlantilla({});
+        setVistaActual('lista');
+      } else {
+        const error = await response.json();
+        toast.error(error.message || 'Error al crear el auto');
+      }
+    } catch (error) {
+      console.error('Error guardando auto', error);
+      toast.error('Error al guardar el auto');
+    } finally {
+      setGuardandoAuto(false);
+    }
+  };
+
+  const editarAutoEnEditor = async (auto: any) => {
+    setAutoEditando(auto);
+    try {
+      const response = await fetch(buildApiUrl('legal', `/api/v1/autos/${auto.id}/contenido-html`));
+      if (response.ok) {
+        const data = await response.json();
+        setContenidoHtml(data.contenidoHtml || '');
+        setPlantillaSeleccionada(data.plantillaUsada ? { nombre: data.plantillaUsada } : null);
+        setDatosPlantilla(data.datosPlantilla || {});
+        setVistaActual('editor');
+      }
+    } catch (error) {
+      console.error('Error cargando contenido del auto', error);
+      toast.error('Error al cargar el contenido del auto');
     }
   };
 
@@ -273,6 +361,12 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView =
     if (!processId) return;
     cargarAutos(processId);
   }, [processId]);
+
+  useEffect(() => {
+    if (vistaActual === 'editor') {
+      cargarPlantillas();
+    }
+  }, [vistaActual]);
 
   const handleEliminarAuto = async (e?: React.MouseEvent) => {
     if (e) {
@@ -368,56 +462,24 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView =
         documentSize = archivo.size;
       }
 
-      // Crear o Actualizar
+      // Crear auto legal
       const autoData = {
         processId: processId,
         tipoAuto: tipoAutoSeleccionado.id,
         contenidoHtml: descripcion || '',
         numero: titulo,
         comentarios: descripcion || '',
-        documentUrl,  // enviará '' si no se sube nuevo en edición
+        documentUrl,
         documentName,
         documentType,
         documentSize
       };
 
-      if (editandoId) {
-        // Mantener URL anterior si no se sube nuevo archivo
-        if (!archivo && initialAuto?.downloadUrl) {
-          autoData.documentUrl = initialAuto.downloadUrl;
-          // Ojo: el backend espera documentUrl relativa o absoluta?
-          // Si el initialAuto.downloadUrl es absoluta (http), el backend la guardará así.
-          // Si queremos mantener la relativa, necesitamos que initialAuto traiga la relativa.
-          // Pero mapAutoLegal construye absoluta.
-          // El backend update maneja esto? 
-          // Si mandamos la misma URL absoluta, el backend la guarda.
-          // Pero mejor si el backend ignora si viene vacío.
-          // Revisando logica: si !archivo, documentUrl es ''.
-          // En update backend: if (updateData.documentUrl) auto.documentUrl = ...
-          // Si mando '', no se actualiza (correcto).
-          delete autoData.documentUrl;
-          delete autoData.documentName;
-          delete autoData.documentType;
-          delete autoData.documentSize;
+      await disciplinaryService.crearAuto(autoData);
 
-          if (archivo) {
-            // Si hay archivo nuevo, se incluyen
-          }
-        }
-
-        await disciplinaryService.updateAuto(editandoId, autoData);
-        toast.success('Auto actualizado exitosamente');
-      } else {
-        await disciplinaryService.crearAuto(autoData);
-        toast.success('Auto creado exitosamente', { description: titulo });
-      }
-
-      // Cerrar si era edición directa
-      if (initialAuto) {
-        onClose();
-        onCrearAuto(); // Refrescar padre
-        return;
-      }
+      toast.success('Auto creado exitosamente', {
+        description: titulo
+      });
 
       // Recargar lista y volver a vista de lista
       await cargarAutos(processId);
@@ -426,10 +488,9 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView =
       setTitulo('');
       setDescripcion('');
       setArchivo(null);
-      setEditandoId(null);
     } catch (error) {
-      console.error('Error guardando auto', error);
-      toast.error('No se pudo guardar el auto');
+      console.error('Error creando auto', error);
+      toast.error('No se pudo crear el auto');
     } finally {
       setCreandoAuto(false);
     }
@@ -491,19 +552,145 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView =
 
         {/* Tabs */}
         <div className="px-6 pt-4 border-b">
-          <div className="flex gap-2">
-            <button
-              className="px-4 py-2 rounded-t-lg font-bold text-sm bg-purple-100 text-purple-700 border-b-2 border-purple-600"
-            >
-              <FileText className="w-4 h-4 inline mr-2" />
-              Lista de Autos
-            </button>
-          </div>
-        </div>
+           <div className="flex gap-2">
+             <button
+               className={`px-4 py-2 rounded-t-lg font-bold text-sm ${vistaActual === 'lista' ? 'bg-purple-100 text-purple-700 border-b-2 border-purple-600' : 'text-gray-600 hover:bg-gray-100'}`}
+               onClick={() => setVistaActual('lista')}
+             >
+               <FileText className="w-4 h-4 inline mr-2" />
+               Lista de Autos
+             </button>
+             <button
+               className={`px-4 py-2 rounded-t-lg font-bold text-sm ${vistaActual === 'editor' ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+               onClick={() => setVistaActual('editor')}
+             >
+               <Edit2 className="w-4 h-4 inline mr-2" />
+               Editor con Plantillas
+             </button>
+           </div>
+         </div>
 
         {/* Contenido */}
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 220px)' }}>
-          {vistaActual === 'lista' ? (
+          {vistaActual === 'editor' ? (
+            // Editor con Plantillas
+            <div className="space-y-6">
+              {/* Selección de Plantilla */}
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Seleccionar Plantilla</h3>
+                {cargandoPlantillas ? (
+                  <div className="text-center py-8">
+                    <Clock className="w-8 h-8 mx-auto mb-2 text-gray-400 animate-pulse" />
+                    <p className="text-sm text-gray-600">Cargando plantillas...</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {plantillas.map((plantilla) => (
+                      <button
+                        key={plantilla.id}
+                        onClick={() => seleccionarPlantilla(plantilla)}
+                        className={`p-4 border-2 rounded-xl text-left transition-all hover:shadow-md ${
+                          plantillaSeleccionada?.id === plantilla.id
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <FileText className="w-6 h-6 text-blue-600" />
+                          <div>
+                            <p className="font-bold text-gray-900">{plantilla.nombre}</p>
+                            <p className="text-sm text-gray-600">{plantilla.descripcion}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Formulario de Datos de Plantilla */}
+              {plantillaSeleccionada && (
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-4">Completar Datos</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {Object.keys(datosPlantilla).map((key) => (
+                      <div key={key}>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">
+                          {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                        </label>
+                        <input
+                          type="text"
+                          value={datosPlantilla[key]}
+                          onChange={(e) => setDatosPlantilla(prev => ({ ...prev, [key]: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder={`Ingrese ${key}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Editor Quill */}
+              {plantillaSeleccionada && (
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-4">Contenido del Auto</h3>
+                  <div className="border border-gray-300 rounded-lg">
+                    <ReactQuill
+                      value={contenidoHtml}
+                      onChange={setContenidoHtml}
+                      theme="snow"
+                      modules={{
+                        toolbar: [
+                          [{ 'header': [1, 2, 3, false] }],
+                          ['bold', 'italic', 'underline', 'strike'],
+                          [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                          [{ 'indent': '-1'}, { 'indent': '+1' }],
+                          ['link'],
+                          [{ 'align': [] }],
+                          ['clean']
+                        ],
+                      }}
+                      style={{ minHeight: '300px' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Botones de Acción */}
+              {plantillaSeleccionada && (
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPlantillaSeleccionada(null);
+                      setContenidoHtml('');
+                      setDatosPlantilla({});
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={guardarAutoDesdeEditor}
+                    disabled={guardandoAuto}
+                    style={{ background: '#003DA5', color: '#FFFFFF' }}
+                  >
+                    {guardandoAuto ? (
+                      <>
+                        <Clock className="w-4 h-4 mr-2 animate-spin" />
+                        Guardando...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Crear Auto
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : vistaActual === 'lista' ? (
             // Lista de Autos Existentes
             <div className="space-y-3">
               {cargandoAutos ? (
@@ -614,6 +801,34 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView =
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
+                            // Abrir plantilla en nueva ventana
+                            const plantillaUrl = buildApiUrl('legal', `/api/v1/autos/${auto.id}/plantilla`);
+                            window.open(plantillaUrl, '_blank');
+                          }}
+                          title="Ver plantilla"
+                          style={{ borderColor: '#8B5CF6', color: '#8B5CF6' }}
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            editarAutoEnEditor(auto);
+                          }}
+                          title="Editar en editor"
+                          style={{ borderColor: '#059669', color: '#059669' }}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setAutoParaEliminar(auto);
                           }}
                           title="Eliminar auto"
@@ -669,7 +884,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView =
                   <tipoAutoSeleccionado.icon className="w-8 h-8" style={{ color: tipoAutoSeleccionado.color }} />
                   <div>
                     <p className="font-bold text-gray-900">{tipoAutoSeleccionado.nombre}</p>
-                    <p className="text-xs text-gray-600">{editandoId ? 'Editando documento existente' : 'Completa la información del documento'}</p>
+                    <p className="text-xs text-gray-600">Completa la informaciÃ³n del documento</p>
                   </div>
                 </div>
               </Card>
@@ -763,7 +978,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView =
                   ) : (
                     <>
                       <Save className="w-4 h-4 mr-2" />
-                      {editandoId ? 'Actualizar Auto' : 'Crear Auto'}
+                      Crear Auto
                     </>
                   )}
                 </Button>
@@ -916,7 +1131,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto, initialView =
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </motion.div >
+    </motion.div>
   );
 }
 

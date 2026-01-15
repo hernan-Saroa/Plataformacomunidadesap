@@ -3,16 +3,14 @@ import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { ArrowLeft, AlertCircle, Award, User, Loader2, Building2, UserCircle, Mail, FileText, CheckCircle, Shield, Sparkles, MapPin, Phone } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Award, Calendar, User, Loader2, Building2, UserCircle, Mail, FileText, CheckCircle, Shield, Sparkles, MapPin, Phone } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { motion } from 'motion/react';
 import { VerificationCertificateDisplay } from './VerificationCertificateDisplay';
 import { VerificationCertificate } from '../../types';
 import { PublicNavbar } from './PublicNavbar';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
-import { simularEnvioCorreo } from '../../utils/emailTemplates';
-import graduadosService from '../../services/api/graduados.service';
-import { validateGraduateForPublicService, type Graduate } from '../../data/graduatesSync';  // ✅ IMPORTAR FUNCIÓN DE VALIDACIÓN
+import graduadosService, { type CertificadoGraduado } from '../../services/api/graduados.service';
 
 interface PublicTitleVerificationProps {
   onBack: () => void;
@@ -21,63 +19,27 @@ interface PublicTitleVerificationProps {
 
 /**
  * LÓGICA DE NEGOCIO - VERIFICACIÓN DE TÍTULOS ESAP
- *
+ * 
  * Regla fundamental:
  * - TODOS los registros en la base de datos son graduados (Pregrado, Especialización o Maestría)
  * - NO existe el caso de una persona en BD que NO esté graduada
- *
+ * 
  * Flujos:
  * 1. Si el graduado ESTÁ en la BD → Certificado generado INSTANTÁNEAMENTE
  * 2. Si el graduado NO está en la BD → Solicitud de revisión manual (48-72 horas)
- *
+ * 
  * En el flujo 2, el equipo administrativo revisa registros históricos y:
  * - Si encuentra al graduado → Lo agrega a BD y genera certificado
  * - Si NO lo encuentra → Informa al solicitante que no es graduado ESAP
  * 
  * ✅ COORDINADO CON BACKOFFICE: 
  * Este servicio consulta directamente el módulo de "Gestión de Graduados" del backoffice
- * a través de la función validateGraduateForPublicService()
  */
 
 export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVerificationProps) {
-  const formatDateOnly = (value: string) => {
-    if (!value) {
-      return '';
-    }
-
-    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (isoMatch) {
-      const year = Number(isoMatch[1]);
-      const month = Number(isoMatch[2]) - 1;
-      const day = Number(isoMatch[3]);
-      const parsed = new Date(year, month, day, 12, 0, 0);
-      return parsed.toLocaleDateString('es-CO', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-    }
-
-    if (value.includes('/')) {
-      const [dayRaw, monthRaw, yearRaw] = value.split('/').map((segment) => segment.trim());
-      const day = Number(dayRaw);
-      const month = Number(monthRaw) - 1;
-      const year = Number(yearRaw);
-      const parsed = new Date(year, month, day, 12, 0, 0);
-      return parsed.toLocaleDateString('es-CO', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-    }
-
-    return value;
-  };
-
   // Form states
   const [graduateDocumentNumber, setGraduateDocumentNumber] = useState('');
   const [graduateDocumentIssueDate, setGraduateDocumentIssueDate] = useState('');
-  const [graduateGraduationDate, setGraduateGraduationDate] = useState('');
   const [graduateLastName, setGraduateLastName] = useState('');
   const [requesterName, setRequesterName] = useState('');
   const [requesterEmail, setRequesterEmail] = useState('');
@@ -86,13 +48,52 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCertificate, setGeneratedCertificate] = useState<VerificationCertificate | null>(null);
   const [reviewRequestCreated, setReviewRequestCreated] = useState(false);
+
+  const mapCertificado = (
+    certificado: CertificadoGraduado,
+    requester: { name: string; email: string; type: 'empresa' | 'graduado' }
+  ): VerificationCertificate => {
+    const statusMap: VerificationCertificate['status'] =
+      certificado.status === 'REVOKED'
+        ? 'revoked'
+        : certificado.status === 'EXPIRED'
+          ? 'expired'
+          : 'active';
+
+    const nowIso = new Date().toISOString();
+
+    return {
+      id: certificado.id,
+      certificateNumber: certificado.certificateNumber,
+      qrCode: certificado.verificationCode,
+      qrUrl: `${window.location.origin}/verificar-certificado/${certificado.verificationCode}`,
+      graduate: {
+        documentNumber: certificado.idNumber,
+        documentIssueDate: '',
+        fullName: certificado.fullName,
+        titleType: certificado.degreeTitle || certificado.programType || certificado.programName,
+        programName: certificado.programName,
+        diplomaNumber: certificado.diplomaNumber || '',
+        graduationDate: certificado.graduationDate,
+      },
+      requester,
+      status: statusMap,
+      generatedAt: certificado.issueDate || nowIso,
+      viewCount: 0,
+      qrScanCount: 0,
+      scanHistory: [],
+      createdAt: certificado.issueDate || nowIso,
+      updatedAt: certificado.issueDate || nowIso,
+      certificatePdfUrl: certificado.pdfUrl || undefined,
+    };
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validaciones
     if (!graduateDocumentNumber) {
-      toast.error('Por favor ingresa el número de cédula del graduado');
+      toast.error('Por favor ingresa el numero de cedula del graduado');
       return;
     }
     if (!graduateDocumentIssueDate) {
@@ -108,197 +109,66 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       return;
     }
     if (!requesterEmail) {
-      toast.error('Por favor ingresa tu correo electrónico');
+      toast.error('Por favor ingresa tu correo electronico');
       return;
     }
 
-    // Validación de email
+    // Validacion de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(requesterEmail)) {
-      toast.error('Por favor ingresa un correo electrónico válido');
+      toast.error('Por favor ingresa un correo electronico valido');
       return;
     }
 
     setIsGenerating(true);
-    setReviewRequestCreated(false);
 
     try {
-      const respuesta = await graduadosService.autoservicio.solicitarCertificado({
+      const response = await graduadosService.autoservicio.solicitarCertificado({
         idNumber: graduateDocumentNumber,
-        ...(graduateDocumentIssueDate ? { idIssueDate: graduateDocumentIssueDate } : {}),
-        ...(graduateGraduationDate ? { graduationDate: graduateGraduationDate } : {}),
-        ...(graduateLastName ? { lastName: graduateLastName } : {}),
-        requesterType: requesterType === 'graduado' ? 'GRADUATE' : 'COMPANY',
+        graduationDate: graduateDocumentIssueDate,
+        lastName: graduateLastName,
+        requesterType: requesterType === 'empresa' ? 'COMPANY' : 'GRADUATE',
         requesterName,
         requesterEmail,
       });
-      console.log('Respuesta solicitarCertificado:', respuesta);
 
-      if (!respuesta) {
-        setIsGenerating(false);
-        toast.error('No se recibió respuesta del servicio');
-        return;
-      }
-
-      if (respuesta.existe && !respuesta.certificado) {
-        setIsGenerating(false);
-        toast.error('Respuesta incompleta del servicio', {
-          description: 'El graduado existe, pero no llegó el certificado.',
-        });
-        return;
-      }
-
-      if (!respuesta.existe || !respuesta.certificado) {
-        // Graduado NO encontrado - Crear solicitud de revision manual
-        // LOGICA DE NEGOCIO: Todos en la BD estan graduados (Pregrado/Especializacion/Maestria)
-        // Si NO esta en BD -> Solicitud de revision manual (48-72h)
-        setIsGenerating(false);
+      if (!response.existe) {
         setReviewRequestCreated(true);
-
+        setGeneratedCertificate(null);
         toast.info('Solicitud de revision creada', {
-          description: respuesta?.mensaje || 'No se encontro el graduado en nuestra base de datos. Se ha generado una solicitud de revision manual (48-72 horas).'
+          description:
+            response.mensaje ||
+            'No se encontro el graduado en nuestra base de datos. Se ha generado una solicitud de revision manual (48-72 horas).',
         });
-
-        // Enviar correo de confirmacion de solicitud de revision
-        const numeroSolicitud = 'REV-2025-' + Math.floor(1000 + Math.random() * 9000);
-        simularEnvioCorreo('verificacion-titulo-revision', {
-          nombreCompleto: requesterName,
-          correoDestino: requesterEmail,
-          consecutivoCertificado: numeroSolicitud,
-          datosAdicionales: {
-            nombreGraduado: 'Datos proporcionados',
-            documentoGraduado: graduateDocumentNumber
-          }
-        });
-
         return;
       }
 
-      const certificado = respuesta.certificado;
+      if (!response.certificado) {
+        throw new Error('No se pudo generar el certificado. Intenta nuevamente.');
+      }
 
-      const certificate: VerificationCertificate = {
-        id: certificado.id,
-        certificateNumber: certificado.certificateNumber,
-        qrCode: certificado.verificationCode,
-        qrUrl: `${window.location.origin}/verificar-certificado/${certificado.verificationCode}`,
-
-        graduate: {
-          documentNumber: certificado.idNumber,
-          documentIssueDate: graduateDocumentIssueDate,
-          fullName: certificado.fullName,
-          titleType: certificado.programType,
-          programName: certificado.programName,
-          diplomaNumber: certificado.diplomaNumber || '',
-          graduationDate: certificado.graduationDate,
-        },
-
-        requester: {
-          name: requesterName,
-          email: requesterEmail,
-          type: requesterType,
-        },
-
-        status:
-          certificado.status === 'VALID'
-            ? 'active'
-            : certificado.status === 'REVOKED'
-              ? 'revoked'
-              : 'expired',
-        generatedAt: certificado.issueDate || new Date().toISOString(),
-        viewCount: 0,
-        qrScanCount: 0,
-        scanHistory: [],
-        certificatePdfUrl: certificado.pdfUrl,
-
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      setGeneratedCertificate(certificate);
-      setIsGenerating(false);
-      toast.success(respuesta.mensaje || 'Certificado generado exitosamente');
-
-      // Enviar correo con el certificado generado
-      simularEnvioCorreo('verificacion-titulo-generado', {
-        nombreCompleto: requesterName,
-        correoDestino: requesterEmail,
-        consecutivoCertificado: certificate.certificateNumber,
-        urlValidacion: certificate.qrUrl,
-        datosAdicionales: {
-          nombreGraduado: certificado.fullName,
-          programa: certificado.programName,
-          tipoTitulo: certificado.programType,
-          fechaGraduacion: new Date(certificado.graduationDate).toLocaleDateString('es-CO')
-        }
-      });
-    } catch (error: any) {
-      setIsGenerating(false);
-      console.error('Error al verificar graduado:', error);
-      toast.error('Error al verificar graduado', {
-        description: error.response?.data?.message || error.message || 'Por favor intenta de nuevo'
-      });
-    }
-
-    // ✅ Graduado encontrado y validado - Generar certificado con datos reales del backoffice
-    const foundGraduate = validationResult.graduate!;
-    const certificate: VerificationCertificate = {
-      id: 'CERT-' + Date.now(),
-      certificateNumber: 'ESAP-CERT-2025-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-      qrCode: 'QR-' + Math.random().toString(36).substr(2, 16).toUpperCase(),
-      qrUrl: `${window.location.origin}/verificar/${Math.random().toString(36).substr(2, 16)}`,
-      
-      graduate: {
-        documentNumber: foundGraduate.documento,
-        documentIssueDate: foundGraduate.fechaExpedicionDocumento || '',
-        fullName: `${foundGraduate.nombre} ${foundGraduate.apellido}`,
-        titleType: foundGraduate.tituloObtenido.includes('Especialización') ? 'Especialización' : 
-                   foundGraduate.tituloObtenido.includes('Maestría') ? 'Maestría' : 'Pregrado',
-        programName: foundGraduate.programa,
-        diplomaNumber: `ESAP-${new Date(foundGraduate.fechaGrado).getFullYear()}-${foundGraduate.id.substr(-6)}`,
-        graduationDate: foundGraduate.fechaGrado,
-        honors: foundGraduate.promedio >= 4.5 ? 'Cum Laude' : '',
-        gpa: foundGraduate.promedio,
-      },
-      
-      requester: {
+      const certificate = mapCertificado(response.certificado, {
         name: requesterName,
         email: requesterEmail,
         type: requesterType,
-      },
-      
-      status: 'active',
-      generatedAt: new Date().toISOString(),
-      viewCount: 0,
-      qrScanCount: 0,
-      scanHistory: [],
-      
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+      });
 
-    setGeneratedCertificate(certificate);
-    setIsGenerating(false);
-    toast.success('Certificado generado exitosamente');
-
-    // Enviar correo con el certificado generado
-    simularEnvioCorreo('verificacion-titulo-generado', {
-      nombreCompleto: requesterName,
-      correoDestino: requesterEmail,
-      consecutivoCertificado: certificate.certificateNumber,
-      urlValidacion: certificate.qrUrl,
-      datosAdicionales: {
-        nombreGraduado: `${foundGraduate.nombre} ${foundGraduate.apellido}`,
-        programa: foundGraduate.programa,
-        tipoTitulo: certificate.graduate.titleType,
-        fechaGraduacion: new Date(foundGraduate.graduationDate).toLocaleDateString('es-CO')
-      }
-    });
+      setGeneratedCertificate(certificate);
+      setReviewRequestCreated(false);
+      toast.success('Certificado generado exitosamente');
+    } catch (error: any) {
+      console.error('Error al solicitar certificado:', error);
+      toast.error('Error al generar el certificado', {
+        description: error?.message || 'Por favor intenta nuevamente',
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleReset = () => {
     setGraduateDocumentNumber('');
     setGraduateDocumentIssueDate('');
-    setGraduateGraduationDate('');
     setGraduateLastName('');
     setRequesterName('');
     setRequesterEmail('');
@@ -388,18 +258,12 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                   </h3>
                   <div className="grid sm:grid-cols-2 gap-6">
                     <div className="space-y-1">
-                      <p className="text-sm text-gray-600 font-medium">Cedula Consultada</p>
+                      <p className="text-sm text-gray-600 font-medium">Cédula Consultada</p>
                       <p className="font-mono font-bold text-lg text-gray-900">{graduateDocumentNumber}</p>
                     </div>
                     <div className="space-y-1">
-                      <p className="text-sm text-gray-600 font-medium">Apellido(s)</p>
-                      <p className="font-bold text-lg text-gray-900">{graduateLastName || "No suministrado"}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-gray-600 font-medium">Fecha de Graduacion</p>
-                      <p className="font-bold text-lg text-gray-900">
-                        {graduateGraduationDate ? formatDateOnly(graduateGraduationDate) : "No suministrada"}
-                      </p>
+                      <p className="text-sm text-gray-600 font-medium">Fecha de Grado</p>
+                      <p className="font-bold text-lg text-gray-900">{new Date(graduateDocumentIssueDate).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-sm text-gray-600 font-medium">Apellido</p>
@@ -741,32 +605,20 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="graduateLastName" className="text-base font-semibold text-gray-900">
-                        Apellido(s)
+                      <Label htmlFor="documentIssueDate" className="text-base font-semibold text-gray-900">
+                        Fecha de Grado <span className="text-red-500">*</span>
                       </Label>
-                      <Input
-                        id="graduateLastName"
-                        type="text"
-                        value={graduateLastName}
-                        onChange={(e) => setGraduateLastName(e.target.value)}
-                        placeholder="Ej: Rodriguez"
-                        className="h-12 text-base border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
-                      />
-                      <p className="text-sm text-gray-500">Opcional</p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="graduateGraduationDate" className="text-base font-semibold text-gray-900">
-                        Fecha de Graduacion
-                      </Label>
-                      <Input
-                        id="graduateGraduationDate"
-                        type="date"
-                        value={graduateGraduationDate}
-                        onChange={(e) => setGraduateGraduationDate(e.target.value)}
-                        className="h-12 text-base border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
-                      />
-                      <p className="text-sm text-gray-500">Opcional</p>
+                      <div className="relative">
+                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none z-10" />
+                        <Input
+                          id="documentIssueDate"
+                          type="date"
+                          value={graduateDocumentIssueDate}
+                          onChange={(e) => setGraduateDocumentIssueDate(e.target.value)}
+                          className="h-12 text-base pl-12 border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
+                          required
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1136,3 +988,8 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     </div>
   );
 }
+
+
+
+
+
