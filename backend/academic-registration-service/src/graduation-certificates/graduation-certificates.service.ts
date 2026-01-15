@@ -89,15 +89,12 @@ export class GraduationCertificatesService {
       where.idNumber = idNumber.trim();
     }
 
-    if (issueDate) {
-      where.idIssueDate = Raw((alias) => `${alias} = :issueDate`, { issueDate });
-    }
-    if (gradDate) {
-      where.graduationDate = Raw((alias) => `${alias} = :gradDate`, { gradDate });
-    }
-
     const lastNameNormalized = lastName ? this.normalizeName(lastName) : '';
-    const graduate = await this.findGraduateMatch(where, lastNameNormalized);
+    const graduate = await this.findGraduateMatch(where, {
+      lastNameNormalized,
+      issueDate,
+      gradDate,
+    });
 
     if (!graduate) {
       return {
@@ -187,7 +184,10 @@ export class GraduationCertificatesService {
   /**
    * AUTOSERVICIO: Procesar la solicitud enviada desde la landing
    */
-  async solicitarCertificadoLanding(dto: LandingCertificateRequestDto) {
+  async solicitarCertificadoLanding(
+    dto: LandingCertificateRequestDto,
+    frontendBaseUrl?: string,
+  ) {
     const normalizedIdNumber = (dto.idNumber || '').replace(/\D+/g, '');
     const issueDate = dto.idIssueDate ? this.normalizeDateString(dto.idIssueDate) : null;
     const gradDate = dto.graduationDate ? this.normalizeDateString(dto.graduationDate) : null;
@@ -217,20 +217,11 @@ export class GraduationCertificatesService {
       where.idNumber = dto.idNumber.trim();
     }
 
-    if (issueDate) {
-      where.idIssueDate = Raw((alias) => `${alias} = :issueDate`, { issueDate });
-    }
-    if (gradDate) {
-      where.graduationDate = Raw((alias) => `${alias} = :gradDate`, { gradDate });
-    }
-
-    const graduate = await this.findGraduateMatch(where, lastNameNormalized);
-
-    if (!graduate && lastNameNormalized) {
-      this.logger.warn(
-        `Apellido no coincide para idNumber=${dto.idNumber?.trim()} lastName=${dto.lastName?.trim() || 'N/A'}`,
-      );
-    }
+    const graduate = await this.findGraduateMatch(where, {
+      lastNameNormalized,
+      issueDate,
+      gradDate,
+    });
 
     if (!graduate) {
       this.logger.warn(
@@ -294,7 +285,11 @@ export class GraduationCertificatesService {
     request.completionDate = new Date();
     await this.requestRepository.save(request);
 
-    await this.notifyCertificateDelivery(dto.requesterEmail, certificate);
+    await this.notifyCertificateDelivery(
+      dto.requesterEmail,
+      certificate,
+      frontendBaseUrl,
+    );
 
     return {
       existe: true,
@@ -355,7 +350,10 @@ export class GraduationCertificatesService {
   /**
    * Generar certificado de graduado
    */
-  private async generateCertificate(request: GraduationCertificateRequest) {
+  private async generateCertificate(
+    request: GraduationCertificateRequest,
+    frontendBaseUrl?: string,
+  ) {
     const graduate = request.graduate;
 
     // Obtener firmante principal
@@ -403,7 +401,7 @@ export class GraduationCertificatesService {
     // Generar PDF del certificado
     try {
       const pdfBuffer =
-        await this.pdfGeneratorService.generateCertificatePDF(certificate);
+        await this.pdfGeneratorService.generateCertificatePDF(certificate, frontendBaseUrl);
       // Guardar el PDF en el sistema de archivos o S3
       const storagePath =
         process.env.STORAGE_PATH || './uploads/graduation-certificates';
@@ -666,20 +664,46 @@ export class GraduationCertificatesService {
 
   private async findGraduateMatch(
     where: Record<string, any>,
-    lastNameNormalized: string,
+    options: {
+      lastNameNormalized?: string;
+      issueDate?: string | null;
+      gradDate?: string | null;
+    },
   ): Promise<Graduate | null> {
     const graduates = await this.graduateRepository.find({ where });
     if (!graduates.length) {
       return null;
     }
-    if (!lastNameNormalized) {
-      return graduates[0];
+    let candidates = graduates;
+
+    if (options.lastNameNormalized) {
+      const lastNameMatches = graduates.filter((graduate) =>
+        this.matchesLastName(graduate.fullName, options.lastNameNormalized || ''),
+      );
+      if (lastNameMatches.length) {
+        candidates = lastNameMatches;
+      }
     }
-    return (
-      graduates.find((graduate) =>
-        this.matchesLastName(graduate.fullName, lastNameNormalized),
-      ) || null
-    );
+
+    const scored = candidates.map((graduate) => {
+      let score = 0;
+      if (
+        options.issueDate &&
+        this.normalizeDateString(graduate.idIssueDate) === options.issueDate
+      ) {
+        score += 1;
+      }
+      if (
+        options.gradDate &&
+        this.normalizeDateString(graduate.graduationDate) === options.gradDate
+      ) {
+        score += 1;
+      }
+      return { graduate, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0]?.graduate || candidates[0] || null;
   }
 
   private matchesLastName(fullName: string, lastNameNormalized: string): boolean {
@@ -698,8 +722,9 @@ export class GraduationCertificatesService {
   private notifyCertificateDelivery(
     email: string,
     certificate: GraduationCertificate,
+    frontendBaseUrl?: string,
   ): Promise<void> {
-    return this.sendCertificateEmail(email, certificate);
+    return this.sendCertificateEmail(email, certificate, frontendBaseUrl);
   }
 
   private getMailTransporter() {
@@ -1172,7 +1197,11 @@ export class GraduationCertificatesService {
   /**
    * ADMIN: Aprobar solicitud y generar certificado
    */
-  async aprobarSolicitud(id: string, payload: ApproveRequestDto) {
+  async aprobarSolicitud(
+    id: string,
+    payload: ApproveRequestDto,
+    frontendBaseUrl?: string,
+  ) {
     const request = await this.requestRepository.findOne({
       where: { id },
       relations: ['graduate'],
@@ -1249,7 +1278,11 @@ export class GraduationCertificatesService {
 
     const certificate = await this.generateCertificate(request);
 
-    await this.notifyCertificateDelivery(request.requesterEmail, certificate);
+    await this.notifyCertificateDelivery(
+      request.requesterEmail,
+      certificate,
+      frontendBaseUrl,
+    );
 
     return {
       request,
