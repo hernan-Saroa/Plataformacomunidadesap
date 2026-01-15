@@ -55,7 +55,6 @@ interface SidebarProps {
   onToggleCollapse?: () => void;
   forceCollapse?: boolean; // Auto-colapsar cuando modal de perfil esté abierto
   userRole?: string; // Rol del usuario para permisos
-  userEmail?: string; // Email del usuario para restricciones específicas
   certificatesPendingCount?: number; // Número de solicitudes pendientes en Certificados
   restrictedMode?: 'certificados-laborales' | 'arquitectura-empresarial' | 'control-interno' | 'control-disciplinario' | 'registro-academico' | 'gestion-legal'; // Modo restringido para usuarios especiales
 }
@@ -76,7 +75,7 @@ const contentTransition = {
   ease: [0.4, 0, 0.2, 1] // easing personalizado
 };
 
-export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode }: SidebarProps) {
+export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, certificatesPendingCount = 0, restrictedMode }: SidebarProps) {
   // Determinar si el sidebar debe estar colapsado (manual o forzado)
   const effectiveCollapsed = isCollapsed || forceCollapse;
 

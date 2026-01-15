@@ -27,7 +27,7 @@ import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Checkbox } from '../../../ui/checkbox';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { toast } from 'sonner';
+import { toast } from 'sonner@2.0.3';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
@@ -548,8 +548,6 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             setComunicacionParaExpediente(null);
           }}
           comunicacion={comunicacionParaExpediente}
-          onMarcarLeida={handleMarcarLeida}
-          onArchivar={handleArchivar}
         />
       )}
     </div>
@@ -721,7 +719,7 @@ function ItemComunicacion({
         <Checkbox
           checked={marcada}
           onCheckedChange={() => onToggleMarcada(comunicacion.id)}
-          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         />
       </div>
 

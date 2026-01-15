@@ -128,26 +128,6 @@ export class JuzgamientoController {
         if (!expediente) throw new BadRequestException('Expediente no encontrado');
         return this.expedienteService.createDecision(expediente.id, data);
     }
-
-    // ==================== EXCEPCIONES PROCESALES ====================
-
-    @Get(':radicado/excepciones')
-    async getExcepciones(@Param('radicado') radicado: string) {
-        const expediente = await this.expedienteService.findOneByRadicado(radicado);
-        if (!expediente) throw new BadRequestException('Expediente no encontrado');
-        return this.expedienteService.getExcepciones(expediente.id);
-    }
-
-    @Post(':radicado/excepciones')
-    async createExcepcion(@Param('radicado') radicado: string, @Body() data: any) {
-        const expediente = await this.expedienteService.findOneByRadicado(radicado);
-        if (!expediente) throw new BadRequestException('Expediente no encontrado');
-        return this.expedienteService.createExcepcion(expediente.id, data);
-    }
-
-    @Patch('excepciones/:id/resolver')
-    async resolverExcepcion(@Param('id') id: string, @Body() data: any) {
-        return this.expedienteService.resolverExcepcion(id, data);
-    }
 }
+
 

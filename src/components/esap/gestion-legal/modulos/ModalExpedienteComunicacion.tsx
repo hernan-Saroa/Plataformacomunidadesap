@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { toast } from 'sonner';
+import { toast } from 'sonner@2.0.3';
 import {
   Mail, Gavel, FileText, User, Calendar, Clock, AlertTriangle,
   Download, Eye, Paperclip, CheckCircle, Share, Send,
@@ -22,6 +22,7 @@ import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { Textarea } from '../../../ui/textarea';
 
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { ModalCompartir } from './ModalCompartir';
 import { correosJuridicosService, AdjuntoCorreo } from '../../../../services/api/legal.service';
 
 interface ComunicacionUnificada {
@@ -61,6 +62,7 @@ export function ModalExpedienteComunicacion({
   onArchivar
 }: ModalExpedienteComunicacionProps) {
   const [tabActivo, setTabActivo] = useState('general');
+  const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
   const [adjuntos, setAdjuntos] = useState<AdjuntoCorreo[]>([]);
   const [loadingAdjuntos, setLoadingAdjuntos] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -161,23 +163,11 @@ export function ModalExpedienteComunicacion({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
-  const handleDescargarPDF = async () => {
-    toast.info('⏳ Generando ZIP con PDF y Adjuntos...');
-    try {
-      const url = await correosJuridicosService.exportCorreoZip(comunicacion.id);
-
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Email_${comunicacion.id.substring(0, 8)}.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      toast.success('✅ Exportación completada');
-    } catch (error) {
-      console.error('Error exporting ZIP:', error);
-      toast.error('Error al generar el archivo ZIP');
-    }
+  const handleDescargarPDF = () => {
+    toast.success('📄 Generando reporte PDF', {
+      description: `Comunicación ${comunicacion.id} - Reporte completo`,
+      duration: 3000
+    });
   };
 
   const handleDerivarModulo = () => {
@@ -232,7 +222,7 @@ export function ModalExpedienteComunicacion({
           {/* HEADER - flex-shrink-0 (siempre visible) */}
           <ModalHeaderClean
             icono={getIcono()}
-            titulo="Detalle de Comunicación"
+            titulo={`Comunicación ${comunicacion.id}`}
             subtitulo={comunicacion.asunto}
             colorIcono={comunicacion.tipo === 'JUDICIAL' ? 'blue' : 'indigo'}
             badges={[
@@ -605,9 +595,13 @@ export function ModalExpedienteComunicacion({
                     Marcar como Leída
                   </Button>
                 )}
+                <Button variant="outline" size="sm" onClick={() => setModalCompartirAbierto(true)}>
+                  <Share className="w-4 h-4 mr-2" />
+                  Compartir
+                </Button>
                 <Button variant="outline" size="sm" onClick={handleDescargarPDF}>
                   <Download className="w-4 h-4 mr-2" />
-                  Exportar PDF/ZIP
+                  Exportar PDF
                 </Button>
               </div>
               <div className="flex items-center gap-2">
@@ -624,7 +618,15 @@ export function ModalExpedienteComunicacion({
         </DialogContent>
       </Dialog>
 
-
+      {/* MODALES SECUNDARIOS */}
+      {modalCompartirAbierto && (
+        <ModalCompartir
+          isOpen={modalCompartirAbierto}
+          onClose={() => setModalCompartirAbierto(false)}
+          expedienteId={comunicacion.id}
+          tipoExpediente="COMUNICACION"
+        />
+      )}
     </>
   );
 }

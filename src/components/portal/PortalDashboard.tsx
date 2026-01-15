@@ -19,7 +19,6 @@ import { RoleSelector } from './RoleSelector';
 import { UnifiedPortalViewV5 } from './UnifiedPortalViewV5';
 import { AuthenticatedPortalNavbar } from './AuthenticatedPortalNavbar';
 import { PortalTransaccionalUsuario } from '../esap/control-interno/PortalTransaccionalUsuario';
-import { PortalTransaccionalUsuarioMD3 } from '../esap/control-interno/PortalTransaccionalUsuarioMD3';
 
 interface PortalDashboardProps {
   userName: string;
@@ -140,7 +139,7 @@ export function PortalDashboard({
           {activeRole === 'Administrativo' && (
             <>
               {userEmail === 'funcionario@esap.edu.co' ? (
-                <PortalTransaccionalUsuarioMD3 onLogout={onLogout} />
+                <PortalTransaccionalUsuario onLogout={onLogout} />
               ) : (
                 <UnifiedPortalViewV5
                   userName={userName}

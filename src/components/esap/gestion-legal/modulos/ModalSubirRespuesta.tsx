@@ -171,6 +171,21 @@ export function ModalSubirRespuesta({
     try {
       // Simular envío
       await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // En producción:
+      // const formData = new FormData();
+      // archivos.forEach((archivo, index) => {
+      //   formData.append(`archivo_${index}`, archivo.file);
+      //   formData.append(`tipo_${index}`, archivo.tipo);
+      //   formData.append(`descripcion_${index}`, archivo.descripcion);
+      // });
+      // formData.append('numeroRespuesta', numeroRespuesta);
+      // formData.append('fechaRespuesta', fechaRespuesta);
+      // formData.append('observaciones', observaciones);
+      // formData.append('requerimientoId', requerimiento.id);
+      //
+      // await subirRespuestaRequerimiento(formData);
+
       toast.success('Respuesta Enviada Exitosamente', {
         description: `La respuesta al requerimiento ${requerimiento.id} ha sido registrada y enviada.`,
       });

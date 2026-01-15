@@ -149,14 +149,6 @@ export class TerminosService {
     }
 
     async getSemaforoList(responsableId?: string): Promise<any[]> {
-        // Auto-sincronizar al consultar el listado para tener datos actualizados
-        try {
-            await this.sincronizar();
-        } catch (err) {
-            this.logger.warn('Error en sincronización automática:', err);
-            // Continuar aunque falle la sincronización
-        }
-
         const terminos = await this.findAll({ responsableId, estado: 'PENDIENTE' });
 
         return terminos.map(t => {
@@ -362,41 +354,23 @@ export class TerminosService {
                 this.logger.warn(`[DEFENSA] SKIPPING ${exp.radicado}: hasVencimiento=${hasVencimiento}, hasDias=${hasDias}, Estado=${exp.estado}`);
             }
 
-            // B: Juzgamiento Disciplinario - Sincroniza todo expediente disciplinario
-            // Ya no requiere fechaLimiteEtapa - calcula automáticamente si no existe
-            const esDisciplinario = exp.jurisdiccion === 'Disciplinaria' || exp.etapa;
-            const noEsDefensa = !hasVencimiento && !hasDias; // No fue procesado como Defensa
-            const estadoActivo = exp.estado !== 'FALLO' && exp.estado !== 'ARCHIVADO' && exp.estado !== 'CERRADO';
-
-            if (esDisciplinario && estadoActivo) {
-                const descripcionEtapa = exp.etapa ? `Etapa: ${exp.etapa}` : 'Proceso Disciplinario';
-
-                // Calcular fecha de vencimiento si no existe
-                let fechaVenc: Date | undefined = exp.fechaLimiteEtapa;
-                let diasDefault = 30; // Por defecto 30 días hábiles para procesos disciplinarios
-
-                if (!fechaVenc) {
-                    // Si tiene terminoProcesalDias, usarlo; si no, usar default de 30 días
-                    diasDefault = exp.terminoProcesalDias && exp.terminoProcesalDias > 0
-                        ? exp.terminoProcesalDias
-                        : 30;
-                    // fechaVenc undefined = createAutomatico calculará basado en fechaBase + dias
-                }
-
-                this.logger.debug(`[JUZGAMIENTO] Sincronizando ${exp.radicado}: Etapa=${exp.etapa}, Abogado=${abogadoNombre}, Dias=${diasDefault}`);
-
+            // B: Fin de Etapa (Juzgamiento Disciplinario)
+            if (exp.fechaLimiteEtapa) {
+                // If it has 'etapa', it is likely Juzgamiento
+                const descripcionEtapa = exp.etapa ? `Fin Etapa: ${exp.etapa}` : 'Vencimiento Etapa Procesal';
+                this.logger.debug(`[JUZGAMIENTO] Sincronizando ${exp.radicado}: Etapa=${exp.etapa}, Abogado=${abogadoNombre}`);
                 await this.createAutomatico(
                     'JUZGAMIENTO',
                     exp.id,
                     exp.radicado || exp.id,
                     descripcionEtapa,
-                    exp.fechaRadicacion || new Date(),
-                    diasDefault,
+                    new Date(), // Base date for stage might be start of stage? Using now as fallback or last update
+                    0,
                     undefined,
                     abogadoNombre,
                     'HABILES',
-                    fechaVenc,
-                    `[Juzgamiento] ${exp.etapa || 'Disciplinario'}. ${hechos}`
+                    exp.fechaLimiteEtapa,
+                    `[Juzgamiento] ${exp.etapa || ''}. ${hechos}`
                 );
                 nuevos++;
             }

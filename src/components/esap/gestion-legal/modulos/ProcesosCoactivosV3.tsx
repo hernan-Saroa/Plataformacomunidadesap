@@ -1,18 +1,18 @@
 /**
  * ModuloProcesosCoactivosV3 - MOD-07: Procesos Coactivos
- * VISTA DE LISTA/TABLA - Gestión de procesos de cobro coactivo
- * Los procesos son creados manualmente por la oficina de gestión legal
+ * VERSIÓN COMPLETA CON TODAS LAS FUNCIONALIDADES REALES + DRAG AND DROP
  */
 
 import { useState, useEffect } from 'react';
 import {
-  Plus, FileText, AlertTriangle, Clock, Calendar,
+  Plus, FileText, FolderOpen, AlertTriangle, Clock, Calendar,
   User, Eye, ChevronDown, DollarSign, TrendingUp, X,
-  AlertCircle, CheckCircle, Search, Download, Upload,
-  Edit, Trash2, Filter, MoreVertical, Phone, Mail as MailIcon,
-  MapPin, Building, CreditCard, FileCheck, Send
+  AlertCircle, CheckCircle, List, Columns3, ThumbsUp,
+  Scale, Filter, Search, Download, Upload, RefreshCw, Paperclip,
+  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Star, AlertOctagon,
+  Move
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { toast } from 'sonner';
@@ -99,9 +99,13 @@ export function ModuloProcesosCoactivosV3() {
   const [ordenamiento, setOrdenamiento] = useState<'reciente' | 'antiguo' | 'monto-mayor' | 'monto-menor'>('reciente');
 
   // Detectar tamaño de pantalla
-  const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    const checkScreenSize = () => setIsMobile(window.innerWidth < 768);
+    const checkScreenSize = () => {
+      const width = window.innerWidth;
+      setIsMobile(width < 768);
+      setIsTablet(width >= 768 && width < 1024);
+    };
+
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
@@ -159,7 +163,7 @@ export function ModuloProcesosCoactivosV3() {
 
   const handleVerDetalle = (proceso: ProcesoCoactivo) => {
     setProcesoSeleccionado(proceso);
-    setModalDetalle(true);
+    setModalExpediente(true);
   };
 
   const handleEditarProceso = (proceso: ProcesoCoactivo) => {
@@ -209,103 +213,214 @@ export function ModuloProcesosCoactivosV3() {
           </ButtonSIGL>
         </div>
 
-        {/* Métricas */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-blue-50 rounded-lg">
-                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-[#003DA5]" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Total Procesos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
-              </div>
-            </div>
-          </CardSIGL>
+      {/* Métricas */}
+      <ModuleMetrics
+        metrics={[
+          {
+            label: 'Total Procesos',
+            value: totalProcesos,
+            icon: <FileText className="w-4 h-4 text-orange-600" />,
+            color: 'orange'
+          },
+          {
+            label: 'Criticos',
+            value: procesosCriticos,
+            icon: <AlertCircle className="w-4 h-4 text-red-600" />,
+            color: 'red'
+          },
+          {
+            label: 'En Término',
+            value: procesosEnTermino,
+            icon: <CheckCircle className="w-4 h-4 text-green-600" />,
+            color: 'green'
+          }
+        ]}
+      />
 
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-amber-50 rounded-lg">
-                <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Activos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.activos}</p>
-              </div>
-            </div>
-          </CardSIGL>
+      {/* Filtros */}
+      <ModuleFilters
+        filters={[
+          {
+            label: 'Etapa',
+            value: filtroEtapa,
+            onChange: (value) => setFiltroEtapa(value as string),
+            options: [
+              { label: 'Todas', value: 'TODAS' },
+              { label: 'Identificado', value: 'IDENTIFICADO' },
+              { label: 'Persuasivo', value: 'PERSUASIVO' },
+              { label: 'Prejurídico', value: 'PREJURIDICO' },
+              { label: 'Mandamiento', value: 'MANDAMIENTO' }
+            ]
+          },
+          {
+            label: 'Monto',
+            value: filtroMonto,
+            onChange: (value) => setFiltroMonto(value as string),
+            options: [
+              { label: 'Todos', value: 'TODOS' },
+              { label: 'Menos de $100M', value: 'MENOS_100M' },
+              { label: 'Entre $100M y $500M', value: 'ENTRE_100M_500M' },
+              { label: 'Más de $500M', value: 'MAS_500M' }
+            ]
+          }
+        ]}
+      />
 
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-red-50 rounded-lg">
-                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />
+      {/* Tablero Kanban */}
+      {tipoVista === 'kanban' && (
+        <DndProvider backend={HTML5Backend}>
+          <div className="relative">
+            {/* Indicador de scroll en mobile/tablet */}
+            {(isMobile || isTablet) && (
+              <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
+                <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
+                  <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
+                  Desliza
+                </p>
               </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Críticos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.criticos}</p>
-              </div>
+            )}
+            
+            <div 
+              className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
+              style={{
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#CBD5E0 #F7FAFC',
+                WebkitOverflowScrolling: 'touch'
+              }}
+            >
+              {etapas.map((etapa) => (
+                <ColumnaKanban
+                  key={etapa.nombre}
+                  etapa={etapa}
+                  isMobile={isMobile}
+                  isTablet={isTablet}
+                  onComunicaciones={handleComunicaciones}
+                  onExpediente={handleExpediente}
+                  onDocumentos={handleDocumentos}
+                  onPagos={handlePagos}
+                  onMoverProceso={handleMoverProceso}
+                />
+              ))}
             </div>
-          </CardSIGL>
+          </div>
+        </DndProvider>
+      )}
 
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-green-50 rounded-lg">
-                <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
+      {/* Vista de Lista */}
+      {tipoVista === 'lista' && (
+        <VistaListaProcesosCoactivos
+          procesos={procesosCoactivosMock}
+          isMobile={isMobile}
+          isTablet={isTablet}
+        />
+      )}
+
+      {/* Modal Crear Proceso */}
+      <ModalCrearProcesoCoactivo
+        isOpen={modalCrear}
+        onClose={() => setModalCrear(false)}
+        onCrear={(nuevoProceso) => {
+          toast.success(`✅ Proceso Coactivo creado: ${nuevoProceso.id}`, {
+            description: `Deudor: ${nuevoProceso.deudor.nombre}`
+          });
+          setModalCrear(false);
+        }}
+      />
+
+      {/* Modal Comunicaciones */}
+      {modalComunicaciones && procesoSeleccionado && (
+        <ModalComunicaciones
+          proceso={procesoSeleccionado}
+          onClose={() => setModalComunicaciones(false)}
+        />
+      )}
+
+      {/* Modal Expediente */}
+      {modalExpediente && procesoSeleccionado && (
+        <ModalExpediente
+          proceso={procesoSeleccionado}
+          onClose={() => setModalExpediente(false)}
+        />
+      )}
+
+      {/* Modal Documentos */}
+      {modalDocumentos && procesoSeleccionado && (
+        <ModalDocumentos
+          proceso={procesoSeleccionado}
+          onClose={() => setModalDocumentos(false)}
+        />
+      )}
+
+      {/* Modal Pagos */}
+      {modalPagos && procesoSeleccionado && (
+        <ModalPagos
+          proceso={procesoSeleccionado}
+          onClose={() => setModalPagos(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ==================== COMPONENTE COLUMNA KANBAN ====================
+interface ColumnaKanbanProps {
+  etapa: {
+    nombre: string;
+    valor: 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJURIDICO' | 'MANDAMIENTO';
+    color: string;
+    icono: React.ReactNode;
+    diasEstimados: number;
+    procesos: ProcesoCoactivo[];
+  };
+  isMobile: boolean;
+  isTablet: boolean;
+  onComunicaciones: (proceso: ProcesoCoactivo) => void;
+  onExpediente: (proceso: ProcesoCoactivo) => void;
+  onDocumentos: (proceso: ProcesoCoactivo) => void;
+  onPagos: (proceso: ProcesoCoactivo) => void;
+  onMoverProceso: (procesoId: string, nuevaEtapa: 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJURIDICO' | 'MANDAMIENTO') => void;
+}
+
+function ColumnaKanban({ etapa, isMobile, isTablet, onComunicaciones, onExpediente, onDocumentos, onPagos, onMoverProceso }: ColumnaKanbanProps) {
+  const [{ isOver }, drop] = useDrop({
+    accept: ItemTypes.PROCESO,
+    drop: (item: { id: string }) => onMoverProceso(item.id, etapa.valor),
+    collect: (monitor) => ({
+      isOver: !!monitor.isOver(),
+    }),
+  });
+
+  const backgroundColor = isOver ? '#F0F7FF' : '#FFFFFF';
+  const borderColor = isOver ? '#2962FF' : 'transparent';
+
+  return (
+    <div
+      className="flex-shrink-0"
+      style={{ width: 320 }}
+    >
+      <Card className="h-full border border-gray-200 bg-white">
+        {/* Header de Columna */}
+        <div className={`${isMobile ? 'p-3' : 'p-4'} border-b bg-gray-50`}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 flex-1">
+              <div className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg bg-white border border-gray-200`}>
+                {etapa.icono}
               </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Monto Total</p>
-                <p className="text-base sm:text-lg font-bold text-gray-900">
-                  ${(stats.totalMonto / 1000000).toFixed(1)}M
+              <div className="flex-1 min-w-0">
+                <h3 className={`font-black ${isMobile ? 'text-xs' : 'text-sm'} text-gray-800`}>
+                  {etapa.nombre}
+                </h3>
+                <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                  <Clock className="w-2.5 h-2.5" />
+                  {etapa.diasEstimados} días
                 </p>
               </div>
             </div>
-          </CardSIGL>
-        </div>
-
-        {/* Filtros y búsqueda */}
-        <CardSIGL className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-            {/* Búsqueda */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar por nombre, identificación o radicado..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* Filtro Estado */}
-            <select
-              value={filtroEstado}
-              onChange={(e) => setFiltroEstado(e.target.value)}
-              className="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="TODOS">Todos los estados</option>
-              <option value="IDENTIFICADO">Identificado</option>
-              <option value="PERSUASIVO">Persuasivo</option>
-              <option value="PREJURIDICO">Prejurídico</option>
-              <option value="MANDAMIENTO">Mandamiento</option>
-              <option value="EMBARGO">Embargo</option>
-              <option value="FINALIZADO">Finalizado</option>
-            </select>
-
-            {/* Ordenamiento */}
-            <select
-              value={ordenamiento}
-              onChange={(e) => setOrdenamiento(e.target.value as any)}
-              className="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="reciente">Más recientes</option>
-              <option value="antiguo">Más antiguos</option>
-              <option value="monto-mayor">Monto mayor</option>
-              <option value="monto-menor">Monto menor</option>
-            </select>
+            <Badge className={`font-semibold ${isMobile ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'} bg-white border border-gray-200 text-gray-700`}>
+              {etapa.procesos.length}
+            </Badge>
           </div>
-        </CardSIGL>
-      </div>
+        </div>
 
       {/* Lista de Procesos */}
       <div className="space-y-3">
@@ -423,66 +538,73 @@ function TarjetaProceso({
           </div>
         </div>
 
-        {/* Información Principal */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 pb-4 border-b border-gray-100">
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Concepto</p>
-            <p className="text-sm font-medium text-gray-900">{proceso.obligacion.concepto}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Valor</p>
-            <p className="text-lg font-bold text-[#003DA5]">
-              ${proceso.obligacion.valor.toLocaleString('es-CO')}
+          {/* Deudor */}
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            <p className="text-xs text-gray-500 mb-0.5">👤 Deudor:</p>
+            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+              {proceso.deudor}
             </p>
           </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Días Vencidos</p>
-            <p className={`text-sm font-semibold ${esCritico ? 'text-red-600' : 'text-gray-900'}`}>
-              {proceso.obligacion.diasVencidos} días
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Responsable</p>
-            <p className="text-sm text-gray-900">{proceso.responsable}</p>
-          </div>
-        </div>
 
-        {/* Métricas Secundarias */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="text-center">
-            <p className="text-xs text-gray-500 mb-1">Documentos</p>
-            <div className="flex items-center justify-center gap-1">
-              <FileText className="w-3.5 h-3.5 text-blue-600" />
-              <span className="text-sm font-semibold text-gray-900">{proceso.documentosAdjuntos}</span>
+          {/* Profesional Asignado */}
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            <div className="flex items-center gap-2">
+              <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
+                <AvatarFallback 
+                  className="text-xs"
+                  style={{ background: '#E0EDFF', color: '#003DA5' }}
+                >
+                  {proceso.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500">👨‍💼 Responsable:</p>
+                <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+                  {proceso.responsable}
+                </p>
+              </div>
             </div>
           </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-500 mb-1">Notificaciones</p>
-            <div className="flex items-center justify-center gap-1">
-              <Send className="w-3.5 h-3.5 text-green-600" />
-              <span className="text-sm font-semibold text-gray-900">{proceso.notificacionesEnviadas}</span>
-            </div>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-500 mb-1">Última actuación</p>
-            <div className="flex items-center justify-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-purple-600" />
-              <span className="text-xs font-semibold text-gray-900">
-                {proceso.ultimaActuacion.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
-              </span>
-            </div>
-          </div>
-        </div>
 
-        {/* Observaciones */}
-        {proceso.observaciones && (
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4">
-            <p className="text-xs text-blue-900">
-              <span className="font-semibold">Observación: </span>
-              {proceso.observaciones}
+          {/* Semáforo */}
+          <div className="flex items-center gap-1.5 mb-2">
+            <Badge 
+              className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200"
+              style={{ color: semaforo.color }}
+            >
+              <div 
+                className="w-2 h-2 rounded-full"
+                style={{ background: semaforo.color }}
+              />
+              {proceso.diasHastaPrescripcion} días prescripción
+            </Badge>
+          </div>
+
+          {/* Métricas */}
+          <div className="grid grid-cols-2 gap-1.5 mb-2">
+            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
+              <p className="text-xs font-bold text-gray-700">{proceso.montoCapital.toLocaleString('es-CO', { style: 'currency', currency: 'COP' })}</p>
+              <p className="text-xs text-gray-500">Capital</p>
+            </div>
+            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
+              <p className="text-xs font-bold text-gray-700">{proceso.montoIntereses.toLocaleString('es-CO', { style: 'currency', currency: 'COP' })}</p>
+              <p className="text-xs text-gray-500">Intereses</p>
+            </div>
+          </div>
+
+          {/* Última Actuación - BLOQUE AZUL */}
+          <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
+            <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#003DA5' }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#003DA5' }}></span>
+              ÚLTIMA ACTUACIÓN
+            </p>
+            <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-700 line-clamp-2 mb-1`}>
+              {ultimaActuacion}
+            </p>
+            <p className="text-xs text-gray-500">
+              📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}
             </p>
           </div>
-        )}
 
         {/* Acciones */}
         <div className="flex flex-wrap gap-2">
@@ -921,8 +1043,8 @@ function ModalNuevoProceso({
             )}
           </ButtonSIGL>
         </div>
-      </div>
-    </ModalSIGL>
+      </Card>
+    </div>
   );
 }
 
@@ -1016,6 +1138,9 @@ function ModalDetalleProceso({
               })}
             </p>
           </div>
+          <Button onClick={onClose} size="sm" variant="ghost">
+            <X className="w-5 h-5" />
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1184,7 +1309,7 @@ function ModalDetalleProceso({
             Descargar Ficha
           </ButtonSIGL>
         </div>
-      </div>
-    </ModalSIGL>
+      </Card>
+    </div>
   );
 }

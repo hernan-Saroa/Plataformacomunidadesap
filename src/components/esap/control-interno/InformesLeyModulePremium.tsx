@@ -506,6 +506,18 @@ function CardInformeGenerado({ informe }: { informe: InformeGenerado }) {
       usuario: 'Usuario Actual',
       timestamp: new Date().toISOString()
     });
+
+    // En producción: descargar el archivo
+    // fetch(informe.archivoUrl)
+    //   .then(response => response.blob())
+    //   .then(blob => {
+    //     const url = window.URL.createObjectURL(blob);
+    //     const a = document.createElement('a');
+    //     a.href = url;
+    //     a.download = `${informe.informeNombre}_${informe.periodo}.pdf`;
+    //     a.click();
+    //     window.URL.revokeObjectURL(url);
+    //   });
   };
 
   const handleVerDetalle = () => {

@@ -32,20 +32,6 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       onLoginClick();
     }
   };
-
-  // Handler para cuando el usuario completa exitosamente el enrolamiento
-  const handleEnrollmentSuccess = (userData: any) => {
-    console.log('✅ Enrolamiento exitoso para:', userData);
-    // Redirigir al login después del enrolamiento exitoso
-    setTimeout(() => {
-      handleLoginClick();
-    }, 500);
-  };
-
-  // Handler para abrir el modal de enrolamiento
-  const handleActivateNowClick = () => {
-    setIsEnrollmentModalOpen(true);
-  };
   
   const prefersReducedMotion = useReducedMotion();
   
@@ -379,7 +365,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
               <div className="flex flex-col xs:flex-row gap-3 justify-center lg:justify-start">
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button
-                    onClick={handleActivateNowClick}
+                    onClick={handleLoginClick}
                     size="lg"
                     className="w-full xs:w-auto px-6 py-3 xs:px-7 xs:py-4 sm:px-8 sm:py-6 bg-white text-[#1e5da8] hover:bg-blue-50 shadow-2xl shadow-blue-500/50 group relative overflow-hidden"
                   >
@@ -819,13 +805,6 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
 
       {/* Footer World Class - Conforme a Normativas del Gobierno Colombiano */}
       <FooterWorldClass />
-
-      {/* Modal de Enrolamiento - Actívate Ahora */}
-      <EnrollmentActivationModal
-        isOpen={isEnrollmentModalOpen}
-        onClose={() => setIsEnrollmentModalOpen(false)}
-        onSuccess={handleEnrollmentSuccess}
-      />
     </div>
   );
 }

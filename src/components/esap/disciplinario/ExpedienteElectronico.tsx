@@ -12,7 +12,7 @@ import {
   AlertCircle, File, FileCheck, Search, Filter, X,
   ChevronDown, ChevronRight, Trash2, Edit2, ExternalLink,
   Archive, Folder, Shield, Key, Copy, Share2, FileSignature,
-  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle, Scale
+  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -1208,32 +1208,21 @@ function ModalVisorDocumento({
 // Modal de Subir Documento
 function ModalSubirDocumento({
   procesoId,
-  defaultEtapa,
   onClose,
-  onConfirm,
-  onSwitchType
+  onConfirm
 }: {
   procesoId: string;
-  defaultEtapa?: string;
   onClose: () => void;
   onConfirm: (doc: any) => void;
-  onSwitchType?: (tipo: 'auto' | 'evidencia' | 'oficio') => void;
 }) {
   const [nombreDocumento, setNombreDocumento] = useState('');
-  const [tipoDocumento, setTipoDocumento] = useState<Documento['tipo']>('otro');
-  const [etapa, setEtapa] = useState(defaultEtapa || '');
+  const [tipoDocumento, setTipoDocumento] = useState<Documento['tipo']>('auto');
+  const [etapa, setEtapa] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [usarEnlaceExterno, setUsarEnlaceExterno] = useState(false);
   const [urlExterna, setUrlExterna] = useState('');
   const [dragActive, setDragActive] = useState(false);
-
-  // Sync state with prop
-  useEffect(() => {
-    if (defaultEtapa) {
-      setEtapa(defaultEtapa);
-    }
-  }, [defaultEtapa]);
 
   // Tipos de archivo permitidos
   const tiposPermitidos = [
@@ -1346,13 +1335,7 @@ function ModalSubirDocumento({
             </label>
             <select
               value={tipoDocumento}
-              onChange={(e) => {
-                const nuevoTipo = e.target.value as Documento['tipo'];
-                setTipoDocumento(nuevoTipo);
-                if (onSwitchType && (nuevoTipo === 'auto' || nuevoTipo === 'evidencia' || nuevoTipo === 'oficio')) {
-                  onSwitchType(nuevoTipo);
-                }
-              }}
+              onChange={(e) => setTipoDocumento(e.target.value as Documento['tipo'])}
               className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="auto">Auto</option>
@@ -1375,18 +1358,12 @@ function ModalSubirDocumento({
               className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione...</option>
-              <option value="Noticia Disciplinaria">Noticia Disciplinaria</option>
+              <option value="Noticia">Noticia Disciplinaria</option>
               <option value="Valoración">Valoración</option>
               <option value="Indagación Preliminar">Indagación Preliminar</option>
               <option value="Investigación Formal">Investigación Formal</option>
               <option value="Descargos">Descargos</option>
-              <option value="Cierre de Investigación">Cierre de Investigación</option>
-              {defaultEtapa && ![
-                "Noticia Disciplinaria", "Valoración", "Indagación Preliminar",
-                "Investigación Formal", "Descargos", "Cierre de Investigación"
-              ].includes(defaultEtapa) && (
-                  <option value={defaultEtapa}>{defaultEtapa}</option>
-                )}
+              <option value="Cierre">Cierre de Investigación</option>
             </select>
           </div>
 
@@ -1671,7 +1648,7 @@ export function ExpedienteElectronico() {
     };
 
     cargarDocumentos();
-  }, [procesoSeleccionado?.id, refreshTrigger]);
+  }, [procesoSeleccionado?.id]);
 
   // Sincronizar el input con el proceso seleccionado
   useEffect(() => {
@@ -2308,7 +2285,7 @@ export function ExpedienteElectronico() {
               <option value="otro">Otros</option>
             </select>
             <button
-              onClick={() => setShowModalSeleccion(true)}
+              onClick={() => setShowModalSubir(true)}
               className="px-4 py-2.5 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
               style={{ background: '#10B981' }}
             >
@@ -2637,13 +2614,8 @@ export function ExpedienteElectronico() {
         {showModalSubir && (
           <ModalSubirDocumento
             procesoId={procesoSeleccionado?.id || ''}
-            defaultEtapa={procesoSeleccionado?.etapaActual}
             onClose={() => setShowModalSubir(false)}
             onConfirm={handleSubirDocumento}
-            onSwitchType={(tipo) => {
-              setShowModalSubir(false);
-              handleSeleccionTipoDocumento(tipo);
-            }}
           />
         )}
 

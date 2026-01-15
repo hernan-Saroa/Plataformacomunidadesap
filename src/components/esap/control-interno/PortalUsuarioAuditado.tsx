@@ -50,6 +50,7 @@ interface AuditoriaUsuario {
   hallazgos: number;
   documentosSolicitados: number;
   documentosSubidos: number;
+  mensajesNuevos: number;
   descripcion: string;
   urgencia: 'alta' | 'media' | 'baja';
 }
@@ -91,6 +92,7 @@ const AUDITORIAS_MOCK: AuditoriaUsuario[] = [
     hallazgos: 3,
     documentosSolicitados: 8,
     documentosSubidos: 5,
+    mensajesNuevos: 2,
     descripcion: 'Evaluación de procesos administrativos y de gestión documental en la territorial.',
     urgencia: 'alta'
   },
@@ -108,6 +110,7 @@ const AUDITORIAS_MOCK: AuditoriaUsuario[] = [
     hallazgos: 2,
     documentosSolicitados: 12,
     documentosSubidos: 12,
+    mensajesNuevos: 0,
     descripcion: 'Verificación del cumplimiento de normas en procesos de contratación.',
     urgencia: 'media'
   },
@@ -125,6 +128,7 @@ const AUDITORIAS_MOCK: AuditoriaUsuario[] = [
     hallazgos: 1,
     documentosSolicitados: 15,
     documentosSubidos: 15,
+    mensajesNuevos: 0,
     descripcion: 'Evaluación de controles internos en procesos financieros y presupuestales.',
     urgencia: 'baja'
   }
@@ -216,10 +220,9 @@ const TOOLTIP_PORTAL_AUDITADO = {
 
 interface PortalUsuarioAuditadoProps {
   hideHeader?: boolean; // Nueva prop para ocultar el header cuando se invoca desde otro componente
-  onVolver?: () => void; // Función para volver al portal principal
 }
 
-export function PortalUsuarioAuditado({ hideHeader = false, onVolver }: PortalUsuarioAuditadoProps = {}) {
+export function PortalUsuarioAuditado({ hideHeader = false }: PortalUsuarioAuditadoProps = {}) {
   const [auditorias] = useState<AuditoriaUsuario[]>(AUDITORIAS_MOCK);
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<AuditoriaUsuario | null>(null);
   const [vistaActual, setVistaActual] = useState<'lista' | 'detalle'>('lista');
@@ -258,26 +261,6 @@ export function PortalUsuarioAuditado({ hideHeader = false, onVolver }: PortalUs
       {!hideHeader && (
         <div className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            {/* Botón Volver - Si viene del portal principal */}
-            {onVolver && (
-              <motion.button
-                onClick={onVolver}
-                className="inline-flex items-center gap-2 px-4 py-2.5 mb-4 bg-white border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 hover:border-[#2962FF] hover:text-[#2962FF] font-semibold transition-all shadow-sm hover:shadow-md group"
-                whileHover={{ scale: 1.02, x: -2 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <svg 
-                  className="w-5 h-5 group-hover:-translate-x-1 transition-transform" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-                Volver al Dashboard
-              </motion.button>
-            )}
-            
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
@@ -323,6 +306,18 @@ export function PortalUsuarioAuditado({ hideHeader = false, onVolver }: PortalUs
                     </p>
                   </div>
                   <Clock className="w-8 h-8 text-amber-500" />
+                </div>
+              </Card>
+
+              <Card className="p-4 border-l-4 border-red-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-600 mb-1">Mensajes Nuevos</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {auditorias.reduce((sum, a) => sum + a.mensajesNuevos, 0)}
+                    </p>
+                  </div>
+                  <Bell className="w-8 h-8 text-red-500" />
                 </div>
               </Card>
 
@@ -445,6 +440,11 @@ function TarjetaAuditoria({ auditoria, onVerDetalle }: TarjetaAuditoriaProps) {
                   <Badge className={`${estadoBadge[auditoria.estado].bg} ${estadoBadge[auditoria.estado].text} border ${estadoBadge[auditoria.estado].border}`}>
                     {auditoria.estado}
                   </Badge>
+                  {auditoria.mensajesNuevos > 0 && (
+                    <Badge className="bg-red-100 text-red-800 border border-red-200">
+                      {auditoria.mensajesNuevos} nuevos
+                    </Badge>
+                  )}
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
                   {auditoria.titulo}
@@ -538,10 +538,12 @@ interface DetalleAuditoriaProps {
 }
 
 function DetalleAuditoria({ auditoria, onVolver }: DetalleAuditoriaProps) {
-  const [tabActiva, setTabActiva] = useState<'documentos' | 'hallazgos'>('documentos');
+  const [tabActiva, setTabActiva] = useState<'documentos' | 'mensajes' | 'hallazgos'>('documentos');
+  const [nuevoMensaje, setNuevoMensaje] = useState('');
   const [archivoSeleccionado, setArchivoSeleccionado] = useState<File | null>(null);
 
   const documentos = DOCUMENTOS_MOCK[auditoria.id] || [];
+  const mensajes = MENSAJES_MOCK[auditoria.id] || [];
 
   const handleSubirDocumento = () => {
     if (!archivoSeleccionado) {
@@ -553,6 +555,16 @@ function DetalleAuditoria({ auditoria, onVolver }: DetalleAuditoriaProps) {
       description: `${archivoSeleccionado.name} se ha cargado exitosamente`
     });
     setArchivoSeleccionado(null);
+  };
+
+  const handleEnviarMensaje = () => {
+    if (!nuevoMensaje.trim()) {
+      toast.error('Escribe un mensaje primero');
+      return;
+    }
+
+    toast.success('Mensaje enviado');
+    setNuevoMensaje('');
   };
 
   return (
@@ -637,6 +649,21 @@ function DetalleAuditoria({ auditoria, onVolver }: DetalleAuditoriaProps) {
               Documentos ({documentos.length})
             </button>
             <button
+              onClick={() => setTabActiva('mensajes')}
+              className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+                tabActiva === 'mensajes'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Mensajes ({mensajes.length})
+              {auditoria.mensajesNuevos > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                  {auditoria.mensajesNuevos}
+                </span>
+              )}
+            </button>
+            <button
               onClick={() => setTabActiva('hallazgos')}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 tabActiva === 'hallazgos'
@@ -658,6 +685,15 @@ function DetalleAuditoria({ auditoria, onVolver }: DetalleAuditoriaProps) {
             archivoSeleccionado={archivoSeleccionado}
             setArchivoSeleccionado={setArchivoSeleccionado}
             onSubir={handleSubirDocumento}
+          />
+        )}
+
+        {tabActiva === 'mensajes' && (
+          <TabMensajes 
+            mensajes={mensajes}
+            nuevoMensaje={nuevoMensaje}
+            setNuevoMensaje={setNuevoMensaje}
+            onEnviar={handleEnviarMensaje}
           />
         )}
 
@@ -745,6 +781,64 @@ function TabDocumentos({
               </div>
             </div>
           ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function TabMensajes({ 
+  mensajes, 
+  nuevoMensaje, 
+  setNuevoMensaje, 
+  onEnviar 
+}: {
+  mensajes: Mensaje[];
+  nuevoMensaje: string;
+  setNuevoMensaje: (msg: string) => void;
+  onEnviar: () => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Conversación con el Auditor</h3>
+        <div className="space-y-4 mb-6 max-h-96 overflow-y-auto">
+          {mensajes.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex ${msg.rol === 'auditado' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div className={`max-w-lg ${
+                msg.rol === 'auditado' 
+                  ? 'bg-blue-50 border border-blue-200' 
+                  : 'bg-gray-50 border border-gray-200'
+              } rounded-lg p-4`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-sm font-semibold text-gray-900">{msg.remitente}</p>
+                  <span className="text-xs text-gray-500">{msg.fecha}</span>
+                </div>
+                <p className="text-sm text-gray-700">{msg.mensaje}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ENVIAR MENSAJE */}
+        <div className="flex gap-3">
+          <Input
+            placeholder="Escribe tu mensaje..."
+            value={nuevoMensaje}
+            onChange={(e) => setNuevoMensaje(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && onEnviar()}
+            className="flex-1"
+          />
+          <button
+            onClick={onEnviar}
+            className="px-6 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
+          >
+            <Send className="w-4 h-4" />
+            Enviar
+          </button>
         </div>
       </Card>
     </div>

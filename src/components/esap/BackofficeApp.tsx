@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { SidebarPremium } from './SidebarPremium';
 import { TopBar } from './TopBar';
 import { NotificationsProvider } from './NotificationsContext';
-// import { ExecutiveDashboard } from './ExecutiveDashboard';
+import { ExecutiveDashboard } from './ExecutiveDashboard';
 import { UsersPersonsModulePremium } from './UsersPersonsModulePremium';
 import { CarpetaDigitalModule } from './CarpetaDigitalModule';
 import { ReportsModuleV2 } from './ReportsModuleV2';
@@ -28,8 +28,8 @@ import { ModuloFirmaElectronicaWorldClass } from './firma-electronica/ModuloFirm
 // Importar módulo de Control Interno
 import { ControlInternoFull } from './control-interno/ControlInternoFull';
 
-// Importar Portal del Usuario Auditado (Material Design 3)
-import { PortalTransaccionalUsuarioMD3 } from './control-interno/PortalTransaccionalUsuarioMD3';
+// Importar Portal del Usuario Auditado
+import { PortalTransaccionalUsuario } from './control-interno/PortalTransaccionalUsuario';
 
 // Importar módulo de Control Interno Disciplinario
 import { ControlDisciplinarioFull } from './disciplinario/ControlDisciplinarioFull';
@@ -134,13 +134,12 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     : userData?.roles?.includes('GESTION_LEGAL')
     ? 'gestion-legal'
     : userData?.module === 'procesos'
-    ? 'control-interno'
-    : 'users-persons';
-    
+    ? 'control-interno' // Portal del Usuario Auditado
+    : 'dashboard';
   const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
-  const [currentSidebarModule, setCurrentSidebarModule] = useState<string>('');
+  const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(''); // Nuevo: Guardar el módulo del sidebar
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Estado para mobile sidebar
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
   const [certificatesPendingCount, setCertificatesPendingCount] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
@@ -176,6 +175,8 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     return (mappings[sidebarModule] as ModuleView) || 'dashboard';
   };
 
+  // Mock user data - en producción vendría del contexto de autenticación
+  // Si se pasan datos del usuario (userData), usar esos, sino usar mockUser
   const currentUser = userData || {
     name: 'Administrador ESAP',
     email: 'admin@esap.edu.co',
@@ -210,8 +211,16 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const renderModule = () => {
     switch (currentModule) {
       case 'dashboard':
-        // Redirigir a Estructura Organizacional como vista principal
-        return <EstructuraOrganizacionalModule />;
+        return <ExecutiveDashboard 
+          userRole={mockUser.role} 
+          restrictedMode={
+            userData?.module === 'certificados-laborales' 
+              ? 'certificados-laborales' 
+              : userData?.module === 'arquitectura-empresarial'
+              ? 'arquitectura-empresarial'
+              : undefined
+          }
+        />;
       
       case 'users-persons':
         return <UsersPersonsModulePremium />;
@@ -258,7 +267,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'control-interno':
         // Si es usuario de procesos (auditado), mostrar portal del usuario
         if (userData?.module === 'procesos') {
-          return <PortalTransaccionalUsuarioMD3 onLogout={handleLogout} />;
+          return <PortalTransaccionalUsuario onLogout={handleLogout} />;
         }
         // Si es usuario de Control Interno (auditor), mostrar dashboard completo
         return <ControlInternoFull />;
@@ -299,7 +308,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           onLogout={handleLogout}
         />;      
       default:
-        return <EstructuraOrganizacionalModule />;
+        return <ExecutiveDashboard userRole={mockUser.role} />;
     }
   };
 
@@ -324,7 +333,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
                 setCurrentModule(mappedModule);
                 setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
               }}
-              userEmail={currentUser.email}
               certificatesPendingCount={certificatesPendingCount}
               restrictedMode={
                 userData?.module === 'control-interno'

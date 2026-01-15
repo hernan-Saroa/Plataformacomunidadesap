@@ -90,27 +90,6 @@ export class LegalService {
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/decisiones`, data);
     }
 
-    // ===== EXCEPCIONES PROCESALES (Juzgamiento) =====
-    async getJuzgamientoExcepciones(radicado: string): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`);
-    }
-
-    async createJuzgamientoExcepcion(radicado: string, data: {
-        tipo: 'NULIDAD' | 'RECUSACION' | 'PRESCRIPCION' | 'IMPEDIMENTO' | 'OTRA';
-        descripcion: string;
-        fundamento?: string;
-        presentadoPor?: string;
-    }): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`, data);
-    }
-
-    async resolverExcepcion(excepcionId: string, data: {
-        estado: 'RESUELTA' | 'RECHAZADA';
-        resolucion: string;
-    }): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/excepciones/${excepcionId}/resolver`, data);
-    }
-
     async updateJuzgamientoProceso(radicado: string, data: any): Promise<any> {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}`, data);
     }
@@ -815,7 +794,7 @@ export class CorreosJuridicosService {
      * Trigger manual sync from Microsoft Graph
      */
     async syncCorreos(): Promise<{ synced: number; errors: number }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, {});
+        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`);
     }
 
     /**
@@ -896,14 +875,6 @@ export class CorreosJuridicosService {
         if (!response.ok) throw new Error('Error downloading attachment');
 
         const blob = await response.blob();
-        return window.URL.createObjectURL(blob);
-    }
-
-    /**
-     * Export email to ZIP
-     */
-    async exportCorreoZip(id: string): Promise<string> {
-        const blob = await apiClient.getBlob(`${SERVICE_PREFIX}/correos/${id}/export/zip`);
         return window.URL.createObjectURL(blob);
     }
 }
