@@ -558,9 +558,11 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
   // Obtener roles del usuario desde localStorage
   const obtenerRolesUsuario = (): { codes: string[]; names: string[] } => {
     try {
+      // 1. Intentar desde esap_user_data (guardado por authService)
       const userData = localStorage.getItem('esap_user_data');
       if (userData) {
         const user = JSON.parse(userData);
+        console.log('📦 Usuario desde esap_user_data:', user);
         // Los roles pueden venir en diferentes formatos
         if (user.roles && Array.isArray(user.roles)) {
           const codes: string[] = [];
@@ -574,24 +576,85 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
               if (r.name) names.push(r.name);
             }
           });
-          return { codes, names };
+          if (codes.length > 0 || names.length > 0) {
+            console.log('✅ Roles encontrados en esap_user_data:', { codes, names });
+            return { codes, names };
+          }
         }
         if (user.role) {
+          console.log('✅ Rol único encontrado en esap_user_data:', user.role);
           return { codes: [user.role], names: [user.role] };
         }
       }
-      // También intentar desde el token decodificado si está disponible
+      
+      // 2. Intentar desde esap-sesion-activa (guardado por App.tsx)
       const sesion = localStorage.getItem('esap-sesion-activa');
       if (sesion) {
         const sesionData = JSON.parse(sesion);
+        console.log('📦 Sesión desde esap-sesion-activa:', sesionData);
+        
+        // Buscar roles directamente en sesionData.roles
         if (sesionData.roles) {
           const roles = Array.isArray(sesionData.roles) ? sesionData.roles : [sesionData.roles];
+          console.log('✅ Roles encontrados en esap-sesion-activa.roles:', roles);
+          return { codes: roles, names: roles };
+        }
+        
+        // Buscar en sesionData.user.roles (formato usado por App.tsx)
+        if (sesionData.user && sesionData.user.roles) {
+          const userRoles = sesionData.user.roles;
+          const codes: string[] = [];
+          const names: string[] = [];
+          
+          if (Array.isArray(userRoles)) {
+            userRoles.forEach((r: any) => {
+              if (typeof r === 'string') {
+                codes.push(r);
+                names.push(r);
+              } else if (r && typeof r === 'object') {
+                if (r.code) codes.push(r.code);
+                if (r.name) names.push(r.name);
+              }
+            });
+          } else {
+            codes.push(userRoles);
+            names.push(userRoles);
+          }
+          
+          if (codes.length > 0 || names.length > 0) {
+            console.log('✅ Roles encontrados en sesion.user.roles:', { codes, names });
+            return { codes, names };
+          }
+        }
+        
+        // También buscar en userData dentro de la sesión
+        if (sesionData.userData && sesionData.userData.roles) {
+          const roles = Array.isArray(sesionData.userData.roles) 
+            ? sesionData.userData.roles 
+            : [sesionData.userData.roles];
+          console.log('✅ Roles encontrados en sesion.userData.roles:', roles);
           return { codes: roles, names: roles };
         }
       }
+      
+      // 3. Intentar decodificar el token JWT para extraer roles
+      const token = localStorage.getItem('esap_auth_token') || localStorage.getItem('esap-auth-token');
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          if (payload.roles) {
+            const roles = Array.isArray(payload.roles) ? payload.roles : [payload.roles];
+            console.log('✅ Roles encontrados en JWT token:', roles);
+            return { codes: roles, names: roles };
+          }
+        } catch (e) {
+          console.warn('⚠️ No se pudo decodificar el token JWT:', e);
+        }
+      }
     } catch (error) {
-      console.error('Error obteniendo roles del usuario:', error);
+      console.error('❌ Error obteniendo roles del usuario:', error);
     }
+    console.warn('⚠️ No se encontraron roles en ningún lugar de localStorage');
     return { codes: [], names: [] };
   };
 
@@ -616,17 +679,34 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
            String(rol).includes('Auditor Lider');
   });
   
-  // Si no hay roles específicos, permitir acciones por defecto (para desarrollo/testing)
+  // Lógica de permisos según roles:
+  // - AUDITOR_LIDER: Solo puede enviar a revisión (cuando tiene archivo y está en borrador/rechazado)
+  // - JEFE_CONTROL_INTERNO: Solo puede aprobar/rechazar (cuando está en revisión/aprobación)
+  // IMPORTANTE: El Jefe OCI NO puede enviar a revisión, solo aprobar/rechazar
   const puedeEnviar = (informe.estadoWorkflow === 'borrador' || informe.estadoWorkflow === 'rechazado') && 
                       informe.archivoUrl && 
-                      (esAuditor || todosLosRoles.length === 0);
+                      esAuditor && // SOLO auditores pueden enviar
+                      !esJefeOCI; // El jefe NO puede enviar (solo aprobar/rechazar)
   const puedeAprobar = (informe.estadoWorkflow === 'en-revision' || informe.estadoWorkflow === 'en-aprobacion') && 
-                      (esJefeOCI || todosLosRoles.length === 0);
+                      esJefeOCI && // SOLO el jefe puede aprobar
+                      !esAuditor; // Los auditores NO pueden aprobar
   const puedeRechazar = (informe.estadoWorkflow === 'en-revision' || informe.estadoWorkflow === 'en-aprobacion') && 
-                        (esJefeOCI || todosLosRoles.length === 0);
+                        esJefeOCI && // SOLO el jefe puede rechazar
+                        !esAuditor; // Los auditores NO pueden rechazar
   
   // Debug: mostrar roles detectados en consola
-  console.log('🔍 Roles detectados:', { rolesCodes, rolesNames, esJefeOCI, esAuditor, puedeEnviar, puedeAprobar, puedeRechazar });
+  console.log('🔍 Roles detectados:', { 
+    rolesCodes, 
+    rolesNames, 
+    todosLosRoles,
+    esJefeOCI, 
+    esAuditor, 
+    informeEstado: informe.estadoWorkflow,
+    tieneArchivo: !!informe.archivoUrl,
+    puedeEnviar, 
+    puedeAprobar, 
+    puedeRechazar 
+  });
   
   const estadoConfig = {
     ENVIADO: { label: 'Enviado', bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2 },

@@ -34,7 +34,8 @@ VALUES
   (21, '38678901', 'CC', 'Carolina Jiménez Ospina', 'Carolina', 'Jiménez Ospina', 'F', 'carolina.jimenez@esap.edu.co'),
   -- Usuarios de Control Interno
   (22, '123456794', 'CC', 'Jefe Control Interno', 'Jefe', 'Control Interno', 'M', 'jefe.control@esap.edu.co'),
-  (23, '123456795', 'CC', 'Auditor Líder', 'Auditor', 'Líder', 'M', 'auditor.lider@esap.edu.co')
+  (23, '123456795', 'CC', 'Auditor Líder', 'Auditor', 'Líder', 'M', 'auditor.lider@esap.edu.co'),
+  (24, '123456796', 'CC', 'OCIG Control Interno', 'OCIG', 'Control Interno', 'M', 'ocig@esap.edu.co')
 ON CONFLICT (id_tercero) DO NOTHING;
 
 
@@ -547,8 +548,9 @@ VALUES
   ('660e8400-e29b-41d4-a716-446655440014', 'DIR_TERRITORIAL',         'Director Territorial',               'Dirección de territoriales y sedes regionales',                  'directivo',      'Briefcase', '#f97316'),
   ('660e8400-e29b-41d4-a716-446655440015', 'COORDINADOR_CERT_LABORAL','Coordinador Certificados Laborales', 'Gestión de certificados laborales',                              'directivo',      'Briefcase', '#f97316'),
   ('660e8400-e29b-41d4-a716-446655440016', 'JEFE_CONTROL_INTERNO',    'Jefe de Control Interno',            'Jefe de Oficina de Control Interno con autoridad para aprobar ampliaciones de plazo de auditorías', 'directivo', 'Shield', '#dc2626'),
+  ('660e8400-e29b-41d4-a716-446655440017', 'GESTION_LEGAL',          'Gestión Legal',                      'Acceso al módulo de gestión legal', 'directivo', 'Briefcase', '#f97316'),
   -- Control Interno
-  ('660e8400-e29b-41d4-a716-446655440017', 'AUDITOR_LIDER',           'Auditor Líder',                      'Auditor líder responsable de ejecutar auditorías y solicitar ampliaciones de plazo', 'administrativo', 'FileCheck', '#f97316')
+  ('660e8400-e29b-41d4-a716-446655440018', 'AUDITOR_LIDER',           'Auditor Líder',                      'Auditor líder responsable de ejecutar auditorías y solicitar ampliaciones de plazo', 'administrativo', 'FileCheck', '#f97316')
 ON CONFLICT (code) DO NOTHING;
 
 
@@ -581,7 +583,8 @@ VALUES
   ('1d069f45-aae1-4176-ab03-55476e950a19', 'carolina.jimenez@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 21),
   -- Usuarios de Control Interno
   ('770e8400-e29b-41d4-a716-446655440007', 'jefe.control@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 22),
-  ('770e8400-e29b-41d4-a716-446655440008', 'auditor.lider@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 23)
+  ('770e8400-e29b-41d4-a716-446655440008', 'auditor.lider@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 23),
+  ('770e8400-e29b-41d4-a716-446655440009', 'ocig@esap.edu.co', '$2b$10$0hAnE/dXPJvVpIFJ48W0yOHy/s1EdCEb1IT/AScUsKmVuYY7BFfJS', 24)
 ON CONFLICT (id_user) DO NOTHING;
 
 -- ============================================
@@ -662,7 +665,9 @@ JOIN auth.role r
     OR (u.username IN ('planta@esap.edu.co',
                        'catedra@esap.edu.co')   AND r.code = 'DOCENTE')
     OR (u.username = 'cerlaboral@esap.edu.co'   AND r.code = 'COORDINADOR_CERT_LABORAL')
-    OR (u.username = 'jefe.control@esap.edu.co' AND r.code = 'JEFE_CONTROL_INTERNO')
+    OR (u.username IN ('jefe.control@esap.edu.co', 'ocig@esap.edu.co') AND r.code = 'JEFE_CONTROL_INTERNO')
     OR (u.username = 'auditor.lider@esap.edu.co' AND r.code = 'AUDITOR_LIDER')
+    OR (u.username = 'gestion.legal@esap.edu.co' AND r.code = 'GESTION_LEGAL')
+    OR (u.username = 'gestion.legal@esap.edu.co' AND r.code = 'GESTION_LEGAL')
   )
 ON CONFLICT (id_user, id_rol) DO NOTHING;

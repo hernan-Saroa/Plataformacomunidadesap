@@ -201,7 +201,7 @@ export default function App() {
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
         : [];
       const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL') || roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER');
       const emailLower = userEmail.toLowerCase();
 
       let nextView: Vista = 'portal';
@@ -221,9 +221,12 @@ export default function App() {
         nextUserType = 'administrativo';
         module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
         : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+        : roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER') ? 'control-interno'
         : 'control-interno';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
         : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+        : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+        : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
         : 'Control Interno';
         portalRoles.push(rolStr);
       } else {
@@ -437,7 +440,7 @@ export default function App() {
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
       const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL') || roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER');
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -480,17 +483,26 @@ export default function App() {
           vistaActualCurrent = 'backoffice';
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
           : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+          : roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER') ? 'control-interno'
           : 'control-interno';
-          setUserData({
+          const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
+          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+          : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+          : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
+          : 'Control Interno';
+          const userDataToSave = {
             name: userName,
             email: userEmail,
             personId: user?.person?.id || user?.id,
             roles,
             module: module // Módulo específico de acceso
-          });
-          const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
-          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-          : 'Control Interno';
+          };
+          setUserData(userDataToSave);
+          // También guardar en esap_user_data para que otros componentes puedan acceder
+          localStorage.setItem('esap_user_data', JSON.stringify({
+            ...user,
+            roles: user?.roles || roles.map((code: string) => ({ code, name: code }))
+          }));
           portalRoles.push(rolStr);
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           userType = 'docente';
