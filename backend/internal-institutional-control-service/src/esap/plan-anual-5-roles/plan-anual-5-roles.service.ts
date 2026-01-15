@@ -187,7 +187,7 @@ export class PlanAnual5RolesService {
     }));
   }
 
-  async addActividad(rolId: string, createDto: CreateActividadDto, usuarioId?: string): Promise<ActividadPlanAnual5> {
+  async addActividad(rolId: string, createDto: CreateActividadDto, usuarioId?: string | number): Promise<ActividadPlanAnual5> {
     const rol = await this.rolRepository.findOne({
       where: { id: rolId },
       relations: ['plan'],
@@ -469,7 +469,7 @@ export class PlanAnual5RolesService {
     tipoEvento: TipoEventoPlanAnual,
     accion: string,
     descripcion: string,
-    usuarioId?: string,
+    usuarioId?: string | number,
     estadoAnterior?: string,
     estadoNuevo?: string,
     cambios?: Array<{ campo: string; valorAnterior: string; valorNuevo: string }>
@@ -484,7 +484,25 @@ export class PlanAnual5RolesService {
       historial.tipoEvento = tipoEvento;
       historial.fecha = new Date(fecha);
       historial.hora = hora;
-      historial.usuarioId = usuarioId; // Usuario desde contexto de autenticación
+      // Convertir usuarioId a número (bigint)
+      // La columna usuario_id es BIGINT NOT NULL y referencia auth.personas(id_tercero)
+      // Si viene como string (incluyendo 'system'), convertir a número o usar 1 como valor por defecto
+      // Si viene como número, usarlo directamente
+      if (typeof usuarioId === 'number') {
+        historial.usuarioId = usuarioId;
+      } else if (typeof usuarioId === 'string') {
+        // Intentar convertir string a número si es posible
+        // Si es 'system' o cualquier string no numérico, usar 1 como valor por defecto
+        const usuarioIdNum = parseInt(usuarioId, 10);
+        if (isNaN(usuarioIdNum) || usuarioId === 'system' || usuarioId.trim() === '') {
+          historial.usuarioId = 1; // Usar 1 como valor por defecto para sistema
+        } else {
+          historial.usuarioId = usuarioIdNum;
+        }
+      } else {
+        // Si no hay usuarioId, usar 1 como valor por defecto (sistema)
+        historial.usuarioId = 1;
+      }
       historial.accion = accion;
       historial.descripcion = descripcion;
       historial.estadoAnterior = estadoAnterior;

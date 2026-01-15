@@ -16,6 +16,7 @@ import { WorkflowAprobacionService } from './services/workflow-aprobacion.servic
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { PlanMejoramiento } from '../planes-mejoramiento/entities/plan-mejoramiento.entity';
 import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
+import { PlanAnual5RolesModule } from '../plan-anual-5-roles/plan-anual-5-roles.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
       PlanMejoramiento,
       Hallazgo,
     ]),
+    PlanAnual5RolesModule, // Importar módulo del Plan Anual para vincular informes
   ],
   controllers: [InformesLeyController],
   providers: [

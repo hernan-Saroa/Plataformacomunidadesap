@@ -49,8 +49,8 @@ export class HistorialPlanAnual {
   @Column({ type: 'time', nullable: false })
   hora: string;
 
-  @Column({ name: 'usuario_id', type: 'uuid', nullable: true })
-  usuarioId?: string; // FK a auth.personas
+  @Column({ name: 'usuario_id', type: 'bigint', nullable: false })
+  usuarioId: number; // FK a auth.personas(id_tercero) - BIGINT
 
   @Column({ type: 'varchar', length: 255, nullable: false })
   accion: string;
