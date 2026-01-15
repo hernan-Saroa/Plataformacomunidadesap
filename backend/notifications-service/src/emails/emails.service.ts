@@ -3,6 +3,7 @@ import * as nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { SendValidationCodeDto } from './dto/send-validation-code.dto';
 import { SendEmailAttachmentDto } from './dto/send-email-attachment.dto';
+import { SendEmailDto } from './dto/send-email.dto';
 
 type SmtpConfig = {
   host: string;
@@ -152,6 +153,59 @@ export class EmailsService {
     } catch (error) {
       this.logger.error(`Error al enviar email con adjunto a ${data.to}: ${error?.message || error}`);
       throw new InternalServerErrorException('No se pudo enviar el email con adjunto');
+    }
+  }
+
+  async sendEmail(data: SendEmailDto) {
+    const config = this.getSmtpConfig();
+    if (!config) {
+      throw new BadRequestException('SMTP no configurado, no se puede enviar el email');
+    }
+
+    const transporter = await this.getTransporter(config);
+
+    const mailOptions = {
+      from: config.from,
+      to: data.to,
+      subject: data.subject,
+      text: data.text || 'Notificacion ESAP',
+      html:
+        data.html ||
+        `
+          <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
+            <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
+              <tr>
+                <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
+                  Notificaciones ESAP
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+                  ${data.subject}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+                  ${data.text || 'Notificacion ESAP'}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+                  ESAP - Escuela Superior de Administracion Publica
+                </td>
+              </tr>
+            </table>
+          </div>
+        `,
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      this.logger.log(`Email enviado a ${data.to}`);
+      return { sent: true };
+    } catch (error) {
+      this.logger.error(`Error al enviar email a ${data.to}: ${error?.message || error}`);
+      throw new InternalServerErrorException('No se pudo enviar el email');
     }
   }
 
