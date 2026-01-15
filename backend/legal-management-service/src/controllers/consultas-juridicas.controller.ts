@@ -68,8 +68,8 @@ export class ConsultasJuridicasController {
     }
 
     @Patch(':id/estado')
-    async updateEstado(@Param('id') id: string, @Body('estado') estado: string) {
-        return this.consultasService.updateEstado(id, estado);
+    async updateEstado(@Param('id') id: string, @Body('estado') estado: string, @Body('usuario') usuario?: string) {
+        return this.consultasService.updateEstado(id, estado, usuario);
     }
 
     @Patch(':id/respuesta')
@@ -94,16 +94,21 @@ export class ConsultasJuridicasController {
             observaciones: body.observaciones
         };
 
-        return this.consultasService.responder(id, respuestaData);
+        return this.consultasService.responder(id, respuestaData, body.usuario);
     }
 
     @Patch(':id/gestionar-respuesta')
     async gestionarRespuesta(
         @Param('id') id: string,
-        @Body() body: { respuesta: string, enviar: boolean | string }
+        @Body() body: { respuesta: string, enviar: boolean | string, usuario?: string }
     ) {
         const enviar = body.enviar === true || body.enviar === 'true';
-        return this.consultasService.updateRespuesta(id, body.respuesta, enviar);
+        return this.consultasService.updateRespuesta(id, body.respuesta, enviar, body.usuario);
+    }
+
+    @Get(':id/historial')
+    async getHistorial(@Param('id') id: string) {
+        return this.consultasService.getHistorial(id);
     }
 
     @Delete(':id')
