@@ -114,11 +114,16 @@ export class ProcesoCoactivoService {
                 activos++;
             }
 
-            // Calcular días vencidos para determinar críticos
-            const fechaVencimiento = new Date(proceso.obligacion?.fechaVencimiento);
-            const diasVencidos = Math.floor((hoy.getTime() - fechaVencimiento.getTime()) / (1000 * 60 * 60 * 24));
-            if (diasVencidos > 180 && proceso.estado !== 'FINALIZADO') {
-                criticos++;
+            // Calcular días para vencimiento (crítico si vence pronto o ya venció)
+            const fechaVencimiento = proceso.obligacion?.fechaVencimiento
+                ? new Date(proceso.obligacion.fechaVencimiento)
+                : null;
+            if (fechaVencimiento && proceso.estado !== 'FINALIZADO') {
+                const diasParaVencer = Math.floor((fechaVencimiento.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+                // Es crítico si vence en 7 días o menos (incluye ya vencidos)
+                if (diasParaVencer <= 7) {
+                    criticos++;
+                }
             }
 
             // Contar por estado

@@ -338,7 +338,46 @@ class DisciplinaryService {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        document.body.removeChild(link);
         window.URL.revokeObjectURL(downloadUrl);
+    }
+
+    /**
+     * Descargar archivo desde una URL directa (para Autos y otros)
+     */
+    async downloadFileFromUrl(url: string, filename: string): Promise<void> {
+        // La URL ya viene relativa del backend (ej: /control-disciplinario/api/v1/...)
+        // NO remover el slash inicial
+        const fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+        const token = localStorage.getItem('esap_access_token');
+        const headers: HeadersInit = {
+            'Accept': '*/*', // Aceptar cualquier cosa (binarios)
+        };
+
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(fullUrl, {
+            method: 'GET',
+            headers,
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Error ${response.status}: ${errorText || response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const objUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(objUrl);
     }
 
     /**
@@ -389,6 +428,10 @@ class DisciplinaryService {
 
     async deleteAuto(id: string): Promise<void> {
         return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-autos/${id}`);
+    }
+
+    async updateAuto(id: string, data: any): Promise<LegalAuto> {
+        return apiClient.put<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}`, data);
     }
 
     async updateAutoContent(id: string, contenidoHtml: string): Promise<LegalAuto> {

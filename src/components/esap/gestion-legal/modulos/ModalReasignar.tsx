@@ -1,27 +1,24 @@
 /**
  * ModalReasignar - Modal para reasignar un requerimiento a otro responsable
- * ✅ Diseño corporativo ESAP 2025 con ModalHeaderClean
- * ✅ Estructura estándar con header + content + footer
+ * ✅ Diseño corporativo ESAP 2025 - Abogados desde DB
  */
 
-import { useState } from 'react';
-import { X, User, Search, CheckCircle, AlertCircle, Users } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { useState, useEffect } from 'react';
+import { X, User, Search, CheckCircle, AlertCircle, Users, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
-import { Textarea } from '../../../ui/textarea';
 import { Card } from '../../../ui/card';
+import { legalService, ocService } from '../../../../services/api/legal.service';
 
-interface ResponsableESAP {
+interface Abogado {
   id: string;
-  nombre: string;
-  cargo: string;
-  area: string;
-  correo: string;
-  foto?: string;
+  nombreCompleto: string;
+  email?: string;
+  especialidad?: string;
 }
 
 interface ModalReasignarProps {
@@ -29,7 +26,7 @@ interface ModalReasignarProps {
   onClose: () => void;
   requerimientoId: string;
   responsableActual: string;
-  onReasignacion?: (nuevoResponsable: ResponsableESAP) => void;
+  onReasignacion?: (nuevoResponsable: Abogado) => void;
 }
 
 export function ModalReasignar({
@@ -40,96 +37,75 @@ export function ModalReasignar({
   onReasignacion
 }: ModalReasignarProps) {
   const [busqueda, setBusqueda] = useState('');
-  const [responsableSeleccionado, setResponsableSeleccionado] = useState<ResponsableESAP | null>(null);
-  const [justificacion, setJustificacion] = useState('');
+  const [responsableSeleccionado, setResponsableSeleccionado] = useState<Abogado | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [abogados, setAbogados] = useState<Abogado[]>([]);
+  const [loadingAbogados, setLoadingAbogados] = useState(true);
 
-  // Mock de responsables disponibles
-  const responsablesDisponibles: ResponsableESAP[] = [
-    {
-      id: '1',
-      nombre: 'Dra. María Fernández',
-      cargo: 'Jefe Oficina Jurídica',
-      area: 'Área Jurídica',
-      correo: 'maria.fernandez@esap.edu.co'
-    },
-    {
-      id: '2',
-      nombre: 'Dr. Carlos Pérez',
-      cargo: 'Abogado Senior',
-      area: 'Área Jurídica',
-      correo: 'carlos.perez@esap.edu.co'
-    },
-    {
-      id: '3',
-      nombre: 'Dra. Ana Rodríguez',
-      cargo: 'Abogada Contratación',
-      area: 'Área de Contratación',
-      correo: 'ana.rodriguez@esap.edu.co'
-    },
-    {
-      id: '4',
-      nombre: 'Dr. Luis Martínez',
-      cargo: 'Abogado Disciplinario',
-      area: 'Oficina de Control Interno Disciplinario',
-      correo: 'luis.martinez@esap.edu.co'
-    },
-    {
-      id: '5',
-      nombre: 'Dra. Patricia Gómez',
-      cargo: 'Coordinadora Legal',
-      area: 'Área Jurídica',
-      correo: 'patricia.gomez@esap.edu.co'
-    },
-    {
-      id: '6',
-      nombre: 'Dr. Jorge Ramírez',
-      cargo: 'Abogado Junior',
-      area: 'Área Jurídica',
-      correo: 'jorge.ramirez@esap.edu.co'
+  // Cargar abogados desde la DB
+  useEffect(() => {
+    if (isOpen) {
+      loadAbogados();
     }
-  ];
+  }, [isOpen]);
 
-  const responsablesFiltrados = responsablesDisponibles.filter(
-    r => r.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-         r.cargo.toLowerCase().includes(busqueda.toLowerCase()) ||
-         r.area.toLowerCase().includes(busqueda.toLowerCase())
+  const loadAbogados = async () => {
+    setLoadingAbogados(true);
+    try {
+      const lawyers = await legalService.getAbogados();
+      setAbogados(lawyers.map((a: any) => ({
+        id: a.id,
+        nombreCompleto: a.nombreCompleto || a.nombre || `${a.nombres} ${a.apellidos}`,
+        email: a.email,
+        especialidad: a.especialidad
+      })));
+    } catch (error) {
+      console.error('Error cargando abogados:', error);
+      toast.error('Error al cargar la lista de abogados');
+    } finally {
+      setLoadingAbogados(false);
+    }
+  };
+
+  const abogadosFiltrados = abogados.filter(
+    a => a.nombreCompleto.toLowerCase().includes(busqueda.toLowerCase()) ||
+      (a.especialidad?.toLowerCase().includes(busqueda.toLowerCase()))
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!responsableSeleccionado) {
       toast.error('⚠️ Debe seleccionar un responsable');
       return;
     }
 
-    if (!justificacion.trim()) {
-      toast.error('⚠️ Debe ingresar una justificación');
-      return;
-    }
-
     setIsSubmitting(true);
 
-    // Simular llamada a API
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      // Llamar al API para reasignar
+      await ocService.reasignarRequerimiento(requerimientoId, responsableSeleccionado.id);
 
-    toast.success(`✅ Requerimiento reasignado exitosamente a ${responsableSeleccionado.nombre}`);
-    
-    if (onReasignacion) {
-      onReasignacion(responsableSeleccionado);
+      toast.success(`✅ Requerimiento reasignado a ${responsableSeleccionado.nombreCompleto}`);
+
+      if (onReasignacion) {
+        onReasignacion(responsableSeleccionado);
+      }
+
+      setResponsableSeleccionado(null);
+      setBusqueda('');
+      onClose();
+    } catch (error: any) {
+      console.error('Error reasignando:', error);
+      toast.error(error.message || 'Error al reasignar el requerimiento');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
-    setResponsableSeleccionado(null);
-    setJustificacion('');
-    setBusqueda('');
-    onClose();
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-2xl h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="max-w-2xl h-[80vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
           Reasignar Requerimiento - {requerimientoId}
         </DialogTitle>
@@ -137,7 +113,7 @@ export function ModalReasignar({
           Reasignar requerimiento {requerimientoId} a otro responsable
         </DialogDescription>
 
-        {/* HEADER - flex-shrink-0 (siempre visible) */}
+        {/* HEADER */}
         <ModalHeaderClean
           icono={Users}
           colorIcono="purple"
@@ -147,10 +123,10 @@ export function ModalReasignar({
           onClose={onClose}
         />
 
-        {/* CONTENIDO - flex-1 overflow-y-auto (solo esto hace scroll) */}
+        {/* CONTENIDO */}
         <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
           <form onSubmit={handleSubmit} className="space-y-6">
-            
+
             {/* Responsable Actual */}
             <Card className="p-4 bg-blue-50 border-blue-200">
               <div className="flex items-center gap-3">
@@ -175,69 +151,62 @@ export function ModalReasignar({
                   type="text"
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
-                  placeholder="Buscar por nombre, cargo o área..."
+                  placeholder="Buscar por nombre o especialidad..."
                   className="pl-10"
                 />
               </div>
             </div>
 
-            {/* Lista de Responsables */}
+            {/* Lista de Abogados */}
             <div className="space-y-2">
               <Label className="text-sm font-bold text-gray-900">
-                Responsables Disponibles ({responsablesFiltrados.length})
+                Abogados Disponibles ({abogadosFiltrados.length})
               </Label>
               <div className="space-y-2 max-h-[300px] overflow-y-auto border border-gray-200 rounded-lg p-2 bg-white">
-                {responsablesFiltrados.length === 0 ? (
+                {loadingAbogados ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
+                    <span className="ml-2 text-sm text-gray-600">Cargando abogados...</span>
+                  </div>
+                ) : abogadosFiltrados.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No se encontraron responsables</p>
+                    <p className="text-sm">No se encontraron abogados</p>
                   </div>
                 ) : (
-                  responsablesFiltrados.map((responsable) => (
+                  abogadosFiltrados.map((abogado) => (
                     <button
-                      key={responsable.id}
+                      key={abogado.id}
                       type="button"
-                      onClick={() => setResponsableSeleccionado(responsable)}
-                      className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
-                        responsableSeleccionado?.id === responsable.id
+                      onClick={() => setResponsableSeleccionado(abogado)}
+                      className={`w-full p-3 rounded-lg border-2 transition-all text-left ${responsableSeleccionado?.id === abogado.id
                           ? 'border-purple-600 bg-purple-50'
                           : 'border-gray-200 bg-white hover:border-gray-300'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
-                          {responsable.nombre.charAt(0)}
+                          {abogado.nombreCompleto.charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <p className="font-bold text-gray-900">{responsable.nombre}</p>
-                            {responsableSeleccionado?.id === responsable.id && (
+                            <p className="font-bold text-gray-900">{abogado.nombreCompleto}</p>
+                            {responsableSeleccionado?.id === abogado.id && (
                               <CheckCircle className="w-4 h-4 text-purple-600 flex-shrink-0" />
                             )}
                           </div>
-                          <p className="text-xs text-gray-600">{responsable.cargo}</p>
-                          <p className="text-xs text-purple-600 mt-0.5">📧 {responsable.correo}</p>
+                          {abogado.especialidad && (
+                            <p className="text-xs text-gray-600">{abogado.especialidad}</p>
+                          )}
+                          {abogado.email && (
+                            <p className="text-xs text-purple-600 mt-0.5">📧 {abogado.email}</p>
+                          )}
                         </div>
                       </div>
                     </button>
                   ))
                 )}
               </div>
-            </div>
-
-            {/* Justificación */}
-            <div className="space-y-2">
-              <Label className="text-sm font-bold text-gray-900">
-                Justificación de la Reasignación <span className="text-red-500">*</span>
-              </Label>
-              <Textarea
-                value={justificacion}
-                onChange={(e) => setJustificacion(e.target.value)}
-                placeholder="Ingrese la justificación para reasignar este requerimiento..."
-                rows={4}
-                className="resize-none"
-                required
-              />
             </div>
 
             {/* Alerta informativa */}
@@ -248,8 +217,8 @@ export function ModalReasignar({
                   <div>
                     <p className="text-sm font-bold text-amber-900">Importante</p>
                     <p className="text-xs text-amber-700 mt-1">
-                      Se notificará automáticamente a <strong>{responsableSeleccionado.nombre}</strong> sobre la asignación de este requerimiento. 
-                      El responsable actual ({responsableActual}) recibirá una notificación del cambio.
+                      El nuevo responsable <strong>{responsableSeleccionado.nombreCompleto}</strong> será
+                      notificado y tendrá acceso completo al requerimiento.
                     </p>
                   </div>
                 </div>
@@ -258,39 +227,35 @@ export function ModalReasignar({
           </form>
         </div>
 
-        {/* FOOTER - flex-shrink-0 (siempre visible) */}
-        <div className="flex-shrink-0 px-6 py-4 bg-white border-t border-gray-200 flex items-center justify-between">
-          <p className="text-xs text-gray-600">
-            Los campos marcados con <span className="text-red-500 font-bold">*</span> son obligatorios
-          </p>
-          <div className="flex gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={isSubmitting}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSubmit}
-              disabled={isSubmitting || !responsableSeleccionado || !justificacion.trim()}
-              style={{ background: '#8B5CF6', color: '#FFFFFF' }}
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Reasignando...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Reasignar Requerimiento
-                </>
-              )}
-            </Button>
-          </div>
+        {/* FOOTER */}
+        <div className="flex-shrink-0 px-6 py-4 bg-white border-t flex justify-between items-center">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={isSubmitting}
+          >
+            <X className="w-4 h-4 mr-2" />
+            Cancelar
+          </Button>
+
+          <Button
+            onClick={handleSubmit}
+            disabled={!responsableSeleccionado || isSubmitting}
+            className="bg-purple-600 text-white hover:bg-purple-700"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Reasignando...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Confirmar Reasignación
+              </>
+            )}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

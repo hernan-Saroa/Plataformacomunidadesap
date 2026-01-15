@@ -691,77 +691,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-5xl h-[90vh] flex flex-col p-0">
-        <DialogTitle className="sr-only">
-          Expediente Judicial {expediente.id} - Vista Completa
-        </DialogTitle>
-        <DialogDescription className="sr-only">
-          Vista completa del expediente judicial {expediente.id} con información detallada de partes, documentos, actuaciones y tareas
-        </DialogDescription>
-        
-        {/* ==================== HEADER LIMPIO Y USABLE ==================== */}
-        <ModalHeaderClean
-          titulo={expediente.id}
-          subtitulo={expediente.medioControl}
-          icono={Scale}
-          colorIcono="blue"
-          badgePrincipal={expediente.etapa}
-          badges={
-            <>
-              <Badge 
-                variant="outline"
-                className="font-semibold flex items-center gap-1.5 border-2"
-                style={{ 
-                  borderColor: semaforo.color,
-                  color: semaforo.color
-                }}
-              >
-                <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: semaforo.color }} />
-                {semaforo.label} - {expediente.diasRestantes} días
-              </Badge>
-              <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
-                <FileText className="w-3 h-3 mr-1" />
-                {documentos.length} documentos
-              </Badge>
-              <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
-                <Activity className="w-3 h-3 mr-1" />
-                {actuaciones.length} actuaciones
-              </Badge>
-              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
-                <Target className="w-3 h-3 mr-1" />
-                {tareas.length} tareas
-              </Badge>
-            </>
-          }
-          onClose={onClose}
-        />
-        
-        {/* Barra de progreso del proceso */}
-        <div className="flex-shrink-0 bg-gray-50 border-b px-6 py-3">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-bold text-gray-700">
-              Progreso del Proceso
-            </span>
-            <span className="text-xs font-black text-blue-600">
-              {porcentajeTiempo}%
-            </span>
-          </div>
-          <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
-            <div 
-              className="h-full transition-all duration-500 bg-gradient-to-r from-green-500 to-blue-500"
-              style={{ width: `${porcentajeTiempo}%` }}
-            />
-          </div>
-          <div className="flex justify-between mt-1">
-            <span className="text-xs text-gray-600">
-              {expediente.diasTotales - expediente.diasRestantes} días transcurridos
-            </span>
-            <span className="text-xs text-gray-600">
-              {expediente.diasRestantes} días restantes
-            </span>
-          </div>
-        </div>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent hideCloseButton className="max-w-5xl h-[90vh] flex flex-col p-0">
+          <DialogTitle className="sr-only">
+            Expediente Judicial {expediente.id} - Vista Completa
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Vista completa del expediente judicial {expediente.id} con información detallada de partes, documentos, actuaciones y tareas
+          </DialogDescription>
 
           {/* ==================== HEADER LIMPIO Y USABLE ==================== */}
           <ModalHeaderClean
@@ -825,6 +762,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
               </span>
             </div>
           </div>
+
+
 
           {/* ==================== CONTENIDO CON TABS ==================== */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
