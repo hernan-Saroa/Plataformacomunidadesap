@@ -11,6 +11,7 @@ import { ProgramaAnualModule } from './programa-anual/programa-anual.module';
 import { PlanIndividualModule } from './plan-individual/plan-individual.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { EvidenciasModule } from './evidencias/evidencias.module';
+import { TiposAuditoriaModule } from './tipos-auditoria/tipos-auditoria.module';
 
 /**
  * Módulo principal ESAP - Control Interno
@@ -32,6 +33,7 @@ import { EvidenciasModule } from './evidencias/evidencias.module';
     PlanIndividualModule,
     NotificacionesModule,
     EvidenciasModule,
+    TiposAuditoriaModule,
   ],
   exports: [
     PlanAnual5RolesModule,
@@ -46,6 +48,7 @@ import { EvidenciasModule } from './evidencias/evidencias.module';
     PlanIndividualModule,
     NotificacionesModule,
     EvidenciasModule,
+    TiposAuditoriaModule,
   ],
 })
 export class EsapModule {}

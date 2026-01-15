@@ -14,18 +14,26 @@
  * ✅ Modales de edición y creación
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Target, CheckSquare, List, ChevronRight, Info, Save,
   Plus, Edit, Eye, Clock, Users, HelpCircle, X, Trash2, AlertCircle,
-  FileText, Check, GripVertical
+  FileText, Check, GripVertical, Loader
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { toast } from 'sonner@2.0.3';
+import {
+  cargarTiposAuditoria,
+  crearTipoAuditoria,
+  actualizarTipoAuditoria,
+  eliminarTipoAuditoria,
+  mapearTipoAuditoriaBackendAFrontend,
+  mapearTipoAuditoriaFrontendABackend
+} from './services/tiposAuditoriaService';
 
 // ====================================
 // TIPOS
@@ -264,21 +272,41 @@ const COLORES_DISPONIBLES = [
 
 export function ConfiguracionAuditoriasModule() {
   const [tabActiva, setTabActiva] = useState<TabActiva>('listas'); // Cambio a 'listas' por defecto
-  const [tipos, setTipos] = useState<TipoAuditoria[]>(TIPOS_AUDITORIA_INICIAL);
+  const [tipos, setTipos] = useState<TipoAuditoria[]>([]);
   const [listas, setListas] = useState<ListaChequeo[]>(LISTAS_CHEQUEO_INICIAL);
   const [cambiosSinGuardar, setCambiosSinGuardar] = useState(false);
+  const [cargandoTipos, setCargandoTipos] = useState(true);
+
+  // Cargar tipos de auditoría desde el backend
+  useEffect(() => {
+    async function cargarDatos() {
+      setCargandoTipos(true);
+      try {
+        const tiposCargados = await cargarTiposAuditoria();
+        const tiposMapeados = tiposCargados.map(mapearTipoAuditoriaBackendAFrontend);
+        setTipos(tiposMapeados);
+      } catch (error) {
+        console.error('Error cargando tipos:', error);
+      } finally {
+        setCargandoTipos(false);
+      }
+    }
+    cargarDatos();
+  }, []);
 
   const handleGuardarCambios = () => {
-    // Simular guardado en backend
-    toast.success('✅ Configuración guardada exitosamente', {
-      description: `Se guardaron ${tipos.length} tipos y ${listas.length} listas de chequeo`
+    // Los cambios ya se guardan automáticamente, este botón ya no es necesario
+    // pero lo mantenemos por compatibilidad con el UI
+    toast.success('✅ Todos los cambios están guardados', {
+      description: `Hay ${tipos.length} tipos y ${listas.length} listas de chequeo`
     });
     setCambiosSinGuardar(false);
   };
 
   const handleActualizarTipos = (nuevosTipos: TipoAuditoria[]) => {
+    // Esta función se mantiene para compatibilidad, pero los cambios ya se guardan automáticamente
     setTipos(nuevosTipos);
-    setCambiosSinGuardar(true);
+    setCambiosSinGuardar(false);
   };
 
   const handleActualizarListas = (nuevasListas: ListaChequeo[]) => {
@@ -414,9 +442,10 @@ export function ConfiguracionAuditoriasModule() {
 interface SeccionTiposAuditoriaProps {
   tipos: TipoAuditoria[];
   onActualizar: (tipos: TipoAuditoria[]) => void;
+  cargandoTipos?: boolean;
 }
 
-function SeccionTiposAuditoria({ tipos, onActualizar }: SeccionTiposAuditoriaProps) {
+function SeccionTiposAuditoria({ tipos, onActualizar, cargandoTipos }: SeccionTiposAuditoriaProps) {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [tipoEditando, setTipoEditando] = useState<TipoAuditoria | null>(null);
 
@@ -430,27 +459,35 @@ function SeccionTiposAuditoria({ tipos, onActualizar }: SeccionTiposAuditoriaPro
     setModalAbierto(true);
   };
 
-  const handleGuardarTipo = (tipoNuevo: TipoAuditoria) => {
+  const handleGuardarTipo = async (tipoNuevo: TipoAuditoria) => {
+    const datosBackend = mapearTipoAuditoriaFrontendABackend(tipoNuevo);
+    
     if (tipoEditando) {
-      const tiposActualizados = tipos.map(t => 
-        t.id === tipoEditando.id ? tipoNuevo : t
-      );
-      onActualizar(tiposActualizados);
-      toast.success('✅ Tipo de auditoría actualizado');
+      // Actualizar tipo existente
+      const tipoActualizado = await actualizarTipoAuditoria(tipoEditando.id, datosBackend);
+      if (tipoActualizado) {
+        const tipoMapeado = mapearTipoAuditoriaBackendAFrontend(tipoActualizado);
+        const tiposActualizados = tipos.map(t => 
+          t.id === tipoEditando.id ? tipoMapeado : t
+        );
+        onActualizar(tiposActualizados);
+      }
     } else {
-      const nuevoTipo = {
-        ...tipoNuevo,
-        id: `tipo-${Date.now()}`,
-        auditoriasProgramadas: 0
-      };
-      onActualizar([...tipos, nuevoTipo]);
-      toast.success('✅ Nuevo tipo de auditoría creado');
+      // Crear nuevo tipo
+      const nuevoTipo = await crearTipoAuditoria(datosBackend);
+      if (nuevoTipo) {
+        const tipoMapeado = mapearTipoAuditoriaBackendAFrontend(nuevoTipo);
+        onActualizar([...tipos, tipoMapeado]);
+      }
     }
-    setModalAbierto(false);
-    setTipoEditando(null);
+    
+    if (tipoEditando || !tipos.find(t => t.id === tipoNuevo.id)) {
+      setModalAbierto(false);
+      setTipoEditando(null);
+    }
   };
 
-  const handleEliminarTipo = (tipoId: string) => {
+  const handleEliminarTipo = async (tipoId: string) => {
     const tipo = tipos.find(t => t.id === tipoId);
     if (tipo && tipo.auditoriasProgramadas > 0) {
       toast.error('❌ No se puede eliminar un tipo con auditorías programadas', {
@@ -459,8 +496,10 @@ function SeccionTiposAuditoria({ tipos, onActualizar }: SeccionTiposAuditoriaPro
       return;
     }
 
-    onActualizar(tipos.filter(t => t.id !== tipoId));
-    toast.success('✅ Tipo de auditoría eliminado');
+    const eliminado = await eliminarTipoAuditoria(tipoId);
+    if (eliminado) {
+      onActualizar(tipos.filter(t => t.id !== tipoId));
+    }
   };
 
   return (
@@ -477,67 +516,80 @@ function SeccionTiposAuditoria({ tipos, onActualizar }: SeccionTiposAuditoriaPro
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {tipos.map((tipo) => (
-            <motion.div
-              key={tipo.id}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="p-4 border-2 rounded-xl"
-              style={{
-                borderColor: tipo.activa ? tipo.color : '#E5E7EB',
-                background: tipo.activa ? tipo.color + '10' : '#F9FAFB'
-              }}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <Badge variant="outline" className="mb-2" style={{ background: tipo.color + '20', color: tipo.color, border: 'none' }}>
-                    {tipo.codigo}
-                  </Badge>
-                  <h4 className="font-bold text-gray-900">{tipo.nombre}</h4>
+        {cargandoTipos ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader className="w-8 h-8 animate-spin text-blue-600" />
+            <span className="ml-3 text-gray-600">Cargando tipos de auditoría...</span>
+          </div>
+        ) : tipos.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">
+            <CheckSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
+            <p>No hay tipos de auditoría configurados</p>
+            <p className="text-sm mt-2">Haz clic en "Nuevo Tipo" para crear uno</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {tipos.map((tipo) => (
+              <motion.div
+                key={tipo.id}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="p-4 border-2 rounded-xl"
+                style={{
+                  borderColor: tipo.activa ? tipo.color : '#E5E7EB',
+                  background: tipo.activa ? tipo.color + '10' : '#F9FAFB'
+                }}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <Badge variant="outline" className="mb-2" style={{ background: tipo.color + '20', color: tipo.color, border: 'none' }}>
+                      {tipo.codigo}
+                    </Badge>
+                    <h4 className="font-bold text-gray-900">{tipo.nombre}</h4>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleEditarTipo(tipo)}
+                      title="Editar tipo"
+                    >
+                      <Edit className="w-3 h-3" />
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleEliminarTipo(tipo.id)}
+                      title="Eliminar tipo"
+                      className="text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => handleEditarTipo(tipo)}
-                    title="Editar tipo"
-                  >
-                    <Edit className="w-3 h-3" />
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => handleEliminarTipo(tipo.id)}
-                    title="Eliminar tipo"
-                    className="text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+                <p className="text-sm text-gray-600 mb-3">{tipo.descripcion}</p>
+                <div className="grid grid-cols-2 gap-2 text-sm mb-2">
+                  <div className="flex items-center gap-1 text-gray-600">
+                    <Clock className="w-3 h-3" />
+                    <span>{tipo.duracionPromedio} días</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-gray-600">
+                    <Users className="w-3 h-3" />
+                    <span>{tipo.equipoPromedio} personas</span>
+                  </div>
                 </div>
-              </div>
-              <p className="text-sm text-gray-600 mb-3">{tipo.descripcion}</p>
-              <div className="grid grid-cols-2 gap-2 text-sm mb-2">
-                <div className="flex items-center gap-1 text-gray-600">
-                  <Clock className="w-3 h-3" />
-                  <span>{tipo.duracionPromedio} días</span>
-                </div>
-                <div className="flex items-center gap-1 text-gray-600">
-                  <Users className="w-3 h-3" />
-                  <span>{tipo.equipoPromedio} personas</span>
-                </div>
-              </div>
-              {tipo.auditoriasProgramadas > 0 && (
-                <div className="mt-2 pt-2 border-t border-gray-200">
-                  <span className="text-xs text-gray-500">
-                    {tipo.auditoriasProgramadas} auditorías programadas
-                  </span>
-                </div>
-              )}
-            </motion.div>
-          ))}
-        </div>
+                {tipo.auditoriasProgramadas > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <span className="text-xs text-gray-500">
+                      {tipo.auditoriasProgramadas} auditorías programadas
+                    </span>
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </div>
+        )}
       </Card>
 
       <AnimatePresence>
