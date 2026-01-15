@@ -35,6 +35,7 @@ import { ModalCompartir } from './ModalCompartir';
 import { ModalCrearTarea } from './ModalCrearTarea';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 
 interface ModalExpedienteProps {
   isOpen: boolean;
@@ -47,6 +48,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
   const [tabActivo, setTabActivo] = useState('general');
+
+  // ✅ Obtener tipos de procesos desde configuración para resolver nombres
+  const { tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
 
   // Estados para modales
   const [modalNotificarAbierto, setModalNotificarAbierto] = useState(false);
@@ -867,7 +871,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       </div>
                       <div className="flex items-start justify-between py-2">
                         <span className="text-xs text-gray-500">Tipo de Proceso:</span>
-                        <span className="text-sm font-bold text-gray-900">{expediente.tipo || 'No especificado'}</span>
+                        <span className="text-sm font-bold text-gray-900">
+                          {(() => {
+                            // Intentar resolver nombre desde tipoProceso ID
+                            const tipoId = (expediente as any).tipoProceso || expediente.tipo;
+                            if (tipoId) {
+                              const tipoConfig = tiposProcesosActivos.find(t => t.id === tipoId);
+                              return tipoConfig ? tipoConfig.nombre : tipoId;
+                            }
+                            return 'No especificado';
+                          })()}
+                        </span>
                       </div>
                     </div>
                   </Card>

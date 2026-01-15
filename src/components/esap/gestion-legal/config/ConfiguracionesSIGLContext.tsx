@@ -6,6 +6,8 @@
 
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { toast } from 'sonner';
+import { legalService } from '../../../../services/api/legal.service';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 
 // ============ TIPOS ============
 
@@ -42,32 +44,34 @@ export interface ConfiguracionModulo {
   tiposProcesos?: TipoProcesoJudicial[];
 }
 
-// ============ DATOS MOCK DE CASOS POR ESTADO ============
+// ============ DATOS DE CASOS POR ESTADO ============
+// ⚠️ TODO: Implementar conteo dinámico desde API en lugar de datos estáticos
+// Por ahora, inicializamos en 0 y esperamos que se actualice dinámicamente
+// Los IDs deben coincidir con los estados definidos en configuracionesIniciales
 export const casosPorEstado: Record<string, Record<string, number>> = {
   'defensa-judicial': {
-    'radicado': 3,
-    'en-estudio': 5,
-    'contestacion': 0,
-    'pruebas': 2,
-    'alegatos': 1,
-    'sentencia': 0,
-    'archivo': 0,
+    'NOTIFICADA': 0,
+    'CONTESTACIÓN': 0,
+    'PROBATORIA': 0,
+    'ALEGATOS': 0,
+    'SENTENCIA': 0,
+    'APELACIÓN': 0,
+    'CUMPLIMIENTO': 0,
   },
   'juzgamiento': {
-    'queja': 2,
-    'indagacion': 4,
-    'formulacion-cargos': 0,
-    'descargos': 1,
-    'pruebas-juzgamiento': 3,
-    'fallo': 0,
-    'archivo-juzgamiento': 0,
+    'E1_AVOCAMIENTO': 0,
+    'E2_DESCARGOS': 0,
+    'E3_PRUEBAS': 0,
+    'E4_ALEGATOS': 0,
+    'E5_FALLO_1I': 0,
+    'E6_APELACIÓN': 0,
+    'E7_FALLO_2I': 0,
   },
   'asesoria-juridica': {
-    'solicitud': 6,
-    'revision': 2,
-    'concepto': 0,
-    'aprobacion': 1,
-    'entregado': 0,
+    'RADICADA': 0,
+    'ANÁLISIS': 0,
+    'RESPUESTA': 0,
+    'ENVIADA': 0,
   },
 };
 
@@ -78,13 +82,13 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
     id: 'defensa-judicial',
     nombre: 'Defensa Judicial',
     estados: [
-      { id: 'radicado', nombre: 'Radicado', color: '#3B82F6', orden: 1, activo: true },
-      { id: 'en-estudio', nombre: 'En Estudio', color: '#8B5CF6', orden: 2, activo: true },
-      { id: 'contestacion', nombre: 'Contestación', color: '#F59E0B', orden: 3, activo: true },
-      { id: 'pruebas', nombre: 'Pruebas', color: '#06B6D4', orden: 4, activo: true },
-      { id: 'alegatos', nombre: 'Alegatos', color: '#EC4899', orden: 5, activo: true },
-      { id: 'sentencia', nombre: 'Sentencia', color: '#10B981', orden: 6, activo: true },
-      { id: 'archivo', nombre: 'Archivo', color: '#6B7280', orden: 7, activo: true },
+      { id: 'NOTIFICADA', nombre: 'Notificada', color: '#3B82F6', orden: 1, activo: true },
+      { id: 'CONTESTACIÓN', nombre: 'Contestación', color: '#8B5CF6', orden: 2, activo: true },
+      { id: 'PROBATORIA', nombre: 'Probatoria', color: '#06B6D4', orden: 3, activo: true },
+      { id: 'ALEGATOS', nombre: 'Alegatos', color: '#EC4899', orden: 4, activo: true },
+      { id: 'SENTENCIA', nombre: 'Sentencia', color: '#10B981', orden: 5, activo: true },
+      { id: 'APELACIÓN', nombre: 'Apelación', color: '#F59E0B', orden: 6, activo: true },
+      { id: 'CUMPLIMIENTO', nombre: 'Cumplimiento', color: '#6B7280', orden: 7, activo: true },
     ],
     tiempos: [
       { id: 'estudio-inicial', tipo: 'Estudio Inicial', dias: 5, alertaDias: 2, activo: true },
@@ -107,13 +111,13 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
     id: 'juzgamiento',
     nombre: 'Juzgamiento Disciplinario',
     estados: [
-      { id: 'queja', nombre: 'Queja', color: '#3B82F6', orden: 1, activo: true },
-      { id: 'indagacion', nombre: 'Indagación', color: '#8B5CF6', orden: 2, activo: true },
-      { id: 'formulacion-cargos', nombre: 'Formulación de Cargos', color: '#F59E0B', orden: 3, activo: true },
-      { id: 'descargos', nombre: 'Descargos', color: '#EC4899', orden: 4, activo: true },
-      { id: 'pruebas-juzgamiento', nombre: 'Pruebas de Juzgamiento', color: '#06B6D4', orden: 5, activo: true },
-      { id: 'fallo', nombre: 'Fallo', color: '#10B981', orden: 6, activo: true },
-      { id: 'archivo-juzgamiento', nombre: 'Archivo', color: '#6B7280', orden: 7, activo: true },
+      { id: 'E1_AVOCAMIENTO', nombre: 'Avocamiento', color: '#3B82F6', orden: 1, activo: true },
+      { id: 'E2_DESCARGOS', nombre: 'Descargos', color: '#8B5CF6', orden: 2, activo: true },
+      { id: 'E3_PRUEBAS', nombre: 'Pruebas', color: '#06B6D4', orden: 3, activo: true },
+      { id: 'E4_ALEGATOS', nombre: 'Alegatos', color: '#EC4899', orden: 4, activo: true },
+      { id: 'E5_FALLO_1I', nombre: 'Fallo 1ª Instancia', color: '#10B981', orden: 5, activo: true },
+      { id: 'E6_APELACIÓN', nombre: 'Apelación', color: '#F59E0B', orden: 6, activo: true },
+      { id: 'E7_FALLO_2I', nombre: 'Fallo 2ª Instancia', color: '#6B7280', orden: 7, activo: true },
     ],
     tiempos: [
       { id: 'indagacion-preliminar', tipo: 'Indagación Preliminar', dias: 6, alertaDias: 2, activo: true },
@@ -125,11 +129,10 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
     id: 'asesoria-juridica',
     nombre: 'Asesoría Jurídica',
     estados: [
-      { id: 'solicitud', nombre: 'Solicitud', color: '#3B82F6', orden: 1, activo: true },
-      { id: 'revision', nombre: 'Revisión', color: '#8B5CF6', orden: 2, activo: true },
-      { id: 'concepto', nombre: 'Concepto', color: '#F59E0B', orden: 3, activo: true },
-      { id: 'aprobacion', nombre: 'Aprobación', color: '#10B981', orden: 4, activo: true },
-      { id: 'entregado', nombre: 'Entregado', color: '#6B7280', orden: 5, activo: true },
+      { id: 'RADICADA', nombre: 'Radicada', color: '#3B82F6', orden: 1, activo: true },
+      { id: 'ANÁLISIS', nombre: 'En Análisis', color: '#8B5CF6', orden: 2, activo: true },
+      { id: 'RESPUESTA', nombre: 'En Respuesta', color: '#F59E0B', orden: 3, activo: true },
+      { id: 'ENVIADA', nombre: 'Enviada', color: '#10B981', orden: 4, activo: true },
     ],
     tiempos: [
       { id: 'analisis-inicial', tipo: 'Análisis Inicial', dias: 3, alertaDias: 1, activo: true },
@@ -163,18 +166,52 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const [configuraciones, setConfiguraciones] = useState<ConfiguracionModulo[]>(configuracionesIniciales);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
 
-  // Cargar configuraciones desde localStorage al iniciar
+  // Cargar configuraciones desde API
   useEffect(() => {
-    const configGuardadas = localStorage.getItem('sigl-configuraciones');
-    if (configGuardadas) {
+    const loadConfig = async () => {
       try {
-        const parsed = JSON.parse(configGuardadas);
-        setConfiguraciones(parsed);
-        console.log('✅ Configuraciones SIGL cargadas desde localStorage');
+        console.log('🔄 Cargando configuraciones desde API...');
+        const keys = ['defensa-judicial', 'juzgamiento', 'asesoria-juridica'];
+
+        // Cargar todas las configuraciones en paralelo
+        const responses = await Promise.all(
+          keys.map(key =>
+            legalService.getConfiguration(key)
+              .then(res => res?.value || null) // Asegurar que devolvemos null si no hay valor
+              .catch(err => {
+                console.warn(`⚠️ Config no encontrada para ${key}, usando defecto.`, err);
+                return null;
+              })
+          )
+        );
+
+        // Mapear respuestas a ConfiguracionModulo: filtrar null Y undefined
+        const configsCargadas = responses.filter(c => c !== null && c !== undefined) as ConfiguracionModulo[];
+
+        if (configsCargadas.length > 0) {
+          // Fusionar con las iniciales para asegurar que existen todos los módulos
+          const mergedConfigs = configuracionesIniciales.map(inicial => {
+            // Buscar si existe configuración cargada para este módulo
+            const cargada = configsCargadas.find(c => c && c.id === inicial.id);
+            if (cargada) {
+              return { ...inicial, ...cargada };
+            }
+            return inicial;
+          });
+
+          setConfiguraciones(mergedConfigs);
+          console.log('✅ Configuraciones mezcladas exitosamente (Backend + Defaults):', mergedConfigs.length);
+        } else {
+          console.log('⚠️ No se encontraron configuraciones en backend, usando defaults completos.');
+          // No necesitamos hacer setConfiguraciones porque ya inicia con configuracionesIniciales
+        }
       } catch (error) {
-        console.error('❌ Error al cargar configuraciones:', error);
+        console.error('❌ Error general al cargar configuraciones:', error);
+        // No mostrar toast de error para no alarmar al usuario en primera carga si falla
+        console.warn('Usando configuraciones por defecto debido a error de conexión.');
       }
-    }
+    };
+    loadConfig();
   }, []);
 
   // Obtener configuración de un módulo específico
@@ -203,22 +240,28 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   // Guardar configuraciones
   const guardarConfiguraciones = async (): Promise<void> => {
     try {
-      // Guardar en localStorage
-      localStorage.setItem('sigl-configuraciones', JSON.stringify(configuraciones));
+      console.log('💾 Guardando configuraciones en backend...');
 
-      // Aquí se enviaría al backend en producción
-      // await fetch('/api/sigl/configuraciones', { method: 'POST', body: JSON.stringify(configuraciones) });
+      // Guardar cada módulo individualmente en el backend
+      await Promise.all(
+        configuraciones.map(config =>
+          legalService.saveConfiguration(config.id, config)
+        )
+      );
+
+      // Guardar en localStorage como backup
+      localStorage.setItem('sigl-configuraciones', JSON.stringify(configuraciones));
 
       setCambiosPendientes(false);
       toast.success('Configuraciones guardadas correctamente', {
-        description: 'Los cambios se han aplicado a todos los módulos de Gestión Legal',
+        description: 'Los cambios se han aplicado a todos los módulos',
         duration: 3000
       });
 
-      console.log('✅ Configuraciones SIGL guardadas:', configuraciones);
+      console.log('✅ Configuraciones sincronizadas con servidor');
     } catch (error) {
       console.error('❌ Error al guardar configuraciones:', error);
-      toast.error('Error al guardar configuraciones');
+      toast.error('Error al guardar configuraciones en el servidor');
     }
   };
 
@@ -271,5 +314,6 @@ export function useConfiguracionModulo(moduloId: string) {
     configuracion: getConfiguracionModulo(moduloId),
     estadosActivos: getEstadosActivos(moduloId),
     tiposProcesosActivos: getTiposProcesosActivos(moduloId),
+    tiempos: getConfiguracionModulo(moduloId)?.tiempos || []
   };
 }
