@@ -122,18 +122,21 @@ export class CorreosJuridicosService {
     }
 
     /**
-     * Sync emails from Microsoft Graph to local database
-     * Uses pagination to ensure all emails are fetched
+     * Sync one page of emails from Microsoft Graph
+     * Returns nextLink for pagination
      */
-    async syncInbox(): Promise<{ synced: number; errors: number; total: number }> {
-        this.logger.log('Starting inbox sync with pagination...');
+    async syncInbox(nextLink?: string): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
+        this.logger.log(`Starting inbox sync page (NextLink provided: ${!!nextLink})...`);
 
         let synced = 0;
         let errors = 0;
 
         try {
-            // Fetch all emails with pagination (up to 500)
-            const emails = await this.graphService.getAllEmailsWithPaging(500);
+            // Fetch one page (50 emails default)
+            const pageResult = await this.graphService.getEmailsPage(nextLink, 50);
+            const emails = pageResult.emails;
+            const newNextLink = pageResult.nextLink;
+
             this.logger.log(`Retrieved ${emails.length} emails from Graph API`);
 
             for (const email of emails) {
@@ -180,68 +183,66 @@ export class CorreosJuridicosService {
                                 }
                             }
                         }
-                        continue;
-                    }
+                    } else {
+                        // Classify the email
+                        const classification = this.classifyEmail(email.subject || '', email.bodyPreview || '');
 
-                    // Classify the email
-                    const classification = this.classifyEmail(email.subject || '', email.bodyPreview || '');
+                        // Create new record
+                        const newCorreo = this.correoRepo.create({
+                            graphMessageId: email.id,
+                            asunto: email.subject || '(Sin asunto)',
+                            remitenteEmail: email.from?.emailAddress?.address || '',
+                            remitenteNombre: email.from?.emailAddress?.name || '',
+                            destinatarios: JSON.stringify(email.toRecipients || []),
+                            fechaRecepcion: new Date(email.receivedDateTime),
+                            cuerpoTexto: email.bodyPreview || '',
+                            tieneAdjuntos: email.hasAttachments || false,
+                            leido: email.isRead || false,
+                            archivado: false,
+                            urgente: classification.urgente,
+                            tipo: classification.tipo,
+                            categoria: classification.categoria,
+                            moduloSugerido: classification.moduloSugerido,
+                            confianzaClasificacion: classification.confianza,
+                        });
 
-                    // Create new record
-                    const newCorreo = this.correoRepo.create({
-                        graphMessageId: email.id,
-                        asunto: email.subject || '(Sin asunto)',
-                        remitenteEmail: email.from?.emailAddress?.address || '',
-                        remitenteNombre: email.from?.emailAddress?.name || '',
-                        destinatarios: JSON.stringify(email.toRecipients || []),
-                        fechaRecepcion: new Date(email.receivedDateTime),
-                        cuerpoTexto: email.bodyPreview || '',
-                        tieneAdjuntos: email.hasAttachments || false,
-                        leido: email.isRead || false,
-                        archivado: false,
-                        urgente: classification.urgente,
-                        tipo: classification.tipo,
-                        categoria: classification.categoria,
-                        moduloSugerido: classification.moduloSugerido,
-                        confianzaClasificacion: classification.confianza,
-                    });
+                        const savedCorreo = await this.correoRepo.save(newCorreo);
+                        synced++;
+                        this.logger.log(`Synced: ${email.subject?.substring(0, 50)}...`);
 
-                    const savedCorreo = await this.correoRepo.save(newCorreo);
-
-                    // Sync attachments if email has any
-                    if (email.hasAttachments) {
-                        try {
-                            const attachments = await this.graphService.getAttachments(email.id);
-                            for (const att of attachments) {
-                                const adjunto = this.adjuntoRepo.create({
-                                    correoId: savedCorreo.id,
-                                    graphMessageId: email.id,
-                                    graphAttachmentId: att.id,
-                                    nombre: att.name,
-                                    contentType: att.contentType,
-                                    tamanio: att.size,
-                                    descargado: false,
-                                });
-                                await this.adjuntoRepo.save(adjunto);
+                        // Sync attachments if email has any
+                        if (email.hasAttachments) {
+                            try {
+                                const attachments = await this.graphService.getAttachments(email.id);
+                                for (const att of attachments) {
+                                    const adjunto = this.adjuntoRepo.create({
+                                        correoId: savedCorreo.id,
+                                        graphMessageId: email.id,
+                                        graphAttachmentId: att.id,
+                                        nombre: att.name,
+                                        contentType: att.contentType,
+                                        tamanio: att.size,
+                                        descargado: false,
+                                    });
+                                    await this.adjuntoRepo.save(adjunto);
+                                }
+                                this.logger.log(`  -> Synced ${attachments.length} attachment(s)`);
+                            } catch (attError) {
+                                this.logger.error(`Error syncing attachments for email ${email.id}:`, attError);
                             }
-                            this.logger.log(`  -> Synced ${attachments.length} attachment(s)`);
-                        } catch (attError) {
-                            this.logger.error(`Error syncing attachments for email ${email.id}:`, attError);
                         }
                     }
-
-                    synced++;
-                    this.logger.log(`Synced: ${email.subject?.substring(0, 50)}...`);
                 } catch (emailError) {
                     this.logger.error(`Error syncing email ${email.id}:`, emailError);
                     errors++;
                 }
             }
 
-            this.logger.log(`Sync complete. New: ${synced}, Errors: ${errors}, Total scanned: ${emails.length}`);
-            return { synced, errors, total: emails.length };
-        } catch (error) {
-            this.logger.error('Error during inbox sync:', error);
-            throw error;
+            this.logger.log(`Sync page complete. New/Updated: ${synced}, Errors: ${errors}, Next page available: ${!!newNextLink}`);
+            return { synced, errors, total: emails.length, nextLink: newNextLink };
+        } catch (error: any) {
+            this.logger.error(`CRITICAL Error during inbox sync: ${error.message}`, error.stack);
+            throw new Error(`Failed to sync emails: ${error.message}`);
         }
     }
 

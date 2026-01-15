@@ -5,8 +5,10 @@
  * CONECTADO A CONTEXT API - Los cambios afectan a todos los módulos de Gestión Legal
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle } from 'lucide-react';
+import { legalService } from '../../../../services/api/legal.service';
+import { toast } from 'sonner';
 import {
   DndContext,
   closestCenter,
@@ -59,6 +61,69 @@ export function ConfiguracionesSIGL() {
   const [tipoProcesoAEliminar, setTipoProcesoAEliminar] = useState<TipoProcesoJudicial | null>(null);
 
   const moduloActual = configuraciones.find(m => m.id === moduloActivo);
+
+  // ✅ Estado para conteo dinámico de expedientes por estado (reemplaza casosPorEstado mock)
+  const [conteoDinamico, setConteoDinamico] = useState<Record<string, Record<string, number>>>({
+    'defensa-judicial': {},
+    'juzgamiento': {},
+    'asesoria-juridica': {},
+  });
+
+  // Cargar conteo de expedientes dinámicamente
+  useEffect(() => {
+    const loadExpedientesCounts = async () => {
+      try {
+        // Cargar expedientes de Defensa Judicial
+        const expedientes = await legalService.getExpedientes();
+        const conteoDefensa: Record<string, number> = {};
+        expedientes.forEach((exp: any) => {
+          const etapa = exp.etapaProcesal || exp.etapa || '';
+          conteoDefensa[etapa] = (conteoDefensa[etapa] || 0) + 1;
+        });
+
+        // Cargar consultas jurídicas
+        const consultas = await legalService.getConsultasJuridicas();
+        const conteoAsesoria: Record<string, number> = {};
+
+        // Mapeo de estados de backend a frontend para Asesoría Jurídica
+        const mapEstadoAsesoria: Record<string, string> = {
+          'en_radicacion': 'RADICADA',
+          'asignado': 'RADICADA',
+          'en_analisis': 'ANÁLISIS',
+          'en_revision': 'ANÁLISIS',
+          'respondido': 'RESPUESTA',
+          'cerrado': 'ENVIADA',
+          'vencido': 'RADICADA'
+        };
+
+        consultas.forEach((c: any) => {
+          const estadoBackend = c.estado || 'en_radicacion';
+          const etapaFrontend = mapEstadoAsesoria[estadoBackend] || 'RADICADA';
+          conteoAsesoria[etapaFrontend] = (conteoAsesoria[etapaFrontend] || 0) + 1;
+        });
+
+        // Cargar procesos de juzgamiento
+        const juzgamiento = await legalService.getJuzgamientoProcesos();
+        const conteoJuzgamiento: Record<string, number> = {};
+        juzgamiento.forEach((j: any) => {
+          const etapa = j.etapa || 'E1_AVOCAMIENTO';
+          conteoJuzgamiento[etapa] = (conteoJuzgamiento[etapa] || 0) + 1;
+        });
+
+        setConteoDinamico({
+          'defensa-judicial': conteoDefensa,
+          'juzgamiento': conteoJuzgamiento,
+          'asesoria-juridica': conteoAsesoria,
+        });
+
+        console.log('✅ Conteo dinámico de expedientes cargado:', { conteoDefensa, conteoAsesoria, conteoJuzgamiento });
+      } catch (error) {
+        console.error('Error cargando conteo de expedientes:', error);
+      }
+    };
+
+    loadExpedientesCounts();
+  }, [moduloActivo]);
 
   // ============ FUNCIONES DE ESTADOS ============
 
@@ -336,8 +401,8 @@ export function ConfiguracionesSIGL() {
                   key={modulo.id}
                   onClick={() => setModuloActivo(modulo.id)}
                   className={`flex-shrink-0 lg:w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors whitespace-nowrap lg:whitespace-normal ${moduloActivo === modulo.id
-                      ? 'bg-blue-50 text-blue-900 font-semibold'
-                      : 'text-gray-700 hover:bg-gray-50'
+                    ? 'bg-blue-50 text-blue-900 font-semibold'
+                    : 'text-gray-700 hover:bg-gray-50'
                     }`}
                 >
                   <div className="flex items-center gap-2">
@@ -370,10 +435,13 @@ export function ConfiguracionesSIGL() {
                     <div>
                       <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                         <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
-                        Estados / Columnas Kanban
+                        {moduloActivo === 'asesoria-juridica' ? 'Etapas del Proceso' : 'Estados / Columnas Kanban'}
                       </h2>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                        Define las columnas que aparecerán en el tablero Kanban de {moduloActual.nombre}
+                        {moduloActivo === 'asesoria-juridica'
+                          ? `Define las etapas del proceso de ${moduloActual.nombre}`
+                          : `Define las columnas que aparecerán en el tablero Kanban de ${moduloActual.nombre}`
+                        }
                       </p>
                     </div>
                     <button
@@ -605,8 +673,8 @@ export function ConfiguracionesSIGL() {
 
       {/* Modal: Eliminar Estado */}
       {showModalEliminarEstado && estadoAEliminar && (() => {
-        // Obtener cantidad de casos asignados al estado
-        const cantidadCasos = casosPorEstado[moduloActivo]?.[estadoAEliminar.id] || 0;
+        // Obtener cantidad de casos asignados al estado (conteo dinámico desde API)
+        const cantidadCasos = conteoDinamico[moduloActivo]?.[estadoAEliminar.id] || 0;
         const puedeEliminar = cantidadCasos === 0;
 
         return (
