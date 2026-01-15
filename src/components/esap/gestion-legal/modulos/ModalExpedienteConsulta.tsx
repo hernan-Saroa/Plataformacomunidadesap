@@ -292,7 +292,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
     try {
       toast.loading('Asignando abogado...', { id: 'assign-lawyer' });
-      await legalService.updateConsultaJuridica(consulta.uuid, { abogadoAsignadoId: abogadoSeleccionado });
+      await legalService.updateConsultaJuridica(consulta.uuid || '', { abogadoAsignadoId: abogadoSeleccionado });
 
       // Actualizar UI localmente (idealmente recargar consulta completa)
       const abogado = abogados.find(a => a.id === abogadoSeleccionado);
@@ -476,7 +476,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     toast.loading('📦 Preparando descarga ZIP...', { id: 'download-docs' });
 
     try {
-      const url = legalService.getDocumentosConsultaDownloadUrl(consulta.uuid);
+      const baseUrl = getServiceUrl('legal');
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      const url = `${baseUrl}${prefix}/consultas-juridicas/${consulta.uuid}/documentos/download-zip`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -487,7 +489,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `consulta_juridica_${consulta.id || consulta.uuid}.zip`;
+      link.download = `Consultas_${consulta.id || consulta.uuid}.zip`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -607,7 +609,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           {/* HEADER - flex-shrink-0 (siempre visible) */}
           <ModalHeaderClean
             icono={FileQuestion}
-            colorIcono={semaforo.diasRestantes <= 3 ? 'red' : semaforo.diasRestantes <= 5 ? 'orange' : 'green'}
+            colorIcono={consulta.diasRestantes <= 3 ? 'red' : consulta.diasRestantes <= 5 ? 'orange' : 'green'}
             titulo={`Consulta ${consulta.id}`}
             subtitulo={consulta.temaJuridico}
             badgePrincipal={`${semaforo.icon} ${semaforo.label}`}

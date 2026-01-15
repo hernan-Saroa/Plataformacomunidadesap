@@ -4,13 +4,19 @@
  */
 
 import React, { useState } from 'react';
-import { AlertTriangle, Target, Shield, Activity, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Target, Shield, Activity, TrendingUp, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
+
+interface ControlItem {
+  id: string;
+  descripcion: string;
+  efectividad: number;
+}
 
 interface ModalNuevoRiesgoProps {
   open: boolean;
@@ -26,7 +32,6 @@ const initialFormState = {
   tipoRiesgo: 'GESTION',
   causas: '',
   consecuencias: '',
-  controles: '',
   responsable: '',
   probabilidadInherente: '3',
   impactoInherente: '3',
@@ -37,6 +42,7 @@ const initialFormState = {
 
 export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }: ModalNuevoRiesgoProps) {
   const [formData, setFormData] = useState(initialFormState);
+  const [controlesLista, setControlesLista] = useState<ControlItem[]>([]);
 
   const isEditing = !!riesgoEditar;
 
@@ -50,9 +56,6 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
         tipoRiesgo: riesgoEditar.tipoRiesgo || riesgoEditar.tipo || 'GESTION',
         causas: Array.isArray(riesgoEditar.causas) ? riesgoEditar.causas.join('\n') : '',
         consecuencias: Array.isArray(riesgoEditar.consecuencias) ? riesgoEditar.consecuencias.join('\n') : '',
-        controles: Array.isArray(riesgoEditar.controlesExistentes)
-          ? riesgoEditar.controlesExistentes.map((c: any) => c.descripcion).join('\n')
-          : '',
         responsable: riesgoEditar.responsable || '',
         probabilidadInherente: String(riesgoEditar.probabilidadInherente || 3),
         impactoInherente: String(riesgoEditar.impactoInherente || 3),
@@ -60,8 +63,19 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
         impactoResidual: String(riesgoEditar.impactoResidual || 2),
         etapa: riesgoEditar.etapa || 'IDENTIFICADO'
       });
+      // Cargar controles existentes
+      if (Array.isArray(riesgoEditar.controlesExistentes)) {
+        setControlesLista(riesgoEditar.controlesExistentes.map((c: any) => ({
+          id: c.id || `ctrl-${Date.now()}-${Math.random()}`,
+          descripcion: c.descripcion || '',
+          efectividad: c.efectividad || 0
+        })));
+      } else {
+        setControlesLista([]);
+      }
     } else {
       setFormData(initialFormState);
+      setControlesLista([]);
     }
   }, [riesgoEditar, open]);
 
@@ -108,12 +122,7 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
       impactoInherente: parseInt(formData.impactoInherente),
       causas: formData.causas ? formData.causas.split('\n').filter(Boolean) : [],
       consecuencias: formData.consecuencias ? formData.consecuencias.split('\n').filter(Boolean) : [],
-      controlesExistentes: formData.controles ?
-        formData.controles.split('\n').filter(Boolean).map(c => ({
-          id: `temp-${Math.random()}`,
-          descripcion: c,
-          efectividad: 0
-        })) : [],
+      controlesExistentes: controlesLista.filter(c => c.descripcion.trim()),
 
       // Campos calculados para frontend optimista (aunque backend los generará)
       zonaInherente,
@@ -130,6 +139,25 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Funciones para manejar controles
+  const agregarControl = () => {
+    setControlesLista(prev => [...prev, {
+      id: `ctrl-${Date.now()}`,
+      descripcion: '',
+      efectividad: 50
+    }]);
+  };
+
+  const eliminarControl = (id: string) => {
+    setControlesLista(prev => prev.filter(c => c.id !== id));
+  };
+
+  const actualizarControl = (id: string, campo: 'descripcion' | 'efectividad', valor: string | number) => {
+    setControlesLista(prev => prev.map(c =>
+      c.id === id ? { ...c, [campo]: valor } : c
+    ));
   };
 
   if (!open) return null;
@@ -423,17 +451,74 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                 <h3 className="font-bold text-gray-900">Controles y Responsabilidades</h3>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="controles" className="text-sm font-semibold text-gray-700">
-                  Controles Existentes
-                </Label>
-                <Textarea
-                  id="controles"
-                  placeholder="Describa los controles preventivos, detectivos o correctivos implementados..."
-                  value={formData.controles}
-                  onChange={(e) => handleChange('controles', e.target.value)}
-                  className="border-2 border-gray-300 focus:border-blue-500 min-h-[80px]"
-                />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold text-gray-700">
+                    Controles Existentes
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={agregarControl}
+                    className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Agregar Control
+                  </Button>
+                </div>
+
+                {controlesLista.length === 0 ? (
+                  <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center">
+                    <Shield className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">No hay controles definidos</p>
+                    <p className="text-xs text-gray-400">Haz clic en "Agregar Control" para añadir uno</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {controlesLista.map((control, idx) => (
+                      <div key={control.id} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-start gap-2 mb-2">
+                          <span className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+                            #{idx + 1}
+                          </span>
+                          <Input
+                            placeholder="Descripción del control..."
+                            value={control.descripcion}
+                            onChange={(e) => actualizarControl(control.id, 'descripcion', e.target.value)}
+                            className="flex-1 text-sm border-blue-200"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => eliminarControl(control.id)}
+                            className="text-red-500 hover:bg-red-50 p-1"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-medium text-gray-600 w-20">Efectividad:</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={control.efectividad}
+                            onChange={(e) => actualizarControl(control.id, 'efectividad', parseInt(e.target.value))}
+                            className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                          />
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded ${control.efectividad >= 70 ? 'bg-green-100 text-green-700' :
+                              control.efectividad >= 40 ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                            }`}>
+                            {control.efectividad}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -66,11 +66,19 @@ export class GraduationCertificatesController {
   @Post('autoservicio/verificar-graduado')
   @HttpCode(HttpStatus.OK)
   async verificarGraduado(
-    @Body() body: { idNumber: string; idIssueDate?: string },
+    @Body()
+    body: {
+      idNumber: string;
+      idIssueDate?: string;
+      graduationDate?: string;
+      lastName?: string;
+    },
   ) {
     return await this.service.verificarGraduado(
       body.idNumber,
       body.idIssueDate,
+      body.graduationDate,
+      body.lastName,
     );
   }
 
@@ -91,11 +99,19 @@ export class GraduationCertificatesController {
   @Post('autoservicio/generar-codigo')
   @HttpCode(HttpStatus.OK)
   async generarCodigoValidacion(
-    @Body() body: { idNumber: string; idIssueDate?: string },
+    @Body()
+    body: {
+      idNumber: string;
+      idIssueDate?: string;
+      graduationDate?: string;
+      lastName?: string;
+    },
   ) {
     return await this.service.generarCodigoValidacion(
       body.idNumber,
       body.idIssueDate,
+      body.graduationDate,
+      body.lastName,
     );
   }
 
