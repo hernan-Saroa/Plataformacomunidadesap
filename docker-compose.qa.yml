@@ -413,7 +413,7 @@ services:
       db:
         condition: service_healthy
     networks:
-      - superapp-net
+      - superapp-net-qa
     restart: unless-stopped
 
   # ============ POSTGRES ============
