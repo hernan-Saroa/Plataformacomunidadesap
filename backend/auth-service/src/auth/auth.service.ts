@@ -33,6 +33,11 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
+
+    if (user.roles.length === 0) {
+      throw new UnauthorizedException('El usuario no tiene roles asignados');
+    }
+
     const payload = {
       sub: user.id_user,
       username: user.username,
@@ -43,6 +48,23 @@ export class AuthService {
       expiresIn: '1h',
       secret: process.env.JWT_SECRET || 'dev-secret-esap',
     });
+    
+    const modules: string[] = [];
+    let super_admin: boolean = false;
+    for (const role of user.roles) {
+      if (role.code === 'SUPER_ADMIN') {
+        super_admin = true;
+      }
+      for (const permission of role.permissions) {
+        const code = permission.code.split('.')[0];
+        if (!modules.includes(code)) {
+          modules.push(code);
+        }
+      }
+    }
+    if (super_admin && modules.length === 0) {
+      modules.push('all');
+    }
 
     return {
       accessToken,
@@ -51,6 +73,7 @@ export class AuthService {
         username: user.username,
         roles: user.roles,
         person: user.person,
+        modules: modules,
       },
     };
   }

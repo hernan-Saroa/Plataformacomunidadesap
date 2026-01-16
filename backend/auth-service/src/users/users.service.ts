@@ -29,7 +29,7 @@ export class UsersService {
       where: {
         person: { email }
       },
-      relations: ['person', 'roles']
+      relations: ['person', 'roles', 'roles.permissions']
     });
   }
 

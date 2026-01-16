@@ -58,6 +58,7 @@ interface SidebarProps {
   userEmail?: string; // Email del usuario para restricciones específicas
   certificatesPendingCount?: number; // Número de solicitudes pendientes en Certificados
   restrictedMode?: 'certificados-laborales' | 'arquitectura-empresarial' | 'control-interno' | 'control-disciplinario' | 'registro-academico' | 'gestion-legal'; // Modo restringido para usuarios especiales
+  assignedModules?: string[]; // Códigos de módulos asignados al rol/usuario (puede incluir 'all')
 }
 
 const STORAGE_KEY = 'esap-sidebar-collapsed';
@@ -76,7 +77,47 @@ const contentTransition = {
   ease: [0.4, 0, 0.2, 1] // easing personalizado
 };
 
-export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode }: SidebarProps) {
+export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode, assignedModules = [] }: SidebarProps) {
+  const hasAllModules = assignedModules.includes('all');
+  const graduates = assignedModules.includes('graduates');
+  if (graduates) {
+    assignedModules.push('graduates-verification');
+  }
+  restrictedMode = undefined; // Nuevo: No restringir módulos en modo de desarrollo
+  const canShowModule = (module: ModuleType): boolean => {
+    if (hasAllModules) return true;
+    if (!assignedModules || assignedModules.length === 0) return false;
+    return assignedModules.includes(module);
+  };
+
+  // Secciones y visibilidad basada en módulos asignados
+  const gestionPersonasModules: ModuleType[] = [
+    'users-management',
+    'carpeta-digital',
+    'estructura-organizacional',
+    'programas-academicos',
+    'roles-administration',
+    'audit',
+    'reports',
+  ];
+  const hasGestionPersonas = gestionPersonasModules.some(canShowModule);
+
+  const gestionAcademicaModules: ModuleType[] = [
+    'graduates',
+    'graduates-verification',
+    'graduates-certificates',
+    'gestion-profesoral',
+    'certificados-laborales',
+    'firma-electronica',
+    'control-interno',
+    'control-disciplinario',
+    'gestion-legal',
+    'centro-alertas',
+  ];
+  const hasGestionAcademica = gestionAcademicaModules.some(canShowModule);
+
+  const hasArquitectura = canShowModule('arquitectura-empresarial');
+
   // Determinar si el sidebar debe estar colapsado (manual o forzado)
   const effectiveCollapsed = isCollapsed || forceCollapse;
 
@@ -222,6 +263,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     subtitle?: string,
     badge?: string
   ) => {
+    if (!canShowModule(module)) return null;
     const isActive = currentModule === module;
 
     const buttonContent = (
@@ -371,9 +413,13 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
       badge?: string
     }>
   ) => {
-    const isActive = currentModule === module || submenuItems?.some(item => currentModule === item.module || currentSidebarModule === item.module);
+    const visibleSubmenu = submenuItems?.filter(item => canShowModule(item.module)) || [];
+    const isActive = currentModule === module || visibleSubmenu.some(item => currentModule === item.module || currentSidebarModule === item.module);
     const isExpanded = expandedMenus[menuId];
-    const hasSubmenu = submenuItems && submenuItems.length > 0;
+    const hasSubmenu = visibleSubmenu.length > 0;
+    
+    // Ocultar menú si ni el principal ni algún submenú están permitidos
+    if (!canShowModule(module) && !hasSubmenu) return null;
 
     if (effectiveCollapsed) {
       return (
@@ -415,9 +461,9 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             <div>
               <div className="font-semibold text-white">{label}</div>
               {subtitle && <div className="text-white/70 mt-0.5">{subtitle}</div>}
-              {submenuItems && submenuItems.length > 0 && (
+              {hasSubmenu && (
                 <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
-                  {submenuItems.map((item, idx) => (
+                  {visibleSubmenu.map((item, idx) => (
                     <div key={idx} className="text-white/80 text-xs flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         <div className="w-1 h-1 rounded-full bg-white/40" />
@@ -476,7 +522,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               <span className="text-sm font-medium block truncate leading-tight">{label}</span>
               {subtitle && <span className="text-[11px] text-white/60 block truncate mt-0.5">{subtitle}</span>}
             </div>
-            {submenuItems?.some(item => item.badge) && (
+            {visibleSubmenu.some(item => item.badge) && (
               <motion.div
                 className="flex-shrink-0 w-2 h-2 rounded-full bg-red-500"
                 animate={{
@@ -524,7 +570,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               className="overflow-hidden"
             >
               <div className="ml-4 pl-3 border-l-2 border-white/10 mt-1.5 space-y-0.5">
-                {submenuItems.map((item, idx) => {
+                {visibleSubmenu.map((item, idx) => {
                   // Comparar con currentSidebarModule para subitems SIGL
                   const isSubmenuActive = currentSidebarModule === item.module || currentModule === item.module;
                   return (
@@ -678,301 +724,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
           {/* Navigation */}
           <nav className={`p-3 ${effectiveCollapsed ? 'px-2' : 'px-4'}`}>
             {/* ✅ FILTRO ESPECIAL: Si es admin@esap.edu.co, solo mostrar Gestión Personas */}
-            {userEmail === 'admin@esap.edu.co' ? (
-              <>
-                {/* SOLO MÓDULO DE GESTIÓN PERSONAS */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && renderSectionHeader('estructura-org', <Building2 className="w-3 h-3" />, 'GESTIÓN PERSONAS', 6)}
-                  </AnimatePresence>
-
-                  <AnimatePresence>
-                    {(effectiveCollapsed || expandedSections['estructura-org']) && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                        className="overflow-hidden"
-                      >
-                        {/* Usuarios - Gestión Simplificada CON SUBMENÚ */}
-                        {renderMenuWithSubmenu(
-                          'users-management-menu',
-                          'users-management',
-                          <Users className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Personas',
-                          '2 submódulos',
-                          [
-                            {
-                              module: 'users-management',
-                              icon: <Users className="w-4 h-4" />,
-                              label: 'Administración de Perfiles',
-                              subtitle: 'Gestión de usuarios'
-                            },
-                            {
-                              module: 'carpeta-digital',
-                              icon: <FolderOpen className="w-4 h-4" />,
-                              label: 'Carpeta Digital',
-                              subtitle: 'Documentos del usuario'
-                            }
-                          ]
-                        )}
-
-                        {/* Estructura Organizacional - NUEVO MÓDULO */}
-                        {renderMenuItem(
-                          'estructura-organizacional',
-                          <Building2 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Estructura Organizacional',
-                          'Sedes y territoriales'
-                        )}
-
-                        {/* Programas Académicos - NUEVO MÓDULO */}
-                        {renderMenuItem(
-                          'programas-academicos',
-                          <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Programas Académicos',
-                          'Gestión de programas'
-                        )}
-
-                        {/* Roles y Permisos - Administración completa con QR */}
-                        {renderMenuItem(
-                          'roles-administration',
-                          <Shield className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Roles y Permisos',
-                          'Gestión de roles del sistema y generación de QR'
-                        )}
-
-                        {renderMenuItem(
-                          'audit',
-                          <Activity className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Auditoría'
-                        )}
-
-                        {renderMenuItem(
-                          'reports',
-                          <BarChart3 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Reportes',
-                          'Analytics avanzado'
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </>
-            ) : restrictedMode === 'certificados-laborales' ? (
-              <>
-                {/* Dashboard Ejecutivo - Solo estadísticas de certificados */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <Zap className="w-3 h-3" />
-                        Principal
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {renderMenuItem(
-                    'executive',
-                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Dashboard Ejecutivo',
-                    'Métricas generales'
-                  )}
-                </div>
-
-                {/* Módulo de Certificados */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <Briefcase className="w-3 h-3" />
-                        Gestión Laboral
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {renderMenuItem(
-                    'certificados-laborales',
-                    <FileCheck className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Certificados Laborales',
-                    'Certificación laboral'
-                  )}
-                </div>
-              </>
-            ) : restrictedMode === 'arquitectura-empresarial' ? (
-              <>
-                {/* Dashboard Ejecutivo - Solo estadísticas de arquitectura */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <Zap className="w-3 h-3" />
-                        Principal
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {renderMenuItem(
-                    'executive',
-                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Dashboard Ejecutivo',
-                    'Métricas de Arquitectura'
-                  )}
-                </div>
-
-                {/* Módulo de Arquitectura Empresarial */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <Layout className="w-3 h-3" />
-                        Arquitectura TI
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {renderMenuItem(
-                    'arquitectura-empresarial',
-                    <Layout className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Arquitectura Empresarial',
-                    'MRAE MinTIC Colombia'
-                  )}
-                </div>
-              </>
-            ) : restrictedMode === 'control-interno' ? (
-              <>
-                {/* Módulo de Control Interno de Gestión - Único módulo visible */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <ClipboardList className="w-3 h-3" />
-                        Control Interno
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {renderMenuItem(
-                    'control-interno',
-                    <ClipboardList className="w-5 h-5" strokeWidth={2} />,
-                    'Control Interno Gestión',
-                    'Auditorías y hallazgos'
-                  )}
-                </div>
-              </>
-            ) : restrictedMode === 'control-disciplinario' ? (
-              <>
-                {/* Módulo de Control Interno Disciplinario - Único módulo visible */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <Gavel className="w-3 h-3" />
-                        Control Interno Disciplinario
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {renderMenuItem(
-                    'control-disciplinario',
-                    <Gavel className="w-5 h-5" strokeWidth={2} />,
-                    'Control Interno Disciplinario',
-                    'Procesos disciplinarios'
-                  )}
-                </div>
-              </>
-            ) : restrictedMode === 'registro-academico' ? (
-              <>
-                {/* Módulo de Registro Académico - Único módulo visible */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <GraduationCap className="w-3 h-3" />
-                        Registro Académico
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {renderMenuItem(
-                    'graduates-verification',
-                    <CheckCircle className="w-5 h-5" strokeWidth={2} />,
-                    'Graduados',
-                    'Lista de graduados'
-                  )}
-                </div>
-              </>
-            ) : restrictedMode === 'gestion-legal' ? (
-              <>
-                {/* Módulo de Gestión Legal - Único módulo visible */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <Scale className="w-3 h-3" />
-                        Gestión Legal
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {renderMenuItem(
-                    'gestion-legal',
-                    <Scale className="w-5 h-5" strokeWidth={2} />,
-                    'Gestión Legal (SIGL)',
-                    'Sistema Integrado Legal'
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
+            <>
                 {/* Principal Section */}
                 <div className="mb-8">
                   <AnimatePresence mode="wait">
@@ -999,228 +751,233 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 </div>
 
                 {/* Módulos Administrativos */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && renderSectionHeader('estructura-org', <Building2 className="w-3 h-3" />, 'GESTIÓN PERSONAS', 6)}
-                  </AnimatePresence>
+                {hasGestionPersonas && (
+                  <div className="mb-8">
+                    <AnimatePresence mode="wait">
+                      {!effectiveCollapsed && renderSectionHeader('estructura-org', <Building2 className="w-3 h-3" />, 'GESTIÓN PERSONAS', 6)}
+                    </AnimatePresence>
 
-                  <AnimatePresence>
-                    {(effectiveCollapsed || expandedSections['estructura-org']) && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                        className="overflow-hidden"
-                      >
-                        {/* Usuarios - Gestión Simplificada CON SUBMENÚ */}
-                        {renderMenuWithSubmenu(
-                          'users-management-menu',
-                          'users-management',
-                          <Users className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Personas',
-                          '2 submódulos',
-                          [
-                            {
-                              module: 'users-management',
-                              icon: <Users className="w-4 h-4" />,
-                              label: 'Administración de Perfiles',
-                              subtitle: 'Gestión de usuarios'
-                            },
-                            {
-                              module: 'carpeta-digital',
-                              icon: <FolderOpen className="w-4 h-4" />,
-                              label: 'Carpeta Digital',
-                              subtitle: 'Documentos del usuario'
-                            }
-                          ]
-                        )}
+                    <AnimatePresence>
+                      {(effectiveCollapsed || expandedSections['estructura-org']) && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                          className="overflow-hidden"
+                        >
+                          {/* Usuarios - Gestión Simplificada CON SUBMENÚ */}
+                          {renderMenuWithSubmenu(
+                            'users-management-menu',
+                            'users-management',
+                            <Users className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                            'Personas',
+                            '2 submódulos',
+                            [
+                              {
+                                module: 'users-management',
+                                icon: <Users className="w-4 h-4" />,
+                                label: 'Administración de Perfiles',
+                                subtitle: 'Gestión de usuarios'
+                              },
+                              {
+                                module: 'carpeta-digital',
+                                icon: <FolderOpen className="w-4 h-4" />,
+                                label: 'Carpeta Digital',
+                                subtitle: 'Documentos del usuario'
+                              }
+                            ]
+                          )}
 
-                        {/* Estructura Organizacional - NUEVO MÓDULO */}
-                        {renderMenuItem(
-                          'estructura-organizacional',
-                          <Building2 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Estructura Organizacional',
-                          'Sedes y territoriales'
-                        )}
+                          {/* Estructura Organizacional - NUEVO MÓDULO */}
+                          {renderMenuItem(
+                            'estructura-organizacional',
+                            <Building2 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                            'Estructura Organizacional',
+                            'Sedes y territoriales'
+                          )}
 
-                        {/* Programas Académicos - NUEVO MÓDULO */}
-                        {renderMenuItem(
-                          'programas-academicos',
-                          <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Programas Académicos',
-                          'Gestión de programas'
-                        )}
+                          {/* Programas Académicos - NUEVO MÓDULO */}
+                          {renderMenuItem(
+                            'programas-academicos',
+                            <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                            'Programas Académicos',
+                            'Gestión de programas'
+                          )}
 
-                        {/* Roles y Permisos - Administración completa con QR */}
-                        {renderMenuItem(
-                          'roles-administration',
-                          <Shield className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Roles y Permisos',
-                          'Gestión de roles del sistema y generación de QR'
-                        )}
+                          {/* Roles y Permisos - Administración completa con QR */}
+                          {renderMenuItem(
+                            'roles-administration',
+                            <Shield className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                            'Roles y Permisos',
+                            'Gestión de roles del sistema y generación de QR'
+                          )}
 
-                        {renderMenuItem(
-                          'audit',
-                          <Activity className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Auditoría'
-                        )}
+                          {renderMenuItem(
+                            'audit',
+                            <Activity className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                            'Auditoría'
+                          )}
 
-                        {renderMenuItem(
-                          'reports',
-                          <BarChart3 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                          'Reportes',
-                          'Analytics avanzado'
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                          {renderMenuItem(
+                            'reports',
+                            <BarChart3 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                            'Reportes',
+                            'Analytics avanzado'
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
 
                 {/* Gestión Académica */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && renderSectionHeader('gestion-usuarios', <GraduationCap className="w-3 h-3" />, 'GESTIÓN ACADÉMICA', 7)}
-                  </AnimatePresence>
+                {hasGestionAcademica && (
+                  <div className="mb-8">
+                    <AnimatePresence mode="wait">
+                      {!effectiveCollapsed && renderSectionHeader('gestion-usuarios', <GraduationCap className="w-3 h-3" />, 'GESTIÓN ACADÉMICA', 7)}
+                    </AnimatePresence>
 
-                  <AnimatePresence>
-                    {(effectiveCollapsed || expandedSections['gestion-usuarios']) && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                        className="overflow-hidden"
-                      >
-                        {/* Graduados - Con Submenús */}
-                        {renderMenuWithSubmenu(
-                          'graduates',
-                          'graduates-verification',
-                          <GraduationCap className="w-5 h-5" strokeWidth={2} />,
-                          'Registro Académico',
-                          '2 submódulos',
-                          [
-                            {
-                              module: 'graduates-verification',
-                              icon: <CheckCircle className="w-4 h-4" />,
-                              label: 'Graduados',
-                              subtitle: 'Lista de graduados'
-                            },
-                            {
-                              module: 'graduates-certificates',
-                              icon: <Award className="w-4 h-4" />,
-                              label: 'Verificación de títulos',
-                              subtitle: 'Verificación y solicitudes',
-                              badge: certificatesPendingCount > 0 ? certificatesPendingCount.toString() : undefined
-                            }
-                          ]
-                        )}
-
-                        {/* Gestión Profesoral - PTA */}
-                        {renderMenuItem(
-                          'gestion-profesoral',
-                          <BookOpen className="w-5 h-5" strokeWidth={2} />,
-                          'Gestión Profesoral',
-                          'PTAs y docentes'
-                        )}
-
-                        {renderMenuItem(
-                          'certificados-laborales',
-                          <FileCheck className="w-5 h-5" strokeWidth={2} />,
-                          'Certificados Laborales',
-                          'Certificación laboral'
-                        )}
-
-                        {renderMenuItem(
-                          'firma-electronica',
-                          <PenTool className="w-5 h-5" strokeWidth={2} />,
-                          'Firma Electrónica',
-                          'Firma de documentos'
-                        )}
-
-                        {/* Separador visual - Módulos de Control y Gestión Legal */}
-                        <AnimatePresence mode="wait">
-                          {!effectiveCollapsed && (
-                            <motion.div
-                              initial={{ opacity: 0, scaleX: 0 }}
-                              animate={{ opacity: 1, scaleX: 1 }}
-                              exit={{ opacity: 0, scaleX: 0 }}
-                              transition={{ duration: 0.3 }}
-                              className="my-4 mx-2"
-                            >
-                              <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                              <div className="text-[9px] text-white/40 uppercase tracking-widest text-center mt-2 font-semibold">
-                                Control y Legal
-                              </div>
-                            </motion.div>
+                    <AnimatePresence>
+                      {(effectiveCollapsed || expandedSections['gestion-usuarios']) && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                          className="overflow-hidden"
+                        >
+                          {/* Graduados - Con Submenús */}
+                          {renderMenuWithSubmenu(
+                            'graduates',
+                            'graduates-verification',
+                            <GraduationCap className="w-5 h-5" strokeWidth={2} />,
+                            'Registro Académico',
+                            '2 submódulos',
+                            [
+                              {
+                                module: 'graduates-verification',
+                                icon: <CheckCircle className="w-4 h-4" />,
+                                label: 'Graduados',
+                                subtitle: 'Lista de graduados'
+                              },
+                              {
+                                module: 'graduates-certificates',
+                                icon: <Award className="w-4 h-4" />,
+                                label: 'Verificación de títulos',
+                                subtitle: 'Verificación y solicitudes',
+                                badge: certificatesPendingCount > 0 ? certificatesPendingCount.toString() : undefined
+                              }
+                            ]
                           )}
-                        </AnimatePresence>
 
-                        {renderMenuItem(
-                          'control-interno',
-                          <ClipboardList className="w-5 h-5" strokeWidth={2} />,
-                          'Control Interno Gestión',
-                          'Auditorías y hallazgos'
-                        )}
+                          {/* Gestión Profesoral - PTA */}
+                          {renderMenuItem(
+                            'gestion-profesoral',
+                            <BookOpen className="w-5 h-5" strokeWidth={2} />,
+                            'Gestión Profesoral',
+                            'PTAs y docentes'
+                          )}
 
-                        {renderMenuItem(
-                          'control-disciplinario',
-                          <Gavel className="w-5 h-5" strokeWidth={2} />,
-                          'Control Interno Disciplinario',
-                          'Procesos disciplinarios'
-                        )}
+                          {renderMenuItem(
+                            'certificados-laborales',
+                            <FileCheck className="w-5 h-5" strokeWidth={2} />,
+                            'Certificados Laborales',
+                            'Certificación laboral'
+                          )}
 
-                        {/* ✅ NUEVO: Gestión Legal (SIGL) v5.0 */}
-                        {renderMenuItem(
-                          'gestion-legal',
-                          <Scale className="w-5 h-5" strokeWidth={2} />,
-                          'Gestión Legal (SIGL)',
-                          'Sistema Integrado Legal'
-                        )}
+                          {renderMenuItem(
+                            'firma-electronica',
+                            <PenTool className="w-5 h-5" strokeWidth={2} />,
+                            'Firma Electrónica',
+                            'Firma de documentos'
+                          )}
 
-                        {renderMenuItem(
-                          'centro-alertas',
-                          <Bell className="w-5 h-5" strokeWidth={2} />,
-                          'Centro de Alertas',
-                          'Configuración centralizada'
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                          {/* Separador visual - Módulos de Control y Gestión Legal */}
+                          <AnimatePresence mode="wait">
+                            {!effectiveCollapsed && (
+                              <motion.div
+                                initial={{ opacity: 0, scaleX: 0 }}
+                                animate={{ opacity: 1, scaleX: 1 }}
+                                exit={{ opacity: 0, scaleX: 0 }}
+                                transition={{ duration: 0.3 }}
+                                className="my-4 mx-2"
+                              >
+                                <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                                <div className="text-[9px] text-white/40 uppercase tracking-widest text-center mt-2 font-semibold">
+                                  Control y Legal
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+
+                          {renderMenuItem(
+                            'control-interno',
+                            <ClipboardList className="w-5 h-5" strokeWidth={2} />,
+                            'Control Interno Gestión',
+                            'Auditorías y hallazgos'
+                          )}
+
+                          {renderMenuItem(
+                            'control-disciplinario',
+                            <Gavel className="w-5 h-5" strokeWidth={2} />,
+                            'Control Interno Disciplinario',
+                            'Procesos disciplinarios'
+                          )}
+
+                          {/* ✅ NUEVO: Gestión Legal (SIGL) v5.0 */}
+                          {renderMenuItem(
+                            'gestion-legal',
+                            <Scale className="w-5 h-5" strokeWidth={2} />,
+                            'Gestión Legal (SIGL)',
+                            'Sistema Integrado Legal'
+                          )}
+
+                          {renderMenuItem(
+                            'centro-alertas',
+                            <Bell className="w-5 h-5" strokeWidth={2} />,
+                            'Centro de Alertas',
+                            'Configuración centralizada'
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
 
                 {/* Arquitectura Empresarial - SECCIÓN INDEPENDIENTE */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && renderSectionHeader('arquitectura', <Layout className="w-3 h-3" />, 'ARQUITECTURA EMPRESARIAL', 1)}
-                  </AnimatePresence>
+                {hasArquitectura && (
+                  <div className="mb-8">
+                    <AnimatePresence mode="wait">
+                      {!effectiveCollapsed && renderSectionHeader('arquitectura', <Layout className="w-3 h-3" />, 'ARQUITECTURA EMPRESARIAL', 1)}
+                    </AnimatePresence>
 
-                  <AnimatePresence>
-                    {(effectiveCollapsed || expandedSections['arquitectura']) && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                        className="overflow-hidden"
-                      >
-                        {/* Arquitectura Empresarial - Clickeable directo */}
-                        {renderMenuItem(
-                          'arquitectura-empresarial',
-                          <Layout className="w-5 h-5" strokeWidth={2} />,
-                          'Arquitectura Empresarial',
-                          'MRAE MinTIC Colombia'
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                    <AnimatePresence>
+                      {(effectiveCollapsed || expandedSections['arquitectura']) && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                          className="overflow-hidden"
+                        >
+                          {/* Arquitectura Empresarial - Clickeable directo */}
+                          {renderMenuItem(
+                            'arquitectura-empresarial',
+                            <Layout className="w-5 h-5" strokeWidth={2} />,
+                            'Arquitectura Empresarial',
+                            'MRAE MinTIC Colombia'
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
               </>
-            )}
           </nav>
 
           {/* Footer con keyboard hint */}
-          <AnimatePresence mode="wait">
+          {/* <AnimatePresence mode="wait">
             {!effectiveCollapsed && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
@@ -1237,7 +994,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 </div>
               </motion.div>
             )}
-          </AnimatePresence>
+          </AnimatePresence> */}
         </div>
       </aside>
 
