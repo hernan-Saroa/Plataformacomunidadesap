@@ -1085,7 +1085,6 @@ export const notificacionesApi = {
     leida?: boolean;
     prioridad?: string;
   }) => {
-    console.log('[notificacionesApi.obtenerPorUsuario] Llamado con usuarioId:', usuarioId, 'filtros:', filtros);
     const params = new URLSearchParams();
     if (filtros?.estado) params.append('estado', filtros.estado);
     if (filtros?.tipo) params.append('tipo', filtros.tipo);
@@ -1094,9 +1093,6 @@ export const notificacionesApi = {
     
     const queryString = params.toString();
     const endpoint = `/notificaciones/usuario/${usuarioId}${queryString ? `?${queryString}` : ''}`;
-    console.log('[notificacionesApi.obtenerPorUsuario] Endpoint:', endpoint);
-    console.log('[notificacionesApi.obtenerPorUsuario] API_BASE_URL:', API_BASE_URL);
-    console.log('[notificacionesApi.obtenerPorUsuario] URL completa:', `${API_BASE_URL}${endpoint}`);
     
     return apiRequest<any[]>(endpoint);
   },
@@ -1119,8 +1115,6 @@ export const notificacionesApi = {
     
     const queryString = params.toString();
     const endpoint = `/notificaciones/todas${queryString ? `?${queryString}` : ''}`;
-    console.log('[notificacionesApi.obtenerTodas] Endpoint:', endpoint);
-    console.log('[notificacionesApi.obtenerTodas] URL completa:', `${API_BASE_URL}${endpoint}`);
     
     return apiRequest<any[]>(endpoint);
   },

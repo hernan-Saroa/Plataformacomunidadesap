@@ -38,6 +38,9 @@ export class ListaChequeo {
   @Column({ type: 'text', nullable: true })
   descripcion?: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  categoria?: string;
+
   @Column({
     type: 'enum',
     enum: TipoListaChequeo,

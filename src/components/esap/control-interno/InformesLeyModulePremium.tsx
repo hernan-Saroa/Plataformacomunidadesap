@@ -85,9 +85,7 @@ export default function InformesLeyModulePremium() {
   const cargarInformes = async () => {
     try {
       setCargandoInformes(true);
-      console.log('📥 Cargando informes desde el servidor...');
       const response = await controlInternoApi.informesLey.getAll();
-      console.log('📦 Respuesta recibida:', response);
       
       if (response.success && response.data) {
         // Guardar todos los informes de ley
@@ -157,15 +155,6 @@ export default function InformesLeyModulePremium() {
         todasLasEntregas.sort((a, b) => 
           new Date(b.fechaGeneracion).getTime() - new Date(a.fechaGeneracion).getTime()
         );
-
-        console.log('📊 Informes mapeados:', todasLasEntregas.map(i => ({
-          id: i.id,
-          nombre: i.informeNombre,
-          periodo: i.periodo,
-          estado: i.estado,
-          estadoWorkflow: i.estadoWorkflow,
-          archivoUrl: i.archivoUrl
-        })));
 
         setInformesGenerados(todasLasEntregas);
       }
@@ -618,7 +607,6 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
       const userData = localStorage.getItem('esap_user_data');
       if (userData) {
         const user = JSON.parse(userData);
-        console.log('📦 Usuario desde esap_user_data:', user);
         // Los roles pueden venir en diferentes formatos
         if (user.roles && Array.isArray(user.roles)) {
           const codes: string[] = [];
@@ -633,12 +621,10 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
             }
           });
           if (codes.length > 0 || names.length > 0) {
-            console.log('✅ Roles encontrados en esap_user_data:', { codes, names });
             return { codes, names };
           }
         }
         if (user.role) {
-          console.log('✅ Rol único encontrado en esap_user_data:', user.role);
           return { codes: [user.role], names: [user.role] };
         }
       }
@@ -647,12 +633,10 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
       const sesion = localStorage.getItem('esap-sesion-activa');
       if (sesion) {
         const sesionData = JSON.parse(sesion);
-        console.log('📦 Sesión desde esap-sesion-activa:', sesionData);
         
         // Buscar roles directamente en sesionData.roles
         if (sesionData.roles) {
           const roles = Array.isArray(sesionData.roles) ? sesionData.roles : [sesionData.roles];
-          console.log('✅ Roles encontrados en esap-sesion-activa.roles:', roles);
           return { codes: roles, names: roles };
         }
         
@@ -678,7 +662,6 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
           }
           
           if (codes.length > 0 || names.length > 0) {
-            console.log('✅ Roles encontrados en sesion.user.roles:', { codes, names });
             return { codes, names };
           }
         }
@@ -688,7 +671,6 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
           const roles = Array.isArray(sesionData.userData.roles) 
             ? sesionData.userData.roles 
             : [sesionData.userData.roles];
-          console.log('✅ Roles encontrados en sesion.userData.roles:', roles);
           return { codes: roles, names: roles };
         }
       }
@@ -700,7 +682,6 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
           const payload = JSON.parse(atob(token.split('.')[1]));
           if (payload.roles) {
             const roles = Array.isArray(payload.roles) ? payload.roles : [payload.roles];
-            console.log('✅ Roles encontrados en JWT token:', roles);
             return { codes: roles, names: roles };
           }
         } catch (e) {
@@ -753,22 +734,15 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
                         esJefeOCI && // SOLO el jefe puede rechazar
                         !esAuditor && // Los auditores NO pueden rechazar
                         informe.estadoWorkflow !== 'aprobado'; // No se puede rechazar si ya está aprobado
-  
-  // Debug: mostrar roles detectados en consola
-  console.log('🔍 Roles detectados:', { 
-    rolesCodes, 
-    rolesNames, 
-    todosLosRoles,
-    esJefeOCI, 
-    esAuditor, 
-    informeEstado: informe.estadoWorkflow,
+
+  const permisos = {
     tieneArchivo: !!informe.archivoUrl,
-    puedeEnviar, 
-    puedeAprobar, 
+    puedeEnviar,
+    puedeAprobar,
     puedeRechazar,
     informeId: informe.id,
     informeNombre: informe.informeNombre
-  });
+  };
   
   // Determinar el estado visual basado en estadoWorkflow si existe
   const estadoVisual = informe.estadoWorkflow === 'aprobado' ? 'ENVIADO' :
@@ -871,14 +845,11 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
   const handleEnviarRevision = async (observaciones?: string) => {
     setProcesando(true);
     try {
-      console.log('📤 Enviando informe a revisión:', { informeId: informe.informeLeyId, entregaId: informe.id });
       const response = await controlInternoApi.informesLey.enviarRevision(
         informe.informeLeyId,
         informe.id,
         { observaciones }
       );
-
-      console.log('✅ Respuesta del servidor:', response);
 
       if (response.success) {
         toast.success('Informe enviado a revisión', {
@@ -886,22 +857,7 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
         });
         setModalEnviar(false);
         if (onInformeActualizado) {
-          console.log('🔄 Recargando informes después de enviar a revisión...');
-          console.log('📋 Estado ANTES de recargar:', { 
-            informeId: informe.id, 
-            estadoWorkflow: informe.estadoWorkflow,
-            estado: informe.estado 
-          });
           await onInformeActualizado();
-          console.log('✅ Informes recargados');
-          // Forzar un pequeño delay para asegurar que el estado se actualice
-          setTimeout(() => {
-            console.log('📋 Estado DESPUÉS de recargar (verificar en siguiente render):', { 
-              informeId: informe.id, 
-              estadoWorkflow: informe.estadoWorkflow,
-              estado: informe.estado 
-            });
-          }, 100);
         }
       } else {
         throw new Error(response.error || 'Error al enviar a revisión');
@@ -919,14 +875,11 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
   const handleAprobar = async (observaciones?: string) => {
     setProcesando(true);
     try {
-      console.log('✅ Aprobando informe:', { informeId: informe.informeLeyId, entregaId: informe.id });
       const response = await controlInternoApi.informesLey.aprobar(
         informe.informeLeyId,
         informe.id,
         { observaciones }
       );
-
-      console.log('✅ Respuesta del servidor al aprobar:', response);
 
       if (response.success) {
         toast.success('Informe aprobado', {
@@ -934,9 +887,7 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
         });
         setModalAprobar(false);
         if (onInformeActualizado) {
-          console.log('🔄 Recargando informes después de aprobar...');
           await onInformeActualizado();
-          console.log('✅ Informes recargados');
         }
       } else {
         throw new Error(response.error || 'Error al aprobar');
@@ -1789,7 +1740,6 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
         if (response.success && response.data) {
           // Verificar si hay informes en la BD
           if (response.data.length === 0) {
-            console.log('⚠️ No hay informes registrados en la base de datos. El informe se creará automáticamente al generar.');
             return;
           }
           
@@ -1802,9 +1752,6 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
           );
           if (informeEncontrado) {
             setInformeLeyId(informeEncontrado.id);
-            console.log('✅ Informe encontrado en BD:', informeEncontrado.codigo);
-          } else {
-            console.log('ℹ️ Informe no encontrado en BD. Se creará automáticamente al generar.');
           }
         } else {
           console.warn('⚠️ Error al obtener informes de la BD:', response.error);

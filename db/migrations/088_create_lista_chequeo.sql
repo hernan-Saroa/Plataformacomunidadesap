@@ -1,4 +1,5 @@
--- ============================================
+-- Eliminar tablas si existen para recrearlas
+
 -- MIGRACIÓN 088: Recrear tablas lista_chequeo e item_lista_chequeo
 -- ============================================
 -- Este script elimina y recrea las tablas con la estructura correcta
@@ -19,6 +20,7 @@ CREATE TABLE control_interno.lista_chequeo (
     codigo VARCHAR(255) UNIQUE NOT NULL,
     nombre VARCHAR(255) NOT NULL,
     descripcion TEXT,
+    categoria VARCHAR(100),
     tipo control_interno.tipo_lista_chequeo_enum NOT NULL DEFAULT 'ejecucion',
     tipo_auditoria_id UUID REFERENCES control_interno.tipo_auditoria(id) ON DELETE SET NULL,
     activa BOOLEAN NOT NULL DEFAULT TRUE,
@@ -35,7 +37,7 @@ CREATE TABLE control_interno.item_lista_chequeo (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     lista_chequeo_id UUID NOT NULL REFERENCES control_interno.lista_chequeo(id) ON DELETE CASCADE,
     texto TEXT NOT NULL,
-    categoria VARCHAR(100),
+    categoria VARCHAR(100) NOT NULL,
     obligatorio BOOLEAN NOT NULL DEFAULT FALSE,
     orden INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -59,6 +61,7 @@ COMMENT ON TABLE control_interno.lista_chequeo IS 'Listas de chequeo configurabl
 COMMENT ON COLUMN control_interno.lista_chequeo.codigo IS 'Código único de la lista (ej: LC-ADM-001)';
 COMMENT ON COLUMN control_interno.lista_chequeo.nombre IS 'Nombre descriptivo de la lista de chequeo';
 COMMENT ON COLUMN control_interno.lista_chequeo.descripcion IS 'Descripción de la lista de chequeo';
+COMMENT ON COLUMN control_interno.lista_chequeo.categoria IS 'Categoría de la lista de chequeo (obligatoria)';
 COMMENT ON COLUMN control_interno.lista_chequeo.tipo IS 'Tipo de lista de chequeo: planeacion, ejecucion o comunicacion';
 COMMENT ON COLUMN control_interno.lista_chequeo.tipo_auditoria_id IS 'Tipo de auditoría asociado (opcional)';
 COMMENT ON COLUMN control_interno.lista_chequeo.activa IS 'Indica si la lista está activa y disponible';
@@ -97,12 +100,12 @@ CREATE TRIGGER trigger_update_item_lista_chequeo_updated_at
 -- ============================================
 -- Datos de ejemplo (seed)
 -- ============================================
-INSERT INTO control_interno.lista_chequeo (codigo, nombre, descripcion, tipo, activa, usos_programados) VALUES
-('LC-PLAN-001', 'Lista de Planeación General', 'Verificación de documentos y requisitos previos a la auditoría', 'planeacion', true, 0),
-('LC-PLAN-002', 'Lista de Verificación de Recursos', 'Verificación de recursos humanos y materiales para la auditoría', 'planeacion', true, 0),
-('LC-EJEC-001', 'Lista de Ejecución Procesos Administrativos', 'Verificación de procesos administrativos durante la auditoría', 'ejecucion', true, 0),
-('LC-EJEC-002', 'Lista de Ejecución Control Interno', 'Verificación de controles internos durante la auditoría', 'ejecucion', true, 0),
-('LC-COM-001', 'Lista de Comunicación de Resultados', 'Verificación de comunicación y entrega de informes', 'comunicacion', true, 0);
+INSERT INTO control_interno.lista_chequeo (codigo, nombre, descripcion, categoria, tipo, activa, usos_programados) VALUES
+('LC-PLAN-001', 'Lista de Planeación General', 'Verificación de documentos y requisitos previos a la auditoría', 'General', 'planeacion', true, 0),
+('LC-PLAN-002', 'Lista de Verificación de Recursos', 'Verificación de recursos humanos y materiales para la auditoría', 'Recursos', 'planeacion', true, 0),
+('LC-EJEC-001', 'Lista de Ejecución Procesos Administrativos', 'Verificación de procesos administrativos durante la auditoría', 'Administrativos', 'ejecucion', true, 0),
+('LC-EJEC-002', 'Lista de Ejecución Control Interno', 'Verificación de controles internos durante la auditoría', 'Control Interno', 'ejecucion', true, 0),
+('LC-COM-001', 'Lista de Comunicación de Resultados', 'Verificación de comunicación y entrega de informes', 'Resultados', 'comunicacion', true, 0);
 
 -- Items para Lista de Planeación General
 INSERT INTO control_interno.item_lista_chequeo (lista_chequeo_id, texto, categoria, obligatorio, orden)

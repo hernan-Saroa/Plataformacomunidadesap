@@ -71,56 +71,36 @@ export function useNotificacionesControlInterno() {
     return false;
   }) || false;
 
-  console.log('[useNotificacionesControlInterno] Hook inicializado');
-  console.log('[useNotificacionesControlInterno] user:', user);
-  console.log('[useNotificacionesControlInterno] usuarioId:', usuarioId);
-  console.log('[useNotificacionesControlInterno] esSuperAdmin:', esSuperAdmin);
-  console.log('[useNotificacionesControlInterno] roles:', user?.roles);
-
   /**
    * Cargar notificaciones del usuario actual
    */
   const cargarNotificaciones = useCallback(async () => {
     const currentUsuarioId = (user as any)?.userId || (user as any)?.id;
     
-    console.log('[useNotificacionesControlInterno] cargarNotificaciones llamado');
-    console.log('[useNotificacionesControlInterno] user:', user);
-    console.log('[useNotificacionesControlInterno] usuarioId:', currentUsuarioId);
-    
     if (!currentUsuarioId) {
-      console.warn('[useNotificacionesControlInterno] No hay usuario autenticado, no se pueden cargar notificaciones');
       setLoading(false);
       return;
     }
 
     try {
-      console.log(`[useNotificacionesControlInterno] Iniciando carga de notificaciones para usuario: ${currentUsuarioId}`);
       setLoading(true);
       setError(null);
       
       // Siempre obtener solo las notificaciones del usuario actual,
       // sin importar si es super admin o no. Cada usuario solo debe ver sus propias notificaciones.
-      console.log(`[useNotificacionesControlInterno] Obteniendo notificaciones del usuario: ${currentUsuarioId}`);
       // Consultar notificaciones del backend usando el UUID del usuario
       // El backend se encargará de convertir UUID a id_tercero
       const response = await controlInternoApi.notificaciones.obtenerPorUsuario(currentUsuarioId);
       
-      console.log('[useNotificacionesControlInterno] Respuesta recibida:', response);
-      
       if (response.success && response.data) {
-        console.log(`[useNotificacionesControlInterno] ✅ Notificaciones cargadas: ${response.data.length} notificaciones`);
         setNotificaciones(response.data);
       } else {
-        console.error('[useNotificacionesControlInterno] ❌ Error en respuesta:', response.error);
         setError(response.error || 'Error al cargar notificaciones');
       }
     } catch (err) {
-      console.error('[useNotificacionesControlInterno] ❌ Excepción al cargar notificaciones:', err);
       setError(err instanceof Error ? err.message : 'Error desconocido');
-      console.error('Error al cargar notificaciones:', err);
     } finally {
       setLoading(false);
-      console.log('[useNotificacionesControlInterno] Carga de notificaciones finalizada');
     }
   }, [user]);
 
@@ -128,19 +108,15 @@ export function useNotificacionesControlInterno() {
    * Cargar al montar y cuando cambie el usuario
    */
   useEffect(() => {
-    console.log('[useNotificacionesControlInterno] useEffect ejecutado');
-    console.log('[useNotificacionesControlInterno] usuarioId:', usuarioId);
-    console.log('[useNotificacionesControlInterno] esSuperAdmin:', esSuperAdmin);
-    
     // Esperar a que el usuario se cargue antes de hacer la petición
     if (usuarioId || esSuperAdmin) {
-      console.log('[useNotificacionesControlInterno] Usuario disponible, llamando cargarNotificaciones');
       cargarNotificaciones();
     } else {
-      console.log('[useNotificacionesControlInterno] Esperando a que se cargue el usuario...');
       setLoading(false);
     }
-  }, [cargarNotificaciones]);
+    // Solo ejecutar cuando cambie el usuario, no cuando cambie cargarNotificaciones
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usuarioId, esSuperAdmin]);
 
   /**
    * Marcar notificación como leída
@@ -152,10 +128,7 @@ export function useNotificacionesControlInterno() {
     }
 
     try {
-      console.log(`[useNotificacionesControlInterno] Marcando notificación ${notificacionId} como leída para usuario ${usuarioId}`);
       const response = await controlInternoApi.notificaciones.marcarLeida(notificacionId, usuarioId);
-      
-      console.log('[useNotificacionesControlInterno] Respuesta de marcarLeida:', response);
       
       if (response.success) {
         // Actualizar estado local
@@ -164,18 +137,15 @@ export function useNotificacionesControlInterno() {
         );
         
         // Recargar notificaciones desde el backend para asegurar sincronización
-        console.log('[useNotificacionesControlInterno] Recargando notificaciones después de marcar como leída');
         setTimeout(() => {
           cargarNotificaciones();
         }, 500);
         
         toast.success('Notificación marcada como leída');
       } else {
-        console.error('[useNotificacionesControlInterno] Error en respuesta:', response.error);
         toast.error('Error al marcar notificación como leída');
       }
     } catch (err) {
-      console.error('[useNotificacionesControlInterno] Error al marcar como leída:', err);
       toast.error('Error al marcar notificación como leída');
     }
   }, [usuarioId, cargarNotificaciones]);
@@ -193,21 +163,16 @@ export function useNotificacionesControlInterno() {
     }
 
     try {
-      console.log(`[useNotificacionesControlInterno] Marcando todas las notificaciones como leídas para usuario: ${currentUsuarioId}`);
       const response = await controlInternoApi.notificaciones.marcarTodasLeidas(currentUsuarioId);
-      
-      console.log('[useNotificacionesControlInterno] Respuesta de marcarTodasLeidas:', response);
       
       if (response.success) {
         // Recargar las notificaciones desde el backend para asegurar sincronización
         await cargarNotificaciones();
         toast.success('Todas las notificaciones marcadas como leídas');
       } else {
-        console.error('[useNotificacionesControlInterno] Error en respuesta:', response.error);
         toast.error(response.error || 'Error al marcar notificaciones');
       }
     } catch (err) {
-      console.error('[useNotificacionesControlInterno] Error al marcar todas leídas:', err);
       toast.error('Error al marcar notificaciones');
     }
   }, [user, cargarNotificaciones]);

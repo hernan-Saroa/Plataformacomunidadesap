@@ -71,7 +71,7 @@ import {
   Building2, User, Award, ClipboardCheck, MessageSquare,
   Sparkles, Info, ChevronRight, ChevronDown, Edit2, Trash2,
   Upload, Archive, ExternalLink, Filter, Search, Tag,
-  BarChart3, PieChart, LineChart, Loader2
+  BarChart3, PieChart, LineChart, Loader2, CheckCircle2
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { controlInternoService } from '../../../services/api/controlInternoService';
@@ -433,6 +433,24 @@ export function ExpedienteAuditoriaCompleto({
   const [loading, setLoading] = useState(false);
   const [loadingDocumentos, setLoadingDocumentos] = useState(false);
   const [checklistCompletados, setChecklistCompletados] = useState<Record<string, boolean>>({});
+  // Estado para listas de chequeo
+  const [listasChequeo, setListasChequeo] = useState<any[]>([]);
+  const [loadingListasChequeo, setLoadingListasChequeo] = useState(false);
+    // Fetch de listas de chequeo desde backend
+    useEffect(() => {
+      if (!isOpen) return;
+      setLoadingListasChequeo(true);
+      fetch('http://localhost:3007/listas-chequeo')
+        .then(res => res.ok ? res.json() : Promise.reject('Error al obtener listas de chequeo'))
+        .then(data => {
+          setListasChequeo(Array.isArray(data) ? data : []);
+        })
+        .catch(err => {
+          console.error('Error al cargar listas de chequeo:', err);
+          toast.error('Error al cargar listas de chequeo');
+        })
+        .finally(() => setLoadingListasChequeo(false));
+    }, [isOpen]);
   
   // ✅ AUTO-DETECCIÓN: Si no se especifica tab, detectar según el estado de la auditoría
   const getTabAutomatico = (estadoActual: EstadoAuditoria) => {
@@ -690,7 +708,23 @@ export function ExpedienteAuditoriaCompleto({
     );
   }, [auditoria.cronograma]);
 
-  // Calcular progreso real basado en actividades completadas
+  // Función helper para filtrar items no deseados
+  const filtrarItemsNoDeseados = (items: any[]) => {
+    return items.filter(item => {
+      const categoria = (item.categoria || '').toLowerCase();
+      const texto = (item.texto || '').toLowerCase();
+      // Filtrar items que contengan "informes" o "socialización"
+      return !categoria.includes('informes') && 
+             !categoria.includes('socialización') && 
+             !categoria.includes('socializacion') &&
+             !texto.includes('informe preliminar') &&
+             !texto.includes('informe final') &&
+             !texto.includes('socializado') &&
+             !texto.includes('socialización');
+    });
+  };
+
+  // Calcular progreso real basado en actividades completadas y listas de chequeo
   const progresoReal = useMemo(() => {
     // Contar actividades completadas por fase
     const contarCompletadas = (actividades: typeof ACTIVIDADES_PLANEACION) => {
@@ -709,9 +743,45 @@ export function ExpedienteAuditoriaCompleto({
       return totalItems > 0 ? Math.round((completados / totalItems) * 100) : 0;
     };
 
-    const progresoPlaneacion = contarCompletadas(ACTIVIDADES_PLANEACION);
-    const progresoEjecucion = contarCompletadas(ACTIVIDADES_EJECUCION);
-    const progresoComunicacion = contarCompletadas(ACTIVIDADES_COMUNICACION);
+    // Contar items de listas de chequeo completados por fase
+    const contarListasChequeo = (tipo: string) => {
+      const listasFiltradas = listasChequeo.filter(lc => lc.tipo === tipo);
+      let totalItems = 0;
+      let completados = 0;
+
+      listasFiltradas.forEach(lista => {
+        if (lista.items && Array.isArray(lista.items)) {
+          const itemsFiltrados = filtrarItemsNoDeseados(lista.items);
+          itemsFiltrados.forEach(item => {
+            totalItems++;
+            if (checklistCompletados[item.id]) {
+              completados++;
+            }
+          });
+        }
+      });
+
+      return totalItems > 0 ? Math.round((completados / totalItems) * 100) : 0;
+    };
+
+    // Calcular progreso combinando actividades y listas de chequeo
+    const progresoPlaneacionActividades = contarCompletadas(ACTIVIDADES_PLANEACION);
+    const progresoPlaneacionListas = contarListasChequeo('planeacion');
+    const progresoPlaneacion = listasChequeo.filter(lc => lc.tipo === 'planeacion').length > 0
+      ? Math.round((progresoPlaneacionActividades + progresoPlaneacionListas) / 2)
+      : progresoPlaneacionActividades;
+
+    const progresoEjecucionActividades = contarCompletadas(ACTIVIDADES_EJECUCION);
+    const progresoEjecucionListas = contarListasChequeo('ejecucion');
+    const progresoEjecucion = listasChequeo.filter(lc => lc.tipo === 'ejecucion').length > 0
+      ? Math.round((progresoEjecucionActividades + progresoEjecucionListas) / 2)
+      : progresoEjecucionActividades;
+
+    const progresoComunicacionActividades = contarCompletadas(ACTIVIDADES_COMUNICACION);
+    const progresoComunicacionListas = contarListasChequeo('comunicacion');
+    const progresoComunicacion = listasChequeo.filter(lc => lc.tipo === 'comunicacion').length > 0
+      ? Math.round((progresoComunicacionActividades + progresoComunicacionListas) / 2)
+      : progresoComunicacionActividades;
 
     // Progreso general: promedio ponderado (Planeación: 30%, Ejecución: 50%, Comunicación: 20%)
     const progresoGeneral = Math.round(
@@ -726,7 +796,7 @@ export function ExpedienteAuditoriaCompleto({
       ejecucion: progresoEjecucion,
       comunicacion: progresoComunicacion,
     };
-  }, [checklistCompletados]);
+  }, [checklistCompletados, listasChequeo]);
 
   // Usar progreso real si hay actividades completadas, sino usar el del backend
   const progresoMostrar = useMemo(() => {
@@ -1052,6 +1122,8 @@ export function ExpedienteAuditoriaCompleto({
                     auditoriaId={auditoriaId}
                     checklistCompletados={checklistCompletados}
                     onChecklistChange={(checklist) => setChecklistCompletados(checklist)}
+                    listasChequeo={listasChequeo}
+                    loadingListasChequeo={loadingListasChequeo}
                   />
                 </TabsContent>
 
@@ -1062,6 +1134,8 @@ export function ExpedienteAuditoriaCompleto({
                     auditoriaId={auditoriaId}
                     checklistCompletados={checklistCompletados}
                     onChecklistChange={(checklist) => setChecklistCompletados(checklist)}
+                    listasChequeo={listasChequeo}
+                    loadingListasChequeo={loadingListasChequeo}
                   />
                 </TabsContent>
 
@@ -1072,6 +1146,8 @@ export function ExpedienteAuditoriaCompleto({
                     auditoriaId={auditoriaId}
                     checklistCompletados={checklistCompletados}
                     onChecklistChange={(checklist) => setChecklistCompletados(checklist)}
+                    listasChequeo={listasChequeo}
+                    loadingListasChequeo={loadingListasChequeo}
                   />
                 </TabsContent>
 
@@ -1442,13 +1518,64 @@ function TabPlaneacion({
   auditoriaId,
   checklistCompletados,
   onChecklistChange,
+  listasChequeo,
+  loadingListasChequeo,
 }: { 
   auditoria: Auditoria;
   onGuardar?: (datos: { fechaReunionApertura?: Date; alcance?: string; observaciones?: string }) => void;
   auditoriaId?: string;
   checklistCompletados?: Record<string, boolean>;
   onChecklistChange?: (checklist: Record<string, boolean>) => void;
+  listasChequeo: any[];
+  loadingListasChequeo: boolean;
 }) {
+  const [guardando, setGuardando] = useState(false);
+
+  const toggleChecklist = async (itemId: string) => {
+    if (!checklistCompletados || !onChecklistChange || guardando) return;
+
+    const estadoAnterior = { ...checklistCompletados };
+    const nuevoEstado = !checklistCompletados[itemId];
+    
+    const nuevoChecklist = {
+      ...checklistCompletados,
+      [itemId]: nuevoEstado,
+    };
+
+    // Actualizar estado local inmediatamente
+    onChecklistChange(nuevoChecklist);
+
+    // Guardar en la base de datos
+    if (auditoriaId) {
+      setGuardando(true);
+      try {
+        const response = await auditoriasApi.update(auditoriaId, {
+          checklistCompletados: nuevoChecklist,
+        });
+
+        if (response.success) {
+          toast.success(nuevoEstado ? '✅ Tarea completada' : '⏳ Tarea pendiente', {
+            description: 'Cambio guardado en la base de datos',
+            duration: 3000,
+          });
+        } else {
+          // Revertir cambio si falla
+          onChecklistChange(estadoAnterior);
+          throw new Error(response.error || 'Error al guardar');
+        }
+      } catch (error) {
+        // Revertir cambio local
+        onChecklistChange(estadoAnterior);
+        console.error('Error al guardar checkbox:', error);
+        toast.error('Error al guardar', {
+          description: error instanceof Error ? error.message : 'No se pudo guardar el cambio',
+        });
+      } finally {
+        setGuardando(false);
+      }
+    }
+  };
+
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -1456,25 +1583,98 @@ function TabPlaneacion({
           <Info className="w-5 h-5 text-purple-600" />
           <div>
             <p className="text-sm text-purple-900">
-              <strong>Fase de Planeación</strong> - Gestión integrada de actividades
+              <strong>Fase de Planeación</strong> - Listas de Chequeo
             </p>
             <p className="text-xs text-purple-700 mt-1">
-              Completa las 3 actividades para avanzar a la fase de Ejecución
+              Verifica y completa los ítems de las listas de chequeo obtenidas del backend.
             </p>
           </div>
         </div>
       </div>
 
-      <ActividadesIntegradas
-        actividades={ACTIVIDADES_PLANEACION}
-        faseTitulo="Planeación"
-        faseColor="#9333ea"
-        estadoRequerido="Planeación"
-        estadoActual={auditoria.estado}
-        auditoriaId={auditoriaId}
-        checklistInicial={checklistCompletados}
-        onChecklistChange={onChecklistChange}
-      />
+      {/* Renderizar solo listas de chequeo del backend para planeación */}
+      <div className="mb-6">
+        <h4 className="text-md font-semibold text-gray-900 mb-2">Listas de Chequeo</h4>
+        {loadingListasChequeo ? (
+          <div className="text-sm text-gray-500">Cargando listas de chequeo...</div>
+        ) : (
+          <div className="space-y-4">
+            {listasChequeo.filter(lc => lc.tipo === 'planeacion').length === 0 && (
+              <div className="text-xs text-gray-400">No hay listas de chequeo para esta fase.</div>
+            )}
+            {listasChequeo.filter(lc => lc.tipo === 'planeacion').map(lista => (
+              <CardSIGL key={lista.id} className="!p-4">
+                <div className="font-semibold text-blue-700 mb-1">{lista.nombre}</div>
+                <div className="text-xs text-gray-500 mb-3">{lista.descripcion}</div>
+                <div className="space-y-2">
+                  {lista.items && lista.items.length > 0 ? (
+                    (() => {
+                      // Filtrar items no deseados
+                      const itemsFiltrados = lista.items.filter((item: any) => {
+                        const categoria = (item.categoria || '').toLowerCase();
+                        const texto = (item.texto || '').toLowerCase();
+                        return !categoria.includes('informes') && 
+                               !categoria.includes('socialización') && 
+                               !categoria.includes('socializacion') &&
+                               !texto.includes('informe preliminar') &&
+                               !texto.includes('informe final') &&
+                               !texto.includes('socializado') &&
+                               !texto.includes('socialización');
+                      });
+
+                      if (itemsFiltrados.length === 0) {
+                        return <div className="text-xs text-gray-400">No hay items en esta lista.</div>;
+                      }
+
+                      return itemsFiltrados.map((item: any) => {
+                        const isCompletado = checklistCompletados?.[item.id] || false;
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => !guardando && toggleChecklist(item.id)}
+                            className={`flex items-start gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors group ${
+                              guardando ? 'opacity-50 cursor-wait' : ''
+                            }`}
+                          >
+                            <div className="mt-0.5 relative">
+                              {isCompletado ? (
+                                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                              ) : (
+                                <div className="w-5 h-5 border-2 border-gray-300 rounded group-hover:border-blue-400 transition-colors" />
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {item.categoria && (
+                                  <span className="text-xs bg-gray-100 px-2 py-1 rounded">{item.categoria}</span>
+                                )}
+                                <p
+                                  className={`text-sm flex-1 ${
+                                    isCompletado
+                                      ? 'text-gray-500 line-through'
+                                      : 'text-gray-900'
+                                  }`}
+                                >
+                                  {item.texto}
+                                </p>
+                                {item.obligatorio && (
+                                  <span className="text-xs text-red-600 font-medium">Obligatorio</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()
+                  ) : (
+                    <div className="text-xs text-gray-400">No hay items en esta lista.</div>
+                  )}
+                </div>
+              </CardSIGL>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1485,12 +1685,63 @@ function TabEjecucion({
   auditoriaId,
   checklistCompletados,
   onChecklistChange,
-}: { 
+  listasChequeo,
+  loadingListasChequeo
+}: {
   auditoria: Auditoria;
   auditoriaId?: string;
   checklistCompletados?: Record<string, boolean>;
   onChecklistChange?: (checklist: Record<string, boolean>) => void;
+  listasChequeo: any[];
+  loadingListasChequeo: boolean;
 }) {
+  const [guardando, setGuardando] = useState(false);
+
+  const toggleChecklist = async (itemId: string) => {
+    if (!checklistCompletados || !onChecklistChange || guardando) return;
+
+    const estadoAnterior = { ...checklistCompletados };
+    const nuevoEstado = !checklistCompletados[itemId];
+    
+    const nuevoChecklist = {
+      ...checklistCompletados,
+      [itemId]: nuevoEstado,
+    };
+
+    // Actualizar estado local inmediatamente
+    onChecklistChange(nuevoChecklist);
+
+    // Guardar en la base de datos
+    if (auditoriaId) {
+      setGuardando(true);
+      try {
+        const response = await auditoriasApi.update(auditoriaId, {
+          checklistCompletados: nuevoChecklist,
+        });
+
+        if (response.success) {
+          toast.success(nuevoEstado ? '✅ Tarea completada' : '⏳ Tarea pendiente', {
+            description: 'Cambio guardado en la base de datos',
+            duration: 3000,
+          });
+        } else {
+          // Revertir cambio si falla
+          onChecklistChange(estadoAnterior);
+          throw new Error(response.error || 'Error al guardar');
+        }
+      } catch (error) {
+        // Revertir cambio local
+        onChecklistChange(estadoAnterior);
+        console.error('Error al guardar checkbox:', error);
+        toast.error('Error al guardar', {
+          description: error instanceof Error ? error.message : 'No se pudo guardar el cambio',
+        });
+      } finally {
+        setGuardando(false);
+      }
+    }
+  };
+
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
@@ -1498,25 +1749,98 @@ function TabEjecucion({
           <Info className="w-5 h-5 text-amber-600" />
           <div>
             <p className="text-sm text-amber-900">
-              <strong>Fase de Ejecución</strong> - Gestión integrada de actividades
+              <strong>Fase de Ejecución</strong> - Listas de Chequeo
             </p>
             <p className="text-xs text-amber-700 mt-1">
-              Completa las 3 actividades para avanzar a la fase de Comunicación
+              Verifica y completa los ítems de las listas de chequeo obtenidas del backend.
             </p>
           </div>
         </div>
       </div>
 
-      <ActividadesIntegradas
-        actividades={ACTIVIDADES_EJECUCION}
-        faseTitulo="Ejecución"
-        faseColor="#f59e0b"
-        estadoRequerido="Ejecución"
-        estadoActual={auditoria.estado}
-        auditoriaId={auditoriaId}
-        checklistInicial={checklistCompletados}
-        onChecklistChange={onChecklistChange}
-      />
+      {/* Renderizar solo listas de chequeo del backend */}
+      <div className="mb-6">
+        <h4 className="text-md font-semibold text-gray-900 mb-2">Listas de Chequeo</h4>
+        {loadingListasChequeo ? (
+          <div className="text-sm text-gray-500">Cargando listas de chequeo...</div>
+        ) : (
+          <div className="space-y-4">
+            {listasChequeo.filter(lc => lc.tipo === 'ejecucion').length === 0 && (
+              <div className="text-xs text-gray-400">No hay listas de chequeo para esta fase.</div>
+            )}
+            {listasChequeo.filter(lc => lc.tipo === 'ejecucion').map(lista => (
+              <CardSIGL key={lista.id} className="!p-4">
+                <div className="font-semibold text-blue-700 mb-1">{lista.nombre}</div>
+                <div className="text-xs text-gray-500 mb-3">{lista.descripcion}</div>
+                <div className="space-y-2">
+                  {lista.items && lista.items.length > 0 ? (
+                    (() => {
+                      // Filtrar items no deseados
+                      const itemsFiltrados = lista.items.filter((item: any) => {
+                        const categoria = (item.categoria || '').toLowerCase();
+                        const texto = (item.texto || '').toLowerCase();
+                        return !categoria.includes('informes') && 
+                               !categoria.includes('socialización') && 
+                               !categoria.includes('socializacion') &&
+                               !texto.includes('informe preliminar') &&
+                               !texto.includes('informe final') &&
+                               !texto.includes('socializado') &&
+                               !texto.includes('socialización');
+                      });
+
+                      if (itemsFiltrados.length === 0) {
+                        return <div className="text-xs text-gray-400">No hay items en esta lista.</div>;
+                      }
+
+                      return itemsFiltrados.map((item: any) => {
+                        const isCompletado = checklistCompletados?.[item.id] || false;
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => !guardando && toggleChecklist(item.id)}
+                            className={`flex items-start gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors group ${
+                              guardando ? 'opacity-50 cursor-wait' : ''
+                            }`}
+                          >
+                            <div className="mt-0.5 relative">
+                              {isCompletado ? (
+                                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                              ) : (
+                                <div className="w-5 h-5 border-2 border-gray-300 rounded group-hover:border-blue-400 transition-colors" />
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {item.categoria && (
+                                  <span className="text-xs bg-gray-100 px-2 py-1 rounded">{item.categoria}</span>
+                                )}
+                                <p
+                                  className={`text-sm flex-1 ${
+                                    isCompletado
+                                      ? 'text-gray-500 line-through'
+                                      : 'text-gray-900'
+                                  }`}
+                                >
+                                  {item.texto}
+                                </p>
+                                {item.obligatorio && (
+                                  <span className="text-xs text-red-600 font-medium">Obligatorio</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()
+                  ) : (
+                    <div className="text-xs text-gray-400">No hay items en esta lista.</div>
+                  )}
+                </div>
+              </CardSIGL>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1527,12 +1851,63 @@ function TabComunicacion({
   auditoriaId,
   checklistCompletados,
   onChecklistChange,
+  listasChequeo,
+  loadingListasChequeo,
 }: { 
   auditoria: Auditoria;
   auditoriaId?: string;
   checklistCompletados?: Record<string, boolean>;
   onChecklistChange?: (checklist: Record<string, boolean>) => void;
+  listasChequeo: any[];
+  loadingListasChequeo: boolean;
 }) {
+  const [guardando, setGuardando] = useState(false);
+
+  const toggleChecklist = async (itemId: string) => {
+    if (!checklistCompletados || !onChecklistChange || guardando) return;
+
+    const estadoAnterior = { ...checklistCompletados };
+    const nuevoEstado = !checklistCompletados[itemId];
+    
+    const nuevoChecklist = {
+      ...checklistCompletados,
+      [itemId]: nuevoEstado,
+    };
+
+    // Actualizar estado local inmediatamente
+    onChecklistChange(nuevoChecklist);
+
+    // Guardar en la base de datos
+    if (auditoriaId) {
+      setGuardando(true);
+      try {
+        const response = await auditoriasApi.update(auditoriaId, {
+          checklistCompletados: nuevoChecklist,
+        });
+
+        if (response.success) {
+          toast.success(nuevoEstado ? '✅ Tarea completada' : '⏳ Tarea pendiente', {
+            description: 'Cambio guardado en la base de datos',
+            duration: 3000,
+          });
+        } else {
+          // Revertir cambio si falla
+          onChecklistChange(estadoAnterior);
+          throw new Error(response.error || 'Error al guardar');
+        }
+      } catch (error) {
+        // Revertir cambio local
+        onChecklistChange(estadoAnterior);
+        console.error('Error al guardar checkbox:', error);
+        toast.error('Error al guardar', {
+          description: error instanceof Error ? error.message : 'No se pudo guardar el cambio',
+        });
+      } finally {
+        setGuardando(false);
+      }
+    }
+  };
+
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-green-50 border border-green-200 rounded-lg p-4">
@@ -1540,25 +1915,98 @@ function TabComunicacion({
           <Info className="w-5 h-5 text-green-600" />
           <div>
             <p className="text-sm text-green-900">
-              <strong>Fase de Comunicación</strong> - Gestión integrada de actividades
+              <strong>Fase de Comunicación</strong> - Listas de Chequeo
             </p>
             <p className="text-xs text-green-700 mt-1">
-              Completa las 3 actividades para avanzar a la fase de Seguimiento
+              Verifica y completa los ítems de las listas de chequeo obtenidas del backend.
             </p>
           </div>
         </div>
       </div>
 
-      <ActividadesIntegradas
-        actividades={ACTIVIDADES_COMUNICACION}
-        faseTitulo="Comunicación"
-        faseColor="#10b981"
-        estadoRequerido="Comunicación"
-        estadoActual={auditoria.estado}
-        auditoriaId={auditoriaId}
-        checklistInicial={checklistCompletados}
-        onChecklistChange={onChecklistChange}
-      />
+      {/* Renderizar solo listas de chequeo del backend para comunicación */}
+      <div className="mb-6">
+        <h4 className="text-md font-semibold text-gray-900 mb-2">Listas de Chequeo</h4>
+        {loadingListasChequeo ? (
+          <div className="text-sm text-gray-500">Cargando listas de chequeo...</div>
+        ) : (
+          <div className="space-y-4">
+            {listasChequeo.filter(lc => lc.tipo === 'comunicacion').length === 0 && (
+              <div className="text-xs text-gray-400">No hay listas de chequeo para esta fase.</div>
+            )}
+            {listasChequeo.filter(lc => lc.tipo === 'comunicacion').map(lista => (
+              <CardSIGL key={lista.id} className="!p-4">
+                <div className="font-semibold text-blue-700 mb-1">{lista.nombre}</div>
+                <div className="text-xs text-gray-500 mb-3">{lista.descripcion}</div>
+                <div className="space-y-2">
+                  {lista.items && lista.items.length > 0 ? (
+                    (() => {
+                      // Filtrar items no deseados
+                      const itemsFiltrados = lista.items.filter((item: any) => {
+                        const categoria = (item.categoria || '').toLowerCase();
+                        const texto = (item.texto || '').toLowerCase();
+                        return !categoria.includes('informes') && 
+                               !categoria.includes('socialización') && 
+                               !categoria.includes('socializacion') &&
+                               !texto.includes('informe preliminar') &&
+                               !texto.includes('informe final') &&
+                               !texto.includes('socializado') &&
+                               !texto.includes('socialización');
+                      });
+
+                      if (itemsFiltrados.length === 0) {
+                        return <div className="text-xs text-gray-400">No hay items en esta lista.</div>;
+                      }
+
+                      return itemsFiltrados.map((item: any) => {
+                        const isCompletado = checklistCompletados?.[item.id] || false;
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => !guardando && toggleChecklist(item.id)}
+                            className={`flex items-start gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors group ${
+                              guardando ? 'opacity-50 cursor-wait' : ''
+                            }`}
+                          >
+                            <div className="mt-0.5 relative">
+                              {isCompletado ? (
+                                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                              ) : (
+                                <div className="w-5 h-5 border-2 border-gray-300 rounded group-hover:border-blue-400 transition-colors" />
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {item.categoria && (
+                                  <span className="text-xs bg-gray-100 px-2 py-1 rounded">{item.categoria}</span>
+                                )}
+                                <p
+                                  className={`text-sm flex-1 ${
+                                    isCompletado
+                                      ? 'text-gray-500 line-through'
+                                      : 'text-gray-900'
+                                  }`}
+                                >
+                                  {item.texto}
+                                </p>
+                                {item.obligatorio && (
+                                  <span className="text-xs text-red-600 font-medium">Obligatorio</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()
+                  ) : (
+                    <div className="text-xs text-gray-400">No hay items en esta lista.</div>
+                  )}
+                </div>
+              </CardSIGL>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

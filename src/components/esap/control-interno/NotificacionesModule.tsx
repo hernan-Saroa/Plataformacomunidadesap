@@ -98,16 +98,6 @@ function mapearNotificacionBackend(notif: any): Notificacion {
   // Asegurarse de usar createdAt del backend (created_at en snake_case)
   const fechaCreacion = notif.createdAt || notif.created_at || notif.fecha;
   
-  console.log('[mapearNotificacionBackend] Notificación recibida:', {
-    id: notif.id,
-    titulo: notif.titulo,
-    accionUrl: notif.accionUrl,
-    tieneAccionUrl: !!notif.accionUrl,
-    createdAt: notif.createdAt,
-    created_at: notif.created_at,
-    fechaUsada: fechaCreacion
-  });
-  
   return {
     id: notif.id,
     tipo: mapearTipoNotificacion(notif.tipoNotificacion),
@@ -128,8 +118,6 @@ function mapearNotificacionBackend(notif: any): Notificacion {
 // ====================================
 
 export const NotificacionesModule: React.FC = () => {
-  console.log('[NotificacionesModule] Componente montado');
-  
   const {
     notificaciones: notificacionesBackend,
     loading,
@@ -140,34 +128,28 @@ export const NotificacionesModule: React.FC = () => {
     eliminarNotificacion
   } = useNotificacionesControlInterno();
 
-  console.log('[NotificacionesModule] Estado del hook:', {
-    notificacionesCount: notificacionesBackend.length,
-    loading,
-    error,
-  });
-
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('todos');
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos');
 
   // Mapear notificaciones del backend al formato de UI
   const notificaciones = useMemo(() => {
-    const mapeadas = notificacionesBackend.map(mapearNotificacionBackend);
-    console.log('[NotificacionesModule] Notificaciones mapeadas:', mapeadas.map(n => ({
-      id: n.id,
-      titulo: n.titulo,
-      tieneAccion: !!n.accion,
-      accionUrl: n.accion?.url
-    })));
-    return mapeadas;
+    return notificacionesBackend.map(mapearNotificacionBackend);
   }, [notificacionesBackend]);
 
   // Recargar notificaciones periódicamente
   useEffect(() => {
+    // Solo crear el interval si hay un usuario autenticado
+    if (!notificacionesBackend.length && loading) {
+      return; // Esperar a que se carguen las notificaciones iniciales
+    }
+
     const interval = setInterval(() => {
       cargarNotificaciones();
     }, 30000); // Recargar cada 30 segundos
 
     return () => clearInterval(interval);
+    // Solo ejecutar cuando cambie cargarNotificaciones (que depende de user)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cargarNotificaciones]);
 
   // Notificaciones filtradas

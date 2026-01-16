@@ -11,11 +11,15 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { NotificacionesService } from './notificaciones.service';
+import { NotificacionesAutomaticasService } from './notificaciones-automaticas.service';
 import { CreateNotificacionDto } from './dto/create-notificacion.dto';
 
 @Controller('notificaciones')
 export class NotificacionesController {
-  constructor(private readonly notificacionesService: NotificacionesService) {}
+  constructor(
+    private readonly notificacionesService: NotificacionesService,
+    private readonly notificacionesAutomaticasService: NotificacionesAutomaticasService,
+  ) {}
 
   /**
    * GET /notificaciones/usuario/:usuarioId
@@ -149,6 +153,49 @@ export class NotificacionesController {
       leida: leida === 'true' ? true : leida === 'false' ? false : undefined,
       prioridad,
     });
+  }
+
+  /**
+   * POST /notificaciones/ejecutar-job-automatico
+   * Ejecuta manualmente el job de notificaciones automáticas (para pruebas)
+   */
+  @Post('ejecutar-job-automatico')
+  @HttpCode(HttpStatus.OK)
+  async ejecutarJobAutomatico() {
+    try {
+      const resultado = await this.notificacionesAutomaticasService.ejecutarNotificacionesAutomaticas();
+      return {
+        success: true,
+        message: 'Job ejecutado correctamente',
+        resultado: {
+          notificacionesEnviadas: resultado.notificacionesEnviadas,
+          notificacionesError: resultado.notificacionesError,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Error al ejecutar el job',
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * GET /notificaciones/debug-datos
+   * Endpoint de debug para ver qué datos encuentra el sistema
+   */
+  @Get('debug-datos')
+  async debugDatos() {
+    try {
+      return await this.notificacionesAutomaticasService.debugDatos();
+    } catch (error) {
+      return {
+        error: true,
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      };
+    }
   }
 }
 
