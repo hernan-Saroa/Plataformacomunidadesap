@@ -87,6 +87,10 @@ import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
 // Integración con Planes de Mejoramiento
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 
+// Notificaciones
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
+
 // ============ TIPOS ============
 
 type EstadoAuditoria =
@@ -1824,6 +1828,17 @@ function ColumnaKanban({
 // ============ COMPONENTE PRINCIPAL ============
 
 export function GestionAuditoriasKanbanSimple() {
+  // Hooks para notificaciones
+  const { 
+    notificarAuditoriaCreada, 
+    notificarCambioEstadoAuditoria, 
+    notificarAuditoriaEditada,
+    notificarAuditoriaAprobada,
+    notificarAuditoriaRechazada,
+    notificarExportacion
+  } = useCrearNotificacion();
+  const { user } = useAuth();
+
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -2050,6 +2065,25 @@ export function GestionAuditoriasKanbanSimple() {
     try {
       const response = await auditoriasApi.aprobar(auditoria.id, comentarios);
       if (response.success) {
+        // ============ NOTIFICACIONES: Auditoría Aprobada ============
+        if (auditoria?.id && user?.id) {
+          try {
+            const nombreUsuario = user?.firstName && user?.lastName 
+              ? `${user.firstName} ${user.lastName}` 
+              : user?.username || 'Usuario';
+            
+            await notificarAuditoriaAprobada(
+              auditoria.id,
+              auditoria.codigo,
+              user.id,
+              nombreUsuario,
+              comentarios
+            );
+          } catch (notifError) {
+            console.error('Error al enviar notificaciones:', notifError);
+          }
+        }
+
         toast.success(`✅ Auditoría ${auditoria.codigo} aprobada exitosamente`);
         // Recargar las auditorías para reflejar el cambio
         await cargarAuditorias();
@@ -2068,6 +2102,25 @@ export function GestionAuditoriasKanbanSimple() {
     try {
       const response = await auditoriasApi.rechazar(auditoria.id, justificacion);
       if (response.success) {
+        // ============ NOTIFICACIONES: Auditoría Rechazada ============
+        if (auditoria?.id && user?.id) {
+          try {
+            const nombreUsuario = user?.firstName && user?.lastName 
+              ? `${user.firstName} ${user.lastName}` 
+              : user?.username || 'Usuario';
+            
+            await notificarAuditoriaRechazada(
+              auditoria.id,
+              auditoria.codigo,
+              user.id,
+              justificacion,
+              nombreUsuario
+            );
+          } catch (notifError) {
+            console.error('Error al enviar notificaciones:', notifError);
+          }
+        }
+
         toast.error(`❌ Auditoría ${auditoria.codigo} rechazada`);
         // Recargar las auditorías para reflejar el cambio
         await cargarAuditorias();
@@ -2288,6 +2341,44 @@ export function GestionAuditoriasKanbanSimple() {
 
       const auditoriaCreada = response.data;
 
+      // ============ NOTIFICACIONES: Auditoría Creada ============
+      if (response.success && auditoriaCreada?.id && user?.id) {
+        try {
+          const codigoAuditoria = auditoriaCreada.codigo || `AUD-${new Date().getFullYear()}-${auditoriaCreada.id.substring(0, 6).toUpperCase()}`;
+          const nombreAuditoria = auditoriaCreada.nombre || auditoriaCreada.titulo || data.titulo;
+          
+          console.log('🔔 [NOTIFICACION] Creando notificación para auditoría creada:', {
+            auditoriaId: auditoriaCreada.id,
+            codigoAuditoria,
+            nombreAuditoria,
+            usuarioId: user.id,
+            fechaInicio: auditoriaCreada.fechaInicio || auditoriaData.fechaInicio
+          });
+          
+          const notifResponse = await notificarAuditoriaCreada(
+            auditoriaCreada.id,
+            codigoAuditoria,
+            nombreAuditoria,
+            String(user.id), // Asegurar que sea string
+            auditoriaCreada.fechaInicio || auditoriaData.fechaInicio
+          );
+          
+          if (notifResponse?.success) {
+            console.log('✅ [NOTIFICACION] Notificación creada exitosamente:', notifResponse);
+          } else {
+            console.error('❌ [NOTIFICACION] Error al crear notificación:', notifResponse);
+          }
+        } catch (notifError) {
+          console.error('❌ [NOTIFICACION] Error al enviar notificaciones:', notifError);
+        }
+      } else {
+        console.warn('⚠️ [NOTIFICACION] No se puede crear notificación. Condiciones:', {
+          responseSuccess: response.success,
+          auditoriaId: auditoriaCreada?.id,
+          userId: user?.id
+        });
+      }
+
       // Crear los hallazgos si hay alguno
       if (data.hallazgos && data.hallazgos.length > 0) {
         
@@ -2475,6 +2566,30 @@ export function GestionAuditoriasKanbanSimple() {
       // Actualizar en el backend usando TypeORM
       await controlInternoService.updateAuditoria(auditoriaParaEditar.id, updateData);
       
+      // Obtener los cambios realizados
+      const cambios: string[] = [];
+      if (data.titulo !== auditoriaParaEditar.titulo) cambios.push('Título');
+      if (data.descripcion !== auditoriaParaEditar.descripcion) cambios.push('Descripción');
+      if (data.territorial !== auditoriaParaEditar.territorial) cambios.push('Territorial');
+      if (data.fechaInicio !== auditoriaParaEditar.fechaInicio) cambios.push('Fecha de inicio');
+      if (data.fechaFin !== auditoriaParaEditar.fechaFin) cambios.push('Fecha de fin');
+      if (data.auditorLider !== String(auditoriaParaEditar.auditorLiderId || '')) cambios.push('Auditor líder');
+      if (data.auditorAsignado !== String(auditoriaParaEditar.auditorAsignadoId || '')) cambios.push('Auditor asignado');
+
+      // ============ NOTIFICACIONES: Auditoría Editada ============
+      if (auditoriaParaEditar?.id && user?.id) {
+        try {
+          await notificarAuditoriaEditada(
+            auditoriaParaEditar.id,
+            auditoriaParaEditar.codigo,
+            user.id,
+            cambios
+          );
+        } catch (notifError) {
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
+      
       // Recargar auditorías desde la BD para ver los cambios reales
       await cargarAuditorias();
       
@@ -2593,6 +2708,22 @@ export function GestionAuditoriasKanbanSimple() {
         ultimaActuacion: `Cambio de estado mediante drag & drop: ${estadoAnterior} → ${nuevoEstado}`
       });
 
+      // ============ NOTIFICACIONES: Cambio de Estado ============
+      if (item?.id && user?.id) {
+        try {
+          await notificarCambioEstadoAuditoria(
+            item.id,
+            item.codigo,
+            estadoAnterior,
+            nuevoEstado,
+            user.id,
+            `Cambio realizado mediante drag & drop`
+          );
+        } catch (notifError) {
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
+
       // Registrar en trazabilidad/historial
       const eventoTrazabilidad = {
         id: `evt-${Date.now()}`,
@@ -2605,7 +2736,6 @@ export function GestionAuditoriasKanbanSimple() {
         estadoAnterior: estadoAnterior,
         estadoNuevo: nuevoEstado
       };
-      
 
       toast.success(`${item.codigo} movido a ${nuevoEstado}`, {
         description: `Estado actualizado en la base de datos`
@@ -2656,6 +2786,22 @@ export function GestionAuditoriasKanbanSimple() {
         estadoKanban: nuevoEstado,
         ultimaActuacion: comentario || `Cambio de estado: ${estadoAnterior} → ${nuevoEstado}`
       });
+
+      // ============ NOTIFICACIONES: Cambio de Estado ============
+      if (auditoriaActual?.id && user?.id) {
+        try {
+          await notificarCambioEstadoAuditoria(
+            auditoriaId,
+            auditoriaActual.codigo,
+            estadoAnterior,
+            nuevoEstado,
+            user.id,
+            comentario
+          );
+        } catch (notifError) {
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
 
       // Registrar en trazabilidad
       const eventoTrazabilidad = {
@@ -2789,7 +2935,7 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // Exportar individual - GENERA PDF REAL
-  const handleExportar = (auditoria: Auditoria) => {
+  const handleExportar = async (auditoria: Auditoria) => {
     // Crear toast de carga con ID para poder cerrarlo
     const toastId = toast.loading('Generando PDF...', {
       description: 'Por favor espera un momento'
@@ -2999,6 +3145,27 @@ export function GestionAuditoriasKanbanSimple() {
       // Descargar PDF
       doc.save(nombreArchivo);
       
+      // ============ NOTIFICACIONES: Exportación ============
+      if (user?.id) {
+        try {
+          // Crear URL de descarga simulada (el archivo ya se descargó)
+          const urlDescarga = URL.createObjectURL(new Blob([], { type: 'application/pdf' }));
+          
+          await notificarExportacion(
+            'PDF',
+            nombreArchivo,
+            user.id,
+            urlDescarga
+          );
+          
+          // Limpiar URL temporal
+          URL.revokeObjectURL(urlDescarga);
+        } catch (notifError) {
+          // No fallar la exportación si las notificaciones fallan
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
+      
       // Cerrar toast de carga y mostrar éxito
       toast.dismiss(toastId);
       toast.success('PDF descargado exitosamente', {
@@ -3017,7 +3184,7 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // Exportar todas las auditorías divididas por estados
-  const handleExportarTodas = () => {
+  const handleExportarTodas = async () => {
     try {
       const toastId = toast.loading('Generando archivo Excel...', {
         description: 'Por favor espera un momento'
@@ -3206,6 +3373,27 @@ export function GestionAuditoriasKanbanSimple() {
 
       // Descargar archivo
       XLSX.writeFile(wb, nombreArchivo);
+
+      // ============ NOTIFICACIONES: Exportación ============
+      if (user?.id) {
+        try {
+          // Crear URL de descarga simulada (el archivo ya se descargó)
+          const urlDescarga = URL.createObjectURL(new Blob([], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+          
+          await notificarExportacion(
+            'Excel',
+            nombreArchivo,
+            user.id,
+            urlDescarga
+          );
+          
+          // Limpiar URL temporal
+          URL.revokeObjectURL(urlDescarga);
+        } catch (notifError) {
+          // No fallar la exportación si las notificaciones fallan
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
 
       // Cerrar toast y mostrar éxito
       toast.dismiss(toastId);

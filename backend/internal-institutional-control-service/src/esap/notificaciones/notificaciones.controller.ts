@@ -122,5 +122,33 @@ export class NotificacionesController {
   ) {
     return this.notificacionesService.updatePreferencias(usuarioId, preferencias);
   }
+
+  /**
+   * GET /notificaciones/debug/:usuarioId
+   * Endpoint de debug para verificar conversión de usuarioId
+   */
+  @Get('debug/:usuarioId')
+  async debugUsuario(@Param('usuarioId') usuarioId: string) {
+    return this.notificacionesService.debugUsuario(usuarioId);
+  }
+
+  /**
+   * GET /notificaciones/todas
+   * Obtiene TODAS las notificaciones (solo para super administradores/admins)
+   */
+  @Get('todas')
+  obtenerTodas(
+    @Query('estado') estado?: string,
+    @Query('tipo') tipo?: string,
+    @Query('leida') leida?: string,
+    @Query('prioridad') prioridad?: string,
+  ) {
+    return this.notificacionesService.findAll({
+      estado,
+      tipo,
+      leida: leida === 'true' ? true : leida === 'false' ? false : undefined,
+      prioridad,
+    });
+  }
 }
 

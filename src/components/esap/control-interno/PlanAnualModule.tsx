@@ -41,6 +41,10 @@ import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 
+// Notificaciones
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
+
 // Declaración de tipos para jspdf-autotable
 declare module 'jspdf' {
   interface jsPDF {
@@ -262,6 +266,10 @@ interface PlanAnualModuleProps {
 }
 
 export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps = {} as PlanAnualModuleProps) {
+  // Hooks para notificaciones
+  const { notificarPlanAnualCreado } = useCrearNotificacion();
+  const { user } = useAuth();
+
   const [vistaActiva, setVistaActiva] = useState<'lista' | 'crear' | 'detalle' | 'editar'>('lista');
   const [planes, setPlanes] = useState<PlanAnual[]>([]);
   const [loading, setLoading] = useState(true);
@@ -437,13 +445,24 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
         estado: mapearEstado(plan.estado)
       };
 
+      // Determinar si es creación o actualización
+      // Si el plan tiene un ID que NO empieza con 'plan-' (es UUID de BD), es actualización
+      // Si NO tiene ID o tiene ID temporal que empieza con 'plan-', es creación
+      const esPlanNuevo = !plan.id || (plan.id && plan.id.startsWith('plan-'));
+      
       let response;
-      if (plan.id && plan.id.startsWith('plan-')) {
+      let fueCreado = false;
+      
+      if (esPlanNuevo) {
         // Es un plan nuevo, crear
+        console.log('[PlanAnual] Creando nuevo plan anual para el año:', plan.año);
         response = await planAnual5RolesApi.create(planData);
+        fueCreado = true;
       } else {
         // Es un plan existente, actualizar
+        console.log('[PlanAnual] Actualizando plan anual existente:', plan.id);
         response = await planAnual5RolesApi.update(plan.id, planData);
+        fueCreado = false;
       }
 
       if (response.success && response.data) {
@@ -523,6 +542,21 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
         if (reloadResponse.success && reloadResponse.data) {
           const planesMapeados = reloadResponse.data.map(mapearPlanAnualDesdeBD);
           setPlanes(planesMapeados);
+        }
+
+        // ============ NOTIFICACIONES: Plan Anual Creado ============
+        // Solo notificar si fue creado (no actualizado) y la respuesta fue exitosa
+        if (fueCreado && response.success && response.data?.id && user?.id) {
+          try {
+            await notificarPlanAnualCreado(
+              response.data.id,
+              plan.año,
+              user.id
+            );
+          } catch (notifError) {
+            // No fallar la creación si las notificaciones fallan
+            console.error('Error al enviar notificaciones:', notifError);
+          }
         }
 
         toast.success('Plan Anual guardado exitosamente', {

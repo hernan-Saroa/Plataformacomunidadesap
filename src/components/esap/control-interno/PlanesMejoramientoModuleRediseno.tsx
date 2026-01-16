@@ -47,6 +47,10 @@ import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesCont
 import { planesMejoramientoApi, auditoriasApi, hallazgosApi } from './services/api';
 import type { PlanMejoramiento as PlanMejoramientoBD, AccionMejoramiento } from './services/types';
 
+// Notificaciones
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
+
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
@@ -580,6 +584,10 @@ const COLUMNAS_KANBAN = [
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanesMejoramientoModuleRediseno() {
+  // Hooks para notificaciones
+  const { notificarPlanMejoramientoCreado } = useCrearNotificacion();
+  const { user } = useAuth();
+
   const [planes, setPlanes] = useState<PlanMejoramiento[]>([]);
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
   const [cargando, setCargando] = useState(true);
@@ -846,6 +854,25 @@ export function PlanesMejoramientoModuleRediseno() {
         // Mapear el plan desde BD y agregarlo al estado
         const planMapeado = mapearPlanDesdeBD(response.data);
         setPlanes(prev => [planMapeado, ...prev]);
+
+        // ============ NOTIFICACIONES: Plan de Mejoramiento Creado ============
+        if (response.success && planMapeado?.id && user?.id) {
+          try {
+            const codigoPlan = planMapeado.codigo || `PM-${new Date().getFullYear()}-${planMapeado.id.substring(0, 6).toUpperCase()}`;
+            const codigoAuditoria = auditoria.codigo || `AUD-${auditoria.id.substring(0, 6).toUpperCase()}`;
+            
+            await notificarPlanMejoramientoCreado(
+              planMapeado.id,
+              codigoPlan,
+              auditoria.id,
+              codigoAuditoria,
+              user.id
+            );
+          } catch (notifError) {
+            // No fallar la creación si las notificaciones fallan
+            console.error('Error al enviar notificaciones:', notifError);
+          }
+        }
 
         // Actualizar contexto
         crearPlan({

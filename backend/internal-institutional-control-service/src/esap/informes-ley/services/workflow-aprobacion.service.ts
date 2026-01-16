@@ -498,8 +498,6 @@ export class WorkflowAprobacionService {
       },
       usuarioIdParaActividad, // Pasar número directamente (addActividad acepta string | number)
     );
-
-    console.log(`✅ Informe ${entrega.informeLey.codigo} vinculado exitosamente al Plan Anual ${año}, Rol "Enfoque a la Prevención"`);
   }
 
   /**

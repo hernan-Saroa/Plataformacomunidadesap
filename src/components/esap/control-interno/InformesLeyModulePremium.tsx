@@ -44,6 +44,10 @@ import {
 import { controlInternoApi } from './services/api';
 import { EntregaInforme, InformeLey } from './services/types';
 
+// Notificaciones
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
+
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
@@ -1758,6 +1762,10 @@ interface ModalGenerarInformeProps {
 }
 
 function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInformeProps) {
+  // Hooks para notificaciones
+  const { notificarInformeGenerado } = useCrearNotificacion();
+  const { user } = useAuth();
+
   const [periodo, setPeriodo] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [generando, setGenerando] = useState(false);
@@ -1963,6 +1971,21 @@ function ModalGenerarInforme({ informe, onClose, onGenerar }: ModalGenerarInform
       });
 
       if (response.success && response.data) {
+        // ============ NOTIFICACIONES: Informe Generado ============
+        if (response.success && idParaGenerar && user?.id) {
+          try {
+            await notificarInformeGenerado(
+              idParaGenerar,
+              informe.nombre || informe.nombreCorto,
+              periodo.trim(),
+              user.id,
+              response.data.archivoUrl
+            );
+          } catch (notifError) {
+            console.error('Error al enviar notificaciones:', notifError);
+          }
+        }
+
         toast.success('Informe Generado Exitosamente', {
           description: `${informe.nombreCorto} - Periodo ${periodo}`,
           duration: 4000,

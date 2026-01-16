@@ -76,6 +76,8 @@ import {
 import { toast } from 'sonner@2.0.3';
 import { controlInternoService } from '../../../services/api/controlInternoService';
 import { auditoriasApi } from './services/api';
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
 
 // Design System
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
@@ -420,6 +422,10 @@ export function ExpedienteAuditoriaCompleto({
   onClose,
   tabInicial = 'general',
 }: ExpedienteAuditoriaCompletoProps) {
+  // Hooks para notificaciones
+  const { notificarDocumentoSubidoAuditoria } = useCrearNotificacion();
+  const { user } = useAuth();
+  
   // Estado
   const [auditoria, setAuditoria] = useState<Auditoria>(AUDITORIA_EJEMPLO);
   const [documentos, setDocumentos] = useState<DocumentoExpediente[]>([]);
@@ -734,16 +740,10 @@ export function ExpedienteAuditoriaCompleto({
   }, [documentos, filtroDocumentos]);
 
   // Funciones de guardado
-  const handleGuardarDocumento = async (documento: any) => {
+  const handleGuardarDocumento = async (documento: any, documentoCompleto?: any) => {
     if (!auditoriaId) return;
 
     try {
-      // Aquí se implementaría la lógica para subir el documento
-      // Por ahora solo mostramos el toast y recargamos documentos
-      toast.success('Documento cargado exitosamente', {
-        description: `${documento.nombre} agregado al expediente`,
-      });
-      
       // Recargar documentos
       const docs = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
       const documentosMapeados: DocumentoExpediente[] = docs.map((doc: any) => ({
@@ -758,6 +758,26 @@ export function ExpedienteAuditoriaCompleto({
         tipoMime: doc.tipoMime, // Incluir tipo MIME para determinar si es previsualizable
       }));
       setDocumentos(documentosMapeados);
+      
+      // ============ NOTIFICACIONES: Documento Subido ============
+      if (documentoCompleto?.id && auditoria.codigo && user?.id) {
+        try {
+          await notificarDocumentoSubidoAuditoria(
+            documentoCompleto.id,
+            documento.nombre || documentoCompleto.nombre || 'Documento',
+            auditoriaId,
+            auditoria.codigo,
+            user.id
+          );
+        } catch (notifError) {
+          // No fallar la carga si las notificaciones fallan
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
+      
+      toast.success('Documento cargado exitosamente', {
+        description: `${documento.nombre} agregado al expediente`,
+      });
       
       setModalCargarDocumento(false);
     } catch (error) {
@@ -1064,6 +1084,7 @@ export function ExpedienteAuditoriaCompleto({
                     onGuardar={handleGuardarDocumento}
                     loading={loadingDocumentos}
                     auditoriaId={auditoriaId}
+                    codigoAuditoria={auditoria.codigo}
                     onRefreshDocumentos={async () => {
                       if (!auditoriaId) return;
                       setLoadingDocumentos(true);
@@ -1550,14 +1571,16 @@ function TabDocumentacion({
   onGuardar,
   loading,
   auditoriaId,
+  codigoAuditoria,
   onRefreshDocumentos,
 }: {
   documentos: DocumentoExpediente[];
   filtro: string;
   onFiltroChange: (filtro: string) => void;
-  onGuardar?: (documento: any) => void;
+  onGuardar?: (documento: any, documentoCompleto?: any) => void;
   loading?: boolean;
   auditoriaId?: string;
+  codigoAuditoria?: string;
   onRefreshDocumentos?: () => Promise<void>;
 }) {
   const [modalCargarDocumento, setModalCargarDocumento] = useState(false);
@@ -1841,10 +1864,11 @@ function TabDocumentacion({
       {modalCargarDocumento && auditoriaId && (
         <ModalCargarDocumento
           auditoriaId={auditoriaId}
+          codigoAuditoria={codigoAuditoria}
           onClose={() => setModalCargarDocumento(false)}
-          onGuardar={(documento) => {
+          onGuardar={(documento, documentoCompleto) => {
             if (onGuardar) {
-              onGuardar(documento);
+              onGuardar(documento, documentoCompleto);
             }
             setModalCargarDocumento(false);
           }}

@@ -111,15 +111,6 @@ export function useControlInternoPermissions(
     // Eliminar duplicados
     const rolesUnicos = Array.from(new Set(rolesNormalizados));
     
-    // Debug: Log para ver qué roles se están recibiendo
-    console.log('🔍 [useControlInternoPermissions] Roles detectados:', {
-      userRoles,
-      userDataRoles: userData?.roles,
-      rolesCombinados,
-      rolesNormalizados,
-      rolesUnicos
-    });
-    
     return rolesUnicos;
   }, [userRoles, userData]);
 
@@ -132,7 +123,6 @@ export function useControlInternoPermissions(
         rolesUsuario.includes('SUPER_ADMIN') || 
         rolesUsuario.includes('ADMINISTRATIVO')) {
       rolEncontrado = 'JEFE_OCI';
-      console.log('✅ [useControlInternoPermissions] Rol detectado (ADMIN):', rolEncontrado, 'de roles:', rolesUsuario);
       return rolEncontrado;
     }
     
@@ -152,7 +142,6 @@ export function useControlInternoPermissions(
       // Buscar coincidencia exacta primero
       if (rolesExactos[rolUsuario]) {
         rolEncontrado = rolesExactos[rolUsuario];
-        console.log('✅ [useControlInternoPermissions] Rol detectado (exacto):', rolEncontrado, 'de roles:', rolesUsuario);
         return rolEncontrado;
       }
     }
@@ -162,22 +151,18 @@ export function useControlInternoPermissions(
       if ((rolUsuario.includes('JEFE') && rolUsuario.includes('OCI')) || 
           (rolUsuario.includes('JEFE') && rolUsuario.includes('CONTROL_INTERNO'))) {
         rolEncontrado = 'JEFE_OCI';
-        console.log('✅ [useControlInternoPermissions] Rol detectado (parcial):', rolEncontrado, 'de roles:', rolesUsuario);
         return rolEncontrado;
       }
       if (rolUsuario.includes('PROFESIONAL') && rolUsuario.includes('AUDITOR')) {
         rolEncontrado = 'PROFESIONAL_AUDITOR';
-        console.log('✅ [useControlInternoPermissions] Rol detectado (parcial):', rolEncontrado, 'de roles:', rolesUsuario);
         return rolEncontrado;
       }
       if (rolUsuario.includes('AUXILIAR') && rolUsuario.includes('AUDITORIA')) {
         rolEncontrado = 'AUXILIAR_AUDITORIA';
-        console.log('✅ [useControlInternoPermissions] Rol detectado (parcial):', rolEncontrado, 'de roles:', rolesUsuario);
         return rolEncontrado;
       }
       if (rolUsuario.includes('CONSULTA')) {
         rolEncontrado = 'CONSULTA';
-        console.log('✅ [useControlInternoPermissions] Rol detectado (parcial):', rolEncontrado, 'de roles:', rolesUsuario);
         return rolEncontrado;
       }
     }
@@ -196,7 +181,6 @@ export function useControlInternoPermissions(
   const puedeAcceder = useMemo(() => {
     return (submodulo: string): boolean => {
       // ⚠️ TEMPORAL: Mostrar todos los módulos sin validar permisos
-      console.log('✅ [useControlInternoPermissions] Acceso temporal permitido a todos los submódulos:', submodulo);
       return true;
       
       /* CÓDIGO ORIGINAL COMENTADO TEMPORALMENTE
@@ -206,7 +190,6 @@ export function useControlInternoPermissions(
       );
       
       if (esAdmin) {
-        console.log('✅ [useControlInternoPermissions] Acceso ADMIN otorgado a:', submodulo);
         return true;
       }
       
@@ -220,11 +203,6 @@ export function useControlInternoPermissions(
       const permiso = permisos.find(p => p.submodulo === submodulo);
       
       const tieneAcceso = permiso ? permiso.acciones.includes('view') : false;
-      console.log(`🔍 [useControlInternoPermissions] Acceso a ${submodulo}:`, {
-        rolDetectado,
-        tienePermiso: !!permiso,
-        tieneAcceso
-      });
       
       return tieneAcceso;
       */

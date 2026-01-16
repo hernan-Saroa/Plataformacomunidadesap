@@ -19,6 +19,7 @@ import { CriterioAuditoria } from './entities/criterio-auditoria.entity';
 import { Documento } from '../documentos/entities/documento.entity';
 import { AuditoriaKanbanDto, PersonaDto, ObjetivoDto } from './dto/auditoria-kanban.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 
 @Injectable()
 export class AuditoriasService {
@@ -491,6 +492,14 @@ export class AuditoriasService {
       relations: ['objetivos', 'criterios', 'equipoAuditores'],
     });
 
+    // Crear notificaciones después de guardar la auditoría
+    try {
+      await this.crearNotificacionesAuditoriaCreada(auditoriaCompleta || auditoriaGuardada);
+    } catch (notifError) {
+      // No fallar la creación si las notificaciones fallan
+      console.error('[AuditoriasService.create] Error al crear notificaciones:', notifError);
+    }
+
     return this.serializeAuditoria(auditoriaCompleta || auditoriaGuardada) as any;
   }
 
@@ -660,37 +669,37 @@ export class AuditoriasService {
       auditoria.activa = updateDto.activa;
     }
 
-    // Log para depuración
-    console.log('[AuditoriasService.update] Datos recibidos:', {
-      alcance: updateDto.alcance,
-      riesgoKanban: updateDto.riesgoKanban,
-      auditorLiderId: updateDto.auditorLiderId,
-      auditorAsignadoId: updateDto.auditorAsignadoId,
-    });
-    // Serializar para los logs (TypeORM puede devolver BIGINT como strings)
-    const auditoriaSerialized = this.serializeAuditoria(auditoria);
-    console.log('[AuditoriasService.update] Valores antes de guardar (serializados):', {
-      alcance: auditoriaSerialized.alcance,
-      riesgoKanban: auditoriaSerialized.riesgoKanban,
-      auditorLiderId: auditoriaSerialized.auditorLiderId,
-      auditorAsignadoId: auditoriaSerialized.auditorAsignadoId,
-    });
+    // Detectar cambios importantes antes de guardar
+    const estadoAnterior = auditoria.estadoKanban || auditoria.fase;
+    const cambios: string[] = [];
 
     // Guardar cambios en la auditoría
-    // Log antes de guardar
-    console.log('[AuditoriasService.update] programaAnualMetadata antes de save:', auditoria.programaAnualMetadata);
-    
     const saved = await this.auditoriaRepository.save(auditoria);
-    
-    // Serializar para los logs (TypeORM devuelve BIGINT como strings)
-    const savedSerialized = this.serializeAuditoria(saved);
-    console.log('[AuditoriasService.update] Valores después de guardar (serializados):', {
-      alcance: savedSerialized.alcance,
-      programaAnualMetadata: savedSerialized.programaAnualMetadata,
-      riesgoKanban: savedSerialized.riesgoKanban,
-      auditorLiderId: savedSerialized.auditorLiderId,
-      auditorAsignadoId: savedSerialized.auditorAsignadoId,
-    });
+
+    // Detectar cambios después de guardar
+    if (updateDto.estadoKanban && updateDto.estadoKanban !== estadoAnterior) {
+      cambios.push(`Estado Kanban: ${estadoAnterior} -> ${updateDto.estadoKanban}`);
+    }
+    if (updateDto.fase && updateDto.fase !== auditoria.fase) {
+      cambios.push(`Fase: ${auditoria.fase} -> ${updateDto.fase}`);
+    }
+    if (updateDto.nombre) cambios.push('Nombre actualizado');
+    if (updateDto.fechaInicio || updateDto.fechaFin) cambios.push('Fechas actualizadas');
+    if (updateDto.auditorLiderId !== undefined) cambios.push('Auditor líder actualizado');
+    if (updateDto.auditorAsignadoId !== undefined) cambios.push('Auditor asignado actualizado');
+
+    // Crear notificaciones si hay cambios importantes
+    if (cambios.length > 0) {
+      try {
+        if (updateDto.estadoKanban && updateDto.estadoKanban !== estadoAnterior) {
+          await this.crearNotificacionesCambioEstado(saved, estadoAnterior, updateDto.estadoKanban);
+        } else {
+          await this.crearNotificacionesAuditoriaEditada(saved, cambios);
+        }
+      } catch (notifError) {
+        console.error('[AuditoriasService.update] Error al crear notificaciones:', notifError);
+      }
+    }
 
     // Actualizar objetivos si se proporcionan
     if (updateDto.objetivos && Array.isArray(updateDto.objetivos)) {
@@ -2374,6 +2383,176 @@ export class AuditoriasService {
       }));
     } catch (error) {
       console.error('Error al obtener personas disponibles:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Crea notificaciones cuando se crea una auditoría
+   */
+  private async crearNotificacionesAuditoriaCreada(auditoria: Auditoria): Promise<void> {
+    console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Iniciando creación de notificaciones para auditoría ${auditoria.codigo}`);
+    
+    const usuariosNotificar: string[] = [];
+
+    // 1. Notificar al auditor líder si está asignado
+    if (auditoria.auditorLiderId) {
+      usuariosNotificar.push(String(auditoria.auditorLiderId));
+      console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Auditor líder agregado: ${auditoria.auditorLiderId}`);
+    }
+
+    // 2. Notificar al auditor asignado si está asignado
+    if (auditoria.auditorAsignadoId) {
+      usuariosNotificar.push(String(auditoria.auditorAsignadoId));
+      console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Auditor asignado agregado: ${auditoria.auditorAsignadoId}`);
+    }
+
+    // 3. Notificar al supervisor si está asignado
+    if (auditoria.supervisorAsignadoId) {
+      usuariosNotificar.push(String(auditoria.supervisorAsignadoId));
+      console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Supervisor agregado: ${auditoria.supervisorAsignadoId}`);
+    }
+
+    // 4. Obtener Jefes de Control Interno
+    try {
+      const jefesOCI = await this.obtenerJefesControlInterno();
+      usuariosNotificar.push(...jefesOCI);
+      console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] ${jefesOCI.length} Jefe(s) de Control Interno encontrado(s)`);
+    } catch (error) {
+      console.error(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Error al obtener Jefes de Control Interno:`, error);
+    }
+
+    // Eliminar duplicados
+    const usuariosUnicos = [...new Set(usuariosNotificar)];
+    console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Total de usuarios a notificar: ${usuariosUnicos.length}`);
+
+    // Crear notificaciones para cada usuario
+    for (const usuarioId of usuariosUnicos) {
+      try {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: TipoNotificacion.ANUNCIO_AUDITORIA,
+          titulo: `Nueva Auditoría Creada: ${auditoria.codigo}`,
+          mensaje: `Se ha creado la auditoría "${auditoria.nombre}" (${auditoria.codigo}). Tipo: ${auditoria.tipo}, Territorial: ${auditoria.territorial}, Sede: ${auditoria.sede}.`,
+          prioridad: PrioridadNotificacion.ALTA,
+          canal: CanalNotificacion.SISTEMA,
+          metadata: {
+            auditoriaId: auditoria.id,
+            codigoAuditoria: auditoria.codigo,
+            nombreAuditoria: auditoria.nombre,
+            tipoAuditoria: auditoria.tipo,
+          },
+          accionUrl: `/control-interno/auditorias/${auditoria.id}`,
+        });
+        console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Notificación creada para usuario: ${usuarioId}`);
+      } catch (error) {
+        console.error(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Error al crear notificación para usuario ${usuarioId}:`, error);
+      }
+    }
+
+    console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Proceso de notificaciones completado para auditoría ${auditoria.codigo}`);
+  }
+
+  /**
+   * Crea notificaciones cuando se cambia el estado de una auditoría
+   */
+  private async crearNotificacionesCambioEstado(auditoria: Auditoria, estadoAnterior: string, estadoNuevo: string): Promise<void> {
+    console.log(`[AuditoriasService.crearNotificacionesCambioEstado] Cambio de estado: ${estadoAnterior} -> ${estadoNuevo} para auditoría ${auditoria.codigo}`);
+    
+    const usuariosNotificar: string[] = [];
+
+    // Notificar a todos los involucrados
+    if (auditoria.auditorLiderId) usuariosNotificar.push(String(auditoria.auditorLiderId));
+    if (auditoria.auditorAsignadoId) usuariosNotificar.push(String(auditoria.auditorAsignadoId));
+    if (auditoria.supervisorAsignadoId) usuariosNotificar.push(String(auditoria.supervisorAsignadoId));
+
+    // Obtener Jefes de Control Interno
+    try {
+      const jefesOCI = await this.obtenerJefesControlInterno();
+      usuariosNotificar.push(...jefesOCI);
+    } catch (error) {
+      console.error(`[AuditoriasService.crearNotificacionesCambioEstado] Error al obtener Jefes:`, error);
+    }
+
+    const usuariosUnicos = [...new Set(usuariosNotificar)];
+
+    for (const usuarioId of usuariosUnicos) {
+      try {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: TipoNotificacion.OTRO,
+          titulo: `Cambio de Estado - Auditoría ${auditoria.codigo}`,
+          mensaje: `El estado de la auditoría "${auditoria.nombre}" ha cambiado de "${estadoAnterior}" a "${estadoNuevo}".`,
+          prioridad: PrioridadNotificacion.NORMAL,
+          canal: CanalNotificacion.SISTEMA,
+          metadata: {
+            auditoriaId: auditoria.id,
+            codigoAuditoria: auditoria.codigo,
+            estadoAnterior,
+            estadoNuevo,
+          },
+          accionUrl: `/control-interno/auditorias/${auditoria.id}`,
+        });
+      } catch (error) {
+        console.error(`[AuditoriasService.crearNotificacionesCambioEstado] Error al crear notificación:`, error);
+      }
+    }
+  }
+
+  /**
+   * Crea notificaciones cuando se edita una auditoría
+   */
+  private async crearNotificacionesAuditoriaEditada(auditoria: Auditoria, cambios: string[]): Promise<void> {
+    console.log(`[AuditoriasService.crearNotificacionesAuditoriaEditada] Auditoría ${auditoria.codigo} editada. Cambios: ${cambios.join(', ')}`);
+    
+    const usuariosNotificar: string[] = [];
+
+    if (auditoria.auditorLiderId) usuariosNotificar.push(String(auditoria.auditorLiderId));
+    if (auditoria.auditorAsignadoId) usuariosNotificar.push(String(auditoria.auditorAsignadoId));
+    if (auditoria.supervisorAsignadoId) usuariosNotificar.push(String(auditoria.supervisorAsignadoId));
+
+    const usuariosUnicos = [...new Set(usuariosNotificar)];
+
+    for (const usuarioId of usuariosUnicos) {
+      try {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: TipoNotificacion.OTRO,
+          titulo: `Auditoría Editada: ${auditoria.codigo}`,
+          mensaje: `La auditoría "${auditoria.nombre}" ha sido editada. Cambios: ${cambios.join(', ')}.`,
+          prioridad: PrioridadNotificacion.NORMAL,
+          canal: CanalNotificacion.SISTEMA,
+          metadata: {
+            auditoriaId: auditoria.id,
+            codigoAuditoria: auditoria.codigo,
+            cambios,
+          },
+          accionUrl: `/control-interno/auditorias/${auditoria.id}`,
+        });
+      } catch (error) {
+        console.error(`[AuditoriasService.crearNotificacionesAuditoriaEditada] Error:`, error);
+      }
+    }
+  }
+
+  /**
+   * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
+   */
+  private async obtenerJefesControlInterno(): Promise<string[]> {
+    try {
+      const result = await this.dataSource.query(`
+        SELECT DISTINCT u.id_tercero
+        FROM auth."user" u
+        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+        INNER JOIN auth.role r ON r.id = ur.id_rol
+        WHERE r.code = 'JEFE_CONTROL_INTERNO'
+          AND ur.is_active = true
+          AND u.is_active = true
+      `);
+
+      return result.map((row: any) => String(row.id_tercero));
+    } catch (error) {
+      console.error('[AuditoriasService.obtenerJefesControlInterno] Error:', error);
       return [];
     }
   }

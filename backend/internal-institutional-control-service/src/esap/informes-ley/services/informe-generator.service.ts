@@ -1,11 +1,13 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { InformeLey } from '../entities/informe-ley.entity';
 import { EntregaInformeLey } from '../entities/entrega-informe-ley.entity';
 import { HistorialGeneracionInforme } from '../entities/historial-generacion-informe.entity';
 import { PlantillasService } from './plantillas.service';
 import { DatosAutomaticosService } from './datos-automaticos.service';
+import { NotificacionesService } from '../../notificaciones/notificaciones.service';
+import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../../notificaciones/entities/notificacion.entity';
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -31,6 +33,8 @@ export class InformeGeneratorService {
     private readonly historialRepository: Repository<HistorialGeneracionInforme>,
     private readonly plantillasService: PlantillasService,
     private readonly datosAutomaticosService: DatosAutomaticosService,
+    private readonly notificacionesService: NotificacionesService,
+    private readonly dataSource: DataSource,
   ) {
     // Crear directorio de uploads si no existe
     if (!fs.existsSync(this.uploadsDir)) {
@@ -197,6 +201,14 @@ export class InformeGeneratorService {
       periodo,
       datosAutomaticosPoblados: entrega.datosAutomaticosPoblados,
     });
+
+    // 8. Crear notificaciones después de generar el informe
+    try {
+      await this.crearNotificacionesInformeGenerado(informe, entrega);
+    } catch (notifError) {
+      // No fallar la generación si las notificaciones fallan
+      console.error('[InformeGeneratorService.generarInformeAutomatico] Error al crear notificaciones:', notifError);
+    }
 
     return entrega;
   }
@@ -394,5 +406,84 @@ export class InformeGeneratorService {
     });
 
     await this.historialRepository.save(historial);
+  }
+
+  /**
+   * Crea notificaciones cuando se genera un informe de ley
+   */
+  private async crearNotificacionesInformeGenerado(informe: InformeLey, entrega: EntregaInformeLey): Promise<void> {
+    console.log(`[InformeGeneratorService.crearNotificacionesInformeGenerado] Informe ${informe.codigo} generado para periodo ${entrega.periodo}`);
+    
+    const usuariosNotificar: string[] = [];
+
+    // Buscar responsable del área
+    if (informe.areaResponsable) {
+      try {
+        const responsable = await this.dataSource.query(
+          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR sig_tercero ILIKE $1 LIMIT 1`,
+          [`%${informe.areaResponsable}%`]
+        );
+        if (responsable && responsable.length > 0) {
+          usuariosNotificar.push(String(responsable[0].id_tercero));
+        }
+      } catch (error) {
+        console.error(`[InformeGeneratorService.crearNotificacionesInformeGenerado] Error al buscar responsable:`, error);
+      }
+    }
+
+    // Obtener Jefes de Control Interno
+    try {
+      const jefesOCI = await this.obtenerJefesControlInterno();
+      usuariosNotificar.push(...jefesOCI);
+    } catch (error) {
+      console.error(`[InformeGeneratorService.crearNotificacionesInformeGenerado] Error al obtener Jefes:`, error);
+    }
+
+    const usuariosUnicos = [...new Set(usuariosNotificar)];
+
+    for (const usuarioId of usuariosUnicos) {
+      try {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: TipoNotificacion.RECEPCION_DOCUMENTO,
+          titulo: `Informe de Ley Generado: ${informe.codigo}`,
+          mensaje: `Se ha generado el informe "${informe.nombre}" (${informe.codigo}) para el periodo ${entrega.periodo}. Estado: ${entrega.estado}.`,
+          prioridad: PrioridadNotificacion.ALTA,
+          canal: CanalNotificacion.SISTEMA,
+          metadata: {
+            informeId: informe.id,
+            codigoInforme: informe.codigo,
+            nombreInforme: informe.nombre,
+            entregaId: entrega.id,
+            periodo: entrega.periodo,
+            estado: entrega.estado,
+          },
+        });
+      } catch (error) {
+        console.error(`[InformeGeneratorService.crearNotificacionesInformeGenerado] Error al crear notificación:`, error);
+      }
+    }
+  }
+
+  /**
+   * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
+   */
+  private async obtenerJefesControlInterno(): Promise<string[]> {
+    try {
+      const result = await this.dataSource.query(`
+        SELECT DISTINCT u.id_tercero
+        FROM auth."user" u
+        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+        INNER JOIN auth.role r ON r.id = ur.id_rol
+        WHERE r.code = 'JEFE_CONTROL_INTERNO'
+          AND ur.is_active = true
+          AND u.is_active = true
+      `);
+
+      return result.map((row: any) => String(row.id_tercero));
+    } catch (error) {
+      console.error('[InformeGeneratorService.obtenerJefesControlInterno] Error:', error);
+      return [];
+    }
   }
 }

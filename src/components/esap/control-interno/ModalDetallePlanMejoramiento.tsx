@@ -30,6 +30,10 @@ import { toast } from 'sonner@2.0.3';
 import { planesMejoramientoApi, hallazgosApi, evidenciasApi } from './services/api';
 import type { PlanMejoramiento as PlanMejoramientoBD, AccionMejoramiento, Hallazgo as HallazgoBD } from './services/types';
 
+// Notificaciones
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
+
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
@@ -2781,6 +2785,10 @@ interface ModalCargarEvidenciaProps {
 }
 
 function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada, conteoEvidenciasActual = 0 }: ModalCargarEvidenciaProps) {
+  // Hooks para notificaciones
+  const { notificarDocumentoSubidoPlanMejoramiento } = useCrearNotificacion();
+  const { user } = useAuth();
+
   const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([]);
   const [observaciones, setObservaciones] = useState('');
   const [subiendo, setSubiendo] = useState(false);
@@ -2823,6 +2831,19 @@ function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada, con
     setSubiendo(true);
 
     try {
+      // Obtener información del plan para las notificaciones
+      let planInfo: { codigo: string } | null = null;
+      try {
+        const planResponse = await planesMejoramientoApi.getById(planId);
+        if (planResponse.success && planResponse.data) {
+          planInfo = {
+            codigo: planResponse.data.codigo || `PM-${new Date().getFullYear()}-${planResponse.data.id.substring(0, 6).toUpperCase()}`
+          };
+        }
+      } catch (error) {
+        console.warn('No se pudo obtener información del plan para notificaciones:', error);
+      }
+
       // Subir cada archivo usando el nuevo servicio de evidencias
       for (const archivo of archivosSeleccionados) {
         const response = await evidenciasApi.create(
@@ -2842,6 +2863,21 @@ function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada, con
 
         if (!response.success) {
           throw new Error(response.error || `Error al cargar ${archivo.name}`);
+        }
+
+        // ============ NOTIFICACIONES: Documento Subido en Plan de Mejoramiento ============
+        if (planInfo && response.data && user?.id) {
+          try {
+            await notificarDocumentoSubidoPlanMejoramiento(
+              response.data.id,
+              archivo.name,
+              planId,
+              planInfo.codigo,
+              user.id
+            );
+          } catch (notifError) {
+            console.error('Error al enviar notificaciones:', notifError);
+          }
         }
       }
 
@@ -3026,6 +3062,10 @@ interface ModalCargarDocumentoPlanProps {
 }
 
 function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanProps) {
+  // Hooks para notificaciones
+  const { notificarDocumentoSubidoPlanMejoramiento } = useCrearNotificacion();
+  const { user } = useAuth();
+
   const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([]);
   const [tipoDocumento, setTipoDocumento] = useState<'evidencia_plan' | 'documento_plan' | 'certificado' | 'acta' | 'informe' | 'otro'>('documento_plan');
   const [descripcion, setDescripcion] = useState('');
@@ -3060,6 +3100,19 @@ function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanP
     setSubiendo(true);
 
     try {
+      // Obtener información del plan para las notificaciones
+      let planInfo: { codigo: string } | null = null;
+      try {
+        const planResponse = await planesMejoramientoApi.getById(planId);
+        if (planResponse.success && planResponse.data) {
+          planInfo = {
+            codigo: planResponse.data.codigo || `PM-${new Date().getFullYear()}-${planResponse.data.id.substring(0, 6).toUpperCase()}`
+          };
+        }
+      } catch (error) {
+        console.warn('No se pudo obtener información del plan para notificaciones:', error);
+      }
+
       // Subir cada archivo usando el nuevo servicio de evidencias
       for (const archivo of archivosSeleccionados) {
         const response = await evidenciasApi.create(
@@ -3075,6 +3128,21 @@ function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanP
 
         if (!response.success) {
           throw new Error(response.error || `Error al cargar ${archivo.name}`);
+        }
+
+        // ============ NOTIFICACIONES: Documento Subido en Plan de Mejoramiento ============
+        if (planInfo && response.data && user?.id) {
+          try {
+            await notificarDocumentoSubidoPlanMejoramiento(
+              response.data.id,
+              archivo.name,
+              planId,
+              planInfo.codigo,
+              user.id
+            );
+          } catch (notifError) {
+            console.error('Error al enviar notificaciones:', notifError);
+          }
         }
       }
 

@@ -537,13 +537,6 @@ export class ApiClient {
           // Por ahora, mantenemos el path completo incluyendo /api/v1 si existe
           const path = restPath || '/';
           fullUrl = `${serviceUrl}${path}`;
-          console.log('🔗 API Client [DIRECT MODE]:', {
-            endpoint,
-            serviceName,
-            serviceUrl,
-            restPath: path,
-            finalURL: fullUrl,
-          });
         } else {
           // Servicio no encontrado, usar baseURL normal
           console.warn(`⚠️ Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
@@ -562,12 +555,6 @@ export class ApiClient {
       } else {
         fullUrl = new URL(endpoint, this.baseURL).toString();
       }
-
-      console.log('🔗 API Client [GATEWAY MODE]:', {
-        endpoint,
-        baseURL: this.baseURL,
-        finalURL: fullUrl,
-      });
     }
 
     // Agregar parámetros de query

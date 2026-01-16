@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Bell,
@@ -12,12 +12,14 @@ import {
   Trash2,
   Eye,
   Filter,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { toast } from 'sonner';
+import { useNotificacionesControlInterno } from './hooks/useNotificacionesControlInterno';
 
 // ====================================
 // TIPOS
@@ -41,104 +43,132 @@ type FiltroTipo = 'todos' | 'info' | 'exito' | 'advertencia' | 'error' | 'record
 type FiltroEstado = 'todos' | 'leidas' | 'no-leidas';
 
 // ====================================
-// DATOS MOCK
+// FUNCIONES DE MAPEO
 // ====================================
 
-const NOTIFICACIONES_MOCK: Notificacion[] = [
-  {
-    id: 'n1',
-    tipo: 'recordatorio',
-    titulo: 'Seguimiento Trimestral Próximo',
-    mensaje: 'El seguimiento trimestral del Plan de Mejoramiento PM-2025-005 vence en 7 días (15 de Octubre).',
-    fecha: '2025-10-08T09:00:00',
-    leida: false,
-    origen: 'Sistema de Seguimiento',
-    accion: {
-      texto: 'Ir al Seguimiento',
-      url: '/seguimiento-plan/PM-2025-005'
-    }
-  },
-  {
-    id: 'n2',
-    tipo: 'exito',
-    titulo: 'Informe Aprobado',
-    mensaje: 'El Informe Pormenorizado 2025-S1 ha sido aprobado por el Jefe de OCI.',
-    fecha: '2025-09-30T14:22:00',
-    leida: true,
-    origen: 'Informes de Ley'
-  },
-  {
-    id: 'n3',
-    tipo: 'advertencia',
-    titulo: 'Plan de Mejoramiento Pendiente',
-    mensaje: 'El Plan de Mejoramiento para la auditoría AUD-2025-008 debe ser presentado antes del 28 de Octubre.',
-    fecha: '2025-10-05T10:15:00',
-    leida: false,
-    origen: 'Planes de Mejoramiento',
-    accion: {
-      texto: 'Formular Plan',
-      url: '/formulacion-plan/AUD-2025-008'
-    }
-  },
-  {
-    id: 'n4',
-    tipo: 'info',
-    titulo: 'Nueva Auditoría Programada',
-    mensaje: 'Se ha programado la auditoría AUD-2025-012 - Gestión de TI para el 15 de Noviembre.',
-    fecha: '2025-10-01T08:30:00',
-    leida: true,
-    origen: 'Programa Anual'
-  },
-  {
-    id: 'n5',
-    tipo: 'error',
-    titulo: 'Evidencia Rechazada',
-    mensaje: 'La evidencia "Conciliaciones_Ago.pdf" ha sido rechazada. Motivo: Documento incompleto.',
-    fecha: '2025-09-28T16:45:00',
-    leida: false,
-    origen: 'Validación de Evidencias',
-    accion: {
-      texto: 'Ver Observaciones',
-      url: '/seguimiento-plan/PM-2025-005'
-    }
-  },
-  {
-    id: 'n6',
-    tipo: 'recordatorio',
-    titulo: 'Reunión de Apertura Mañana',
-    mensaje: 'Reunión de apertura de auditoría AUD-2025-010 programada para mañana a las 10:00 AM.',
-    fecha: '2025-10-07T17:00:00',
-    leida: false,
-    origen: 'Planeación de Auditoría'
-  },
-  {
-    id: 'n7',
-    tipo: 'info',
-    titulo: 'Documento Cargado',
-    mensaje: 'El documento "Plan_Anual_2026.pdf" ha sido cargado en la carpeta Planes Anuales.',
-    fecha: '2025-10-06T11:20:00',
-    leida: true,
-    origen: 'Gestión Documental'
-  },
-  {
-    id: 'n8',
-    tipo: 'exito',
-    titulo: 'Auditoría Finalizada',
-    mensaje: 'La auditoría AUD-2025-007 ha sido completada exitosamente.',
-    fecha: '2025-09-25T15:30:00',
-    leida: true,
-    origen: 'Comunicación'
-  }
-];
+/**
+ * Mapea el tipo de notificación del backend al tipo de UI
+ */
+function mapearTipoNotificacion(tipoNotificacion: string): Notificacion['tipo'] {
+  const tipoMap: Record<string, Notificacion['tipo']> = {
+    'recordatorio_plazo': 'recordatorio',
+    'alerta_vencimiento': 'advertencia',
+    'rechazo_plan': 'error',
+    'validacion_evidencia': 'error',
+    'ampliacion_plazo_rechazada': 'error',
+    'aprobacion_plan': 'exito',
+    'ampliacion_plazo_aprobada': 'exito',
+    'hallazgo_identificado': 'advertencia',
+    'solicitud_evidencia': 'info',
+    'recepcion_documento': 'info',
+    'anuncio_auditoria': 'info',
+    'controversia_hallazgo': 'advertencia',
+    'solicitud_ampliacion_plazo': 'info',
+    'otro': 'info',
+  };
+  return tipoMap[tipoNotificacion] || 'info';
+}
+
+/**
+ * Obtiene el origen de la notificación basado en el tipo
+ */
+function obtenerOrigen(tipoNotificacion: string): string {
+  const origenMap: Record<string, string> = {
+    'anuncio_auditoria': 'Programa Anual',
+    'hallazgo_identificado': 'Auditorías',
+    'aprobacion_plan': 'Planes de Mejoramiento',
+    'rechazo_plan': 'Planes de Mejoramiento',
+    'solicitud_ampliacion_plazo': 'Auditorías',
+    'ampliacion_plazo_aprobada': 'Auditorías',
+    'ampliacion_plazo_rechazada': 'Auditorías',
+    'recepcion_documento': 'Gestión Documental',
+    'validacion_evidencia': 'Validación de Evidencias',
+    'solicitud_evidencia': 'Validación de Evidencias',
+    'recordatorio_plazo': 'Sistema de Seguimiento',
+    'alerta_vencimiento': 'Sistema de Seguimiento',
+    'controversia_hallazgo': 'Auditorías',
+  };
+  return origenMap[tipoNotificacion] || 'Sistema';
+}
+
+/**
+ * Convierte una notificación del backend al formato de UI
+ */
+function mapearNotificacionBackend(notif: any): Notificacion {
+  // Asegurarse de usar createdAt del backend (created_at en snake_case)
+  const fechaCreacion = notif.createdAt || notif.created_at || notif.fecha;
+  
+  console.log('[mapearNotificacionBackend] Notificación recibida:', {
+    id: notif.id,
+    titulo: notif.titulo,
+    accionUrl: notif.accionUrl,
+    tieneAccionUrl: !!notif.accionUrl,
+    createdAt: notif.createdAt,
+    created_at: notif.created_at,
+    fechaUsada: fechaCreacion
+  });
+  
+  return {
+    id: notif.id,
+    tipo: mapearTipoNotificacion(notif.tipoNotificacion),
+    titulo: notif.titulo,
+    mensaje: notif.mensaje,
+    fecha: fechaCreacion,
+    leida: notif.leida,
+    origen: obtenerOrigen(notif.tipoNotificacion),
+    accion: notif.accionUrl ? {
+      texto: 'Ver Detalles',
+      url: notif.accionUrl
+    } : undefined
+  };
+}
 
 // ====================================
 // COMPONENTE PRINCIPAL
 // ====================================
 
 export const NotificacionesModule: React.FC = () => {
-  const [notificaciones, setNotificaciones] = useState<Notificacion[]>(NOTIFICACIONES_MOCK);
+  console.log('[NotificacionesModule] Componente montado');
+  
+  const {
+    notificaciones: notificacionesBackend,
+    loading,
+    error,
+    cargarNotificaciones,
+    marcarLeida,
+    marcarTodasLeidas,
+    eliminarNotificacion
+  } = useNotificacionesControlInterno();
+
+  console.log('[NotificacionesModule] Estado del hook:', {
+    notificacionesCount: notificacionesBackend.length,
+    loading,
+    error,
+  });
+
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('todos');
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos');
+
+  // Mapear notificaciones del backend al formato de UI
+  const notificaciones = useMemo(() => {
+    const mapeadas = notificacionesBackend.map(mapearNotificacionBackend);
+    console.log('[NotificacionesModule] Notificaciones mapeadas:', mapeadas.map(n => ({
+      id: n.id,
+      titulo: n.titulo,
+      tieneAccion: !!n.accion,
+      accionUrl: n.accion?.url
+    })));
+    return mapeadas;
+  }, [notificacionesBackend]);
+
+  // Recargar notificaciones periódicamente
+  useEffect(() => {
+    const interval = setInterval(() => {
+      cargarNotificaciones();
+    }, 30000); // Recargar cada 30 segundos
+
+    return () => clearInterval(interval);
+  }, [cargarNotificaciones]);
 
   // Notificaciones filtradas
   const notificacionesFiltradas = useMemo(() => {
@@ -162,24 +192,24 @@ export const NotificacionesModule: React.FC = () => {
   }, [notificaciones]);
 
   // Handlers
-  const marcarComoLeida = (id: string) => {
-    setNotificaciones(prev => prev.map(n =>
-      n.id === id ? { ...n, leida: true } : n
-    ));
+  const handleMarcarComoLeida = async (id: string) => {
+    await marcarLeida(id);
   };
 
-  const marcarTodasLeidas = () => {
-    setNotificaciones(prev => prev.map(n => ({ ...n, leida: true })));
-    toast.success('Todas las notificaciones marcadas como leídas');
+  const handleMarcarTodasLeidas = async () => {
+    await marcarTodasLeidas();
   };
 
-  const eliminarNotificacion = (id: string) => {
-    setNotificaciones(prev => prev.filter(n => n.id !== id));
-    toast.success('Notificación eliminada');
+  const handleEliminarNotificacion = async (id: string) => {
+    await eliminarNotificacion(id);
   };
 
-  const limpiarLeidas = () => {
-    setNotificaciones(prev => prev.filter(n => !n.leida));
+  const handleLimpiarLeidas = async () => {
+    // Eliminar todas las notificaciones leídas
+    const leidas = notificaciones.filter(n => n.leida);
+    for (const notif of leidas) {
+      await eliminarNotificacion(notif.id);
+    }
     toast.success('Notificaciones leídas eliminadas');
   };
 
@@ -212,11 +242,11 @@ export const NotificacionesModule: React.FC = () => {
             </div>
 
             <div className="flex gap-2">
-              <ButtonSIGL variant="default" onClick={marcarTodasLeidas} disabled={estadisticas.noLeidas === 0}>
+              <ButtonSIGL variant="secondary" onClick={handleMarcarTodasLeidas} disabled={estadisticas.noLeidas === 0 || loading}>
                 <CheckCircle2 className="w-4 h-4" />
                 Marcar Todas Leídas
               </ButtonSIGL>
-              <ButtonSIGL variant="default" onClick={limpiarLeidas}>
+              <ButtonSIGL variant="secondary" onClick={handleLimpiarLeidas} disabled={loading}>
                 <Trash2 className="w-4 h-4" />
                 Limpiar Leídas
               </ButtonSIGL>
@@ -356,7 +386,31 @@ export const NotificacionesModule: React.FC = () => {
 
         {/* LISTA DE NOTIFICACIONES */}
         <div className="space-y-2">
-          {notificacionesFiltradas.map((notif, index) => (
+          {loading && (
+            <CardSIGL>
+              <div className="p-12 text-center">
+                <Loader2 className="w-8 h-8 animate-spin text-violet-600 mx-auto mb-4" />
+                <p className="text-gray-600">Cargando notificaciones...</p>
+              </div>
+            </CardSIGL>
+          )}
+
+          {error && (
+            <CardSIGL>
+              <div className="p-6 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center gap-2 text-red-800">
+                  <AlertTriangle className="w-5 h-5" />
+                  <p className="font-medium">Error al cargar notificaciones</p>
+                </div>
+                <p className="text-sm text-red-600 mt-2">{error}</p>
+                <ButtonSIGL variant="secondary" onClick={cargarNotificaciones} className="mt-4">
+                  Reintentar
+                </ButtonSIGL>
+              </div>
+            </CardSIGL>
+          )}
+
+          {!loading && !error && notificacionesFiltradas.map((notif, index) => (
             <motion.div
               key={notif.id}
               initial={{ opacity: 0, x: -20 }}
@@ -393,8 +447,9 @@ export const NotificacionesModule: React.FC = () => {
                           )}
                         </div>
                         <button
-                          onClick={() => eliminarNotificacion(notif.id)}
+                          onClick={() => handleEliminarNotificacion(notif.id)}
                           className="text-gray-400 hover:text-red-600 transition-colors"
+                          disabled={loading}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -415,15 +470,12 @@ export const NotificacionesModule: React.FC = () => {
                         </div>
 
                         <div className="flex gap-2">
-                          {notif.accion && (
-                            <ButtonSIGL variant="primary">
-                              {notif.accion.texto}
-                            </ButtonSIGL>
-                          )}
                           {!notif.leida && (
                             <ButtonSIGL
-                              variant="default"
-                              onClick={() => marcarComoLeida(notif.id)}
+                              variant="secondary"
+                              type="button"
+                              onClick={() => handleMarcarComoLeida(notif.id)}
+                              disabled={loading}
                             >
                               Marcar como Leída
                             </ButtonSIGL>
@@ -437,7 +489,7 @@ export const NotificacionesModule: React.FC = () => {
             </motion.div>
           ))}
 
-          {notificacionesFiltradas.length === 0 && (
+          {!loading && !error && notificacionesFiltradas.length === 0 && (
             <CardSIGL>
               <div className="p-12 text-center">
                 <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -457,19 +509,86 @@ export const NotificacionesModule: React.FC = () => {
 // ====================================
 
 function formatFechaRelativa(fecha: string): string {
+  if (!fecha) return 'Fecha no disponible';
+  
   const ahora = new Date();
-  const fechaNotif = new Date(fecha);
-  const diff = ahora.getTime() - fechaNotif.getTime();
-  const minutos = Math.floor(diff / (1000 * 60));
-  const horas = Math.floor(diff / (1000 * 60 * 60));
-  const dias = Math.floor(diff / (1000 * 60 * 60 * 24));
+  // Parsear la fecha correctamente, manejando diferentes formatos del backend
+  let fechaNotif: Date;
+  
+  try {
+    // Si la fecha viene en formato ISO (con T) o ya es un objeto Date válido
+    if (fecha.includes('T')) {
+      fechaNotif = new Date(fecha);
+    } else if (fecha.includes(' ')) {
+      // Formato del backend: "2026-01-16 03:17:40.938797"
+      // Convertir a formato ISO reemplazando el espacio con T
+      const fechaISO = fecha.replace(' ', 'T');
+      fechaNotif = new Date(fechaISO);
+    } else {
+      fechaNotif = new Date(fecha);
+    }
+    
+    // Validar que la fecha sea válida
+    if (isNaN(fechaNotif.getTime())) {
+      console.warn('[formatFechaRelativa] Fecha inválida:', fecha);
+      return 'Fecha inválida';
+    }
+    
+    const diff = ahora.getTime() - fechaNotif.getTime();
+    
+    // Si la diferencia es negativa (fecha futura), mostrar la fecha directamente
+    if (diff < 0) {
+      return fechaNotif.toLocaleDateString('es-CO', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+    
+    const segundos = Math.floor(diff / 1000);
+    const minutos = Math.floor(diff / (1000 * 60));
+    const horas = Math.floor(diff / (1000 * 60 * 60));
+    const dias = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-  if (minutos < 1) return 'Ahora';
-  if (minutos < 60) return `Hace ${minutos} minutos`;
-  if (horas < 24) return `Hace ${horas} horas`;
-  if (dias === 1) return 'Ayer';
-  if (dias < 7) return `Hace ${dias} días`;
-  return fechaNotif.toLocaleDateString();
+    // Solo mostrar "Ahora" si realmente fue hace menos de 1 minuto
+    if (minutos < 1) {
+      return segundos < 10 ? 'Ahora' : `Hace ${segundos} segundos`;
+    }
+    if (minutos < 60) {
+      return `Hace ${minutos} ${minutos === 1 ? 'minuto' : 'minutos'}`;
+    }
+    if (horas < 24) {
+      return `Hace ${horas} ${horas === 1 ? 'hora' : 'horas'}`;
+    }
+    if (dias === 1) {
+      return 'Ayer';
+    }
+    if (dias < 7) {
+      return `Hace ${dias} días`;
+    }
+    if (dias < 30) {
+      const semanas = Math.floor(dias / 7);
+      return `Hace ${semanas} ${semanas === 1 ? 'semana' : 'semanas'}`;
+    }
+    if (dias < 365) {
+      const meses = Math.floor(dias / 30);
+      return `Hace ${meses} ${meses === 1 ? 'mes' : 'meses'}`;
+    }
+    
+    // Para fechas más antiguas, mostrar la fecha completa
+    return fechaNotif.toLocaleDateString('es-CO', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    console.error('[formatFechaRelativa] Error al formatear fecha:', fecha, error);
+    return 'Fecha inválida';
+  }
 }
 
 export default NotificacionesModule;

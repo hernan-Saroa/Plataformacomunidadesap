@@ -19,6 +19,8 @@ import {
 import { toast } from 'sonner@2.0.3';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
 
 // ============ TIPOS ============
 
@@ -32,13 +34,17 @@ interface DocumentoExpediente {
 
 interface ModalCargarDocumentoProps {
   onClose: () => void;
-  onGuardar: (documento: Partial<DocumentoExpediente>) => void;
+  onGuardar: (documento: Partial<DocumentoExpediente>, documentoCompleto?: any) => void;
   auditoriaId?: string;
+  codigoAuditoria?: string;
 }
 
 // ============ COMPONENTE ============
 
-export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalCargarDocumentoProps) {
+export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAuditoria }: ModalCargarDocumentoProps) {
+  const { notificarDocumentoSubidoAuditoria } = useCrearNotificacion();
+  const { user } = useAuth();
+  
   const [nombreDocumento, setNombreDocumento] = useState('');
   const [tipoDocumento, setTipoDocumento] = useState<DocumentoExpediente['tipo']>('Oficio');
   const [faseDocumento, setFaseDocumento] = useState<DocumentoExpediente['fase']>('planeacion');
@@ -241,7 +247,23 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
         description: `${nombreDocumento} agregado al expediente`,
       });
 
-      onGuardar(nuevoDocumento);
+      // ============ NOTIFICACIONES: Documento Subido ============
+      if (auditoriaId && codigoAuditoria && documentoSubido?.id && user?.id) {
+        try {
+          await notificarDocumentoSubidoAuditoria(
+            documentoSubido.id,
+            nombreDocumento,
+            auditoriaId,
+            codigoAuditoria,
+            user.id
+          );
+        } catch (notifError) {
+          // No fallar la carga si las notificaciones fallan
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
+
+      onGuardar(nuevoDocumento, documentoSubido);
       setCargando(false);
     } catch (error) {
       console.error('Error al cargar documento:', error);

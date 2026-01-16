@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { EvidenciaDocumento, EstadoValidacion } from './entities/evidencia-documento.entity';
 import { CreateEvidenciaDto } from './dto/create-evidencia.dto';
 import { ValidarEvidenciaDto } from './dto/validar-evidencia.dto';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -28,6 +30,8 @@ export class EvidenciasService {
   constructor(
     @InjectRepository(EvidenciaDocumento)
     private readonly evidenciaRepository: Repository<EvidenciaDocumento>,
+    private readonly notificacionesService: NotificacionesService,
+    private readonly dataSource: DataSource,
   ) {
     if (!fs.existsSync(this.uploadPath)) {
       fs.mkdirSync(this.uploadPath, { recursive: true });
@@ -99,7 +103,17 @@ export class EvidenciasService {
       subidoPorId,
     });
 
-    return this.evidenciaRepository.save(evidencia);
+    const savedEvidencia = await this.evidenciaRepository.save(evidencia);
+
+    // Crear notificaciones después de guardar la evidencia
+    try {
+      await this.crearNotificacionesDocumentoAdjuntado(savedEvidencia);
+    } catch (notifError) {
+      // No fallar la creación si las notificaciones fallan
+      console.error('[EvidenciasService.create] Error al crear notificaciones:', notifError);
+    }
+
+    return savedEvidencia;
   }
 
   /**
@@ -229,5 +243,86 @@ export class EvidenciasService {
       stream.on('end', () => resolve(hash.digest('hex')));
       stream.on('error', reject);
     });
+  }
+
+  /**
+   * Crea notificaciones cuando se adjunta un documento/evidencia
+   */
+  private async crearNotificacionesDocumentoAdjuntado(evidencia: EvidenciaDocumento): Promise<void> {
+    console.log(`[EvidenciasService.crearNotificacionesDocumentoAdjuntado] Documento adjuntado: ${evidencia.nombre}`);
+    
+    const usuariosNotificar: string[] = [];
+
+    // Obtener usuarios relacionados según la vinculación
+    if (evidencia.auditoriaId) {
+      try {
+        const auditoria = await this.dataSource.query(
+          `SELECT auditor_lider_id, auditor_asignado_id, supervisor_asignado_id FROM control_interno.auditoria WHERE id = $1`,
+          [evidencia.auditoriaId]
+        );
+        if (auditoria && auditoria.length > 0) {
+          const a = auditoria[0];
+          if (a.auditor_lider_id) usuariosNotificar.push(String(a.auditor_lider_id));
+          if (a.auditor_asignado_id) usuariosNotificar.push(String(a.auditor_asignado_id));
+          if (a.supervisor_asignado_id) usuariosNotificar.push(String(a.supervisor_asignado_id));
+        }
+      } catch (error) {
+        console.error(`[EvidenciasService.crearNotificacionesDocumentoAdjuntado] Error al obtener auditoría:`, error);
+      }
+    }
+
+    // Obtener Jefes de Control Interno
+    try {
+      const jefesOCI = await this.obtenerJefesControlInterno();
+      usuariosNotificar.push(...jefesOCI);
+    } catch (error) {
+      console.error(`[EvidenciasService.crearNotificacionesDocumentoAdjuntado] Error al obtener Jefes:`, error);
+    }
+
+    const usuariosUnicos = [...new Set(usuariosNotificar)];
+
+    for (const usuarioId of usuariosUnicos) {
+      try {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: TipoNotificacion.RECEPCION_DOCUMENTO,
+          titulo: `Documento Adjuntado: ${evidencia.nombre}`,
+          mensaje: `Se ha adjuntado el documento "${evidencia.nombre}"${evidencia.auditoriaId ? ' a una auditoría' : evidencia.planMejoramientoId ? ' a un plan de mejoramiento' : evidencia.hallazgoId ? ' a un hallazgo' : ''}.`,
+          prioridad: PrioridadNotificacion.NORMAL,
+          canal: CanalNotificacion.SISTEMA,
+          metadata: {
+            evidenciaId: evidencia.id,
+            nombreDocumento: evidencia.nombre,
+            auditoriaId: evidencia.auditoriaId || undefined,
+            planMejoramientoId: evidencia.planMejoramientoId || undefined,
+            hallazgoId: evidencia.hallazgoId || undefined,
+          },
+        });
+      } catch (error) {
+        console.error(`[EvidenciasService.crearNotificacionesDocumentoAdjuntado] Error al crear notificación:`, error);
+      }
+    }
+  }
+
+  /**
+   * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
+   */
+  private async obtenerJefesControlInterno(): Promise<string[]> {
+    try {
+      const result = await this.dataSource.query(`
+        SELECT DISTINCT u.id_tercero
+        FROM auth."user" u
+        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+        INNER JOIN auth.role r ON r.id = ur.id_rol
+        WHERE r.code = 'JEFE_CONTROL_INTERNO'
+          AND ur.is_active = true
+          AND u.is_active = true
+      `);
+
+      return result.map((row: any) => String(row.id_tercero));
+    } catch (error) {
+      console.error('[EvidenciasService.obtenerJefesControlInterno] Error:', error);
+      return [];
+    }
   }
 }

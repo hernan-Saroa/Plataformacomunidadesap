@@ -7,6 +7,8 @@ import { ActividadPlanAnual5 } from './entities/actividad-plan-anual-5.entity';
 import { HistorialPlanAnual, TipoEventoPlanAnual } from './entities/historial-plan-anual.entity';
 import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 
 // Interfaz para roles del template
 interface RolTemplate {
@@ -28,6 +30,7 @@ export class PlanAnual5RolesService {
     @InjectRepository(HistorialPlanAnual)
     private readonly historialRepository: Repository<HistorialPlanAnual>,
     private readonly dataSource: DataSource,
+    private readonly notificacionesService: NotificacionesService,
   ) {}
 
   async findAll(year?: number): Promise<PlanAnual5Roles[]> {
@@ -114,6 +117,14 @@ export class PlanAnual5RolesService {
       undefined,
       savedPlan.estado
     );
+
+    // Crear notificaciones después de guardar el plan anual
+    try {
+      await this.crearNotificacionesPlanAnualCreado(savedPlan);
+    } catch (notifError) {
+      // No fallar la creación si las notificaciones fallan
+      console.error('[PlanAnual5RolesService.create] Error al crear notificaciones:', notifError);
+    }
 
     // Recargar con relaciones (los roles ya vienen ordenados por rol_numero desde el template)
     return this.findOne(savedPlan.id);
@@ -516,6 +527,82 @@ export class PlanAnual5RolesService {
     } catch (error) {
       console.error('Error al registrar historial del plan anual:', error);
       // No lanzar error para que no afecte la operación principal
+    }
+  }
+
+  /**
+   * Crea notificaciones cuando se crea un plan anual
+   */
+  private async crearNotificacionesPlanAnualCreado(plan: PlanAnual5Roles): Promise<void> {
+    console.log(`[PlanAnual5RolesService.crearNotificacionesPlanAnualCreado] Plan anual ${plan.año} creado`);
+    
+    const usuariosNotificar: string[] = [];
+
+    // Buscar responsable por nombre
+    if (plan.responsable) {
+      try {
+        const responsable = await this.dataSource.query(
+          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR sig_tercero ILIKE $1 LIMIT 1`,
+          [`%${plan.responsable}%`]
+        );
+        if (responsable && responsable.length > 0) {
+          usuariosNotificar.push(String(responsable[0].id_tercero));
+        }
+      } catch (error) {
+        console.error(`[PlanAnual5RolesService.crearNotificacionesPlanAnualCreado] Error al buscar responsable:`, error);
+      }
+    }
+
+    // Obtener Jefes de Control Interno
+    try {
+      const jefesOCI = await this.obtenerJefesControlInterno();
+      usuariosNotificar.push(...jefesOCI);
+    } catch (error) {
+      console.error(`[PlanAnual5RolesService.crearNotificacionesPlanAnualCreado] Error al obtener Jefes:`, error);
+    }
+
+    const usuariosUnicos = [...new Set(usuariosNotificar)];
+
+    for (const usuarioId of usuariosUnicos) {
+      try {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: TipoNotificacion.OTRO,
+          titulo: `Plan Anual ${plan.año} Creado`,
+          mensaje: `Se ha creado el Plan Anual ${plan.año}. Responsable: ${plan.responsable || 'No especificado'}.`,
+          prioridad: PrioridadNotificacion.ALTA,
+          canal: CanalNotificacion.SISTEMA,
+          metadata: {
+            planAnualId: plan.id,
+            año: plan.año,
+            responsable: plan.responsable,
+          },
+        });
+      } catch (error) {
+        console.error(`[PlanAnual5RolesService.crearNotificacionesPlanAnualCreado] Error al crear notificación:`, error);
+      }
+    }
+  }
+
+  /**
+   * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
+   */
+  private async obtenerJefesControlInterno(): Promise<string[]> {
+    try {
+      const result = await this.dataSource.query(`
+        SELECT DISTINCT u.id_tercero
+        FROM auth."user" u
+        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+        INNER JOIN auth.role r ON r.id = ur.id_rol
+        WHERE r.code = 'JEFE_CONTROL_INTERNO'
+          AND ur.is_active = true
+          AND u.is_active = true
+      `);
+
+      return result.map((row: any) => String(row.id_tercero));
+    } catch (error) {
+      console.error('[PlanAnual5RolesService.obtenerJefesControlInterno] Error:', error);
+      return [];
     }
   }
 }

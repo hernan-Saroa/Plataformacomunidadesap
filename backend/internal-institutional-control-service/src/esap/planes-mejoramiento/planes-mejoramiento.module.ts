@@ -13,6 +13,7 @@ import { DocumentoPlanMejoramiento } from './entities/documento-plan.entity';
 import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { Aprobacion } from '../aprobaciones/entities/aprobacion.entity';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { Aprobacion } from '../aprobaciones/entities/aprobacion.entity';
       Auditoria,
       Aprobacion,
     ]),
+    NotificacionesModule,
   ],
   controllers: [PlanesMejoramientoController, DocumentosPlanController],
   providers: [PlanesMejoramientoService, DocumentosPlanService],

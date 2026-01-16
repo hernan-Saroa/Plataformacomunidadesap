@@ -72,13 +72,23 @@ async function apiRequest<T>(
   }
   
   try {
+    console.log(`[apiRequest] Realizando petición: ${options?.method || 'GET'} ${url}`);
+    console.log(`[apiRequest] Headers:`, headers);
+    
     const response = await fetch(url, {
       ...options,
       headers,
     });
 
+    console.log(`[apiRequest] Respuesta recibida:`, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
+    });
+
     // Leer el texto de la respuesta una sola vez
     const responseText = await response.text();
+    console.log(`[apiRequest] Response text (primeros 500 chars):`, responseText.substring(0, 500));
     
     // Verificar si la respuesta tiene contenido JSON
     const contentType = response.headers.get('content-type');
@@ -1085,6 +1095,7 @@ export const notificacionesApi = {
     leida?: boolean;
     prioridad?: string;
   }) => {
+    console.log('[notificacionesApi.obtenerPorUsuario] Llamado con usuarioId:', usuarioId, 'filtros:', filtros);
     const params = new URLSearchParams();
     if (filtros?.estado) params.append('estado', filtros.estado);
     if (filtros?.tipo) params.append('tipo', filtros.tipo);
@@ -1092,9 +1103,36 @@ export const notificacionesApi = {
     if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
     
     const queryString = params.toString();
-    return apiRequest<any[]>(
-      `/notificaciones/usuario/${usuarioId}${queryString ? `?${queryString}` : ''}`
-    );
+    const endpoint = `/notificaciones/usuario/${usuarioId}${queryString ? `?${queryString}` : ''}`;
+    console.log('[notificacionesApi.obtenerPorUsuario] Endpoint:', endpoint);
+    console.log('[notificacionesApi.obtenerPorUsuario] API_BASE_URL:', API_BASE_URL);
+    console.log('[notificacionesApi.obtenerPorUsuario] URL completa:', `${API_BASE_URL}${endpoint}`);
+    
+    return apiRequest<any[]>(endpoint);
+  },
+
+  /**
+   * Obtener TODAS las notificaciones (solo para super administradores/admins)
+   */
+  obtenerTodas: (filtros?: {
+    estado?: string;
+    tipo?: string;
+    leida?: boolean;
+    prioridad?: string;
+  }) => {
+    console.log('[notificacionesApi.obtenerTodas] Llamado con filtros:', filtros);
+    const params = new URLSearchParams();
+    if (filtros?.estado) params.append('estado', filtros.estado);
+    if (filtros?.tipo) params.append('tipo', filtros.tipo);
+    if (filtros?.leida !== undefined) params.append('leida', String(filtros.leida));
+    if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
+    
+    const queryString = params.toString();
+    const endpoint = `/notificaciones/todas${queryString ? `?${queryString}` : ''}`;
+    console.log('[notificacionesApi.obtenerTodas] Endpoint:', endpoint);
+    console.log('[notificacionesApi.obtenerTodas] URL completa:', `${API_BASE_URL}${endpoint}`);
+    
+    return apiRequest<any[]>(endpoint);
   },
 
   /**
@@ -1143,9 +1181,37 @@ export const notificacionesApi = {
   /**
    * Eliminar notificación
    */
-  eliminar: (id: string) => {
+  eliminar: (id: string, usuarioId: string) => {
     return apiRequest<void>(`/notificaciones/${id}`, {
       method: 'DELETE',
+      body: JSON.stringify({ usuarioId }),
+    });
+  },
+
+  /**
+   * Crear una nueva notificación
+   */
+  crear: (data: {
+    usuarioId: string;
+    tipoNotificacion: string;
+    titulo: string;
+    mensaje: string;
+    canal?: 'email' | 'sistema' | 'ambos';
+    prioridad?: 'baja' | 'normal' | 'alta' | 'critica';
+    metadata?: {
+      auditoriaId?: string;
+      hallazgoId?: string;
+      planMejoramientoId?: string;
+      documentoId?: string;
+      fechaVencimiento?: string;
+      diasAnticipacion?: number;
+      [key: string]: any;
+    };
+    accionUrl?: string;
+  }) => {
+    return apiRequest<any>('/notificaciones', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   },
 };

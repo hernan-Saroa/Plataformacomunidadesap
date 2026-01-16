@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import {
   PlanMejoramiento,
   PlanMejoramientoEstado,
@@ -23,6 +23,8 @@ import { CreateEventoTimelineDto } from './dto/create-evento-timeline.dto';
 import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { Aprobacion, AprobacionTipo, AprobacionEstado, AprobacionPrioridad } from '../aprobaciones/entities/aprobacion.entity';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 
 @Injectable()
 export class PlanesMejoramientoService {
@@ -43,6 +45,8 @@ export class PlanesMejoramientoService {
     private readonly auditoriaRepository: Repository<Auditoria>,
     @InjectRepository(Aprobacion)
     private readonly aprobacionRepository: Repository<Aprobacion>,
+    private readonly notificacionesService: NotificacionesService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -363,6 +367,8 @@ export class PlanesMejoramientoService {
 
     const savedPlan = await this.planRepository.save(plan);
 
+    console.log(`[PlanesMejoramientoService.create] Plan creado exitosamente: ${savedPlan.codigo} (ID: ${savedPlan.id})`);
+
     // Crear acciones si se proporcionaron
     if (createDto.acciones && createDto.acciones.length > 0) {
       const acciones = createDto.acciones.map((accionDto) =>
@@ -383,6 +389,16 @@ export class PlanesMejoramientoService {
       );
 
       await this.accionRepository.save(acciones);
+      console.log(`[PlanesMejoramientoService.create] ${acciones.length} acción(es) creada(s) para el plan ${savedPlan.codigo}`);
+    }
+
+    // Crear notificaciones después de guardar el plan
+    try {
+      await this.crearNotificacionesPlanCreado(savedPlan, auditoriaId);
+    } catch (notifError) {
+      // No fallar la creación del plan si las notificaciones fallan
+      console.error('[PlanesMejoramientoService.create] Error al crear notificaciones:', notifError);
+      console.error('[PlanesMejoramientoService.create] Stack trace:', notifError?.stack);
     }
 
     const saved = await this.findOne(savedPlan.id);
@@ -1157,6 +1173,138 @@ export class PlanesMejoramientoService {
       usuarioNombre,
       { comentarioCompleto: comentario },
     );
+  }
+
+  /**
+   * Crea notificaciones cuando se crea un plan de mejoramiento
+   */
+  private async crearNotificacionesPlanCreado(
+    plan: PlanMejoramiento,
+    auditoriaId: string | null,
+  ): Promise<void> {
+    console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Iniciando creación de notificaciones para plan ${plan.codigo}`);
+    
+    // Obtener información de la auditoría si existe
+    let auditoriaCodigo = 'N/A';
+    let auditoriaNombre = 'Auditoría no especificada';
+    
+    if (auditoriaId) {
+      try {
+        const auditoria = await this.auditoriaRepository.findOne({
+          where: { id: auditoriaId },
+        });
+        if (auditoria) {
+          auditoriaCodigo = auditoria.codigo || auditoriaId.substring(0, 8).toUpperCase();
+          auditoriaNombre = auditoria.nombre || auditoriaCodigo;
+          console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Auditoría encontrada: ${auditoriaCodigo}`);
+        }
+      } catch (error) {
+        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener auditoría:`, error);
+      }
+    }
+
+    // Obtener usuarios que deben recibir notificaciones
+    const usuariosNotificar: string[] = [];
+
+    // 1. Buscar el responsable de implementación por nombre
+    if (plan.responsableImplementacion) {
+      try {
+        console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Buscando responsable: "${plan.responsableImplementacion}"`);
+        const responsable = await this.dataSource.query(
+          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR sig_tercero ILIKE $1 LIMIT 1`,
+          [`%${plan.responsableImplementacion}%`]
+        );
+        
+        if (responsable && responsable.length > 0) {
+          const idTercero = String(responsable[0].id_tercero);
+          usuariosNotificar.push(idTercero);
+          console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Responsable encontrado: id_tercero=${idTercero}`);
+        } else {
+          console.warn(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] No se encontró responsable con nombre: "${plan.responsableImplementacion}"`);
+        }
+      } catch (error) {
+        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al buscar responsable:`, error);
+      }
+    }
+
+    // 2. Obtener Jefes de Control Interno
+    try {
+      const jefesOCI = await this.obtenerJefesControlInterno();
+      usuariosNotificar.push(...jefesOCI);
+      console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] ${jefesOCI.length} Jefe(s) de Control Interno encontrado(s)`);
+    } catch (error) {
+      console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener Jefes de Control Interno:`, error);
+    }
+
+    // 3. Obtener auditor líder si hay auditoría
+    if (auditoriaId) {
+      try {
+        const auditoria = await this.auditoriaRepository.findOne({
+          where: { id: auditoriaId },
+        });
+        if (auditoria?.auditorLiderId) {
+          const auditorLiderId = String(auditoria.auditorLiderId);
+          if (!usuariosNotificar.includes(auditorLiderId)) {
+            usuariosNotificar.push(auditorLiderId);
+            console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Auditor líder agregado: id_tercero=${auditorLiderId}`);
+          }
+        }
+      } catch (error) {
+        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener auditor líder:`, error);
+      }
+    }
+
+    // Eliminar duplicados
+    const usuariosUnicos = [...new Set(usuariosNotificar)];
+    console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Total de usuarios a notificar: ${usuariosUnicos.length}`);
+
+    // Crear notificaciones para cada usuario
+    for (const usuarioId of usuariosUnicos) {
+      try {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: TipoNotificacion.APROBACION_PLAN,
+          titulo: `Plan de Mejoramiento Creado: ${plan.codigo}`,
+          mensaje: `Se ha creado el Plan de Mejoramiento ${plan.codigo} para la auditoría ${auditoriaCodigo}. El plan debe ser presentado y revisado.`,
+          prioridad: PrioridadNotificacion.ALTA,
+          canal: CanalNotificacion.SISTEMA,
+          metadata: {
+            planMejoramientoId: plan.id,
+            auditoriaId: auditoriaId || undefined,
+            codigoPlan: plan.codigo,
+            codigoAuditoria: auditoriaCodigo,
+          },
+          accionUrl: `/control-interno/planes-mejoramiento/${plan.id}`,
+        });
+        console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Notificación creada para usuario: ${usuarioId}`);
+      } catch (error) {
+        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al crear notificación para usuario ${usuarioId}:`, error);
+      }
+    }
+
+    console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Proceso de notificaciones completado para plan ${plan.codigo}`);
+  }
+
+  /**
+   * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
+   */
+  private async obtenerJefesControlInterno(): Promise<string[]> {
+    try {
+      const result = await this.dataSource.query(`
+        SELECT DISTINCT u.id_tercero
+        FROM auth."user" u
+        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+        INNER JOIN auth.role r ON r.id = ur.id_rol
+        WHERE r.code = 'JEFE_CONTROL_INTERNO'
+          AND ur.is_active = true
+          AND u.is_active = true
+      `);
+
+      return result.map((row: any) => String(row.id_tercero));
+    } catch (error) {
+      console.error('[PlanesMejoramientoService.obtenerJefesControlInterno] Error:', error);
+      return [];
+    }
   }
 }
 
