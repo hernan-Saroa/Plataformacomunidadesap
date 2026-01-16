@@ -78,6 +78,7 @@ export function VisorPDFAuto({
     const cargarPlantilla = async () => {
       try {
         const config = await disciplinaryService.getConfiguracionPlantillaAuto();
+        console.log('📋 Plantilla cargada:', config);
         setPlantillaConfig(config);
         setEditedContent(config.htmlContent || '');
       } catch (error) {
@@ -97,6 +98,7 @@ export function VisorPDFAuto({
 
     if (isOpen) {
       cargarPlantilla();
+      console.log('🔄 VisorPDFAuto abierto con auto:', auto);
     }
   }, [isOpen]);
 
@@ -113,6 +115,16 @@ export function VisorPDFAuto({
     const denunciante = proceso?.news?.denunciante as { nombre?: string; cedula?: string; documento?: string } || {};
     const disciplinable = proceso?.news?.disciplinable as { nombre?: string; cargo?: string; cedula?: string; documento?: string } || {};
 
+    console.log('🔍 Reemplazando variables en VisorPDFAuto:', {
+      auto: auto,
+      proceso: proceso,
+      hechos: hechos,
+      radicado: radicado,
+      fechaQueja: fechaQueja,
+      denunciante: denunciante,
+      disciplinable: disciplinable
+    });
+
     const reemplazos: Record<string, string> = {
       '[RADICADO]': radicado,
       '[FECHA_QUEJA]': fechaQueja ? new Date(fechaQueja).toLocaleDateString('es-CO') : '',
@@ -127,6 +139,8 @@ export function VisorPDFAuto({
       '[TIPO_AUTO]': auto.tipo || 'Auto Genérico',
     };
 
+    console.log('📋 Reemplazos calculados:', reemplazos);
+
     let resultado = html;
 
     // Reemplazar las variables con los valores reales
@@ -135,6 +149,7 @@ export function VisorPDFAuto({
       resultado = resultado.replace(regex, valor);
     });
 
+    console.log('✅ HTML resultante:', resultado);
     return resultado;
   };
 
@@ -367,11 +382,16 @@ export function VisorPDFAuto({
     );
   }
 
-  const contenidoNormalizado = modoPlantilla
-    ? (plantillaConfig.htmlContent || '<p>Sin plantilla configurada</p>')
-    : (plantillaConfig.htmlContent
-        ? reemplazarVariables(plantillaConfig.htmlContent)
-        : (auto?.contenido || ''));
+  const contenidoNormalizado = plantillaConfig.htmlContent
+    ? reemplazarVariables(plantillaConfig.htmlContent)
+    : (auto?.contenido ? reemplazarVariables(auto.contenido) : '<p>Sin contenido disponible</p>');
+
+  console.log('📄 Contenido normalizado:', {
+    modoPlantilla,
+    plantillaConfigHtml: plantillaConfig?.htmlContent,
+    autoContenido: auto?.contenido,
+    contenidoNormalizado
+  });
 
   return (
     <AnimatePresence>
@@ -406,7 +426,7 @@ export function VisorPDFAuto({
                       {modoPlantilla ? 'Vista Previa - Plantilla de Auto' : 'Vista Previa - Auto Disciplinario'}
                     </h2>
                     <p className="text-blue-100 text-sm">
-                      {modoPlantilla ? 'Plantilla desde Base de Datos' : `${auto?.numero || 'Sin Número'} - ${auto?.tipo || 'Sin Tipo'}`}
+                      {modoPlantilla ? 'Plantilla ' : `${auto?.numero || 'Sin Número'} - ${auto?.tipo || 'Sin Tipo'}`}
                     </p>
                   </div>
                 </div>
@@ -476,7 +496,7 @@ export function VisorPDFAuto({
                       fontWeight: 'bold',
                       color: '#003DA5'
                     }}>
-                      PLANTILLA DE AUTO - BASE DE DATOS
+                      PLANTILLA DE AUTO
                     </div>
                     <div style={{
                       textAlign: 'center',
@@ -484,7 +504,7 @@ export function VisorPDFAuto({
                       fontSize: '12pt',
                       color: '#666'
                     }}>
-                      Vista previa de la plantilla sin reemplazar variables
+                      Vista previa de la plantilla
                     </div>
                     <div
                       dangerouslySetInnerHTML={{
@@ -617,7 +637,7 @@ export function VisorPDFAuto({
                   <div className="flex items-center gap-2 text-gray-600">
                     <Eye className="w-4 h-4 text-blue-600" />
                     <span className="text-xs sm:text-sm">
-                      {modoPlantilla ? 'Vista previa de plantilla BD' : 'Vista previa del documento'}
+                      {modoPlantilla ? 'Vista previa de plantilla' : 'Vista previa del documento'}
                     </span>
                   </div>
                 </div>

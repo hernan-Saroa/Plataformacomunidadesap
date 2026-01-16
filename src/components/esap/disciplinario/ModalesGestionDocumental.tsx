@@ -129,6 +129,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const [modalEditarAuto, setModalEditarAuto] = useState<{ show: boolean; auto: any | null }>({ show: false, auto: null });
   const [editandoAuto, setEditandoAuto] = useState(false);
   const [visorAuto, setVisorAuto] = useState<{ show: boolean; auto: any | null; modoPlantilla?: boolean; modoEdicion?: boolean }>({ show: false, auto: null });
+  const [cargandoProceso, setCargandoProceso] = useState(false);
 
   // Estados para editor con plantillas
   const [plantillas, setPlantillas] = useState<any[]>([]);
@@ -412,6 +413,45 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const handleEditarAuto = (auto: any) => {
     setModalEditarAuto({ show: true, auto });
   };
+
+  const handleAbrirVisorAuto = async (auto: any, modoPlantilla: boolean = false) => {
+     if (!processId) {
+       toast.error('No se puede identificar el proceso');
+       return;
+     }
+
+     setCargandoProceso(true);
+     try {
+       // Obtener el proceso completo usando el endpoint específico por radicado
+       const procesoCompleto = await disciplinaryService.getProcesoByRadicado(proceso.numeroProceso);
+
+       // Construir el objeto auto con la información completa del proceso
+       const autoCompleto = {
+         ...auto,
+         process: {
+           radicadoProceso: procesoCompleto.radicadoProceso,
+           news: procesoCompleto.news ? {
+             hechos: procesoCompleto.news.hechos || '',
+             fechaQueja: procesoCompleto.news.fechaQueja,
+             denunciante: procesoCompleto.news.denunciante,
+             disciplinable: procesoCompleto.news.disciplinable
+           } : undefined
+         }
+       };
+
+       console.log('Auto completo para visor:', autoCompleto);
+       console.log('Proceso encontrado:', procesoCompleto);
+       console.log('News del proceso:', procesoCompleto.news);
+       setVisorAuto({ show: true, auto: autoCompleto, modoPlantilla });
+     } catch (error) {
+       console.error('Error obteniendo información del proceso:', error);
+       toast.error('No se pudo cargar la información del proceso');
+       // Abrir el visor con la información básica disponible
+       setVisorAuto({ show: true, auto, modoPlantilla });
+     } finally {
+       setCargandoProceso(false);
+     }
+   };
 
   const handleGuardarEdicionAuto = async () => {
     if (!modalEditarAuto.auto) return;
@@ -806,12 +846,17 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setVisorDocumento({ show: true, documento: auto });
+                            handleAbrirVisorAuto(auto, false);
                           }}
                           title="Ver documento"
+                          disabled={cargandoProceso}
                           style={{ borderColor: '#003DA5', color: '#003DA5' }}
                         >
-                          <Eye className="w-3.5 h-3.5" />
+                          {cargandoProceso ? (
+                            <div className="animate-spin rounded-full h-3.5 w-3.5 border border-current border-t-transparent" />
+                          ) : (
+                            <Eye className="w-3.5 h-3.5" />
+                          )}
                         </Button>
                         <Button
                           type="button"
@@ -848,12 +893,17 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setVisorAuto({ show: true, auto: auto, modoPlantilla: true });
+                            handleAbrirVisorAuto(auto, true);
                           }}
                           title="Ver plantilla BD"
+                          disabled={cargandoProceso}
                           style={{ borderColor: '#10B981', color: '#10B981' }}
                         >
-                          <FileText className="w-3.5 h-3.5" />
+                          {cargandoProceso ? (
+                            <div className="animate-spin rounded-full h-3.5 w-3.5 border border-current border-t-transparent" />
+                          ) : (
+                            <FileText className="w-3.5 h-3.5" />
+                          )}
                         </Button>
                         <Button
                           type="button"
