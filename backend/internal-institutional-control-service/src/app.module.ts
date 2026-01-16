@@ -45,6 +45,8 @@ import { EvidenciaDocumento } from './esap/evidencias/entities/evidencia-documen
 import { TipoAuditoria } from './esap/tipos-auditoria/entities/tipo-auditoria.entity';
 import { ListaChequeo } from './esap/listas-chequeo/entities/lista-chequeo.entity';
 import { ItemListaChequeo } from './esap/listas-chequeo/entities/item-lista-chequeo.entity';
+import { TableroKanban } from './esap/tableros-kanban/entities/tablero-kanban.entity';
+import { EtapaKanban } from './esap/tableros-kanban/entities/etapa-kanban.entity';
 
 @Module({
   imports: [
@@ -119,6 +121,8 @@ import { ItemListaChequeo } from './esap/listas-chequeo/entities/item-lista-cheq
             TipoAuditoria,
             ListaChequeo,
             ItemListaChequeo,
+            TableroKanban,
+            EtapaKanban,
           ],
           synchronize: false, // Deshabilitado - usar migraciones manuales
           // synchronize: process.env.NODE_ENV !== 'production', // Solo en desarrollo

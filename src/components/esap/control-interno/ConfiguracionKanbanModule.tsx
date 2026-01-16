@@ -12,10 +12,10 @@
  * - Notificaciones automáticas
  * 
  * VERSIÓN: 3.0 - PREMIUM
- * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
+ * ÚLTIMA ACTUALIZACIÓN: 16 Enero 2026
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Columns, Plus, Edit2, Trash2, Save, X, Clock, AlertTriangle,
@@ -24,227 +24,72 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-
-// ════════════════════════════════════════════════════════════════════════════
-// TIPOS
-// ════════════════════════════════════════════════════════════════════════════
-
-interface EtapaKanban {
-  id: string;
-  nombre: string;
-  descripcion: string;
-  orden: number;
-  color: string;
-  tiempoSLA: number; // días
-  limiteWIP: number | null; // null = sin límite
-  visible: boolean;
-  notificarVencimiento: boolean;
-  diasAnticipacionAlerta: number;
-  estado: 'inicial' | 'intermedia' | 'final';
-  permitirRetroceso: boolean;
-}
-
-interface ConfiguracionTablero {
-  id: string;
-  nombre: string;
-  descripcion: string;
-  tipo: 'auditorias' | 'planes_mejoramiento';
-  etapas: EtapaKanban[];
-  activo: boolean;
-}
+import {
+  cargarTablerosKanban,
+  crearEtapa,
+  actualizarEtapa,
+  eliminarEtapa,
+  reordenarEtapas,
+  LIMITES,
+  type EtapaKanban,
+  type ConfiguracionTablero
+} from '@/services/tableros-kanban.service';
 
 type VistaConfig = 'etapas' | 'tiempos' | 'limites' | 'transiciones';
-
-// ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK - CONFIGURACIÓN ACTUAL
-// ════════════════════════════════════════════════════════════════════════════
-
-const TABLEROS_MOCK: ConfiguracionTablero[] = [
-  {
-    id: 'kanban-auditorias',
-    nombre: 'Tablero de Auditorías',
-    descripcion: 'Gestión del ciclo completo de auditorías',
-    tipo: 'auditorias',
-    activo: true,
-    etapas: [
-      {
-        id: 'etapa-1',
-        nombre: 'Planificación',
-        descripcion: 'Definición de alcance y programa de auditoría',
-        orden: 1,
-        color: '#3B82F6',
-        tiempoSLA: 15,
-        limiteWIP: null,
-        visible: true,
-        notificarVencimiento: true,
-        diasAnticipacionAlerta: 3,
-        estado: 'inicial',
-        permitirRetroceso: false
-      },
-      {
-        id: 'etapa-2',
-        nombre: 'Ejecución',
-        descripcion: 'Levantamiento de información y papeles de trabajo',
-        orden: 2,
-        color: '#10B981',
-        tiempoSLA: 30,
-        limiteWIP: 5,
-        visible: true,
-        notificarVencimiento: true,
-        diasAnticipacionAlerta: 5,
-        estado: 'intermedia',
-        permitirRetroceso: true
-      },
-      {
-        id: 'etapa-3',
-        nombre: 'Comunicación Preliminar',
-        descripcion: 'Presentación de hallazgos preliminares',
-        orden: 3,
-        color: '#F59E0B',
-        tiempoSLA: 10,
-        limiteWIP: 3,
-        visible: true,
-        notificarVencimiento: true,
-        diasAnticipacionAlerta: 2,
-        estado: 'intermedia',
-        permitirRetroceso: true
-      },
-      {
-        id: 'etapa-4',
-        nombre: 'Respuesta del Auditado',
-        descripcion: 'Recepción y análisis de respuestas',
-        orden: 4,
-        color: '#8B5CF6',
-        tiempoSLA: 15,
-        limiteWIP: null,
-        visible: true,
-        notificarVencimiento: true,
-        diasAnticipacionAlerta: 3,
-        estado: 'intermedia',
-        permitirRetroceso: false
-      },
-      {
-        id: 'etapa-5',
-        nombre: 'Informe Final',
-        descripcion: 'Elaboración del informe final de auditoría',
-        orden: 5,
-        color: '#EC4899',
-        tiempoSLA: 10,
-        limiteWIP: 2,
-        visible: true,
-        notificarVencimiento: true,
-        diasAnticipacionAlerta: 2,
-        estado: 'intermedia',
-        permitirRetroceso: false
-      },
-      {
-        id: 'etapa-6',
-        nombre: 'Finalizada',
-        descripcion: 'Auditoría completada y documentada',
-        orden: 6,
-        color: '#6B7280',
-        tiempoSLA: 0,
-        limiteWIP: null,
-        visible: true,
-        notificarVencimiento: false,
-        diasAnticipacionAlerta: 0,
-        estado: 'final',
-        permitirRetroceso: false
-      }
-    ]
-  },
-  {
-    id: 'kanban-planes',
-    nombre: 'Tablero de Planes de Mejoramiento',
-    descripcion: 'Seguimiento a acciones correctivas',
-    tipo: 'planes_mejoramiento',
-    activo: true,
-    etapas: [
-      {
-        id: 'plan-1',
-        nombre: 'Formulación',
-        descripcion: 'Diseño del plan de mejoramiento',
-        orden: 1,
-        color: '#3B82F6',
-        tiempoSLA: 10,
-        limiteWIP: null,
-        visible: true,
-        notificarVencimiento: true,
-        diasAnticipacionAlerta: 2,
-        estado: 'inicial',
-        permitirRetroceso: false
-      },
-      {
-        id: 'plan-2',
-        nombre: 'Aprobación',
-        descripcion: 'Validación y aprobación del plan',
-        orden: 2,
-        color: '#F59E0B',
-        tiempoSLA: 5,
-        limiteWIP: 3,
-        visible: true,
-        notificarVencimiento: true,
-        diasAnticipacionAlerta: 1,
-        estado: 'intermedia',
-        permitirRetroceso: true
-      },
-      {
-        id: 'plan-3',
-        nombre: 'En Ejecución',
-        descripcion: 'Implementación de acciones correctivas',
-        orden: 3,
-        color: '#10B981',
-        tiempoSLA: 60,
-        limiteWIP: 8,
-        visible: true,
-        notificarVencimiento: true,
-        diasAnticipacionAlerta: 10,
-        estado: 'intermedia',
-        permitirRetroceso: true
-      },
-      {
-        id: 'plan-4',
-        nombre: 'En Seguimiento',
-        descripcion: 'Verificación de cumplimiento',
-        orden: 4,
-        color: '#8B5CF6',
-        tiempoSLA: 15,
-        limiteWIP: 5,
-        visible: true,
-        notificarVencimiento: true,
-        diasAnticipacionAlerta: 3,
-        estado: 'intermedia',
-        permitirRetroceso: true
-      },
-      {
-        id: 'plan-5',
-        nombre: 'Cumplido',
-        descripcion: 'Plan completado exitosamente',
-        orden: 5,
-        color: '#22C55E',
-        tiempoSLA: 0,
-        limiteWIP: null,
-        visible: true,
-        notificarVencimiento: false,
-        diasAnticipacionAlerta: 0,
-        estado: 'final',
-        permitirRetroceso: false
-      }
-    ]
-  }
-];
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ConfiguracionKanbanModule() {
-  const [tableroSeleccionado, setTableroSeleccionado] = useState<ConfiguracionTablero>(TABLEROS_MOCK[0]);
+  const [tableros, setTableros] = useState<ConfiguracionTablero[]>([]);
+  const [tableroSeleccionado, setTableroSeleccionado] = useState<ConfiguracionTablero | null>(null);
   const [vistaConfig, setVistaConfig] = useState<VistaConfig>('etapas');
+  const [cargando, setCargando] = useState(true);
   const [modalEtapa, setModalEtapa] = useState<{ abierto: boolean; etapa?: EtapaKanban; modo: 'crear' | 'editar' }>({
     abierto: false,
     modo: 'crear'
   });
+
+  // Cargar tableros al montar el componente
+  useEffect(() => {
+    cargarDatos();
+  }, []);
+
+  const cargarDatos = async () => {
+    setCargando(true);
+    const tablerosData = await cargarTablerosKanban();
+    setTableros(tablerosData);
+    if (tablerosData.length > 0) {
+      setTableroSeleccionado(tablerosData[0]);
+    }
+    setCargando(false);
+  };
+
+  // Mostrar loading mientras carga
+  if (cargando) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1e5da8] mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando tableros Kanban...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Mostrar mensaje si no hay tableros
+  if (!tableroSeleccionado || tableros.length === 0) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Columns className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600 mb-2">No hay tableros Kanban configurados</p>
+          <p className="text-sm text-gray-500">Por favor, ejecute las migraciones de base de datos</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto px-8 py-6 max-w-[1920px]">
@@ -267,12 +112,12 @@ export function ConfiguracionKanbanModule() {
 
         {/* Selector de Tablero */}
         <div className="flex gap-3">
-          {TABLEROS_MOCK.map((tablero) => (
+          {tableros.map((tablero) => (
             <button
               key={tablero.id}
               onClick={() => setTableroSeleccionado(tablero)}
               className={`px-4 py-3 rounded-lg border-2 transition-all ${
-                tableroSeleccionado.id === tablero.id
+                tableroSeleccionado?.id === tablero.id
                   ? 'border-[#1e5da8] bg-blue-50 text-[#1e5da8]'
                   : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
               }`}
@@ -328,11 +173,12 @@ export function ConfiguracionKanbanModule() {
                 <VistaGestionEtapas
                   tablero={tableroSeleccionado}
                   onEditarEtapa={(etapa) => setModalEtapa({ abierto: true, etapa, modo: 'editar' })}
+                  onReload={cargarDatos}
                 />
               )}
-              {vistaConfig === 'tiempos' && <VistaTiemposSLA tablero={tableroSeleccionado} />}
-              {vistaConfig === 'limites' && <VistaLimitesWIP tablero={tableroSeleccionado} />}
-              {vistaConfig === 'transiciones' && <VistaTransiciones tablero={tableroSeleccionado} />}
+              {vistaConfig === 'tiempos' && <VistaTiemposSLA tablero={tableroSeleccionado} onReload={cargarDatos} />}
+              {vistaConfig === 'limites' && <VistaLimitesWIP tablero={tableroSeleccionado} onReload={cargarDatos} />}
+              {vistaConfig === 'transiciones' && <VistaTransiciones tablero={tableroSeleccionado} onReload={cargarDatos} />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -341,13 +187,24 @@ export function ConfiguracionKanbanModule() {
       {/* Modal Crear/Editar Etapa */}
       {modalEtapa.abierto && (
         <ModalEtapaKanban
+          tablero={tableroSeleccionado}
           etapa={modalEtapa.etapa}
           modo={modalEtapa.modo}
           onClose={() => setModalEtapa({ abierto: false, modo: 'crear' })}
-          onGuardar={(etapa) => {
-            toast.success(
-              modalEtapa.modo === 'crear' ? 'Etapa creada exitosamente' : 'Etapa actualizada exitosamente'
-            );
+          onGuardar={async (etapa) => {
+            if (modalEtapa.modo === 'crear') {
+              const nuevaEtapa = await crearEtapa(tableroSeleccionado.id, etapa);
+              if (nuevaEtapa) {
+                toast.success('Etapa creada exitosamente');
+                await cargarDatos();
+              }
+            } else if (modalEtapa.etapa?.id) {
+              const etapaActualizada = await actualizarEtapa(tableroSeleccionado.id, modalEtapa.etapa.id, etapa);
+              if (etapaActualizada) {
+                toast.success('Etapa actualizada exitosamente');
+                await cargarDatos();
+              }
+            }
             setModalEtapa({ abierto: false, modo: 'crear' });
           }}
         />
@@ -390,15 +247,92 @@ function TabConfigButton({ active, onClick, icon, label }: TabConfigButtonProps)
 interface VistaGestionEtapasProps {
   tablero: ConfiguracionTablero;
   onEditarEtapa: (etapa: EtapaKanban) => void;
+  onReload: () => void;
 }
 
-function VistaGestionEtapas({ tablero, onEditarEtapa }: VistaGestionEtapasProps) {
+function VistaGestionEtapas({ tablero, onEditarEtapa, onReload }: VistaGestionEtapasProps) {
   const [etapas, setEtapas] = useState(tablero.etapas);
+  const [arrastrando, setArrastrando] = useState<string | null>(null);
 
-  const eliminarEtapa = (etapaId: string) => {
-    if (confirm('¿Estás seguro de eliminar esta etapa? Esta acción no se puede deshacer.')) {
-      setEtapas(etapas.filter(e => e.id !== etapaId));
+  // Actualizar etapas cuando cambia el tablero
+  useEffect(() => {
+    setEtapas(tablero.etapas);
+  }, [tablero.etapas]);
+
+  const handleEliminarEtapa = async (etapaId: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta etapa? Esta acción no se puede deshacer.')) {
+      return;
+    }
+
+    try {
+      await eliminarEtapa(tablero.id, etapaId);
       toast.success('Etapa eliminada exitosamente');
+      onReload();
+    } catch (error) {
+      // Error ya manejado en eliminarEtapa
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent, etapaId: string) => {
+    setArrastrando(etapaId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, sobreEtapaId: string) => {
+    e.preventDefault();
+    if (!arrastrando || arrastrando === sobreEtapaId) return;
+
+    const etapasReordenadas = [...etapas];
+    const indiceArrastrando = etapasReordenadas.findIndex(e => e.id === arrastrando);
+    const indiceSobre = etapasReordenadas.findIndex(e => e.id === sobreEtapaId);
+
+    if (indiceArrastrando !== -1 && indiceSobre !== -1) {
+      const [etapaMovida] = etapasReordenadas.splice(indiceArrastrando, 1);
+      etapasReordenadas.splice(indiceSobre, 0, etapaMovida);
+      setEtapas(etapasReordenadas);
+    }
+  };
+
+  const handleDragEnd = async () => {
+    if (!arrastrando) return;
+
+    const nuevosIds = etapas.map(e => e.id);
+    const exito = await reordenarEtapas(tablero.id, nuevosIds);
+    
+    if (exito) {
+      toast.success('Etapas reordenadas exitosamente');
+      onReload();
+    } else {
+      // Revertir cambios si falla
+      setEtapas(tablero.etapas);
+    }
+
+    setArrastrando(null);
+  };
+
+  const moverEtapa = async (etapaId: string, direccion: 'arriba' | 'abajo') => {
+    const indice = etapas.findIndex(e => e.id === etapaId);
+    if (indice === -1) return;
+    
+    if (direccion === 'arriba' && indice === 0) return;
+    if (direccion === 'abajo' && indice === etapas.length - 1) return;
+
+    const etapasReordenadas = [...etapas];
+    const nuevoIndice = direccion === 'arriba' ? indice - 1 : indice + 1;
+    
+    [etapasReordenadas[indice], etapasReordenadas[nuevoIndice]] = 
+    [etapasReordenadas[nuevoIndice], etapasReordenadas[indice]];
+
+    setEtapas(etapasReordenadas);
+
+    const nuevosIds = etapasReordenadas.map(e => e.id);
+    const exito = await reordenarEtapas(tablero.id, nuevosIds);
+    
+    if (exito) {
+      toast.success('Orden actualizado');
+      onReload();
+    } else {
+      setEtapas(tablero.etapas);
     }
   };
 
@@ -407,7 +341,15 @@ function VistaGestionEtapas({ tablero, onEditarEtapa }: VistaGestionEtapasProps)
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-base text-gray-900 font-medium">Etapas del Tablero</h3>
-          <p className="text-sm text-gray-600">Arrastra para reordenar • {etapas.length} etapas configuradas</p>
+          <p className="text-sm text-gray-600">
+            {arrastrando ? (
+              <span className="text-[#1e5da8] font-medium">
+                ↕️ Arrastrando etapa... suelta para confirmar
+              </span>
+            ) : (
+              <>Arrastra para reordenar • {etapas.length} etapas configuradas</>
+            )}
+          </p>
         </div>
       </div>
 
@@ -416,13 +358,46 @@ function VistaGestionEtapas({ tablero, onEditarEtapa }: VistaGestionEtapasProps)
         {etapas.map((etapa, index) => (
           <div
             key={etapa.id}
-            className="bg-gray-50 rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow"
+            draggable
+            onDragStart={(e) => handleDragStart(e, etapa.id)}
+            onDragOver={(e) => handleDragOver(e, etapa.id)}
+            onDragEnd={handleDragEnd}
+            className={`bg-gray-50 rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-all ${
+              arrastrando === etapa.id ? 'opacity-50 scale-95' : ''
+            }`}
           >
             <div className="flex items-start gap-4">
-              {/* Drag Handle */}
-              <button className="mt-1 text-gray-400 hover:text-gray-600 cursor-move">
-                <GripVertical className="w-5 h-5" />
-              </button>
+              {/* Drag Handle y Botones de Orden */}
+              <div className="flex flex-col gap-1">
+                <button 
+                  className="mt-1 text-gray-400 hover:text-gray-600 cursor-move"
+                  title="Arrastra para reordenar"
+                >
+                  <GripVertical className="w-5 h-5" />
+                </button>
+                <div className="flex flex-col gap-0.5">
+                  <button
+                    onClick={() => moverEtapa(etapa.id, 'arriba')}
+                    disabled={index === 0}
+                    className="p-0.5 text-gray-400 hover:text-[#1e5da8] disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Mover arriba"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => moverEtapa(etapa.id, 'abajo')}
+                    disabled={index === etapas.length - 1}
+                    className="p-0.5 text-gray-400 hover:text-[#1e5da8] disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Mover abajo"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
 
               {/* Color Preview */}
               <div
@@ -434,8 +409,8 @@ function VistaGestionEtapas({ tablero, onEditarEtapa }: VistaGestionEtapasProps)
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
                   <h4 className="text-sm text-gray-900 font-medium">{etapa.nombre}</h4>
-                  <span className="px-2 py-1 bg-white border border-gray-300 text-gray-700 rounded text-xs">
-                    Orden {etapa.orden}
+                  <span className="px-2 py-1 bg-white border border-gray-300 text-gray-700 rounded text-xs font-mono">
+                    #{index + 1}
                   </span>
                   {!etapa.visible && (
                     <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs flex items-center gap-1">
@@ -484,7 +459,7 @@ function VistaGestionEtapas({ tablero, onEditarEtapa }: VistaGestionEtapasProps)
                   <Edit2 className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => eliminarEtapa(etapa.id)}
+                  onClick={() => handleEliminarEtapa(etapa.id)}
                   className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                   title="Eliminar"
                 >
@@ -503,10 +478,42 @@ function VistaGestionEtapas({ tablero, onEditarEtapa }: VistaGestionEtapasProps)
 // VISTA: TIEMPOS SLA
 // ════════════════════════════════════════════════════════════════════════════
 
-function VistaTiemposSLA({ tablero }: { tablero: ConfiguracionTablero }) {
+interface VistaTiemposSLAProps {
+  tablero: ConfiguracionTablero;
+  onReload: () => void;
+}
+
+function VistaTiemposSLA({ tablero, onReload }: VistaTiemposSLAProps) {
+  const [editandoEtapas, setEditandoEtapas] = useState<Record<string, Partial<EtapaKanban>>>({});
+
   const tiempoTotal = useMemo(() => {
-    return tablero.etapas.reduce((acc, etapa) => acc + etapa.tiempoSLA, 0);
-  }, [tablero.etapas]);
+    return tablero.etapas.reduce((acc, etapa) => {
+      const etapaEditada = editandoEtapas[etapa.id];
+      return acc + (etapaEditada?.tiempoSLA ?? etapa.tiempoSLA);
+    }, 0);
+  }, [tablero.etapas, editandoEtapas]);
+
+  const handleGuardarEtapa = async (etapa: EtapaKanban) => {
+    const cambios = editandoEtapas[etapa.id];
+    if (!cambios) return;
+
+    const etapaActualizada = await actualizarEtapa(tablero.id, etapa.id, { ...etapa, ...cambios });
+    if (etapaActualizada) {
+      toast.success('Tiempos SLA actualizados');
+      setEditandoEtapas((prev) => {
+        const { [etapa.id]: _, ...rest } = prev;
+        return rest;
+      });
+      onReload();
+    }
+  };
+
+  const handleCambio = (etapaId: string, campo: keyof EtapaKanban, valor: any) => {
+    setEditandoEtapas((prev) => ({
+      ...prev,
+      [etapaId]: { ...(prev[etapaId] || {}), [campo]: valor }
+    }));
+  };
 
   return (
     <div className="space-y-6">
@@ -563,46 +570,73 @@ function VistaTiemposSLA({ tablero }: { tablero: ConfiguracionTablero }) {
       {/* Configuración Rápida */}
       <div className="grid grid-cols-2 gap-4">
         {tablero.etapas
-          .filter(e => e.tiempoSLA > 0)
-          .map((etapa) => (
-            <div key={etapa.id} className="bg-white rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: etapa.color }} />
-                  <span className="text-sm text-gray-900 font-medium">{etapa.nombre}</span>
+          .filter(e => e.tiempoSLA > 0 || e.estado !== 'final')
+          .map((etapa) => {
+            const valores = { ...etapa, ...(editandoEtapas[etapa.id] || {}) };
+            const tieneCambios = !!editandoEtapas[etapa.id];
+
+            return (
+              <div key={etapa.id} className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded" style={{ backgroundColor: etapa.color }} />
+                    <span className="text-sm text-gray-900 font-medium">{etapa.nombre}</span>
+                  </div>
+                  {tieneCambios && (
+                    <button
+                      onClick={() => handleGuardarEtapa(etapa)}
+                      className="px-2 py-1 bg-[#1e5da8] text-white rounded text-xs hover:bg-[#1a4d8f] flex items-center gap-1"
+                    >
+                      <Save className="w-3 h-3" />
+                      Guardar
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Tiempo SLA (días) <span className="text-gray-400">(0-365)</span></label>
+                    <input
+                      type="number"
+                      min={LIMITES.TIEMPO_SLA_MIN}
+                      max={LIMITES.TIEMPO_SLA_MAX}
+                      value={valores.tiempoSLA}
+                      onChange={(e) => {
+                        const valor = Math.min(Math.max(parseInt(e.target.value) || 0, LIMITES.TIEMPO_SLA_MIN), LIMITES.TIEMPO_SLA_MAX);
+                        handleCambio(etapa.id, 'tiempoSLA', valor);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Alerta anticipada (días) <span className="text-gray-400">(0-90)</span></label>
+                    <input
+                      type="number"
+                      min={LIMITES.DIAS_ALERTA_MIN}
+                      max={LIMITES.DIAS_ALERTA_MAX}
+                      value={valores.diasAnticipacionAlerta}
+                      onChange={(e) => {
+                        const valor = Math.min(Math.max(parseInt(e.target.value) || 0, LIMITES.DIAS_ALERTA_MIN), LIMITES.DIAS_ALERTA_MAX);
+                        handleCambio(etapa.id, 'diasAnticipacionAlerta', valor);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={valores.notificarVencimiento}
+                      onChange={(e) => handleCambio(etapa.id, 'notificarVencimiento', e.target.checked)}
+                      className="w-4 h-4 text-[#1e5da8] border-gray-300 rounded focus:ring-[#1e5da8]"
+                    />
+                    <span className="text-xs text-gray-700">Notificar vencimiento</span>
+                  </label>
                 </div>
               </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Tiempo SLA (días)</label>
-                  <input
-                    type="number"
-                    defaultValue={etapa.tiempoSLA}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Alerta anticipada (días)</label>
-                  <input
-                    type="number"
-                    defaultValue={etapa.diasAnticipacionAlerta}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
-                  />
-                </div>
-
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    defaultChecked={etapa.notificarVencimiento}
-                    className="w-4 h-4 text-[#1e5da8] border-gray-300 rounded focus:ring-[#1e5da8]"
-                  />
-                  <span className="text-xs text-gray-700">Notificar vencimiento</span>
-                </label>
-              </div>
-            </div>
-          ))}
+            );
+          })}
       </div>
     </div>
   );
@@ -612,7 +646,35 @@ function VistaTiemposSLA({ tablero }: { tablero: ConfiguracionTablero }) {
 // VISTA: LÍMITES WIP
 // ════════════════════════════════════════════════════════════════════════════
 
-function VistaLimitesWIP({ tablero }: { tablero: ConfiguracionTablero }) {
+interface VistaLimitesWIPProps {
+  tablero: ConfiguracionTablero;
+  onReload: () => void;
+}
+
+function VistaLimitesWIP({ tablero, onReload }: VistaLimitesWIPProps) {
+  const [editandoEtapas, setEditandoEtapas] = useState<Record<string, Partial<EtapaKanban>>>({});
+
+  const handleGuardarEtapa = async (etapa: EtapaKanban) => {
+    const cambios = editandoEtapas[etapa.id];
+    if (!cambios) return;
+
+    const etapaActualizada = await actualizarEtapa(tablero.id, etapa.id, { ...etapa, ...cambios });
+    if (etapaActualizada) {
+      toast.success('Límites WIP actualizados');
+      setEditandoEtapas((prev) => {
+        const { [etapa.id]: _, ...rest } = prev;
+        return rest;
+      });
+      onReload();
+    }
+  };
+
+  const handleCambio = (etapaId: string, campo: keyof EtapaKanban, valor: any) => {
+    setEditandoEtapas((prev) => ({
+      ...prev,
+      [etapaId]: { ...(prev[etapaId] || {}), [campo]: valor }
+    }));
+  };
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -636,42 +698,76 @@ function VistaLimitesWIP({ tablero }: { tablero: ConfiguracionTablero }) {
 
       {/* Configuración de Límites */}
       <div className="grid grid-cols-2 gap-4">
-        {tablero.etapas.map((etapa) => (
-          <div key={etapa.id} className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-3 h-3 rounded" style={{ backgroundColor: etapa.color }} />
-              <span className="text-sm text-gray-900 font-medium">{etapa.nombre}</span>
-            </div>
+        {tablero.etapas.map((etapa) => {
+          const valores = { ...etapa, ...(editandoEtapas[etapa.id] || {}) };
+          const tieneCambios = !!editandoEtapas[etapa.id];
+          const tieneWIP = valores.limiteWIP !== null && valores.limiteWIP !== undefined;
 
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">Límite máximo de elementos</label>
-                <input
-                  type="number"
-                  defaultValue={etapa.limiteWIP || ''}
-                  placeholder="Sin límite"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
-                />
+          return (
+            <div key={etapa.id} className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded" style={{ backgroundColor: etapa.color }} />
+                  <span className="text-sm text-gray-900 font-medium">{etapa.nombre}</span>
+                </div>
+                {tieneCambios && (
+                  <button
+                    onClick={() => handleGuardarEtapa(etapa)}
+                    className="px-2 py-1 bg-[#1e5da8] text-white rounded text-xs hover:bg-[#1a4d8f] flex items-center gap-1"
+                  >
+                    <Save className="w-3 h-3" />
+                    Guardar
+                  </button>
+                )}
               </div>
 
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  defaultChecked={etapa.limiteWIP !== null}
-                  className="w-4 h-4 text-[#1e5da8] border-gray-300 rounded focus:ring-[#1e5da8]"
-                />
-                <span className="text-xs text-gray-700">Aplicar límite WIP</span>
-              </label>
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={tieneWIP}
+                    onChange={(e) => {
+                      const nuevoValor = e.target.checked ? (valores.limiteWIP || 5) : null;
+                      handleCambio(etapa.id, 'limiteWIP', nuevoValor);
+                    }}
+                    className="w-4 h-4 text-[#1e5da8] border-gray-300 rounded focus:ring-[#1e5da8]"
+                  />
+                  <span className="text-xs text-gray-700">Aplicar límite WIP</span>
+                </label>
 
-              {etapa.limiteWIP && (
-                <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
-                  <AlertTriangle className="w-3 h-3 inline mr-1" />
-                  El sistema alertará al alcanzar {etapa.limiteWIP} elementos
-                </div>
-              )}
+                {tieneWIP && (
+                  <>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Límite máximo de elementos <span className="text-gray-400">(1-100)</span></label>
+                      <input
+                        type="number"
+                        min={LIMITES.LIMITE_WIP_MIN}
+                        max={LIMITES.LIMITE_WIP_MAX}
+                        value={valores.limiteWIP || ''}
+                        onChange={(e) => {
+                          const valor = parseInt(e.target.value) || null;
+                          if (valor !== null) {
+                            const valorLimitado = Math.min(Math.max(valor, LIMITES.LIMITE_WIP_MIN), LIMITES.LIMITE_WIP_MAX);
+                            handleCambio(etapa.id, 'limiteWIP', valorLimitado);
+                          } else {
+                            handleCambio(etapa.id, 'limiteWIP', null);
+                          }
+                        }}
+                        placeholder="Sin límite"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
+                      />
+                    </div>
+
+                    <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+                      <AlertTriangle className="w-3 h-3 inline mr-1" />
+                      El sistema alertará al alcanzar {valores.limiteWIP} elementos
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -681,7 +777,25 @@ function VistaLimitesWIP({ tablero }: { tablero: ConfiguracionTablero }) {
 // VISTA: REGLAS DE TRANSICIÓN
 // ════════════════════════════════════════════════════════════════════════════
 
-function VistaTransiciones({ tablero }: { tablero: ConfiguracionTablero }) {
+interface VistaTransicionesProps {
+  tablero: ConfiguracionTablero;
+  onReload: () => void;
+}
+
+function VistaTransiciones({ tablero, onReload }: VistaTransicionesProps) {
+  const [editandoEtapas, setEditandoEtapas] = useState<Record<string, boolean>>({});
+
+  const handleCambioRetroceso = async (etapa: EtapaKanban, permitir: boolean) => {
+    const etapaActualizada = await actualizarEtapa(tablero.id, etapa.id, {
+      ...etapa,
+      permitirRetroceso: permitir
+    });
+
+    if (etapaActualizada) {
+      toast.success(`Retroceso ${permitir ? 'permitido' : 'bloqueado'} para ${etapa.nombre}`);
+      onReload();
+    }
+  };
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -728,15 +842,20 @@ function VistaTransiciones({ tablero }: { tablero: ConfiguracionTablero }) {
                       <label className="inline-flex items-center cursor-pointer">
                         <input
                           type="checkbox"
-                          defaultChecked={etapa.permitirRetroceso}
+                          checked={etapa.permitirRetroceso}
+                          onChange={(e) => handleCambioRetroceso(etapa, e.target.checked)}
                           className="w-4 h-4 text-[#1e5da8] border-gray-300 rounded focus:ring-[#1e5da8]"
                         />
                       </label>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
+                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${
+                        etapa.permitirRetroceso 
+                          ? 'bg-green-100 text-green-700' 
+                          : 'bg-gray-100 text-gray-700'
+                      }`}>
                         <CheckCircle2 className="w-3 h-3 mr-1" />
-                        Permitido
+                        {etapa.permitirRetroceso ? 'Permitido' : 'Bloqueado'}
                       </span>
                     </td>
                   </tr>
@@ -755,18 +874,18 @@ function VistaTransiciones({ tablero }: { tablero: ConfiguracionTablero }) {
 // ════════════════════════════════════════════════════════════════════════════
 
 interface ModalEtapaKanbanProps {
+  tablero: ConfiguracionTablero;
   etapa?: EtapaKanban;
   modo: 'crear' | 'editar';
   onClose: () => void;
   onGuardar: (etapa: EtapaKanban) => void;
 }
 
-function ModalEtapaKanban({ etapa, modo, onClose, onGuardar }: ModalEtapaKanbanProps) {
+function ModalEtapaKanban({ tablero, etapa, modo, onClose, onGuardar }: ModalEtapaKanbanProps) {
   const [formData, setFormData] = useState<Partial<EtapaKanban>>(
     etapa || {
       nombre: '',
-      descripcion: '',
-      color: '#3B82F6',
+      descripcion: '',      orden: tablero.etapas.length + 1,      color: '#3B82F6',
       tiempoSLA: 15,
       limiteWIP: null,
       visible: true,
@@ -849,32 +968,58 @@ function ModalEtapaKanban({ etapa, modo, onClose, onGuardar }: ModalEtapaKanbanP
           {/* Tiempos y Límites */}
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Tiempo SLA (días)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Tiempo SLA (días) <span className="text-gray-500 text-xs">(0-365)</span>
+              </label>
               <input
                 type="number"
+                min={LIMITES.TIEMPO_SLA_MIN}
+                max={LIMITES.TIEMPO_SLA_MAX}
                 value={formData.tiempoSLA}
-                onChange={(e) => setFormData({ ...formData, tiempoSLA: parseInt(e.target.value) })}
+                onChange={(e) => {
+                  const valor = Math.min(Math.max(parseInt(e.target.value) || 0, LIMITES.TIEMPO_SLA_MIN), LIMITES.TIEMPO_SLA_MAX);
+                  setFormData({ ...formData, tiempoSLA: valor });
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Límite WIP</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Límite WIP <span className="text-gray-500 text-xs">(1-100)</span>
+              </label>
               <input
                 type="number"
+                min={LIMITES.LIMITE_WIP_MIN}
+                max={LIMITES.LIMITE_WIP_MAX}
                 value={formData.limiteWIP || ''}
-                onChange={(e) => setFormData({ ...formData, limiteWIP: e.target.value ? parseInt(e.target.value) : null })}
+                onChange={(e) => {
+                  const valor = e.target.value ? parseInt(e.target.value) : null;
+                  if (valor !== null) {
+                    const valorLimitado = Math.min(Math.max(valor, LIMITES.LIMITE_WIP_MIN), LIMITES.LIMITE_WIP_MAX);
+                    setFormData({ ...formData, limiteWIP: valorLimitado });
+                  } else {
+                    setFormData({ ...formData, limiteWIP: null });
+                  }
+                }}
                 placeholder="Sin límite"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Alerta (días antes)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Alerta (días antes) <span className="text-gray-500 text-xs">(0-90)</span>
+              </label>
               <input
                 type="number"
+                min={LIMITES.DIAS_ALERTA_MIN}
+                max={LIMITES.DIAS_ALERTA_MAX}
                 value={formData.diasAnticipacionAlerta}
-                onChange={(e) => setFormData({ ...formData, diasAnticipacionAlerta: parseInt(e.target.value) })}
+                onChange={(e) => {
+                  const valor = Math.min(Math.max(parseInt(e.target.value) || 0, LIMITES.DIAS_ALERTA_MIN), LIMITES.DIAS_ALERTA_MAX);
+                  setFormData({ ...formData, diasAnticipacionAlerta: valor });
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8]"
               />
             </div>
