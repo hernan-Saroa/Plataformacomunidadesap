@@ -1504,7 +1504,11 @@ function isValidUUID(str: string): boolean {
 }
 
 // Componente Principal
-export function ExpedienteElectronico() {
+interface ExpedienteElectronicoProps {
+  initialProcesoId?: string | null;
+}
+
+export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronicoProps = {}) {
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<Proceso | null>(null);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1608,11 +1612,26 @@ export function ExpedienteElectronico() {
         const radicados = procesosConvertidos.map(p => p.numero);
         setRadicadosDisponibles(radicados);
 
-        // Seleccionar el primer proceso si hay alguno
-        if (procesosConvertidos.length > 0 && !procesoSeleccionado) {
-          setProcesoSeleccionado(procesosConvertidos[0]);
-          setProcesoSearchQuery(procesosConvertidos[0].numero);
-          setProcesosRecientes(procesosConvertidos.slice(0, 5));
+        // Seleccionar proceso: priorizar initialProcesoId si existe
+        if (procesosConvertidos.length > 0) {
+          if (initialProcesoId) {
+            const targetProceso = procesosConvertidos.find(p => p.id === initialProcesoId);
+            if (targetProceso) {
+              setProcesoSeleccionado(targetProceso);
+              setProcesoSearchQuery(targetProceso.numero);
+              setProcesosRecientes(procesosConvertidos.slice(0, 5));
+            } else {
+              // initialProcesoId provided but not found, fallback to first
+              setProcesoSeleccionado(procesosConvertidos[0]);
+              setProcesoSearchQuery(procesosConvertidos[0].numero);
+              setProcesosRecientes(procesosConvertidos.slice(0, 5));
+            }
+          } else if (!procesoSeleccionado) {
+            // No initialProcesoId, select first only if nothing selected
+            setProcesoSeleccionado(procesosConvertidos[0]);
+            setProcesoSearchQuery(procesosConvertidos[0].numero);
+            setProcesosRecientes(procesosConvertidos.slice(0, 5));
+          }
         }
       } catch (error: any) {
         console.error('Error al cargar procesos:', error);
@@ -1627,7 +1646,7 @@ export function ExpedienteElectronico() {
     };
 
     cargarProcesos();
-  }, []);
+  }, [initialProcesoId]);
 
   // Cargar documentos desde la BD cuando se selecciona un proceso
   useEffect(() => {

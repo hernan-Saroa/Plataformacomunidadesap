@@ -9,8 +9,23 @@
  * - Reordenamiento de etapas
  */
 
-import { buildApiUrl } from '@/config/environment';
+import { buildApiUrl, API_MODE } from '@/config/environment';
 import { toast } from 'sonner';
+
+/**
+ * Helper para construir URLs que funcionen en ambos modos
+ * En modo direct: quita /api/v1 del path
+ * En modo gateway: mantiene /api/v1
+ */
+function buildTableroKanbanUrl(path: string): string {
+  // Si el path incluye /api/v1 y estamos en modo directo, quitarlo
+  if (API_MODE === 'direct' && path.includes('/api/v1')) {
+    const pathWithoutApi = path.replace('/api/v1', '');
+    return buildApiUrl('control-institucional', pathWithoutApi);
+  }
+  // En modo gateway, mantener el path completo con /api/v1
+  return buildApiUrl('control-institucional', path);
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -97,7 +112,7 @@ function validarEtapa(etapa: Partial<EtapaKanban>): { valido: boolean; errores: 
  */
 export async function cargarTablerosKanban(): Promise<ConfiguracionTablero[]> {
   try {
-    const url = buildApiUrl('control-institucional', '/tableros-kanban');
+    const url = buildTableroKanbanUrl('/api/v1/tableros-kanban');
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -134,7 +149,7 @@ export async function crearEtapa(tableroId: string, etapa: Partial<EtapaKanban>)
     // Filtrar campos que no deben enviarse al backend
     const { id, tableroKanbanId, createdAt, updatedAt, deletedAt, ...etapaData } = etapa as any;
     
-    const url = buildApiUrl('control-institucional', `/tableros-kanban/${tableroId}/etapas`);
+    const url = buildTableroKanbanUrl(`/api/v1/tableros-kanban/${tableroId}/etapas`);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -172,7 +187,7 @@ export async function actualizarEtapa(tableroId: string, etapaId: string, etapa:
     // Filtrar campos que no deben enviarse al backend
     const { id, tableroKanbanId, createdAt, updatedAt, deletedAt, ...etapaData } = etapa as any;
     
-    const url = buildApiUrl('control-institucional', `/tableros-kanban/${tableroId}/etapas/${etapaId}`);
+    const url = buildTableroKanbanUrl(`/api/v1/tableros-kanban/${tableroId}/etapas/${etapaId}`);
     const response = await fetch(url, {
       method: 'PATCH',
       headers: {
@@ -200,7 +215,7 @@ export async function actualizarEtapa(tableroId: string, etapaId: string, etapa:
  */
 export async function eliminarEtapa(tableroId: string, etapaId: string): Promise<boolean> {
   try {
-    const url = buildApiUrl('control-institucional', `/tableros-kanban/${tableroId}/etapas/${etapaId}`);
+    const url = buildTableroKanbanUrl(`/api/v1/tableros-kanban/${tableroId}/etapas/${etapaId}`);
     const response = await fetch(url, {
       method: 'DELETE',
       headers: {
@@ -227,7 +242,7 @@ export async function eliminarEtapa(tableroId: string, etapaId: string): Promise
  */
 export async function reordenarEtapas(tableroId: string, etapasIds: string[]): Promise<boolean> {
   try {
-    const url = buildApiUrl('control-institucional', `/tableros-kanban/${tableroId}/etapas/reordenar`);
+    const url = buildTableroKanbanUrl(`/api/v1/tableros-kanban/${tableroId}/etapas/reordenar`);
     const response = await fetch(url, {
       method: 'POST',
       headers: {

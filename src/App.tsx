@@ -93,6 +93,7 @@ interface User {
   id: string;
   person: UserPerson;
   roles: UserRoles[];
+  modules: string[];
   username: string;
   accessToken: string;
   rememberMe: boolean;
@@ -125,6 +126,18 @@ interface UserRoles {
   created_by: string;
   updated_by: string;
   created_at: string;
+  updated_at: string;
+  permissions: UserPermission[]
+}
+
+interface UserPermission {
+  code: string;
+  created_at: string;
+  description: string;
+  id_module: string;
+  id_permission: string;
+  is_active: boolean;
+  name: string;
   updated_at: string;
 }
 
@@ -202,15 +215,8 @@ export default function App() {
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
         : [];
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
-      // Verificar si tiene roles de configuración (incluyendo Control Interno)
-      const hasControlInternoRoles = roles.some((role: string) => 
-        ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
-         'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
-      );
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
-                           roles.includes('CONTROL_DISCIPLINARIO') || 
-                           roles.includes('GESTION_LEGAL') ||
-                           hasControlInternoRoles;
+      const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
+      // const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL');
       const emailLower = userEmail.toLowerCase();
 
       let nextView: Vista = 'portal';
@@ -269,6 +275,7 @@ export default function App() {
         name: userName,
         email: userEmail,
         personId: user?.person?.id || user?.id,
+        modules: user?.modules || [],
         roles,
         module
       });
@@ -441,9 +448,10 @@ export default function App() {
   // Handler para login con integración del backend
   const handleLogin = (user: User, accessToken: string, rememberMe?: boolean) => {
     try {
-      console.log('🔐 Login handler called with user:', user);
-      console.log('🔐 Login handler called with accessToken:', accessToken);
-      console.log('🔐 Login handler called with rememberMe:', rememberMe);
+      // console.log('🔐 Login handler called with user:', user);
+      // console.log('🔐 Login handler called with roles:', user.roles);
+      // console.log('🔐 Login handler called with accessToken:', accessToken);
+      // console.log('🔐 Login handler called with rememberMe:', rememberMe);
       user.accessToken = accessToken;
       user.rememberMe = rememberMe || false;
 
@@ -461,15 +469,8 @@ export default function App() {
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
-      // Verificar si tiene roles de configuración (incluyendo Control Interno)
-      const hasControlInternoRoles = roles.some((role: string) => 
-        ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
-         'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
-      );
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
-                           roles.includes('CONTROL_DISCIPLINARIO') || 
-                           roles.includes('GESTION_LEGAL') ||
-                           hasControlInternoRoles;
+      const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
+      // const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -482,6 +483,7 @@ export default function App() {
           name: userName,
           email: userEmail,
           personId: user?.person?.id || user?.id,
+          modules: user?.modules || [],
           roles
         });
         setUsuarioActual({
@@ -534,6 +536,7 @@ export default function App() {
             name: userName,
             email: userEmail,
             personId: user?.person?.id || user?.id,
+            modules: user?.modules || [],
             roles,
             module: module // Módulo específico de acceso
           };
@@ -553,6 +556,7 @@ export default function App() {
             name: userName,
             email: userEmail,
             personId: user?.person?.id || user?.id,
+            modules: user?.modules || [],
             datos_por_rol: {
               Docente: {
                 tipo_vinculacion: emailLower.includes('planta') ? 'Carrera' : emailLower.includes('catedra') ? 'Cátedra' : 'Ocasional',
@@ -575,6 +579,7 @@ export default function App() {
             name: userName,
             email: userEmail,
             personId: user?.person?.id || user?.id,
+            modules: user?.modules || [],
             roles
           });
         } else {
@@ -584,6 +589,7 @@ export default function App() {
             name: userName,
             email: userEmail,
             personId: user?.person?.id || user?.id,
+            modules: user?.modules || [],
             roles
           });
         }
