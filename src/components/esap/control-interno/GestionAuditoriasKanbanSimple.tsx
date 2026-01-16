@@ -54,7 +54,7 @@ import {
   Filter, Search, ChevronDown, TrendingUp, Target, Shield,
   Download, Columns3, ClipboardCheck, CheckSquare,
   Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2, Edit,
-  ChevronsDown, ChevronsUp, Building2
+  ChevronsDown, ChevronsUp, Building2, ListChecks
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
@@ -182,6 +182,8 @@ interface Auditoria {
 // ============ SERVICIO API ============
 import { controlInternoService } from '../../../services/api/controlInternoService';
 import { auditoriasApi, hallazgosApi } from './services/api';
+import * as tablerosKanbanService from '../../../services/tableros-kanban.service';
+import type { EtapaKanban } from '../../../services/tableros-kanban.service';
 
 // ============ DATOS DE PRUEBA (ELIMINADOS - AHORA SE OBTIENEN DE LA BD) ============
 /*
@@ -826,8 +828,9 @@ const COLUMNAS_KANBAN = [
 */
 
 // ============ CONFIGURACIÓN DE COLUMNAS ============
+// Columnas por defecto (fallback si no hay configuración en BD)
 
-const COLUMNAS_KANBAN = [
+const COLUMNAS_KANBAN_DEFAULT = [
   {
     id: 'Planeación',
     titulo: 'Planeación',
@@ -1593,7 +1596,7 @@ function TarjetaAuditoria({
 // ============ COMPONENTE DE COLUMNA ============
 
 interface ColumnaKanbanProps {
-  columna: typeof COLUMNAS_KANBAN[0];
+  columna: typeof COLUMNAS_KANBAN_DEFAULT[0];
   auditorias: Auditoria[];
   onVerDetalle: (aud: Auditoria) => void;
   onVerNotas: (aud: Auditoria) => void;
@@ -1843,6 +1846,8 @@ export function GestionAuditoriasKanbanSimple() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [vistaActiva, setVistaActiva] = useState<'kanban' | 'lista'>('kanban');
+  const [etapasKanban, setEtapasKanban] = useState<EtapaKanban[]>([]);
+  const [columnasKanban, setColumnasKanban] = useState(COLUMNAS_KANBAN_DEFAULT);
   const [mostrarArchivadas, setMostrarArchivadas] = useState<boolean>(false);
   const [filtroTerritorial, setFiltroTerritorial] = useState<string>('Todas las Territoriales');
   const [busqueda, setBusqueda] = useState('');
@@ -1863,6 +1868,59 @@ export function GestionAuditoriasKanbanSimple() {
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
   const [modalSolicitarAmpliacionOpen, setModalSolicitarAmpliacionOpen] = useState(false);
   const [bandejaAmpliacionesOpen, setBandejaAmpliacionesOpen] = useState(false);
+
+  // Función para mapear etapa a icono basado en el nombre
+  const obtenerIconoEtapa = (nombre: string) => {
+    const nombreLower = nombre.toLowerCase();
+    if (nombreLower.includes('planeación') || nombreLower.includes('planeacion')) {
+      return <ClipboardCheck className="w-4 h-4" style={{ color: '#003DA5' }} />;
+    } else if (nombreLower.includes('ejecución') || nombreLower.includes('ejecucion')) {
+      return <Target className="w-4 h-4" style={{ color: '#003DA5' }} />;
+    } else if (nombreLower.includes('comunicación') || nombreLower.includes('comunicacion')) {
+      return <MessageSquare className="w-4 h-4" style={{ color: '#003DA5' }} />;
+    } else if (nombreLower.includes('seguimiento')) {
+      return <History className="w-4 h-4" style={{ color: '#003DA5' }} />;
+    } else if (nombreLower.includes('finalizada') || nombreLower.includes('cerrada')) {
+      return <CheckCircle className="w-4 h-4" style={{ color: '#003DA5' }} />;
+    }
+    return <ListChecks className="w-4 h-4" style={{ color: '#003DA5' }} />;
+  };
+
+  // Función para cargar etapas del tablero Kanban desde la BD
+  const cargarEtapasKanban = async () => {
+    try {
+      const tableros = await tablerosKanbanService.cargarTablerosKanban();
+      const tableroAuditorias = tableros.find(
+        (t: any) => t.tipo === 'auditorias' && !t.deletedAt
+      );
+      
+      if (tableroAuditorias && tableroAuditorias.etapas) {
+        const etapasOrdenadas = [...tableroAuditorias.etapas]
+          .filter((e: any) => !e.deletedAt)
+          .sort((a: EtapaKanban, b: EtapaKanban) => a.orden - b.orden);
+        
+        setEtapasKanban(etapasOrdenadas);
+        
+        // Mapear etapas a formato de columnas
+        const columnas = etapasOrdenadas.map((etapa: EtapaKanban) => ({
+          id: etapa.nombre,
+          titulo: etapa.nombre,
+          count: 0, // Se actualizará con el conteo real
+          icono: obtenerIconoEtapa(etapa.nombre),
+          diasEstimados: etapa.tiempoSLA || 0
+        }));
+        
+        setColumnasKanban(columnas);
+      } else {
+        // Si no hay configuración, usar columnas por defecto
+        setColumnasKanban(COLUMNAS_KANBAN_DEFAULT);
+      }
+    } catch (error) {
+      console.error('Error al cargar etapas del tablero Kanban:', error);
+      // En caso de error, usar columnas por defecto
+      setColumnasKanban(COLUMNAS_KANBAN_DEFAULT);
+    }
+  };
 
   // Función para cargar auditorías desde la API
   const cargarAuditorias = async () => {
@@ -1994,6 +2052,13 @@ export function GestionAuditoriasKanbanSimple() {
       setLoading(false);
     }
   };
+
+  // ============ EFECTOS ============
+
+  // Cargar etapas al montar el componente
+  useEffect(() => {
+    cargarEtapasKanban();
+  }, []);
 
   // Cargar auditorías al montar el componente o cuando cambie el filtro de archivadas
   useEffect(() => {
@@ -3765,7 +3830,7 @@ export function GestionAuditoriasKanbanSimple() {
         {vistaActiva === 'kanban' && (
           <div className="overflow-x-auto pb-4 -mx-6 px-6">
             <div className="flex gap-4 min-w-max" style={{ alignItems: 'flex-start', minWidth: '1600px' }}>
-              {COLUMNAS_KANBAN.map((columna) => {
+              {columnasKanban.map((columna: any) => {
                 const auditoriasColumna = auditoriasFiltradas.filter(
                   (aud) => aud.estado === columna.id
                 );

@@ -46,6 +46,8 @@ import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesCont
 // API
 import { planesMejoramientoApi, auditoriasApi, hallazgosApi } from './services/api';
 import type { PlanMejoramiento as PlanMejoramientoBD, AccionMejoramiento } from './services/types';
+import * as tablerosKanbanService from '../../../services/tableros-kanban.service';
+import type { EtapaKanban } from '../../../services/tableros-kanban.service';
 
 // Notificaciones
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
@@ -521,8 +523,8 @@ const PLANES_EJEMPLO: PlanMejoramiento[] = [
   }
 ];
 
-// Configuración de columnas Kanban
-const COLUMNAS_KANBAN = [
+// Configuración de columnas Kanban (fallback por defecto)
+const COLUMNAS_KANBAN_DEFAULT = [
   {
     id: 'FORMULACION',
     titulo: 'Formulación',
@@ -592,6 +594,8 @@ export function PlanesMejoramientoModuleRediseno() {
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [vistaActiva, setVistaActiva] = useState<'seguimiento' | 'soporte'>('seguimiento');
+  const [etapasKanban, setEtapasKanban] = useState<EtapaKanban[]>([]);
+  const [columnasKanban, setColumnasKanban] = useState(COLUMNAS_KANBAN_DEFAULT);
 
   // Integración con Auditorías
   const { 
@@ -604,6 +608,90 @@ export function PlanesMejoramientoModuleRediseno() {
     setNavegarAFormulacion,
     crearPlan
   } = useIntegracionAuditoriaPlanes();
+
+  // Función para mapear etapa a icono basado en el nombre
+  const obtenerIconoEtapa = (nombre: string) => {
+    const nombreLower = nombre.toLowerCase();
+    if (nombreLower.includes('formulaci') || nombreLower.includes('formulacion')) {
+      return <ClipboardCheck className="w-4 h-4" style={{ color: '#9333ea' }} />;
+    } else if (nombreLower.includes('aprobad')) {
+      return <CheckSquare className="w-4 h-4" style={{ color: '#3b82f6' }} />;
+    } else if (nombreLower.includes('ejecuci') || nombreLower.includes('ejecucion')) {
+      return <PlayCircle className="w-4 h-4" style={{ color: '#10b981' }} />;
+    } else if (nombreLower.includes('retraso')) {
+      return <AlertOctagon className="w-4 h-4" style={{ color: '#f97316' }} />;
+    } else if (nombreLower.includes('completad') || nombreLower.includes('finalizad')) {
+      return <CheckCircle2 className="w-4 h-4" style={{ color: '#10b981' }} />;
+    } else if (nombreLower.includes('suspendid')) {
+      return <PauseCircle className="w-4 h-4" style={{ color: '#6b7280' }} />;
+    }
+    return <Circle className="w-4 h-4" style={{ color: '#6b7280' }} />;
+  };
+
+  // Función para mapear etapa a colores
+  const obtenerColoresEtapa = (nombre: string) => {
+    const nombreLower = nombre.toLowerCase();
+    if (nombreLower.includes('formulaci') || nombreLower.includes('formulacion')) {
+      return { color: '#9333ea', bgColor: 'bg-purple-50', borderColor: 'border-purple-200' };
+    } else if (nombreLower.includes('aprobad')) {
+      return { color: '#3b82f6', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' };
+    } else if (nombreLower.includes('ejecuci') || nombreLower.includes('ejecucion')) {
+      return { color: '#10b981', bgColor: 'bg-green-50', borderColor: 'border-green-200' };
+    } else if (nombreLower.includes('retraso')) {
+      return { color: '#f97316', bgColor: 'bg-orange-50', borderColor: 'border-orange-200' };
+    } else if (nombreLower.includes('completad') || nombreLower.includes('finalizad')) {
+      return { color: '#10b981', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200' };
+    } else if (nombreLower.includes('suspendid')) {
+      return { color: '#6b7280', bgColor: 'bg-gray-50', borderColor: 'border-gray-200' };
+    }
+    return { color: '#6b7280', bgColor: 'bg-gray-50', borderColor: 'border-gray-200' };
+  };
+
+  // Cargar etapas del tablero Kanban desde la BD
+  const cargarEtapasKanban = async () => {
+    try {
+      const tableros = await tablerosKanbanService.cargarTablerosKanban();
+      const tableroPlanesM = tableros.find(
+        (t: any) => t.tipo === 'planes_mejoramiento' && !t.deletedAt
+      );
+      
+      if (tableroPlanesM && tableroPlanesM.etapas) {
+        const etapasOrdenadas = [...tableroPlanesM.etapas]
+          .filter((e: any) => !e.deletedAt)
+          .sort((a: EtapaKanban, b: EtapaKanban) => a.orden - b.orden);
+        
+        setEtapasKanban(etapasOrdenadas);
+        
+        // Mapear etapas a formato de columnas
+        const columnas = etapasOrdenadas.map((etapa: EtapaKanban) => {
+          const colores = obtenerColoresEtapa(etapa.nombre);
+          return {
+            id: etapa.nombre,
+            titulo: etapa.nombre,
+            icono: obtenerIconoEtapa(etapa.nombre),
+            color: colores.color,
+            bgColor: colores.bgColor,
+            borderColor: colores.borderColor,
+            diasEstimados: etapa.tiempoSLA || 0
+          };
+        });
+        
+        setColumnasKanban(columnas);
+      } else {
+        // Si no hay configuración, usar columnas por defecto
+        setColumnasKanban(COLUMNAS_KANBAN_DEFAULT);
+      }
+    } catch (error) {
+      console.error('Error al cargar etapas del tablero Kanban:', error);
+      // En caso de error, usar columnas por defecto
+      setColumnasKanban(COLUMNAS_KANBAN_DEFAULT);
+    }
+  };
+
+  // Cargar etapas al montar el componente
+  useEffect(() => {
+    cargarEtapasKanban();
+  }, []);
 
   // Cargar auditorías finalizadas con hallazgos desde BD
   useEffect(() => {
@@ -957,6 +1045,7 @@ export function PlanesMejoramientoModuleRediseno() {
                 setPlanes={setPlanes}
                 onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
                 auditoriasDisponibles={auditoriasConHallazgos}
+                columnasKanban={columnasKanban}
               />
             ) : (
               <SoporteView />
@@ -997,9 +1086,10 @@ interface SeguimientoViewProps {
   setPlanes: React.Dispatch<React.SetStateAction<PlanMejoramiento[]>>;
   onAbrirCrearPlan: () => void;
   auditoriasDisponibles: any[];
+  columnasKanban: any[];
 }
 
-function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDisponibles }: SeguimientoViewProps) {
+function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDisponibles, columnasKanban }: SeguimientoViewProps) {
   const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('kanban');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoPlan | 'TODOS'>('TODOS');
@@ -1219,6 +1309,7 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
           onAbrirPlan={setPlanSeleccionado}
           columnasColapsadas={columnasColapsadas}
           onToggleColapso={toggleColapsoColumna}
+          columnasKanban={columnasKanban}
         />
       ) : (
         <VistaLista 
@@ -1248,12 +1339,13 @@ interface VistaKanbanProps {
   onAbrirPlan: (plan: PlanMejoramiento) => void;
   columnasColapsadas: Set<string>;
   onToggleColapso: (columnaId: string) => void;
+  columnasKanban: any[];
 }
 
-function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onToggleColapso }: VistaKanbanProps) {
+function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onToggleColapso, columnasKanban }: VistaKanbanProps) {
   return (
     <div className="flex gap-4 overflow-x-auto pb-6">
-      {COLUMNAS_KANBAN.map((columna) => {
+      {columnasKanban.map((columna: any) => {
         const planesColumna = planes.filter(p => p.estado === columna.id);
         const colapsada = columnasColapsadas.has(columna.id);
         
@@ -1278,7 +1370,7 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onT
 // ════════════════════════════════════════════════════════════════════════════
 
 interface ColumnaKanbanProps {
-  columna: typeof COLUMNAS_KANBAN[0];
+  columna: typeof COLUMNAS_KANBAN_DEFAULT[0];
   planes: PlanMejoramiento[];
   onMoverPlan: (planId: string, nuevoEstado: EstadoPlan) => void;
   onAbrirPlan: (plan: PlanMejoramiento) => void;

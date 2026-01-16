@@ -8,6 +8,15 @@ import { getServiceUrl, API_MODE } from '../../config/environment';
 
 const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
 const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '/api/v1';
+const MICROSERVICIO_PORT = 3007; // Puerto del internal-institutional-control-service
+
+/**
+ * Detecta si estamos en localhost para hacer peticiones directas al microservicio
+ */
+function esLocalhost(): boolean {
+  const hostname = window.location.hostname;
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+}
 
 export interface TipoAuditoria {
   id: string;
@@ -51,7 +60,15 @@ class TiposAuditoriaAPIClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
+    // Si estamos en localhost, ir directo al microservicio (sin prefijos /api/v1)
+    let url: string;
+    if (esLocalhost()) {
+      url = `http://localhost:${MICROSERVICIO_PORT}${endpoint}`;
+      console.log(`[TiposAuditoria] 🔗 Petición directa a microservicio: ${url}`);
+    } else {
+      url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
+      console.log(`[TiposAuditoria] 🔗 Petición vía API Gateway: ${url}`);
+    }
     
     const defaultHeaders: HeadersInit = {
       'Content-Type': 'application/json; charset=utf-8',
