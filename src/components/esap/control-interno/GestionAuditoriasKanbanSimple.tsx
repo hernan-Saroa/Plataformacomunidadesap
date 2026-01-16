@@ -103,22 +103,109 @@ type EstadoAuditoria =
 type RiesgoAuditoria = 'Alto' | 'Medio' | 'Bajo';
 
 /**
- * Mapea el nombre de una etapa del tablero Kanban (desde BD) al valor del enum EstadoKanban
+ * Mapea el estado de una auditoría (del backend) al nombre de la etapa correspondiente
+ * en el tablero Kanban dinámico.
+ * 
+ * Esta función busca la etapa que corresponde al estado de la auditoría usando
+ * el mapeo inverso de mapearEtapaAEstadoKanban.
+ */
+function mapearEstadoAuditoriaANombreEtapa(
+  estadoAuditoria: EstadoAuditoria,
+  etapasKanban: EtapaKanban[]
+): string | null {
+  // Ordenar etapas por orden para encontrar la primera que corresponda
+  const etapasOrdenadas = [...etapasKanban].sort((a, b) => a.orden - b.orden);
+  
+  // Buscar etapa que corresponda al estado (usar la primera en orden)
+  for (const etapa of etapasOrdenadas) {
+    const estadoMapeado = mapearEtapaAEstadoKanban(etapa.nombre, {
+      estado: etapa.estado,
+      orden: etapa.orden
+    });
+    
+    if (estadoMapeado === estadoAuditoria) {
+      return etapa.nombre;
+    }
+  }
+  
+  // Fallback: buscar por nombre directo (usar la primera que coincida)
+  const nombreLower = estadoAuditoria.toLowerCase();
+  for (const etapa of etapasOrdenadas) {
+    const etapaNombreLower = etapa.nombre.toLowerCase();
+    if (
+      (estadoAuditoria === 'Planeación' && (etapaNombreLower.includes('planificación') || etapaNombreLower.includes('planeación'))) ||
+      (estadoAuditoria === 'Ejecución' && etapaNombreLower.includes('ejecución')) ||
+      (estadoAuditoria === 'Comunicación' && etapaNombreLower.includes('comunicación')) ||
+      (estadoAuditoria === 'Seguimiento' && etapaNombreLower.includes('seguimiento')) ||
+      (estadoAuditoria === 'Finalizada' && (etapaNombreLower.includes('finalizada') || etapaNombreLower.includes('finalizado')))
+    ) {
+      return etapa.nombre;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Mapea una etapa del tablero Kanban (dinámica) al valor del enum EstadoKanban
  * que espera el backend.
  * 
- * Los nombres de etapas en la BD pueden variar, pero el backend solo acepta estos valores:
+ * Usa el campo `estado` de la etapa ('inicial', 'intermedia', 'final') y el orden
+ * para determinar el mapeo correcto, con fallback al nombre de la etapa.
+ * 
+ * Los valores del enum EstadoKanban son:
  * - 'Planeación'
  * - 'Ejecución'
  * - 'Comunicación'
  * - 'Seguimiento'
  * - 'Finalizada'
  */
-function mapearEtapaAEstadoKanban(nombreEtapa: string): EstadoAuditoria {
+function mapearEtapaAEstadoKanban(
+  nombreEtapa: string, 
+  etapaCompleta?: { estado?: 'inicial' | 'intermedia' | 'final'; orden?: number }
+): EstadoAuditoria {
   const nombreLower = nombreEtapa.toLowerCase().trim();
   
-  // Mapeo de nombres de etapas comunes a valores del enum
-  // Orden importante: verificar casos específicos primero, luego generales
+  // Si tenemos la etapa completa, usar su campo `estado` y `orden` para mapear
+  if (etapaCompleta?.estado) {
+    // Mapeo basado en el estado de la etapa
+    if (etapaCompleta.estado === 'final') {
+      return 'Finalizada';
+    }
+    
+    if (etapaCompleta.estado === 'inicial') {
+      return 'Planeación';
+    }
+    
+    // Para etapas intermedias, usar el orden para determinar si es Ejecución, Comunicación o Seguimiento
+    if (etapaCompleta.estado === 'intermedia') {
+      // Si tenemos el orden, podemos hacer un mapeo más preciso
+      // Generalmente: primera intermedia = Ejecución, segunda = Comunicación, tercera+ = Seguimiento
+      if (etapaCompleta.orden !== undefined) {
+        // Esto es una aproximación - puede necesitar ajustes según la configuración específica
+        // Por ahora, usamos el nombre como referencia adicional
+        if (nombreLower.includes('ejecución') || nombreLower.includes('ejecucion')) {
+          return 'Ejecución';
+        }
+        if (nombreLower.includes('comunicación') || nombreLower.includes('comunicacion') || nombreLower.includes('respuesta') || nombreLower.includes('preliminar')) {
+          return 'Comunicación';
+        }
+        if (nombreLower.includes('seguimiento') || nombreLower.includes('informe')) {
+          return 'Seguimiento';
+        }
+        // Por defecto para intermedias: Ejecución si es la primera, Comunicación si es la segunda, Seguimiento si es la tercera+
+        if (etapaCompleta.orden <= 2) {
+          return 'Ejecución';
+        } else if (etapaCompleta.orden <= 4) {
+          return 'Comunicación';
+        } else {
+          return 'Seguimiento';
+        }
+      }
+    }
+  }
   
+  // Fallback: mapeo por nombre de la etapa (para compatibilidad con etapas sin estado)
   // Finalizada (verificar primero para evitar falsos positivos)
   if (nombreLower.includes('finalizada') || nombreLower.includes('finalizado') || nombreLower.includes('cerrada') || nombreLower.includes('completada')) {
     return 'Finalizada';
@@ -2765,8 +2852,15 @@ export function GestionAuditoriasKanbanSimple() {
     const estadoAnterior = item.estado;
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
     
-    // Mapear el nombre de la etapa al valor del enum EstadoKanban que espera el backend
-    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(nuevoEstado);
+    // Buscar la etapa completa en etapasKanban para obtener su estado y orden
+    const etapaCompleta = etapasKanban.find(e => e.nombre === nuevoEstado);
+    
+    // Mapear la etapa al valor del enum EstadoKanban que espera el backend
+    // Usa el campo `estado` y `orden` de la etapa si está disponible
+    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(
+      nuevoEstado, 
+      etapaCompleta ? { estado: etapaCompleta.estado, orden: etapaCompleta.orden } : undefined
+    );
     
     // Actualizar estado localmente primero (optimistic update)
     setAuditorias(prev =>
@@ -2852,8 +2946,15 @@ export function GestionAuditoriasKanbanSimple() {
 
     const estadoAnterior = auditoriaActual.estado;
 
-    // Mapear el nombre de la etapa al valor del enum EstadoKanban que espera el backend
-    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(nuevoEstado);
+    // Buscar la etapa completa en etapasKanban para obtener su estado y orden
+    const etapaCompleta = etapasKanban.find(e => e.nombre === nuevoEstado);
+    
+    // Mapear la etapa al valor del enum EstadoKanban que espera el backend
+    // Usa el campo `estado` y `orden` de la etapa si está disponible
+    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(
+      nuevoEstado,
+      etapaCompleta ? { estado: etapaCompleta.estado, orden: etapaCompleta.orden } : undefined
+    );
 
     // Actualizar estado localmente primero (optimistic update)
     setAuditorias(prev =>
@@ -3850,9 +3951,22 @@ export function GestionAuditoriasKanbanSimple() {
           <div className="overflow-x-auto pb-4 -mx-6 px-6">
             <div className="flex gap-4 min-w-max" style={{ alignItems: 'flex-start', minWidth: '1600px' }}>
               {columnasKanban.map((columna: any) => {
-                const auditoriasColumna = auditoriasFiltradas.filter(
-                  (aud) => aud.estado === columna.id
-                );
+                // Mapear el estado de cada auditoría al nombre de la etapa correspondiente
+                const auditoriasColumna = auditoriasFiltradas.filter((aud) => {
+                  // Si el estado coincide directamente con el nombre de la columna, incluirlo
+                  if (aud.estado === columna.id) {
+                    return true;
+                  }
+                  
+                  // Si no coincide, buscar qué etapa corresponde al estado de la auditoría
+                  const nombreEtapaCorrespondiente = mapearEstadoAuditoriaANombreEtapa(
+                    aud.estado as EstadoAuditoria,
+                    etapasKanban
+                  );
+                  
+                  // Incluir si el nombre de la etapa corresponde a esta columna
+                  return nombreEtapaCorrespondiente === columna.id;
+                });
 
                 return (
                   <ColumnaKanban
