@@ -244,6 +244,13 @@ export class MicrosoftGraphService {
         cc?: string[],
         attachments?: { name: string; contentBytes: string; contentType: string }[]
     ): Promise<boolean> {
+        // MOCK FOR DEV: Si no hay credenciales configuradas, simular envío exitoso
+        if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
+            this.logger.warn(`[DEV MOCK] Email simulación enviado a: ${to} | Asunto: ${subject}`);
+            this.logger.debug(`[DEV MOCK] Cuerpo: ${body.substring(0, 100)}...`);
+            return true;
+        }
+
         try {
             const client = this.getClient();
 

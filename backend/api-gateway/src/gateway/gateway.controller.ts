@@ -23,7 +23,7 @@ import type { Request, Response } from 'express';
  */
 @Controller(':service')
 export class GatewayController {
-  constructor(private readonly gatewayService: GatewayService) {}
+  constructor(private readonly gatewayService: GatewayService) { }
 
   @All('api/v:version/*')
   async proxyVersioned(
@@ -48,6 +48,16 @@ export class GatewayController {
   // Proxy para archivos estáticos (ej. /certificados/uploads/...)
   @All('uploads/*')
   async proxyUploads(
+    @Param('service') service: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    return this.gatewayService.forwardStatic(service, req, res);
+  }
+
+  // Proxy para archivos del controlador FilesController (ej. /legal/files/...)
+  @All('files/*')
+  async proxyFiles(
     @Param('service') service: string,
     @Req() req: Request,
     @Res() res: Response,
