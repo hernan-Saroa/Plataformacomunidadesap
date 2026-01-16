@@ -87,11 +87,17 @@ export class ListasChequeoService {
       );
     }
 
-    // Crear la lista
+    // Crear la lista con valores por defecto para campos requeridos
     const lista = this.listaChequeoRepository.create({
       codigo: createDto.codigo.toUpperCase(),
       nombre: createDto.nombre,
-      descripcion: createDto.descripcion,
+      descripcion: createDto.descripcion || '',
+      tipo: createDto.tipo || 'cumplimiento', // Valor por defecto si no viene
+      categoria: createDto.categoria || 'General', // Valor por defecto si no viene
+      version: createDto.version || '1.0', // Valor por defecto si no viene
+      estado: createDto.estado || 'activa', // Valor por defecto si no viene
+      aplicablePara: createDto.aplicablePara || [], // Valor por defecto si no viene
+      createdBy: createDto.createdBy || 'Sistema', // Valor por defecto si no viene
       tipoAuditoriaId: createDto.tipoAuditoriaId,
       activa: createDto.activa !== undefined ? createDto.activa : true,
       usosProgramados: 0,
@@ -104,6 +110,10 @@ export class ListasChequeoService {
       const items = createDto.items.map((itemDto, index) =>
         this.itemRepository.create({
           listaChequeoId: listaGuardada.id,
+          numero: index + 1, // Campo requerido: número secuencial
+          pregunta: itemDto.texto, // Campo requerido: usar texto como pregunta
+          criterio: itemDto.texto, // Campo requerido: usar texto como criterio
+          tipoRespuesta: 'si_no', // Campo requerido: valor por defecto
           texto: itemDto.texto,
           categoria: itemDto.categoria,
           obligatorio: itemDto.obligatorio !== undefined ? itemDto.obligatorio : false,
@@ -136,6 +146,12 @@ export class ListasChequeoService {
     // Actualizar campos básicos
     if (updateDto.nombre !== undefined) lista.nombre = updateDto.nombre;
     if (updateDto.descripcion !== undefined) lista.descripcion = updateDto.descripcion;
+    if (updateDto.tipo !== undefined) lista.tipo = updateDto.tipo;
+    if (updateDto.categoria !== undefined) lista.categoria = updateDto.categoria;
+    if (updateDto.version !== undefined) lista.version = updateDto.version;
+    if (updateDto.estado !== undefined) lista.estado = updateDto.estado;
+    if (updateDto.aplicablePara !== undefined) lista.aplicablePara = updateDto.aplicablePara;
+    if (updateDto.createdBy !== undefined) lista.createdBy = updateDto.createdBy;
     if (updateDto.tipoAuditoriaId !== undefined) lista.tipoAuditoriaId = updateDto.tipoAuditoriaId;
     if (updateDto.activa !== undefined) lista.activa = updateDto.activa;
 
@@ -156,6 +172,10 @@ export class ListasChequeoService {
         const items = updateDto.items.map((itemDto, index) =>
           this.itemRepository.create({
             listaChequeoId: id,
+            numero: index + 1, // Campo requerido: número secuencial
+            pregunta: itemDto.texto, // Campo requerido: usar texto como pregunta
+            criterio: itemDto.texto, // Campo requerido: usar texto como criterio
+            tipoRespuesta: 'si_no', // Campo requerido: valor por defecto
             texto: itemDto.texto,
             categoria: itemDto.categoria,
             obligatorio: itemDto.obligatorio !== undefined ? itemDto.obligatorio : false,
