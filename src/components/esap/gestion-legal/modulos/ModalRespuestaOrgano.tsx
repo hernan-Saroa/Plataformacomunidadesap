@@ -160,7 +160,8 @@ Escuela Superior de Administración Pública - ESAP`;
         destinatarioEmail: email,
         destinatarioCargo: cargo,
         tipoRespuesta,
-        documentosAdjuntos: JSON.stringify(documentosAdjuntos)
+        // CORRECCIÓN: Enviar array directo, el backend maneja jsonb
+        documentosAdjuntos: documentosAdjuntos
       });
       toast.success('Borrador guardado', {
         description: 'La respuesta ha sido guardada como borrador',
@@ -251,11 +252,16 @@ Escuela Superior de Administración Pública - ESAP`;
         subidoPor: 'Usuario Actual' // TODO: Obtener usuario real
       });
 
-      // Agregamos al estado
-      setDocumentosAdjuntos(prev => [...prev, {
-        nombre: doc.nombre,
-        url: doc.archivoUrl || ''
-      }]);
+      // Agregamos al estado (Evitar duplicados visuales)
+      setDocumentosAdjuntos(prev => {
+        const exists = prev.some(d => d.url === doc.archivoUrl);
+        if (exists) return prev;
+
+        return [...prev, {
+          nombre: doc.nombre,
+          url: doc.archivoUrl || ''
+        }];
+      });
 
       toast.success('Documento adjuntado', {
         description: doc.nombre,
