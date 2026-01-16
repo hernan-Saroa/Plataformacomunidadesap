@@ -28,7 +28,6 @@ import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import esapLogo from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import graduadosService from '../../services/api/graduados.service';
-import { buildApiUrl } from '../../config/environment';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import headerImg from '../../assets/graduation-certificates/img_primera.png';
@@ -242,74 +241,12 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     toast.loading('Enviando certificado por correo...', { id: 'auto-email-certificate' });
 
     try {
-      const { pdf, fileName } = await generatePdfFromTemplate();
-      const dataUri = pdf.output('datauristring');
-      const base64 = dataUri.split(',')[1];
-
-      if (!base64) {
-        throw new Error('No se pudo preparar el PDF para el correo.');
-      }
-
-      const url = buildApiUrl('notificaciones', '/api/v1/emails/send-with-attachment');
-      const subject = `Certificado de Verificación de Título ESAP - ${certificate.certificateNumber}`;
-      const text = 'Adjuntamos el certificado de validación de título solicitado.';
-      const html = `
-        <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
-          <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
-            <tr>
-              <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
-                Certificados ESAP
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-                Certificado de Validación de Título
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-                Hola ${certificate.requester?.name || 'usuario'}, adjuntamos el certificado de validación de título solicitado.
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 12px 24px; font-size: 13px; color: #6b7280;">
-                Graduado: <strong>${certificate.graduate.fullName}</strong><br />
-                Programa: <strong>${certificate.graduate.programName}</strong><br />
-                Consecutivo: <strong>${certificate.certificateNumber}</strong>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
-                ESAP - Escuela Superior de Administración Pública
-              </td>
-            </tr>
-          </table>
-        </div>
-      `;
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: destinatario,
-          subject,
-          text,
-          html,
-          attachmentName: fileName,
-          attachmentBase64: base64,
-          attachmentContentType: 'application/pdf',
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        throw new Error(errorText || 'No se pudo enviar el correo');
-      }
+      await graduadosService.certificados.reenviar(certificate.id);
 
       lastEmailSentRef.current = certificate.certificateNumber;
       toast.success('Certificado enviado por correo', {
         id: 'auto-email-certificate',
-        description: `Se envió a ${destinatario}`,
+        description: `Se envio a ${destinatario}`,
         duration: 4000,
       });
     } catch (error: any) {
