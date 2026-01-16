@@ -66,7 +66,8 @@ export class AutoController {
   @ApiOperation({ summary: 'Listar Autos por Proceso', description: 'Retorna los autos de un proceso específico con URLs de versión' })
   async findByProcess(@Param('processId') processId: string) {
     const autos = await this.autoService.findByProcessId(processId);
-    return autos.map(auto => this.mapAutoResponse(auto));
+    // Temporarily return raw data to debug
+    return autos;
   }
 
   /**

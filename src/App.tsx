@@ -22,6 +22,7 @@ import { AlertTriangle, Clock } from 'lucide-react';
 import { authService } from './services/api/authService';
 import { config } from './config/environment';
 import { NotificacionesProvider } from './contexts/NotificacionesContext';
+import { EditorPlantillasPage } from './pages/EditorPlantillasPage';
 
 // Importar Demo de Control Disciplinario
 import { ControlDisciplinarioDemo } from './components/esap/ControlDisciplinarioDemo';
@@ -235,10 +236,12 @@ export default function App() {
         
         module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
         : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+        : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
         : hasControlInterno ? 'control-interno'
         : 'users-persons';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
         : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+        : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
         : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
         : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
         : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
@@ -514,10 +517,12 @@ export default function App() {
           );
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
           : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+          : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
           : hasControlInternoRoles ? 'control-interno'
           : 'users-persons';
           const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
           : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+          : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
           : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
           : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
           : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
@@ -978,20 +983,24 @@ export default function App() {
       `}</style>
 
         <Routes>
-          <Route
-            path="/verificar-certificado-graduado"
-            element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
-          />
-          <Route
-            path="/verificar-certificado/:codigo"
-            element={<VerificarCertificadoPublico />}
-          />
-          <Route
-            path="/validar/:codigo"
-            element={<VerificarCertificadoPublico />}
-          />
-          <Route path="*" element={renderVista()} />
-        </Routes>
+           <Route
+             path="/verificar-certificado-graduado"
+             element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
+           />
+           <Route
+             path="/verificar-certificado/:codigo"
+             element={<VerificarCertificadoPublico />}
+           />
+           <Route
+             path="/validar/:codigo"
+             element={<VerificarCertificadoPublico />}
+           />
+           <Route
+             path="/editor-plantillas"
+             element={<EditorPlantillasPage />}
+           />
+           <Route path="*" element={renderVista()} />
+         </Routes>
 
         {/* Modal de Alerta de Inactividad */}
         {mostrarAlertaInactividad && (
