@@ -685,7 +685,7 @@ function TarjetaProceso({
   onGestionOficios,
   onGestionActas,
   onComentarios,
-  vistaCompacta, 
+  vistaCompacta,
   isMobile,
   colapsada,
   onToggleColapso
@@ -991,19 +991,19 @@ function TarjetaProceso({
 
 
             {/* Aprobación si está pendiente */}
-           {proceso.pendienteAprobacion && (
-             <Button
-               onClick={(e) => {
-                 e.stopPropagation();
-                 onAprobarBorrador(proceso);
-               }}
-               size="sm"
-               className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} bg-green-600 hover:bg-green-700 text-white font-bold`}
-             >
-               <CheckCircle className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1.5`} />
-               Aprobar Borrador
-             </Button>
-           )}
+            {proceso.pendienteAprobacion && (
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAprobarBorrador(proceso);
+                }}
+                size="sm"
+                className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} bg-green-600 hover:bg-green-700 text-white font-bold`}
+              >
+                <CheckCircle className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1.5`} />
+                Aprobar Borrador
+              </Button>
+            )}
           </div>
         </div>
       </Card>
@@ -1727,8 +1727,8 @@ function ColumnaKanban({
     const procesosVerdes = procesos.filter(p => p.semaforo === 'verde').length;
 
     return (
-      <motion.div 
-        ref={drop} 
+      <motion.div
+        ref={drop}
         className={`flex-shrink-0 h-full`}
         initial={{ width: 64 }}
         animate={{ width: 64 }}
@@ -1964,7 +1964,7 @@ function ColumnaKanban({
 
 // ==================== COMPONENTE PRINCIPAL ====================
 interface DashboardKanbanProps {
-  onNavigateToExpediente?: () => void;
+  onNavigateToExpediente?: (procesoId: string) => void;
   filtroProfesionalId?: string | null;
   filtroProfesionalNombre?: string | null;
   onLimpiarFiltro?: () => void;
@@ -2769,7 +2769,7 @@ export function DashboardKanbanOperativo({
       // if (item.etapaActual !== nuevaEtapa) {
       //   const etapaAnterior = item.etapaActual;
       //   const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
-        
+
       //   setItems(prev => prev.map(i => 
       //     i.id === item.id && i.tipo === 'proceso'
       //       ? { 
@@ -2779,7 +2779,7 @@ export function DashboardKanbanOperativo({
       //         }
       //       : i
       //   ));
-        
+
       //   // Registrar en trazabilidad/historial
       //   const eventoTrazabilidad = {
       //     id: `evt-${Date.now()}`,
@@ -2792,10 +2792,10 @@ export function DashboardKanbanOperativo({
       //     etapaAnterior: etapaAnterior,
       //     etapaNueva: nuevaEtapa
       //   };
-        
+
       //   // En producción, esto se guardaría en el backend
       //   console.log('📋 Trazabilidad - Movimiento de proceso:', eventoTrazabilidad);
-        
+
       //   toast.success('Proceso Movido', {
       //     description: `${item.numeroProceso} → ${nuevaEtapa} (registrado en trazabilidad)`
       //   });
@@ -3388,7 +3388,7 @@ export function DashboardKanbanOperativo({
 
   const handleVerExpediente = (proceso: Proceso) => {
     if (onNavigateToExpediente) {
-      onNavigateToExpediente();
+      onNavigateToExpediente(proceso.id);
       toast.success('Navegando a Expediente Electrónico', {
         description: `Abriendo expediente del proceso ${proceso.numeroProceso}`
       });
@@ -3456,7 +3456,7 @@ export function DashboardKanbanOperativo({
   };
 
   // ==================== FUNCIONES PARA COLAPSAR/EXPANDIR TARJETAS ====================
-  
+
   // Toggle colapso de tarjeta individual
   const toggleTarjetaColapsada = (id: string) => {
     setTarjetasColapsadas(prev => {

@@ -706,6 +706,7 @@ export function ControlDisciplinarioFull() {
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
   const [filtroProfesionalNombre, setFiltroProfesionalNombre] = useState<string | null>(null);
   const [dashboardView, setDashboardView] = useState<'lista' | 'kanban'>('lista');
+  const [selectedProcesoIdForExpediente, setSelectedProcesoIdForExpediente] = useState<string | null>(null);
   // Estados de Negocio
   const [procesos, setProcesos] = useState<Proceso[]>([]);
   const [stageConfigs, setStageConfigs] = useState<any[]>([]);
@@ -779,7 +780,10 @@ export function ControlDisciplinarioFull() {
       {/* Contenido Principal */}
       {currentSection === 'dashboard' && (
         <DashboardKanbanOperativo
-          onNavigateToExpediente={() => setCurrentSection('expediente')}
+          onNavigateToExpediente={(procesoId: string) => {
+            setSelectedProcesoIdForExpediente(procesoId);
+            setCurrentSection('expediente');
+          }}
           filtroProfesionalId={filtroProfesional}
           filtroProfesionalNombre={filtroProfesionalNombre}
           onLimpiarFiltro={handleLimpiarFiltro}
@@ -787,7 +791,7 @@ export function ControlDisciplinarioFull() {
       )}
       {currentSection === 'noticias' && <GestionNoticias />}
       {currentSection === 'aprobacion' && <RevisionAprobacionJefe />}
-      {currentSection === 'expediente' && <ExpedienteElectronico />}
+      {currentSection === 'expediente' && <ExpedienteElectronico initialProcesoId={selectedProcesoIdForExpediente} />}
       {currentSection === 'terminos' && <GestionTerminosAlertas />}
       {currentSection === 'profesionales' && <GestionProfesionales onVerProcesos={handleVerProcesosProfesional} />}
       {currentSection === 'config' && <ModuloConfiguracion />}
