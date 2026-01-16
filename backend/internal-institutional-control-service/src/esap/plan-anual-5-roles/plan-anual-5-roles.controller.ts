@@ -132,22 +132,56 @@ export class PlanAnual5RolesController {
   // Métodos auxiliares para validar permisos
   private tienePermisoCrearPlan(user: any): boolean {
     // Validar rol del usuario
-    const rolesPermitidos = ['Jefe OTIC', 'Jefe OCI', 'super_admin', 'admin', 'administrator'];
+    const rolesPermitidos = [
+      'Jefe OTIC', 
+      'Jefe OCI', 
+      'JEFE_CONTROL_INTERNO',  // Código del rol equivalente a Jefe OCI
+      'JEFE_OCI',               // Código alternativo del rol
+      'super_admin', 
+      'admin', 
+      'administrator'
+    ];
     
     // Extraer el rol - puede ser string o objeto
     let userRole = user.rol || user.role || user.roles?.[0];
+    let userRoleCode: string | undefined;
+    let userRoleName: string | undefined;
     
-    // Si el rol es un objeto, extraer el code o name
+    // Si el rol es un objeto, extraer el code y name
     if (userRole && typeof userRole === 'object') {
-      userRole = userRole.code || userRole.name;
+      userRoleCode = userRole.code;
+      userRoleName = userRole.name;
     }
     
-    if (!userRole || typeof userRole !== 'string') return false;
+    // Normalizar a strings en minúsculas para comparación
+    const userRoleCodeLower = userRoleCode?.toLowerCase() || '';
+    const userRoleNameLower = userRoleName?.toLowerCase() || '';
+    const userRoleLower = (typeof userRole === 'string' ? userRole : userRoleCode || userRoleName || '').toLowerCase();
     
     // Verificar si el rol del usuario coincide con alguno de los roles permitidos
-    return rolesPermitidos.some(rol => 
-      userRole.toLowerCase().includes(rol.toLowerCase())
-    );
+    // Verificar tanto por código como por nombre
+    return rolesPermitidos.some(rol => {
+      const rolLower = rol.toLowerCase();
+      
+      // Comparación exacta por código
+      if (userRoleCodeLower === rolLower) return true;
+      
+      // Comparación por nombre que contenga el rol permitido
+      if (userRoleNameLower.includes(rolLower)) return true;
+      
+      // Casos especiales para Jefe OCI
+      if (rolLower === 'jefe oci' || rolLower === 'jefe_oci') {
+        return (
+          userRoleCodeLower === 'jefe_control_interno' ||
+          userRoleCodeLower === 'jefe_oci' ||
+          userRoleNameLower.includes('jefe de control interno') ||
+          userRoleNameLower.includes('jefe oci')
+        );
+      }
+      
+      // Comparación genérica por inclusión
+      return userRoleLower.includes(rolLower);
+    });
   }
 
   private tienePermisoEditarPlan(user: any): boolean {
@@ -158,21 +192,33 @@ export class PlanAnual5RolesController {
   private puedeAprobarPlan(user: any): boolean {
     // Extraer el rol - puede ser string o objeto
     let userRole = user.rol || user.role || user.roles?.[0];
+    let userRoleCode: string | undefined;
+    let userRoleName: string | undefined;
     
-    // Si el rol es un objeto, extraer el code o name
+    // Si el rol es un objeto, extraer el code y name
     if (userRole && typeof userRole === 'object') {
-      userRole = userRole.code || userRole.name;
+      userRoleCode = userRole.code;
+      userRoleName = userRole.name;
     }
     
-    if (!userRole || typeof userRole !== 'string') return false;
+    // Normalizar a strings en minúsculas para comparación
+    const userRoleCodeLower = userRoleCode?.toLowerCase() || '';
+    const userRoleNameLower = userRoleName?.toLowerCase() || '';
     
-    const roleLower = userRole.toLowerCase();
-    
-    // Verificar si es Jefe OCI o Admin
-    return (
-      roleLower.includes('jefe oci') ||
-      roleLower.includes('admin')
+    // Verificar si es Jefe OCI (incluyendo JEFE_CONTROL_INTERNO y JEFE_OCI) o Admin
+    const esJefeOCI = (
+      userRoleCodeLower === 'jefe_control_interno' ||
+      userRoleCodeLower === 'jefe_oci' ||
+      userRoleNameLower.includes('jefe de control interno') ||
+      userRoleNameLower.includes('jefe oci')
     );
+    
+    const esAdmin = (
+      userRoleCodeLower.includes('admin') ||
+      userRoleNameLower.includes('admin')
+    );
+    
+    return esJefeOCI || esAdmin;
   }
 }
 

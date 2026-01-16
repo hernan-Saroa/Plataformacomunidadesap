@@ -2671,29 +2671,151 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
               </div>
 
               <div className="space-y-2">
-                {rol.actividades.map((act) => (
-                  <Card key={act.id} className="p-4 bg-gray-50">
-                    <h5 className="font-bold text-sm text-gray-900 mb-2">{act.nombre}</h5>
-                    {act.descripcion && (
-                      <p className="text-xs text-gray-600 mb-3">{act.descripcion}</p>
-                    )}
-                    <div className="flex items-center gap-4 text-xs text-gray-500">
-                      <span>👤 {act.responsableNombre}</span>
-                      <span>📅 {act.fechaInicio} - {act.fechaFin}</span>
-                      <Badge
-                        className={`ml-auto ${
-                          act.estado === 'Completada'
-                            ? 'bg-green-100 text-green-800'
-                            : act.estado === 'En Ejecución'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {act.estado}
-                      </Badge>
-                    </div>
-                  </Card>
-                ))}
+                {rol.actividades.map((act) => {
+                  // Detectar si es un informe vinculado
+                  const esInformeVinculado = act.nombre?.includes('Informe de Ley:');
+                  let informeData: {
+                    nombre?: string;
+                    codigo?: string;
+                    aprobadoPor?: string;
+                    fechaAprobacion?: string;
+                    archivoUrl?: string;
+                    observaciones?: string;
+                  } | null = null;
+
+                  if (esInformeVinculado && act.descripcion) {
+                    // Extraer información del informe desde la descripción
+                    const descripcion = act.descripcion;
+                    const codigoMatch = descripcion.match(/Código:\s*(.+)/);
+                    const aprobadoPorMatch = descripcion.match(/Aprobado por:\s*(.+)/);
+                    const fechaAprobacionMatch = descripcion.match(/Fecha de aprobación:\s*(.+)/);
+                    const archivoMatch = descripcion.match(/Archivo:\s*(.+)/);
+                    const observacionesMatch = descripcion.match(/Observaciones:\s*(.+)/);
+
+                    informeData = {
+                      nombre: act.nombre.replace('Informe de Ley: ', ''),
+                      codigo: codigoMatch?.[1]?.trim(),
+                      aprobadoPor: aprobadoPorMatch?.[1]?.trim(),
+                      fechaAprobacion: fechaAprobacionMatch?.[1]?.trim(),
+                      archivoUrl: archivoMatch?.[1]?.trim(),
+                      observaciones: observacionesMatch?.[1]?.trim(),
+                    };
+                  }
+
+                  const handleDescargarArchivo = async () => {
+                    if (!informeData?.archivoUrl) return;
+
+                    try {
+                      // Extraer el nombre del archivo de la URL
+                      const nombreArchivo = informeData.archivoUrl.split('/').pop() || informeData.archivoUrl;
+                      
+                      // Construir la URL del endpoint de descarga
+                      let apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3007';
+                      if (apiBaseUrl.includes('/control-institucional')) {
+                        apiBaseUrl = `${apiBaseUrl}/api/v1`;
+                      } else if (!apiBaseUrl.includes('/api/v1') && !apiBaseUrl.includes('localhost')) {
+                        apiBaseUrl = `${apiBaseUrl}/control-institucional/api/v1`;
+                      }
+                      const urlDescarga = `${apiBaseUrl}/informes-ley/archivos/${encodeURIComponent(nombreArchivo)}`;
+
+                      // Descargar el archivo
+                      const response = await fetch(urlDescarga, {
+                        method: 'GET',
+                        headers: {
+                          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        },
+                      });
+
+                      if (!response.ok) {
+                        throw new Error('Error al descargar el archivo');
+                      }
+
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = nombreArchivo;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+
+                      toast.success('Archivo descargado exitosamente');
+                    } catch (error) {
+                      console.error('Error descargando archivo:', error);
+                      toast.error('Error al descargar el archivo', {
+                        description: error instanceof Error ? error.message : 'Ocurrió un error inesperado',
+                      });
+                    }
+                  };
+
+                  return (
+                    <Card key={act.id} className="p-4 bg-gray-50">
+                      <h5 className="font-bold text-sm text-gray-900 mb-2">{act.nombre}</h5>
+                      
+                      {esInformeVinculado && informeData ? (
+                        <div className="space-y-3 mb-3">
+                          <div className="bg-white rounded-lg border border-gray-200 p-3">
+                            <div className="space-y-2 text-xs">
+                              {informeData.codigo && (
+                                <p className="text-gray-700">
+                                  <span className="font-semibold">Código:</span> {informeData.codigo}
+                                </p>
+                              )}
+                              {informeData.aprobadoPor && (
+                                <p className="text-gray-700">
+                                  <span className="font-semibold">Aprobado por:</span> {informeData.aprobadoPor}
+                                </p>
+                              )}
+                              {informeData.fechaAprobacion && (
+                                <p className="text-gray-700">
+                                  <span className="font-semibold">Fecha de aprobación:</span> {informeData.fechaAprobacion}
+                                </p>
+                              )}
+                              {informeData.archivoUrl && (
+                                <div className="flex items-center gap-2 pt-2">
+                                  <span className="font-semibold text-gray-700">Archivo:</span>
+                                  <Button
+                                    onClick={handleDescargarArchivo}
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs gap-1"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                    Descargar PDF
+                                  </Button>
+                                </div>
+                              )}
+                              {informeData.observaciones && (
+                                <p className="text-gray-700 pt-2 border-t border-gray-200">
+                                  <span className="font-semibold">Observaciones:</span> {informeData.observaciones}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : act.descripcion ? (
+                        <p className="text-xs text-gray-600 mb-3">{act.descripcion}</p>
+                      ) : null}
+                      
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <span>👤 {act.responsableNombre}</span>
+                        <span>📅 {act.fechaInicio} - {act.fechaFin}</span>
+                        <Badge
+                          className={`ml-auto ${
+                            act.estado === 'Completada'
+                              ? 'bg-green-100 text-green-800'
+                              : act.estado === 'En Ejecución'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {act.estado}
+                        </Badge>
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           ))}
