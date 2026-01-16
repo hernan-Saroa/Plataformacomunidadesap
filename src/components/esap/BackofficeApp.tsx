@@ -294,7 +294,12 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           return <PortalTransaccionalUsuarioMD3 onLogout={handleLogout} />;
         }
         // Si es usuario de Control Interno (auditor), mostrar dashboard completo
-        return <ControlInternoFull />;
+        return (
+          <ControlInternoFull 
+            userData={userData}
+            userRoles={userRoles}
+          />
+        );
       
       case 'control-disciplinario':
         return <ControlDisciplinarioFull />;
@@ -352,9 +357,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               currentModule={currentModule}
               currentSidebarModule={currentSidebarModule}
               onModuleChange={(sidebarModule) => {
-                console.log('🔍 Sidebar module clicked:', sidebarModule);
                 const mappedModule = mapSidebarToModule(sidebarModule);
-                console.log('📍 Mapped to:', mappedModule);
                 setCurrentSidebarModule(sidebarModule);
                 setCurrentModule(mappedModule);
                 setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo

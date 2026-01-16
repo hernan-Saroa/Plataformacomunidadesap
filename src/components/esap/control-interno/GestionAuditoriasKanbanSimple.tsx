@@ -54,7 +54,7 @@ import {
   Filter, Search, ChevronDown, TrendingUp, Target, Shield,
   Download, Columns3, ClipboardCheck, CheckSquare,
   Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2, Edit,
-  ChevronsDown, ChevronsUp
+  ChevronsDown, ChevronsUp, Building2, ListChecks
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
@@ -62,10 +62,14 @@ import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
+import jsPDF from 'jspdf';
+import * as XLSX from 'xlsx';
 import { ModalExpedienteAuditoria } from './ModalExpedienteAuditoria';
 import { ModalNotasAuditoria } from './ModalNotasAuditoria';
 import { ModalHistorialAuditoria } from './ModalHistorialAuditoria';
 import { ModalAprobacionAuditoria } from './ModalAprobacionAuditoria';
+import { ModalSolicitarAmpliacionPlazo } from './ModalSolicitarAmpliacionPlazo';
+import { BandejaAmpliacionesPendientes } from './BandejaAmpliacionesPendientes';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
 import { ModalAsignarAuditorIndividual } from './ModalAsignarAuditorIndividual';
 import { ModalCambiarEstadoAuditoria } from './ModalCambiarEstadoAuditoria';
@@ -83,6 +87,10 @@ import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
 // Integración con Planes de Mejoramiento
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 
+// Notificaciones
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
+
 // ============ TIPOS ============
 
 type EstadoAuditoria =
@@ -93,6 +101,140 @@ type EstadoAuditoria =
   | 'Finalizada';
 
 type RiesgoAuditoria = 'Alto' | 'Medio' | 'Bajo';
+
+/**
+ * Mapea el estado de una auditoría (del backend) al nombre de la etapa correspondiente
+ * en el tablero Kanban dinámico.
+ * 
+ * Esta función busca la etapa que corresponde al estado de la auditoría usando
+ * el mapeo inverso de mapearEtapaAEstadoKanban.
+ */
+function mapearEstadoAuditoriaANombreEtapa(
+  estadoAuditoria: EstadoAuditoria,
+  etapasKanban: EtapaKanban[]
+): string | null {
+  // Ordenar etapas por orden para encontrar la primera que corresponda
+  const etapasOrdenadas = [...etapasKanban].sort((a, b) => a.orden - b.orden);
+  
+  // Buscar etapa que corresponda al estado (usar la primera en orden)
+  for (const etapa of etapasOrdenadas) {
+    const estadoMapeado = mapearEtapaAEstadoKanban(etapa.nombre, {
+      estado: etapa.estado,
+      orden: etapa.orden
+    });
+    
+    if (estadoMapeado === estadoAuditoria) {
+      return etapa.nombre;
+    }
+  }
+  
+  // Fallback: buscar por nombre directo (usar la primera que coincida)
+  const nombreLower = estadoAuditoria.toLowerCase();
+  for (const etapa of etapasOrdenadas) {
+    const etapaNombreLower = etapa.nombre.toLowerCase();
+    if (
+      (estadoAuditoria === 'Planeación' && (etapaNombreLower.includes('planificación') || etapaNombreLower.includes('planeación'))) ||
+      (estadoAuditoria === 'Ejecución' && etapaNombreLower.includes('ejecución')) ||
+      (estadoAuditoria === 'Comunicación' && etapaNombreLower.includes('comunicación')) ||
+      (estadoAuditoria === 'Seguimiento' && etapaNombreLower.includes('seguimiento')) ||
+      (estadoAuditoria === 'Finalizada' && (etapaNombreLower.includes('finalizada') || etapaNombreLower.includes('finalizado')))
+    ) {
+      return etapa.nombre;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Mapea una etapa del tablero Kanban (dinámica) al valor del enum EstadoKanban
+ * que espera el backend.
+ * 
+ * Usa el campo `estado` de la etapa ('inicial', 'intermedia', 'final') y el orden
+ * para determinar el mapeo correcto, con fallback al nombre de la etapa.
+ * 
+ * Los valores del enum EstadoKanban son:
+ * - 'Planeación'
+ * - 'Ejecución'
+ * - 'Comunicación'
+ * - 'Seguimiento'
+ * - 'Finalizada'
+ */
+function mapearEtapaAEstadoKanban(
+  nombreEtapa: string, 
+  etapaCompleta?: { estado?: 'inicial' | 'intermedia' | 'final'; orden?: number }
+): EstadoAuditoria {
+  const nombreLower = nombreEtapa.toLowerCase().trim();
+  
+  // Si tenemos la etapa completa, usar su campo `estado` y `orden` para mapear
+  if (etapaCompleta?.estado) {
+    // Mapeo basado en el estado de la etapa
+    if (etapaCompleta.estado === 'final') {
+      return 'Finalizada';
+    }
+    
+    if (etapaCompleta.estado === 'inicial') {
+      return 'Planeación';
+    }
+    
+    // Para etapas intermedias, usar el orden para determinar si es Ejecución, Comunicación o Seguimiento
+    if (etapaCompleta.estado === 'intermedia') {
+      // Si tenemos el orden, podemos hacer un mapeo más preciso
+      // Generalmente: primera intermedia = Ejecución, segunda = Comunicación, tercera+ = Seguimiento
+      if (etapaCompleta.orden !== undefined) {
+        // Esto es una aproximación - puede necesitar ajustes según la configuración específica
+        // Por ahora, usamos el nombre como referencia adicional
+        if (nombreLower.includes('ejecución') || nombreLower.includes('ejecucion')) {
+          return 'Ejecución';
+        }
+        if (nombreLower.includes('comunicación') || nombreLower.includes('comunicacion') || nombreLower.includes('respuesta') || nombreLower.includes('preliminar')) {
+          return 'Comunicación';
+        }
+        if (nombreLower.includes('seguimiento') || nombreLower.includes('informe')) {
+          return 'Seguimiento';
+        }
+        // Por defecto para intermedias: Ejecución si es la primera, Comunicación si es la segunda, Seguimiento si es la tercera+
+        if (etapaCompleta.orden <= 2) {
+          return 'Ejecución';
+        } else if (etapaCompleta.orden <= 4) {
+          return 'Comunicación';
+        } else {
+          return 'Seguimiento';
+        }
+      }
+    }
+  }
+  
+  // Fallback: mapeo por nombre de la etapa (para compatibilidad con etapas sin estado)
+  // Finalizada (verificar primero para evitar falsos positivos)
+  if (nombreLower.includes('finalizada') || nombreLower.includes('finalizado') || nombreLower.includes('cerrada') || nombreLower.includes('completada')) {
+    return 'Finalizada';
+  }
+  
+  // Planeación/Planificación
+  if (nombreLower.includes('planeación') || nombreLower.includes('planeacion') || nombreLower.includes('planificación') || nombreLower.includes('planificacion')) {
+    return 'Planeación';
+  }
+  
+  // Ejecución
+  if (nombreLower.includes('ejecución') || nombreLower.includes('ejecucion')) {
+    return 'Ejecución';
+  }
+  
+  // Comunicación (incluye "Comunicación Preliminar" y "Respuesta del Auditado")
+  if (nombreLower.includes('comunicación') || nombreLower.includes('comunicacion') || nombreLower.includes('respuesta') || nombreLower.includes('preliminar')) {
+    return 'Comunicación';
+  }
+  
+  // Seguimiento (incluye "Informe Final" que es parte del seguimiento)
+  if (nombreLower.includes('seguimiento') || nombreLower.includes('informe final') || nombreLower.includes('informe')) {
+    return 'Seguimiento';
+  }
+  
+  // Por defecto, retornar 'Planeación' si no se encuentra coincidencia
+  console.warn(`No se pudo mapear la etapa "${nombreEtapa}" a un EstadoKanban válido. Usando "Planeación" por defecto.`);
+  return 'Planeación';
+}
 type SemaforoColor = 'verde' | 'amarillo' | 'rojo';
 type TipoAuditoria = 'regular' | 'territorial' | 'especial';
 type Prioridad = 'crítica' | 'alta' | 'media' | 'baja';
@@ -141,6 +283,10 @@ interface Auditoria {
   permiteCambiarObjetivos: boolean;
   equipoAuditores: string[];
   
+  // Responsable del área auditada
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  
   // Información territorial (si aplica)
   territorialInfo?: {
     nombre: string;
@@ -161,11 +307,17 @@ interface Auditoria {
   
   // Campos adicionales del formulario
   alcance?: string; // Alcance de la auditoría
+  
+  // IDs de auditores (para formularios)
+  auditorLiderId?: number;
+  auditorAsignadoId?: number;
 }
 
 // ============ SERVICIO API ============
 import { controlInternoService } from '../../../services/api/controlInternoService';
-import { auditoriasApi } from './services/api';
+import { auditoriasApi, hallazgosApi } from './services/api';
+import * as tablerosKanbanService from '../../../services/tableros-kanban.service';
+import type { EtapaKanban } from '../../../services/tableros-kanban.service';
 
 // ============ DATOS DE PRUEBA (ELIMINADOS - AHORA SE OBTIENEN DE LA BD) ============
 /*
@@ -810,8 +962,9 @@ const COLUMNAS_KANBAN = [
 */
 
 // ============ CONFIGURACIÓN DE COLUMNAS ============
+// Columnas por defecto (fallback si no hay configuración en BD)
 
-const COLUMNAS_KANBAN = [
+const COLUMNAS_KANBAN_DEFAULT = [
   {
     id: 'Planeación',
     titulo: 'Planeación',
@@ -866,6 +1019,7 @@ interface TarjetaAuditoriaProps {
   onEliminar: (aud: Auditoria) => void;
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO: Crear Plan de Mejoramiento
+  onSolicitarAmpliacion?: (aud: Auditoria) => void; // ← NUEVO: Solicitar ampliación de plazo
   colapsada?: boolean; // NUEVO: Estado de colapso
   onToggleColapso?: (id: string) => void; // NUEVO: Toggle colapso
 }
@@ -874,7 +1028,8 @@ function TarjetaAuditoria({
   auditoria, 
   onVerDetalle, 
   onVerNotas, 
-  onVerHistorial, 
+  onVerHistorial,
+  onSolicitarAmpliacion, 
   onAprobar,
   onCambiarEstado,
   onAsignarAuditor,
@@ -967,6 +1122,22 @@ function TarjetaAuditoria({
                 </Badge>
               )}
             </div>
+
+            {/* Área y Responsable */}
+            {auditoria.areaObjetivo && (
+              <div className="mb-2 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 flex-shrink-0 text-gray-500" />
+                  <span className="text-[10px] text-gray-900 font-medium truncate">{auditoria.areaObjetivo}</span>
+                </div>
+                {auditoria.responsableAreaNombre && (
+                  <div className="flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 flex-shrink-0 text-gray-500" />
+                    <span className="text-[10px] text-gray-700 truncate">{auditoria.responsableAreaNombre}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center justify-between text-[10px] text-gray-500 mb-2">
               <span className="truncate">{auditoria.auditorLider.iniciales}</span>
@@ -1089,7 +1260,7 @@ function TarjetaAuditoria({
           <div className="mb-1.5 pb-1.5 border-b border-gray-200">
             <p className="text-xs text-gray-500 mb-1">⚠️ Calificación del Riesgo:</p>
             <Badge 
-              className={`text-xs font-semibold ${
+              className={`text-xs font-semibold whitespace-normal break-words max-w-full ${
                 auditoria.riesgo === 'Alto' ? 'bg-red-100 text-red-800 border-red-200' :
                 auditoria.riesgo === 'Medio' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
                 'bg-green-100 text-green-800 border-green-200'
@@ -1213,6 +1384,17 @@ function TarjetaAuditoria({
             <p className="text-xs font-bold text-gray-900">{auditoria.areaObjetivo}</p>
           </div>
 
+          {/* Responsable del Área Auditada */}
+          {auditoria.responsableAreaNombre && (
+            <div className="mb-1.5 pb-1.5 border-b border-gray-200">
+              <p className="text-xs text-gray-500 mb-0.5">👤 Responsable:</p>
+              <p className="text-xs font-bold text-gray-900">{auditoria.responsableAreaNombre}</p>
+              {auditoria.responsableAreaCargo && (
+                <p className="text-xs text-gray-600">{auditoria.responsableAreaCargo}</p>
+              )}
+            </div>
+          )}
+
           {/* Última Actuación */}
           <div className="mb-1.5">
             <p className="text-xs text-gray-500 mb-0.5">📌 Última actuación:</p>
@@ -1302,24 +1484,45 @@ function TarjetaAuditoria({
                 className="text-xs font-bold truncate"
                 disabled={auditoria.estado === 'Finalizada'}
               >
-                <Edit className="w-3 h-3 mr-1 flex-shrink-0" />
+                <Edit className="w-3 h-3 mr-1 shrink-0" />
                 <span className="truncate">Editar</span>
               </Button>
             </div>
 
-            {/* NUEVO: Botón Crear Plan de Mejoramiento - SOLO si está Finalizada con hallazgos */}
-            {auditoria.estado === 'Finalizada' && auditoria.hallazgos > 0 && onCrearPlan && (
+            {/* Botón Crear Plan de Mejoramiento - Aparece siempre en auditorías Finalizadas */}
+            {auditoria.estado === 'Finalizada' && onCrearPlan && (
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
                   onCrearPlan(auditoria);
                 }}
                 size="sm"
-                className="text-xs font-bold w-full mb-2"
+                className="text-xs font-bold w-full mb-2 flex items-center justify-center gap-1.5"
                 style={{ background: '#DC2626', color: '#FFFFFF' }}
               >
-                <Target className="w-3 h-3 mr-1 flex-shrink-0" />
+                <Target className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate">Crear Plan de Mejoramiento</span>
+                {auditoria.hallazgos > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs font-bold">
+                    {auditoria.hallazgos}
+                  </span>
+                )}
+              </Button>
+            )}
+
+            {/* Botón Solicitar Ampliación - Solo para auditorías en curso */}
+            {auditoria.estado === 'Ejecución' && onSolicitarAmpliacion && (
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSolicitarAmpliacion(auditoria);
+                }}
+                size="sm"
+                className="text-xs font-bold w-full mb-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+                variant="outline"
+              >
+                <Clock className="w-3 h-3 mr-1 flex-shrink-0" />
+                <span className="truncate">Solicitar Ampliación</span>
               </Button>
             )}
 
@@ -1527,7 +1730,7 @@ function TarjetaAuditoria({
 // ============ COMPONENTE DE COLUMNA ============
 
 interface ColumnaKanbanProps {
-  columna: typeof COLUMNAS_KANBAN[0];
+  columna: typeof COLUMNAS_KANBAN_DEFAULT[0];
   auditorias: Auditoria[];
   onVerDetalle: (aud: Auditoria) => void;
   onVerNotas: (aud: Auditoria) => void;
@@ -1544,6 +1747,7 @@ interface ColumnaKanbanProps {
   onEliminar: (aud: Auditoria) => void;
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO
+  onSolicitarAmpliacion?: (aud: Auditoria) => void; // ← NUEVO: Solicitar ampliación de plazo
   tarjetasColapsadas?: Set<string>; // ← NUEVO: Set de IDs de tarjetas colapsadas
   onToggleColapsoTarjeta?: (id: string) => void; // ← NUEVO: Toggle para tarjetas individuales
 }
@@ -1565,6 +1769,7 @@ function ColumnaKanban({
   onEliminar,
   onEditar,
   onCrearPlan,
+  onSolicitarAmpliacion,
   tarjetasColapsadas,
   onToggleColapsoTarjeta
 }: ColumnaKanbanProps) {
@@ -1675,9 +1880,9 @@ function ColumnaKanban({
 
   // Versión expandida normal
   return (
-    <div className="flex-shrink-0" style={{ width: '320px' }}>
+    <Card className="flex-shrink-0 flex flex-col" style={{ width: '320px', height: 'calc(100vh - 320px)' }}>
       {/* Header Columna - ESTILO DISCIPLINARIO EXACTO */}
-      <div className="p-4 border-b bg-gray-50 sticky top-0 z-10">
+      <div className="p-4 border-b bg-gray-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2 flex-1">
             <div className="p-2 rounded-lg bg-white border border-gray-200">
@@ -1717,8 +1922,10 @@ function ColumnaKanban({
       {/* Lista de Tarjetas */}
       <div
         ref={drop}
-        className={`p-3 space-y-3 overflow-y-auto ${isOver ? 'bg-blue-50' : ''}`}
-        style={{ minHeight: 'calc(100vh - 280px)' }}
+        className={`p-3 space-y-3 overflow-y-auto flex-1 ${isOver ? 'bg-blue-50' : ''}`}
+        style={{ 
+          minHeight: 0
+        }}
       >
         <AnimatePresence>
           {auditorias.map((auditoria) => (
@@ -1733,6 +1940,7 @@ function ColumnaKanban({
               onCambiarEstado={onCambiarEstado}
               onAsignarAuditor={onAsignarAuditor}
               onEnviarAprobacion={onEnviarAprobacion}
+              onSolicitarAmpliacion={onSolicitarAmpliacion}
               onExportar={onExportar}
               onArchivar={onArchivar}
               onEliminar={onEliminar}
@@ -1743,24 +1951,36 @@ function ColumnaKanban({
         </AnimatePresence>
 
         {auditorias.length === 0 && (
-          <Card className="p-6 border-dashed border-2 border-gray-200">
+          <div className="p-6 border-dashed border-2 border-gray-200 rounded-lg">
             <p className="text-sm text-gray-400 text-center">
               No hay auditorías en esta etapa
             </p>
-          </Card>
+          </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
 // ============ COMPONENTE PRINCIPAL ============
 
 export function GestionAuditoriasKanbanSimple() {
+  // Hooks para notificaciones (las notificaciones de auditoría creada se manejan automáticamente en el backend)
+  const { 
+    notificarCambioEstadoAuditoria, 
+    notificarAuditoriaEditada,
+    notificarAuditoriaAprobada,
+    notificarAuditoriaRechazada,
+    notificarExportacion
+  } = useCrearNotificacion();
+  const { user } = useAuth();
+
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [vistaActiva, setVistaActiva] = useState<'kanban' | 'lista'>('kanban');
+  const [etapasKanban, setEtapasKanban] = useState<EtapaKanban[]>([]);
+  const [columnasKanban, setColumnasKanban] = useState(COLUMNAS_KANBAN_DEFAULT);
   const [mostrarArchivadas, setMostrarArchivadas] = useState<boolean>(false);
   const [filtroTerritorial, setFiltroTerritorial] = useState<string>('Todas las Territoriales');
   const [busqueda, setBusqueda] = useState('');
@@ -1779,6 +1999,61 @@ export function GestionAuditoriasKanbanSimple() {
   const [tipoAccionConfirmacion, setTipoAccionConfirmacion] = useState<'archivar' | 'eliminar'>('archivar');
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
+  const [modalSolicitarAmpliacionOpen, setModalSolicitarAmpliacionOpen] = useState(false);
+  const [bandejaAmpliacionesOpen, setBandejaAmpliacionesOpen] = useState(false);
+
+  // Función para mapear etapa a icono basado en el nombre
+  const obtenerIconoEtapa = (nombre: string) => {
+    const nombreLower = nombre.toLowerCase();
+    if (nombreLower.includes('planeación') || nombreLower.includes('planeacion')) {
+      return <ClipboardCheck className="w-4 h-4" style={{ color: '#003DA5' }} />;
+    } else if (nombreLower.includes('ejecución') || nombreLower.includes('ejecucion')) {
+      return <Target className="w-4 h-4" style={{ color: '#003DA5' }} />;
+    } else if (nombreLower.includes('comunicación') || nombreLower.includes('comunicacion')) {
+      return <MessageSquare className="w-4 h-4" style={{ color: '#003DA5' }} />;
+    } else if (nombreLower.includes('seguimiento')) {
+      return <History className="w-4 h-4" style={{ color: '#003DA5' }} />;
+    } else if (nombreLower.includes('finalizada') || nombreLower.includes('cerrada')) {
+      return <CheckCircle className="w-4 h-4" style={{ color: '#003DA5' }} />;
+    }
+    return <ListChecks className="w-4 h-4" style={{ color: '#003DA5' }} />;
+  };
+
+  // Función para cargar etapas del tablero Kanban desde la BD
+  const cargarEtapasKanban = async () => {
+    try {
+      const tableros = await tablerosKanbanService.cargarTablerosKanban();
+      const tableroAuditorias = tableros.find(
+        (t: any) => t.tipo === 'auditorias' && !t.deletedAt
+      );
+      
+      if (tableroAuditorias && tableroAuditorias.etapas) {
+        const etapasOrdenadas = [...tableroAuditorias.etapas]
+          .filter((e: any) => !e.deletedAt)
+          .sort((a: EtapaKanban, b: EtapaKanban) => a.orden - b.orden);
+        
+        setEtapasKanban(etapasOrdenadas);
+        
+        // Mapear etapas a formato de columnas
+        const columnas = etapasOrdenadas.map((etapa: EtapaKanban) => ({
+          id: etapa.nombre,
+          titulo: etapa.nombre,
+          count: 0, // Se actualizará con el conteo real
+          icono: obtenerIconoEtapa(etapa.nombre),
+          diasEstimados: etapa.tiempoSLA || 0
+        }));
+        
+        setColumnasKanban(columnas);
+      } else {
+        // Si no hay configuración, usar columnas por defecto
+        setColumnasKanban(COLUMNAS_KANBAN_DEFAULT);
+      }
+    } catch (error) {
+      console.error('Error al cargar etapas del tablero Kanban:', error);
+      // En caso de error, usar columnas por defecto
+      setColumnasKanban(COLUMNAS_KANBAN_DEFAULT);
+    }
+  };
 
   // Función para cargar auditorías desde la API
   const cargarAuditorias = async () => {
@@ -1794,35 +2069,112 @@ export function GestionAuditoriasKanbanSimple() {
         if (response.success && response.data && Array.isArray(response.data)) {
           auditoriasData = response.data as Auditoria[];
         } else {
-          console.warn('[cargarAuditorias] Respuesta de archivadas no válida:', response);
           auditoriasData = [];
         }
       } else {
-        // Cargar activas - respuesta es array directo
-        const data = await controlInternoService.getAuditoriasKanban();
-        if (Array.isArray(data)) {
-          auditoriasData = data as Auditoria[];
+        // Cargar activas - usar auditoriasApi que devuelve ApiResponse
+        const response = await auditoriasApi.getAllKanban();
+        if (response.success && response.data && Array.isArray(response.data)) {
+          auditoriasData = response.data as Auditoria[];
         } else {
-          console.warn('[cargarAuditorias] Respuesta de activas no es un array:', data);
-          auditoriasData = [];
+          // Si hay error pero la respuesta tiene data, intentar usarla
+          if (response.data && Array.isArray(response.data)) {
+            auditoriasData = response.data as Auditoria[];
+          } else {
+            auditoriasData = [];
+          }
         }
       }
       
-      console.log('[cargarAuditorias] Datos recibidos del backend:', auditoriasData);
-      // Verificar que los datos incluyan alcance y riesgoKanban
-      if (auditoriasData && auditoriasData.length > 0) {
-        console.log('[cargarAuditorias] Primera auditoría:', {
-          codigo: auditoriasData[0].codigo,
-          alcance: (auditoriasData[0] as any).alcance,
-          riesgo: (auditoriasData[0] as any).riesgo,
-          riesgoKanban: (auditoriasData[0] as any).riesgoKanban
-        });
-      }
+      // Mapear datos del backend al formato esperado por el frontend
+      const añoActual = new Date().getFullYear();
+      
+      // Función auxiliar para mapear tipos antiguos a nuevos
+      const normalizarTipo = (tipo: string | undefined): string => {
+        if (!tipo) return 'Regular';
+        const tiposValidos = ['Regular', 'Territorial', 'Especial'];
+        if (tiposValidos.includes(tipo)) return tipo;
+        // Mapeo de tipos antiguos
+        const mapping: Record<string, string> = {
+          'gestión': 'Regular',
+          'cumplimiento': 'Regular',
+          'desempeño': 'Regular',
+          'sistemas': 'Regular',
+          'financiera': 'Regular',
+          'seguimiento': 'Regular',
+          'control interno': 'Regular',
+          'académica': 'Regular',
+          'rrhh': 'Regular',
+          'ti': 'Regular',
+          'operacional': 'Regular'
+        };
+        return mapping[tipo.toLowerCase()] || 'Regular';
+      };
+      
+      const auditoriasMapeadas: Auditoria[] = auditoriasData.map((aud: any) => {
+        // Generar código automático si no existe
+        const codigoAuditoria = aud.codigo || `AUD-${añoActual}-${aud.id.substring(0, 6).toUpperCase()}`;
+
+        const auditorLiderMapped = aud.auditorLider || {nombre: 'Sin asignar', cargo: 'Auditor Líder', iniciales: 'SA', tipoIdentificacion: 'CC', numeroIdentificacion: ''};
+   
+        const auditoriaMapeada: any = {
+          id: aud.id,
+          codigo: codigoAuditoria,
+          titulo: aud.titulo || aud.nombre || '',
+          descripcion: aud.descripcion || '',
+          estado: aud.estado || 'Planeación',
+          riesgo: aud.riesgo || 'Medio',
+          semaforo: aud.semaforo || 'verde',
+          territorial: aud.territorial || '',
+          auditorLider: auditorLiderMapped,
+          auditorAsignado: aud.auditorAsignado || {
+            nombre: 'Sin asignar',
+            cargo: 'Auditor',
+            iniciales: 'SA',
+            tipoIdentificacion: 'CC',
+            numeroIdentificacion: ''
+          },
+          fechaInicio: aud.fechaInicio || '',
+          fechaFin: aud.fechaFin || '',
+          progreso: aud.progreso ?? 0,
+          hallazgos: aud.hallazgos ?? 0,
+          diasRestantes: aud.diasRestantes ?? 0,
+          porcentajeTiempo: aud.porcentajeTiempo ?? 0,
+          ultimaActuacion: aud.ultimaActuacion,
+          objetivos: aud.objetivos || [],
+          calificacionRiesgo: aud.calificacionRiesgo,
+          documentos: aud.documentos ?? 0,
+          informes: aud.informes ?? 0,
+          tareas: aud.tareas ?? 0,
+          tipo: normalizarTipo(aud.tipo),
+          prioridad: aud.prioridad || 'media',
+          areaObjetivo: aud.areaObjetivo,
+          permiteCambiarObjetivos: aud.permiteCambiarObjetivos ?? true,
+          equipoAuditores: aud.equipoAuditores || [],
+          territorialInfo: aud.territorialInfo,
+          especial: aud.especial,
+          actividadesCompletas: aud.actividadesCompletas ?? false,
+          actividadesPendientes: aud.actividadesPendientes ?? 0,
+          alcance: aud.alcance || '',
+          // Preservar IDs de auditores para el formulario de edición
+          auditorLiderId: aud.auditorLiderId,
+          auditorAsignadoId: aud.auditorAsignadoId,
+        };
+        
+        return auditoriaMapeada as Auditoria;
+      });
       
       // Asegurar que siempre sea un array
-      setAuditorias(Array.isArray(auditoriasData) ? auditoriasData : []);
+      setAuditorias(auditoriasMapeadas);
+      
+      if (auditoriasMapeadas.length === 0) {
+        toast.info('No hay auditorías disponibles', {
+          description: mostrarArchivadas 
+            ? 'No hay auditorías archivadas' 
+            : 'No hay auditorías activas en el sistema'
+        });
+      }
     } catch (err: any) {
-      console.error('Error al cargar auditorías:', err);
       setError(err.message || 'Error al cargar las auditorías');
       toast.error('Error al cargar auditorías', {
         description: err.message || 'No se pudieron cargar las auditorías desde el servidor'
@@ -1833,6 +2185,13 @@ export function GestionAuditoriasKanbanSimple() {
       setLoading(false);
     }
   };
+
+  // ============ EFECTOS ============
+
+  // Cargar etapas al montar el componente
+  useEffect(() => {
+    cargarEtapasKanban();
+  }, []);
 
   // Cargar auditorías al montar el componente o cuando cambie el filtro de archivadas
   useEffect(() => {
@@ -1904,6 +2263,25 @@ export function GestionAuditoriasKanbanSimple() {
     try {
       const response = await auditoriasApi.aprobar(auditoria.id, comentarios);
       if (response.success) {
+        // ============ NOTIFICACIONES: Auditoría Aprobada ============
+        if (auditoria?.id && user?.id) {
+          try {
+            const nombreUsuario = user?.firstName && user?.lastName 
+              ? `${user.firstName} ${user.lastName}` 
+              : user?.username || 'Usuario';
+            
+            await notificarAuditoriaAprobada(
+              auditoria.id,
+              auditoria.codigo,
+              user.id,
+              nombreUsuario,
+              comentarios
+            );
+          } catch (notifError) {
+            console.error('Error al enviar notificaciones:', notifError);
+          }
+        }
+
         toast.success(`✅ Auditoría ${auditoria.codigo} aprobada exitosamente`);
         // Recargar las auditorías para reflejar el cambio
         await cargarAuditorias();
@@ -1912,7 +2290,6 @@ export function GestionAuditoriasKanbanSimple() {
         throw new Error(response.error || 'Error al aprobar la auditoría');
       }
     } catch (error) {
-      console.error('Error al aprobar auditoría:', error);
       toast.error('Error al aprobar auditoría', {
         description: error instanceof Error ? error.message : 'No se pudo aprobar la auditoría',
       });
@@ -1923,6 +2300,25 @@ export function GestionAuditoriasKanbanSimple() {
     try {
       const response = await auditoriasApi.rechazar(auditoria.id, justificacion);
       if (response.success) {
+        // ============ NOTIFICACIONES: Auditoría Rechazada ============
+        if (auditoria?.id && user?.id) {
+          try {
+            const nombreUsuario = user?.firstName && user?.lastName 
+              ? `${user.firstName} ${user.lastName}` 
+              : user?.username || 'Usuario';
+            
+            await notificarAuditoriaRechazada(
+              auditoria.id,
+              auditoria.codigo,
+              user.id,
+              justificacion,
+              nombreUsuario
+            );
+          } catch (notifError) {
+            console.error('Error al enviar notificaciones:', notifError);
+          }
+        }
+
         toast.error(`❌ Auditoría ${auditoria.codigo} rechazada`);
         // Recargar las auditorías para reflejar el cambio
         await cargarAuditorias();
@@ -1931,7 +2327,6 @@ export function GestionAuditoriasKanbanSimple() {
         throw new Error(response.error || 'Error al rechazar la auditoría');
       }
     } catch (error) {
-      console.error('Error al rechazar auditoría:', error);
       toast.error('Error al rechazar auditoría', {
         description: error instanceof Error ? error.message : 'No se pudo rechazar la auditoría',
       });
@@ -1950,28 +2345,305 @@ export function GestionAuditoriasKanbanSimple() {
         throw new Error(response.error || 'Error al solicitar modificación');
       }
     } catch (error) {
-      console.error('Error al solicitar modificación:', error);
       toast.error('Error al solicitar modificación', {
         description: error instanceof Error ? error.message : 'No se pudo solicitar la modificación',
       });
     }
   };
 
+  // Handler para solicitar ampliación de plazo
+  const handleSolicitarAmpliacion = (auditoria: Auditoria) => {
+    // Validar que la auditoría esté en curso
+    if (auditoria.estado !== 'Ejecución') {
+      toast.error('Solo se pueden solicitar ampliaciones de plazo para auditorías en curso');
+      return;
+    }
+    setAuditoriaSeleccionada(auditoria);
+    setModalSolicitarAmpliacionOpen(true);
+  };
+
+  // Handler después de enviar solicitud de ampliación
+  const handleSolicitudAmpliacionEnviada = async () => {
+    await cargarAuditorias();
+  };
+
+  // Handler después de procesar solicitud (aprobar/rechazar)
+  const handleSolicitudAmpliacionProcesada = async () => {
+    await cargarAuditorias();
+  };
+
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
-    console.log('Crear auditoría OCIG:', data);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2037',message:'handleCrearAuditoria called - recibiendo formData completo',data:{hasHitos:data.hitos?.length>0,hitosCount:data.hitos?.length||0,hitosData:JSON.stringify(data.hitos||[]),hasRecursos:data.recursos?.length>0,recursosCount:data.recursos?.length||0,recursosData:JSON.stringify(data.recursos||[]),hasProductosEsperados:data.productosEsperados?.length>0,productosCount:data.productosEsperados?.length||0,productosData:JSON.stringify(data.productosEsperados||[]),vinculadaPlanAnual:data.vinculadaPlanAnual,planAnualId:data.planAnualId,planAnualAño:data.planAnualAño,rolDecretoAsociado:data.rolDecretoAsociado,periodicidad:data.periodicidad,hallazgosCount:data.hallazgos?.length||0,hallazgosWithCausa:data.hallazgos?.filter(h=>h.causa).length||0,hallazgosWithEfecto:data.hallazgos?.filter(h=>h.efecto).length||0,auditorLider:data.auditorLider,auditorLiderType:typeof data.auditorLider,auditorAsignado:data.auditorAsignado,auditorAsignadoType:typeof data.auditorAsignado,supervisorAsignado:data.supervisorAsignado,supervisorAsignadoType:typeof data.supervisorAsignado,equipoAuditoresCount:data.equipoAuditores?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E,F'})}).catch(()=>{});
+    // #endregion
     
-    // Simulación de delay (para testing de estados de carga)
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Aquí iría la lógica real de creación
-    // Simulación: agregar a la lista de auditorías
-    // En producción esto haría un POST al backend
-    
-    toast.success('✅ Auditoría OCIG creada exitosamente', {
-      description: `"${data.titulo}" con ${data.hallazgos.length} hallazgos registrados`
-    });
-    
-    setModalFormularioOpen(false);
+    try {
+      // Validar fechas antes de enviar
+      if (new Date(data.fechaFin) < new Date(data.fechaInicio)) {
+        toast.error('Error de validación', {
+          description: 'La fecha de finalización debe ser posterior a la fecha de inicio'
+        });
+        return;
+      }
+
+      // Mapear tipo de auditoría del formulario al formato del backend
+      const mapTipoAuditoria = (tipo: string): string => {
+        // Si ya viene con el tipo correcto, devolverlo directamente
+        const tiposValidos = ['Regular', 'Territorial', 'Especial'];
+        if (tiposValidos.includes(tipo)) {
+          return tipo;
+        }
+        
+        // Mapeo para valores antiguos (por retrocompatibilidad)
+        const mapping: Record<string, string> = {
+          'regular': 'Regular',
+          'territorial': 'Territorial',
+          'especial': 'Especial',
+          'gestión': 'Regular',
+          'cumplimiento': 'Regular',
+          'desempeño': 'Regular',
+          'sistemas': 'Regular',
+          'financiera': 'Regular',
+          'seguimiento': 'Regular'
+        };
+        return mapping[tipo.toLowerCase()] || 'Regular';
+      };
+
+      // Mapear datos del formulario al formato del backend
+      const tipoAuditoriaValue = (data as any).tipo || (data as any).tipoAuditoria || 'Regular';
+      const auditoriaData: any = {
+        nombre: data.titulo,
+        descripcion: data.descripcion || undefined,
+        tipo: mapTipoAuditoria(tipoAuditoriaValue),
+        territorial: data.territorial,
+        sede: data.territorial || 'Sede Principal',
+        responsable: data.auditorLider || data.auditorAsignado || 'No asignado',
+        fechaInicio: data.fechaInicio,
+        fechaFin: data.fechaFin,
+        fase: 'planeacion' as const,
+        prioridad: 'Media' as const,
+        progreso: 0,
+      };
+
+      // Agregar campos adicionales si tienen valor
+      if (data.areaObjetivo) auditoriaData.areaObjetivo = data.areaObjetivo;
+      if (data.procesoAuditado) auditoriaData.procesoAuditado = data.procesoAuditado;
+      if (data.alcance) auditoriaData.alcance = data.alcance;
+      if (data.metodologia) auditoriaData.metodologia = data.metodologia;
+      if (data.nivelRiesgo) auditoriaData.nivelRiesgo = data.nivelRiesgo;
+      
+      // Mapear IDs de auditores
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2083',message:'Antes de mapear auditores - valores originales',data:{auditorLiderOriginal:data.auditorLider,auditorLiderType:typeof data.auditorLider,auditorAsignadoOriginal:data.auditorAsignado,auditorAsignadoType:typeof data.auditorAsignado,supervisorAsignadoOriginal:data.supervisorAsignado,supervisorAsignadoType:typeof data.supervisorAsignado},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      
+      if (data.auditorLider) {
+        const liderId = typeof data.auditorLider === 'string' && !isNaN(Number(data.auditorLider))
+          ? parseInt(data.auditorLider, 10)
+          : null;
+        if (liderId && liderId > 0) auditoriaData.auditorLiderId = liderId;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2089',message:'Después de mapear auditorLider',data:{auditorLiderOriginal:data.auditorLider,liderIdParsed:liderId,auditorLiderIdAdded:!!auditoriaData.auditorLiderId,auditorLiderIdValue:auditoriaData.auditorLiderId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+      }
+      
+      if (data.auditorAsignado) {
+        const asignadoId = typeof data.auditorAsignado === 'string' && !isNaN(Number(data.auditorAsignado))
+          ? parseInt(data.auditorAsignado, 10)
+          : null;
+        if (asignadoId && asignadoId > 0) auditoriaData.auditorAsignadoId = asignadoId;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2096',message:'Después de mapear auditorAsignado',data:{auditorAsignadoOriginal:data.auditorAsignado,asignadoIdParsed:asignadoId,auditorAsignadoIdAdded:!!auditoriaData.auditorAsignadoId,auditorAsignadoIdValue:auditoriaData.auditorAsignadoId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+      }
+
+      // Mapear Supervisor / Jefe OCI
+      if (data.supervisorAsignado) {
+        const supervisorId = typeof data.supervisorAsignado === 'string' && !isNaN(Number(data.supervisorAsignado))
+          ? parseInt(data.supervisorAsignado, 10)
+          : null;
+        if (supervisorId && supervisorId > 0) auditoriaData.supervisorAsignadoId = supervisorId;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2106',message:'Después de mapear supervisorAsignado',data:{supervisorAsignadoOriginal:data.supervisorAsignado,supervisorIdParsed:supervisorId,supervisorAsignadoIdAdded:!!auditoriaData.supervisorAsignadoId,supervisorAsignadoIdValue:auditoriaData.supervisorAsignadoId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+      }
+
+      // Arrays - objetivos
+      if (data.objetivos && data.objetivos.length > 0) {
+        auditoriaData.objetivos = data.objetivos;
+      }
+
+      // Periodicidad - guardar en programaAnualMetadata
+      if (data.periodicidad) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.periodicidad = data.periodicidad;
+      }
+
+      // Vinculación Plan Anual - guardar en programaAnualMetadata
+      if (data.vinculadaPlanAnual) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.vinculadaPlanAnual = data.vinculadaPlanAnual;
+        if (data.planAnualAño) {
+          auditoriaData.programaAnualMetadata.planAnualAño = data.planAnualAño;
+        }
+        if (data.planAnualId) {
+          auditoriaData.programaAnualMetadata.planAnualId = data.planAnualId;
+        }
+        if (data.rolDecretoAsociado) {
+          auditoriaData.programaAnualMetadata.rolDecretoAsociado = data.rolDecretoAsociado;
+        }
+      }
+
+      // Hitos - guardar en programaAnualMetadata
+      if (data.hitos && data.hitos.length > 0) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.hitos = data.hitos;
+      }
+
+      // Recursos - guardar en observaciones
+      if (data.recursos && data.recursos.length > 0) {
+        const recursosText = `Recursos requeridos:\n${data.recursos.map(r => 
+          `- ${r.tipo}: ${r.descripcion} (Cantidad: ${r.cantidad}${r.costo ? `, Costo: ${r.costo}` : ''})`
+        ).join('\n')}`;
+        auditoriaData.observacionesAdicionales = auditoriaData.observacionesAdicionales 
+          ? `${auditoriaData.observacionesAdicionales}\n\n${recursosText}`
+          : recursosText;
+      }
+
+      // Productos Esperados - guardar en observaciones
+      if (data.productosEsperados && data.productosEsperados.length > 0) {
+        const productosText = `Productos esperados:\n${data.productosEsperados.map(p => 
+          `- ${p.nombre}: ${p.descripcion} (Fecha entrega: ${p.fechaEntrega})`
+        ).join('\n')}`;
+        auditoriaData.observacionesAdicionales = auditoriaData.observacionesAdicionales 
+          ? `${auditoriaData.observacionesAdicionales}\n\n${productosText}`
+          : productosText;
+      }
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2159',message:'POST-FIX: Antes de enviar a API - auditoriaData mapeado',data:{auditoriaDataKeys:Object.keys(auditoriaData),hasProgramaAnualMetadata:!!auditoriaData.programaAnualMetadata,programaAnualMetadata:JSON.stringify(auditoriaData.programaAnualMetadata),hasPeriodicidad:!!auditoriaData.programaAnualMetadata?.periodicidad,periodicidadValue:auditoriaData.programaAnualMetadata?.periodicidad,hasVinculadaPlanAnual:!!auditoriaData.programaAnualMetadata?.vinculadaPlanAnual,vinculadaPlanAnualValue:auditoriaData.programaAnualMetadata?.vinculadaPlanAnual,hasPlanAnualAño:!!auditoriaData.programaAnualMetadata?.planAnualAño,planAnualAñoValue:auditoriaData.programaAnualMetadata?.planAnualAño,hasRolDecreto:!!auditoriaData.programaAnualMetadata?.rolDecretoAsociado,rolDecretoValue:auditoriaData.programaAnualMetadata?.rolDecretoAsociado,hasHitos:!!auditoriaData.programaAnualMetadata?.hitos,hitosCount:auditoriaData.programaAnualMetadata?.hitos?.length||0,hasRecursos:auditoriaData.observacionesAdicionales?.includes('Recursos requeridos'),hasProductosEsperados:auditoriaData.observacionesAdicionales?.includes('Productos esperados'),hasAuditorLiderId:!!auditoriaData.auditorLiderId,hasAuditorAsignadoId:!!auditoriaData.auditorAsignadoId,hasSupervisorAsignadoId:!!auditoriaData.supervisorAsignadoId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A,B,C,E,F'})}).catch(()=>{});
+      // #endregion
+
+      // Crear la auditoría
+      const response = await auditoriasApi.create(auditoriaData);
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Error al crear la auditoría');
+      }
+
+      const auditoriaCreada = response.data;
+
+      // ============ NOTIFICACIONES: Auditoría Creada ============
+      // NOTA: Las notificaciones se crean automáticamente en el backend (crearNotificacionesAuditoriaCreada)
+      // para todos los usuarios relacionados: auditor líder, auditor asignado, supervisor y jefes de control interno.
+      // No es necesario crear notificaciones adicionales desde el frontend.
+
+      // Crear los hallazgos si hay alguno
+      if (data.hallazgos && data.hallazgos.length > 0) {
+        
+        // Mapear tipo del formulario al tipo opcional del backend (no-conformidad, observacion, oportunidad-mejora)
+        const mapTipoHallazgo = (tipo: string): 'no-conformidad' | 'observacion' | 'oportunidad-mejora' => {
+          const mapping: Record<string, 'no-conformidad' | 'observacion' | 'oportunidad-mejora'> = {
+            'observacion': 'observacion',
+            'hallazgo_administrativo': 'no-conformidad',
+            'hallazgo_disciplinario': 'no-conformidad',
+            'hallazgo_fiscal': 'no-conformidad',
+            'hallazgo_penal': 'no-conformidad'
+          };
+          return mapping[tipo] || 'observacion';
+        };
+
+        // Mapear estado del formulario al estado del backend (HallazgoEstado enum)
+        const mapEstadoHallazgo = (estado: string): 'borrador' | 'notificado' | 'en-controversia' | 'ratificado' | 'modificado' | 'cerrado' => {
+          const mapping: Record<string, 'borrador' | 'notificado' | 'en-controversia' | 'ratificado' | 'modificado' | 'cerrado'> = {
+            'identificado': 'borrador',
+            'comunicado': 'notificado',
+            'en_mejoramiento': 'notificado',
+            'cerrado': 'cerrado'
+          };
+          return mapping[estado] || 'borrador';
+        };
+
+        // Crear cada hallazgo
+        let hallazgosCreados = 0;
+        for (const hallazgoForm of data.hallazgos) {
+          // Validar que el hallazgo tenga datos mínimos requeridos
+          if (!hallazgoForm.descripcion || hallazgoForm.descripcion.trim().length < 10) {
+            continue;
+          }
+
+          if (!hallazgoForm.criterio || hallazgoForm.criterio.trim().length < 5) {
+            continue;
+          }
+
+          // Mapear datos al formato que espera el DTO del backend
+          // Construir descripción completa incluyendo causa y efecto si existen
+          let descripcionCompleta = hallazgoForm.descripcion;
+          if (hallazgoForm.causa) {
+            descripcionCompleta += `\n\nCAUSA:\n${hallazgoForm.causa}`;
+          }
+          if (hallazgoForm.efecto) {
+            descripcionCompleta += `\n\nEFECTO:\n${hallazgoForm.efecto}`;
+          }
+
+          const hallazgoData: any = {
+            // Campos requeridos
+            categoria: 'borrador' as const, // HallazgoCategoria: 'critico' | 'controversia' | 'borrador'
+            area: data.areaObjetivo || 'No especificada', // Campo requerido
+            auditoria: auditoriaCreada.codigo || auditoriaCreada.nombre, // Campo requerido - código de la auditoría
+            auditoriaId: auditoriaCreada.id, // Opcional pero recomendado
+            descripcion: descripcionCompleta, // Campo requerido - ahora incluye causa y efecto
+            criterioIncumplido: hallazgoForm.criterio, // Campo requerido
+            fechaDeteccion: hallazgoForm.fechaIdentificacion || new Date().toISOString().split('T')[0], // Campo requerido
+            
+            // Campos opcionales
+            titulo: hallazgoForm.descripcion.substring(0, 100) || 'Hallazgo sin título',
+            tipo: mapTipoHallazgo(hallazgoForm.tipo), // Tipo opcional: 'no-conformidad' | 'observacion' | 'oportunidad-mejora'
+            estado: mapEstadoHallazgo(hallazgoForm.estado), // Estado opcional pero recomendado
+            
+            // Recomendaciones como array
+            recomendaciones: hallazgoForm.recomendacion ? [hallazgoForm.recomendacion] : [],
+            
+            // Guardar causa y efecto en observaciones si existe el campo
+            observacionesControversia: (hallazgoForm.causa || hallazgoForm.efecto) 
+              ? `CAUSA: ${hallazgoForm.causa || 'No especificada'}\n\nEFECTO: ${hallazgoForm.efecto || 'No especificado'}`
+              : undefined,
+          };
+
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/d86d64c0-4338-4eb2-86ee-e237800131c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GestionAuditoriasKanbanSimple.tsx:2168',message:'POST-FIX: Datos de hallazgo antes de enviar',data:{hasCausa:!!hallazgoForm.causa,causa:hallazgoForm.causa,hasEfecto:!!hallazgoForm.efecto,efecto:hallazgoForm.efecto,hasRecomendacion:!!hallazgoForm.recomendacion,descripcionIncludesCausa:hallazgoData.descripcion.includes('CAUSA:'),descripcionIncludesEfecto:hallazgoData.descripcion.includes('EFECTO:'),hasObservacionesControversia:!!hallazgoData.observacionesControversia,hallazgoDataKeys:Object.keys(hallazgoData)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+
+          try {
+            const hallazgoResponse = await hallazgosApi.create(hallazgoData);
+            if (hallazgoResponse.success) {
+              hallazgosCreados++;
+            }
+          } catch (error: any) {
+            // Continuar con los demás hallazgos aunque falle uno
+          }
+        }
+      }
+
+      // Recargar auditorías desde la BD
+      await cargarAuditorias();
+
+      toast.success('✅ Auditoría OCIG creada exitosamente', {
+        description: `"${data.titulo}"${data.hallazgos.length > 0 ? ` con ${data.hallazgos.length} hallazgo(s)` : ''}`
+      });
+      
+      setModalFormularioOpen(false);
+    } catch (error: any) {
+      toast.error('Error al crear auditoría', {
+        description: error.message || 'No se pudo guardar la auditoría. Por favor, intente nuevamente.'
+      });
+    }
   };
 
   const handleEditarAuditoria = (auditoria: Auditoria) => {
@@ -1997,19 +2669,20 @@ export function GestionAuditoriasKanbanSimple() {
       };
 
       // Mapear tipo de auditoría - usar el valor directamente si es uno de los tipos válidos
-      // Los tipos válidos son: 'Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional'
-      if (data.tipoAuditoria) {
-        const tiposValidos = ['Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional'];
-        // Si el tipo es válido, usarlo directamente; si no, usar 'Gestión' como default
-        if (tiposValidos.includes(data.tipoAuditoria)) {
-          updateData.tipo = data.tipoAuditoria;
+      // Los tipos válidos son: 'Regular', 'Territorial', 'Especial'
+      const tipoAuditoriaValue = (data as any).tipo || (data as any).tipoAuditoria;
+      if (tipoAuditoriaValue) {
+        const tiposValidos = ['Regular', 'Territorial', 'Especial'];
+        // Si el tipo es válido, usarlo directamente; si no, usar 'Regular' como default
+        if (tiposValidos.includes(tipoAuditoriaValue)) {
+          updateData.tipo = tipoAuditoriaValue;
         } else {
-          // Si viene como 'regular', 'territorial', 'especial', usar 'Gestión' como default
-          updateData.tipo = 'Gestión';
+          // Si viene con un valor no reconocido, usar 'Regular' como default
+          updateData.tipo = 'Regular';
         }
       } else {
-        // Si no hay tipo, usar 'Gestión' como default
-        updateData.tipo = 'Gestión';
+        // Si no hay tipo, usar 'Regular' como default
+        updateData.tipo = 'Regular';
       }
 
       // Convertir fechas a formato ISO 8601 (YYYY-MM-DD)
@@ -2022,44 +2695,65 @@ export function GestionAuditoriasKanbanSimple() {
       }
 
       // Mapear IDs de auditores
-      // El formulario puede enviar el nombre o el ID
-      // Si es un nombre, necesitamos buscar el ID en la base de datos
-      // Por ahora, si viene como string que no es numérico, lo ignoramos
-      // TODO: Implementar búsqueda de ID por nombre si es necesario
+      // El formulario envía el ID como string (ej: '1', '2', etc.)
+      // Necesitamos convertirlo a número para el backend
       
       if (data.auditorLider) {
-        // Intentar convertir a número si es posible
+        // Convertir a número si es posible
         const auditorLiderId = typeof data.auditorLider === 'string' && !isNaN(Number(data.auditorLider))
           ? parseInt(data.auditorLider, 10)
           : null;
         
-        // Si no es numérico, podría ser un nombre - por ahora lo ignoramos
-        // En el futuro, buscar el ID en la BD por nombre
         if (auditorLiderId && auditorLiderId > 0) {
           updateData.auditorLiderId = auditorLiderId;
+        } else {
+          console.warn('[handleActualizarAuditoria] Auditor Líder ID inválido:', data.auditorLider);
         }
+      } else {
+        // Si viene vacío, establecer como null para limpiar el campo
+        updateData.auditorLiderId = null;
       }
 
       if (data.auditorAsignado) {
-        // Intentar convertir a número si es posible
+        // Convertir a número si es posible
         const auditorAsignadoId = typeof data.auditorAsignado === 'string' && !isNaN(Number(data.auditorAsignado))
           ? parseInt(data.auditorAsignado, 10)
           : null;
         
-        // Si no es numérico, podría ser un nombre - por ahora lo ignoramos
-        // En el futuro, buscar el ID en la BD por nombre
         if (auditorAsignadoId && auditorAsignadoId > 0) {
           updateData.auditorAsignadoId = auditorAsignadoId;
         }
+      } else {
+        // Si viene vacío, establecer como null para limpiar el campo
+        updateData.auditorAsignadoId = null;
       }
-
-      // Log para depuración
-      console.log('[handleActualizarAuditoria] Datos a enviar:', updateData);
-      console.log('[handleActualizarAuditoria] Alcance:', updateData.alcance);
-      console.log('[handleActualizarAuditoria] RiesgoKanban:', updateData.riesgoKanban);
       
       // Actualizar en el backend usando TypeORM
       await controlInternoService.updateAuditoria(auditoriaParaEditar.id, updateData);
+      
+      // Obtener los cambios realizados
+      const cambios: string[] = [];
+      if (data.titulo !== auditoriaParaEditar.titulo) cambios.push('Título');
+      if (data.descripcion !== auditoriaParaEditar.descripcion) cambios.push('Descripción');
+      if (data.territorial !== auditoriaParaEditar.territorial) cambios.push('Territorial');
+      if (data.fechaInicio !== auditoriaParaEditar.fechaInicio) cambios.push('Fecha de inicio');
+      if (data.fechaFin !== auditoriaParaEditar.fechaFin) cambios.push('Fecha de fin');
+      if (data.auditorLider !== String(auditoriaParaEditar.auditorLiderId || '')) cambios.push('Auditor líder');
+      if (data.auditorAsignado !== String(auditoriaParaEditar.auditorAsignadoId || '')) cambios.push('Auditor asignado');
+
+      // ============ NOTIFICACIONES: Auditoría Editada ============
+      if (auditoriaParaEditar?.id && user?.id) {
+        try {
+          await notificarAuditoriaEditada(
+            auditoriaParaEditar.id,
+            auditoriaParaEditar.codigo,
+            user.id,
+            cambios
+          );
+        } catch (notifError) {
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
       
       // Recargar auditorías desde la BD para ver los cambios reales
       await cargarAuditorias();
@@ -2103,14 +2797,18 @@ export function GestionAuditoriasKanbanSimple() {
   const convertirFechaAISO = (fecha: string | Date): string => {
     if (!fecha) return '';
     
-    // Si es un objeto Date, convertir a ISO
-    if (fecha instanceof Date) {
-      return fecha.toISOString().split('T')[0];
-    }
-    
     // Si es string y ya está en formato ISO (YYYY-MM-DD), devolver tal cual
+    // IMPORTANTE: Esto evita problemas de zona horaria - el input type="date" ya envía en este formato
     if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
       return fecha;
+    }
+    
+    // Si es un objeto Date, usar métodos locales (no UTC) para evitar desfase de un día
+    if (fecha instanceof Date) {
+      const año = fecha.getFullYear();
+      const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+      const dia = String(fecha.getDate()).padStart(2, '0');
+      return `${año}-${mes}-${dia}`;
     }
     
     // Si es string y está en formato DD/MM/YYYY, convertir
@@ -2122,12 +2820,22 @@ export function GestionAuditoriasKanbanSimple() {
       }
     }
     
-    // Intentar parsear como fecha y convertir
+    // Intentar parsear como fecha local (evitando problemas de UTC)
     if (typeof fecha === 'string') {
       try {
-        const fechaDate = new Date(fecha);
-        if (!isNaN(fechaDate.getTime())) {
-          return fechaDate.toISOString().split('T')[0];
+        // Si parece ser una fecha ISO sin hora, agregar hora local para evitar UTC
+        if (/^\d{4}-\d{2}-\d{2}$/.test(fecha.trim())) {
+          // Ya debería haber sido capturado arriba, pero por si acaso devolver tal cual
+          return fecha.trim();
+        }
+        // Para otros formatos, parsear agregando hora local
+        const fechaLocal = new Date(fecha + 'T00:00:00');
+        if (!isNaN(fechaLocal.getTime())) {
+          // Usar métodos locales, NO toISOString() que usa UTC
+          const año = fechaLocal.getFullYear();
+          const mes = String(fechaLocal.getMonth() + 1).padStart(2, '0');
+          const dia = String(fechaLocal.getDate()).padStart(2, '0');
+          return `${año}-${mes}-${dia}`;
         }
       } catch (e) {
         console.warn('No se pudo convertir la fecha:', fecha);
@@ -2144,6 +2852,16 @@ export function GestionAuditoriasKanbanSimple() {
     const estadoAnterior = item.estado;
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
     
+    // Buscar la etapa completa en etapasKanban para obtener su estado y orden
+    const etapaCompleta = etapasKanban.find(e => e.nombre === nuevoEstado);
+    
+    // Mapear la etapa al valor del enum EstadoKanban que espera el backend
+    // Usa el campo `estado` y `orden` de la etapa si está disponible
+    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(
+      nuevoEstado, 
+      etapaCompleta ? { estado: etapaCompleta.estado, orden: etapaCompleta.orden } : undefined
+    );
+    
     // Actualizar estado localmente primero (optimistic update)
     setAuditorias(prev =>
       prev.map(aud =>
@@ -2159,11 +2877,27 @@ export function GestionAuditoriasKanbanSimple() {
     );
 
     try {
-      // Actualizar estado en la base de datos
+      // Actualizar estado en la base de datos usando el valor mapeado
       await controlInternoService.updateAuditoria(item.id, {
-        estadoKanban: nuevoEstado,
+        estadoKanban: estadoKanbanMapeado,
         ultimaActuacion: `Cambio de estado mediante drag & drop: ${estadoAnterior} → ${nuevoEstado}`
       });
+
+      // ============ NOTIFICACIONES: Cambio de Estado ============
+      if (item?.id && user?.id) {
+        try {
+          await notificarCambioEstadoAuditoria(
+            item.id,
+            item.codigo,
+            estadoAnterior,
+            nuevoEstado,
+            user.id,
+            `Cambio realizado mediante drag & drop`
+          );
+        } catch (notifError) {
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
 
       // Registrar en trazabilidad/historial
       const eventoTrazabilidad = {
@@ -2177,8 +2911,6 @@ export function GestionAuditoriasKanbanSimple() {
         estadoAnterior: estadoAnterior,
         estadoNuevo: nuevoEstado
       };
-      
-      console.log('📋 Trazabilidad - Movimiento de tarjeta:', eventoTrazabilidad);
 
       toast.success(`${item.codigo} movido a ${nuevoEstado}`, {
         description: `Estado actualizado en la base de datos`
@@ -2193,7 +2925,6 @@ export function GestionAuditoriasKanbanSimple() {
         )
       );
 
-      console.error('Error al actualizar estado:', error);
       toast.error('Error al actualizar el estado', {
         description: error instanceof Error ? error.message : 'No se pudo guardar el cambio en la base de datos'
       });
@@ -2215,6 +2946,16 @@ export function GestionAuditoriasKanbanSimple() {
 
     const estadoAnterior = auditoriaActual.estado;
 
+    // Buscar la etapa completa en etapasKanban para obtener su estado y orden
+    const etapaCompleta = etapasKanban.find(e => e.nombre === nuevoEstado);
+    
+    // Mapear la etapa al valor del enum EstadoKanban que espera el backend
+    // Usa el campo `estado` y `orden` de la etapa si está disponible
+    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(
+      nuevoEstado,
+      etapaCompleta ? { estado: etapaCompleta.estado, orden: etapaCompleta.orden } : undefined
+    );
+
     // Actualizar estado localmente primero (optimistic update)
     setAuditorias(prev =>
       prev.map(aud =>
@@ -2225,11 +2966,27 @@ export function GestionAuditoriasKanbanSimple() {
     );
 
     try {
-      // Actualizar estado en la base de datos
+      // Actualizar estado en la base de datos usando el valor mapeado
       await controlInternoService.updateAuditoria(auditoriaId, {
-        estadoKanban: nuevoEstado,
+        estadoKanban: estadoKanbanMapeado,
         ultimaActuacion: comentario || `Cambio de estado: ${estadoAnterior} → ${nuevoEstado}`
       });
+
+      // ============ NOTIFICACIONES: Cambio de Estado ============
+      if (auditoriaActual?.id && user?.id) {
+        try {
+          await notificarCambioEstadoAuditoria(
+            auditoriaId,
+            auditoriaActual.codigo,
+            estadoAnterior,
+            nuevoEstado,
+            user.id,
+            comentario
+          );
+        } catch (notifError) {
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
 
       // Registrar en trazabilidad
       const eventoTrazabilidad = {
@@ -2243,8 +3000,6 @@ export function GestionAuditoriasKanbanSimple() {
         estadoAnterior: estadoAnterior,
         estadoNuevo: nuevoEstado
       };
-
-      console.log('📋 Trazabilidad - Cambio manual de estado:', eventoTrazabilidad);
 
       toast.success(`${auditoriaActual.codigo} cambió a ${nuevoEstado}`, {
         description: `Estado actualizado en la base de datos`,
@@ -2277,26 +3032,85 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // Guardar asignación de auditores
-  const handleGuardarAsignacionAuditores = (auditoriaId: string, auditorLider: Persona, auditorAsignado: Persona) => {
-    setAuditorias(prev =>
-      prev.map(aud =>
-        aud.id === auditoriaId
-          ? {
-              ...aud,
-              auditorLider: auditorLider,
-              auditorAsignado: auditorAsignado
-            }
-          : aud
-      )
-    );
+  const handleGuardarAsignacionAuditores = async (auditoriaId: string, auditorLider: Persona, auditorAsignado: Persona) => {
+    try {
 
-    const auditoria = auditorias.find(a => a.id === auditoriaId);
-    toast.success('Auditores asignados correctamente', {
-      description: `${auditoria?.codigo} - Líder: ${auditorLider.nombre}, Asignado: ${auditorAsignado.nombre}`
-    });
+      const baseURL = 'http://localhost:3007';
+      const auditoriaActual = auditorias.find(a => a.id === auditoriaId);
+      
+      // Buscar auditor líder por numeroIdentificacion
+      let auditorLiderId: number | null = null;
+      try {
+        const response = await fetch(`${baseURL}/auditorias/personas/buscar?numeroIdentificacion=${auditorLider.numeroIdentificacion}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (response.ok) {
+          const persona = await response.json();
+          auditorLiderId = persona.id_tercero;
+        }
+      } catch (error) {
+        console.warn('[handleGuardarAsignacionAuditores] Error al buscar auditor líder:', error);
+      }
 
-    setModalAsignarAuditorOpen(false);
-    setAuditoriaSeleccionada(null);
+      // Si no se encontró por búsqueda, usar el ID de la auditoría actual
+      if (!auditorLiderId && auditoriaActual?.auditorLiderId) {
+        auditorLiderId = auditoriaActual.auditorLiderId;
+      }
+
+      // Buscar auditor asignado por numeroIdentificacion
+      let auditorAsignadoId: number | null = null;
+      try {
+        const response = await fetch(`${baseURL}/auditorias/personas/buscar?numeroIdentificacion=${auditorAsignado.numeroIdentificacion}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (response.ok) {
+          const persona = await response.json();
+          auditorAsignadoId = persona.id_tercero;
+        }
+      } catch (error) {
+        console.warn('[handleGuardarAsignacionAuditores] Error al buscar auditor asignado:', error);
+      }
+
+      // Si no se encontró por búsqueda, usar el ID de la auditoría actual
+      if (!auditorAsignadoId && auditoriaActual?.auditorAsignadoId) {
+        auditorAsignadoId = auditoriaActual.auditorAsignadoId;
+      }
+
+      // Validar que tengamos al menos uno de los IDs
+      if (!auditorLiderId && !auditorAsignadoId) {
+        throw new Error('No se pudieron obtener los IDs de los auditores. Verifica que las personas existan en el sistema.');
+      }
+
+      // El backend espera auditorLiderId y auditorAsignadoId (números BIGINT)
+      const payload: any = {
+        auditorLiderId: auditorLiderId,
+        auditorAsignadoId: auditorAsignadoId
+      };
+
+      // Actualizar en el backend
+      const response = await controlInternoService.updateAuditoria(auditoriaId, payload);
+
+      toast.success('Auditores asignados correctamente', {
+        description: `${auditoriaActual?.codigo} - Líder: ${auditorLider.nombre}, Asignado: ${auditorAsignado.nombre}`
+      });
+
+      setModalAsignarAuditorOpen(false);
+      setAuditoriaSeleccionada(null);
+      
+      // Recargar las auditorías para obtener los datos actualizados del backend
+      await cargarAuditorias();
+    } catch (error: any) {
+      console.error('[handleGuardarAsignacionAuditores] Error:', error);
+      toast.error('Error al asignar auditores', {
+        description: error?.response?.data?.message || error?.message || 'No se pudo guardar la asignación. Por favor, intenta nuevamente.'
+      });
+    }
   };
 
   // Enviar a aprobación individual
@@ -2305,29 +3119,480 @@ export function GestionAuditoriasKanbanSimple() {
     setModalAprobacionOpen(true);
   };
 
-  // Exportar individual
-  const handleExportar = (auditoria: Auditoria) => {
-    // Simular exportación a PDF
-    toast.success(`Exportando ${auditoria.codigo}...`, {
-      description: 'Generando informe PDF completo',
-      duration: 3000
+  // Exportar individual - GENERA PDF REAL
+  const handleExportar = async (auditoria: Auditoria) => {
+    // Crear toast de carga con ID para poder cerrarlo
+    const toastId = toast.loading('Generando PDF...', {
+      description: 'Por favor espera un momento'
     });
-    
-    // En producción, esto haría una llamada al backend para generar el PDF
-    setTimeout(() => {
-      toast.success(`${auditoria.codigo} exportado`, {
-        description: 'El archivo PDF está listo para descargar'
+
+    try {
+      // Crear documento PDF
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'letter'
       });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+      const maxWidth = pageWidth - (margin * 2);
+      let yPos = margin;
+
+      // ============ ENCABEZADO ============
+      doc.setFillColor(0, 61, 165);
+      doc.rect(0, 0, pageWidth, 25, 'F');
       
-      // Simular descarga
-      const blob = new Blob(['Informe de Auditoría'], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${auditoria.codigo}_Informe.pdf`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    }, 2000);
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA', pageWidth / 2, 10, { align: 'center' });
+      doc.setFontSize(12);
+      doc.text('Oficina de Control Interno - Informe de Auditoría', pageWidth / 2, 18, { align: 'center' });
+      
+      yPos = 35;
+
+      // ============ INFORMACIÓN GENERAL ============
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('INFORMACIÓN GENERAL DE LA AUDITORÍA', margin, yPos);
+      yPos += 10;
+
+      // Tabla de información
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      
+      const infoData = [
+        ['Código:', auditoria.codigo],
+        ['Título:', auditoria.titulo],
+        ['Estado:', auditoria.estado],
+        ['Territorial:', auditoria.territorial],
+        ['Riesgo:', auditoria.riesgo],
+        ['Fecha Inicio:', auditoria.fechaInicio],
+        ['Fecha Fin:', auditoria.fechaFin],
+        ['Progreso:', `${auditoria.progreso}%`]
+      ];
+
+      infoData.forEach(([label, value]) => {
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        const textLines = doc.splitTextToSize(value || 'N/A', maxWidth - 40);
+        doc.text(textLines, margin + 35, yPos);
+        yPos += Math.max(6, textLines.length * 5);
+      });
+
+      yPos += 5;
+
+      // ============ DESCRIPCIÓN ============
+      if (auditoria.descripcion) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DESCRIPCIÓN', margin, yPos);
+        yPos += 8;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        const descripcionLines = doc.splitTextToSize(auditoria.descripcion, maxWidth);
+        descripcionLines.forEach((line: string) => {
+          if (yPos > pageHeight - 30) {
+            doc.addPage();
+            yPos = margin;
+          }
+          doc.text(line, margin, yPos);
+          yPos += 5;
+        });
+        yPos += 5;
+      }
+
+      // ============ OBJETIVOS ============
+      if (auditoria.objetivos && auditoria.objetivos.length > 0) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('OBJETIVOS DE LA AUDITORÍA', margin, yPos);
+        yPos += 8;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        auditoria.objetivos.forEach((obj, idx) => {
+          if (yPos > pageHeight - 30) {
+            doc.addPage();
+            yPos = margin;
+          }
+          const objetivoLines = doc.splitTextToSize(`${idx + 1}. ${obj.descripcion}`, maxWidth);
+          objetivoLines.forEach((line: string) => {
+            doc.text(line, margin, yPos);
+            yPos += 5;
+          });
+          yPos += 2;
+        });
+        yPos += 5;
+      }
+
+      // ============ EQUIPO AUDITOR ============
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('EQUIPO AUDITOR', margin, yPos);
+      yPos += 8;
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Auditor Líder:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(auditoria.auditorLider?.nombre || 'No asignado', margin + 35, yPos);
+      yPos += 6;
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Cargo:', margin + 5, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(auditoria.auditorLider?.cargo || 'N/A', margin + 35, yPos);
+      yPos += 8;
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Auditor Asignado:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(auditoria.auditorAsignado?.nombre || 'No asignado', margin + 35, yPos);
+      yPos += 6;
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Cargo:', margin + 5, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(auditoria.auditorAsignado?.cargo || 'N/A', margin + 35, yPos);
+      yPos += 10;
+
+      // ============ MÉTRICAS ============
+      if (yPos > pageHeight - 50) {
+        doc.addPage();
+        yPos = margin;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('MÉTRICAS Y ESTADÍSTICAS', margin, yPos);
+      yPos += 8;
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      
+      const metricas = [
+        ['Hallazgos Identificados:', `${auditoria.hallazgos}`],
+        ['Documentos Cargados:', `${auditoria.documentos}`],
+        ['Informes Generados:', `${auditoria.informes}`],
+        ['Días Restantes:', `${auditoria.diasRestantes} días`],
+        ['Porcentaje de Tiempo:', `${auditoria.porcentajeTiempo}%`]
+      ];
+
+      metricas.forEach(([label, value]) => {
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(value, margin + 50, yPos);
+        yPos += 6;
+      });
+
+      // ============ FOOTER EN TODAS LAS PÁGINAS ============
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        
+        // Línea separadora
+        doc.setDrawColor(200, 200, 200);
+        doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
+        
+        // Texto del footer
+        doc.setFontSize(8);
+        doc.setTextColor(128, 128, 128);
+        doc.setFont('helvetica', 'normal');
+        doc.text(
+          `Página ${i} de ${totalPages}`,
+          pageWidth / 2,
+          pageHeight - 10,
+          { align: 'center' }
+        );
+        doc.text(
+          `Generado: ${new Date().toLocaleString('es-CO')}`,
+          margin,
+          pageHeight - 10
+        );
+        doc.text(
+          'ESAP - Control Interno',
+          pageWidth - margin,
+          pageHeight - 10,
+          { align: 'right' }
+        );
+      }
+
+      // Generar nombre de archivo
+      const nombreArchivo = `${auditoria.codigo}_Informe_Auditoria.pdf`;
+      
+      // Descargar PDF
+      doc.save(nombreArchivo);
+      
+      // ============ NOTIFICACIONES: Exportación ============
+      if (user?.id) {
+        try {
+          // Crear URL de descarga simulada (el archivo ya se descargó)
+          const urlDescarga = URL.createObjectURL(new Blob([], { type: 'application/pdf' }));
+          
+          await notificarExportacion(
+            'PDF',
+            nombreArchivo,
+            user.id,
+            urlDescarga
+          );
+          
+          // Limpiar URL temporal
+          URL.revokeObjectURL(urlDescarga);
+        } catch (notifError) {
+          // No fallar la exportación si las notificaciones fallan
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
+      
+      // Cerrar toast de carga y mostrar éxito
+      toast.dismiss(toastId);
+      toast.success('PDF descargado exitosamente', {
+        description: `Archivo: ${nombreArchivo}`,
+        duration: 4000
+      });
+    } catch (error) {
+      console.error('Error al generar PDF:', error);
+      // Cerrar toast de carga y mostrar error
+      toast.dismiss(toastId);
+      toast.error('Error al generar el PDF', {
+        description: error instanceof Error ? error.message : 'Error desconocido',
+        duration: 4000
+      });
+    }
+  };
+
+  // Exportar todas las auditorías divididas por estados
+  const handleExportarTodas = async () => {
+    try {
+      const toastId = toast.loading('Generando archivo Excel...', {
+        description: 'Por favor espera un momento'
+      });
+
+      // Crear workbook
+      const wb = XLSX.utils.book_new();
+
+      // Estados disponibles
+      const estados: EstadoAuditoria[] = ['Planeación', 'Ejecución', 'Comunicación', 'Seguimiento', 'Finalizada'];
+
+      // Crear una hoja por cada estado
+      estados.forEach((estado) => {
+        const auditoriasPorEstado = auditorias.filter((aud) => aud.estado === estado);
+
+        if (auditoriasPorEstado.length === 0) {
+          // Crear hoja vacía con encabezados
+          const headers = [
+            'Código',
+            'Título',
+            'Descripción',
+            'Estado',
+            'Territorial',
+            'Riesgo',
+            'Auditor Líder',
+            'Cargo Auditor Líder',
+            'Auditor Asignado',
+            'Cargo Auditor Asignado',
+            'Fecha Inicio',
+            'Fecha Fin',
+            'Progreso (%)',
+            'Hallazgos',
+            'Documentos',
+            'Informes',
+            'Tareas',
+            'Días Restantes',
+            'Porcentaje Tiempo',
+            'Última Actuación',
+            'Calificación Riesgo',
+            'Tipo',
+            'Prioridad',
+            'Área Objetivo'
+          ];
+
+          const ws = XLSX.utils.aoa_to_sheet([headers]);
+          ws['!cols'] = [
+            { wch: 15 }, // Código
+            { wch: 40 }, // Título
+            { wch: 50 }, // Descripción
+            { wch: 12 }, // Estado
+            { wch: 18 }, // Territorial
+            { wch: 10 }, // Riesgo
+            { wch: 30 }, // Auditor Líder
+            { wch: 25 }, // Cargo Auditor Líder
+            { wch: 30 }, // Auditor Asignado
+            { wch: 25 }, // Cargo Auditor Asignado
+            { wch: 12 }, // Fecha Inicio
+            { wch: 12 }, // Fecha Fin
+            { wch: 12 }, // Progreso
+            { wch: 10 }, // Hallazgos
+            { wch: 12 }, // Documentos
+            { wch: 10 }, // Informes
+            { wch: 10 }, // Tareas
+            { wch: 12 }, // Días Restantes
+            { wch: 15 }, // Porcentaje Tiempo
+            { wch: 40 }, // Última Actuación
+            { wch: 20 }, // Calificación Riesgo
+            { wch: 12 }, // Tipo
+            { wch: 12 }, // Prioridad
+            { wch: 25 }  // Área Objetivo
+          ];
+
+          XLSX.utils.book_append_sheet(wb, ws, estado);
+        } else {
+          // Preparar datos para la hoja
+          const datos = auditoriasPorEstado.map((aud) => [
+            aud.codigo || '',
+            aud.titulo || '',
+            aud.descripcion || '',
+            aud.estado || '',
+            aud.territorial || '',
+            aud.riesgo || '',
+            aud.auditorLider?.nombre || 'Sin asignar',
+            aud.auditorLider?.cargo || '',
+            aud.auditorAsignado?.nombre || 'Sin asignar',
+            aud.auditorAsignado?.cargo || '',
+            aud.fechaInicio || '',
+            aud.fechaFin || '',
+            aud.progreso ?? 0,
+            aud.hallazgos ?? 0,
+            aud.documentos ?? 0,
+            aud.informes ?? 0,
+            aud.tareas ?? 0,
+            aud.diasRestantes ?? 0,
+            aud.porcentajeTiempo ?? 0,
+            aud.ultimaActuacion || '',
+            aud.calificacionRiesgo || '',
+            aud.tipo || '',
+            aud.prioridad || '',
+            aud.areaObjetivo || ''
+          ]);
+
+          const headers = [
+            'Código',
+            'Título',
+            'Descripción',
+            'Estado',
+            'Territorial',
+            'Riesgo',
+            'Auditor Líder',
+            'Cargo Auditor Líder',
+            'Auditor Asignado',
+            'Cargo Auditor Asignado',
+            'Fecha Inicio',
+            'Fecha Fin',
+            'Progreso (%)',
+            'Hallazgos',
+            'Documentos',
+            'Informes',
+            'Tareas',
+            'Días Restantes',
+            'Porcentaje Tiempo',
+            'Última Actuación',
+            'Calificación Riesgo',
+            'Tipo',
+            'Prioridad',
+            'Área Objetivo'
+          ];
+
+          const ws = XLSX.utils.aoa_to_sheet([headers, ...datos]);
+          
+          // Ajustar anchos de columna
+          ws['!cols'] = [
+            { wch: 15 }, // Código
+            { wch: 40 }, // Título
+            { wch: 50 }, // Descripción
+            { wch: 12 }, // Estado
+            { wch: 18 }, // Territorial
+            { wch: 10 }, // Riesgo
+            { wch: 30 }, // Auditor Líder
+            { wch: 25 }, // Cargo Auditor Líder
+            { wch: 30 }, // Auditor Asignado
+            { wch: 25 }, // Cargo Auditor Asignado
+            { wch: 12 }, // Fecha Inicio
+            { wch: 12 }, // Fecha Fin
+            { wch: 12 }, // Progreso
+            { wch: 10 }, // Hallazgos
+            { wch: 12 }, // Documentos
+            { wch: 10 }, // Informes
+            { wch: 10 }, // Tareas
+            { wch: 12 }, // Días Restantes
+            { wch: 15 }, // Porcentaje Tiempo
+            { wch: 40 }, // Última Actuación
+            { wch: 20 }, // Calificación Riesgo
+            { wch: 12 }, // Tipo
+            { wch: 12 }, // Prioridad
+            { wch: 25 }  // Área Objetivo
+          ];
+
+          XLSX.utils.book_append_sheet(wb, ws, estado);
+        }
+      });
+
+      // Crear hoja de resumen
+      const resumenData = [
+        ['RESUMEN DE AUDITORÍAS POR ESTADO'],
+        [''],
+        ['Estado', 'Cantidad'],
+        ...estados.map((estado) => [
+          estado,
+          auditorias.filter((aud) => aud.estado === estado).length
+        ]),
+        [''],
+        ['TOTAL', auditorias.length],
+        [''],
+        [`Generado el: ${new Date().toLocaleString('es-CO')}`]
+      ];
+
+      const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
+      wsResumen['!cols'] = [{ wch: 20 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+
+      // Generar nombre de archivo con fecha
+      const fecha = new Date().toISOString().split('T')[0];
+      const nombreArchivo = `Auditorias_Exportadas_${fecha}.xlsx`;
+
+      // Descargar archivo
+      XLSX.writeFile(wb, nombreArchivo);
+
+      // ============ NOTIFICACIONES: Exportación ============
+      if (user?.id) {
+        try {
+          // Crear URL de descarga simulada (el archivo ya se descargó)
+          const urlDescarga = URL.createObjectURL(new Blob([], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+          
+          await notificarExportacion(
+            'Excel',
+            nombreArchivo,
+            user.id,
+            urlDescarga
+          );
+          
+          // Limpiar URL temporal
+          URL.revokeObjectURL(urlDescarga);
+        } catch (notifError) {
+          // No fallar la exportación si las notificaciones fallan
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
+
+      // Cerrar toast y mostrar éxito
+      toast.dismiss(toastId);
+      toast.success('Exportación completada', {
+        description: `Archivo ${nombreArchivo} descargado exitosamente`,
+        duration: 4000
+      });
+    } catch (error) {
+      console.error('Error al exportar auditorías:', error);
+      toast.error('Error al exportar', {
+        description: error instanceof Error ? error.message : 'No se pudo generar el archivo Excel',
+        duration: 4000
+      });
+    }
   };
 
   // Archivar individual - ACTUALIZADO
@@ -2371,10 +3636,17 @@ export function GestionAuditoriasKanbanSimple() {
     seleccionarAuditoria(auditoriaParaPlan);
     
     // 4. Notificación
-    toast.success(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
-      description: `${auditoria.hallazgos} hallazgos detectados. Ahora puede formular acciones correctivas.`,
-      duration: 5000
-    });
+    if (auditoria.hallazgos > 0) {
+      toast.success(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
+        description: `${auditoria.hallazgos} hallazgos detectados. Ahora puede formular acciones correctivas.`,
+        duration: 5000
+      });
+    } else {
+      toast.info(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
+        description: 'No hay hallazgos registrados. Podrá agregarlos en el formulario.',
+        duration: 5000
+      });
+    }
     
     // Nota: La navegación al módulo de Planes se hace desde ControlInternoFull
     // cuando detecta que hay una auditoría seleccionada
@@ -2465,12 +3737,6 @@ export function GestionAuditoriasKanbanSimple() {
             duration: 4000
           });
 
-          console.log('📦 Auditoría archivada:', {
-            auditoria: auditoria,
-            comentario: comentario,
-            fecha: new Date(),
-            usuario: 'Usuario Actual'
-          });
         } else {
           throw new Error(response.error || 'Error al archivar la auditoría');
         }
@@ -2488,12 +3754,6 @@ export function GestionAuditoriasKanbanSimple() {
         duration: 5000
       });
 
-      console.log('🗑️ Auditoría eliminada:', {
-        auditoria: auditoria,
-        comentario: comentario,
-        fecha: new Date(),
-        usuario: 'Usuario Actual'
-      });
     }
 
     setModalConfirmacionOpen(false);
@@ -2563,8 +3823,19 @@ export function GestionAuditoriasKanbanSimple() {
             </p>
           </div>
 
-          {/* Botones de Vista + Tooltip */}
+          {/* Botones de Vista + Tooltip + Bandeja Ampliaciones */}
           <div className="flex items-center gap-2">
+            {/* Botón Bandeja de Ampliaciones Pendientes (solo para Jefe OCI) */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBandejaAmpliacionesOpen(true)}
+              className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+              title="Ver solicitudes de ampliación de plazo pendientes"
+            >
+              <Clock className="w-4 h-4" />
+              <span className="hidden sm:inline">Ampliaciones</span>
+            </Button>
             <TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['auditorias-kanban']} />
           </div>
         </div>
@@ -2668,7 +3939,7 @@ export function GestionAuditoriasKanbanSimple() {
               <option value="Valle del Cauca">Valle del Cauca</option>
             </select>
 
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" className="gap-2" onClick={handleExportarTodas}>
               <Download className="w-4 h-4" />
               Exportar
             </Button>
@@ -2677,12 +3948,25 @@ export function GestionAuditoriasKanbanSimple() {
 
         {/* VISTA KANBAN */}
         {vistaActiva === 'kanban' && (
-          <div className="overflow-x-auto pb-4">
-            <div className="flex gap-4 min-w-max">
-              {COLUMNAS_KANBAN.map((columna) => {
-                const auditoriasColumna = auditoriasFiltradas.filter(
-                  (aud) => aud.estado === columna.id
-                );
+          <div className="overflow-x-auto pb-4 -mx-6 px-6">
+            <div className="flex gap-4 min-w-max" style={{ alignItems: 'flex-start', minWidth: '1600px' }}>
+              {columnasKanban.map((columna: any) => {
+                // Mapear el estado de cada auditoría al nombre de la etapa correspondiente
+                const auditoriasColumna = auditoriasFiltradas.filter((aud) => {
+                  // Si el estado coincide directamente con el nombre de la columna, incluirlo
+                  if (aud.estado === columna.id) {
+                    return true;
+                  }
+                  
+                  // Si no coincide, buscar qué etapa corresponde al estado de la auditoría
+                  const nombreEtapaCorrespondiente = mapearEstadoAuditoriaANombreEtapa(
+                    aud.estado as EstadoAuditoria,
+                    etapasKanban
+                  );
+                  
+                  // Incluir si el nombre de la etapa corresponde a esta columna
+                  return nombreEtapaCorrespondiente === columna.id;
+                });
 
                 return (
                   <ColumnaKanban
@@ -2703,6 +3987,7 @@ export function GestionAuditoriasKanbanSimple() {
                     onEliminar={handleEliminar}
                     onCrearPlan={handleCrearPlan}
                     onEditar={handleEditarAuditoria}
+                    onSolicitarAmpliacion={handleSolicitarAmpliacion}
                     tarjetasColapsadas={tarjetasColapsadas}
                     onToggleColapsoTarjeta={toggleTarjetaColapsada}
                   />
@@ -3043,7 +4328,7 @@ export function GestionAuditoriasKanbanSimple() {
                       <div className="text-center p-3 rounded-lg" style={{ background: '#FEF3C7' }}>
                         <FileText className="w-4 h-4 mx-auto mb-1 text-yellow-600" />
                         <p className="text-xs text-gray-600 mb-1">Docs</p>
-                        <p className="font-bold text-yellow-700">{auditoria.documentos || 0}</p>
+                        <p className="font-bold text-yellow-700">{auditoria.documentos || ''}</p>
                       </div>
                       <div className="text-center p-3 rounded-lg" style={{ background: '#E0E7FF' }}>
                         <FileText className="w-4 h-4 mx-auto mb-1 text-indigo-600" />
@@ -3090,16 +4375,32 @@ export function GestionAuditoriasKanbanSimple() {
                         Proceso de Auditoría
                       </Button>
                       
-                      {/* NUEVO: Botón Crear Plan de Mejoramiento - SOLO si está Finalizada con hallazgos */}
-                      {auditoria.estado === 'Finalizada' && auditoria.hallazgos > 0 && (
+                      {/* Botón Crear Plan de Mejoramiento - Aparece siempre en auditorías Finalizadas */}
+                      {auditoria.estado === 'Finalizada' && (
                         <Button 
                           size="sm" 
                           className="gap-2 flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white" 
-                          onClick={() => handleCrearPlan(auditoria)}
-                          title="Crear Plan de Mejoramiento para los hallazgos identificados"
+                          onClick={() => {
+                            if (auditoria.hallazgos === 0) {
+                              toast.warning(`Plan de Mejoramiento: ${auditoria.codigo}`, {
+                                description: 'Esta auditoría no tiene hallazgos registrados. Podrá agregarlos en el formulario de plan de mejoramiento.',
+                                duration: 6000
+                              });
+                            }
+                            handleCrearPlan(auditoria);
+                          }}
+                          title={auditoria.hallazgos > 0 
+                            ? `Crear Plan de Mejoramiento para ${auditoria.hallazgos} hallazgos identificados`
+                            : 'Crear Plan de Mejoramiento (sin hallazgos registrados)'
+                          }
                         >
                           <Target className="w-4 h-4" />
                           Crear Plan de Mejoramiento
+                          {auditoria.hallazgos > 0 && (
+                            <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs font-bold">
+                              {auditoria.hallazgos}
+                            </span>
+                          )}
                         </Button>
                       )}
                       
@@ -3107,6 +4408,19 @@ export function GestionAuditoriasKanbanSimple() {
                         <Edit className="w-4 h-4" />
                         Editar
                       </Button>
+                      {/* Botón Solicitar Ampliación - Solo para auditorías en curso */}
+                      {auditoria.estado === 'Ejecución' && (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="gap-2 text-orange-600 hover:text-orange-700 border-orange-300 hover:bg-orange-50" 
+                          onClick={() => handleSolicitarAmpliacion(auditoria)}
+                          title="Solicitar ampliación de plazo"
+                        >
+                          <Clock className="w-4 h-4" />
+                          Ampliar Plazo
+                        </Button>
+                      )}
                       <Button size="sm" variant="outline" className="gap-2" onClick={() => handleCambiarEstado(auditoria)} title="Cambiar estado">
                         <RefreshCw className="w-4 h-4" />
                       </Button>
@@ -3205,7 +4519,20 @@ export function GestionAuditoriasKanbanSimple() {
         />
 
         {/* MODAL DE FORMULARIO - EDITAR */}
-        {auditoriaParaEditar && (
+        {auditoriaParaEditar && (() => {
+          // Si no hay auditorLiderId, intentar buscar por numeroIdentificacion del objeto auditorLider
+          let auditorLiderIdStr = '';
+          let auditorAsignadoIdStr = '';
+          
+          if (auditoriaParaEditar.auditorLiderId) {
+            auditorLiderIdStr = String(auditoriaParaEditar.auditorLiderId);
+          }
+          
+          if (auditoriaParaEditar.auditorAsignadoId) {
+            auditorAsignadoIdStr = String(auditoriaParaEditar.auditorAsignadoId);
+          } 
+          
+          return (
           <ModalFormularioAuditoria
             open={modalEdicionOpen}
             onClose={() => {
@@ -3219,21 +4546,19 @@ export function GestionAuditoriasKanbanSimple() {
               titulo: auditoriaParaEditar.titulo,
               descripcion: auditoriaParaEditar.descripcion || '',
               territorial: auditoriaParaEditar.territorial,
-              riesgo: auditoriaParaEditar.riesgo || 'Medio', // Asegurar que siempre tenga un valor
-              // Convertir fechas DD/MM/YYYY a YYYY-MM-DD para el input date
+              riesgo: auditoriaParaEditar.riesgo || 'Medio',
               fechaInicio: convertirFechaDDMMYYYYaISO(auditoriaParaEditar.fechaInicio || ''),
               fechaFin: convertirFechaDDMMYYYYaISO(auditoriaParaEditar.fechaFin || ''),
               objetivos: auditoriaParaEditar.objetivos?.map(obj => obj.descripcion) || [],
-              // Pasar el ID del auditor si está disponible, o el nombre como fallback
-              auditorLider: (auditoriaParaEditar as any).auditorLiderId?.toString() || auditoriaParaEditar.auditorLider?.nombre || '',
-              auditorAsignado: (auditoriaParaEditar as any).auditorAsignadoId?.toString() || auditoriaParaEditar.auditorAsignado?.nombre || '',
-              // Obtener el tipo real de la auditoría (no tipoKanban)
-              tipoAuditoria: (auditoriaParaEditar as any).tipo || 'Gestión',
-              // Obtener alcance desde la auditoría (puede venir del backend o estar vacío)
+              // Pasar numeroIdentificacion para que el modal busque el ID
+              auditorLider: auditorLiderIdStr || auditoriaParaEditar.auditorLider?.numeroIdentificacion || '',
+              auditorAsignado: auditorAsignadoIdStr || auditoriaParaEditar.auditorAsignado?.numeroIdentificacion || '',
+              tipo: (auditoriaParaEditar as any).tipo || 'Gestión',
               alcance: auditoriaParaEditar.alcance || (auditoriaParaEditar as any).alcance || ''
             }}
           />
-        )}
+          );
+        })()}
 
         {/* MODAL INICIO DE AUDITORÍA - RF004 */}
         {modalInicioAuditoriaOpen && auditoriaSeleccionada && (() => {
@@ -3258,8 +4583,8 @@ export function GestionAuditoriasKanbanSimple() {
               },
               auditorLider: {
                 id: auditoriaSeleccionada.id + '-lider',
-                nombre: auditoriaSeleccionada.auditorLider.nombre,
-                email: auditoriaSeleccionada.auditorLider.nombre.toLowerCase().replace(' ', '.') + '@esap.edu.co'
+                nombre: auditoriaSeleccionada.auditorLider?.nombre || 'Sin asignar',
+                email: auditoriaSeleccionada.auditorLider?.nombre ? auditoriaSeleccionada.auditorLider.nombre.toLowerCase().replace(' ', '.') + '@esap.edu.co' : 'sin.asignar@esap.edu.co'
               },
               equipoAuditores: [
                 {
@@ -3326,6 +4651,24 @@ export function GestionAuditoriasKanbanSimple() {
           auditoria={auditoriaSeleccionada}
           tipoAccion={tipoAccionConfirmacion}
           onConfirmar={handleConfirmarAccion}
+        />
+
+        {/* MODAL SOLICITAR AMPLIACIÓN DE PLAZO */}
+        <ModalSolicitarAmpliacionPlazo
+          auditoria={auditoriaSeleccionada}
+          open={modalSolicitarAmpliacionOpen}
+          onClose={() => {
+            setModalSolicitarAmpliacionOpen(false);
+            setAuditoriaSeleccionada(null);
+          }}
+          onSolicitudEnviada={handleSolicitudAmpliacionEnviada}
+        />
+
+        {/* BANDEJA DE AMPLIACIONES PENDIENTES */}
+        <BandejaAmpliacionesPendientes
+          open={bandejaAmpliacionesOpen}
+          onClose={() => setBandejaAmpliacionesOpen(false)}
+          onSolicitudProcesada={handleSolicitudAmpliacionProcesada}
         />
       </div>
     </DndProvider>

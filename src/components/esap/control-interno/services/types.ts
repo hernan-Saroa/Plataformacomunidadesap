@@ -270,7 +270,7 @@ export interface PlanMejoramiento {
   fechaElaboracion: string;
   fechaAprobacion?: string;
   
-  estado: 'borrador' | 'aprobado' | 'en-ejecucion' | 'cerrado';
+  estado: 'borrador' | 'revision' | 'aprobado' | 'en_ejecucion' | 'completado' | 'vencido' | 'rechazado';
   porcentajeAvanceGeneral: number;
   
   observaciones: string;
@@ -403,8 +403,10 @@ export interface EntregaInforme {
   fechaVencimiento: string;
   fechaEntrega?: string;
   estado: EstadoEntregaInforme;
+  estadoWorkflow?: 'borrador' | 'en-revision' | 'en-aprobacion' | 'aprobado' | 'rechazado' | 'enviado';
   archivoUrl?: string;
   observaciones: string;
+  motivoRechazo?: string;
   
   // Metadata
   creadoPor?: string;
@@ -488,4 +490,38 @@ export interface PlanMejoramientoFilters {
   fechaDesde?: string;
   fechaHasta?: string;
   search?: string;
+}
+
+// ==================== EVENTOS DEL TIMELINE ====================
+
+export type TipoEventoTimeline = 
+  | 'CREACION'
+  | 'ACTUALIZACION'
+  | 'APROBACION'
+  | 'COMPLETADA'
+  | 'EVIDENCIA'
+  | 'COMENTARIO'
+  | 'PROGRESO'
+  | 'ESTADO'
+  | 'HALLAZGO_COMPLETADO';
+
+export interface EventoTimeline {
+  id: string;
+  planMejoramientoId: string;
+  tipo: TipoEventoTimeline;
+  descripcion: string;
+  usuarioId?: string;
+  usuarioNombre?: string;
+  fecha: Date | string;
+  metadata?: {
+    accionId?: string;
+    hallazgoId?: string;
+    archivoId?: string;
+    progresoAnterior?: number;
+    progresoNuevo?: number;
+    estadoAnterior?: string;
+    estadoNuevo?: string;
+    [key: string]: any;
+  };
+  createdAt?: Date | string;
 }

@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS control_interno.auditoria (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     codigo VARCHAR(255) UNIQUE NOT NULL,
     nombre VARCHAR(500) NOT NULL,
-    tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional')),
+    descripcion TEXT,
+    tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('Gestión', 'Control Interno', 'Académica', 'RRHH', 'Financiera', 'TI', 'Cumplimiento', 'Operacional', 'Regular', 'Territorial', 'Especial')),
     fase VARCHAR(50) NOT NULL CHECK (fase IN ('planeacion', 'en-curso', 'revision', 'completada')) DEFAULT 'planeacion',
     territorial VARCHAR(255) NOT NULL,
     sede VARCHAR(255) NOT NULL,
@@ -95,6 +96,10 @@ CREATE TABLE IF NOT EXISTS control_interno.auditoria (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Agregar columna descripcion si no existe (para bases de datos existentes)
+ALTER TABLE control_interno.auditoria 
+ADD COLUMN IF NOT EXISTS descripcion TEXT;
 
 CREATE INDEX idx_auditoria_codigo ON control_interno.auditoria(codigo);
 CREATE INDEX idx_auditoria_tipo ON control_interno.auditoria(tipo);
@@ -1004,20 +1009,20 @@ CREATE INDEX idx_doc_aprobacion ON control_interno.documento_aprobacion(aprobaci
 -- ============================================
 CREATE TABLE IF NOT EXISTS control_interno.plan_anual_5_roles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    año INTEGER NOT NULL,
+    ano INTEGER NOT NULL,
     fecha_creacion DATE NOT NULL DEFAULT CURRENT_DATE,
     responsable VARCHAR(255) NOT NULL,
-    estado VARCHAR(50) NOT NULL DEFAULT 'borrador' CHECK (estado IN ('borrador', 'aprobado', 'en-ejecucion', 'completado')),
+    estado VARCHAR(50) NOT NULL DEFAULT 'borrador' CHECK (estado IN ('borrador', 'en-revision', 'aprobado', 'en-ejecucion', 'completado')),
     porcentaje_cumplimiento_general INTEGER DEFAULT 0,
     total_actividades INTEGER DEFAULT 0,
     actividades_completadas INTEGER DEFAULT 0,
     actividades_en_progreso INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(año)
+    UNIQUE(ano)
 );
 
-CREATE INDEX idx_plan_anual_5_roles_año ON control_interno.plan_anual_5_roles(año);
+CREATE INDEX idx_plan_anual_5_roles_ano ON control_interno.plan_anual_5_roles(ano);
 CREATE INDEX idx_plan_anual_5_roles_estado ON control_interno.plan_anual_5_roles(estado);
 
 -- ============================================

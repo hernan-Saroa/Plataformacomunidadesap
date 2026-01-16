@@ -536,7 +536,16 @@ const getEstadoInfo = (estado: EstadoSeleccion) => {
 
 // ============ COMPONENTE PRINCIPAL ============
 
-export function UniversoAuditorias() {
+interface UniversoAuditoriasProps {
+  filtros?: {
+    año: number;
+    estado: string;
+    area: string;
+    busqueda: string;
+  };
+}
+
+export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as UniversoAuditoriasProps) {
   const [areas, setAreas] = useState<AreaAuditable[]>([]);
   const [loading, setLoading] = useState(true);
   const [vistaActiva, setVistaActiva] = useState<'dashboard' | 'lista' | 'crear'>('dashboard');
@@ -548,10 +557,19 @@ export function UniversoAuditorias() {
   const [areaEditando, setAreaEditando] = useState<string | null>(null);
   const [modalNuevaArea, setModalNuevaArea] = useState(false);
 
+  // Función para normalizar nivel de riesgo (BD puede venir en minúsculas)
+  const normalizarNivelRiesgo = (nivel: string | undefined): NivelRiesgo => {
+    if (!nivel) return 'Bajo';
+    const nivelLower = nivel.toLowerCase();
+    if (nivelLower === 'crítico' || nivelLower === 'critico') return 'Crítico';
+    if (nivelLower === 'alto') return 'Alto';
+    if (nivelLower === 'medio') return 'Medio';
+    return 'Bajo';
+  };
+
   // Función para mapear ProcesoAuditable a AreaAuditable
   const mapearProcesoAArea = (proceso: any): AreaAuditable => {
     const evaluacionRiesgo = proceso.evaluacionRiesgo || {};
-    const nivelRiesgo = evaluacionRiesgo.nivelRiesgo || 'Bajo';
     
     // Mapear prioridad a estado (1=seleccionada, 2=pendiente, 3=no-aplica)
     let estado: EstadoSeleccion = 'pendiente';
@@ -560,11 +578,21 @@ export function UniversoAuditorias() {
     else if (proceso.prioridad === 3) estado = 'no-aplica';
 
     // Mapear criticidad y exposición desde evaluacionRiesgo
-    const criticidad = evaluacionRiesgo.impacto === 5 ? 5 : evaluacionRiesgo.impacto === 3 ? 3 : 1;
-    const exposicion = evaluacionRiesgo.probabilidad === 5 ? 5 : evaluacionRiesgo.probabilidad === 3 ? 3 : 1;
-    const mitigantes = evaluacionRiesgo.nivelControl || 1;
+    // Backend usa escala 1-3, Frontend usa escala 1,3,5
+    // Backend: 1=Baja, 2=Media, 3=Alta
+    // Frontend: 1=Baja, 3=Media, 5=Alta
+    const criticidad = evaluacionRiesgo.impacto === 3 ? 5 : evaluacionRiesgo.impacto === 2 ? 3 : 1;
+    const exposicion = evaluacionRiesgo.probabilidad === 3 ? 5 : evaluacionRiesgo.probabilidad === 2 ? 3 : 1;
+    // Backend nivelControl: 1-3, Frontend mitigantes: 1-10
+    // Mapeo inverso: 1->1, 2->5, 3->10 (valores medios para mejor UX)
+    const mitigantes = evaluacionRiesgo.nivelControl === 1 ? 1 : evaluacionRiesgo.nivelControl === 2 ? 5 : 10;
 
     const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
+
+    // Normalizar nivel de riesgo (puede venir de BD como 'alto', 'medio', 'bajo')
+    // Usar el nivel calculado si está disponible, sino usar el de la BD
+    const nivelRiesgoBD = normalizarNivelRiesgo(evaluacionRiesgo.nivelRiesgo);
+    const nivelRiesgoFinal = nivel || nivelRiesgoBD;
 
     // Determinar si es Sede o Territorial basado en el campo territorial
     // Si tiene territorial definido, es Territorial, sino es Sede
@@ -580,7 +608,7 @@ export function UniversoAuditorias() {
       criticidad: criticidad as CriticidadNivel,
       factorExposicion: exposicion as ExposicionNivel,
       factoresMitigantes: mitigantes,
-      nivelRiesgo: nivelRiesgo as NivelRiesgo,
+      nivelRiesgo: nivelRiesgoFinal,
       scoreRiesgo: score,
       estado,
       ultimaAuditoria: proceso.ultimaAuditoria,
@@ -594,21 +622,16 @@ export function UniversoAuditorias() {
     const cargarProcesos = async () => {
       try {
         setLoading(true);
-        console.log('[UniversoAuditorias] Cargando procesos desde BD...');
         const response = await universoAuditoriasApi.getAllProcesos();
         
-        console.log('[UniversoAuditorias] Respuesta recibida:', response);
-        
         if (response.success && response.data) {
-          console.log('[UniversoAuditorias] Datos recibidos:', response.data.length, 'procesos');
-          console.log('[UniversoAuditorias] Primer proceso ejemplo:', response.data[0]);
           const areasMapeadas = response.data.map(mapearProcesoAArea);
-          console.log('[UniversoAuditorias] Áreas mapeadas:', areasMapeadas.length);
-          console.log('[UniversoAuditorias] Primer área mapeada:', areasMapeadas[0]);
           setAreas(areasMapeadas);
           
           if (areasMapeadas.length === 0) {
-            toast.info('No hay procesos auditables en la base de datos', {
+            // Si la BD está vacía, usar mock como fallback
+            setAreas(AREAS_AUDITABLES_MOCK);
+            toast.info('No hay procesos en la BD, mostrando datos de demostración', {
               description: 'Puedes crear nuevos procesos desde el botón "Nueva Área"'
             });
           } else {
@@ -617,26 +640,24 @@ export function UniversoAuditorias() {
             });
           }
         } else {
-          console.warn('[UniversoAuditorias] No se recibieron datos válidos. Response:', response);
-          // Si no hay datos, mostrar array vacío en lugar de mock
-          setAreas([]);
+          // Si no hay datos en BD, usar mock como fallback (útil para desarrollo/demo)
+          setAreas(AREAS_AUDITABLES_MOCK);
           if (!response.success) {
-            toast.error('Error al cargar procesos', {
-              description: response.error || 'No se pudieron obtener los datos'
+            toast.warning('Error al cargar desde BD, usando datos de demostración', {
+              description: response.error || 'No se pudieron obtener los datos desde el servidor'
             });
           } else {
-            toast.info('No hay procesos auditables en la base de datos', {
+            toast.info('No hay procesos en la BD, mostrando datos de demostración', {
               description: 'Puedes crear nuevos procesos desde el botón "Nueva Área"'
             });
           }
         }
       } catch (error) {
-        console.error('[UniversoAuditorias] Error al cargar procesos:', error);
-        toast.error('Error al cargar áreas auditables', {
+        // En caso de error, usar mock como fallback
+        setAreas(AREAS_AUDITABLES_MOCK);
+        toast.warning('Error al conectar con el servidor, usando datos de demostración', {
           description: error instanceof Error ? error.message : 'No se pudieron obtener los datos desde el servidor'
         });
-        // Mostrar array vacío en lugar de mock para que el usuario sepa que no hay datos
-        setAreas([]);
       } finally {
         setLoading(false);
       }
@@ -709,16 +730,52 @@ export function UniversoAuditorias() {
     try {
       const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
       
-      // Mapear a formato del backend
-      const evaluacionRiesgo = {
-        probabilidad: exposicion,
-        impacto: criticidad,
-        nivelControl: mitigantes,
-        nivelRiesgo: nivel
+      // Mapear a formato del backend (igual que en el modal de nueva área)
+      const mapearCriticidadAImpacto = (criticidad: CriticidadNivel): number => {
+        // 5 -> 3 (alta), 3 -> 2 (media), 1 -> 1 (baja)
+        return criticidad === 5 ? 3 : criticidad === 3 ? 2 : 1;
       };
 
+      const mapearExposicionAProbabilidad = (exposicion: ExposicionNivel): number => {
+        // 5 -> 3 (alta), 3 -> 2 (media), 1 -> 1 (baja)
+        return exposicion === 5 ? 3 : exposicion === 3 ? 2 : 1;
+      };
+
+      const mapearMitigantesANivelControl = (mitigantes: number): number => {
+        // 1-3 -> 1 (bajo), 4-6 -> 2 (medio), 7-10 -> 3 (alto)
+        if (mitigantes <= 3) return 1;
+        if (mitigantes <= 6) return 2;
+        return 3;
+      };
+
+      const impacto = mapearCriticidadAImpacto(criticidad);
+      const probabilidad = mapearExposicionAProbabilidad(exposicion);
+      const nivelControl = mapearMitigantesANivelControl(mitigantes);
+      
+      // Obtener el área actual para preservar su estado (prioridad)
+      const areaActual = areas.find(a => a.id === areaId);
+      if (!areaActual) {
+        throw new Error('Área no encontrada');
+      }
+      
+      // Mapear estado actual a prioridad para preservarlo
+      // El backend recalcula prioridad basándose en riesgo, pero queremos preservar el estado
+      const prioridadActual = areaActual.estado === 'seleccionada' ? 1 : 
+                              areaActual.estado === 'pendiente' ? 2 : 3;
+      
+      // Mapear a formato del backend (el backend calcula automáticamente nivelRiesgo)
+      const evaluacionRiesgo = {
+        probabilidad,
+        impacto,
+        nivelControl
+        // NO enviar nivelRiesgo - el backend lo calcula automáticamente
+      };
+
+      // Enviar tanto evaluacionRiesgo como prioridad para preservar el estado
+      // El backend actualizará evaluacionRiesgo pero mantendrá la prioridad (estado) que enviamos
       const response = await universoAuditoriasApi.updateProceso(areaId, { 
-        evaluacionRiesgo 
+        evaluacionRiesgo,
+        prioridad: prioridadActual  // Preservar el estado actual
       } as any);
       
       if (response.success) {
@@ -1026,10 +1083,20 @@ export function UniversoAuditorias() {
               });
             }
           }}
-          ultimoCodigo={areas.length > 0 ? Math.max(...areas.map(a => {
-            const num = parseInt(a.codigo.split('-')[1]);
-            return isNaN(num) ? 0 : num;
-          })) : 0}
+          ultimoCodigoPorTipo={{
+            Sede: areas.filter(a => a.tipo === 'Sede' && a.codigo.startsWith('SEDE-')).length > 0
+              ? Math.max(...areas.filter(a => a.tipo === 'Sede' && a.codigo.startsWith('SEDE-')).map(a => {
+                  const num = parseInt(a.codigo.split('-')[1]);
+                  return isNaN(num) ? 0 : num;
+                }))
+              : 0,
+            Territorial: areas.filter(a => a.tipo === 'Territorial' && a.codigo.startsWith('TERR-')).length > 0
+              ? Math.max(...areas.filter(a => a.tipo === 'Territorial' && a.codigo.startsWith('TERR-')).map(a => {
+                  const num = parseInt(a.codigo.split('-')[1]);
+                  return isNaN(num) ? 0 : num;
+                }))
+              : 0
+          }}
         />
       )}
     </div>
@@ -1103,28 +1170,121 @@ function DashboardUniverso({ metricas, areas }: DashboardUniversoProps) {
         </p>
 
         <div className="space-y-3">
-          {areas
-            .filter(a => a.nivelRiesgo === 'Crítico' || a.nivelRiesgo === 'Alto')
+          {areas.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p className="text-sm">No hay áreas auditables disponibles</p>
+            </div>
+          ) : areas
             .sort((a, b) => b.scoreRiesgo - a.scoreRiesgo)
             .slice(0, 5)
-            .map((area, idx) => (
-              <div key={area.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white" 
-                     style={{ background: getRiesgoColor(area.nivelRiesgo) }}>
-                  {idx + 1}
+            .map((area, idx) => {
+              // Normalizar nivel de riesgo (puede venir de BD como 'alto', 'medio', 'bajo' en minúsculas)
+              const normalizarNivelRiesgo = (nivel: string): NivelRiesgo => {
+                const nivelLower = nivel?.toLowerCase() || 'bajo';
+                if (nivelLower === 'crítico' || nivelLower === 'critico') return 'Crítico';
+                if (nivelLower === 'alto') return 'Alto';
+                if (nivelLower === 'medio') return 'Medio';
+                return 'Bajo';
+              };
+
+              const nivelNormalizado = normalizarNivelRiesgo(area.nivelRiesgo);
+
+              // Estilos según nivel de riesgo
+              const getRiesgoStyles = (nivel: NivelRiesgo) => {
+                switch (nivel) {
+                  case 'Crítico':
+                    return {
+                      cardBg: 'bg-red-50',
+                      cardBorder: 'border-red-200',
+                      cardHover: 'hover:bg-red-100',
+                      numberBg: '#DC2626',
+                      badgeBg: '#DC2626',
+                      badgeText: 'white',
+                      scoreColor: '#DC2626',
+                      textColor: 'text-red-600'
+                    };
+                  case 'Alto':
+                    return {
+                      cardBg: 'bg-orange-50',
+                      cardBorder: 'border-orange-200',
+                      cardHover: 'hover:bg-orange-100',
+                      numberBg: '#F59E0B',
+                      badgeBg: '#F59E0B',
+                      badgeText: 'white',
+                      scoreColor: '#F59E0B',
+                      textColor: 'text-orange-600'
+                    };
+                  case 'Medio':
+                    return {
+                      cardBg: 'bg-blue-50',
+                      cardBorder: 'border-blue-200',
+                      cardHover: 'hover:bg-blue-100',
+                      numberBg: '#3B82F6',
+                      badgeBg: '#3B82F6',
+                      badgeText: 'white',
+                      scoreColor: '#3B82F6',
+                      textColor: 'text-blue-600'
+                    };
+                  case 'Bajo':
+                    return {
+                      cardBg: 'bg-green-50',
+                      cardBorder: 'border-green-200',
+                      cardHover: 'hover:bg-green-100',
+                      numberBg: '#10B981',
+                      badgeBg: '#10B981',
+                      badgeText: 'white',
+                      scoreColor: '#10B981',
+                      textColor: 'text-green-600'
+                    };
+                  default:
+                    // Fallback por si acaso
+                    return {
+                      cardBg: 'bg-gray-50',
+                      cardBorder: 'border-gray-200',
+                      cardHover: 'hover:bg-gray-100',
+                      numberBg: '#6B7280',
+                      badgeBg: '#6B7280',
+                      badgeText: 'white',
+                      scoreColor: '#6B7280',
+                      textColor: 'text-gray-600'
+                    };
+                }
+              };
+
+              const styles = getRiesgoStyles(nivelNormalizado);
+
+              return (
+                <div 
+                  key={area.id} 
+                  className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all ${styles.cardBg} ${styles.cardBorder} ${styles.cardHover}`}
+                >
+                  <div 
+                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white flex-shrink-0 shadow-sm" 
+                    style={{ background: styles.numberBg }}
+                  >
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm text-gray-900 mb-1">{area.nombre}</p>
+                    <p className="text-xs text-gray-600">{area.codigo} - {area.tipo}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <Badge 
+                      style={{ 
+                        background: styles.badgeBg, 
+                        color: styles.badgeText 
+                      }}
+                      className="mb-2"
+                    >
+                      {nivelNormalizado}
+                    </Badge>
+                    <p className={`text-xs mt-1 font-bold ${styles.textColor}`}>
+                      Score DAFP: {area.scoreRiesgo}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm text-gray-900">{area.nombre}</p>
-                  <p className="text-xs text-gray-600">{area.codigo} - {area.tipo}</p>
-                </div>
-                <div className="text-right">
-                  <Badge style={{ background: getRiesgoColor(area.nivelRiesgo), color: 'white' }}>
-                    {area.nivelRiesgo}
-                  </Badge>
-                  <p className="text-xs text-gray-600 mt-1">Score DAFP: {area.scoreRiesgo}</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
         </div>
       </Card>
     </div>
@@ -1384,10 +1544,13 @@ function TablaAreasAuditables({ areas, onCambiarEstado }: TablaAreasAuditablesPr
 interface ModalNuevaAreaProps {
   onClose: () => void;
   onGuardar: (nuevaArea: AreaAuditable) => Promise<void>;
-  ultimoCodigo: number;
+  ultimoCodigoPorTipo: {
+    Sede: number;
+    Territorial: number;
+  };
 }
 
-function ModalNuevaArea({ onClose, onGuardar, ultimoCodigo }: ModalNuevaAreaProps) {
+function ModalNuevaArea({ onClose, onGuardar, ultimoCodigoPorTipo }: ModalNuevaAreaProps) {
   const [nombre, setNombre] = useState('');
   const [tipo, setTipo] = useState<TipoArea>('Sede');
   const [descripcion, setDescripcion] = useState('');
@@ -1424,8 +1587,9 @@ function ModalNuevaArea({ onClose, onGuardar, ultimoCodigo }: ModalNuevaAreaProp
     setGuardando(true);
     try {
       const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
-      // Generar código según el tipo
+      // Generar código según el tipo, usando el último código del tipo correspondiente
       const prefijoCodigo = tipo === 'Sede' ? 'SEDE' : 'TERR';
+      const ultimoCodigo = tipo === 'Sede' ? ultimoCodigoPorTipo.Sede : ultimoCodigoPorTipo.Territorial;
       const nuevoCodigo = `${prefijoCodigo}-${String(ultimoCodigo + 1).padStart(3, '0')}`;
       const nuevaArea: AreaAuditable = {
         id: `area-${ultimoCodigo + 1}`, // ID temporal, se reemplazará con el de la BD

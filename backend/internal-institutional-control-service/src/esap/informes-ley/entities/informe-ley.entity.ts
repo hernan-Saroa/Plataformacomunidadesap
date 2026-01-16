@@ -33,9 +33,6 @@ export class InformeLey {
   @Column({ type: 'text', name: 'normativa', nullable: true })
   normativa?: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: false })
-  normativaBase: string;
-
   @Column({
     type: 'varchar',
     length: 50,

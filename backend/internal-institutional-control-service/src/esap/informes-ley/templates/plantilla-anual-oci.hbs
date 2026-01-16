@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{nombreInforme}}</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Arial', sans-serif;
+      font-size: 11pt;
+      line-height: 1.6;
+      color: #333;
+      padding: 20mm 15mm;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #003DA5 0%, #0052CC 100%);
+      color: white;
+      padding: 20px 30px;
+      margin-bottom: 30px;
+      border-radius: 5px;
+    }
+    
+    .header h1 {
+      font-size: 14pt;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    
+    .header p {
+      font-size: 10pt;
+      opacity: 0.95;
+    }
+    
+    .titulo-informe {
+      text-align: center;
+      margin: 30px 0;
+      padding: 20px;
+      background: #f8f9fa;
+      border-left: 5px solid #003DA5;
+    }
+    
+    .titulo-informe h2 {
+      font-size: 16pt;
+      color: #003DA5;
+      margin-bottom: 10px;
+    }
+    
+    .info-metadata {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 30px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 5px;
+      font-size: 10pt;
+    }
+    
+    .info-metadata div {
+      flex: 1;
+    }
+    
+    .info-metadata strong {
+      color: #003DA5;
+    }
+    
+    .seccion {
+      margin-bottom: 30px;
+      page-break-inside: avoid;
+    }
+    
+    .seccion h3 {
+      font-size: 13pt;
+      color: #003DA5;
+      margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #003DA5;
+    }
+    
+    .resumen-ejecutivo {
+      background: #e8f4f8;
+      padding: 20px;
+      border-radius: 5px;
+      margin-bottom: 25px;
+    }
+    
+    .resumen-ejecutivo h3 {
+      margin-top: 0;
+      color: #003DA5;
+    }
+    
+    .estadisticas {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    
+    .estadistica-item {
+      background: white;
+      padding: 15px;
+      border-radius: 5px;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .estadistica-item .valor {
+      font-size: 24pt;
+      font-weight: bold;
+      color: #003DA5;
+      margin-bottom: 5px;
+    }
+    
+    .estadistica-item .label {
+      font-size: 9pt;
+      color: #666;
+    }
+    
+    .actividades-lista {
+      list-style: none;
+      padding: 0;
+    }
+    
+    .actividades-lista li {
+      padding: 10px;
+      margin-bottom: 10px;
+      background: #f8f9fa;
+      border-left: 4px solid #003DA5;
+      border-radius: 3px;
+    }
+    
+    .resultados {
+      background: #f0f8f0;
+      padding: 20px;
+      border-radius: 5px;
+      margin-bottom: 25px;
+    }
+    
+    .resultados h3 {
+      margin-top: 0;
+      color: #003DA5;
+    }
+    
+    .base-normativa {
+      margin-top: 30px;
+      padding: 15px;
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      border-radius: 3px;
+      font-size: 10pt;
+    }
+    
+    .base-normativa strong {
+      color: #856404;
+    }
+    
+    .footer {
+      margin-top: 50px;
+      padding-top: 20px;
+      border-top: 2px solid #ddd;
+      text-align: center;
+      font-size: 9pt;
+      color: #666;
+    }
+    
+    @media print {
+      body {
+        padding: 15mm 10mm;
+      }
+      .seccion {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</h1>
+    <p>Oficina de Control Interno de Gestión</p>
+  </div>
+
+  <div class="titulo-informe">
+    <h2>{{nombreInforme}}</h2>
+    <p>Periodo: {{periodo}}</p>
+  </div>
+
+  <div class="info-metadata">
+    <div>
+      <strong>Fecha de Generación:</strong> {{fechaGeneracion}}
+    </div>
+    <div>
+      <strong>Responsable:</strong> {{responsable}}
+    </div>
+  </div>
+
+  {{#if resumenEjecutivo}}
+  <div class="seccion resumen-ejecutivo">
+    <h3>1. Resumen Ejecutivo</h3>
+    <div class="estadisticas">
+      <div class="estadistica-item">
+        <div class="valor">{{resumenEjecutivo.totalAuditorias}}</div>
+        <div class="label">Total Auditorías Programadas</div>
+      </div>
+      <div class="estadistica-item">
+        <div class="valor">{{resumenEjecutivo.completadas}}</div>
+        <div class="label">Auditorías Completadas</div>
+      </div>
+      <div class="estadistica-item">
+        <div class="valor">{{resumenEjecutivo.enCurso}}</div>
+        <div class="label">Auditorías en Curso</div>
+      </div>
+      <div class="estadistica-item">
+        <div class="valor">{{resumenEjecutivo.totalHallazgos}}</div>
+        <div class="label">Total Hallazgos Identificados</div>
+      </div>
+      <div class="estadistica-item">
+        <div class="valor">{{resumenEjecutivo.hallazgosCriticos}}</div>
+        <div class="label">Hallazgos Críticos y Altos</div>
+      </div>
+      <div class="estadistica-item">
+        <div class="valor">{{resumenEjecutivo.planesActivos}}</div>
+        <div class="label">Planes de Mejoramiento Activos</div>
+      </div>
+      <div class="estadistica-item">
+        <div class="valor">{{resumenEjecutivo.planesCompletados}}</div>
+        <div class="label">Planes de Mejoramiento Completados</div>
+      </div>
+    </div>
+  </div>
+  {{else}}
+  <div class="seccion resumen-ejecutivo">
+    <h3>1. Resumen Ejecutivo</h3>
+    <p style="color: #999; font-style: italic; padding: 20px; text-align: center;">
+      No hay datos disponibles para el resumen ejecutivo en este momento.
+    </p>
+  </div>
+  {{/if}}
+
+  <div class="seccion">
+    <h3>2. Actividades Realizadas</h3>
+    {{#if actividades}}
+    {{#if actividades.length}}
+    <ul class="actividades-lista">
+      {{#each actividades}}
+      <li>{{this}}</li>
+      {{/each}}
+    </ul>
+    {{else}}
+    <p style="color: #999; font-style: italic; padding: 15px;">
+      No se han registrado actividades específicas para este periodo.
+    </p>
+    {{/if}}
+    {{else}}
+    <p style="color: #999; font-style: italic; padding: 15px;">
+      No se han registrado actividades específicas para este periodo.
+    </p>
+    {{/if}}
+  </div>
+
+  <div class="seccion resultados">
+    <h3>3. Resultados y Logros</h3>
+    {{#if resultados}}
+    {{#if resultados.cumplimiento}}
+    <p><strong>Cumplimiento:</strong> {{resultados.cumplimiento}}</p>
+    {{else}}
+    <p><strong>Cumplimiento:</strong> <span style="color: #999;">En evaluación</span></p>
+    {{/if}}
+    
+    {{#if resultados.logros}}
+    {{#if resultados.logros.length}}
+    <h4>Logros Principales:</h4>
+    <ul class="actividades-lista">
+      {{#each resultados.logros}}
+      <li>{{this}}</li>
+      {{/each}}
+    </ul>
+    {{else}}
+    <h4>Logros Principales:</h4>
+    <p style="color: #999; font-style: italic; padding: 10px;">
+      No se han registrado logros específicos para este periodo.
+    </p>
+    {{/if}}
+    {{else}}
+    <h4>Logros Principales:</h4>
+    <p style="color: #999; font-style: italic; padding: 10px;">
+      No se han registrado logros específicos para este periodo.
+    </p>
+    {{/if}}
+    
+    {{#if resultados.desafios}}
+    {{#if resultados.desafios.length}}
+    <h4>Desafíos Identificados:</h4>
+    <ul class="actividades-lista">
+      {{#each resultados.desafios}}
+      <li>{{this}}</li>
+      {{/each}}
+    </ul>
+    {{else}}
+    <h4>Desafíos Identificados:</h4>
+    <p style="color: #999; font-style: italic; padding: 10px;">
+      No se han identificado desafíos específicos para este periodo.
+    </p>
+    {{/if}}
+    {{else}}
+    <h4>Desafíos Identificados:</h4>
+    <p style="color: #999; font-style: italic; padding: 10px;">
+      No se han identificado desafíos específicos para este periodo.
+    </p>
+    {{/if}}
+    {{else}}
+    <p style="color: #999; font-style: italic; padding: 15px;">
+      No hay datos de resultados disponibles para este periodo.
+    </p>
+    {{/if}}
+  </div>
+
+  {{#if baseNormativa}}
+  <div class="base-normativa">
+    <strong>Base Normativa:</strong> {{baseNormativa}}
+  </div>
+  {{/if}}
+
+  <div class="footer">
+    <p>Documento generado el {{fechaGeneracion}} por {{responsable}}</p>
+    <p>Oficina de Control Interno de Gestión - ESAP</p>
+  </div>
+</body>
+</html>

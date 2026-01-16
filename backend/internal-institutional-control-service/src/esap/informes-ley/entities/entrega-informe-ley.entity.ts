@@ -82,6 +82,37 @@ export class EntregaInformeLey {
   @Column({ type: 'text', name: 'motivo_rechazo', nullable: true })
   motivoRechazo?: string;
 
+  // Campos para workflow y generación automática
+  @Column({
+    type: 'varchar',
+    length: 50,
+    name: 'estado_workflow',
+    default: 'borrador',
+    nullable: true,
+  })
+  estadoWorkflow?: 'borrador' | 'en-revision' | 'en-aprobacion' | 'aprobado' | 'rechazado' | 'enviado';
+
+  @Column({ type: 'boolean', name: 'datos_automaticos_poblados', default: false })
+  datosAutomaticosPoblados?: boolean;
+
+  @Column({ type: 'timestamp', name: 'fecha_generacion', nullable: true })
+  fechaGeneracion?: Date;
+
+  @Column({ type: 'varchar', length: 255, name: 'generado_por', nullable: true })
+  generadoPor?: string;
+
+  @Column({ type: 'varchar', length: 50, name: 'formato_archivo', nullable: true })
+  formatoArchivo?: 'PDF' | 'Word' | 'Excel';
+
+  @Column({ type: 'varchar', length: 255, name: 'plantilla_usada', nullable: true })
+  plantillaUsada?: string;
+
+  @Column({ type: 'varchar', length: 50, name: 'version_plantilla', nullable: true })
+  versionPlantilla?: string;
+
+  @Column({ type: 'jsonb', name: 'metadata_generacion', default: {} })
+  metadataGeneracion?: Record<string, any>;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

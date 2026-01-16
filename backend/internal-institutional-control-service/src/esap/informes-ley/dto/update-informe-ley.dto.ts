@@ -26,8 +26,7 @@ export class UpdateInformeLeyDto {
 
   @IsString()
   @IsOptional()
-  @Length(1, 255)
-  normativaBase?: string;
+  normativa?: string;
 
   @IsEnum(['financiero', 'administrativo', 'contractual', 'talento-humano', 'transparencia', 'control'])
   @IsOptional()

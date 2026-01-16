@@ -18,6 +18,9 @@ export enum TipoNotificacion {
   RECHAZO_PLAN = 'rechazo_plan',
   CONTROVERSIA_HALLAZGO = 'controversia_hallazgo',
   VALIDACION_EVIDENCIA = 'validacion_evidencia',
+  SOLICITUD_AMPLIACION_PLAZO = 'solicitud_ampliacion_plazo',
+  AMPLIACION_PLAZO_APROBADA = 'ampliacion_plazo_aprobada',
+  AMPLIACION_PLAZO_RECHAZADA = 'ampliacion_plazo_rechazada',
   OTRO = 'otro',
 }
 

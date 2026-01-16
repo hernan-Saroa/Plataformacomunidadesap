@@ -14,7 +14,7 @@ export interface PersonaDto {
 }
 
 export interface ObjetivoDto {
-  id: string;
+  id: number;
   descripcion: string;
 }
 
@@ -60,6 +60,8 @@ export interface AuditoriaKanbanDto {
   actividadesCompletas: boolean;
   actividadesPendientes: number;
   alcance?: string; // Alcance de la auditoría
+  observacionesAdicionales?: string; // ✅ Observaciones adicionales de la auditoría
+  programaAnualMetadata?: any; // Metadata del programa anual (mesInicio, semanaInicio, duraciones)
 }
 
 

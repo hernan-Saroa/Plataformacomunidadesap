@@ -3,10 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentosController } from './documentos.controller';
 import { DocumentosService } from './documentos.service';
 import { Documento } from './entities/documento.entity';
+import { Auditoria } from '../auditorias/entities/auditoria.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Documento]),
+    TypeOrmModule.forFeature([Documento, Auditoria]),
   ],
   controllers: [DocumentosController],
   providers: [DocumentosService],

@@ -215,12 +215,10 @@ export function ActividadesIntegradas({
 
   // Cargar estado inicial desde la BD
   useEffect(() => {
-    console.log('[ActividadesIntegradas] ChecklistInicial recibido:', checklistInicial);
     if (checklistInicial && typeof checklistInicial === 'object' && Object.keys(checklistInicial).length > 0) {
       setChecklistCompletados(checklistInicial);
     } else if (checklistInicial === undefined || checklistInicial === null) {
       // Si no hay datos, mantener el estado actual (no resetear)
-      console.log('[ActividadesIntegradas] No hay checklistInicial, manteniendo estado actual');
     }
   }, [checklistInicial]);
 

@@ -992,11 +992,13 @@ SELECT
     ap.nivel_experiencia,
     ap.estado_disponibilidad,
     -- Contar auditorías en curso (donde el auditor es líder, asignado o está en el equipo)
+    -- Nota: Se asume que auditor_lider_id y auditor_asignado_id son BIGINT
     COALESCE((
         SELECT COUNT(DISTINCT a.id)
         FROM control_interno.auditoria a
-        WHERE (a.auditor_lider_id = p.id_tercero 
-               OR a.auditor_asignado_id = p.id_tercero
+        WHERE (
+               (a.auditor_lider_id IS NOT NULL AND a.auditor_lider_id::text = p.id_tercero::text)
+               OR (a.auditor_asignado_id IS NOT NULL AND a.auditor_asignado_id::text = p.id_tercero::text)
                OR EXISTS (
                    SELECT 1 FROM control_interno.equipo_auditor ea 
                    WHERE ea.auditoria_id = a.id 
@@ -1010,7 +1012,8 @@ SELECT
     COALESCE((
         SELECT COUNT(DISTINCT a.id)
         FROM control_interno.auditoria a
-        WHERE a.auditor_lider_id = p.id_tercero
+        WHERE a.auditor_lider_id IS NOT NULL 
+        AND a.auditor_lider_id::text = p.id_tercero::text
         AND a.estado_kanban NOT IN ('Finalizada', 'Archivada')
         AND COALESCE(a.activa, true) = true
     ), 0) AS auditorias_como_lider,
@@ -1018,7 +1021,8 @@ SELECT
     COALESCE((
         SELECT COUNT(DISTINCT a.id)
         FROM control_interno.auditoria a
-        WHERE a.auditor_asignado_id = p.id_tercero
+        WHERE a.auditor_asignado_id IS NOT NULL 
+        AND a.auditor_asignado_id::text = p.id_tercero::text
         AND a.estado_kanban NOT IN ('Finalizada', 'Archivada')
         AND COALESCE(a.activa, true) = true
     ), 0) AS auditorias_como_asignado,
@@ -1101,11 +1105,11 @@ SELECT
     a.created_at,
     a.updated_at
 FROM control_interno.auditoria a
-LEFT JOIN auth.personas lider ON a.auditor_lider_id = lider.id_tercero
+LEFT JOIN auth.personas lider ON a.auditor_lider_id::text = lider.id_tercero::text
 LEFT JOIN control_interno.auditor_perfil lider_perfil ON lider.id_tercero = lider_perfil.persona_id AND lider_perfil.activo = true
-LEFT JOIN auth.personas asignado ON a.auditor_asignado_id = asignado.id_tercero
+LEFT JOIN auth.personas asignado ON a.auditor_asignado_id::text = asignado.id_tercero::text
 LEFT JOIN control_interno.auditor_perfil asignado_perfil ON asignado.id_tercero = asignado_perfil.persona_id AND asignado_perfil.activo = true
-LEFT JOIN auth.personas supervisor ON a.supervisor_asignado_id = supervisor.id_tercero
+LEFT JOIN auth.personas supervisor ON a.supervisor_asignado_id::text = supervisor.id_tercero::text
 LEFT JOIN control_interno.auditoria_territorial_info ti ON a.id = ti.auditoria_id
 LEFT JOIN control_interno.auditoria_especial_info ei ON a.id = ei.auditoria_id
 LEFT JOIN control_interno.reunion_apertura ra ON a.id = ra.auditoria_id;
