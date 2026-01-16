@@ -453,9 +453,12 @@ export class LaborCertificatePdfService {
   }
 
   private async renderPdf(html: string): Promise<Buffer> {
+    const executablePath =
+      process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH;
     const browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      ...(executablePath ? { executablePath } : {}),
     });
 
     try {
