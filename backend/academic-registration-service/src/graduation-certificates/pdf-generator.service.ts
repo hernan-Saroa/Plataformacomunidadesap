@@ -70,9 +70,12 @@ export class PdfGeneratorService {
       .replace(/{{FOOTER_IMG}}/g, footerImg);
 
     // Generar PDF con Puppeteer
+    const executablePath =
+      process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH;
     const browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      ...(executablePath ? { executablePath } : {}),
     });
 
     const page = await browser.newPage();
