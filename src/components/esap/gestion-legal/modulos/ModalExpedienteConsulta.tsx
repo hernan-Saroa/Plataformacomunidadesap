@@ -1263,9 +1263,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           </div>
         </DialogContent>
       </Dialog>
-      
-      {/* MODALES SECUNDARIOS */}
-      {/* 
+  {/* MODALES SECUNDARIOS */ }
+  {/* 
       {modalCompartirAbierto && (
         <ModalCompartir
           isOpen={modalCompartirAbierto}
