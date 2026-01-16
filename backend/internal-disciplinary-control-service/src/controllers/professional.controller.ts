@@ -235,11 +235,13 @@ export class ProfessionalController {
             // 2. Intentar llamar al servicio de autenticación
             let users: any[] = [];
             try {
-                const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+                // Usa URL configurable y admite base relativa en entornos Docker/K8s
+                const authServiceUrl = process.env.AUTH_SERVICE_URL || process.env.API_AUTH_SERVICE_URL || 'http://auth-service:3001';
                 console.log(`Connecting to Auth Service at: ${authServiceUrl}`);
 
+                const base = authServiceUrl.replace(/\/+$/, '');
                 const response = await firstValueFrom(
-                    this.httpService.get(`${authServiceUrl}/users?limit=1000`, { timeout: 5000 })
+                    this.httpService.get(`${base}/users?limit=1000`, { timeout: 5000 })
                 );
 
                 console.log('Auth service response status:', response.status);
