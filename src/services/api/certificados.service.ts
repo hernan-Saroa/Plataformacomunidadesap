@@ -126,6 +126,24 @@ export const certificadosService = {
     async generarPDF(id: string): Promise<{ pdfUrl: string }> {
       return apiClient.post<{ pdfUrl: string }>(`${SERVICE_PREFIX}/certificates/certificados/generate/${id}`, {}, { requiresAuth: false });
     },
+
+    /**
+     * Reenviar certificado laboral por email
+     */
+    async reenviar(
+      id: string,
+      options?: {
+        includeSalary?: boolean;
+        includeTechnicalBonus?: boolean;
+        templateType?: 'docente' | 'administrador';
+      },
+    ): Promise<{ mensaje: string; email: string }> {
+      return apiClient.post(
+        `${SERVICE_PREFIX}/certificates/certificados/${id}/reenviar`,
+        options || {},
+        { requiresAuth: false },
+      );
+    },
   },
 
   /**

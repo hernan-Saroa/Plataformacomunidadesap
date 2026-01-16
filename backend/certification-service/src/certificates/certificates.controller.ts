@@ -130,6 +130,21 @@ export class CertificatesController {
     return await this.certificatesService.findCertificadoById(id);
   }
 
+  @Post('certificados/:id/reenviar')
+  @HttpCode(HttpStatus.OK)
+  async reenviarCertificadoLaboral(
+    @Param('id') id: string,
+    @Body()
+    body?: {
+      includeSalary?: boolean;
+      includeTechnicalBonus?: boolean;
+      templateType?: 'docente' | 'administrador';
+      to?: string;
+    },
+  ) {
+    return await this.certificatesService.reenviarCertificadoLaboral(id, body || {});
+  }
+
   // ============================================
   // FIRMANTES
   // ============================================
