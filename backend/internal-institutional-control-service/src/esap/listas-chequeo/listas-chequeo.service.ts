@@ -5,8 +5,8 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, In } from 'typeorm';
-import { ListaChequeo } from './entities/lista-chequeo.entity';
+import { Repository, IsNull } from 'typeorm';
+import { ListaChequeo, TipoListaChequeo } from './entities/lista-chequeo.entity';
 import { ItemListaChequeo } from './entities/item-lista-chequeo.entity';
 import { CreateListaChequeoDto } from './dto/create-lista-chequeo.dto';
 import { UpdateListaChequeoDto } from './dto/update-lista-chequeo.dto';
@@ -92,12 +92,7 @@ export class ListasChequeoService {
       codigo: createDto.codigo.toUpperCase(),
       nombre: createDto.nombre,
       descripcion: createDto.descripcion || '',
-      tipo: createDto.tipo || 'cumplimiento', // Valor por defecto si no viene
-      categoria: createDto.categoria || 'General', // Valor por defecto si no viene
-      version: createDto.version || '1.0', // Valor por defecto si no viene
-      estado: createDto.estado || 'activa', // Valor por defecto si no viene
-      aplicablePara: createDto.aplicablePara || [], // Valor por defecto si no viene
-      createdBy: createDto.createdBy || 'Sistema', // Valor por defecto si no viene
+      tipo: createDto.tipo || TipoListaChequeo.EJECUCION, // Valor por defecto si no viene
       tipoAuditoriaId: createDto.tipoAuditoriaId,
       activa: createDto.activa !== undefined ? createDto.activa : true,
       usosProgramados: 0,
@@ -110,10 +105,6 @@ export class ListasChequeoService {
       const items = createDto.items.map((itemDto, index) =>
         this.itemRepository.create({
           listaChequeoId: listaGuardada.id,
-          numero: index + 1, // Campo requerido: número secuencial
-          pregunta: itemDto.texto, // Campo requerido: usar texto como pregunta
-          criterio: itemDto.texto, // Campo requerido: usar texto como criterio
-          tipoRespuesta: 'si_no', // Campo requerido: valor por defecto
           texto: itemDto.texto,
           categoria: itemDto.categoria,
           obligatorio: itemDto.obligatorio !== undefined ? itemDto.obligatorio : false,
@@ -147,11 +138,6 @@ export class ListasChequeoService {
     if (updateDto.nombre !== undefined) lista.nombre = updateDto.nombre;
     if (updateDto.descripcion !== undefined) lista.descripcion = updateDto.descripcion;
     if (updateDto.tipo !== undefined) lista.tipo = updateDto.tipo;
-    if (updateDto.categoria !== undefined) lista.categoria = updateDto.categoria;
-    if (updateDto.version !== undefined) lista.version = updateDto.version;
-    if (updateDto.estado !== undefined) lista.estado = updateDto.estado;
-    if (updateDto.aplicablePara !== undefined) lista.aplicablePara = updateDto.aplicablePara;
-    if (updateDto.createdBy !== undefined) lista.createdBy = updateDto.createdBy;
     if (updateDto.tipoAuditoriaId !== undefined) lista.tipoAuditoriaId = updateDto.tipoAuditoriaId;
     if (updateDto.activa !== undefined) lista.activa = updateDto.activa;
 
@@ -172,10 +158,6 @@ export class ListasChequeoService {
         const items = updateDto.items.map((itemDto, index) =>
           this.itemRepository.create({
             listaChequeoId: id,
-            numero: index + 1, // Campo requerido: número secuencial
-            pregunta: itemDto.texto, // Campo requerido: usar texto como pregunta
-            criterio: itemDto.texto, // Campo requerido: usar texto como criterio
-            tipoRespuesta: 'si_no', // Campo requerido: valor por defecto
             texto: itemDto.texto,
             categoria: itemDto.categoria,
             obligatorio: itemDto.obligatorio !== undefined ? itemDto.obligatorio : false,

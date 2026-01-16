@@ -10,7 +10,7 @@ import {
   type UpdateListaChequeoDto,
   type ItemListaChequeo as ItemListaChequeoBackend
 } from '../../../../services/api/listasChequeoService';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // Tipos del frontend (más simples)
 export interface ItemChequeo {
@@ -20,10 +20,19 @@ export interface ItemChequeo {
   obligatorio: boolean;
 }
 
+// Enum para tipo de lista de chequeo
+export enum TipoListaChequeoFrontend {
+  PLANEACION = 'planeacion',
+  EJECUCION = 'ejecucion',
+  COMUNICACION = 'comunicacion'
+}
+
 export interface ListaChequeoFrontend {
   id: string;
   nombre: string;
+  tipo: TipoListaChequeoFrontend; // Tipo de lista: planeacion, ejecucion, comunicacion
   tipoAuditoria: string;
+  tipoAuditoriaId?: string; // ID del tipo de auditoría para el backend
   descripcion: string;
   items: ItemChequeo[];
   activa: boolean;
@@ -50,10 +59,16 @@ export async function cargarListasChequeo(includeInactive: boolean = false): Pro
 
 /**
  * Crear una nueva lista de chequeo
+ * @param data - Datos de la lista
+ * @param tiposAuditoria - Array de tipos de auditoría para resolver el ID por nombre
  */
-export async function crearListaChequeo(data: any): Promise<ListaChequeoFrontend | null> {
+export async function crearListaChequeo(
+  data: any, 
+  tiposAuditoria?: Array<{ id: string; nombre: string }>
+): Promise<ListaChequeoFrontend | null> {
   try {
-    const datosBackend = mapearListaChequeoFrontendABackend(data);
+    const datosBackend = mapearListaChequeoFrontendABackend(data, tiposAuditoria) as CreateListaChequeoDto;
+    console.log('[ListaChequeo] 📤 Enviando datos al backend:', datosBackend);
     const nuevaLista = await listasChequeoService.create(datosBackend);
     toast.success('✅ Lista de chequeo creada exitosamente');
     return mapearListaChequeoBackendAFrontend(nuevaLista);
@@ -68,10 +83,18 @@ export async function crearListaChequeo(data: any): Promise<ListaChequeoFrontend
 
 /**
  * Actualizar una lista de chequeo
+ * @param id - ID de la lista a actualizar
+ * @param data - Datos de la lista
+ * @param tiposAuditoria - Array de tipos de auditoría para resolver el ID por nombre
  */
-export async function actualizarListaChequeo(id: string, data: any): Promise<ListaChequeoFrontend | null> {
+export async function actualizarListaChequeo(
+  id: string, 
+  data: any,
+  tiposAuditoria?: Array<{ id: string; nombre: string }>
+): Promise<ListaChequeoFrontend | null> {
   try {
-    const datosBackend = mapearListaChequeoFrontendABackend(data);
+    const datosBackend = mapearListaChequeoFrontendABackend(data, tiposAuditoria);
+    console.log('[ListaChequeo] 📤 Actualizando con datos:', datosBackend);
     const listaActualizada = await listasChequeoService.update(id, datosBackend);
     toast.success('✅ Lista de chequeo actualizada exitosamente');
     return mapearListaChequeoBackendAFrontend(listaActualizada);
@@ -105,10 +128,15 @@ export async function eliminarListaChequeo(id: string): Promise<boolean> {
  * Mapear ListaChequeo del backend al formato del frontend
  */
 export function mapearListaChequeoBackendAFrontend(lista: ListaChequeo): ListaChequeoFrontend {
+  // Mapear el tipo del backend al enum del frontend
+  const tipoMapeado = (lista.tipo as string) || TipoListaChequeoFrontend.EJECUCION;
+  
   return {
     id: lista.id,
     nombre: lista.nombre,
-    tipoAuditoria: lista.tipoAuditoria?.nombre || 'Regular',
+    tipo: tipoMapeado as TipoListaChequeoFrontend, // Incluir el tipo de lista
+    tipoAuditoria: lista.tipoAuditoria?.nombre || '',
+    tipoAuditoriaId: lista.tipoAuditoriaId || lista.tipoAuditoria?.id || undefined,
     descripcion: lista.descripcion || '',
     items: (lista.items || []).map(item => ({
       id: item.id,
@@ -125,37 +153,43 @@ export function mapearListaChequeoBackendAFrontend(lista: ListaChequeo): ListaCh
 
 /**
  * Mapear datos del frontend al formato del backend
+ * @param lista - Datos de la lista desde el frontend
+ * @param tiposAuditoria - Array de tipos de auditoría para buscar el ID por nombre
  */
-export function mapearListaChequeoFrontendABackend(lista: any): CreateListaChequeoDto | UpdateListaChequeoDto {
+export function mapearListaChequeoFrontendABackend(
+  lista: any, 
+  tiposAuditoria?: Array<{ id: string; nombre: string }>
+): CreateListaChequeoDto | UpdateListaChequeoDto {
   // Generar código si no existe
   const codigo = lista.codigo || `LC-${lista.nombre.substring(0, 3).toUpperCase()}-${Date.now().toString().slice(-3)}`;
   
-  // Buscar el tipo de auditoría por nombre para obtener el ID
+  // Resolver el tipo de auditoría ID
   let tipoAuditoriaId: string | undefined = undefined;
-  if (lista.tipoAuditoria) {
-    // Si es un objeto con id, usar el id directamente
-    if (typeof lista.tipoAuditoria === 'object' && lista.tipoAuditoria.id) {
-      tipoAuditoriaId = lista.tipoAuditoria.id;
-    }
-    // Si es un string (nombre), buscar en tiposAuditoria si está disponible
-    else if (typeof lista.tipoAuditoria === 'string' && lista.tiposAuditoria) {
-      const tipoEncontrado = lista.tiposAuditoria.find((t: any) => t.nombre === lista.tipoAuditoria);
-      if (tipoEncontrado) {
-        tipoAuditoriaId = tipoEncontrado.id;
-      }
+  
+  // Primero intentar usar tipoAuditoriaId si ya viene
+  if (lista.tipoAuditoriaId) {
+    tipoAuditoriaId = lista.tipoAuditoriaId;
+  }
+  // Si viene tipoAuditoria como objeto con id
+  else if (lista.tipoAuditoria && typeof lista.tipoAuditoria === 'object' && lista.tipoAuditoria.id) {
+    tipoAuditoriaId = lista.tipoAuditoria.id;
+  }
+  // Si viene tipoAuditoria como string (nombre), buscar en el array de tipos
+  else if (lista.tipoAuditoria && typeof lista.tipoAuditoria === 'string' && tiposAuditoria) {
+    const tipoEncontrado = tiposAuditoria.find((t) => t.nombre === lista.tipoAuditoria);
+    if (tipoEncontrado) {
+      tipoAuditoriaId = tipoEncontrado.id;
     }
   }
+  
+  // Mapear el tipo de lista de chequeo (planeacion, ejecucion, comunicacion)
+  const tipoLista = lista.tipo || TipoListaChequeoFrontend.EJECUCION;
   
   return {
     codigo,
     nombre: lista.nombre,
     descripcion: lista.descripcion || '',
-    tipo: 'cumplimiento', // Valor por defecto requerido
-    categoria: lista.categoria || 'General', // Valor por defecto requerido
-    version: lista.version || '1.0', // Valor por defecto requerido
-    estado: lista.estado || 'activa', // Valor por defecto requerido
-    aplicablePara: lista.aplicablePara || [], // Valor por defecto requerido (JSONB)
-    createdBy: lista.createdBy || 'Sistema', // Valor por defecto requerido
+    tipo: tipoLista, // Usar el tipo de lista correcto (planeacion, ejecucion, comunicacion)
     tipoAuditoriaId: tipoAuditoriaId || undefined,
     items: (lista.items || []).map((item: ItemChequeo, index: number) => ({
       texto: item.texto,

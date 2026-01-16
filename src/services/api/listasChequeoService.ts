@@ -33,6 +33,7 @@ export interface ListaChequeo {
   codigo: string;
   nombre: string;
   descripcion?: string;
+  tipo: TipoListaChequeo;
   tipoAuditoriaId?: string;
   tipoAuditoria?: {
     id: string;
@@ -58,12 +59,19 @@ export interface CreateListaChequeoDto {
   codigo: string;
   nombre: string;
   descripcion?: string;
+  tipo: TipoListaChequeo;
   tipoAuditoriaId?: string;
   items: CreateItemListaChequeoDto[];
   activa?: boolean;
 }
 
 export interface UpdateListaChequeoDto extends Partial<CreateListaChequeoDto> {}
+
+export enum TipoListaChequeo {
+  PLANEACION = 'planeacion',
+  EJECUCION = 'ejecucion',
+  COMUNICACION = 'comunicacion'
+}
 
 class ListasChequeoAPIClient {
   private baseURL: string;

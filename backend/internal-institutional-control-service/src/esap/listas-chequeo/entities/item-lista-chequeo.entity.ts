@@ -25,18 +25,6 @@ export class ItemListaChequeo {
   @JoinColumn({ name: 'lista_chequeo_id' })
   listaChequeo: ListaChequeo;
 
-  @Column({ type: 'integer', nullable: false })
-  numero: number;
-
-  @Column({ type: 'text', nullable: false })
-  pregunta: string;
-
-  @Column({ type: 'text', nullable: false })
-  criterio: string;
-
-  @Column({ name: 'tipo_respuesta', type: 'varchar', length: 50, nullable: false })
-  tipoRespuesta: string;
-
   @Column({ type: 'text' })
   texto: string;
 

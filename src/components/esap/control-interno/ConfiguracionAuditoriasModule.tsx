@@ -84,9 +84,22 @@ interface ItemChequeo {
   obligatorio: boolean;
 }
 
+enum TipoListaChequeo {
+  PLANEACION = 'planeacion',
+  EJECUCION = 'ejecucion',
+  COMUNICACION = 'comunicacion'
+}
+
+const TIPOS_LISTA_CHEQUEO = [
+  { valor: TipoListaChequeo.PLANEACION, nombre: 'Planeación', color: '#3B82F6', icono: '📋' },
+  { valor: TipoListaChequeo.EJECUCION, nombre: 'Ejecución', color: '#10B981', icono: '⚙️' },
+  { valor: TipoListaChequeo.COMUNICACION, nombre: 'Comunicación', color: '#F59E0B', icono: '📢' }
+];
+
 interface ListaChequeo {
   id: string;
   nombre: string;
+  tipo: TipoListaChequeo; // NUEVO CAMPO
   tipoAuditoria: string;
   descripcion: string;
   items: ItemChequeo[];
@@ -96,155 +109,163 @@ interface ListaChequeo {
   ultimaActualizacion: string;
 }
 
-const TIPOS_AUDITORIA_INICIAL: TipoAuditoria[] = [
-  {
-    id: 'tipo-001',
-    codigo: 'AUD-REG',
-    nombre: 'Regular',
-    descripcion: 'Auditoría de tipo regular',
-    alcance: 'Procesos administrativos, académicos y financieros',
-    duracionPromedio: 30,
-    equipoPromedio: 3,
-    color: '#3B82F6',
-    activa: true,
-    auditoriasProgramadas: 8
-  },
-  {
-    id: 'tipo-002',
-    codigo: 'AUD-TERR',
-    nombre: 'Territorial',
-    descripcion: 'Auditoría a sedes territoriales',
-    alcance: 'Procesos de territoriales',
-    duracionPromedio: 45,
-    equipoPromedio: 4,
-    color: '#10B981',
-    activa: true,
-    auditoriasProgramadas: 4
-  },
-  {
-    id: 'tipo-003',
-    codigo: 'AUD-ESP',
-    nombre: 'Especial',
-    descripcion: 'Auditoría de tipo especial',
-    alcance: 'Procesos específicos según requiera',
-    duracionPromedio: 20,
-    equipoPromedio: 2,
-    color: '#F59E0B',
-    activa: true,
-    auditoriasProgramadas: 12
-  }
-];
+// const TIPOS_AUDITORIA_INICIAL: TipoAuditoria[] = [
+//   {
+//     id: 'tipo-001',
+//     codigo: 'AUD-REG',
+//     nombre: 'Regular',
+//     descripcion: 'Auditoría de tipo regular',
+//     alcance: 'Procesos administrativos, académicos y financieros',
+//     duracionPromedio: 30,
+//     equipoPromedio: 3,
+//     color: '#3B82F6',
+//     activa: true,
+//     auditoriasProgramadas: 8
+//   },
+//   {
+//     id: 'tipo-002',
+//     codigo: 'AUD-TERR',
+//     nombre: 'Territorial',
+//     descripcion: 'Auditoría a sedes territoriales',
+//     alcance: 'Procesos de territoriales',
+//     duracionPromedio: 45,
+//     equipoPromedio: 4,
+//     color: '#10B981',
+//     activa: true,
+//     auditoriasProgramadas: 4
+//   },
+//   {
+//     id: 'tipo-003',
+//     codigo: 'AUD-ESP',
+//     nombre: 'Especial',
+//     descripcion: 'Auditoría de tipo especial',
+//     alcance: 'Procesos específicos según requiera',
+//     duracionPromedio: 20,
+//     equipoPromedio: 2,
+//     color: '#F59E0B',
+//     activa: true,
+//     auditoriasProgramadas: 12
+//   }
+// ];
 
-const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
-  {
-    id: 'lista-001',
-    nombre: 'Lista de Chequeo #1',
-    tipoAuditoria: 'Regular',
-    descripcion: 'Verificación de procesos administrativos',
-    items: [
-      { id: 'item-1', texto: '¿Existe documentación de procesos?', categoria: 'Documentación', obligatorio: true },
-      { id: 'item-2', texto: '¿Se cumplen los tiempos establecidos?', categoria: 'Cumplimiento', obligatorio: true },
-      { id: 'item-3', texto: '¿Hay registro de actividades?', categoria: 'Control', obligatorio: false }
-    ],
-    activa: true,
-    usosProgramados: 3,
-    fechaCreacion: '2025-01-01',
-    ultimaActualizacion: '2025-01-04'
-  },
-  {
-    id: 'lista-002',
-    nombre: 'Lista de Chequeo #2',
-    tipoAuditoria: 'Regular',
-    descripcion: 'Control de calidad en servicios',
-    items: [
-      { id: 'item-4', texto: '¿Se miden indicadores de calidad?', categoria: 'Medición', obligatorio: true },
-      { id: 'item-5', texto: '¿Existe plan de mejora?', categoria: 'Mejora', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 2,
-    fechaCreacion: '2025-01-02',
-    ultimaActualizacion: '2025-01-03'
-  },
-  {
-    id: 'lista-003',
-    nombre: 'Lista de Chequeo #3',
-    tipoAuditoria: 'Territorial',
-    descripcion: 'Revisión de recursos humanos',
-    items: [
-      { id: 'item-6', texto: '¿Personal capacitado?', categoria: 'Capacitación', obligatorio: true },
-      { id: 'item-7', texto: '¿Evaluaciones periódicas?', categoria: 'Evaluación', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 1,
-    fechaCreacion: '2024-12-28',
-    ultimaActualizacion: '2025-01-02'
-  },
-  {
-    id: 'lista-004',
-    nombre: 'Lista de Chequeo #4',
-    tipoAuditoria: 'Especial',
-    descripcion: 'Verificación financiera básica',
-    items: [
-      { id: 'item-8', texto: '¿Presupuesto documentado?', categoria: 'Financiero', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 0,
-    fechaCreacion: '2024-12-20',
-    ultimaActualizacion: '2024-12-30'
-  },
-  {
-    id: 'lista-005',
-    nombre: 'Lista de Chequeo #5',
-    tipoAuditoria: 'Regular',
-    descripcion: 'Control de inventarios',
-    items: [
-      { id: 'item-9', texto: '¿Inventario actualizado?', categoria: 'Inventario', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 4,
-    fechaCreacion: '2024-12-15',
-    ultimaActualizacion: '2024-12-29'
-  },
-  {
-    id: 'lista-006',
-    nombre: 'Lista de Chequeo #6',
-    tipoAuditoria: 'Regular',
-    descripcion: 'Seguridad y salud en el trabajo',
-    items: [
-      { id: 'item-10', texto: '¿Plan de emergencias?', categoria: 'Seguridad', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 2,
-    fechaCreacion: '2024-12-10',
-    ultimaActualizacion: '2024-12-28'
-  },
-  {
-    id: 'lista-007',
-    nombre: 'Lista de Chequeo #7',
-    tipoAuditoria: 'Territorial',
-    descripcion: 'Gestión documental',
-    items: [
-      { id: 'item-11', texto: '¿Sistema de archivo adecuado?', categoria: 'Documental', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 1,
-    fechaCreacion: '2024-12-05',
-    ultimaActualizacion: '2024-12-27'
-  },
-  {
-    id: 'lista-008',
-    nombre: 'Lista de Chequeo #8',
-    tipoAuditoria: 'Regular',
-    descripcion: 'Atención al usuario',
-    items: [
-      { id: 'item-12', texto: '¿Protocolo de atención definido?', categoria: 'Servicio', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 3,
-    fechaCreacion: '2024-12-01',
-    ultimaActualizacion: '2024-12-26'
-  }
-];
+// const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
+//   {
+//     id: 'lista-001',
+//     nombre: 'Lista de Chequeo #1',
+//     tipo: TipoListaChequeo.EJECUCION, // NUEVO CAMPO CON VALOR POR DEFECTO
+//     tipoAuditoria: 'Regular',
+//     descripcion: 'Verificación de procesos administrativos',
+//     items: [
+//       { id: 'item-1', texto: '¿Existe documentación de procesos?', categoria: 'Documentación', obligatorio: true },
+//       { id: 'item-2', texto: '¿Se cumplen los tiempos establecidos?', categoria: 'Cumplimiento', obligatorio: true },
+//       { id: 'item-3', texto: '¿Hay registro de actividades?', categoria: 'Control', obligatorio: false }
+//     ],
+//     activa: true,
+//     usosProgramados: 3,
+//     fechaCreacion: '2025-01-01',
+//     ultimaActualizacion: '2025-01-04'
+//   },
+//   {
+//     id: 'lista-002',
+//     nombre: 'Lista de Chequeo #2',
+//     tipo: TipoListaChequeo.EJECUCION,
+//     tipoAuditoria: 'Regular',
+//     descripcion: 'Control de calidad en servicios',
+//     items: [
+//       { id: 'item-4', texto: '¿Se miden indicadores de calidad?', categoria: 'Medición', obligatorio: true },
+//       { id: 'item-5', texto: '¿Existe plan de mejora?', categoria: 'Mejora', obligatorio: true }
+//     ],
+//     activa: true,
+//     usosProgramados: 2,
+//     fechaCreacion: '2025-01-02',
+//     ultimaActualizacion: '2025-01-03'
+//   },
+//   {
+//     id: 'lista-003',
+//     nombre: 'Lista de Chequeo #3',
+//     tipo: TipoListaChequeo.PLANEACION,
+//     tipoAuditoria: 'Territorial',
+//     descripcion: 'Revisión de recursos humanos',
+//     items: [
+//       { id: 'item-6', texto: '¿Personal capacitado?', categoria: 'Capacitación', obligatorio: true },
+//       { id: 'item-7', texto: '¿Evaluaciones periódicas?', categoria: 'Evaluación', obligatorio: true }
+//     ],
+//     activa: true,
+//     usosProgramados: 1,
+//     fechaCreacion: '2024-12-28',
+//     ultimaActualizacion: '2025-01-02'
+//   },
+//   {
+//     id: 'lista-004',
+//     nombre: 'Lista de Chequeo #4',
+//     tipo: TipoListaChequeo.COMUNICACION,
+//     tipoAuditoria: 'Especial',
+//     descripcion: 'Verificación financiera básica',
+//     items: [
+//       { id: 'item-8', texto: '¿Presupuesto documentado?', categoria: 'Financiero', obligatorio: true }
+//     ],
+//     activa: true,
+//     usosProgramados: 0,
+//     fechaCreacion: '2024-12-20',
+//     ultimaActualizacion: '2024-12-30'
+//   },
+//   {
+//     id: 'lista-005',
+//     nombre: 'Lista de Chequeo #5',
+//     tipo: TipoListaChequeo.EJECUCION,
+//     tipoAuditoria: 'Regular',
+//     descripcion: 'Control de inventarios',
+//     items: [
+//       { id: 'item-9', texto: '¿Inventario actualizado?', categoria: 'Inventario', obligatorio: true }
+//     ],
+//     activa: true,
+//     usosProgramados: 4,
+//     fechaCreacion: '2024-12-15',
+//     ultimaActualizacion: '2024-12-29'
+//   },
+//   {
+//     id: 'lista-006',
+//     nombre: 'Lista de Chequeo #6',
+//     tipo: TipoListaChequeo.EJECUCION,
+//     tipoAuditoria: 'Regular',
+//     descripcion: 'Seguridad y salud en el trabajo',
+//     items: [
+//       { id: 'item-10', texto: '¿Plan de emergencias?', categoria: 'Seguridad', obligatorio: true }
+//     ],
+//     activa: true,
+//     usosProgramados: 2,
+//     fechaCreacion: '2024-12-10',
+//     ultimaActualizacion: '2024-12-28'
+//   },
+//   {
+//     id: 'lista-007',
+//     nombre: 'Lista de Chequeo #7',
+//     tipo: TipoListaChequeo.PLANEACION,
+//     tipoAuditoria: 'Territorial',
+//     descripcion: 'Gestión documental',
+//     items: [
+//       { id: 'item-11', texto: '¿Sistema de archivo adecuado?', categoria: 'Documental', obligatorio: true }
+//     ],
+//     activa: true,
+//     usosProgramados: 1,
+//     fechaCreacion: '2024-12-05',
+//     ultimaActualizacion: '2024-12-27'
+//   },
+//   {
+//     id: 'lista-008',
+//     nombre: 'Lista de Chequeo #8',
+//     tipo: TipoListaChequeo.EJECUCION,
+//     tipoAuditoria: 'Regular',
+//     descripcion: 'Atención al usuario',
+//     items: [
+//       { id: 'item-12', texto: '¿Protocolo de atención definido?', categoria: 'Servicio', obligatorio: true }
+//     ],
+//     activa: true,
+//     usosProgramados: 3,
+//     fechaCreacion: '2024-12-01',
+//     ultimaActualizacion: '2024-12-26'
+//   }
+// ];
 
 const COLORES_DISPONIBLES = [
   { valor: '#3B82F6', nombre: 'Azul' },
@@ -867,22 +888,27 @@ function SeccionListasChequeo({ listas, onActualizar, cargandoListas, tiposAudit
   };
 
   const handleGuardarLista = async (listaNueva: ListaChequeo) => {
-    const datosBackend = mapearListaChequeoFrontendABackend(listaNueva);
+    // Preparar tipos de auditoría para el mapeo (necesitamos id y nombre)
+    const tiposParaMapeo = tiposAuditoria.map(t => ({ id: t.id, nombre: t.nombre }));
     
     if (listaEditando) {
       // Actualizar lista existente
-      const listaActualizada = await actualizarListaChequeo(listaEditando.id, datosBackend);
+      const listaActualizada = await actualizarListaChequeo(listaEditando.id, listaNueva, tiposParaMapeo);
       if (listaActualizada) {
+        // Preservar el tipo de lista al actualizar
+        const listaConTipo = { ...listaActualizada, tipo: listaNueva.tipo };
         const listasActualizadas = listas.map(l => 
-          l.id === listaEditando.id ? listaActualizada : l
+          l.id === listaEditando.id ? listaConTipo : l
         );
         onActualizar(listasActualizadas);
       }
     } else {
       // Crear nueva lista
-      const nuevaLista = await crearListaChequeo(datosBackend);
+      const nuevaLista = await crearListaChequeo(listaNueva, tiposParaMapeo);
       if (nuevaLista) {
-        onActualizar([...listas, nuevaLista]);
+        // Preservar el tipo de lista al crear
+        const listaConTipo = { ...nuevaLista, tipo: listaNueva.tipo };
+        onActualizar([...listas, listaConTipo]);
       }
     }
     
@@ -934,65 +960,84 @@ function SeccionListasChequeo({ listas, onActualizar, cargandoListas, tiposAudit
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {listas.map((lista) => (
-            <motion.div
-              key={lista.id}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="p-4 border-2 border-gray-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer bg-white"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <CheckSquare className="w-8 h-8 text-blue-600" />
-                <div className="flex gap-1">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => handleVerLista(lista)}
-                    title="Ver lista"
-                  >
-                    <Eye className="w-3 h-3" />
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => handleEditarLista(lista)}
-                    title="Editar lista"
-                  >
-                    <Edit className="w-3 h-3" />
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => handleEliminarLista(lista.id)}
-                    title="Eliminar lista"
-                    className="text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+          {listas.map((lista) => {
+            const tipoInfo = TIPOS_LISTA_CHEQUEO.find(t => t.valor === lista.tipo);
+            
+            return (
+              <motion.div
+                key={lista.id}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="p-4 border-2 border-gray-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer bg-white"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <CheckSquare className="w-8 h-8 text-blue-600" />
+                    {tipoInfo && (
+                      <Badge 
+                        variant="outline" 
+                        className="text-xs"
+                        style={{ 
+                          background: tipoInfo.color + '20', 
+                          color: tipoInfo.color,
+                          borderColor: tipoInfo.color 
+                        }}
+                      >
+                        {tipoInfo.icono} {tipoInfo.nombre}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex gap-1">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleVerLista(lista)}
+                      title="Ver lista"
+                    >
+                      <Eye className="w-3 h-3" />
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleEditarLista(lista)}
+                      title="Editar lista"
+                    >
+                      <Edit className="w-3 h-3" />
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleEliminarLista(lista.id)}
+                      title="Eliminar lista"
+                      className="text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              
-              <h4 className="font-bold text-gray-900 mb-1">{lista.nombre}</h4>
-              <p className="text-sm text-gray-600 mb-3">{lista.tipoAuditoria}</p>
-              
-              <div className="space-y-2 mb-3">
-                <p className="text-xs text-gray-500">{lista.descripcion}</p>
-              </div>
+                
+                <h4 className="font-bold text-gray-900 mb-1">{lista.nombre}</h4>
+                <p className="text-sm text-gray-600 mb-3">{lista.tipoAuditoria}</p>
+                
+                <div className="space-y-2 mb-3">
+                  <p className="text-xs text-gray-500">{lista.descripcion}</p>
+                </div>
 
-              <div className="flex items-center justify-between text-xs text-gray-500 pt-3 border-t border-gray-200">
-                <span className="flex items-center gap-1">
-                  <FileText className="w-3 h-3" />
-                  {lista.items.length} ítems
-                </span>
-                {lista.usosProgramados > 0 && (
-                  <Badge variant="outline" className="text-xs">
-                    {lista.usosProgramados} usos
-                  </Badge>
-                )}
-              </div>
-            </motion.div>
-          ))}
+                <div className="flex items-center justify-between text-xs text-gray-500 pt-3 border-t border-gray-200">
+                  <span className="flex items-center gap-1">
+                    <FileText className="w-3 h-3" />
+                    {lista.items.length} ítems
+                  </span>
+                  {lista.usosProgramados > 0 && (
+                    <Badge variant="outline" className="text-xs">
+                      {lista.usosProgramados} usos
+                    </Badge>
+                  )}
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
         )}
       </Card>
@@ -1039,6 +1084,7 @@ function ModalListaChequeo({ lista, onGuardar, onCerrar, tiposAuditoria }: Modal
     lista || {
       id: '',
       nombre: '',
+      tipo: TipoListaChequeo.EJECUCION, // NUEVO CAMPO CON VALOR POR DEFECTO
       tipoAuditoria: 'Regular',
       descripcion: '',
       items: [],
@@ -1140,6 +1186,45 @@ function ModalListaChequeo({ lista, onGuardar, onCerrar, tiposAuditoria }: Modal
               placeholder="Lista de Chequeo #1"
               required
             />
+          </div>
+
+          {/* SELECTOR DE TIPO DE LISTA */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Tipo de Lista *
+            </label>
+            <div className="grid grid-cols-3 gap-3">
+              {TIPOS_LISTA_CHEQUEO.map((tipoLista) => (
+                <button
+                  key={tipoLista.valor}
+                  type="button"
+                  onClick={() => handleChange('tipo', tipoLista.valor)}
+                  className={`
+                    flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all
+                    ${formData.tipo === tipoLista.valor 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-gray-200 hover:border-gray-300 bg-white'
+                    }
+                  `}
+                  style={{
+                    borderColor: formData.tipo === tipoLista.valor ? tipoLista.color : undefined,
+                    backgroundColor: formData.tipo === tipoLista.valor ? tipoLista.color + '15' : undefined
+                  }}
+                >
+                  <span className="text-2xl">{tipoLista.icono}</span>
+                  <span 
+                    className={`text-sm font-semibold ${
+                      formData.tipo === tipoLista.valor ? 'text-blue-700' : 'text-gray-700'
+                    }`}
+                  >
+                    {tipoLista.nombre}
+                  </span>
+                  {formData.tipo === tipoLista.valor && (
+                    <Check className="w-4 h-4 text-blue-600" />
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

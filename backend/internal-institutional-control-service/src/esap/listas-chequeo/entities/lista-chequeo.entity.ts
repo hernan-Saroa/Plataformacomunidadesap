@@ -13,6 +13,13 @@ import {
 import { TipoAuditoria } from '../../tipos-auditoria/entities/tipo-auditoria.entity';
 import { ItemListaChequeo } from './item-lista-chequeo.entity';
 
+// Enum para tipo de lista de chequeo
+export enum TipoListaChequeo {
+  PLANEACION = 'planeacion',
+  EJECUCION = 'ejecucion',
+  COMUNICACION = 'comunicacion',
+}
+
 @Entity('lista_chequeo', { schema: 'control_interno' })
 @Index(['codigo'], { unique: true })
 @Index(['activa'])
@@ -31,23 +38,13 @@ export class ListaChequeo {
   @Column({ type: 'text', nullable: true })
   descripcion?: string;
 
-  @Column({ type: 'varchar', length: 50, nullable: false })
-  tipo: string;
-
-  @Column({ type: 'varchar', length: 255, nullable: false })
-  categoria: string;
-
-  @Column({ type: 'varchar', length: 50, nullable: false })
-  version: string;
-
-  @Column({ type: 'varchar', length: 50, nullable: false })
-  estado: string;
-
-  @Column({ name: 'aplicable_para', type: 'jsonb', nullable: false })
-  aplicablePara: any[];
-
-  @Column({ name: 'created_by', type: 'varchar', length: 255, nullable: false })
-  createdBy: string;
+  @Column({
+    type: 'enum',
+    enum: TipoListaChequeo,
+    enumName: 'tipo_lista_chequeo_enum',
+    default: TipoListaChequeo.EJECUCION,
+  })
+  tipo: TipoListaChequeo;
 
   @Column({ name: 'tipo_auditoria_id', type: 'uuid', nullable: true })
   tipoAuditoriaId?: string;

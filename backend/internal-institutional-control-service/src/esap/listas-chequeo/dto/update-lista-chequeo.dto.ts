@@ -1,6 +1,7 @@
-import { IsString, IsOptional, IsBoolean, IsArray, ValidateNested, IsUUID } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsArray, ValidateNested, IsUUID, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CreateItemListaChequeoDto } from './create-lista-chequeo.dto';
+import { TipoListaChequeo } from '../entities/lista-chequeo.entity';
 
 export class UpdateListaChequeoDto {
   @IsOptional()
@@ -16,27 +17,8 @@ export class UpdateListaChequeoDto {
   descripcion?: string;
 
   @IsOptional()
-  @IsString()
-  tipo?: string;
-
-  @IsOptional()
-  @IsString()
-  categoria?: string;
-
-  @IsOptional()
-  @IsString()
-  version?: string;
-
-  @IsOptional()
-  @IsString()
-  estado?: string;
-
-  @IsOptional()
-  aplicablePara?: any[];
-
-  @IsOptional()
-  @IsString()
-  createdBy?: string;
+  @IsEnum(TipoListaChequeo)
+  tipo?: TipoListaChequeo;
 
   @IsOptional()
   @IsUUID()
