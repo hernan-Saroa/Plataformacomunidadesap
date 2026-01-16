@@ -101,6 +101,53 @@ type EstadoAuditoria =
   | 'Finalizada';
 
 type RiesgoAuditoria = 'Alto' | 'Medio' | 'Bajo';
+
+/**
+ * Mapea el nombre de una etapa del tablero Kanban (desde BD) al valor del enum EstadoKanban
+ * que espera el backend.
+ * 
+ * Los nombres de etapas en la BD pueden variar, pero el backend solo acepta estos valores:
+ * - 'Planeación'
+ * - 'Ejecución'
+ * - 'Comunicación'
+ * - 'Seguimiento'
+ * - 'Finalizada'
+ */
+function mapearEtapaAEstadoKanban(nombreEtapa: string): EstadoAuditoria {
+  const nombreLower = nombreEtapa.toLowerCase().trim();
+  
+  // Mapeo de nombres de etapas comunes a valores del enum
+  // Orden importante: verificar casos específicos primero, luego generales
+  
+  // Finalizada (verificar primero para evitar falsos positivos)
+  if (nombreLower.includes('finalizada') || nombreLower.includes('finalizado') || nombreLower.includes('cerrada') || nombreLower.includes('completada')) {
+    return 'Finalizada';
+  }
+  
+  // Planeación/Planificación
+  if (nombreLower.includes('planeación') || nombreLower.includes('planeacion') || nombreLower.includes('planificación') || nombreLower.includes('planificacion')) {
+    return 'Planeación';
+  }
+  
+  // Ejecución
+  if (nombreLower.includes('ejecución') || nombreLower.includes('ejecucion')) {
+    return 'Ejecución';
+  }
+  
+  // Comunicación (incluye "Comunicación Preliminar" y "Respuesta del Auditado")
+  if (nombreLower.includes('comunicación') || nombreLower.includes('comunicacion') || nombreLower.includes('respuesta') || nombreLower.includes('preliminar')) {
+    return 'Comunicación';
+  }
+  
+  // Seguimiento (incluye "Informe Final" que es parte del seguimiento)
+  if (nombreLower.includes('seguimiento') || nombreLower.includes('informe final') || nombreLower.includes('informe')) {
+    return 'Seguimiento';
+  }
+  
+  // Por defecto, retornar 'Planeación' si no se encuentra coincidencia
+  console.warn(`No se pudo mapear la etapa "${nombreEtapa}" a un EstadoKanban válido. Usando "Planeación" por defecto.`);
+  return 'Planeación';
+}
 type SemaforoColor = 'verde' | 'amarillo' | 'rojo';
 type TipoAuditoria = 'regular' | 'territorial' | 'especial';
 type Prioridad = 'crítica' | 'alta' | 'media' | 'baja';
@@ -1831,9 +1878,8 @@ function ColumnaKanban({
 // ============ COMPONENTE PRINCIPAL ============
 
 export function GestionAuditoriasKanbanSimple() {
-  // Hooks para notificaciones
+  // Hooks para notificaciones (las notificaciones de auditoría creada se manejan automáticamente en el backend)
   const { 
-    notificarAuditoriaCreada, 
     notificarCambioEstadoAuditoria, 
     notificarAuditoriaEditada,
     notificarAuditoriaAprobada,
@@ -2407,42 +2453,9 @@ export function GestionAuditoriasKanbanSimple() {
       const auditoriaCreada = response.data;
 
       // ============ NOTIFICACIONES: Auditoría Creada ============
-      if (response.success && auditoriaCreada?.id && user?.id) {
-        try {
-          const codigoAuditoria = auditoriaCreada.codigo || `AUD-${new Date().getFullYear()}-${auditoriaCreada.id.substring(0, 6).toUpperCase()}`;
-          const nombreAuditoria = auditoriaCreada.nombre || auditoriaCreada.titulo || data.titulo;
-          
-          console.log('🔔 [NOTIFICACION] Creando notificación para auditoría creada:', {
-            auditoriaId: auditoriaCreada.id,
-            codigoAuditoria,
-            nombreAuditoria,
-            usuarioId: user.id,
-            fechaInicio: auditoriaCreada.fechaInicio || auditoriaData.fechaInicio
-          });
-          
-          const notifResponse = await notificarAuditoriaCreada(
-            auditoriaCreada.id,
-            codigoAuditoria,
-            nombreAuditoria,
-            String(user.id), // Asegurar que sea string
-            auditoriaCreada.fechaInicio || auditoriaData.fechaInicio
-          );
-          
-          if (notifResponse?.success) {
-            console.log('✅ [NOTIFICACION] Notificación creada exitosamente:', notifResponse);
-          } else {
-            console.error('❌ [NOTIFICACION] Error al crear notificación:', notifResponse);
-          }
-        } catch (notifError) {
-          console.error('❌ [NOTIFICACION] Error al enviar notificaciones:', notifError);
-        }
-      } else {
-        console.warn('⚠️ [NOTIFICACION] No se puede crear notificación. Condiciones:', {
-          responseSuccess: response.success,
-          auditoriaId: auditoriaCreada?.id,
-          userId: user?.id
-        });
-      }
+      // NOTA: Las notificaciones se crean automáticamente en el backend (crearNotificacionesAuditoriaCreada)
+      // para todos los usuarios relacionados: auditor líder, auditor asignado, supervisor y jefes de control interno.
+      // No es necesario crear notificaciones adicionales desde el frontend.
 
       // Crear los hallazgos si hay alguno
       if (data.hallazgos && data.hallazgos.length > 0) {
@@ -2752,6 +2765,9 @@ export function GestionAuditoriasKanbanSimple() {
     const estadoAnterior = item.estado;
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
     
+    // Mapear el nombre de la etapa al valor del enum EstadoKanban que espera el backend
+    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(nuevoEstado);
+    
     // Actualizar estado localmente primero (optimistic update)
     setAuditorias(prev =>
       prev.map(aud =>
@@ -2767,9 +2783,9 @@ export function GestionAuditoriasKanbanSimple() {
     );
 
     try {
-      // Actualizar estado en la base de datos
+      // Actualizar estado en la base de datos usando el valor mapeado
       await controlInternoService.updateAuditoria(item.id, {
-        estadoKanban: nuevoEstado,
+        estadoKanban: estadoKanbanMapeado,
         ultimaActuacion: `Cambio de estado mediante drag & drop: ${estadoAnterior} → ${nuevoEstado}`
       });
 
@@ -2836,6 +2852,9 @@ export function GestionAuditoriasKanbanSimple() {
 
     const estadoAnterior = auditoriaActual.estado;
 
+    // Mapear el nombre de la etapa al valor del enum EstadoKanban que espera el backend
+    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(nuevoEstado);
+
     // Actualizar estado localmente primero (optimistic update)
     setAuditorias(prev =>
       prev.map(aud =>
@@ -2846,9 +2865,9 @@ export function GestionAuditoriasKanbanSimple() {
     );
 
     try {
-      // Actualizar estado en la base de datos
+      // Actualizar estado en la base de datos usando el valor mapeado
       await controlInternoService.updateAuditoria(auditoriaId, {
-        estadoKanban: nuevoEstado,
+        estadoKanban: estadoKanbanMapeado,
         ultimaActuacion: comentario || `Cambio de estado: ${estadoAnterior} → ${nuevoEstado}`
       });
 

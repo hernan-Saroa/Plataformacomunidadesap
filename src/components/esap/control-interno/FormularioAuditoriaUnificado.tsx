@@ -386,7 +386,6 @@ export function FormularioAuditoriaUnificado({
           // Filtrar solo los activos
           const tiposActivos = tipos.filter(t => t.activa);
           setTiposAuditoria(tiposActivos);
-          console.log(`[FormularioAuditoria] ✅ ${tiposActivos.length} tipos de auditoría cargados desde BD`);
         } else {
           console.warn('[FormularioAuditoria] ⚠️ No se encontraron tipos, usando valores por defecto');
         }

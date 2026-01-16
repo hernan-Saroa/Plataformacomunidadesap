@@ -64,10 +64,8 @@ class TiposAuditoriaAPIClient {
     let url: string;
     if (esLocalhost()) {
       url = `http://localhost:${MICROSERVICIO_PORT}${endpoint}`;
-      console.log(`[TiposAuditoria] 🔗 Petición directa a microservicio: ${url}`);
     } else {
       url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
-      console.log(`[TiposAuditoria] 🔗 Petición vía API Gateway: ${url}`);
     }
     
     const defaultHeaders: HeadersInit = {

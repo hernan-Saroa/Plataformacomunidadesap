@@ -92,6 +92,64 @@ interface PlanMejoramiento {
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
+ * Mapea el nombre de una etapa del tablero Kanban (desde BD) al estado del frontend
+ * 
+ * IMPORTANTE: Los nombres deben coincidir exactamente con los definidos en:
+ * - db/migrations/090_seed_tableros_kanban.sql
+ * - ConfiguracionKanbanModule.tsx
+ * 
+ * Etapas esperadas para Planes de Mejoramiento:
+ * - "Formulación" → FORMULACION
+ * - "Aprobación" → APROBADO
+ * - "En Ejecución" → EN_EJECUCION
+ * - "En Seguimiento" → EN_EJECUCION (etapa especial, filtrada por avance > 50%)
+ * - "Cumplido" → COMPLETADO
+ */
+function mapearNombreEtapaAEstado(nombreEtapa: string): EstadoPlan {
+  const nombreLower = nombreEtapa.toLowerCase().trim();
+  
+  // Mapeo exacto según los nombres de las etapas en la BD
+  // Formulación
+  if (nombreLower === 'formulación' || nombreLower === 'formulacion' || nombreLower.includes('formulaci')) {
+    return 'FORMULACION';
+  }
+  
+  // Aprobación
+  if (nombreLower === 'aprobación' || nombreLower === 'aprobacion' || nombreLower.includes('aprobaci')) {
+    return 'APROBADO';
+  }
+  
+  // En Ejecución (etapa normal)
+  if (nombreLower === 'en ejecución' || nombreLower === 'en ejecucion' || nombreLower.includes('ejecuci')) {
+    return 'EN_EJECUCION';
+  }
+  
+  // En Seguimiento (etapa especial - muestra planes en ejecución con avance > 50%)
+  // Esta etapa NO cambia el estado, solo filtra visualmente
+  // Se maneja en la lógica de filtrado de VistaKanban
+  if (nombreLower === 'en seguimiento' || nombreLower === 'seguimiento' || nombreLower.includes('seguimiento')) {
+    return 'EN_EJECUCION'; // Mantiene el estado EN_EJECUCION, el filtrado se hace por porcentaje
+  }
+  
+  // Cumplido
+  if (nombreLower === 'cumplido' || nombreLower.includes('completado') || nombreLower.includes('finalizado')) {
+    return 'COMPLETADO';
+  }
+  
+  // Estados adicionales (no están en el tablero por defecto pero pueden existir)
+  if (nombreLower.includes('retraso') || nombreLower.includes('vencido')) {
+    return 'CON_RETRASO';
+  }
+  
+  if (nombreLower.includes('suspendido') || nombreLower.includes('rechazado')) {
+    return 'SUSPENDIDO';
+  }
+  
+  // Por defecto, mapear a FORMULACION (etapa inicial)
+  return 'FORMULACION';
+}
+
+/**
  * Mapea el estado del backend al estado del frontend
  */
 function mapearEstadoBD(estadoBD: string, fechaFin?: string, porcentajeAvance?: number): EstadoPlan {
@@ -246,29 +304,80 @@ function mapearPlanDesdeBD(planBD: PlanMejoramientoBD): PlanMejoramiento {
     fechaFin.setFullYear(fechaFin.getFullYear() + 1);
   }
   
-  const fechaFinISO = fechaFin.toISOString().split('T')[0];
+  // Usar fechaLimite del plan si existe, de lo contrario usar fechaFin calculada
+  const fechaLimitePlan = (planBD as any).fechaLimite;
+  const fechaLimiteValida = fechaLimitePlan ? crearFechaValida(fechaLimitePlan) : null;
+  const fechaFinFinal = fechaLimiteValida && !isNaN(fechaLimiteValida.getTime()) 
+    ? fechaLimiteValida 
+    : fechaFin;
+  
+  const fechaFinISO = fechaFinFinal.toISOString().split('T')[0];
   const diasRestantes = calcularDiasRestantes(fechaFinISO);
-  const porcentajeAvance = planBD.porcentajeAvanceGeneral || 0;
+  
+  // Calcular porcentaje de avance: SIEMPRE calcular basado en las acciones si hay acciones
+  // El porcentajeAvanceGeneral puede estar desactualizado, así que lo recalculamos
+  let porcentajeAvance = 0;
+  
+  if (acciones.length > 0) {
+    // Calcular el promedio del porcentaje de avance de todas las acciones
+    const sumaAvances = acciones.reduce((sum, accion) => {
+      const avanceAccion = accion.porcentajeAvance || 0;
+      return sum + avanceAccion;
+    }, 0);
+    porcentajeAvance = Math.round(sumaAvances / acciones.length);
+  } 
+  // Si no hay acciones pero hay porcentajeAvanceGeneral, usarlo como fallback
+  else if (planBD.porcentajeAvanceGeneral !== null && planBD.porcentajeAvanceGeneral !== undefined) {
+    porcentajeAvance = planBD.porcentajeAvanceGeneral;
+  }
+  
   const semaforo = calcularSemaforo(diasRestantes, porcentajeAvance, fechaFinISO);
   const alertas = calcularAlertas(acciones);
-  
+
   // Validar y formatear fechas para el retorno
   const fechaCreacionValida = crearFechaValida(planBD.fechaElaboracion || planBD.fechaCreacion);
   const fechaCreacionISO = fechaCreacionValida.toISOString().split('T')[0];
-  
+
   const fechaAprobacionValida = planBD.fechaAprobacion ? crearFechaValida(planBD.fechaAprobacion) : null;
   const fechaAprobacionISO = fechaAprobacionValida && !isNaN(fechaAprobacionValida.getTime()) 
     ? fechaAprobacionValida.toISOString().split('T')[0] 
     : undefined;
-  
+
   const fechaActualizacionValida = crearFechaValida(planBD.fechaActualizacion || planBD.fechaCreacion || planBD.fechaElaboracion);
   const fechaActualizacionISO = fechaActualizacionValida.toISOString().split('T')[0];
-  
+
   // Extraer area y responsable del plan o de la auditoría anidada
   const areaResponsable = (planBD as any).areaResponsable || (planBD.auditoria as any)?.areaObjetivo || '';
   const responsableArea = (planBD.auditoria as any)?.responsableAreaNombre || planBD.responsable || (planBD as any).responsableImplementacion || '';
   const cargoResponsable = (planBD.auditoria as any)?.responsableAreaCargo || '';
 
+  // Contar hallazgos: puede venir como hallazgosIds (array), desde la auditoría, o hallazgoId (singular)
+  let totalHallazgos = 0;
+  
+  // PRIORIDAD 1: Intentar desde hallazgosIds (array) - más preciso
+  if (planBD.hallazgosIds && planBD.hallazgosIds.length > 0) {
+    totalHallazgos = planBD.hallazgosIds.length;
+  } 
+  // PRIORIDAD 2: Intentar desde la auditoría anidada (puede ser número o array) - más completo
+  // Un plan puede tener un hallazgoId específico, pero la auditoría tiene múltiples hallazgos
+  else if ((planBD.auditoria as any)?.hallazgos !== undefined) {
+    const hallazgosAuditoria = (planBD.auditoria as any).hallazgos;
+    if (typeof hallazgosAuditoria === 'number') {
+      // Si es un número (contador)
+      totalHallazgos = hallazgosAuditoria;
+    } else if (Array.isArray(hallazgosAuditoria)) {
+      // Si es un array
+      totalHallazgos = hallazgosAuditoria.length;
+    }
+  }
+  // PRIORIDAD 3: Intentar desde hallazgoId (singular) - último recurso
+  // Solo usar esto si no hay información de la auditoría
+  else if ((planBD as any).hallazgoId) {
+    totalHallazgos = 1;
+  }
+
+  const estadoMapeado = mapearEstadoBD(planBD.estado, fechaFinISO, porcentajeAvance);
+  
   return {
     id: planBD.id,
     codigo: planBD.codigo,
@@ -280,9 +389,9 @@ function mapearPlanDesdeBD(planBD: PlanMejoramientoBD): PlanMejoramiento {
     fechaAprobacion: fechaAprobacionISO,
     fechaInicio: fechaAprobacionISO, // Usar fechaAprobacion como inicio
     fechaFin: fechaFinISO,
-    estado: mapearEstadoBD(planBD.estado, fechaFinISO, porcentajeAvance),
+    estado: estadoMapeado,
     semaforo,
-    totalHallazgos: planBD.hallazgosIds?.length || 0,
+    totalHallazgos,
     totalAcciones,
     accionesCompletadas,
     accionesEnProceso,
@@ -1152,11 +1261,23 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
     };
   }, [planes]);
 
-  const handleMoverPlan = async (planId: string, nuevoEstado: EstadoPlan) => {
+  const handleMoverPlan = async (planId: string, nuevoEstado: EstadoPlan, nombreEtapa?: string) => {
     try {
       const plan = planes.find(p => p.id === planId);
       if (!plan) {
         toast.error('Plan no encontrado');
+        return;
+      }
+
+      // Manejar caso especial de "En Seguimiento"
+      // "En Seguimiento" es una vista filtrada de EN_EJECUCION con avance > 50%
+      const nombreEtapaLower = nombreEtapa?.toLowerCase().trim() || '';
+      const esSeguimiento = nombreEtapaLower === 'en seguimiento' || nombreEtapaLower.includes('seguimiento');
+      
+      if (esSeguimiento && plan.porcentajeAvance <= 50) {
+        // Si se mueve a "En Seguimiento" pero el avance es <= 50%, informar al usuario y NO actualizar
+        toast.warning(`El plan necesita tener más del 50% de avance para estar en "En Seguimiento". Actualmente tiene ${plan.porcentajeAvance}% de avance. Se mantendrá en "En Ejecución".`);
+        // NO actualizar el estado, retornar inmediatamente
         return;
       }
 
@@ -1170,7 +1291,16 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
         setPlanes(prev => prev.map(p => 
           p.id === planId ? planActualizado : p
         ));
-        toast.success(`Plan movido a ${obtenerNombreEstado(nuevoEstado)}`);
+        
+        // Mostrar mensaje apropiado según la etapa
+        const nombreMostrar = nombreEtapa || obtenerNombreEstado(nuevoEstado);
+        if (nombreMostrar && !esSeguimiento) {
+          toast.success(`Plan movido a ${nombreMostrar}`);
+        } else if (esSeguimiento && planActualizado.porcentajeAvance > 50) {
+          toast.success(`Plan movido a ${nombreMostrar}`);
+        } else {
+          toast.success('Plan actualizado correctamente');
+        }
       } else {
         throw new Error(response.error || 'Error al actualizar el plan');
       }
@@ -1335,7 +1465,7 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
 
 interface VistaKanbanProps {
   planes: PlanMejoramiento[];
-  onMoverPlan: (planId: string, nuevoEstado: EstadoPlan) => void;
+  onMoverPlan: (planId: string, nuevoEstado: EstadoPlan, nombreEtapa?: string) => void;
   onAbrirPlan: (plan: PlanMejoramiento) => void;
   columnasColapsadas: Set<string>;
   onToggleColapso: (columnaId: string) => void;
@@ -1346,7 +1476,46 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onT
   return (
     <div className="flex gap-4 overflow-x-auto pb-6">
       {columnasKanban.map((columna: any) => {
-        const planesColumna = planes.filter(p => p.estado === columna.id);
+        // Mapear el nombre de la etapa (columna.id) al estado del frontend
+        // Los nombres deben coincidir exactamente con los definidos en:
+        // - db/migrations/090_seed_tableros_kanban.sql: "Formulación", "Aprobación", "En Ejecución", "En Seguimiento", "Cumplido"
+        const estadoEsperado = mapearNombreEtapaAEstado(columna.id);
+        const nombreColumnaLower = (columna.id || columna.nombre || '').toLowerCase().trim();
+        
+        // Filtrar planes según el estado esperado
+        // Cada plan solo debe aparecer en UNA columna
+        let planesColumna: PlanMejoramiento[];
+        
+        // IMPORTANTE: Verificar primero "En Seguimiento" porque contiene la palabra "ejecución" en su contexto
+        // "En Seguimiento" es una etapa especial que muestra planes en ejecución con avance > 50%
+        const esSeguimiento = nombreColumnaLower.includes('seguimiento');
+        
+        // "En Ejecución" muestra planes en ejecución con avance <= 50%
+        // Debe verificar que NO sea "En Seguimiento" primero y que contenga "ejecución" o "ejecucion"
+        const esEjecucion = !esSeguimiento && (
+          nombreColumnaLower.includes('ejecución') || 
+          nombreColumnaLower.includes('ejecucion') ||
+          nombreColumnaLower.includes('ejecuci')
+        );
+        
+        if (esSeguimiento) {
+          // Mostrar solo planes en ejecución con avance significativo (>50%)
+          planesColumna = planes.filter(p => {
+            const avance = p.porcentajeAvance || 0;
+            return p.estado === 'EN_EJECUCION' && avance > 50;
+          });
+        } else if (esEjecucion) {
+          // Mostrar planes en ejecución con avance <= 50%
+          // Excluir planes que ya están en "En Seguimiento" (avance > 50%)
+          planesColumna = planes.filter(p => {
+            const avance = p.porcentajeAvance || 0;
+            return p.estado === 'EN_EJECUCION' && avance <= 50;
+          });
+        } else {
+          // Para otras columnas (Formulación, Aprobación, Cumplido, etc.), filtrar por estado exacto
+          planesColumna = planes.filter(p => p.estado === estadoEsperado);
+        }
+        
         const colapsada = columnasColapsadas.has(columna.id);
         
         return (
@@ -1358,6 +1527,7 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onT
             onAbrirPlan={onAbrirPlan}
             colapsada={colapsada}
             onToggleColapso={() => onToggleColapso(columna.id)}
+            estadoEsperado={estadoEsperado}
           />
         );
       })}
@@ -1372,17 +1542,19 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onT
 interface ColumnaKanbanProps {
   columna: typeof COLUMNAS_KANBAN_DEFAULT[0];
   planes: PlanMejoramiento[];
-  onMoverPlan: (planId: string, nuevoEstado: EstadoPlan) => void;
+  onMoverPlan: (planId: string, nuevoEstado: EstadoPlan, nombreEtapa?: string) => void;
   onAbrirPlan: (plan: PlanMejoramiento) => void;
   colapsada: boolean;
   onToggleColapso: () => void;
+  estadoEsperado: EstadoPlan;
 }
 
-function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, colapsada, onToggleColapso }: ColumnaKanbanProps) {
+function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, colapsada, onToggleColapso, estadoEsperado }: ColumnaKanbanProps) {
   const [{ isOver }, drop] = useDrop(() => ({
     accept: 'PLAN',
     drop: (item: { planId: string }) => {
-      onMoverPlan(item.planId, columna.id as EstadoPlan);
+      // Pasar el estado esperado y el nombre de la etapa para manejar casos especiales como "En Seguimiento"
+      onMoverPlan(item.planId, estadoEsperado, columna.id);
     },
     collect: (monitor) => ({
       isOver: monitor.isOver()
@@ -1948,8 +2120,10 @@ function EstadoBadge({ estado }: { estado: EstadoPlan }) {
   );
 }
 
-function obtenerNombreEstado(estado: EstadoPlan): string {
-  const nombres = {
+function obtenerNombreEstado(estado: EstadoPlan | undefined | null): string {
+  if (!estado) return 'estado desconocido';
+  
+  const nombres: Record<EstadoPlan, string> = {
     FORMULACION: 'Formulación',
     APROBADO: 'Aprobado',
     EN_EJECUCION: 'En Ejecución',
@@ -1957,7 +2131,7 @@ function obtenerNombreEstado(estado: EstadoPlan): string {
     COMPLETADO: 'Completado',
     SUSPENDIDO: 'Suspendido'
   };
-  return nombres[estado];
+  return nombres[estado] || 'estado desconocido';
 }
 
 // ════════════════════════════════════════════════════════════════════════════

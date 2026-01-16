@@ -72,23 +72,13 @@ async function apiRequest<T>(
   }
   
   try {
-    console.log(`[apiRequest] Realizando petición: ${options?.method || 'GET'} ${url}`);
-    console.log(`[apiRequest] Headers:`, headers);
-    
     const response = await fetch(url, {
       ...options,
       headers,
     });
 
-    console.log(`[apiRequest] Respuesta recibida:`, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
-    });
-
     // Leer el texto de la respuesta una sola vez
     const responseText = await response.text();
-    console.log(`[apiRequest] Response text (primeros 500 chars):`, responseText.substring(0, 500));
     
     // Verificar si la respuesta tiene contenido JSON
     const contentType = response.headers.get('content-type');
