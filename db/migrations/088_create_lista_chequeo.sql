@@ -3,11 +3,7 @@
 -- ============================================
 -- Este script elimina y recrea las tablas con la estructura correcta
 -- para el módulo de configuración de listas de chequeo
--- ============================================
 
--- Eliminar tablas existentes (en orden correcto por dependencias)
-DROP TABLE IF EXISTS control_interno.item_lista_chequeo CASCADE;
-DROP TABLE IF EXISTS control_interno.lista_chequeo CASCADE;
 
 -- Eliminar tipo ENUM si existe para recrearlo
 DROP TYPE IF EXISTS control_interno.tipo_lista_chequeo_enum CASCADE;

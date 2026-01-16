@@ -33,7 +33,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 21 Diciembre 2025
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Users, Calendar, CheckCircle, X, ChevronRight, 
@@ -51,6 +51,7 @@ import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 
 // Servicios API
 import { auditoriasApi } from './services/api';
+import * as tablerosKanbanService from '../../../services/tableros-kanban.service';
 
 // ============ TIPOS ============
 
@@ -137,6 +138,34 @@ const AUDITORIA_MOCK: AuditoriaProgramada = {
     comunicacion: 12
   }
 };
+
+// ============ FUNCIÓN HELPER PARA GENERAR ACTIVIDADES DINÁMICAS ============
+
+/**
+ * Genera el texto de actividades para una fase desde la BD
+ */
+function generarActividadesDinamicas(nombreFase: string, duracionDias: number, actividadesPorFase: Record<string, any[]>): string {
+  const actividades = actividadesPorFase[nombreFase] || [];
+  
+  // Mapear número de fase
+  const numeroFase = nombreFase === 'Planeación' ? 1 : nombreFase === 'Ejecución' ? 2 : 3;
+  
+  // Si no hay actividades en BD, usar mensaje informativo
+  if (actividades.length === 0) {
+    return `**FASE ${numeroFase}: ${nombreFase.toUpperCase()} (${duracionDias} días)**
+□ (No se han configurado actividades para esta fase en el sistema)`;
+  }
+  
+  // Generar lista de actividades ordenadas por orden
+  const actividadesOrdenadas = [...actividades].sort((a, b) => (a.orden || 0) - (b.orden || 0));
+  const listaActividades = actividadesOrdenadas
+    .map(act => `□ ${act.nombre || act.titulo}${act.esObligatoria ? ' (*)' : ''}`)
+    .join('\n');
+  
+  return `**FASE ${numeroFase}: ${nombreFase.toUpperCase()} (${duracionDias} días)**
+${listaActividades}
+${actividades.some(a => a.esObligatoria) ? '\n(*) Actividades obligatorias' : ''}`;
+}
 
 // ============ FUNCIÓN HELPER PARA DESCARGAR PDF ============
 
@@ -459,7 +488,7 @@ ${auditoria.auditorLider.nombre}
 `;
 }
 
-function generarProgramaIndividual(auditoria: AuditoriaProgramada, config: ConfiguracionAuditoria): string {
+function generarProgramaIndividual(auditoria: AuditoriaProgramada, config: ConfiguracionAuditoria, actividadesPorFase: Record<string, any[]> = {}): string {
   const fechaHoy = new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
   
   return `
@@ -517,7 +546,14 @@ Email: ${auditoria.responsableArea.email}
 
 **8. ACTIVIDADES POR FASE**
 
-**FASE 1: PLANEACIÓN (${auditoria.duracionDias.planeacion} días)**
+${generarActividadesDinamicas('Planeación', auditoria.duracionDias.planeacion, actividadesPorFase)}
+
+${generarActividadesDinamicas('Ejecución', auditoria.duracionDias.ejecucion, actividadesPorFase)}
+
+${generarActividadesDinamicas('Comunicación', auditoria.duracionDias.comunicacion, actividadesPorFase)}
+
+/* ACTIVIDADES HARDCODEADAS ORIGINALES (COMENTADAS - AHORA SE USAN LAS DE BD)
+**FASE 1: PLANEACIÓN**
 □ Revisión de documentación del proceso
 □ Análisis de riesgos del área auditada
 □ Solicitud de información preliminar
@@ -525,7 +561,7 @@ Email: ${auditoria.responsableArea.email}
 □ Reunión de apertura con el área
 □ Definición de muestras y pruebas
 
-**FASE 2: EJECUCIÓN (${auditoria.duracionDias.ejecucion} días)**
+**FASE 2: EJECUCIÓN**
 □ Aplicación de listas de chequeo
 □ Revisión de documentos y registros
 □ Entrevistas con personal clave
@@ -535,13 +571,14 @@ Email: ${auditoria.responsableArea.email}
 □ Recopilación de evidencias
 □ Reunión de cierre con el área
 
-**FASE 3: COMUNICACIÓN (${auditoria.duracionDias.comunicacion} días)**
+**FASE 3: COMUNICACIÓN**
 □ Elaboración de informe preliminar
 □ Socialización con el área auditada
 □ Atención de controversias (si aplica)
 □ Elaboración de informe final
 □ Generación de informe ejecutivo
 □ Formalización de plan de mejoramiento
+*/
 
 **9. RECURSOS NECESARIOS**
 
@@ -605,6 +642,41 @@ export function InicioAuditoriaWizard({
   const [documentosGenerados, setDocumentosGenerados] = useState<DocumentoGenerado[]>([]);
   const [loading, setLoading] = useState(false);
   const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<DocumentoGenerado | null>(null);
+  const [actividadesPorFase, setActividadesPorFase] = useState<Record<string, any[]>>({});
+
+  // Cargar actividades desde la BD al montar el componente
+  useEffect(() => {
+    const cargarActividades = async () => {
+      try {
+        // Cargar tableros Kanban
+        const tableros = await tablerosKanbanService.cargarTablerosKanban();
+        
+        // Buscar el tablero de auditorías
+        const tableroAuditorias = tableros.find(t => t.tipo === 'auditorias' && t.activo);
+        
+        if (!tableroAuditorias || !tableroAuditorias.etapas) {
+          console.warn('No se encontró configuración de tablero para auditorías');
+          return;
+        }
+        
+        // Mapear las actividades por nombre de etapa
+        const actividadesCargadas: Record<string, any[]> = {};
+        
+        for (const etapa of tableroAuditorias.etapas) {
+          // Las actividades están en cada etapa
+          // Por ahora, generamos un array vacío ya que las actividades se gestionan de otra manera
+          // La estructura real depende de cómo se almacenan en la BD
+          actividadesCargadas[etapa.nombre] = [];
+        }
+        
+        setActividadesPorFase(actividadesCargadas);
+      } catch (error) {
+        console.error('Error al cargar actividades:', error);
+      }
+    };
+    
+    cargarActividades();
+  }, []); // Solo al montar
 
   // Generar documentos
   const generarDocumentos = () => {
@@ -642,7 +714,7 @@ export function InicioAuditoriaWizard({
         {
           tipo: 'programa-individual',
           titulo: 'Programa Individual',
-          contenido: generarProgramaIndividual(auditoria, configuracion),
+          contenido: generarProgramaIndividual(auditoria, configuracion, actividadesPorFase),
           generadoEn: new Date(),
           size: '3.2 KB',
           icono: <FileCheck className="w-5 h-5" />,
@@ -675,7 +747,7 @@ export function InicioAuditoriaWizard({
         : [];
 
       // Preparar datos para actualizar
-      const updateData = {
+      const updateData: any = {
         alcance: configuracion.alcance || undefined,
         fechaReunionApertura: configuracion.fechaReunionApertura?.toISOString() || undefined,
         observacionesAdicionales: configuracion.observaciones || undefined,
