@@ -27,6 +27,7 @@ import {
   BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, ChevronDown, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import * as XLSX from 'xlsx';
 import { planesMejoramientoApi, hallazgosApi, evidenciasApi } from './services/api';
 import type { PlanMejoramiento as PlanMejoramientoBD, AccionMejoramiento, Hallazgo as HallazgoBD } from './services/types';
 
@@ -401,6 +402,22 @@ function mapearGravedadACriticidad(gravedad: string): Hallazgo['criticidad'] {
 }
 
 /**
+ * Calcula el progreso global basado en las acciones
+ */
+function calcularProgresoGlobalDesdeAcciones(
+  acciones: AccionCorrectiva[],
+  porcentajeAvanceGeneral?: number | null
+): number {
+  // SIEMPRE calcular basado en las acciones si hay acciones
+  if (acciones.length > 0) {
+    const sumaProgreso = acciones.reduce((sum, accion) => sum + accion.progreso, 0);
+    return Math.round(sumaProgreso / acciones.length);
+  }
+  // Si no hay acciones pero hay porcentajeAvanceGeneral, usarlo como fallback
+  return porcentajeAvanceGeneral || 0;
+}
+
+/**
  * Mapea un PlanMejoramiento del backend a PlanMejoramientoDetalle del modal
  */
 async function mapearPlanDetalleDesdeBD(
@@ -441,6 +458,12 @@ async function mapearPlanDetalleDesdeBD(
     // Usar el hallazgoId de la acción si existe, sino usar el del plan como fallback
     const hallazgoIdAccion = accion.hallazgoId || planBD.hallazgoId || planBD.hallazgo?.id || '';
 
+    // Calcular progreso: si está completada, usar 100%, de lo contrario usar porcentajeAvance
+    let progreso = accion.porcentajeAvance || 0;
+    if (estado === 'COMPLETADA') {
+      progreso = 100; // Si está completada, el progreso siempre es 100%
+    }
+
     return {
       id: accion.id,
       hallazgoId: hallazgoIdAccion, // Usar el hallazgoId específico de la acción
@@ -449,7 +472,7 @@ async function mapearPlanDetalleDesdeBD(
       fechaInicio: fechaInicio || new Date().toISOString().split('T')[0],
       fechaVencimiento: fechaFin || new Date().toISOString().split('T')[0],
       estado,
-      progreso: accion.porcentajeAvance || 0,
+      progreso,
       evidencias: (accion.evidencias && Array.isArray(accion.evidencias)) ? accion.evidencias.length : 0,
       observaciones: accion.observaciones || ''
     };
@@ -546,7 +569,7 @@ async function mapearPlanDetalleDesdeBD(
     fechaCreacion: fechaCreacionPlan,
     fechaVencimiento: fechaVencimiento.toISOString().split('T')[0],
     estado: mapearEstadoBD(planBD.estado),
-    progresoGlobal: planBD.porcentajeAvanceGeneral || 0,
+    progresoGlobal: calcularProgresoGlobalDesdeAcciones(accionesMapeadas, planBD.porcentajeAvanceGeneral),
     hallazgos: hallazgosMapeados,
     acciones: accionesMapeadas,
     documentos: [], // Los documentos se cargarían por separado si existe un endpoint
@@ -830,20 +853,125 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
     }
   };
 
-  const handleDescargarReporte = () => {
+  const handleDescargarReporte = async () => {
     if (!plan) return;
 
-    toast.success('Generando Reporte PDF', {
-      description: 'El reporte del plan se está descargando...',
-      duration: 3000,
-    });
-    
-    console.log('📄 Descargando reporte del plan:', {
-      planId: plan.id,
-      codigo: plan.codigo,
-      formato: 'PDF',
-      timestamp: new Date().toISOString()
-    });
+    try {
+      toast.info('Generando Reporte Excel', {
+        description: 'El reporte del plan se está generando...',
+        duration: 2000,
+      });
+
+      // Crear un nuevo libro de trabajo
+      const workbook = XLSX.utils.book_new();
+
+      // ============ HOJA 1: INFORMACIÓN GENERAL ============
+      const infoGeneralData = [
+        ['ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA'],
+        ['REPORTE DE PLAN DE MEJORAMIENTO'],
+        [`Generado el ${new Date().toLocaleDateString('es-CO', { 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        })}`],
+        [],
+        ['INFORMACIÓN GENERAL'],
+        [],
+        ['Código', plan.codigo],
+        ['Nombre', plan.nombre || 'Sin nombre'],
+        ['Estado', plan.estado],
+        ['Área Responsable', plan.area],
+        ['Responsable General', plan.responsableGeneral],
+        ['Fecha Creación', new Date(plan.fechaCreacion).toLocaleDateString('es-CO')],
+        ['Fecha Vencimiento', new Date(plan.fechaVencimiento).toLocaleDateString('es-CO')],
+        ['Progreso Global', `${plan.progresoGlobal}%`],
+        ['Auditoría Origen', plan.auditoria]
+      ];
+
+      const infoGeneralSheet = XLSX.utils.aoa_to_sheet(infoGeneralData);
+      XLSX.utils.book_append_sheet(workbook, infoGeneralSheet, 'Información General');
+
+      // ============ HOJA 2: RESUMEN DE ACCIONES ============
+      const totalAcciones = plan.acciones.length;
+      const accionesCompletadas = plan.acciones.filter(a => a.estado === 'COMPLETADA').length;
+      const accionesEnEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
+      const accionesPendientes = plan.acciones.filter(a => a.estado === 'PENDIENTE').length;
+
+      const resumenAccionesData = [
+        ['RESUMEN DE ACCIONES'],
+        [],
+        ['Concepto', 'Cantidad', 'Porcentaje'],
+        ['Total de Acciones', totalAcciones, '100%'],
+        ['Completadas', accionesCompletadas, `${totalAcciones > 0 ? Math.round((accionesCompletadas / totalAcciones) * 100) : 0}%`],
+        ['En Ejecución', accionesEnEjecucion, `${totalAcciones > 0 ? Math.round((accionesEnEjecucion / totalAcciones) * 100) : 0}%`],
+        ['Pendientes', accionesPendientes, `${totalAcciones > 0 ? Math.round((accionesPendientes / totalAcciones) * 100) : 0}%`]
+      ];
+
+      const resumenAccionesSheet = XLSX.utils.aoa_to_sheet(resumenAccionesData);
+      XLSX.utils.book_append_sheet(workbook, resumenAccionesSheet, 'Resumen Acciones');
+
+      // ============ HOJA 3: HALLAZGOS ============
+      if (plan.hallazgos.length > 0) {
+        const hallazgosData = [
+          ['HALLAZGOS'],
+          [],
+          ['Código', 'Descripción', 'Criticidad', 'Acciones Completadas', 'Total Acciones', 'Progreso (%)']
+        ];
+
+        plan.hallazgos.forEach(h => {
+          hallazgosData.push([
+            h.codigo,
+            h.descripcion,
+            h.criticidad,
+            String(h.accionesCompletadas),
+            String(h.accionesCount),
+            `${h.progreso}%`
+          ]);
+        });
+
+        const hallazgosSheet = XLSX.utils.aoa_to_sheet(hallazgosData);
+        XLSX.utils.book_append_sheet(workbook, hallazgosSheet, 'Hallazgos');
+      }
+
+      // ============ HOJA 4: ACCIONES CORRECTIVAS ============
+      if (plan.acciones.length > 0) {
+        const accionesData = [
+          ['ACCIONES CORRECTIVAS'],
+          [],
+          ['Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Vencimiento', 'Estado', 'Progreso (%)', 'Evidencias']
+        ];
+
+        plan.acciones.forEach(a => {
+          accionesData.push([
+            a.descripcion,
+            a.responsable,
+            new Date(a.fechaInicio).toLocaleDateString('es-CO'),
+            new Date(a.fechaVencimiento).toLocaleDateString('es-CO'),
+            a.estado,
+            `${a.progreso}%`,
+            String(a.evidencias || 0)
+          ]);
+        });
+
+        const accionesSheet = XLSX.utils.aoa_to_sheet(accionesData);
+        XLSX.utils.book_append_sheet(workbook, accionesSheet, 'Acciones Correctivas');
+      }
+
+      // Generar el archivo Excel
+      const nombreArchivo = `Reporte_Plan_${plan.codigo}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(workbook, nombreArchivo);
+
+      toast.success('Reporte generado exitosamente', {
+        description: `El archivo ${nombreArchivo} ha sido descargado`,
+        duration: 3000,
+      });
+    } catch (error: any) {
+      console.error('Error al generar reporte Excel:', error);
+      toast.error('Error al generar reporte', {
+        description: error.message || 'No se pudo generar el archivo Excel',
+        duration: 4000,
+      });
+    }
   };
 
   const estadoConfig = {
@@ -1074,7 +1202,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
                 onClick={handleDescargarReporte}
               >
                 <Download className="w-4 h-4" />
-                Descargar Reporte
+                Descargar Excel
               </button>
               <button
                 className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm"

@@ -85,8 +85,7 @@ const ESTADISTICAS_MOCK: EstadisticasGlobales = {
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanificacionModuleRediseno() {
-  // Hooks para notificaciones
-  const { notificarAuditoriaCreada } = useCrearNotificacion();
+  // Hooks para notificaciones (las notificaciones de auditoría creada se manejan automáticamente en el backend)
   const { user } = useAuth();
   
   const [tabActiva, setTabActiva] = useState<TabActiva>('universo');
@@ -401,42 +400,9 @@ export function PlanificacionModuleRediseno() {
       console.log('[handleCrearAuditoria] Auditoría creada:', auditoriaCreada);
 
       // ============ NOTIFICACIONES: Auditoría Creada ============
-      if (response.success && auditoriaCreada?.id && user?.id) {
-        try {
-          const codigoAuditoria = auditoriaCreada.codigo || `AUD-${new Date().getFullYear()}-${auditoriaCreada.id.substring(0, 6).toUpperCase()}`;
-          const nombreAuditoria = auditoriaCreada.nombre || auditoriaCreada.titulo || data.titulo;
-          
-          console.log('🔔 [NOTIFICACION] Creando notificación para auditoría creada desde Planeación:', {
-            auditoriaId: auditoriaCreada.id,
-            codigoAuditoria,
-            nombreAuditoria,
-            usuarioId: user.id,
-            fechaInicio: auditoriaCreada.fechaInicio || auditoriaData.fechaInicio
-          });
-          
-          const notifResponse = await notificarAuditoriaCreada(
-            auditoriaCreada.id,
-            codigoAuditoria,
-            nombreAuditoria,
-            String(user.id), // Asegurar que sea string
-            auditoriaCreada.fechaInicio || auditoriaData.fechaInicio
-          );
-          
-          if (notifResponse?.success) {
-            console.log('✅ [NOTIFICACION] Notificación creada exitosamente:', notifResponse);
-          } else {
-            console.error('❌ [NOTIFICACION] Error al crear notificación:', notifResponse);
-          }
-        } catch (notifError) {
-          console.error('❌ [NOTIFICACION] Error al enviar notificaciones:', notifError);
-        }
-      } else {
-        console.warn('⚠️ [NOTIFICACION] No se puede crear notificación. Condiciones:', {
-          responseSuccess: response.success,
-          auditoriaId: auditoriaCreada?.id,
-          userId: user?.id
-        });
-      }
+      // NOTA: Las notificaciones se crean automáticamente en el backend (crearNotificacionesAuditoriaCreada)
+      // para todos los usuarios relacionados: auditor líder, auditor asignado, supervisor y jefes de control interno.
+      // No es necesario crear notificaciones adicionales desde el frontend.
 
       // Crear los hallazgos si hay alguno
       if (data.hallazgos && data.hallazgos.length > 0) {

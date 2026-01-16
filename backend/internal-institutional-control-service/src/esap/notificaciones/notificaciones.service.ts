@@ -304,11 +304,24 @@ export class NotificacionesService {
   /**
    * Marca todas las notificaciones de un usuario como leídas
    */
-  async marcarTodasLeidas(usuarioId: string): Promise<void> {
+  async marcarTodasLeidas(usuarioId: string): Promise<{ success: boolean; actualizadas: number }> {
+    console.log(`[NotificacionesService.marcarTodasLeidas] Iniciando marcado de todas las notificaciones para usuario: ${usuarioId}`);
+    
     // Convertir UUID a id_tercero
     const idTercero = await this.getUserIdTerceroFromUUID(usuarioId);
+    console.log(`[NotificacionesService.marcarTodasLeidas] UsuarioId convertido: ${usuarioId} -> ${idTercero}`);
 
-    await this.notificacionRepository.update(
+    // Contar cuántas notificaciones no leídas hay antes de actualizar
+    const countBefore = await this.notificacionRepository.count({
+      where: {
+        usuarioId: String(idTercero),
+        leida: false,
+      },
+    });
+    console.log(`[NotificacionesService.marcarTodasLeidas] Notificaciones no leídas encontradas: ${countBefore}`);
+
+    // Actualizar todas las notificaciones no leídas
+    const result = await this.notificacionRepository.update(
       {
         usuarioId: String(idTercero),
         leida: false,
@@ -319,6 +332,14 @@ export class NotificacionesService {
         estado: EstadoNotificacion.LEIDA,
       },
     );
+
+    console.log(`[NotificacionesService.marcarTodasLeidas] Resultado de actualización:`, result);
+    console.log(`[NotificacionesService.marcarTodasLeidas] Notificaciones actualizadas: ${result.affected || 0}`);
+
+    return {
+      success: true,
+      actualizadas: result.affected || 0,
+    };
   }
 
   /**

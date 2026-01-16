@@ -82,31 +82,6 @@ export function useNotificacionesControlInterno() {
    */
   const cargarNotificaciones = useCallback(async () => {
     const currentUsuarioId = (user as any)?.userId || (user as any)?.id;
-    const currentEsSuperAdmin = user?.roles?.some((role: any) => {
-      if (typeof role === 'string') {
-        const roleLower = role.toLowerCase();
-        return roleLower.includes('super') || 
-               roleLower.includes('administrador') ||
-               roleLower.includes('jefe') ||
-               role === 'SUPER_ADMIN' ||
-               role === 'ADMIN' ||
-               role === 'JEFE_CONTROL_INTERNO';
-      }
-      if (typeof role === 'object' && role !== null) {
-        const roleCode = role.code || '';
-        const roleStr = String(role.name || role.code || role.role || role).toLowerCase();
-        return roleStr.includes('super') || 
-               roleStr.includes('administrador') ||
-               roleStr.includes('jefe') ||
-               roleCode === 'SUPER_ADMIN' ||
-               roleCode === 'ADMIN' ||
-               roleCode === 'JEFE_CONTROL_INTERNO' ||
-               role.name === 'SUPER_ADMIN' ||
-               role.name === 'ADMIN' ||
-               role.name === 'Jefe de Control Interno';
-      }
-      return false;
-    }) || false;
     
     console.log('[useNotificacionesControlInterno] cargarNotificaciones llamado');
     console.log('[useNotificacionesControlInterno] user:', user);
@@ -123,18 +98,12 @@ export function useNotificacionesControlInterno() {
       setLoading(true);
       setError(null);
       
-      let response;
-      
-      // Si es super admin o admin, obtener todas las notificaciones
-      if (currentEsSuperAdmin) {
-        console.log('[useNotificacionesControlInterno] Usuario es Super Admin/Admin, obteniendo TODAS las notificaciones');
-        response = await controlInternoApi.notificaciones.obtenerTodas();
-      } else {
-        // Consultar notificaciones del backend usando el UUID del usuario
-        // El backend se encargará de convertir UUID a id_tercero
-        console.log(`[useNotificacionesControlInterno] Llamando a controlInternoApi.notificaciones.obtenerPorUsuario(${currentUsuarioId})`);
-        response = await controlInternoApi.notificaciones.obtenerPorUsuario(currentUsuarioId);
-      }
+      // Siempre obtener solo las notificaciones del usuario actual,
+      // sin importar si es super admin o no. Cada usuario solo debe ver sus propias notificaciones.
+      console.log(`[useNotificacionesControlInterno] Obteniendo notificaciones del usuario: ${currentUsuarioId}`);
+      // Consultar notificaciones del backend usando el UUID del usuario
+      // El backend se encargará de convertir UUID a id_tercero
+      const response = await controlInternoApi.notificaciones.obtenerPorUsuario(currentUsuarioId);
       
       console.log('[useNotificacionesControlInterno] Respuesta recibida:', response);
       
@@ -215,24 +184,33 @@ export function useNotificacionesControlInterno() {
    * Marcar todas como leídas
    */
   const marcarTodasLeidas = useCallback(async () => {
-    if (!usuarioId) return;
+    const currentUsuarioId = (user as any)?.userId || (user as any)?.id;
+    
+    if (!currentUsuarioId) {
+      console.warn('[useNotificacionesControlInterno] No hay usuarioId para marcar todas como leídas');
+      toast.error('No se pudo identificar el usuario');
+      return;
+    }
 
     try {
-      const response = await controlInternoApi.notificaciones.marcarTodasLeidas(usuarioId);
+      console.log(`[useNotificacionesControlInterno] Marcando todas las notificaciones como leídas para usuario: ${currentUsuarioId}`);
+      const response = await controlInternoApi.notificaciones.marcarTodasLeidas(currentUsuarioId);
+      
+      console.log('[useNotificacionesControlInterno] Respuesta de marcarTodasLeidas:', response);
       
       if (response.success) {
-        setNotificaciones(prev =>
-          prev.map(n => ({ ...n, leida: true }))
-        );
+        // Recargar las notificaciones desde el backend para asegurar sincronización
+        await cargarNotificaciones();
         toast.success('Todas las notificaciones marcadas como leídas');
       } else {
-        toast.error('Error al marcar notificaciones');
+        console.error('[useNotificacionesControlInterno] Error en respuesta:', response.error);
+        toast.error(response.error || 'Error al marcar notificaciones');
       }
     } catch (err) {
-      console.error('Error al marcar todas leídas:', err);
+      console.error('[useNotificacionesControlInterno] Error al marcar todas leídas:', err);
       toast.error('Error al marcar notificaciones');
     }
-  }, [usuarioId]);
+  }, [user, cargarNotificaciones]);
 
   /**
    * Eliminar notificación

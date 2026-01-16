@@ -2389,6 +2389,15 @@ export class AuditoriasService {
 
   /**
    * Crea notificaciones cuando se crea una auditoría
+   * 
+   * NOTA: Este método crea una notificación INDIVIDUAL para cada usuario relacionado con la auditoría:
+   * - Auditor líder (si está asignado)
+   * - Auditor asignado (si está asignado)
+   * - Supervisor (si está asignado)
+   * - Todos los Jefes de Control Interno activos
+   * 
+   * Si hay 5 usuarios diferentes relacionados, se crearán 5 notificaciones (una por usuario).
+   * Los duplicados se eliminan automáticamente usando Set.
    */
   private async crearNotificacionesAuditoriaCreada(auditoria: Auditoria): Promise<void> {
     console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Iniciando creación de notificaciones para auditoría ${auditoria.codigo}`);
@@ -2413,7 +2422,7 @@ export class AuditoriasService {
       console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Supervisor agregado: ${auditoria.supervisorAsignadoId}`);
     }
 
-    // 4. Obtener Jefes de Control Interno
+    // 4. Obtener Jefes de Control Interno (todos los usuarios con rol JEFE_CONTROL_INTERNO activo)
     try {
       const jefesOCI = await this.obtenerJefesControlInterno();
       usuariosNotificar.push(...jefesOCI);
@@ -2422,9 +2431,9 @@ export class AuditoriasService {
       console.error(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Error al obtener Jefes de Control Interno:`, error);
     }
 
-    // Eliminar duplicados
+    // Eliminar duplicados (por si un usuario tiene múltiples roles o está en múltiples listas)
     const usuariosUnicos = [...new Set(usuariosNotificar)];
-    console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Total de usuarios a notificar: ${usuariosUnicos.length}`);
+    console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Total de usuarios únicos a notificar: ${usuariosUnicos.length}`);
 
     // Crear notificaciones para cada usuario
     for (const usuarioId of usuariosUnicos) {
