@@ -22,6 +22,7 @@ import { AlertTriangle, Clock } from 'lucide-react';
 import { authService } from './services/api/authService';
 import { config } from './config/environment';
 import { NotificacionesProvider } from './contexts/NotificacionesContext';
+import { EditorPlantillasPage } from './pages/EditorPlantillasPage';
 
 // Importar Demo de Control Disciplinario
 import { ControlDisciplinarioDemo } from './components/esap/ControlDisciplinarioDemo';
@@ -201,7 +202,15 @@ export default function App() {
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
         : [];
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL');
+      // Verificar si tiene roles de configuración (incluyendo Control Interno)
+      const hasControlInternoRoles = roles.some((role: string) => 
+        ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
+         'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+      );
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
+                           roles.includes('CONTROL_DISCIPLINARIO') || 
+                           roles.includes('GESTION_LEGAL') ||
+                           hasControlInternoRoles;
       const emailLower = userEmail.toLowerCase();
 
       let nextView: Vista = 'portal';
@@ -219,11 +228,26 @@ export default function App() {
         nextView = 'backoffice';
         nextCurrentView = 'backoffice';
         nextUserType = 'administrativo';
+        // Verificar si tiene acceso a Control Interno (múltiples roles)
+        const hasControlInterno = roles.some((role: string) => 
+          ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
+           'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+        );
+        
         module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
         : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
-        : 'control-interno';
+        : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
+        : hasControlInterno ? 'control-interno'
+        : 'users-persons';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
         : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+        : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
+        : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+        : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+        : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+        : roles.includes('CONSULTA') ? 'Consulta Control Interno'
+        : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+        : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
         : 'Control Interno';
         portalRoles.push(rolStr);
       } else {
@@ -437,7 +461,15 @@ export default function App() {
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
+      // Verificar si tiene roles de configuración (incluyendo Control Interno)
+      const hasControlInternoRoles = roles.some((role: string) => 
+        ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
+         'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+      );
+      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
+                           roles.includes('CONTROL_DISCIPLINARIO') || 
+                           roles.includes('GESTION_LEGAL') ||
+                           hasControlInternoRoles;
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -478,19 +510,39 @@ export default function App() {
           userType = 'administrativo';
           currentView = 'backoffice'
           vistaActualCurrent = 'backoffice';
+          // Verificar si tiene acceso a Control Interno (múltiples roles)
+          const hasControlInterno = roles.some((role: string) => 
+            ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
+             'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+          );
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
           : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
-          : 'control-interno';
-          setUserData({
+          : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
+          : hasControlInternoRoles ? 'control-interno'
+          : 'users-persons';
+          const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
+          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+          : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
+          : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+          : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+          : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+          : roles.includes('CONSULTA') ? 'Consulta Control Interno'
+          : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+          : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
+          : 'Control Interno';
+          const userDataToSave = {
             name: userName,
             email: userEmail,
             personId: user?.person?.id || user?.id,
             roles,
             module: module // Módulo específico de acceso
-          });
-          const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
-          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-          : 'Control Interno';
+          };
+          setUserData(userDataToSave);
+          // También guardar en esap_user_data para que otros componentes puedan acceder
+          localStorage.setItem('esap_user_data', JSON.stringify({
+            ...user,
+            roles: user?.roles || roles.map((code: string) => ({ code, name: code }))
+          }));
           portalRoles.push(rolStr);
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           userType = 'docente';
@@ -869,8 +921,7 @@ export default function App() {
     }
   };
 
-  const renderViewLanding = () => {
-    console.log('🔍 Vista actual:', vistaActual, currentView);
+  const renderViewLanding = () => { 
     switch (currentView) {
       case 'solicitar-certificados-laborales':
         return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />
@@ -903,7 +954,7 @@ export default function App() {
           position: fixed !important; 
           top: 20px !important; 
           right: 20px !important; 
-          z-index: 9999 !important; 
+          z-index: 100010 !important; 
         }
         [data-sonner-toast] { 
           background: white !important; 
@@ -932,20 +983,24 @@ export default function App() {
       `}</style>
 
         <Routes>
-          <Route
-            path="/verificar-certificado-graduado"
-            element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
-          />
-          <Route
-            path="/verificar-certificado/:codigo"
-            element={<VerificarCertificadoPublico />}
-          />
-          <Route
-            path="/validar/:codigo"
-            element={<VerificarCertificadoPublico />}
-          />
-          <Route path="*" element={renderVista()} />
-        </Routes>
+           <Route
+             path="/verificar-certificado-graduado"
+             element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
+           />
+           <Route
+             path="/verificar-certificado/:codigo"
+             element={<VerificarCertificadoPublico />}
+           />
+           <Route
+             path="/validar/:codigo"
+             element={<VerificarCertificadoPublico />}
+           />
+           <Route
+             path="/editor-plantillas"
+             element={<EditorPlantillasPage />}
+           />
+           <Route path="*" element={renderVista()} />
+         </Routes>
 
         {/* Modal de Alerta de Inactividad */}
         {mostrarAlertaInactividad && (

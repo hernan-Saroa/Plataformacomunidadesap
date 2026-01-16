@@ -107,7 +107,6 @@ interface BackofficeAppProps {
 
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, userData, userRoles }: BackofficeAppProps = {}) {
   // Si el usuario tiene acceso restringido, abrir directamente su módulo específico
-  console.log('🚀 BackofficeApp: userData:', userData);
   // const initialModule = userData?.module === 'control-interno'
   //   ? 'control-interno'
   //   : userData?.module === 'control-disciplinario'
@@ -123,7 +122,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   //   : userData?.module === 'gestion-profesoral'
   //   ? 'gestion-profesoral'
   //   : 'dashboard';
-  const initialModule = userData?.roles?.includes('CONTROL_INTERNO') 
+  // Verificar si tiene acceso a Control Interno (verificar múltiples roles)
+  const hasControlInternoAccess = userData?.roles?.some((role: string) => 
+    ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA', 
+     'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+  );
+  
+  const initialModule = hasControlInternoAccess
     ? 'control-interno'
     : userData?.roles?.includes('CONTROL_DISCIPLINARIO')
     ? 'control-disciplinario'
@@ -261,7 +266,12 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           return <PortalTransaccionalUsuarioMD3 onLogout={handleLogout} />;
         }
         // Si es usuario de Control Interno (auditor), mostrar dashboard completo
-        return <ControlInternoFull />;
+        return (
+          <ControlInternoFull 
+            userData={userData}
+            userRoles={userRoles}
+          />
+        );
       
       case 'control-disciplinario':
         return <ControlDisciplinarioFull />;
@@ -317,9 +327,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               currentModule={currentModule}
               currentSidebarModule={currentSidebarModule}
               onModuleChange={(sidebarModule) => {
-                console.log('🔍 Sidebar module clicked:', sidebarModule);
                 const mappedModule = mapSidebarToModule(sidebarModule);
-                console.log('📍 Mapped to:', mappedModule);
                 setCurrentSidebarModule(sidebarModule);
                 setCurrentModule(mappedModule);
                 setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo

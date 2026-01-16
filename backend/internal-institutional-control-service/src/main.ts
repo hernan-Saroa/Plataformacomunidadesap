@@ -6,7 +6,8 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 async function bootstrap() {
   try {
     console.log('🚀 Iniciando servicio...');
-    console.log('📦 Creando aplicación NestJS...');
+    console.log('� JWT_SECRET:', process.env.JWT_SECRET ? 'CONFIGURED' : 'USING DEFAULT (dev-secret-esap)');
+    console.log('�📦 Creando aplicación NestJS...');
     
     // Intentar crear la aplicación con manejo de errores de conexión
     let app: NestExpressApplication;

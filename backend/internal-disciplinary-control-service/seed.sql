@@ -128,6 +128,44 @@ VALUES
 ON CONFLICT ("radicadoProceso") DO NOTHING;
 
 -- ============================================
+-- 5. Plantilla de Autos por Defecto
+-- ============================================
+INSERT INTO internal_disciplinary_control.plantilla_auto (
+    id, "htmlContent", estado, nombre, descripcion, "createdAt", "updatedAt"
+)
+VALUES
+    (
+        '550e8400-e29b-41d4-a716-446655440000',
+        '<p>En el proceso disciplinario [RADICADO], iniciado el [FECHA_QUEJA], se ha determinado lo siguiente:</p>
+
+<p><strong>HECHOS:</strong></p>
+<p>[HECHOS]</p>
+
+<p><strong>DENUNCIANTE:</strong> [DENUNCIANTE_NOMBRE] - [DENUNCIANTE_DOCUMENTO]</p>
+<p><strong>DISCIPLINABLE:</strong> [DISCIPLINABLE_NOMBRE] - [DISCIPLINABLE_DOCUMENTO] - [DISCIPLINABLE_CARGO]</p>
+
+<p>Por lo anterior, se resuelve:</p>
+
+<p>PRIMERO: Iniciar proceso disciplinario contra [DISCIPLINABLE_NOMBRE] por los hechos descritos.</p>
+
+<p>SEGUNDO: Notificar al investigado de los cargos formulados.</p>
+
+<p>TERCERO: Designar abogado instructor para el proceso.</p>
+
+<p>Dado en Bogotá D.C., a los [FECHA_ACTUAL].</p>',
+        'activo',
+        'Plantilla General de Autos',
+        'Plantilla por defecto para la generación de autos disciplinarios con todas las variables disponibles',
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+    )
+ON CONFLICT (id) DO UPDATE SET
+    "htmlContent" = EXCLUDED."htmlContent",
+    nombre = EXCLUDED.nombre,
+    descripcion = EXCLUDED.descripcion,
+    "updatedAt" = CURRENT_TIMESTAMP;
+
+-- ============================================
 -- Verificación de datos insertados
 -- ============================================
 -- SELECT 'Secuencias:' AS tabla, COUNT(*) AS total FROM internal_disciplinary_control.sequences
@@ -136,4 +174,6 @@ ON CONFLICT ("radicadoProceso") DO NOTHING;
 -- UNION ALL
 -- SELECT 'Noticias:', COUNT(*) FROM internal_disciplinary_control.disciplinary_news
 -- UNION ALL
--- SELECT 'Procesos:', COUNT(*) FROM internal_disciplinary_control.disciplinary_processes;
+-- SELECT 'Procesos:', COUNT(*) FROM internal_disciplinary_control.disciplinary_processes
+-- UNION ALL
+-- SELECT 'Plantillas:', COUNT(*) FROM internal_disciplinary_control.plantilla_auto;

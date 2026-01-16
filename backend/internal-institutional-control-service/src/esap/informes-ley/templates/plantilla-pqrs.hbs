@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Informe Mensual de Seguimiento a PQRS</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 11pt; padding: 20mm 15mm; }
+    .header { background: linear-gradient(135deg, #003DA5 0%, #0052CC 100%); color: white; padding: 20px 30px; margin-bottom: 30px; border-radius: 5px; }
+    .titulo-informe { text-align: center; margin: 30px 0; padding: 20px; background: #f8f9fa; border-left: 5px solid #003DA5; }
+    .seccion { margin-bottom: 30px; }
+    .seccion h3 { font-size: 13pt; color: #003DA5; border-bottom: 2px solid #003DA5; padding-bottom: 8px; margin-bottom: 15px; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    table th, table td { padding: 10px; text-align: left; border: 1px solid #ddd; }
+    table th { background: #003DA5; color: white; }
+    .metricas { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+    .metrica { background: #f8f9fa; padding: 15px; border-left: 4px solid #003DA5; border-radius: 3px; }
+    .metrica h4 { color: #003DA5; margin-bottom: 8px; font-size: 12pt; }
+    .metrica .valor { font-size: 18pt; font-weight: bold; color: #333; }
+    ul { list-style: none; padding: 0; }
+    ul li { padding: 10px; margin-bottom: 10px; background: #f8f9fa; border-left: 4px solid #003DA5; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</h1>
+    <p>Oficina de Control Interno de Gestión</p>
+  </div>
+  <div class="titulo-informe">
+    <h2>Informe Mensual de Seguimiento a PQRS</h2>
+    <p>Periodo: {{periodo}}{{#if mes}} - Mes: {{mes}}{{/if}}</p>
+  </div>
+
+  <div class="seccion">
+    <h3>1. Resumen de PQRS</h3>
+    {{#if estados}}
+    <div class="metricas">
+      <div class="metrica">
+        <h4>Recibidas</h4>
+        <div class="valor">{{estados.recibidas}}</div>
+      </div>
+      <div class="metrica">
+        <h4>En Trámite</h4>
+        <div class="valor">{{estados.enTramite}}</div>
+      </div>
+      <div class="metrica">
+        <h4>Resueltas</h4>
+        <div class="valor">{{estados.resueltas}}</div>
+      </div>
+      <div class="metrica">
+        <h4>Cerradas</h4>
+        <div class="valor">{{estados.cerradas}}</div>
+      </div>
+      <div class="metrica">
+        <h4>Vencidas</h4>
+        <div class="valor">{{estados.vencidas}}</div>
+      </div>
+    </div>
+    {{else}}
+    <p style="color: #999; font-style: italic;">No hay datos de estados disponibles.</p>
+    {{/if}}
+  </div>
+
+  <div class="seccion">
+    <h3>2. Tiempos de Respuesta</h3>
+    {{#if tiemposRespuesta}}
+    <div class="metricas">
+      <div class="metrica">
+        <h4>Promedio (días)</h4>
+        <div class="valor">{{tiemposRespuesta.promedio}}</div>
+      </div>
+      <div class="metrica">
+        <h4>Mínimo (días)</h4>
+        <div class="valor">{{tiemposRespuesta.minimo}}</div>
+      </div>
+      <div class="metrica">
+        <h4>Máximo (días)</h4>
+        <div class="valor">{{tiemposRespuesta.maximo}}</div>
+      </div>
+      <div class="metrica">
+        <h4>Dentro de Plazo</h4>
+        <div class="valor">{{tiemposRespuesta.dentroPlazo}}</div>
+      </div>
+      <div class="metrica">
+        <h4>Fuera de Plazo</h4>
+        <div class="valor">{{tiemposRespuesta.fueraPlazo}}</div>
+      </div>
+    </div>
+    {{else}}
+    <p style="color: #999; font-style: italic;">No hay datos de tiempos de respuesta disponibles.</p>
+    {{/if}}
+  </div>
+
+  <div class="seccion">
+    <h3>3. Detalle de PQRS</h3>
+    {{#if pqrs}}{{#if pqrs.length}}
+    <table>
+      <thead>
+        <tr>
+          <th>Número</th>
+          <th>Tipo</th>
+          <th>Fecha Recepción</th>
+          <th>Estado</th>
+          <th>Tiempo Respuesta (días)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each pqrs}}
+        <tr>
+          <td>{{this.numero}}</td>
+          <td>{{this.tipo}}</td>
+          <td>{{this.fechaRecepcion}}</td>
+          <td>{{this.estado}}</td>
+          <td>{{this.tiempoRespuesta}}</td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    {{else}}
+    <p style="color: #999; font-style: italic;">No hay PQRS registradas.</p>
+    {{/if}}{{else}}
+    <p style="color: #999; font-style: italic;">No hay PQRS registradas.</p>
+    {{/if}}
+  </div>
+
+  <div class="seccion">
+    <h3>4. Cumplimiento</h3>
+    {{#if cumplimiento}}
+    <div class="metricas">
+      <div class="metrica">
+        <h4>Total PQRS</h4>
+        <div class="valor">{{cumplimiento.totalPQRS}}</div>
+      </div>
+      <div class="metrica">
+        <h4>Resueltas</h4>
+        <div class="valor">{{cumplimiento.resueltas}}</div>
+      </div>
+      <div class="metrica">
+        <h4>Pendientes</h4>
+        <div class="valor">{{cumplimiento.pendientes}}</div>
+      </div>
+      <div class="metrica">
+        <h4>% Cumplimiento</h4>
+        <div class="valor">{{cumplimiento.porcentajeCumplimiento}}%</div>
+      </div>
+      <div class="metrica">
+        <h4>Estado</h4>
+        <div class="valor">{{cumplimiento.estado}}</div>
+      </div>
+    </div>
+    {{else}}
+    <p style="color: #999; font-style: italic;">No hay datos de cumplimiento disponibles.</p>
+    {{/if}}
+  </div>
+
+  {{#if baseNormativa}}
+  <div style="margin-top: 30px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107;">
+    <strong>Base Normativa:</strong> {{baseNormativa}}
+  </div>
+  {{/if}}
+  <div style="margin-top: 50px; padding-top: 20px; border-top: 2px solid #ddd; text-align: center; font-size: 9pt;">
+    <p>Documento generado el {{fechaGeneracion}} por {{responsable}}</p>
+  </div>
+</body>
+</html>

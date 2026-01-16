@@ -18,39 +18,41 @@ const SERVICE_PREFIX = '/control-disciplinario/api/v1';
 // ============================================================================
 
 export interface DisciplinaryNews {
-    id: string;
-    radicado: string;
-    origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
-    fechaQueja?: string;
-    fechaRecepcion?: string;
-    territorial: string;
-    dependenciaDenunciado: string;
-    hechos: string;
-    conductas?: string[];
-    adjuntos?: string[];
-    denunciante: Array<{
-        nombre: string;
-        email: string;
-        telefono?: string;
-        direccion?: string;
-        cargo?: string;
-        cedula?: string;
-        dependencia?: string;
-        entidad?: string;
-    }>;
-    disciplinable: Array<{
-        nombre: string;
-        cargo: string;
-        cedula?: string;
-        email?: string;
-        telefono?: string;
-        dependencia?: string;
-    }>;
-    estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
-    kanbanStage?: string;
-    createdAt: string;
-    updatedAt: string;
-}
+     id: string;
+     radicado: string;
+     origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
+     fechaQueja?: string;
+     fechaRecepcion?: string;
+     territorial: string;
+     dependenciaDenunciado: string;
+     hechos: string;
+     conductas?: string[];
+     adjuntos?: string[];
+     denunciante?: {
+         nombre: string;
+         email?: string;
+         telefono?: string;
+         direccion?: string;
+         cargo?: string;
+         cedula?: string;
+         documento?: string;
+         dependencia?: string;
+         entidad?: string;
+     };
+     disciplinable?: {
+         nombre: string;
+         cargo: string;
+         cedula?: string;
+         documento?: string;
+         email?: string;
+         telefono?: string;
+         dependencia?: string;
+     };
+     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
+     kanbanStage?: string;
+     createdAt: string;
+     updatedAt: string;
+ }
 
 // ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
 
@@ -586,6 +588,19 @@ class DisciplinaryService {
         return apiClient.get<ProcessStatistics>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/statistics`
         );
+    }
+
+    // --- PLANTILLAS DE AUTOS ---
+    async getPlantillaAuto(tipoAuto: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/auto-templates/${tipoAuto}`);
+    }
+
+    async getConfiguracionPlantillaAuto(): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/auto-templates/config`);
+    }
+
+    async updateConfiguracionPlantillaAuto(config: any): Promise<any> {
+        return apiClient.put<any>(`${SERVICE_PREFIX}/auto-templates/config`, config);
     }
 
     // --- EVIDENCIAS ---

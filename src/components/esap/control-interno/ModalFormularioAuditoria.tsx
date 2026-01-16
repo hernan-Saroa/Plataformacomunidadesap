@@ -19,7 +19,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Save, AlertCircle, CheckCircle, Plus, Trash2,
-  User, Calendar, Target, FileText, Shield, Info
+  User, Calendar, Target, FileText, Shield, Info, MapPin, Zap, Clock
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
@@ -83,35 +83,35 @@ const TERRITORIALES = [
 
 const AUDITORES_MOCK: Persona[] = [
   {
-    id: 'aud-001',
+    id: '1',
     nombre: 'Juan Pérez Gómez',
     cargo: 'Auditor Senior',
     tipoIdentificacion: 'CC',
     numeroIdentificacion: '80123456'
   },
   {
-    id: 'aud-002',
+    id: '2',
     nombre: 'Ana María López Silva',
     cargo: 'Auditor Junior',
     tipoIdentificacion: 'CC',
     numeroIdentificacion: '52987654'
   },
   {
-    id: 'aud-003',
+    id: '3',
     nombre: 'Carlos Ramírez Díaz',
     cargo: 'Auditor Senior',
     tipoIdentificacion: 'CC',
     numeroIdentificacion: '94123456'
   },
   {
-    id: 'aud-004',
+    id: '4',
     nombre: 'Diana López Vargas',
     cargo: 'Auditor Senior',
     tipoIdentificacion: 'CC',
     numeroIdentificacion: '72123456'
   },
   {
-    id: 'aud-005',
+    id: '5',
     nombre: 'Roberto Torres Sánchez',
     cargo: 'Auditor Líder',
     tipoIdentificacion: 'CC',
@@ -169,14 +169,50 @@ export function ModalFormularioAuditoria({
   initialData,
   mode
 }: ModalFormularioAuditoriaProps) {
+  // Función auxiliar para normalizar ID de auditor
+  const normalizarAuditorId = (value: any): string => {
+    if (!value) return '';
+    // Si viene como número, convertir a string
+    if (typeof value === 'number') {
+      return value.toString();
+    }
+    // Si viene como string numérico, devolver tal cual
+    if (typeof value === 'string' && !isNaN(Number(value))) {
+      return value;
+    }
+    return '';
+  };
+
+  // Función auxiliar para normalizar tipo de auditoría
+  const normalizarTipo = (tipo: any): string => {
+    if (!tipo) return 'Regular';
+    const tiposValidos = ['Regular', 'Territorial', 'Especial'];
+    if (tiposValidos.includes(tipo)) return tipo;
+    // Mapeo de tipos antiguos
+    const mapping: Record<string, string> = {
+      'gestión': 'Regular',
+      'cumplimiento': 'Regular',
+      'desempeño': 'Regular',
+      'sistemas': 'Regular',
+      'financiera': 'Regular',
+      'seguimiento': 'Regular',
+      'control interno': 'Regular',
+      'académica': 'Regular',
+      'rrhh': 'Regular',
+      'ti': 'Regular',
+      'operacional': 'Regular'
+    };
+    return mapping[tipo.toString().toLowerCase()] || 'Regular';
+  };
+
   // Estado del formulario
   const [formData, setFormData] = useState<AuditoriaFormData>({
-    tipoAuditoria: initialData?.tipoAuditoria || 'Gestión',
+    tipo: normalizarTipo(initialData?.tipo),
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
-    auditorLider: initialData?.auditorLider || '',
-    auditorAsignado: initialData?.auditorAsignado || '',
+    auditorLider: normalizarAuditorId(initialData?.auditorLider),
+    auditorAsignado: normalizarAuditorId(initialData?.auditorAsignado),
     fechaInicio: initialData?.fechaInicio || '',
     fechaFin: initialData?.fechaFin || '',
     objetivos: initialData?.objetivos || [],
@@ -189,6 +225,101 @@ export function ModalFormularioAuditoria({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [objetivoTemporal, setObjetivoTemporal] = useState('');
+  const [auditoresDisponibles, setAuditoresDisponibles] = useState<Persona[]>([]);
+  const [cargandoAuditores, setCargandoAuditores] = useState(false);
+
+  // Cargar auditores disponibles desde la API
+  useEffect(() => {
+    const cargarAuditores = async () => {
+      console.log('[ModalFormularioAuditoria] Iniciando carga de auditores...');
+      setCargandoAuditores(true);
+      try {
+        const response = await fetch('http://localhost:3007/auditorias/personas/disponibles');
+        console.log('[ModalFormularioAuditoria] Response status:', response.status);
+        
+        if (response.ok) {
+          const personas = await response.json();
+          console.log('[ModalFormularioAuditoria] Personas recibidas:', personas.length, personas);
+          console.log('[ModalFormularioAuditoria] Primera persona:', personas[0]);
+          
+          // Convertir personas a formato de auditores
+          // El backend ya transformó y devuelve id, idPersona en lugar de id_tercero
+          const auditores = personas
+            .filter((persona: any) => {
+              const personaId = persona.idPersona || persona.id_tercero || persona.id;
+              if (!personaId) {
+                console.warn('[ModalFormularioAuditoria] Persona sin ID:', persona);
+                return false;
+              }
+              return true;
+            })
+            .map((persona: any) => {
+              const personaId = persona.idPersona || persona.id_tercero || persona.id;
+              return {
+                id: String(personaId),
+                nombre: persona.nombre || persona.nom_largo || 'Sin nombre',
+                cargo: 'Auditor',
+                tipoIdentificacion: persona.tipoIdentificacion || persona.tip_identificacion || 'CC',
+                numeroIdentificacion: persona.numeroIdentificacion || persona.num_identificacion || 'Sin identificación'
+              };
+            });
+          
+          console.log('[ModalFormularioAuditoria] Auditores mapeados:', auditores.length, auditores);
+          setAuditoresDisponibles(auditores);
+          console.log('[ModalFormularioAuditoria] Estado auditoresDisponibles actualizado');
+          
+          // Después de cargar auditores, verificar si initialData tiene numeroIdentificacion
+          if (initialData) {
+            const auditorLiderValue = initialData.auditorLider;
+            const auditorAsignadoValue = initialData.auditorAsignado;
+            
+            // Si auditorLider no existe como ID en la lista, buscar por numeroIdentificacion
+            if (auditorLiderValue) {
+              const existeComoId = auditores.some(a => a.id === auditorLiderValue);
+              
+              if (!existeComoId) {
+                const auditorEncontrado = auditores.find(a => a.numeroIdentificacion === auditorLiderValue);
+                if (auditorEncontrado) {
+                  console.log('[ModalFormularioAuditoria] Auditor Líder encontrado por numeroIdentificacion:', auditorEncontrado.id, auditorEncontrado.nombre);
+                  setFormData(prev => ({ ...prev, auditorLider: auditorEncontrado.id }));
+                } else {
+                  console.warn('[ModalFormularioAuditoria] No se encontró auditor líder con numeroIdentificacion:', auditorLiderValue);
+                }
+              }
+            }
+            
+            // Si auditorAsignado no existe como ID en la lista, buscar por numeroIdentificacion
+            if (auditorAsignadoValue) {
+              const existeComoId = auditores.some(a => a.id === auditorAsignadoValue);
+              
+              if (!existeComoId) {
+                const auditorEncontrado = auditores.find(a => a.numeroIdentificacion === auditorAsignadoValue);
+                if (auditorEncontrado) {
+                  console.log('[ModalFormularioAuditoria] Auditor Asignado encontrado por numeroIdentificacion:', auditorEncontrado.id, auditorEncontrado.nombre);
+                  setFormData(prev => ({ ...prev, auditorAsignado: auditorEncontrado.id }));
+                } else {
+                  console.warn('[ModalFormularioAuditoria] No se encontró auditor asignado con numeroIdentificacion:', auditorAsignadoValue);
+                }
+              }
+            }
+          }
+        } else {
+          console.warn('[ModalFormularioAuditoria] Response no OK:', response.status);
+          setAuditoresDisponibles([]);
+        }
+      } catch (error) {
+        console.error('[ModalFormularioAuditoria] Error al cargar auditores:', error);
+        setAuditoresDisponibles([]);
+      } finally {
+        setCargandoAuditores(false);
+        console.log('[ModalFormularioAuditoria] Carga finalizada. Total auditores:', auditoresDisponibles.length);
+      }
+    };
+
+    if (open) {
+      cargarAuditores();
+    }
+  }, [open, initialData]);
 
   // Actualizar formulario cuando cambian los datos iniciales
   useEffect(() => {
@@ -200,20 +331,29 @@ export function ModalFormularioAuditoria({
           )
         : [];
       
-      setFormData({
+      const newFormData = {
         codigo: initialData.codigo || '',
-        tipoAuditoria: initialData.tipoAuditoria || 'Gestión',
+        tipo: initialData.tipo || 'Gestión',
         titulo: initialData.titulo || '',
         descripcion: initialData.descripcion || '',
         territorial: initialData.territorial || '',
-        auditorLider: initialData.auditorLider || '',
-        auditorAsignado: initialData.auditorAsignado || '',
+        auditorLider: normalizarAuditorId(initialData.auditorLider),
+        auditorAsignado: normalizarAuditorId(initialData.auditorAsignado),
         fechaInicio: initialData.fechaInicio || '',
         fechaFin: initialData.fechaFin || '',
         objetivos: normalizedObjetivos,
         alcance: initialData.alcance || '',
         riesgo: initialData.riesgo || 'Medio'
+      };
+      
+      console.log('[ModalFormularioAuditoria] Actualizando formData con initialData:', {
+        auditorLider: newFormData.auditorLider,
+        auditorAsignado: newFormData.auditorAsignado,
+        initialData_auditorLider: initialData.auditorLider,
+        initialData_auditorAsignado: initialData.auditorAsignado
       });
+      
+      setFormData(newFormData);
       setTouched({});
       setErrors([]);
       setHasChanges(false);
@@ -334,6 +474,9 @@ export function ModalFormularioAuditoria({
   }).length;
   const progresoCompletado = Math.round((camposCompletados / camposRequeridos.length) * 100);
 
+  console.log('[ModalFormularioAuditoria] RENDER - auditoresDisponibles:', auditoresDisponibles.length, 'open:', open, 'cargando:', cargandoAuditores);
+  console.log('[ModalFormularioAuditoria] RENDER - formData.auditorLider:', formData.auditorLider, 'formData.auditorAsignado:', formData.auditorAsignado);
+
   return (
     <AnimatePresence>
       {open && (
@@ -431,30 +574,70 @@ export function ModalFormularioAuditoria({
                       {/* Tipo de Auditoría */}
                       <FieldWrapper
                         label="Tipo de Auditoría"
-                        error={touched.tipoAuditoria ? getFieldError(errors, 'Tipo de auditoría') : null}
+                        error={touched.tipo ? getFieldError(errors, 'Tipo de auditoría') : null}
                         required
-                        helpText="Seleccione el tipo de auditoría a realizar"
+                        helpText="Seleccione el tipo de auditoría según su naturaleza"
                       >
-                        <select
-                          value={formData.tipoAuditoria}
-                          onChange={(e) => handleChange('tipoAuditoria', e.target.value)}
-                          onBlur={() => handleBlur('tipoAuditoria')}
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                            hasFieldError(errors, 'Tipo de auditoría') && touched.tipoAuditoria
-                              ? 'border-red-500 focus:ring-red-500'
-                              : 'border-gray-300'
-                          }`}
-                        >
-                          <option value="">Seleccione un tipo...</option>
-                          <option value="Gestión">Gestión</option>
-                          <option value="Control Interno">Control Interno</option>
-                          <option value="Académica">Académica</option>
-                          <option value="RRHH">RRHH</option>
-                          <option value="Financiera">Financiera</option>
-                          <option value="TI">TI</option>
-                          <option value="Cumplimiento">Cumplimiento</option>
-                          <option value="Operacional">Operacional</option>
-                        </select>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          {[
+                            { value: 'Regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
+                            { value: 'Territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
+                            { value: 'Especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> }
+                          ].map(tipo => (
+                            <button
+                              key={tipo.value}
+                              type="button"
+                              onClick={() => {
+                                handleChange('tipo', tipo.value);
+                                handleBlur('tipo');
+                              }}
+                              className={`
+                                px-4 py-3 rounded-lg border-2 transition-all duration-200
+                                flex flex-col items-center justify-center gap-2 font-medium
+                                ${
+                                  formData.tipo === tipo.value
+                                    ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                    : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                                }
+                                ${
+                                  hasFieldError(errors, 'Tipo de auditoría') && touched.tipo
+                                    ? 'border-red-500'
+                                    : ''
+                                }
+                              `}
+                            >
+                              {tipo.icono}
+                              <span className="text-sm">{tipo.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                        {/* Información contextual según tipo */}
+                        {formData.tipo === 'Especial' && (
+                          <div className="mt-3 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                            <div className="flex items-start gap-3">
+                              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                              <div className="text-sm">
+                                <p className="font-bold text-amber-900 mb-1">Auditoría Especial</p>
+                                <p className="text-amber-700">
+                                  Las auditorías especiales se realizan por solicitudes específicas, denuncias o necesidades urgentes no contempladas en el Plan Anual.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {formData.tipo === 'Territorial' && (
+                          <div className="mt-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                            <div className="flex items-start gap-3">
+                              <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                              <div className="text-sm">
+                                <p className="font-bold text-blue-900 mb-1">Auditoría Territorial</p>
+                                <p className="text-blue-700">
+                                  Auditoría realizada a sedes territoriales de la ESAP en diferentes regiones del país.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </FieldWrapper>
 
                       {/* Título */}
@@ -546,17 +729,18 @@ export function ModalFormularioAuditoria({
                         required
                       >
                         <select
-                          value={formData.auditorLider}
+                          value={formData.auditorLider || ''}
                           onChange={(e) => handleChange('auditorLider', e.target.value)}
                           onBlur={() => handleBlur('auditorLider')}
+                          disabled={cargandoAuditores}
                           className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
                             hasFieldError(errors, 'Auditor Líder') && touched.auditorLider
                               ? 'border-red-500 focus:ring-red-500'
                               : 'border-gray-300'
                           }`}
                         >
-                          <option value="">Seleccione un auditor...</option>
-                          {AUDITORES_MOCK.map(auditor => (
+                          <option value="">{cargandoAuditores ? 'Cargando auditores...' : 'Seleccione un auditor...'}</option>
+                          {auditoresDisponibles.map(auditor => (
                             <option key={auditor.id} value={auditor.id}>
                               {auditor.nombre} - {auditor.cargo}
                             </option>
@@ -571,17 +755,18 @@ export function ModalFormularioAuditoria({
                         required
                       >
                         <select
-                          value={formData.auditorAsignado}
+                          value={formData.auditorAsignado || ''}
                           onChange={(e) => handleChange('auditorAsignado', e.target.value)}
                           onBlur={() => handleBlur('auditorAsignado')}
+                          disabled={cargandoAuditores}
                           className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
                             hasFieldError(errors, 'Auditor Asignado') && touched.auditorAsignado
                               ? 'border-red-500 focus:ring-red-500'
                               : 'border-gray-300'
                           }`}
                         >
-                          <option value="">Seleccione un auditor...</option>
-                          {AUDITORES_MOCK.filter(a => a.id !== formData.auditorLider).map(auditor => (
+                          <option value="">{cargandoAuditores ? 'Cargando auditores...' : 'Seleccione un auditor...'}</option>
+                          {auditoresDisponibles.filter(a => a.id !== formData.auditorLider).map(auditor => (
                             <option key={auditor.id} value={auditor.id}>
                               {auditor.nombre} - {auditor.cargo}
                             </option>

@@ -12,6 +12,7 @@ import {
   Hallazgo,
   PlanMejoramiento,
   AccionMejoramiento,
+  EventoTimeline,
   PlanAnual5Roles,
   Actividad,
   ListaChequeo,
@@ -56,24 +57,25 @@ async function apiRequest<T>(
 ): Promise<ApiResponse<T>> {
   const url = `${API_BASE_URL}${endpoint}`;
   
+  // Get JWT token from localStorage
+  const token = localStorage.getItem('esap_auth_token');
+  
+  // Build headers with authentication
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...options?.headers,
+  };
+  
+  // Add Authorization header if token exists
+  if (token) {
+    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+  }
+  
   try {
-    console.log('[API Request]', options?.method || 'GET', url);
-    console.log('[API Request] API_BASE_URL:', API_BASE_URL);
-    console.log('[API Request] Endpoint:', endpoint);
-    console.log('[API Request] URL completa:', url);
-    if (options?.body) {
-      console.log('[API Request] Body:', options.body);
-    }
-    
     const response = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
       ...options,
+      headers,
     });
-
-    console.log('[API Response]', response.status, response.statusText, response.headers.get('content-type'));
 
     // Leer el texto de la respuesta una sola vez
     const responseText = await response.text();
@@ -92,13 +94,10 @@ async function apiRequest<T>(
       if (responseText && responseText.trim()) {
         try {
           data = JSON.parse(responseText);
-          console.log('[API Response Data]', data);
         } catch (parseError) {
-          console.error('[API Error] Error al parsear JSON:', parseError);
-          console.error('[API Error] Response text (primeros 500 chars):', responseText.substring(0, 500));
           return {
             success: false,
-            error: 'Error al parsear respuesta del servidor (la respuesta no es JSON válido)',
+            error: 'Error al parsear respuesta del servidor (la respuesta no es JSON válido)' + parseError,
           };
         }
       } else {
@@ -106,10 +105,6 @@ async function apiRequest<T>(
       }
     } else if (responseText) {
       // Respuesta no es JSON (probablemente HTML de error)
-      console.error('[API Error] Respuesta no es JSON. Status:', response.status);
-      console.error('[API Error] Content-Type:', contentType);
-      console.error('[API Error] Response preview:', responseText.substring(0, 200));
-      
       // Si es HTML, probablemente es un error de routing
       if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
         return {
@@ -125,9 +120,21 @@ async function apiRequest<T>(
     }
 
     if (!response.ok) {
+      // NestJS devuelve errores en formato: { statusCode, message, error }
+      // Extraer el mensaje descriptivo si existe
+      console.log('❌ Error en respuesta:', { 
+        status: response.status, 
+        data,
+        message: data?.message,
+        error: data?.error 
+      });
+      
+      const errorMessage = data?.message || data?.error || `Error HTTP ${response.status}`;
+      
       return {
         success: false,
-        error: data?.error || data?.message || `Error HTTP ${response.status}`,
+        error: typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage),
+        statusCode: response.status
       };
     }
 
@@ -135,14 +142,11 @@ async function apiRequest<T>(
       success: true,
       data: data?.data || data,
     };
-    console.log('[apiRequest] Resultado final:', result);
     return result;
   } catch (error) {
-    console.error('[API Error] Error en fetch:', error);
-    console.error('[API Error] URL intentada:', url);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Error desconocido',
+      error: error instanceof Error ? error.message : 'Error desconocido' + error,
     };
   }
 }
@@ -356,6 +360,66 @@ export const auditoriasApi = {
         observacionesAdicionales: comentario ? `Archivada: ${comentario}` : 'Archivada por el usuario'
       }),
     });
+  },
+
+  /**
+   * ==================== AMPLIACIÓN DE PLAZO ====================
+   */
+
+  /**
+   * Solicitar ampliación de plazo de una auditoría en curso
+   */
+  solicitarAmpliacionPlazo: async (
+    id: string,
+    data: { nuevaFechaFin: string; justificacion: string }
+  ): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${id}/ampliar-plazo/solicitar`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Aprueba una solicitud de ampliación de plazo (solo Jefe OCI)
+   */
+  aprobarAmpliacionPlazo: async (
+    id: string,
+    data: { comentarios?: string }
+  ): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${id}/ampliar-plazo/aprobar`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Rechaza una solicitud de ampliación de plazo (solo Jefe OCI)
+   */
+  rechazarAmpliacionPlazo: async (
+    id: string,
+    data: { justificacion: string }
+  ): Promise<ApiResponse<Auditoria>> => {
+    return apiRequest<Auditoria>(`/auditorias/${id}/ampliar-plazo/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Obtiene todas las solicitudes de ampliación de plazo pendientes
+   */
+  getSolicitudesAmpliacionPendientes: async (): Promise<ApiResponse<Array<{
+    id: string;
+    auditoriaId: string;
+    auditoriaCodigo: string;
+    auditoriaNombre: string;
+    fechaSolicitud: string;
+    justificacion: string;
+    fechaFinAnterior: string;
+    fechaFinNueva: string;
+    solicitanteId: number;
+  }>>> => {
+    return apiRequest(`/auditorias/ampliar-plazo/pendientes`);
   },
 };
 
@@ -658,8 +722,8 @@ export const planesMejoramientoApi = {
   /**
    * Actualizar acción de mejoramiento
    */
-  updateAccion: async (accionId: string, data: Partial<AccionMejoramiento>): Promise<ApiResponse<AccionMejoramiento>> => {
-    return apiRequest<AccionMejoramiento>(`/acciones-mejoramiento/${accionId}`, {
+  updateAccion: async (planId: string, accionId: string, data: Partial<AccionMejoramiento>): Promise<ApiResponse<AccionMejoramiento>> => {
+    return apiRequest<AccionMejoramiento>(`/planes-mejoramiento/${planId}/acciones/${accionId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -672,6 +736,44 @@ export const planesMejoramientoApi = {
     return apiRequest<AccionMejoramiento>(`/acciones-mejoramiento/${accionId}/progreso`, {
       method: 'PATCH',
       body: JSON.stringify({ porcentajeAvance: porcentaje }),
+    });
+  },
+
+  /**
+   * Cargar evidencia en una acción
+   */
+  addEvidencia: async (planId: string, accionId: string, evidencia: {
+    nombre: string;
+    tipo: string;
+    url: string;
+    fecha?: string;
+  }): Promise<ApiResponse<AccionMejoramiento>> => {
+    return apiRequest<AccionMejoramiento>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias`, {
+      method: 'POST',
+      body: JSON.stringify(evidencia),
+    });
+  },
+
+  /**
+   * Obtener eventos del timeline de un plan
+   */
+  getEventosTimeline: async (planId: string): Promise<ApiResponse<EventoTimeline[]>> => {
+    return apiRequest<EventoTimeline[]>(`/planes-mejoramiento/${planId}/eventos`);
+  },
+
+  /**
+   * Crear un evento en el timeline
+   */
+  createEventoTimeline: async (planId: string, evento: {
+    tipo: string;
+    descripcion: string;
+    usuarioId?: string;
+    usuarioNombre?: string;
+    metadata?: any;
+  }): Promise<ApiResponse<EventoTimeline>> => {
+    return apiRequest<EventoTimeline>(`/planes-mejoramiento/${planId}/eventos`, {
+      method: 'POST',
+      body: JSON.stringify(evento),
     });
   },
 };
@@ -819,6 +921,467 @@ export const informesLeyApi = {
       body: JSON.stringify(data),
     });
   },
+
+  /**
+   * Generar informe automático
+   */
+  generar: async (
+    informeId: string,
+    data: {
+      periodo: string;
+      datosAdicionales?: Record<string, any>;
+    }
+  ): Promise<ApiResponse<{
+    entregaId: string;
+    archivoUrl: string;
+    fechaGeneracion: string;
+    datosAutomaticosPoblados: boolean;
+  }>> => {
+    return apiRequest(`/informes-ley/${informeId}/generar`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Obtener todas las plantillas disponibles
+   */
+  getPlantillas: async (): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>('/informes-ley/plantillas/all');
+  },
+
+  /**
+   * Obtener plantilla por código
+   */
+  getPlantilla: async (codigo: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/informes-ley/plantillas/${codigo}`);
+  },
+
+  // ==================== WORKFLOW DE APROBACIÓN (US-033) ====================
+
+  /**
+   * Enviar informe a revisión (Auditor → Jefe OCI)
+   */
+  enviarRevision: async (
+    informeId: string,
+    entregaId: string,
+    data?: { observaciones?: string }
+  ): Promise<ApiResponse<any>> => {
+    return apiRequest(`/informes-ley/${informeId}/entregas/${entregaId}/enviar`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    });
+  },
+
+  /**
+   * Aprobar informe (Jefe OCI)
+   */
+  aprobar: async (
+    informeId: string,
+    entregaId: string,
+    data?: { observaciones?: string }
+  ): Promise<ApiResponse<any>> => {
+    return apiRequest(`/informes-ley/${informeId}/entregas/${entregaId}/aprobar`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    });
+  },
+
+  /**
+   * Rechazar informe (Jefe OCI)
+   */
+  rechazar: async (
+    informeId: string,
+    entregaId: string,
+    data: { motivoRechazo: string; observaciones?: string }
+  ): Promise<ApiResponse<any>> => {
+    return apiRequest(`/informes-ley/${informeId}/entregas/${entregaId}/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Obtener workflow de una entrega
+   */
+  getWorkflow: async (entregaId: string): Promise<ApiResponse<any>> => {
+    return apiRequest(`/informes-ley/entregas/${entregaId}/workflow`);
+  },
+
+  /**
+   * Obtener historial de una entrega
+   */
+  getHistorial: async (entregaId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest(`/informes-ley/entregas/${entregaId}/historial`);
+  },
+
+  /**
+   * Subir archivo para una entrega
+   */
+  uploadArchivo: async (entregaId: string, file: File): Promise<ApiResponse<EntregaInforme>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = localStorage.getItem('esap_auth_token');
+    // Usar getApiBaseUrl() para construir la URL correctamente
+    const baseUrl = getApiBaseUrl();
+    const url = `${baseUrl}/informes-ley/entregas/${entregaId}/upload`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          // NO establecer Content-Type para FormData, el navegador lo hace automáticamente con boundary
+        },
+        body: formData,
+      });
+
+      const responseText = await response.text();
+      let data: any = null;
+      
+      if (responseText && responseText.trim()) {
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          return {
+            success: false,
+            error: 'Error al parsear respuesta del servidor',
+          };
+        }
+      }
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data?.message || data?.error || `Error HTTP ${response.status}`,
+          statusCode: response.status,
+        };
+      }
+
+      return {
+        success: true,
+        data: data.data || data,
+      };
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Error desconocido al subir archivo',
+      };
+    }
+  },
+};
+
+// ==================== NOTIFICACIONES ====================
+
+export const notificacionesApi = {
+  /**
+   * Obtener todas las notificaciones de un usuario
+   */
+  obtenerPorUsuario: (usuarioId: number | string, filtros?: {
+    estado?: string;
+    tipo?: string;
+    leida?: boolean;
+    prioridad?: string;
+  }) => {
+    const params = new URLSearchParams();
+    if (filtros?.estado) params.append('estado', filtros.estado);
+    if (filtros?.tipo) params.append('tipo', filtros.tipo);
+    if (filtros?.leida !== undefined) params.append('leida', String(filtros.leida));
+    if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
+    
+    const queryString = params.toString();
+    const endpoint = `/notificaciones/usuario/${usuarioId}${queryString ? `?${queryString}` : ''}`;
+    
+    return apiRequest<any[]>(endpoint);
+  },
+
+  /**
+   * Obtener TODAS las notificaciones (solo para super administradores/admins)
+   */
+  obtenerTodas: (filtros?: {
+    estado?: string;
+    tipo?: string;
+    leida?: boolean;
+    prioridad?: string;
+  }) => {
+    const params = new URLSearchParams();
+    if (filtros?.estado) params.append('estado', filtros.estado);
+    if (filtros?.tipo) params.append('tipo', filtros.tipo);
+    if (filtros?.leida !== undefined) params.append('leida', String(filtros.leida));
+    if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
+    
+    const queryString = params.toString();
+    const endpoint = `/notificaciones/todas${queryString ? `?${queryString}` : ''}`;
+    
+    return apiRequest<any[]>(endpoint);
+  },
+
+  /**
+   * Obtener notificaciones no leídas
+   */
+  obtenerNoLeidas: (usuarioId: number | string) => {
+    return apiRequest<any[]>(`/notificaciones/usuario/${usuarioId}/no-leidas`);
+  },
+
+  /**
+   * Obtener conteo de notificaciones no leídas
+   */
+  obtenerConteoNoLeidas: (usuarioId: number | string) => {
+    return apiRequest<{ count: number }>(`/notificaciones/usuario/${usuarioId}/conteo`);
+  },
+
+  /**
+   * Marcar notificación como leída
+   */
+  marcarLeida: (id: string, usuarioId: number | string) => {
+    return apiRequest<any>(`/notificaciones/${id}/leida`, {
+      method: 'PUT',
+      body: JSON.stringify({ usuarioId: String(usuarioId) }),
+    });
+  },
+
+  /**
+   * Marcar todas las notificaciones como leídas
+   */
+  marcarTodasLeidas: (usuarioId: number | string) => {
+    return apiRequest<any>(`/notificaciones/usuario/${usuarioId}/todas-leidas`, {
+      method: 'PUT',
+    });
+  },
+
+  /**
+   * Archivar notificación
+   */
+  archivar: (id: string, usuarioId: number | string) => {
+    return apiRequest<any>(`/notificaciones/${id}/archivar`, {
+      method: 'PUT',
+      body: JSON.stringify({ usuarioId: String(usuarioId) }),
+    });
+  },
+
+  /**
+   * Eliminar notificación
+   */
+  eliminar: (id: string, usuarioId: string) => {
+    return apiRequest<void>(`/notificaciones/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ usuarioId }),
+    });
+  },
+
+  /**
+   * Crear una nueva notificación
+   */
+  crear: (data: {
+    usuarioId: string;
+    tipoNotificacion: string;
+    titulo: string;
+    mensaje: string;
+    canal?: 'email' | 'sistema' | 'ambos';
+    prioridad?: 'baja' | 'normal' | 'alta' | 'critica';
+    metadata?: {
+      auditoriaId?: string;
+      hallazgoId?: string;
+      planMejoramientoId?: string;
+      documentoId?: string;
+      fechaVencimiento?: string;
+      diasAnticipacion?: number;
+      [key: string]: any;
+    };
+    accionUrl?: string;
+  }) => {
+    return apiRequest<any>('/notificaciones', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
+// ==================== EVIDENCIAS/DOCUMENTOS ====================
+
+// Helper para upload de archivos con progreso
+async function uploadFile<T>(
+  endpoint: string,
+  formData: FormData,
+  onProgress?: (progress: number) => void
+): Promise<ApiResponse<T>> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const token = localStorage.getItem('esap_auth_token');
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    // Manejar progreso
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = (e.loaded / e.total) * 100;
+          onProgress(percentComplete);
+        }
+      });
+    }
+
+    // Manejar respuesta
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+          resolve({
+            success: true,
+            data: response,
+          });
+        } catch (error) {
+          resolve({
+            success: true,
+            data: null,
+          });
+        }
+      } else {
+        try {
+          const error = JSON.parse(xhr.responseText);
+          resolve({
+            success: false,
+            error: error.message || `HTTP ${xhr.status}`,
+          });
+        } catch {
+          resolve({
+            success: false,
+            error: `HTTP ${xhr.status}: ${xhr.statusText}`,
+          });
+        }
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      resolve({
+        success: false,
+        error: 'Error de red al subir el archivo',
+      });
+    });
+
+    xhr.open('POST', url);
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+    xhr.send(formData);
+  });
+}
+
+export const evidenciasApi = {
+  /**
+   * Crear una evidencia/documento (sube archivo)
+   */
+  create: async (
+    file: File,
+    metadata: {
+      nombre: string;
+      descripcion?: string;
+      tipoDocumento: 'evidencia_hallazgo' | 'evidencia_accion' | 'evidencia_plan' | 'documento_plan' | 'certificado' | 'acta' | 'informe' | 'otro';
+      hallazgoId?: string;
+      accionCorrectivaId?: string;
+      planMejoramientoId?: string;
+      auditoriaId?: string;
+      subidoPor?: string;
+    },
+    onProgress?: (progress: number) => void
+  ): Promise<ApiResponse<any>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('nombre', metadata.nombre);
+    if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
+    formData.append('tipoDocumento', metadata.tipoDocumento);
+    if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
+    if (metadata.accionCorrectivaId) formData.append('accionCorrectivaId', metadata.accionCorrectivaId);
+    if (metadata.planMejoramientoId) formData.append('planMejoramientoId', metadata.planMejoramientoId);
+    if (metadata.auditoriaId) formData.append('auditoriaId', metadata.auditoriaId);
+    if (metadata.subidoPor) formData.append('subidoPor', metadata.subidoPor);
+
+    return uploadFile<any>('/evidencias', formData, onProgress);
+  },
+
+  /**
+   * Obtener evidencias por acción correctiva
+   */
+  getByAccion: async (accionId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/evidencias/accion/${accionId}`);
+  },
+
+  /**
+   * Obtener evidencias por hallazgo
+   */
+  getByHallazgo: async (hallazgoId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/evidencias/hallazgo/${hallazgoId}`);
+  },
+
+  /**
+   * Obtener evidencias por plan de mejoramiento
+   */
+  getByPlan: async (planId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/evidencias/plan/${planId}`);
+  },
+
+  /**
+   * Obtener evidencias por auditoría
+   */
+  getByAuditoria: async (auditoriaId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/evidencias/auditoria/${auditoriaId}`);
+  },
+
+  /**
+   * Obtener una evidencia por ID
+   */
+  getById: async (id: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/evidencias/${id}`);
+  },
+
+  /**
+   * Descargar una evidencia
+   */
+  download: async (id: string): Promise<Blob> => {
+    const url = `${API_BASE_URL}/evidencias/${id}/download`;
+    const token = localStorage.getItem('esap_auth_token');
+    
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+      throw new Error(`Error al descargar: ${response.statusText}`);
+    }
+
+    return response.blob();
+  },
+
+  /**
+   * Validar una evidencia (US-032)
+   */
+  validar: async (
+    id: string,
+    estadoValidacion: 'pendiente' | 'aceptado' | 'rechazado' | 'con_observaciones',
+    observaciones?: string
+  ): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/evidencias/${id}/validar`, {
+      method: 'POST',
+      body: JSON.stringify({
+        estadoValidacion,
+        observacionesValidacion: observaciones,
+      }),
+    });
+  },
+
+  /**
+   * Eliminar una evidencia
+   */
+  delete: async (id: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>(`/evidencias/${id}`, {
+      method: 'DELETE',
+    });
+  },
 };
 
 // Exportar todo
@@ -831,4 +1394,6 @@ export const controlInternoApi = {
   planAnual5Roles: planAnual5RolesApi,
   listasChequeo: listasChequeoApi,
   informesLey: informesLeyApi,
+  notificaciones: notificacionesApi,
+  evidencias: evidenciasApi,
 };

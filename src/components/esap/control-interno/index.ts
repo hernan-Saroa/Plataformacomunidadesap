@@ -37,6 +37,7 @@ export { SeguimientoPlanMejoramientoModule } from './SeguimientoPlanMejoramiento
 export { InformesLeyModule } from './InformesLeyModule';
 export { GestionDocumentalModule } from './GestionDocumentalModule';
 export { NotificacionesModule } from './NotificacionesModule';
+export { NotificacionesControlInternoDropdown } from './NotificacionesControlInternoDropdown';
 
 // ⭐ MÓDULOS AVANZADOS (RF015-019)
 export { RolesYPermisos } from './RolesYPermisos';

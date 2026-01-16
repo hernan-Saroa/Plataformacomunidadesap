@@ -40,6 +40,56 @@ import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { toast } from 'sonner@2.0.3';
+import { tiposAuditoriaService, type TipoAuditoria } from '../../../services/api/tiposAuditoriaService';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TIPOS POR DEFECTO
+// ═══════════════════════════════════════════════════════════════════════════
+
+const TIPOS_AUDITORIA_DEFAULT: TipoAuditoria[] = [
+  {
+    id: '1',
+    codigo: 'REG',
+    nombre: 'Regular',
+    descripcion: 'Auditoría regular',
+    alcance: 'General',
+    duracionPromedio: 30,
+    equipoPromedio: 3,
+    color: '#3B82F6',
+    activa: true,
+    auditoriasProgramadas: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: '2',
+    codigo: 'TER',
+    nombre: 'Territorial',
+    descripcion: 'Auditoría territorial',
+    alcance: 'Regional',
+    duracionPromedio: 45,
+    equipoPromedio: 4,
+    color: '#10B981',
+    activa: true,
+    auditoriasProgramadas: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: '3',
+    codigo: 'ESP',
+    nombre: 'Especial',
+    descripcion: 'Auditoría especial',
+    alcance: 'Específico',
+    duracionPromedio: 60,
+    equipoPromedio: 5,
+    color: '#F59E0B',
+    activa: true,
+    auditoriasProgramadas: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -80,7 +130,7 @@ export interface HitoAuditoria {
 export interface AuditoriaUnificadaFormData {
   // 1. INFORMACIÓN BÁSICA
   codigo?: string;
-  tipoAuditoria: 'regular' | 'territorial' | 'especial' | 'seguimiento';
+  tipoAuditoria: string; // Cambiado a string para ser dinámico
   titulo: string;
   descripcion: string;
   
@@ -89,6 +139,9 @@ export interface AuditoriaUnificadaFormData {
   areaObjetivo: string;
   procesoAuditado: string;
   alcance: string;
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   
   // 3. EQUIPO AUDITOR
   auditorLider: string;
@@ -251,16 +304,45 @@ export function FormularioAuditoriaUnificado({
   initialData,
   mode
 }: FormularioAuditoriaUnificadoProps) {
+  // Función auxiliar para normalizar tipo de auditoría
+  const normalizarTipo = (tipo: any): string => {
+    if (!tipo) return 'Regular';
+    const tiposValidos = ['Regular', 'Territorial', 'Especial'];
+    if (tiposValidos.includes(tipo)) return tipo;
+    // Mapeo de tipos antiguos
+    const mapping: Record<string, string> = {
+      'gestión': 'Regular',
+      'cumplimiento': 'Regular',
+      'desempeño': 'Regular',
+      'sistemas': 'Regular',
+      'financiera': 'Regular',
+      'seguimiento': 'Regular',
+      'control interno': 'Regular',
+      'académica': 'Regular',
+      'rrhh': 'Regular',
+      'ti': 'Regular',
+      'operacional': 'Regular',
+      'regular': 'Regular',
+      'territorial': 'Territorial',
+      'especial': 'Especial'
+    };
+    return mapping[tipo.toString().toLowerCase()] || 'Regular';
+  };
+
   const [pasoActual, setPasoActual] = useState(1);
+  const [tiposAuditoria, setTiposAuditoria] = useState<TipoAuditoria[]>(TIPOS_AUDITORIA_DEFAULT);
   const [formData, setFormData] = useState<AuditoriaUnificadaFormData>({
     codigo: initialData?.codigo || '',
-    tipoAuditoria: initialData?.tipoAuditoria || 'regular',
+    tipoAuditoria: normalizarTipo(initialData?.tipoAuditoria),
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
     areaObjetivo: initialData?.areaObjetivo || '',
     procesoAuditado: initialData?.procesoAuditado || '',
     alcance: initialData?.alcance || '',
+    responsableAreaNombre: initialData?.responsableAreaNombre || '',
+    responsableAreaCargo: initialData?.responsableAreaCargo || '',
+    responsableAreaEmail: initialData?.responsableAreaEmail || '',
     auditorLider: initialData?.auditorLider || '',
     auditorAsignado: initialData?.auditorAsignado || '',
     equipoAuditores: initialData?.equipoAuditores || [],
@@ -294,6 +376,28 @@ export function FormularioAuditoriaUnificado({
   const [controlTemporal, setControlTemporal] = useState('');
 
   const TOTAL_PASOS = 9;
+
+  // Cargar tipos de auditoría desde la BD
+  useEffect(() => {
+    const cargarTipos = async () => {
+      try {
+        const tipos = await tiposAuditoriaService.getAll(false);
+        if (tipos.length > 0) {
+          // Filtrar solo los activos
+          const tiposActivos = tipos.filter(t => t.activa);
+          setTiposAuditoria(tiposActivos);
+        } else {
+          console.warn('[FormularioAuditoria] ⚠️ No se encontraron tipos, usando valores por defecto');
+        }
+      } catch (error) {
+        console.error('[FormularioAuditoria] ❌ Error al cargar tipos:', error);
+        console.log('[FormularioAuditoria] Usando tipos por defecto');
+        // Ya está inicializado con TIPOS_AUDITORIA_DEFAULT, no hacer nada
+      }
+    };
+
+    cargarTipos();
+  }, []);
 
   // Handlers
   const handleChange = (field: keyof AuditoriaUnificadaFormData, value: any) => {
@@ -429,6 +533,13 @@ export function FormularioAuditoriaUnificado({
       return;
     }
 
+    // Validar que fechaFin sea posterior a fechaInicio
+    if (new Date(formData.fechaFin) < new Date(formData.fechaInicio)) {
+      toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
+      setPasoActual(4);
+      return;
+    }
+
     if (formData.objetivos.length === 0) {
       toast.error('Debe agregar al menos un objetivo');
       setPasoActual(5);
@@ -468,7 +579,7 @@ export function FormularioAuditoriaUnificado({
   const renderPaso = () => {
     switch (pasoActual) {
       case 1:
-        return <Paso1InformacionBasica formData={formData} onChange={handleChange} />;
+        return <Paso1InformacionBasica formData={formData} onChange={handleChange} tiposAuditoria={tiposAuditoria} />;
       case 2:
         return <Paso2ClasificacionAlcance formData={formData} onChange={handleChange} />;
       case 3:
@@ -719,9 +830,10 @@ export function FormularioAuditoriaUnificado({
 interface PasoProps {
   formData: AuditoriaUnificadaFormData;
   onChange: (field: keyof AuditoriaUnificadaFormData, value: any) => void;
+  tiposAuditoria?: TipoAuditoria[];
 }
 
-function Paso1InformacionBasica({ formData, onChange }: PasoProps) {
+function Paso1InformacionBasica({ formData, onChange, tiposAuditoria = TIPOS_AUDITORIA_DEFAULT }: PasoProps) {
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
@@ -740,36 +852,38 @@ function Paso1InformacionBasica({ formData, onChange }: PasoProps) {
             required
             helpText="Seleccione el tipo de auditoría según su naturaleza"
           >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { value: 'regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
-                { value: 'territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
-                { value: 'especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> },
-                { value: 'seguimiento', label: 'Seguimiento', icono: <Clock className="w-5 h-5" /> }
-              ].map(tipo => (
-                <button
-                  key={tipo.value}
-                  type="button"
-                  onClick={() => onChange('tipoAuditoria', tipo.value)}
-                  className={`
-                    px-4 py-3 rounded-lg border-2 transition-all duration-200
-                    flex flex-col items-center justify-center gap-2 font-medium
-                    ${
-                      formData.tipoAuditoria === tipo.value
-                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                    }
-                  `}
-                >
-                  {tipo.icono}
-                  <span className="text-sm">{tipo.label}</span>
-                </button>
-              ))}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {tiposAuditoria.map((tipo: TipoAuditoria) => {
+                // Mapear iconos basados en el nombre del tipo
+                const IconoComponente = tipo.nombre === 'Territorial' ? MapPin : 
+                                       tipo.nombre === 'Especial' ? Zap : 
+                                       Shield;
+                
+                return (
+                  <button
+                    key={tipo.id}
+                    type="button"
+                    onClick={() => onChange('tipoAuditoria', tipo.nombre)}
+                    className={`
+                      px-4 py-3 rounded-lg border-2 transition-all duration-200
+                      flex flex-col items-center justify-center gap-2 font-medium
+                      ${
+                        formData.tipoAuditoria === tipo.nombre
+                          ? 'border-blue-600 bg-blue-50 text-blue-700'
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                      }
+                    `}
+                  >
+                    <IconoComponente className="w-5 h-5" />
+                    <span className="text-sm">{tipo.nombre}</span>
+                  </button>
+                );
+              })}
             </div>
           </FieldWrapper>
 
           {/* Información contextual según tipo */}
-          {formData.tipoAuditoria === 'especial' && (
+          {formData.tipoAuditoria === 'Especial' && (
             <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -777,6 +891,20 @@ function Paso1InformacionBasica({ formData, onChange }: PasoProps) {
                   <p className="font-bold text-amber-900 mb-1">Auditoría Especial</p>
                   <p className="text-amber-700">
                     Las auditorías especiales se realizan por solicitudes específicas, denuncias o necesidades urgentes no contempladas en el Plan Anual. Requieren justificación detallada.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {formData.tipoAuditoria === 'Territorial' && (
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-start gap-3">
+                <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-bold text-blue-900 mb-1">Auditoría Territorial</p>
+                  <p className="text-blue-700">
+                    Auditoría realizada a sedes territoriales de la ESAP en diferentes regiones del país.
                   </p>
                 </div>
               </div>
@@ -902,6 +1030,43 @@ function Paso2ClasificacionAlcance({ formData, onChange }: PasoProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </FieldWrapper>
+
+          {/* Responsable del Área Auditada */}
+          <div className="pt-4 border-t border-gray-200">
+            <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <User className="w-4 h-4" />
+              Responsable del Área Auditada
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <FieldWrapper label="Nombre Completo">
+                <Input
+                  value={formData.responsableAreaNombre || ''}
+                  onChange={(e) => onChange('responsableAreaNombre', e.target.value)}
+                  placeholder="Nombre del responsable"
+                  className="border-gray-300"
+                />
+              </FieldWrapper>
+              
+              <FieldWrapper label="Cargo">
+                <Input
+                  value={formData.responsableAreaCargo || ''}
+                  onChange={(e) => onChange('responsableAreaCargo', e.target.value)}
+                  placeholder="Cargo o puesto"
+                  className="border-gray-300"
+                />
+              </FieldWrapper>
+              
+              <FieldWrapper label="Email">
+                <Input
+                  type="email"
+                  value={formData.responsableAreaEmail || ''}
+                  onChange={(e) => onChange('responsableAreaEmail', e.target.value)}
+                  placeholder="email@esap.edu.co"
+                  className="border-gray-300"
+                />
+              </FieldWrapper>
+            </div>
+          </div>
         </div>
       </Card>
     </div>
@@ -1066,16 +1231,39 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               <Input
                 type="date"
                 value={formData.fechaInicio}
-                onChange={(e) => onChange('fechaInicio', e.target.value)}
+                onChange={(e) => {
+                  const nuevaFechaInicio = e.target.value;
+                  onChange('fechaInicio', nuevaFechaInicio);
+                  // Si la fecha de fin es anterior a la nueva fecha de inicio, ajustarla
+                  if (formData.fechaFin && nuevaFechaInicio && formData.fechaFin < nuevaFechaInicio) {
+                    onChange('fechaFin', '');
+                    toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
+                  }
+                }}
+                max={formData.fechaFin || undefined}
                 className="border-gray-300"
               />
             </FieldWrapper>
 
-            <FieldWrapper label="Fecha de Finalización" required>
+            <FieldWrapper 
+              label="Fecha de Finalización" 
+              required
+              error={formData.fechaInicio && formData.fechaFin && formData.fechaFin < formData.fechaInicio 
+                ? 'La fecha de finalización debe ser posterior a la fecha de inicio' 
+                : null}
+            >
               <Input
                 type="date"
                 value={formData.fechaFin}
-                onChange={(e) => onChange('fechaFin', e.target.value)}
+                onChange={(e) => {
+                  const nuevaFechaFin = e.target.value;
+                  if (formData.fechaInicio && nuevaFechaFin && nuevaFechaFin < formData.fechaInicio) {
+                    toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
+                    return;
+                  }
+                  onChange('fechaFin', nuevaFechaFin);
+                }}
+                min={formData.fechaInicio || undefined}
                 className="border-gray-300"
               />
             </FieldWrapper>
@@ -1383,7 +1571,7 @@ function Paso6RecursosProductos({ formData, onChange }: PasoProps) {
             helpText="Costo aproximado de la auditoría"
           >
             <Input
-              type="text"
+              type="number"
               value={formData.presupuestoEstimado}
               onChange={(e) => onChange('presupuestoEstimado', e.target.value)}
               placeholder="Ej: $5,000,000 COP"

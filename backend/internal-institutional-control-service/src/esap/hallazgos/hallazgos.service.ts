@@ -172,6 +172,20 @@ export class HallazgosService {
     return this.serializeHallazgo(hallazgo) as any;
   }
 
+  /**
+   * Obtiene todos los hallazgos de una auditoría
+   */
+  async findByAuditoria(auditoriaId: string): Promise<Hallazgo[]> {
+    const hallazgos = await this.hallazgoRepository.find({
+      where: { auditoriaId },
+      relations: ['auditoriaEntity'],
+      order: { createdAt: 'DESC' },
+    });
+
+    // Serializar fechas para evitar problemas de zona horaria
+    return hallazgos.map(h => this.serializeHallazgo(h));
+  }
+
   async create(createDto: CreateHallazgoDto): Promise<Hallazgo> {
     const codigo = await this.generarCodigo();
 

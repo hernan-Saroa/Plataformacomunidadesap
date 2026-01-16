@@ -33,8 +33,10 @@ interface Auditoria {
   titulo: string;
   estado: string;
   territorial: string;
-  auditorLider: Persona;
-  auditorAsignado: Persona;
+  auditorLider?: Persona;
+  auditorAsignado?: Persona;
+  auditorLiderId?: number;
+  auditorAsignadoId?: number;
 }
 
 interface AuditorDisponible {
@@ -47,6 +49,7 @@ interface AuditorDisponible {
   especialidad: string;
   auditoriasConducto: number;
   disponibilidad: 'Disponible' | 'Parcial' | 'No disponible';
+  idPersona?: number; // ID_TERCERO de auth.personas (para guardar en BD)
 }
 
 // DATOS MOCK de auditores disponibles
@@ -158,28 +161,98 @@ export function ModalAsignarAuditorIndividual({
   const [auditorAsignadoSeleccionado, setAuditorAsignadoSeleccionado] = useState<AuditorDisponible | null>(null);
   const [busqueda, setBusqueda] = useState('');
   const [modoSeleccion, setModoSeleccion] = useState<'lider' | 'asignado' | null>(null);
-  const [auditoresDisponibles, setAuditoresDisponibles] = useState<AuditorDisponible[]>(AUDITORES_DISPONIBLES);
+  const [auditoresDisponibles, setAuditoresDisponibles] = useState<AuditorDisponible[]>([]);
+  const [cargandoAuditores, setCargandoAuditores] = useState(false);
 
-  // Cargar auditores actuales cuando se abre el modal
+  // Cargar auditores disponibles desde el backend
   useEffect(() => {
-    if (isOpen && auditoria) {
+    const cargarAuditoresDisponibles = async () => {
+      try {
+        setCargandoAuditores(true);
+        const baseURL = 'http://localhost:3007';
+        const response = await fetch(`${baseURL}/auditorias/personas/disponibles`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const personas = await response.json();
+          setAuditoresDisponibles(personas);
+        } else {
+          console.error('Error al cargar auditores disponibles');
+          // Si falla, usar lista mock como fallback
+          setAuditoresDisponibles(AUDITORES_DISPONIBLES);
+        }
+      } catch (error) {
+        console.error('Error al cargar auditores:', error);
+        // Si falla, usar lista mock como fallback
+        setAuditoresDisponibles(AUDITORES_DISPONIBLES);
+      } finally {
+        setCargandoAuditores(false);
+      }
+    };
+
+    if (isOpen) {
+      cargarAuditoresDisponibles();
+    }
+  }, [isOpen]);
+
+  // Cargar auditores actuales cuando se abre el modal y cuando los auditores disponibles estén cargados
+  useEffect(() => {
+    if (isOpen && auditoria && auditoresDisponibles.length > 0) {
       // Buscar el auditor líder actual en la lista de disponibles
-      const liderActual = AUDITORES_DISPONIBLES.find(
-        aud => aud.numeroIdentificacion === auditoria.auditorLider.numeroIdentificacion
+      let liderActual = auditoresDisponibles.find(
+        aud => aud.numeroIdentificacion === auditoria.auditorLider?.numeroIdentificacion
       );
+      
+      // Si no está en la lista, crear un objeto temporal con los datos reales
+      if (!liderActual && auditoria.auditorLider) {
+        liderActual = {
+          id: `temp-${auditoria.auditorLider.numeroIdentificacion}`,
+          nombre: auditoria.auditorLider.nombre,
+          cargo: auditoria.auditorLider.cargo,
+          iniciales: auditoria.auditorLider.iniciales,
+          tipoIdentificacion: auditoria.auditorLider.tipoIdentificacion,
+          numeroIdentificacion: auditoria.auditorLider.numeroIdentificacion,
+          especialidad: 'No especificada',
+          auditoriasConducto: 0,
+          disponibilidad: 'Disponible',
+          idPersona: auditoria.auditorLiderId // Preservar el ID numérico de la BD
+        };
+      }
+      
       if (liderActual) {
         setAuditorLiderSeleccionado(liderActual);
       }
 
       // Buscar el auditor asignado actual en la lista de disponibles
-      const asignadoActual = AUDITORES_DISPONIBLES.find(
-        aud => aud.numeroIdentificacion === auditoria.auditorAsignado.numeroIdentificacion
+      let asignadoActual = auditoresDisponibles.find(
+        aud => aud.numeroIdentificacion === auditoria.auditorAsignado?.numeroIdentificacion
       );
+      
+      // Si no está en la lista, crear un objeto temporal con los datos reales
+      if (!asignadoActual && auditoria.auditorAsignado) {
+        asignadoActual = {
+          id: `temp-${auditoria.auditorAsignado.numeroIdentificacion}`,
+          nombre: auditoria.auditorAsignado.nombre,
+          cargo: auditoria.auditorAsignado.cargo,
+          iniciales: auditoria.auditorAsignado.iniciales,
+          tipoIdentificacion: auditoria.auditorAsignado.tipoIdentificacion,
+          numeroIdentificacion: auditoria.auditorAsignado.numeroIdentificacion,
+          especialidad: 'No especificada',
+          auditoriasConducto: 0,
+          disponibilidad: 'Disponible',
+          idPersona: auditoria.auditorAsignadoId // Preservar el ID numérico de la BD
+        };
+      }
+      
       if (asignadoActual) {
         setAuditorAsignadoSeleccionado(asignadoActual);
       }
     }
-  }, [isOpen, auditoria]);
+  }, [isOpen, auditoria, auditoresDisponibles]);
 
   // Filtrar auditores disponibles según búsqueda
   const auditoresFiltrados = auditoresDisponibles.filter(auditor => {
@@ -492,7 +565,12 @@ export function ModalAsignarAuditorIndividual({
 
               {/* Lista de Auditores */}
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {auditoresFiltrados.length === 0 ? (
+                {cargandoAuditores ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+                    <p className="text-sm text-gray-500">Cargando auditores disponibles...</p>
+                  </div>
+                ) : auditoresFiltrados.length === 0 ? (
                   <div className="text-center py-8">
                     <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                     <p className="text-sm text-gray-500">No se encontraron auditores</p>

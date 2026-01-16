@@ -11,6 +11,7 @@ import {
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
 import { IntegracionAuditoriasPlanesProvider, useIntegracionAuditoriaPlanes } from "./IntegracionAuditoriasPlanesContext";
+import { useControlInternoPermissions } from "./hooks/useControlInternoPermissions";
 import { toast } from "sonner";
 
 // ━━━━━━━━━━━ MÓDULOS CONSOLIDADOS ━━━━━━━━━━━
@@ -18,7 +19,7 @@ import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";
 import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  // RF001-004
 // ELIMINADO: ProcesoAuditoriaModuleRediseno - Integrado en Expediente del Kanban (RF005-009)
 import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRediseno";  // RF010-011
-import { InformesLeyModulePremium } from "./InformesLeyModulePremium";  // RF012 - MÓDULO INDEPENDIENTE
+import InformesLeyModulePremium from "./InformesLeyModulePremium";  // RF012 - MÓDULO INDEPENDIENTE
 import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
 import { RolesYPermisosModulePremium } from "./RolesYPermisosModulePremium";  // RF015 - MÓDULO INDEPENDIENTE
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
@@ -32,7 +33,12 @@ type SeccionActiva =
   | "roles-permisos"                 // RF015 - MÓDULO INDEPENDIENTE
   | "config-auditorias";             // RF019-B - Config Auditorías (Tipos + Listas)
 
-export function ControlInternoFull() {
+interface ControlInternoFullProps {
+  userData?: { roles?: string[] };
+  userRoles?: string[];
+}
+
+export function ControlInternoFull({ userData, userRoles }: ControlInternoFullProps = {}) {
   const [seccionActiva, setSeccionActiva] =
     useState<SeccionActiva>("dashboard"); // 🎯 DASHBOARD DE PRIMERAS
   const [navegacionManual, setNavegacionManual] = useState<number>(0); // ← NUEVO: Timestamp de última navegación manual
@@ -45,6 +51,8 @@ export function ControlInternoFull() {
           setSeccionActiva={setSeccionActiva}
           navegacionManual={navegacionManual}
           setNavegacionManual={setNavegacionManual}
+          userData={userData}
+          userRoles={userRoles}
         />
       </IntegracionAuditoriasPlanesProvider>
     </ControlInternoProvider>
@@ -58,17 +66,28 @@ interface ControlInternoContentProps {
   setSeccionActiva: (seccion: SeccionActiva) => void;
   navegacionManual: number;
   setNavegacionManual: (timestamp: number) => void;
+  userData?: { roles?: string[] };
+  userRoles?: string[];
 }
 
 function ControlInternoContent({
   seccionActiva,
   setSeccionActiva,
   navegacionManual,
-  setNavegacionManual
+  setNavegacionManual,
+  userData,
+  userRoles
 }: ControlInternoContentProps) {
   const { auditoriaSeleccionada } = useIntegracionAuditoriaPlanes();
+  
+  // ✅ Hook de validación de permisos
+  const { 
+    puedeAcceder, 
+    submódulosAccesibles,
+    rolDetectado 
+  } = useControlInternoPermissions(userRoles, userData);
 
-  // Calcular menuItems dinámicamente con badge
+  // Calcular menuItems dinámicamente con badge y filtrado por permisos
   const menuItems: MenuItem[] = [
     // ━━━━━━━━━━━ 1. CENTRO DE COMANDO ━━━━━━━━━━━
     {
@@ -77,6 +96,7 @@ function ControlInternoContent({
       subtitle: "Centro de comando integrado",
       icon: <LayoutDashboard className="w-5 h-5" />,
       color: "#10B981", // Verde - Principal
+      visible: puedeAcceder('dashboard'),
     },
     
     // ━━━━━━━━━━━ 2. PLANIFICACIÓN (RF001-004) ━━━━━━━━━━━
@@ -86,6 +106,7 @@ function ControlInternoContent({
       subtitle: "Plan Anual • Universo • Programa",
       icon: <ClipboardList className="w-5 h-5" />,
       color: "#003DA5", // Azul ESAP
+      visible: puedeAcceder('planificacion'),
     },
     
     // ━━━━━━━━━━━ 3. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
@@ -95,7 +116,8 @@ function ControlInternoContent({
       subtitle: "Formulación • Seguimiento",
       icon: <AlertTriangle className="w-5 h-5" />,
       color: "#EF4444", // Rojo - Hallazgos
-      badge: auditoriaSeleccionada ? auditoriaSeleccionada.hallazgos.length : 0
+      badge: auditoriaSeleccionada ? auditoriaSeleccionada.hallazgos.length : 0,
+      visible: puedeAcceder('planes-mejoramiento'),
     },
     
     // ━━━━━━━━━━━ 4. INFORMES DE LEY (RF012) ━━━━━━━━━━━
@@ -105,6 +127,7 @@ function ControlInternoContent({
       subtitle: "Ejecutivo Anual • Pormenorizado • Formatos",
       icon: <FileText className="w-5 h-5" />,
       color: "#8B5CF6", // Púrpura - Informes
+      visible: puedeAcceder('informes-ley'),
     },
     
     // ━━━━━━━━━━━ 5. EXPEDIENTES (RF013) ━━━━━━━━━━━
@@ -114,6 +137,7 @@ function ControlInternoContent({
       subtitle: "Archivo • Búsqueda • Expedientes",
       icon: <FolderOpen className="w-5 h-5" />,
       color: "#0891B2", // Cyan - Documental
+      visible: puedeAcceder('expedientes'),
     },
     
     // ━━━━━━━━━━━ 6. ROLES Y PERMISOS (RF015) ━━━━━━━━━━━
@@ -123,6 +147,7 @@ function ControlInternoContent({
       subtitle: "RBAC • Seguridad • Accesos",
       icon: <Shield className="w-5 h-5" />,
       color: "#DC2626", // Rojo - Seguridad
+      visible: puedeAcceder('roles-permisos'),
     },
     
     // ━━━━━━━━━━━ 7. CONFIGURACIONES ━━━━━━━━━━━
@@ -132,10 +157,63 @@ function ControlInternoContent({
       subtitle: "Notificaciones • Auditoría • Kanban • Config",
       icon: <Settings className="w-5 h-5" />,
       color: "#059669", // Verde oscuro - Config
+      visible: puedeAcceder('config-auditorias'),
     },
-  ];
+  ].filter(item => item.visible !== false); // ✅ Filtrar opciones sin acceso
+
+  // ✅ Validar acceso antes de cambiar de sección
+  const handleSectionChange = (section: SeccionActiva) => {
+    if (!puedeAcceder(section)) {
+      toast.error('Acceso denegado', {
+        description: `No tienes permisos para acceder a "${section}"`,
+      });
+      return;
+    }
+    
+    setSeccionActiva(section);
+    setNavegacionManual(Date.now());
+  };
+
+  // ✅ Validar sección inicial al cargar
+  useEffect(() => {
+    if (seccionActiva && !puedeAcceder(seccionActiva)) {
+      // Redirigir al primer submódulo accesible
+      const primeraAccesible = submódulosAccesibles[0] || 'dashboard';
+      if (primeraAccesible && primeraAccesible !== seccionActiva) {
+        setSeccionActiva(primeraAccesible as SeccionActiva);
+        toast.warning('Redirigiendo', {
+          description: `No tienes acceso a esta sección. Mostrando "${primeraAccesible}"`,
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Solo ejecutar al montar
 
   const renderSeccion = () => {
+    // ✅ Validar acceso antes de renderizar
+    if (!puedeAcceder(seccionActiva)) {
+      return (
+        <div className="p-8 text-center">
+          <Shield className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h3 className="text-xl font-bold mb-2">Acceso Denegado</h3>
+          <p className="text-gray-600 mb-2">
+            No tienes permisos para acceder a esta sección.
+          </p>
+          <p className="text-sm text-gray-500">
+            Tu rol detectado: {rolDetectado || 'No asignado'}
+          </p>
+          <p className="text-xs text-gray-400 mt-2">
+            Roles recibidos: {JSON.stringify(userRoles || userData?.roles || [])}
+          </p>
+          {submódulosAccesibles.length > 0 && (
+            <p className="text-sm text-blue-600 mt-4">
+              Submódulos disponibles: {submódulosAccesibles.join(', ')}
+            </p>
+          )}
+        </div>
+      );
+    }
+
     switch (seccionActiva) {
       case "dashboard":
         return <GestionAuditoriasKanbanSimple />;
@@ -172,15 +250,15 @@ function ControlInternoContent({
       menuItems={menuItems}
       activeSection={seccionActiva}
       onSectionChange={(section) => {
-        setSeccionActiva(section as SeccionActiva);
-        setNavegacionManual(Date.now()); // ← NUEVO: Actualizar timestamp de navegación manual
+        handleSectionChange(section as SeccionActiva);
       }}
     >
       {/* Navegación automática */}
       <MenuDinamicoWrapper
         seccionActiva={seccionActiva}
-        onCambiarSeccion={setSeccionActiva}
+        onCambiarSeccion={(section) => handleSectionChange(section as SeccionActiva)}
         navegacionManual={navegacionManual}
+        puedeAcceder={puedeAcceder}
       />
       
       {/* Contenido de la sección */}
@@ -200,26 +278,23 @@ interface MenuDinamicoWrapperProps {
 function MenuDinamicoWrapper({ 
   seccionActiva, 
   onCambiarSeccion,
-  navegacionManual
-}: MenuDinamicoWrapperProps) {
+  navegacionManual,
+  puedeAcceder // ✅ Recibir función de validación
+}: MenuDinamicoWrapperProps & { puedeAcceder: (submodulo: string) => boolean }) {
   const { auditoriaSeleccionada } = useIntegracionAuditoriaPlanes();
   const [yaNavego, setYaNavego] = useState(false); // ← Control de navegación única
 
-  // Navegación automática (solo la primera vez)
+  // Navegación automática (solo la primera vez y si tiene permisos)
   useEffect(() => {
     const tiempoActual = Date.now();
     const navegacionReciente = (tiempoActual - navegacionManual) < 500; // 500ms después de navegación manual
     
+    // ✅ Validar que tiene acceso antes de navegar automáticamente
     if (auditoriaSeleccionada && 
         seccionActiva !== 'planes-mejoramiento' && 
         !yaNavego && 
-        !navegacionReciente) {
-      
-      console.log('🚀 Navegación automática activada:', {
-        auditoria: auditoriaSeleccionada.codigo,
-        seccionActual: seccionActiva,
-        seccionDestino: 'planes-mejoramiento'
-      });
+        !navegacionReciente &&
+        puedeAcceder('planes-mejoramiento')) { // ✅ Nueva validación
       
       setYaNavego(true); // ← Marcar que ya navegó
       onCambiarSeccion('planes-mejoramiento');
@@ -238,7 +313,7 @@ function MenuDinamicoWrapper({
     if (!auditoriaSeleccionada && yaNavego) {
       setYaNavego(false);
     }
-  }, [auditoriaSeleccionada, seccionActiva, onCambiarSeccion, navegacionManual, yaNavego]);
+  }, [auditoriaSeleccionada, seccionActiva, onCambiarSeccion, navegacionManual, yaNavego, puedeAcceder]);
 
   return null;
 }

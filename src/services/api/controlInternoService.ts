@@ -1088,6 +1088,117 @@ class ControlInternoService {
   }
 
   // ==========================================================================
+  // EVIDENCIAS/DOCUMENTOS (Sistema Independiente)
+  // ==========================================================================
+
+  /**
+   * Crea una evidencia/documento (sube archivo)
+   */
+  async createEvidencia(
+    file: File,
+    metadata: {
+      nombre: string;
+      descripcion?: string;
+      tipoDocumento: 'evidencia_hallazgo' | 'evidencia_accion' | 'evidencia_plan' | 'documento_plan' | 'certificado' | 'acta' | 'informe' | 'otro';
+      hallazgoId?: string;
+      accionCorrectivaId?: string;
+      planMejoramientoId?: string;
+      auditoriaId?: string;
+      subidoPor?: string;
+    },
+    onProgress?: (progress: number) => void
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('nombre', metadata.nombre);
+    if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
+    formData.append('tipoDocumento', metadata.tipoDocumento);
+    if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
+    if (metadata.accionCorrectivaId) formData.append('accionCorrectivaId', metadata.accionCorrectivaId);
+    if (metadata.planMejoramientoId) formData.append('planMejoramientoId', metadata.planMejoramientoId);
+    if (metadata.auditoriaId) formData.append('auditoriaId', metadata.auditoriaId);
+    if (metadata.subidoPor) formData.append('subidoPor', metadata.subidoPor);
+
+    return client.upload<any>('/evidencias', formData, onProgress);
+  }
+
+  /**
+   * Obtiene evidencias por acción correctiva
+   */
+  async getEvidenciasByAccion(accionId: string): Promise<any[]> {
+    return client.get<any[]>(`/evidencias/accion/${accionId}`);
+  }
+
+  /**
+   * Obtiene evidencias por hallazgo
+   */
+  async getEvidenciasByHallazgo(hallazgoId: string): Promise<any[]> {
+    return client.get<any[]>(`/evidencias/hallazgo/${hallazgoId}`);
+  }
+
+  /**
+   * Obtiene evidencias por plan de mejoramiento
+   */
+  async getEvidenciasByPlan(planId: string): Promise<any[]> {
+    return client.get<any[]>(`/evidencias/plan/${planId}`);
+  }
+
+  /**
+   * Obtiene evidencias por auditoría
+   */
+  async getEvidenciasByAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/evidencias/auditoria/${auditoriaId}`);
+  }
+
+  /**
+   * Obtiene una evidencia por ID
+   */
+  async getEvidenciaById(id: string): Promise<any> {
+    return client.get<any>(`/evidencias/${id}`);
+  }
+
+  /**
+   * Descarga una evidencia
+   */
+  async downloadEvidencia(id: string): Promise<Blob> {
+    const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/evidencias/${id}/download`;
+    const token = localStorage.getItem('esap_access_token');
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al descargar: ${response.statusText}`);
+    }
+
+    return response.blob();
+  }
+
+  /**
+   * Valida una evidencia (US-032)
+   */
+  async validarEvidencia(
+    id: string,
+    estadoValidacion: 'pendiente' | 'aceptado' | 'rechazado' | 'con_observaciones',
+    observaciones?: string
+  ): Promise<any> {
+    return client.post<any>(`/evidencias/${id}/validar`, {
+      estadoValidacion,
+      observacionesValidacion: observaciones,
+    });
+  }
+
+  /**
+   * Elimina una evidencia
+   */
+  async deleteEvidencia(id: string): Promise<void> {
+    return client.delete(`/evidencias/${id}`);
+  }
+
+  // ==========================================================================
   // ETAPAS DE AUDITORÍA
   // ==========================================================================
   
