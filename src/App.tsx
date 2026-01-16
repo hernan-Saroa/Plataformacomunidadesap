@@ -222,9 +222,11 @@ export default function App() {
         nextUserType = 'administrativo';
         module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
         : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+        : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
         : 'control-interno';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
         : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+        : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
         : 'Control Interno';
         portalRoles.push(rolStr);
       } else {
@@ -481,6 +483,7 @@ export default function App() {
           vistaActualCurrent = 'backoffice';
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
           : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+          : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
           : 'control-interno';
           setUserData({
             name: userName,
@@ -491,6 +494,7 @@ export default function App() {
           });
           const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
           : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+          : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
           : 'Control Interno';
           portalRoles.push(rolStr);
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
