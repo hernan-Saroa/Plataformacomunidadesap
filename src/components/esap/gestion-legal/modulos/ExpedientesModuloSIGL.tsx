@@ -200,9 +200,26 @@ export function ExpedientesModuloSIGL() {
 
   const handleVerDocumentoCentralizado = (doc: Documento) => {
     let url = doc.url;
-    // Helper rápido para asegurar URL absoluta
+
     if (url && !url.startsWith('http') && !url.startsWith('blob:')) {
-      url = `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+      // Caso especial: /legal/files/ en cualquier parte
+      if (url.includes('/legal/files/')) {
+        const filename = url.split('/').pop();
+        url = `http://localhost:3008/files/${filename}`;
+      } else {
+        // Limpiar prefijos incorrectos (sin ^ para coincidir en cualquier posición)
+        url = url.replace(/\/legal\//gi, '/').replace(/\/api\/legal\//gi, '/');
+
+        if (url.startsWith('/files/') || !url.includes('/')) {
+          const filename = url.split('/').pop();
+          url = `http://localhost:3008/files/${filename}`;
+        } else if (url.startsWith('/uploads') || url.startsWith('uploads')) {
+          const cleanPath = url.startsWith('/') ? url : `/${url}`;
+          url = `http://localhost:3008${cleanPath}`;
+        } else {
+          url = `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+        }
+      }
     }
 
     setDocumentoVisor({ ...doc, url });
@@ -232,6 +249,32 @@ export function ExpedientesModuloSIGL() {
     if (texto.includes('NOTIFICACION') || texto.includes('CITACION')) return 'NOTIFICACIONES';
     if (texto.includes('OFICIO') || texto.includes('CARTA')) return 'OFICIOS';
     return 'OTROS';
+  };
+
+  // Helper para normalizar URLs de documentos
+  const normalizarDocUrl = (url: string | undefined): string => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('blob:')) return url;
+
+    // Caso especial: /legal/files/ en cualquier parte de la URL
+    if (url.includes('/legal/files/')) {
+      const filename = url.split('/').pop();
+      return `http://localhost:3008/files/${filename}`;
+    }
+
+    // Limpiar prefijos incorrectos (sin ^ para que coincida en cualquier posición)
+    let cleanUrl = url.replace(/\/legal\//gi, '/').replace(/\/api\/legal\//gi, '/');
+
+    // Construir URL absoluta
+    if (cleanUrl.startsWith('/files/') || !cleanUrl.includes('/')) {
+      const filename = cleanUrl.split('/').pop();
+      return `http://localhost:3008/files/${filename}`;
+    } else if (cleanUrl.startsWith('/uploads') || cleanUrl.startsWith('uploads')) {
+      const cleanPath = cleanUrl.startsWith('/') ? cleanUrl : `/${cleanUrl}`;
+      return `http://localhost:3008${cleanPath}`;
+    } else {
+      return `http://localhost:3008${cleanUrl.startsWith('/') ? '' : '/'}${cleanUrl}`;
+    }
   };
 
   const cargarExpedientes = async () => {
@@ -280,7 +323,7 @@ export function ExpedientesModuloSIGL() {
                 tamanio: d.tamanio || (d.archivoTamano ? (d.archivoTamano / 1024).toFixed(0) + ' KB' : 'N/A'),
                 fechaCreacion: d.fechaCreacion || d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
                 autor: d.autor || d.subidoPor || 'Sistema',
-                url: d.url || d.archivoUrl
+                url: normalizarDocUrl(d.url || d.archivoUrl)
               };
             });
 
@@ -293,7 +336,7 @@ export function ExpedientesModuloSIGL() {
               tamanio: e.archivoTamano ? (e.archivoTamano / 1024).toFixed(0) + ' KB' : 'N/A',
               fechaCreacion: e.fechaPresentacion?.split('T')[0] || e.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
               autor: e.aportadoPor || 'Sistema',
-              url: e.archivoUrl
+              url: normalizarDocUrl(e.archivoUrl)
             }));
 
             docsExp = [...docsMapeados, ...evidenciasMapeadas];
@@ -329,9 +372,21 @@ export function ExpedientesModuloSIGL() {
           // Actuaciones tienen: documentoNombre, documentoUrl, tipoActuacion
           // Evidencias tienen: archivoNombre, archivoUrl, tipo
           const docsExp: Documento[] = (proc.documentos || []).map((d: any) => {
-            // Determinar si es PRUEBA o EVIDENCIA basado en tipoActuacion o tipo
-            const esEvidencia = d.tipoActuacion === 'EVIDENCIA' || d.tipo?.toUpperCase().includes('EVIDENCIA') || d.tipo?.toUpperCase().includes('PERICIAL') || d.tipo?.toUpperCase().includes('TESTIMONIAL');
-            const tipoFinal: TipoDocumento = esEvidencia ? 'EVIDENCIAS' : 'PRUEBAS';
+            // Determinar tipo basado en tipoActuacion
+            const tipoActuacion = (d.tipoActuacion || '').toUpperCase();
+
+            // Mapear tipoActuacion a TipoDocumento válido
+            let tipoFinal: TipoDocumento;
+            if (tipoActuacion === 'OTROS' || tipoActuacion === 'OTRO') {
+              tipoFinal = 'OTROS';
+            } else if (tipoActuacion === 'EVIDENCIA' || tipoActuacion === 'EVIDENCIAS' || tipoActuacion === 'PRUEBAS') {
+              tipoFinal = 'EVIDENCIAS'; // Para Juzgamiento, PRUEBAS y EVIDENCIAS van a la carpeta Evidencias
+            } else if (tipoActuacion === 'DOCUMENTO' || !tipoActuacion) {
+              tipoFinal = 'PRUEBAS'; // Documentos generales van a PRUEBAS
+            } else {
+              // Intentar mapear otros tipos conocidos
+              tipoFinal = mapearTipoDocumento(d.documentoNombre || '', tipoActuacion);
+            }
 
             // Obtener nombre correcto (actuaciones usan documentoNombre, evidencias usan archivoNombre o descripcion)
             const nombre = d.documentoNombre || d.archivoNombre || d.descripcion || 'Documento sin nombre';
@@ -344,25 +399,25 @@ export function ExpedientesModuloSIGL() {
               url = `/files/${d.documentoNombre}`;
             }
 
-            // Normalización robusta de URLs (Environment-Safe)
+            // Normalización robusta de URLs
             if (url && !url.startsWith('http') && !url.startsWith('blob:')) {
-              // Limpiar basura de rutas incorrectas previas
-              if (url.includes('/api/legal/files/')) {
+              // Limpiar prefijos incorrectos - NO usar ^ para que coincida en cualquier posición
+              if (url.includes('/legal/files/')) {
                 const filename = url.split('/').pop();
-                url = `/files/${filename}`;
-              }
-
-              // Construir URL completa usando la configuración del entorno
-              if (url.startsWith('/uploads') || url.startsWith('uploads')) {
-                const cleanPath = url.startsWith('/') ? url : `/${url}`;
-                url = buildApiUrl('legal', cleanPath);
-              } else if (!url.includes('/')) {
-                // Es solo nombre de archivo
-                url = buildApiUrl('legal', `/files/${url}`);
+                url = `http://localhost:3008/files/${filename}`;
               } else {
-                // Es una ruta relativa, asegurarnos de que empiece con /
-                const path = url.startsWith('/') ? url : `/${url}`;
-                url = buildApiUrl('legal', path);
+                url = url.replace(/\/legal\//gi, '/').replace(/\/api\/legal\//gi, '/');
+
+                // Construir URL absoluta
+                if (url.startsWith('/files/') || !url.includes('/')) {
+                  const filename = url.split('/').pop();
+                  url = `http://localhost:3008/files/${filename}`;
+                } else if (url.startsWith('/uploads') || url.startsWith('uploads')) {
+                  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+                  url = `http://localhost:3008${cleanPath}`;
+                } else {
+                  url = `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+                }
               }
             }
 
@@ -462,8 +517,7 @@ export function ExpedientesModuloSIGL() {
         });
       }
 
-      // 4. Agregar mock de COACTIVOS (Placeholder) - ELIMINADO por solicitud
-      // nuevosExpedientes.push(...EXPEDIENTES_COACTIVOS_MOCK);
+      // PROCESOS_COACTIVOS: Pendiente de implementación
 
       setExpedientes(nuevosExpedientes);
 
@@ -537,7 +591,7 @@ export function ExpedientesModuloSIGL() {
           if (expediente.tipoProceso === 'DEFENSA_JUDICIAL' || expediente.tipoProceso === 'OTRO') {
             // Carga para Defensa Judicial
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('archivo', file); // Backend espera 'archivo', no 'file'
             formData.append('expedienteId', expediente.id);
             formData.append('tipo', tipoId); // Enviar el ID del tipo (ej: DEMANDA) como tipo string
             formData.append('nombre', file.name);
@@ -554,9 +608,9 @@ export function ExpedientesModuloSIGL() {
           } else if (expediente.tipoProceso === 'ASESORIA') {
             // Carga para Asesoría
             const formData = new FormData();
-            formData.append('file', file);
-            formData.append('tipo', tipoId);
+            formData.append('archivo', file); // Backend espera 'archivo', no 'file'
             formData.append('nombre', file.name);
+            formData.append('tipoDocumento', tipoId);
             await legalService.uploadDocumentoConsulta(expediente.id, formData);
           } else if (expediente.tipoProceso === 'PROCESOS_COACTIVOS') {
             throw new Error('Módulo Coactivos no implementado');
@@ -1141,25 +1195,23 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon, onViewDoc }: Ca
 
     let url = doc.url;
 
-    if (url) {
-      // FIX: Eliminar prefijo incorrecto si existe
-      if (url.includes('/api/legal/files/')) {
+    if (url && !url.startsWith('http') && !url.startsWith('blob:')) {
+      // Caso especial: /legal/files/ en cualquier parte
+      if (url.includes('/legal/files/')) {
         const filename = url.split('/').pop();
-        url = `/files/${filename}`;
-      }
+        url = `http://localhost:3008/files/${filename}`;
+      } else {
+        // Limpiar prefijos incorrectos (sin ^ para coincidir en cualquier posición)
+        url = url.replace(/\/legal\//gi, '/').replace(/\/api\/legal\//gi, '/');
 
-      if (url.startsWith('http')) {
-        // Ya es absoluta (externa o interna construida previamente)
-      } else if (!url.startsWith('blob:')) {
-        // Construir con buildApiUrl
-        if (url.startsWith('/uploads') || url.startsWith('uploads')) {
+        if (url.startsWith('/files/') || !url.includes('/')) {
+          const filename = url.split('/').pop();
+          url = `http://localhost:3008/files/${filename}`;
+        } else if (url.startsWith('/uploads') || url.startsWith('uploads')) {
           const cleanPath = url.startsWith('/') ? url : `/${url}`;
-          url = buildApiUrl('legal', cleanPath);
-        } else if (!url.includes('/')) {
-          url = buildApiUrl('legal', `/files/${url}`);
+          url = `http://localhost:3008${cleanPath}`;
         } else {
-          const path = url.startsWith('/') ? url : `/${url}`;
-          url = buildApiUrl('legal', path);
+          url = `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
         }
       }
     }
