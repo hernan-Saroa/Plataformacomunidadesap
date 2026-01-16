@@ -22,6 +22,7 @@ import { AlertTriangle, Clock } from 'lucide-react';
 import { authService } from './services/api/authService';
 import { config } from './config/environment';
 import { NotificacionesProvider } from './contexts/NotificacionesContext';
+import { EditorPlantillasPage } from './pages/EditorPlantillasPage';
 
 // Importar Demo de Control Disciplinario
 import { ControlDisciplinarioDemo } from './components/esap/ControlDisciplinarioDemo';
@@ -932,20 +933,24 @@ export default function App() {
       `}</style>
 
         <Routes>
-          <Route
-            path="/verificar-certificado-graduado"
-            element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
-          />
-          <Route
-            path="/verificar-certificado/:codigo"
-            element={<VerificarCertificadoPublico />}
-          />
-          <Route
-            path="/validar/:codigo"
-            element={<VerificarCertificadoPublico />}
-          />
-          <Route path="*" element={renderVista()} />
-        </Routes>
+           <Route
+             path="/verificar-certificado-graduado"
+             element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
+           />
+           <Route
+             path="/verificar-certificado/:codigo"
+             element={<VerificarCertificadoPublico />}
+           />
+           <Route
+             path="/validar/:codigo"
+             element={<VerificarCertificadoPublico />}
+           />
+           <Route
+             path="/editor-plantillas"
+             element={<EditorPlantillasPage />}
+           />
+           <Route path="*" element={renderVista()} />
+         </Routes>
 
         {/* Modal de Alerta de Inactividad */}
         {mostrarAlertaInactividad && (

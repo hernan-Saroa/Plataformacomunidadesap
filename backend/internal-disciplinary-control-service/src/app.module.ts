@@ -20,6 +20,7 @@ import { AlertaEnviada } from './entities/alerta-enviada.entity';
 import { NewsController } from './controllers/news.controller';
 import { ProcessController } from './controllers/process.controller';
 import { AutoController } from './controllers/auto.controller';
+import { AutoTemplatesController } from './controllers/auto-templates.controller';
 import { ProfessionalController } from './controllers/professional.controller';
 import { TerminosProcesalesController } from './controllers/terminos-procesales.controller';
 import { DiasFestivosController } from './controllers/dias-festivos.controller';
@@ -48,6 +49,7 @@ import { AppService } from './app.service';
 
 import { StageConfiguration } from './entities/stage-configuration.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
+import { PlantillaAuto } from './entities/plantilla-auto.entity';
 import { ConfigurationController } from './controllers/configuration.controller';
 
 import { FilesController } from './controllers/files.controller';
@@ -67,6 +69,7 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
       DisciplinaryProfessional,
       StageConfiguration,
       SystemConfiguration,
+      PlantillaAuto,
       Evidence,
       AutoVersion,
       TerminoProcesal,
@@ -80,6 +83,7 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
     NewsController,
     ProcessController,
     AutoController,
+    AutoTemplatesController,
     ProfessionalController,
     ConfigurationController,
     FilesController,
